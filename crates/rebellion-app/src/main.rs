@@ -5555,6 +5555,16 @@ async fn main() {
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
+                        // FUN_00536bc0: a unit's Move is a character's.
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::SpecialForce(unit)),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::SpecialForceMove {
+                                unit,
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
+                        }
                         Some((
                             ObjectMenuCommand::Move,
                             Some(MenuObject::Fighter { fleet, index }),
@@ -6035,10 +6045,17 @@ async fn main() {
                     if let Some(MoveConfirmationAction::Confirm {
                         fleets,
                         characters,
+                        special_forces,
                         destination,
                         join,
                     }) = answer
                     {
+                        panel_actions.extend(special_forces.into_iter().map(|unit| {
+                            PanelAction::MoveSpecialForce {
+                                unit,
+                                system: destination,
+                            }
+                        }));
                         // FUN_0041ce20(order, 1): a character's 0x202 is
                         // the Move mission order 0x241 again.
                         panel_actions.extend(characters.into_iter().map(|character| {
@@ -6212,6 +6229,32 @@ async fn main() {
                                             system,
                                             fleet,
                                         });
+                                    }
+                                }
+                                // A special force's 0x201 -> 0x241. port: the
+                                // port's fleets carry no special forces, so a
+                                // fleet gives its system.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::SpecialForceMove { unit, confirmed },
+                                    target,
+                                }) => {
+                                    let system = match target {
+                                        ReleaseTarget::System(system)
+                                        | ReleaseTarget::Fleet { system, .. } => system,
+                                    };
+                                    if confirmed {
+                                        confirm_special_force_move(
+                                            &world,
+                                            player_faction,
+                                            unit,
+                                            system,
+                                            clock.tick,
+                                            &mut msg_log,
+                                            &mut move_confirmation_state,
+                                        );
+                                    } else {
+                                        panel_actions
+                                            .push(PanelAction::MoveSpecialForce { unit, system });
                                     }
                                 }
                                 // A regiment's 0x201 against the release
@@ -7506,6 +7549,58 @@ fn confirm_character_move(
     });
 }
 
+/// A special force's Confirmed Move (`0x202`), as a character's: the Move's
+/// check, then the confirmation with the unit's class name and the trip's
+/// days (`FUN_0049a350`, `FUN_004f4850`).
+fn confirm_special_force_move(
+    world: &GameWorld,
+    faction: MissionFaction,
+    unit: rebellion_core::ids::SpecialForceKey,
+    system: rebellion_core::ids::SystemKey,
+    tick: u64,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+) {
+    let member = MissionMember::SpecialForce(unit);
+    let days = rebellion_core::missions::member_move_days(world, member, system);
+    let (Some(value), Some(days), true) = (
+        world.special_forces.get(unit),
+        days,
+        rebellion_core::missions::move_place_allowed(world, faction, system, None),
+    ) else {
+        macroquad::logging::info!("[interface] special_force_move confirm refused");
+        msg_log.push(GameMessage::new(
+            tick,
+            "Move refused".to_string(),
+            MessageCategory::Event,
+        ));
+        return;
+    };
+    // The first member is not a fleet; its container is its system.
+    let blockaded = world.systems.values().any(|sys| {
+        sys.special_forces.contains(&unit)
+            && rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, sys)
+    });
+    let name = world
+        .buildable_classes
+        .get(&value.class_dat_id)
+        .map_or_else(String::new, |class| class.name.clone());
+    macroquad::logging::info!(
+        "[interface] special_force_move confirm days={days} blockaded={blockaded}"
+    );
+    move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
+        faction,
+        fleets: Vec::new(),
+        characters: Vec::new(),
+        special_forces: vec![unit],
+        blockaded,
+        destination: system,
+        join: None,
+        lines: vec![(name, days)],
+    });
+}
+
 /// Whether each order of `selection`'s menu passes its own rule (`+0x18`).
 fn order_gates(
     selection: Option<MenuObject>,
@@ -7561,6 +7656,15 @@ fn order_gates(
                     !c.is_killed && rebellion_core::missions::character_side(c) == Some(side)
                 })
             }
+            _ => false,
+        },
+        // FUN_00536bc0's Move on a unit, as a character's: the unit is the
+        // player's.
+        special_force_move: match selection {
+            Some(MenuObject::SpecialForce(unit)) => world
+                .special_forces
+                .get(unit)
+                .is_some_and(|value| value.is_alliance == is_alliance),
             _ => false,
         },
         troop_move: match selection {
@@ -8387,6 +8491,45 @@ fn apply_panel_action(
                 world.systems.get(system).map(|s| s.name.as_str()),
                 fleet.and_then(|key| fleet_label(world, key)),
                 result,
+            );
+            if result.is_err() {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Move refused".to_string(),
+                    MessageCategory::Event,
+                ));
+            }
+        }
+        // A special force's Move: the Move mission 0x41000001 with the unit
+        // as its team, as a character's.
+        PanelAction::MoveSpecialForce { unit, system } => {
+            let result = if rebellion_core::missions::move_place_allowed(
+                world,
+                *player_faction,
+                system,
+                None,
+            ) {
+                mission_state
+                    .dispatch_guarded(
+                        rebellion_core::missions::MissionRequest {
+                            kind: MissionKind::Move,
+                            faction: *player_faction,
+                            team: vec![MissionMember::SpecialForce(unit)],
+                            decoys: Vec::new(),
+                            target_system: system,
+                            target_character: None,
+                            target_object: None,
+                            tick: clock.tick,
+                        },
+                        world,
+                    )
+                    .map_err(|refusal| format!("{refusal:?}"))
+            } else {
+                Err("1/0x28".to_string())
+            };
+            macroquad::logging::info!(
+                "[interface] special_force_move unit={unit:?} to={:?} result={result:?}",
+                world.systems.get(system).map(|s| s.name.as_str()),
             );
             if result.is_err() {
                 msg_log.push(GameMessage::new(

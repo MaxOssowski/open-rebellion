@@ -46,6 +46,13 @@ pub enum TargetOrder {
         /// trip's days first (`FUN_00487cc0`).
         confirmed: bool,
     },
+    /// A special force's Move (`0x201` -> `0x241`), as a character's: the
+    /// unit order list (`FUN_00536bc0`) is the same.
+    SpecialForceMove {
+        unit: rebellion_core::ids::SpecialForceKey,
+        /// Confirmed Move (`0x202`).
+        confirmed: bool,
+    },
     /// A regiment's Move (`0x201`). Released on a Fleet window it boards the
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a
     /// fleet").

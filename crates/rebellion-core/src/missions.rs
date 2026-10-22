@@ -4407,10 +4407,26 @@ pub fn move_place_allowed(
 /// for a free Han Solo, else the default). `None` without a location.
 #[must_use]
 pub fn move_days(world: &GameWorld, character: CharacterKey, to: SystemKey) -> Option<u32> {
-    let from = member_location(world, MissionMember::Character(character))?;
+    member_move_days(world, MissionMember::Character(character), to)
+}
+
+/// [`move_days`] for any member: a special force travels at the default
+/// speed (`FUN_00548370` speeds up only a free Han Solo).
+#[must_use]
+pub fn member_move_days(world: &GameWorld, member: MissionMember, to: SystemKey) -> Option<u32> {
+    let from = member_location(world, member)?;
     let position = |key: SystemKey| world.systems.get(key).map(|s| (s.x, s.y));
-    let c = world.characters.get(character)?;
-    let speed = if c.dat_id.raw() == HAN_SOLO && !c.is_captive {
+    let han = match member {
+        MissionMember::Character(key) => {
+            let c = world.characters.get(key)?;
+            c.dat_id.raw() == HAN_SOLO && !c.is_captive
+        }
+        MissionMember::SpecialForce(key) => {
+            world.special_forces.get(key)?;
+            false
+        }
+    };
+    let speed = if han {
         crate::movement::gnprtb_or_shipped(world, GNPRTB_HAN_SOLO_SPEED, SHIPPED_HAN_SOLO_SPEED)
     } else {
         crate::movement::default_speed(world)
@@ -7363,6 +7379,25 @@ mod tests {
         assert!(han < 20, "Han travels faster: {han}");
         world.characters[agent].current_system = None;
         assert_eq!(move_days(&world, agent, to), None);
+    }
+
+    #[test]
+    fn a_special_force_moves_at_the_default_speed() {
+        // FUN_004f4850 for a unit: the same trip, at the default speed
+        // (FUN_00548370 speeds up only Han Solo).
+        let mut world = minimal_world();
+        let from = system_at(&mut world, 0);
+        let to = system_at(&mut world, 100);
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        let member = MissionMember::SpecialForce(unit);
+        assert_eq!(member_move_days(&world, member, to), None);
+        world.systems[from].special_forces.push(unit);
+        assert_eq!(member_move_days(&world, member, to), Some(20));
     }
 
     #[test]

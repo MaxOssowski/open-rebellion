@@ -475,7 +475,12 @@ the same slots but the kind) for the Move mission `0x41000001`.
   original reroutes a traveller whose target container moves
   (`FUN_004fbc20`, `GameObjParentReroutedNotif`). port: the port reroutes
   on arrival, not at the moment the fleet moves.
-  A special force's Move is not ported.
+  A special force's Move and Confirmed Move (2026-10-23) follow a
+  character's: the unit class lists the same unit orders (`FUN_00536bc0`,
+  `character-retire.md`), and the Move mission takes the unit as its team
+  (`PanelAction::MoveSpecialForce`, `missions::member_move_days` at the
+  default speed). port: the port's fleets carry no special forces, so a
+  release on a fleet sends the unit to the fleet's system.
 - A character's Confirmed Move (`0x202`, 2026-10-20) validates the same
   way, then opens the confirmation window with one line, the character's
   name and the trip's days (`missions::move_days`: `FUN_004f4850` at the

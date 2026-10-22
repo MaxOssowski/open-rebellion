@@ -447,8 +447,8 @@ impl ObjectMenuRow {
 ///   [`object_submenu_rows`].
 /// - A character's Move and Confirmed Move are enabled when
 ///   `gates.character_move` says so; a character's or a special force's
-///   Retire when `gates.retire` does. port: a special force's Move and
-///   Confirmed Move and the other
+///   Retire when `gates.retire` does; a special force's Move and
+///   Confirmed Move when `gates.special_force_move` does. port: the other
 ///   fleet orders stay disabled until their windows and orders are ported.
 #[must_use]
 pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec<ObjectMenuRow> {
@@ -471,6 +471,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
     );
     let fleet_entry = matches!(selection, Some(MenuObject::Fleet(_)));
     let character = matches!(selection, Some(MenuObject::Character(_)));
+    let special_force = matches!(selection, Some(MenuObject::SpecialForce(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
     let offered: &[ObjectMenuItem] = match selection {
@@ -510,6 +511,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
                     (character && gates.character_move)
+                        || (special_force && gates.special_force_move)
                         || (fleet && gates.fleet_move)
                         || (troop && gates.troop_move)
                         || (ship && gates.ship_move)
@@ -521,7 +523,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::Build => producer && gates.build,
                 ObjectMenuCommand::ConfirmedMove => {
-                    (fleet && gates.fleet_move) || (character && gates.character_move)
+                    (fleet && gates.fleet_move)
+                        || (character && gates.character_move)
+                        || (special_force && gates.special_force_move)
                 }
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
                 ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
@@ -599,6 +603,9 @@ pub struct OrderGates {
     /// side reads it ([`rebellion_core::missions::character_side`]).
     pub character_move: bool,
     pub troop_move: bool,
+    /// A special force's Move (`0x201` -> `0x241`): the player's unit, as a
+    /// character's (`FUN_00536bc0` lists the same unit orders).
+    pub special_force_move: bool,
     /// A squadron's Move: the player's, on a planet or aboard a fleet in
     /// orbit ([`rebellion_core::squadrons`]).
     pub squadron_move: bool,
@@ -798,6 +805,7 @@ mod tests {
         fleet_move: false,
         character_move: false,
         troop_move: false,
+        special_force_move: false,
         squadron_move: false,
         ship_move: false,
         rename: false,
@@ -990,6 +998,7 @@ mod tests {
             fleet_move: true,
             character_move: false,
             troop_move: true,
+            special_force_move: false,
             squadron_move: true,
             ship_move: true,
             rename: false,
@@ -1040,6 +1049,25 @@ mod tests {
         );
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
         assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Move"));
+    }
+
+    #[test]
+    fn a_special_forces_move_rows_follow_their_own_rule() {
+        // FUN_00536bc0: a unit lists Move and Confirmed Move as a character
+        // does; both expand to the Move mission 0x241.
+        let gates = OrderGates {
+            special_force_move: true,
+            ..OrderGates::default()
+        };
+        let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
+        assert_eq!(
+            enabled(&object_menu_rows(unit, gates)),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+        );
+        // The unit's gate opens no character's rows.
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        let rows = enabled(&object_menu_rows(character, gates));
+        assert!(!rows.contains(&"Move") && !rows.contains(&"Confirmed Move"));
     }
 
     #[test]
@@ -1221,6 +1249,7 @@ mod tests {
             fleet_move: true,
             character_move: true,
             troop_move: true,
+            special_force_move: false,
             squadron_move: true,
             ship_move: true,
             rename: false,
@@ -1327,6 +1356,7 @@ mod tests {
         let troop = Some(MenuObject::Troop(TroopKey::default()));
         let gates = OrderGates {
             troop_move: true,
+            special_force_move: false,
             squadron_move: true,
             ..OrderGates::default()
         };

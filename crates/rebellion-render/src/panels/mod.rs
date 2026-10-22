@@ -123,6 +123,14 @@ pub enum PanelAction {
         system: rebellion_core::ids::SystemKey,
         fleet: Option<rebellion_core::ids::FleetKey>,
     },
+    /// A special force's Move (`0x201` -> `0x241`) released on a system:
+    /// the Move mission with the unit as its team. port: the port's fleets
+    /// carry no special forces, so a release on a fleet sends it to the
+    /// fleet's system.
+    MoveSpecialForce {
+        unit: rebellion_core::ids::SpecialForceKey,
+        system: rebellion_core::ids::SystemKey,
+    },
     /// A squadron's Move (`0x201`) released on a system or fleet
     /// (`squadrons::move_squadrons`).
     MoveSquadron {

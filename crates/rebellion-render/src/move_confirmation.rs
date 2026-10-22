@@ -130,6 +130,7 @@ pub enum MoveConfirmationAction {
     Confirm {
         fleets: Vec<FleetKey>,
         characters: Vec<CharacterKey>,
+        special_forces: Vec<SpecialForceKey>,
         destination: SystemKey,
         join: Option<FleetKey>,
     },
@@ -183,6 +184,7 @@ impl MoveConfirmationState {
             MoveConfirmationAction::Confirm {
                 fleets: window.fleets,
                 characters: window.characters,
+                special_forces: window.special_forces,
                 destination: window.destination,
                 join: window.join,
             }
@@ -475,6 +477,7 @@ mod tests {
             Some(MoveConfirmationAction::Confirm {
                 fleets: vec![FleetKey::default()],
                 characters: Vec::new(),
+                special_forces: Vec::new(),
                 destination: SystemKey::default(),
                 join: None,
             })
