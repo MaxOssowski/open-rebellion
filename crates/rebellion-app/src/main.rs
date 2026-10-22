@@ -968,6 +968,8 @@ async fn main() {
     let message_texts = rebellion_data::message_texts(&gdata_path);
     // The battle report's sentences (TEXTSTRA RCDATA 0x7001..0x7016).
     rebellion_render::tactical_view::set_battle_texts(message_texts.clone());
+    // The galaxy view's legend windows (STRATEGY.DLL RCDATA, FUN_004522f0).
+    rebellion_render::set_gid_legends(rebellion_data::gid_legends(&gdata_path));
 
     // The Galactic Encyclopedia is immutable reference data, not campaign
     // state. Rebuild it from the installed DAT/TEXTSTRA source so opening the
@@ -4301,6 +4303,12 @@ async fn main() {
                         && rebellion_render::message_index::window_rect(cockpit_layout)
                             .contains(egui_macroquad::egui::pos2(pointer.0, pointer.1))
                     || cockpit_state.gid_ui.menu_open
+                    || cockpit_state.gid_legend.contains_screen_point(
+                        cockpit_layout,
+                        cockpit_state.gid_mode,
+                        cockpit_state.faction,
+                        pointer,
+                    )
                     || enc_state.open
                     || original_modal_fixture_open
                     || game_speed_ui.menu_anchor.is_some()

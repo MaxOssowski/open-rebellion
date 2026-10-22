@@ -470,6 +470,11 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   }
 
   if (scenario.slug === "popular-support") {
+    // Choosing a display opens its legend (FUN_00422ce0 command 0x140 runs
+    // FUN_00426d00), so the command centre to return to is the one after
+    // the selection, legend open.
+    const commandCenter = await stableInteractionFrame(page, folder,
+      "command-center-after-selection");
     const commandControls = faction === "alliance"
       ? [
           { slug: "game-options", rect: { x: 3, y: 355, width: 27, height: 41 },
@@ -503,7 +508,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       assert.notEqual(sha256(pressed), sha256(hover),
         `${faction}: ${command.slug} did not show its original pressed resource`);
       if (command.slug === "game-options") {
-        assert.notEqual(sha256(released), sha256(fs.readFileSync(path.join(folder, "actual.png"))),
+        assert.notEqual(sha256(released), sha256(commandCenter),
           `${faction}: Game Options did not open its original surface`);
         probes.push({
           type: "game-options-command-surface",
@@ -518,10 +523,10 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
         await page.keyboard.press("Escape");
         const returned = await stableInteractionFrame(page, folder,
           `${command.slug}-returned-to-command-center`);
-        assert.equal(sha256(returned), sha256(fs.readFileSync(path.join(folder, "actual.png"))),
+        assert.equal(sha256(returned), sha256(commandCenter),
           `${faction}: Game Options did not return to the authentic command center`);
       } else {
-        assert.equal(sha256(released), sha256(fs.readFileSync(path.join(folder, "actual.png"))),
+        assert.equal(sha256(released), sha256(commandCenter),
           `${faction}: ${command.slug} exposed a replacement destination`);
       }
       probes.push({ type: "physical-command", command: command.slug, expected: command.expected,
@@ -537,12 +542,12 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       probes.push({ type: "keyboard-command", key, expected, observed });
       if (key === "F1") {
         const options = await stableInteractionFrame(page, folder, "keyboard-game-options-open");
-        assert.notEqual(sha256(options), sha256(fs.readFileSync(path.join(folder, "actual.png"))),
+        assert.notEqual(sha256(options), sha256(commandCenter),
           `${faction}: F1 did not open the original Game Options surface`);
         await page.keyboard.press("Escape");
         const returned = await stableInteractionFrame(page, folder,
           "keyboard-game-options-returned");
-        assert.equal(sha256(returned), sha256(fs.readFileSync(path.join(folder, "actual.png"))),
+        assert.equal(sha256(returned), sha256(commandCenter),
           `${faction}: F1 Game Options did not return to the command center`);
       }
     }
@@ -554,7 +559,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     const legacyEncyclopedia = await page.screenshot({
       path: path.join(folder, "legacy-encyclopedia-shortcut.png"), animations: "disabled",
     });
-    assert.equal(sha256(legacyEncyclopedia), sha256(fs.readFileSync(path.join(folder, "actual.png"))),
+    assert.equal(sha256(legacyEncyclopedia), sha256(commandCenter),
       `${faction}: legacy E shortcut exposed a replacement Encyclopedia`);
     probes.push({ type: "legacy-encyclopedia-shortcut", key: "E", status: "fails-closed",
       screenshot_sha256: sha256(legacyEncyclopedia) });
@@ -599,6 +604,56 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     assert.equal(sha256(before), sha256(after), `${scenario.slug} moved the map`);
     probes.push({ type: scenario.slug, before_sha256: sha256(before), after_sha256: sha256(after),
       unchanged: true });
+  }
+
+  if (scenario.category !== null && scenario.mode !== null) {
+    // FUN_00426d00 opens the legend at (150, 120); FUN_00607740 frames it
+    // grey outside, white inside; its close button (FUN_004522f0) sits at
+    // width - 14 - 3, 3. Closing leaves the legend button (FUN_00422ce0
+    // 0x405 case 3), which restores it (command 0x134).
+    const exact = viewport.width === 640 && viewport.height === 480
+      && viewport.device_scale_factor === 1;
+    const pixelAt = (bytes, x, y) => {
+      const png = PNG.sync.read(bytes);
+      const at = (y * png.width + x) * 4;
+      return Array.from(png.data.subarray(at, at + 3));
+    };
+    const open = await stableInteractionFrame(page, folder, "legend-open");
+    if (exact) {
+      assert.deepEqual(pixelAt(open, 150, 120), [192, 192, 192], "legend frame corner is not grey");
+      assert.deepEqual(pixelAt(open, 151, 121), [255, 255, 255], "legend frame inner line is not white");
+    }
+    const closeButton = point(150 + 180 - 14 - 3 + 7, 120 + 3 + 7);
+    await page.mouse.click(closeButton.x, closeButton.y);
+    const closed = await stableInteractionFrame(page, folder, "legend-closed");
+    assert.notEqual(sha256(closed), sha256(open), `${scenario.slug}: the legend did not close`);
+    if (exact) {
+      assert.notDeepEqual(pixelAt(closed, 151, 121), [255, 255, 255],
+        "the closed legend left its frame");
+    }
+    const button = point((faction === "alliance" ? 55 : 113) + 15, 50 + 15);
+    await page.mouse.click(button.x, button.y);
+    const restored = await stableInteractionFrame(page, folder, "legend-restored");
+    assert.notEqual(sha256(restored), sha256(closed), `${scenario.slug}: the legend button did nothing`);
+    assert.notEqual(sha256(restored), sha256(open), `${scenario.slug}: the legend button stayed`);
+    if (exact) {
+      assert.deepEqual(pixelAt(restored, 151, 121), [255, 255, 255], "the legend did not return");
+    }
+    // The window drags by its body (FUN_00606650); a point inside its frame
+    // away from the texts and the close button.
+    const grab = point(150 + 170, 120 + 60);
+    await page.mouse.move(grab.x, grab.y);
+    await page.mouse.down();
+    await page.mouse.move(grab.x + 40 * scale, grab.y + 20 * scale, { steps: 4 });
+    await page.mouse.up();
+    const dragged = await stableInteractionFrame(page, folder, "legend-dragged");
+    assert.notEqual(sha256(dragged), sha256(restored), `${scenario.slug}: the legend did not drag`);
+    if (exact) {
+      assert.deepEqual(pixelAt(dragged, 190, 140), [192, 192, 192], "the dragged frame is not at +40, +20");
+      assert.deepEqual(pixelAt(dragged, 191, 141), [255, 255, 255], "the dragged frame lost its inner line");
+    }
+    probes.push({ type: "legend-window", open_sha256: sha256(open), closed_sha256: sha256(closed),
+      restored_sha256: sha256(restored), dragged_sha256: sha256(dragged) });
   }
 
   return probes;

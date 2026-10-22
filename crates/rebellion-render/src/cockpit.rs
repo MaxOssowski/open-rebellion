@@ -621,6 +621,8 @@ pub struct CockpitState {
     pub gid_mode: GidMode,
     /// Original GID popup and detailed-legend state.
     pub gid_ui: GidUiState,
+    /// The GID legend window and its button.
+    pub gid_legend: crate::gid_legend::GidLegendWindow,
     /// Message Index categories with unread messages, one bit per
     /// [`MessageRail::mask`]. The caller refreshes it each frame.
     pub message_unread_mask: u16,
@@ -637,6 +639,7 @@ impl Default for CockpitState {
             side_gutter_w: 0.0, // no side gutters for now — full width
             gid_mode: GidMode::PopularSupport,
             gid_ui: GidUiState::default(),
+            gid_legend: crate::gid_legend::GidLegendWindow::default(),
             message_unread_mask: 0,
             pressed_control: None,
         }
@@ -661,6 +664,8 @@ impl CockpitState {
             return false;
         }
         self.gid_mode = mode;
+        // FUN_00425d00 ends in FUN_00426d00, which opens the legend.
+        self.gid_legend.show_display(mode);
         true
     }
 
@@ -827,12 +832,21 @@ pub fn draw_cockpit_egui_layer(
         state.message_unread_mask,
     );
 
-    if state.gid_mode != GidMode::DisplayOff {
-        draw_compact_gid_legend(ctx, cache, &painter, layout, state.faction);
-    }
+    crate::gid_legend::draw_gid_legend(
+        ctx,
+        cache,
+        layout,
+        &mut state.gid_legend,
+        state.gid_mode,
+        state.faction,
+        input_enabled,
+    );
 
     let selected = draw_gid_menu(ctx, state, cache, layout, input_enabled);
     if let Some(mode) = selected {
+        // FUN_00422ce0 command 0x140 runs FUN_00426d00 after FUN_00425d00,
+        // so even the shown display reopens its legend.
+        state.gid_legend.show_display(mode);
         state.gid_mode = mode;
         state.gid_ui.menu_open = false;
         state.gid_ui.category = None;
@@ -918,53 +932,6 @@ fn draw_control(
         ),
     );
     painter.with_clip_rect(screen_rect).image(
-        texture_id,
-        image_rect,
-        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-        egui::Color32::WHITE,
-    );
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "Preserve existing conversion of bitmap sizes and bounded UI indices into pixel coordinates."
-)]
-fn draw_compact_gid_legend(
-    ctx: &egui::Context,
-    cache: &mut BmpCache,
-    painter: &egui::Painter,
-    layout: CockpitLayout,
-    faction: CockpitFaction,
-) {
-    let resource_id = resources::strategy::GID_COMPACT_LEGEND;
-    let Some(original_size) = cache.original_resource_size(DllSource::Strategy, resource_id) else {
-        return;
-    };
-    let Some(texture_id) = cache
-        .get(ctx, DllSource::Strategy, resource_id)
-        .map(egui_macroquad::egui::TextureHandle::id)
-    else {
-        return;
-    };
-    let logical_x = match faction {
-        CockpitFaction::Alliance => 55.0,
-        CockpitFaction::Empire => 113.0,
-    };
-    let image_rect = egui::Rect::from_min_size(
-        egui::pos2(
-            layout.canvas.x + logical_x * layout.scale,
-            layout.canvas.y + 50.0 * layout.scale,
-        ),
-        egui::vec2(
-            original_size[0] as f32 * layout.scale,
-            original_size[1] as f32 * layout.scale,
-        ),
-    );
-    let canvas_clip = egui::Rect::from_min_size(
-        egui::pos2(layout.canvas.x, layout.canvas.y),
-        egui::vec2(layout.canvas.width, layout.canvas.height),
-    );
-    painter.with_clip_rect(canvas_clip).image(
         texture_id,
         image_rect,
         egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),

@@ -17,6 +17,7 @@ pub mod fog;
 pub mod game_menu;
 pub mod game_options;
 pub mod game_speed;
+pub mod gid_legend;
 pub mod main_menu;
 pub mod main_menu_destinations;
 pub mod manufacturing_window;
@@ -95,6 +96,7 @@ pub use fleet_window::{
 };
 pub use fog::draw_fog_overlay;
 pub use game_options::{draw_game_options, GameOptionsAction, GameOptionsOrigin, GameOptionsState};
+pub use gid_legend::set_gid_legends;
 pub use main_menu::{draw_main_menu, MainMenuAction, MainMenuControl, MainMenuState};
 pub use main_menu_destinations::{
     draw_credits, draw_multiplayer_setup, CreditsState, MenuDestinationAction,
@@ -2005,7 +2007,7 @@ mod interaction_tests {
         };
         let here = system();
         let there = system();
-        let mut fleet = |world: &mut GameWorld, is_alliance, location| {
+        let fleet = |world: &mut GameWorld, is_alliance, location| {
             world.fleets.insert(Fleet {
                 location,
                 capital_ships: vec![],

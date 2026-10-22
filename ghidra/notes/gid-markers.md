@@ -108,3 +108,37 @@ The legend windows (read 2026-10-22):
   TEXTSTRA's string table (0x1655 is "Loyalty to the Alliance").
 - `dat_dumper::types::gid_legend` decodes them and re-encodes each to its
   bytes; `rebellion_data::gid_legends` gives them with their texts.
+
+How the legend window behaves (read 2026-10-22):
+- `FUN_00427270` makes the legend button `+0x248`: 30 x 30 at (55, 50)
+  for the Alliance and (113, 50) for the Empire, STRATEGY 10168
+  (`0x27b8`), command `0x134`.
+- `FUN_00426d00` runs after every display change: from the menu
+  (command `0x140` calls it even for the shown display) and from the
+  keys (inside `FUN_00425d00`, which returns early for the shown
+  display). Display Off destroys the legend and hides the button; any
+  other display shows the button and creates the legend at `+0x11c`,
+  `+0x120`, moved in so 180 x 240 fits the client.
+- `FUN_00421c70` starts that position at (150, 120) and the display at
+  `0x80`, Display Off. `FUN_00425d00` keeps the visible legend's
+  position before destroying it.
+- `FUN_00452630` shrinks the window to the layout's size; every layout is
+  180 wide (95, 135 or 155 high).
+- `FUN_00452240` paints the parent's pixels under the window first, so the
+  galaxy shows through; then the layout and the frame.
+- `FUN_00607740` frames it from 2-pixel tiles, grey outside, white inside:
+  top `0x2779`, bottom `0x277a`, left `0x277b`, right `0x2778`, corners
+  `0x2775`, `0x2774`, `0x2777`, `0x2776` (top-left, top-right,
+  bottom-left, bottom-right; read from the tiles' pixels).
+- The close button (`0x277c`, pressed `0x277d`, 14 x 14) sits at
+  `width - 14 - 3`, 3. It posts `0x405` with the legend's id `0x43`;
+  `FUN_00422ce0` case 3 hides the legend and shows the button. The button
+  (command `0x134`) shows the legend and hides itself.
+- The window drags by its body (`FUN_00606650`: `0x201` `FUN_00606ee0`,
+  `0x200` `FUN_006071e0`, `0x202` `FUN_00607010`) within the parent's
+  rectangle (`FUN_006071a0`).
+- Fonts (`FUN_0060eed0`): index 4 is the default 16-pixel cell, 10 a
+  14-pixel one, both weight 400; the face name (`+0x38`) is not read.
+
+port: the legend button opens the legend even before a display has
+created it, since the port starts on Popular Support, not Display Off.
