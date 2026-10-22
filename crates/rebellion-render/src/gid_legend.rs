@@ -95,23 +95,6 @@ pub fn legend_resource(mode: GidMode, faction: CockpitFaction) -> Option<u16> {
     })
 }
 
-/// The cell height of a text's font (`FUN_0060eed0`): 8 for 3, 12 for 8,
-/// 9 and 13, 14 for 2 and 10, 18 for 6 and 7, 24 for 11, 30 for 12, 16
-/// otherwise. hyp: the port draws a cell's text at three quarters of its
-/// height in egui's font, the original's face (`+0x38`) not being read.
-#[must_use]
-pub fn font_cell_height(font: u16) -> f32 {
-    match font {
-        3 => 8.0,
-        8 | 9 | 13 => 12.0,
-        2 | 10 => 14.0,
-        6 | 7 => 18.0,
-        11 => 24.0,
-        12 => 30.0,
-        _ => 16.0,
-    }
-}
-
 /// The legend window and its button, in the command centre's 640 x 480
 /// coordinates.
 #[derive(Debug, Clone, PartialEq)]
@@ -316,12 +299,6 @@ pub fn text_anchor(x: u16, y: u16, width: f32) -> (egui::Vec2, egui::Align2) {
     }
 }
 
-/// The egui size of a text in `font` at `scale`; see [`font_cell_height`].
-#[must_use]
-pub fn text_size(font: u16, scale: f32) -> f32 {
-    (font_cell_height(font) * 0.75 * scale).max(6.0)
-}
-
 /// A command-centre point on the screen.
 #[must_use]
 pub fn to_screen(layout: CockpitLayout, logical: egui::Pos2) -> egui::Pos2 {
@@ -455,7 +432,7 @@ pub fn draw_gid_legend(
                         font,
                         rgb,
                     } => {
-                        let font_id = egui::FontId::proportional(text_size(*font, scale));
+                        let font_id = crate::theme::original_font(*font, scale);
                         let colour = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
                         let (offset, align) = text_anchor(*x, *y, size.x);
                         painter.text(at(offset), align, text, font_id, colour);
@@ -648,22 +625,6 @@ mod tests {
             close_button_rect(180.0, egui::vec2(14.0, 14.0)),
             egui::Rect::from_min_size(egui::pos2(163.0, 3.0), egui::vec2(14.0, 14.0))
         );
-    }
-
-    #[test]
-    fn the_legend_fonts_take_their_cell_heights() {
-        // FUN_0060eed0's switch on the font index.
-        let heights: Vec<f32> = (0..=14).map(font_cell_height).collect();
-        assert_eq!(
-            heights,
-            [
-                16.0, 16.0, 14.0, 8.0, 16.0, 16.0, 18.0, 18.0, 12.0, 12.0, 14.0, 24.0, 30.0, 12.0,
-                16.0
-            ]
-        );
-        // The port's text size: three quarters of the cell, at least 6.
-        assert_eq!(text_size(4, 2.0), 24.0);
-        assert_eq!(text_size(3, 0.5), 6.0);
     }
 
     #[test]

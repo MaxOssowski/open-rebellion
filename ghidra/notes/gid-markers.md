@@ -138,7 +138,11 @@ How the legend window behaves (read 2026-10-22):
   `0x200` `FUN_006071e0`, `0x202` `FUN_00607010`) within the parent's
   rectangle (`FUN_006071a0`).
 - Fonts (`FUN_0060eed0`): index 4 is the default 16-pixel cell, 10 a
-  14-pixel one, both weight 400; the face name (`+0x38`) is not read.
+  14-pixel one, both weight 400. The face is "Arial" for every font:
+  `FUN_0060ee20` copies the string at `0x6ac7b8` to the table's `+0x38`
+  (called at `0x5ff83a` on the table `0x6be4f8`). The port draws it with
+  Liberation Sans 2.1.5 (SIL OFL), Arial's metric match, at the cell
+  height (`theme::original_font`).
 
 The reference capture 0119
 (`docs/qa/2026-09-10-interface-parity-audit/reference-captures/`) shows
