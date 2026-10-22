@@ -4353,6 +4353,12 @@ async fn main() {
                     }
                 }
                 if let Some(system) = map_state.activated_system {
+                    // FUN_00422ce0: the click closes a visible legend first.
+                    if cockpit_state.gid_legend.close_for_map_click() {
+                        macroquad::logging::info!(
+                            "[interface] command=0x405 destination=gid_legend status=closed_by_map_click"
+                        );
+                    }
                     sector_window_state.open_for_system(&world, system, cockpit_state.faction);
                 }
                 set_cockpit_viewport_clip(None);

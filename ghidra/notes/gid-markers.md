@@ -181,3 +181,11 @@ The mark tables and how a mark is drawn (read 2026-10-22):
   unexplored system with no fleet; it returns no mark. hyp: the port
   shows the unexplored mark there, whether the item keeps flag `0x80`
   not being read.
+
+A click on the map closes the legend (read 2026-10-22): `FUN_00422ce0`'s
+`WM_LBUTTONUP` in the galaxy view (`+0xc0` = 1), with an item under the
+pointer (`+0x25c`, tracked on `WM_MOUSEMOVE`), posts `0x405` with the
+legend's id when the legend is visible, then opens the item's system
+(`FUN_0042d170`, `FUN_00429ce0`). Ported the same day
+(`GidLegendWindow::close_for_map_click`). port: the port opens the
+system on the press, the original on the release.

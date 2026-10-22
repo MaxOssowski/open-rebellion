@@ -644,6 +644,10 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     const grab = point(150 + 170, 120 + 60);
     await page.mouse.move(grab.x, grab.y);
     await page.mouse.down();
+    // A press lands where the pointer is in its frame; let it land first.
+    await page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
     await page.mouse.move(grab.x + 40 * scale, grab.y + 20 * scale, { steps: 4 });
     await page.mouse.up();
     const dragged = await stableInteractionFrame(page, folder, "legend-dragged");
@@ -652,8 +656,38 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       assert.deepEqual(pixelAt(dragged, 190, 140), [192, 192, 192], "the dragged frame is not at +40, +20");
       assert.deepEqual(pixelAt(dragged, 191, 141), [255, 255, 255], "the dragged frame lost its inner line");
     }
+    // A click on a system closes a visible legend first (FUN_00422ce0,
+    // WM_LBUTTONUP with a hovered item posts 0x405). Drag the legend to the
+    // top left so it leaves the probe system free.
+    // Grab 5, 5 inside the frame and drop the window at 10, 10, keeping
+    // the pointer on the page so the release arrives.
+    const corner = point(190 + 5, 140 + 5);
+    const target = point(15, 15);
+    await page.mouse.move(corner.x, corner.y);
+    await page.mouse.down();
+    await page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    }));
+    await page.mouse.move(target.x, target.y, { steps: 4 });
+    await page.mouse.up();
+    const cornered = await stableInteractionFrame(page, folder, "legend-cornered");
+    if (exact) {
+      assert.deepEqual(pixelAt(cornered, 10, 10), [192, 192, 192], "the legend did not reach 10, 10");
+      assert.deepEqual(pixelAt(cornered, 11, 11), [255, 255, 255], "the moved legend lost its inner line");
+    }
+    const system = point(ready.probe_screen_x, ready.probe_screen_y);
+    await page.mouse.move(system.x, system.y);
+    await page.waitForTimeout(80);
+    await performCommand(page, "command=0x405 destination=gid_legend status=closed_by_map_click",
+      () => page.mouse.click(system.x, system.y));
+    const clickedAway = await stableInteractionFrame(page, folder, "legend-closed-by-map-click");
+    if (exact) {
+      assert.notDeepEqual(pixelAt(clickedAway, 11, 11), [255, 255, 255],
+        "the map click left the legend open");
+    }
     probes.push({ type: "legend-window", open_sha256: sha256(open), closed_sha256: sha256(closed),
-      restored_sha256: sha256(restored), dragged_sha256: sha256(dragged) });
+      restored_sha256: sha256(restored), dragged_sha256: sha256(dragged),
+      closed_by_map_click_sha256: sha256(clickedAway) });
   }
 
   return probes;

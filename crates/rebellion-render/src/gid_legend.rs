@@ -166,6 +166,18 @@ impl GidLegendWindow {
         self.drag_anchor = None;
     }
 
+    /// A click on a system of the map (`FUN_00422ce0`, `WM_LBUTTONUP` with
+    /// a hovered item `+0x25c`) posts `0x405` to close a visible legend
+    /// before `FUN_00429ce0` opens the system; a closed legend stays as it
+    /// is. Returns whether it closed the legend.
+    pub fn close_for_map_click(&mut self) -> bool {
+        let open = self.open;
+        if open {
+            self.close();
+        }
+        open
+    }
+
     /// The legend button (command `0x134`): the legend shows, the button
     /// hides. hyp: the original shows nothing until a legend exists
     /// (`+0x124`); the port opens one, the button being on screen.
@@ -572,6 +584,21 @@ mod tests {
             None,
             at(200.0, 200.0)
         ));
+    }
+
+    #[test]
+    fn a_click_on_a_system_closes_only_a_visible_legend() {
+        // FUN_00422ce0: WM_LBUTTONUP on a hovered item posts 0x405 when the
+        // legend is visible.
+        let mut window = GidLegendWindow::default();
+        window.show_display(GidMode::Mines);
+        assert!(window.close_for_map_click());
+        assert!(!window.open && window.button_shown);
+        assert!(!window.close_for_map_click());
+        // Display Off: no legend, no button; the click changes nothing.
+        window.show_display(GidMode::DisplayOff);
+        assert!(!window.close_for_map_click());
+        assert!(!window.open && !window.button_shown);
     }
 
     #[test]
