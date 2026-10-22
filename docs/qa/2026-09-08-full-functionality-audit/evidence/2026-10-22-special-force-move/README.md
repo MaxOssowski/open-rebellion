@@ -1,6 +1,6 @@
 # A special force's Move and Confirmed Move (P08)
 
-Date: 2026-10-23. The reading is in `ghidra/notes/move-order.md` and
+Date: 2026-10-22. The reading is in `ghidra/notes/move-order.md` and
 `character-retire.md`.
 
 ## Original
