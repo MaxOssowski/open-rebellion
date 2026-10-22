@@ -12,6 +12,7 @@ pub mod systems;
 pub mod troops;
 
 // Pattern 1 — new entity tables
+pub mod advisor_script;
 pub mod all_facilities;
 pub mod entity_table;
 pub mod fleets_seed;

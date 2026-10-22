@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use crate::codec::{ByteReader, ByteWriter};
 use crate::dat_record::DatRecord;
 use crate::types::{
-    all_facilities, capital_ships, defense_facilities, entity_table, fighters, fleets_seed,
-    general_params, int_table, major_characters, manufacturing_facilities, minor_characters,
-    missions, production_facilities, sectors, seed_table, side_params, special_forces, syfc_table,
-    systems, troops,
+    advisor_script, all_facilities, capital_ships, defense_facilities, entity_table, fighters,
+    fleets_seed, general_params, int_table, major_characters, manufacturing_facilities,
+    minor_characters, missions, production_facilities, sectors, seed_table, side_params,
+    special_forces, syfc_table, systems, troops,
 };
 use crate::validate::compare_bytes;
 
@@ -159,5 +159,41 @@ pub fn build_registry() -> HashMap<&'static str, ParseFn> {
         m.insert(name, parse_and_dump::<seed_table::SeedTableFile> as ParseFn);
     }
 
+    // The advisor's messages (FUN_004c2c70, FUN_004c0ba0).
+    for name in ["C3POACT.SPT", "IMP22ACT.SPT"] {
+        m.insert(
+            name,
+            parse_and_dump::<advisor_script::AdvisorScriptFile> as ParseFn,
+        );
+    }
+
     m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_registry_parses_the_advisor_message_files_and_round_trips_them() {
+        // FUN_004c2c70 and FUN_004c0ba0 read C3POACT.SPT and IMP22ACT.SPT.
+        let registry = build_registry();
+        // One message (id 0x29) with one entry: the idle clip with action
+        // kind 2, code 1.
+        let mut bytes = Vec::new();
+        for value in [1_u32, 0x29, 1, 1, 0] {
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.extend(0x2710_u16.to_le_bytes());
+        for value in [0_u32, 2, 1] {
+            bytes.extend(value.to_le_bytes());
+        }
+        for name in ["C3POACT.SPT", "IMP22ACT.SPT"] {
+            let json = registry[name](&bytes, name).unwrap();
+            assert!(json.contains("\"record\": 10000"), "{json}");
+        }
+        // A trailing byte fails the round trip's full read.
+        bytes.push(0);
+        assert!(registry["C3POACT.SPT"](&bytes, "C3POACT.SPT").is_err());
+    }
 }
