@@ -330,11 +330,28 @@ attack, and never at its headquarters. A value of 0 means "no retreat".
 The value's size does not matter, because the battle's leave threshold
 is the side commander's `+0x24` = 0.33.
 
-- Open: the player controller's slot `+0x44` (`FUN_004865b0`) passes the
-  dialog a flag from `FUN_004fcf50` / `FUN_0051dce0` (`FUN_00488d20`
-  stores it at the window's `+0x50`). It is not read here.
-- Open: the Retreat button's enabled state in the original dialog. The
-  port enables it when the player's ships have a working hyperdrive.
+- The player controller's slot `+0x44` (`FUN_004865b0`, read
+  2026-10-22) passes the dialog a flag: 1 when `FUN_004fcf50` ->
+  `FUN_00516730` (on the game's `+0xc0`) answers with its three outputs
+  0, 1 and 1. `FUN_00488d20` stores the flag at the report's `+0x50`, and
+  `FUN_0044f860` enables Retreat (`0x67`, slot `+0xc`) when it is set,
+  else disables it (slot `+0x10`). `FUN_00516730` on the battle's system
+  (`+0x8c`):
+  - output 1, which must be 0: some capital ship in the enemy's fleets at
+    the system (`FUN_004ffef0`, `FUN_00502e30`) has slot `+0x254` less
+    slot `+0x280` non-zero. For a capital ship (vtable `0x0065dc10`)
+    `+0x254` is `FUN_00502f60`, the class's `+0xcc`, which is CAPSHPSD
+    `+0xa4` `gravity_well_projector` (class field = DAT offset + `0x28`,
+    as hull `+0xc0` = DAT `0x98`). `+0x280` is `FUN_006158b0`, 0. So an
+    enemy Interdictor bars the retreat;
+  - output 2, which must be 1: some unit of the viewer's side can move
+    (slot `+0x34` non-zero), first among its fleets' capital ships, then
+    among its squadrons on the planet (`FUN_00503a50`);
+  - output 3, which must be 1: the autoroute search `FUN_005545e0(unit,
+    system, .., 0, 0, ..)` finds that unit a destination, and it is a
+    system (`0x90..0x97`). Output 4 is the distance (`FUN_0055d8a0`).
+- The port: `abstract_battle::retreat_offered` (2026-10-22) replaces the
+  port's own rule (a ship with a working hyperdrive).
 
 ### The port (W2k, 2026-10-21)
 

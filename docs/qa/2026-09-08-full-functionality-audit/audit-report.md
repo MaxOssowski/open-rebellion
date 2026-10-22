@@ -339,7 +339,11 @@ cross-runtime proof remain open
     by the system's side and its last arrival
     (`evidence/2026-10-22-battle-alert-texts/`). Its other tabs list each
     side's fleets, ships and units aboard, and the System Assets
-    (`evidence/2026-10-22-battle-alert-lists/`).
+    (`evidence/2026-10-22-battle-alert-lists/`). Its title and summary sit
+    where the original paints them (`evidence/2026-10-22-battle-alert-layout/`),
+    and Retreat is offered by the original's test: no enemy Interdictor, a
+    unit that can move and somewhere to go
+    (`evidence/2026-10-22-battle-alert-retreat/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

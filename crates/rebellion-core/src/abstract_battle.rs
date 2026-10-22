@@ -1465,6 +1465,68 @@ pub fn withdraw_loser(
     withdrawals
 }
 
+/// Whether the player's Battle Alert offers Retreat (`FUN_004865b0` passes
+/// `FUN_004fcf50` -> `FUN_00516730`'s answer to the dialog, which enables
+/// button `0x67` when it is set). All three must hold:
+///
+/// - no capital ship of the enemy's fleets at the system has a gravity
+///   well projector (slot `+0x254`, class `+0xcc`, CAPSHPSD `+0xa4`, less
+///   slot `+0x280`, which is 0);
+/// - one of the side's units there can move (slot `+0x34`): a capital ship
+///   in its fleets ([`crate::movement::ship_speed`]), else a squadron of
+///   its on the planet ([`crate::movement::fighter_speed`]);
+/// - the autoroute search (`FUN_005545e0` with no container candidate)
+///   finds that unit a system.
+///
+/// port: the search is [`crate::missions::nearest_place`], leaving out
+/// the battle's system; it does not depend on the unit.
+#[must_use]
+pub fn retreat_offered(world: &GameWorld, system: SystemKey, alliance: bool) -> bool {
+    use crate::dat::Faction;
+    let Some(place) = world.systems.get(system) else {
+        return false;
+    };
+    let ships = |side: bool| {
+        place
+            .fleets
+            .iter()
+            .filter_map(|&key| world.fleets.get(key))
+            .filter(move |fleet| fleet.is_alliance == side)
+            .flat_map(|fleet| fleet.capital_ships.iter())
+            .filter(|ship| ship.alive)
+            .filter_map(|ship| Some((ship, world.capital_ship_classes.get(ship.class)?)))
+    };
+    if ships(!alliance).any(|(_, class)| class.gravity_well_projector != 0) {
+        return false;
+    }
+    let ship_moves =
+        ships(alliance).any(|(ship, class)| crate::movement::ship_speed(world, class, ship) != 0);
+    let squadron_moves = || {
+        place.fighters.iter().any(|entry| {
+            entry.count > 0
+                && world.fighter_classes.get(entry.class).is_some_and(|class| {
+                    class.is_alliance == alliance
+                        && crate::movement::fighter_speed(world, class) != 0
+                })
+        })
+    };
+    if !ship_moves && !squadron_moves() {
+        return false;
+    }
+    let side = if alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    crate::missions::nearest_place(
+        world,
+        side,
+        (i64::from(place.x), i64::from(place.y)),
+        Some(system),
+    )
+    .is_some()
+}
+
 impl AbstractBattle {
     /// The battle at `system` (`FUN_0040b0e0`): each side's retreat order
     /// (`FUN_005afb30`) and the system's last arrived side.
@@ -3060,6 +3122,59 @@ mod tests {
         let alliance = fleet(&mut world, true);
         let empire = fleet(&mut world, false);
         (world, [battle, near, far], alliance, empire)
+    }
+
+    // FUN_00516730 (FUN_004865b0 -> FUN_00488d20 +0x50 -> FUN_0044f860):
+    // the Battle Alert offers Retreat unless an enemy ship has a gravity
+    // well projector (slot +0x254, class +0xcc), no unit of the side can
+    // move, or the autoroute search finds no system.
+    #[test]
+    fn retreat_is_offered_unless_an_interdictor_or_nowhere_to_go_bars_it() {
+        use crate::world::{CapitalShipClass, FighterClass, FighterEntry, ShipInstance};
+        let (mut world, [battle, near, far], alliance, empire) = withdrawal_world();
+        assert!(retreat_offered(&world, battle, true));
+        assert!(retreat_offered(&world, battle, false));
+
+        // An Interdictor in the Alliance's fleet holds the Empire only.
+        let interdictor = world.capital_ship_classes.insert(CapitalShipClass {
+            gravity_well_projector: 1,
+            hull: 10,
+            ..CapitalShipClass::default()
+        });
+        world.fleets[alliance]
+            .capital_ships
+            .push(ShipInstance::new(interdictor, 10, false));
+        assert!(!retreat_offered(&world, battle, false));
+        assert!(retreat_offered(&world, battle, true));
+        // A destroyed Interdictor holds nobody.
+        world.fleets[alliance].capital_ships[1].alive = false;
+        assert!(retreat_offered(&world, battle, false));
+
+        // With no ship of its own there, only a squadron on the planet can
+        // leave.
+        world.fleets[empire].capital_ships.clear();
+        assert!(!retreat_offered(&world, battle, false));
+        let tie = world.fighter_classes.insert(FighterClass {
+            is_alliance: false,
+            ..FighterClass::default()
+        });
+        // port: an emptied entry is no squadron.
+        world.systems[battle].fighters.push(FighterEntry {
+            class: tie,
+            count: 0,
+        });
+        assert!(!retreat_offered(&world, battle, false));
+        world.systems[battle].fighters[0].count = 1;
+        assert!(retreat_offered(&world, battle, false));
+        // The Alliance's tab does not count the Empire's squadron.
+        world.fleets[alliance].capital_ships.clear();
+        assert!(!retreat_offered(&world, battle, true));
+
+        // With no other system, the search finds nowhere to go.
+        world.systems.remove(near);
+        world.systems.remove(far);
+        assert!(!retreat_offered(&world, battle, false));
+        assert!(!retreat_offered(&world, SystemKey::default(), false));
     }
 
     // FUN_00516ef0 sets the loser's fleets Autorouting; FUN_00515480 moves

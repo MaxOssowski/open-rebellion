@@ -6079,15 +6079,6 @@ fn draw_battle_result_destinations(
     }
 }
 
-fn battle_alert_retreat_enabled(session: &BattleSession) -> bool {
-    session.ships.iter().any(|ship| {
-        ship.alive
-            && ship.is_attacker == session.player_is_attacker
-            && ship.subsystem_capacity.hyperdrive > 0
-            && ship.subsystem_condition.hyperdrive > 0
-    })
-}
-
 fn draw_battle_alert_text(
     state: &TacticalState,
     cache: &mut BmpCache,
@@ -6641,7 +6632,11 @@ fn draw_original_battle_alert(
         NativeRect::new(146.0, 296.0, 134.0, 27.0),
         NativeRect::new(280.0, 296.0, 134.0, 27.0),
     ];
-    let retreat_enabled = battle_alert_retreat_enabled(session);
+    let retreat_enabled = rebellion_core::abstract_battle::retreat_offered(
+        world,
+        session.system,
+        player_is_alliance(session),
+    );
     let hovered = button_rects
         .iter()
         .enumerate()
