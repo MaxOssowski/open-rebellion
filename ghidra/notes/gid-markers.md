@@ -95,8 +95,50 @@ Which displays the player can reach (read 2026-10-22):
     action is set by `FUN_00439eb0` from a `Class_00658848` item's
     `+0x54`/`+0x58` (slot `0x20`, `FUN_00412400` -> `FUN_0041d140`).
   - So `0x13`, `0x14`, `0x15`, `0x17`, `0x20` and `0x91` can be shown,
-    though not from the menu or the keys. Who makes those items is not
-    traced; the port has none of these displays.
+    though not from the menu or the keys.
+
+The advisor's "show me" actions (read 2026-10-22):
+- `Class_00658848` is an advisor clip. `FUN_00412280` loads its frames
+  from an `RT_RCDATA` list. Slot `0x20` (`FUN_00412400`) runs the clip's
+  action (`+0x54` kind, `+0x58` code) when it ends.
+- The advisor's player (`Class_0065a358`, slot 8, `FUN_00472930`) makes
+  a clip by id and gives it its action through slot `0x14`
+  (`FUN_004124b0`).
+- `FUN_004c0fc0(code)`, for kind 2:
+
+| Code | Action |
+|---|---|
+| 1 | display `0x11` |
+| 2, `0x12` | select Coruscant (`0x109`), display `0x92`, caption `0x1624` "Coruscant" |
+| 3, 8, `0x14` | select Yavin (`0x121`), display `0x93`, caption `0x1622` "Yavin" |
+| 4, `0x11` | display `0x17` |
+| 5 | display `0x20` |
+| 6 | display `0x91` |
+| 7 | select the system of character `0x34000280`, display `0x92`, caption `0x1627` "Emperor Palpatine" |
+| 9 | Display Off `0x80` |
+| `0xb` | display `0x11`, then `FUN_0041dbe0` |
+| `0xc` | `FUN_0041d9d0` |
+| `0xd` | `FUN_0042d760`; with advice on, `FUN_00439f20` and the Message Index (`FUN_0041d770(1, 0x82)`); then `FUN_0041da80` |
+| `0xe` | display `0x13` |
+| `0xf` | display `0x15` |
+| `0x10` | display `0x14` |
+| `0x13` | select the system of character `0x35000281`, display `0x92`, caption `0x1628` "Darth Vader" |
+
+- TEXTSTRA `0x1620` "Systems Loyal to the Empire", `0x1621` "Systems
+  Under Military Control" and `0x1629` "Unexplored Systems" name the
+  same displays. The reference captures 0119 to 0149
+  (`docs/qa/2026-09-10-interface-parity-audit/reference-captures/`) show
+  them in the opening narration: Popular Support, then "Systems Loyal to
+  the Empire", "Systems Under Military Control" and "Unexplored
+  Systems". Each shows the legend button and no legend window.
+- `FUN_004522f0` has no layout for `0x13..0x17`, `0x20` or `0x91..0x93`
+  (its `default` returns before `FUN_00452630`). Their legend window is
+  created but empty, and `FUN_00452240` paints the galaxy through it.
+- So the game reaches Popular Support from the constructor's Display Off
+  through this narration (code 1 or `0xb`). These displays belong with
+  the advisor's narration, which the port lacks (tracker item
+  "Droidy-doradcy", P34). Who queues the narration's clips is not
+  traced.
 
 port: a killed character counts as not usable. The port's fleets carry
 no special forces. The fleets a system holds are those in orbit and
