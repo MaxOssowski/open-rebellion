@@ -74,3 +74,25 @@ ship, so they follow all the fleet's ships. Facilities go by kind
 (those whose middle fits) are drawn. Since 2026-10-22 the wheel over the
 list scrolls it a row at a time, as in the port's other lists
 (`assault_summary::scrolled`). A new tab starts at the top.
+
+## The battle windows' score (read 2026-10-22)
+
+`FUN_00417520(index)` plays `MDATA.<n>` from the pointer table at
+`0x006a8478` (read from REBEXE.EXE). It goes through `FUN_00417610`,
+which stops the current track and sets `DAT_006b1490` bit 1. The table
+reads, by index: 0 300, 1 301, 2 302, 3 303, 4 304, 5 305, 6 306, 7 310,
+8 311, 9 312, 10 307, 11 313, 12 308, 13 309, 14 314, 15 315.
+
+- The Battle Alert (`FUN_0044f860`, at its end) plays 10 for the
+  Alliance's viewer (MDATA.307) and 11 for the Empire's (MDATA.313).
+- The Battle Summary (`FUN_0046f360`) sets `+0x188` = 1 and `+0x18c`.
+  The viewer's win gives 12 (Alliance, MDATA.308) or 14 (Empire,
+  MDATA.314). No winner, a loss or the viewer's withdrawal gives 13
+  (MDATA.309) or 15 (MDATA.315). `FUN_00471200`'s first paint plays it
+  through `FUN_00470e70`.
+
+Ported: `audio::battle_alert_music` and `battle_summary_music`, and
+`TacticalState::screen_music`. The app plays them while those windows
+show, and restores the galaxy's or the menu's score when they close.
+`scripts/build-wasm.sh` stages the six tracks for the browser. The
+tactical battle itself keeps the port's MDATA.307 cue.

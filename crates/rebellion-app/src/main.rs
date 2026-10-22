@@ -1279,6 +1279,16 @@ async fn main() {
     let browser_main_theme = browser_audio_files.remove("music/main_theme.wav");
     #[cfg(target_arch = "wasm32")]
     let browser_battle_theme = browser_audio_files.remove("music/battle.wav");
+    // The battle windows' original score (FUN_0044f860, FUN_0046f360).
+    #[cfg(target_arch = "wasm32")]
+    let browser_screen_music: std::collections::HashMap<rebellion_render::MusicTrack, Vec<u8>> = (10..=15)
+        .map(rebellion_render::MusicTrack::Original)
+        .filter_map(|track| {
+            browser_audio_files
+                .remove(&format!("music/{}", audio::music_file(track)))
+                .map(|bytes| (track, bytes))
+        })
+        .collect();
     #[cfg(target_arch = "wasm32")]
     let browser_menu_sfx: Vec<_> = audio::MENU_SFX_ASSETS
         .iter()
@@ -1335,6 +1345,7 @@ async fn main() {
         audio_vol.backend_available = browser_menu_audio.is_some();
     }
     let mut tactical_music_active = false;
+    let mut screen_music_playing: Option<rebellion_render::MusicTrack> = None;
 
     let mut cutscene_player = open_cutscene(
         Path::new(INTRO_CUTSCENE),
@@ -6946,10 +6957,16 @@ async fn main() {
             break;
         }
 
-        // 6. Route the recovered tactical score and event cue. Battle Alert
-        // remains in the strategic sound context until Take Command.
-        let tactical_audio_context =
-            game_mode == GameMode::TacticalCombat && !tactical_state.battle_alert_open();
+        // 6. Route the recovered tactical score and event cue. The Battle
+        // Alert and the Battle Summary play their own original score.
+        let screen_music = if game_mode == GameMode::TacticalCombat {
+            tactical_state.screen_music()
+        } else {
+            None
+        };
+        let tactical_audio_context = game_mode == GameMode::TacticalCombat
+            && !tactical_state.battle_alert_open()
+            && screen_music.is_none();
         if tactical_audio_context && !tactical_music_active {
             #[cfg(not(target_arch = "wasm32"))]
             audio_engine.play_music_for_context(
@@ -6999,6 +7016,53 @@ async fn main() {
                 engine.load_music_bytes(rebellion_render::MusicTrack::MainTheme, bytes);
             }
             tactical_music_active = false;
+        }
+        if screen_music != screen_music_playing {
+            if let Some(track) = screen_music {
+                #[cfg(not(target_arch = "wasm32"))]
+                audio_engine.play_music(track, &sounds_dir, &audio_vol);
+                #[cfg(target_arch = "wasm32")]
+                if let (Some(engine), Some(bytes)) =
+                    (browser_menu_audio.as_mut(), browser_screen_music.get(&track))
+                {
+                    engine.load_music_bytes(track, bytes);
+                }
+                macroquad::logging::info!(
+                    "[audio] context=battle_window track=original mdata={} loaded={} muted={}",
+                    track.mdata().unwrap_or_default(),
+                    {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            audio_engine.current_track() == Some(track)
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            browser_screen_music.contains_key(&track)
+                        }
+                    },
+                    audio_vol.muted || audio_vol.music_muted
+                );
+            } else if matches!(game_mode, GameMode::MainMenu | GameMode::Galaxy) {
+                // Leaving a battle window for the galaxy or the menu
+                // restores their score.
+                #[cfg(not(target_arch = "wasm32"))]
+                audio_engine.play_music_for_context(
+                    if game_mode == GameMode::MainMenu {
+                        rebellion_render::MusicContext::MainMenu
+                    } else {
+                        rebellion_render::MusicContext::GalaxyMap
+                    },
+                    &sounds_dir,
+                    &audio_vol,
+                );
+                #[cfg(target_arch = "wasm32")]
+                if let (Some(engine), Some(bytes)) =
+                    (browser_menu_audio.as_mut(), browser_main_theme.as_deref())
+                {
+                    engine.load_music_bytes(rebellion_render::MusicTrack::MainTheme, bytes);
+                }
+            }
+            screen_music_playing = screen_music;
         }
 
         if tactical_audio_context {

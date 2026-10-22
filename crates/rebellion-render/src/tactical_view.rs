@@ -1821,6 +1821,26 @@ impl TacticalState {
         self.battle_alert_open
     }
 
+    /// The original score the shown battle window plays: the Battle Alert's
+    /// track by the viewer's side, or the Battle Summary's by the side and
+    /// whether the viewer won (`crate::audio`). `None` during the tactical
+    /// battle and outside one.
+    #[must_use]
+    pub fn screen_music(&self) -> Option<crate::audio::MusicTrack> {
+        let session = self.session.as_ref()?;
+        let viewer = player_is_alliance(session);
+        if self.battle_alert_open {
+            Some(crate::audio::battle_alert_music(viewer))
+        } else if session.phase == BattlePhase::Results {
+            Some(crate::audio::battle_summary_music(
+                viewer,
+                winner_is_alliance(session) == Some(viewer),
+            ))
+        } else {
+            None
+        }
+    }
+
     /// Existing fixture scenarios predate Battle Alert and intentionally
     /// enter the same production session after its Take Command transition.
     #[cfg(feature = "interface-test-fixtures")]
@@ -9665,6 +9685,45 @@ mod tests {
         assert_eq!(
             battle_alert_sides(&GameWorld::default(), rebel),
             (None, None)
+        );
+    }
+
+    #[test]
+    fn each_battle_window_names_its_original_score() {
+        // FUN_0044f860 (the alert) and FUN_0046f360 (the summary).
+        let mut state = TacticalState::default();
+        assert_eq!(state.screen_music(), None);
+        let mut session = test_session(
+            vec![test_ship(64, 1, true, true), test_ship(64, 2, false, true)],
+            Vec::new(),
+            true,
+        );
+        session.phase = BattlePhase::Combat;
+        state.session = Some(session);
+        assert_eq!(state.screen_music(), None);
+        state.battle_alert_open = true;
+        let viewer = player_is_alliance(state.session.as_ref().unwrap());
+        assert_eq!(
+            state.screen_music(),
+            Some(crate::audio::battle_alert_music(viewer))
+        );
+        state.battle_alert_open = false;
+        let session = state.session.as_mut().unwrap();
+        session.phase = BattlePhase::Results;
+        session.winner = Some(if viewer == session.attacker_is_alliance {
+            CombatWinner::Attacker
+        } else {
+            CombatWinner::Defender
+        });
+        assert_eq!(
+            state.screen_music(),
+            Some(crate::audio::battle_summary_music(viewer, true))
+        );
+        let session = state.session.as_mut().unwrap();
+        session.winner = Some(CombatWinner::Draw);
+        assert_eq!(
+            state.screen_music(),
+            Some(crate::audio::battle_summary_music(viewer, false))
         );
     }
 

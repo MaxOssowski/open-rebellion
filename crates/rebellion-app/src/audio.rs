@@ -181,15 +181,21 @@ pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
     (0x14, 0, "sfx/tactical_event_14_0.wav", 13_054),
 ];
 
-fn music_file(track: MusicTrack) -> &'static str {
+/// A track's staged file under `music/`: the port's named tracks, or an
+/// original track's MDATA number (`307.wav`), as `tools/stage-ui-assets`
+/// and `scripts/build-wasm.sh` stage them.
+pub fn music_file(track: MusicTrack) -> String {
     match track {
-        MusicTrack::MainTheme => "main_theme.wav",
-        MusicTrack::Battle => "battle.wav",
-        MusicTrack::Victory => "victory.wav",
-        MusicTrack::Defeat => "defeat.wav",
-        MusicTrack::Imperial => "imperial.wav",
-        MusicTrack::Hoth => "hoth.wav",
-        MusicTrack::Endor => "endor.wav",
+        MusicTrack::MainTheme => "main_theme.wav".into(),
+        MusicTrack::Battle => "battle.wav".into(),
+        MusicTrack::Victory => "victory.wav".into(),
+        MusicTrack::Defeat => "defeat.wav".into(),
+        MusicTrack::Imperial => "imperial.wav".into(),
+        MusicTrack::Hoth => "hoth.wav".into(),
+        MusicTrack::Endor => "endor.wav".into(),
+        MusicTrack::Original(_) => track
+            .mdata()
+            .map_or_else(String::new, |mdata| format!("{mdata}.wav")),
     }
 }
 
@@ -734,6 +740,15 @@ impl AudioEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_original_track_plays_its_staged_mdata_file() {
+        // 0x006a8478: track 10 is MDATA.307, 11 MDATA.313.
+        assert_eq!(music_file(MusicTrack::Original(10)), "307.wav");
+        assert_eq!(music_file(MusicTrack::Original(11)), "313.wav");
+        assert_eq!(music_file(MusicTrack::Battle), "battle.wav");
+        assert_eq!(music_file(MusicTrack::Original(16)), "");
+    }
 
     #[test]
     fn tactical_voice_assets_cover_complete_source_backed_banks() {

@@ -3197,6 +3197,12 @@ async function probeTacticalBattleResultsPresentation(
   const persistence = consoleLines.find(({ text }) =>
     text.includes("[tactical_results] strategic_persistence applied=true"));
   assert.ok(persistence, `${faction}: strategic result was not persisted before routing`);
+  // FUN_0046f360 +0x18c: the viewer's win plays track 12 / 14, MDATA.308
+  // (Alliance) or MDATA.314 (Empire); both fixtures are the viewer's win.
+  const summaryScore = consoleLines.filter(({ text }) =>
+    text.includes("[audio] context=battle_window track=original mdata=")).at(-1);
+  assert.ok(summaryScore, `${faction}: the Battle Summary started no score`);
+  assert.match(summaryScore.text, new RegExp(`mdata=${alliance ? 308 : 314} loaded=true`));
   // The post-battle bombardment and landing this once checked were the
   // port's invention, removed in 6c9220a5 (the original never bombards or
   // lands after a battle, ghidra/notes/bombardment-order.md), with their
@@ -3329,6 +3335,12 @@ async function probeTacticalBattleAlertEntry(
     text.includes("[battle_alert] command=take_command")
       && text.includes("status=paused_tactical")),
   `${faction}: Take Command did not enter paused tactical combat`);
+  // FUN_0044f860 -> FUN_00417610(10 / 11): REBEXE's table 0x006a8478 maps
+  // them to MDATA.307 (Alliance) and MDATA.313 (Empire).
+  const alertScore = consoleLines.find(({ text }) =>
+    text.includes("[audio] context=battle_window track=original mdata="));
+  assert.ok(alertScore, `${faction}: the Battle Alert started no score`);
+  assert.match(alertScore.text, new RegExp(`mdata=${alliance ? 307 : 313} loaded=true`));
   return probes;
 }
 

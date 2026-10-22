@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "family": "TAC-01..TAC-07",
+  "status": "pass",
+  "run_id": "2026-10-22T04-37-52-535Z-1480171",
+  "cases": 4,
+  "executions": 4,
+  "passed": 4,
+  "failed": 0,
+  "screenshots_with_matching_goldens": 0,
+  "unbaselined": 4,
+  "unstable_screenshots": 0,
+  "four_request_startups": 4,
+  "browser_executions": 4,
+  "muted_launches": 4,
+  "launch_timeouts": 0,
+  "recovered_launch_timeouts": 0,
+  "execution_timeouts": 0,
+  "recovered_execution_timeouts": 0,
+  "browser_processes_closed": 4,
+  "browser_executions_closed": 4,
+  "raw_artifacts": ".artifacts/interface-parity/2026-10-22T04-37-52-535Z-1480171"
+}

@@ -1,0 +1,16 @@
+{
+  "production-battle-alert-entry/alliance": [
+    "[audio] context=battle_window track=original mdata=307 loaded=true muted=true",
+    "[audio] context=combat track=Battle mdata=307 loaded=true muted=true"
+  ],
+  "production-battle-alert-entry/empire": [
+    "[audio] context=battle_window track=original mdata=313 loaded=true muted=true",
+    "[audio] context=combat track=Battle mdata=307 loaded=true muted=true"
+  ],
+  "production-battle-results-presentation/alliance": [
+    "[audio] context=battle_window track=original mdata=308 loaded=true muted=true"
+  ],
+  "production-battle-results-presentation/empire": [
+    "[audio] context=battle_window track=original mdata=314 loaded=true muted=true"
+  ]
+}

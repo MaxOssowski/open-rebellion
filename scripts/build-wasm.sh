@@ -133,6 +133,18 @@ else
     rm -f "$WEB_AUDIO/music/battle.wav"
     echo "WARNING: MDATA.307 not found in $MDATA_DIR or $STAGED_AUDIO/music; tactical battles will remain silent."
 fi
+# The battle windows' original score (REBEXE table 0x006a8478, tracks 10..15):
+# the Battle Alert plays MDATA.307 or 313, the Battle Summary 308, 309, 314 or 315.
+for MDATA_NUMBER in 307 313 308 309 314 315; do
+    SCORE_SRC="$(music_source "MDATA.$MDATA_NUMBER" "$MDATA_NUMBER.wav")"
+    if [ -n "$SCORE_SRC" ]; then
+        cp "$SCORE_SRC" "$WEB_AUDIO/music/$MDATA_NUMBER.wav"
+    else
+        rm -f "$WEB_AUDIO/music/$MDATA_NUMBER.wav"
+        echo "WARNING: MDATA.$MDATA_NUMBER not found; that battle window will remain silent."
+    fi
+done
+echo "Staged the battle windows' original score (MDATA.307..315)."
 
 mkdir -p "$WEB_AUDIO/sfx"
 COMMON_DLL_DIR="$(original_dll_dir COMMON.DLL)"

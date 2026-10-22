@@ -346,7 +346,9 @@ cross-runtime proof remain open
     (`evidence/2026-10-22-battle-alert-retreat/`). The alert's list and the
     Battle Summary's forces list scroll with the wheel; neither draws the
     original scroll bar yet (`evidence/2026-10-22-battle-alert-scroll/`,
-    `2026-10-22-battle-summary-scroll/`).
+    `2026-10-22-battle-summary-scroll/`). Both windows play the original
+    score from REBEXE's track table: the alert MDATA.307 or 313, the summary
+    308, 309, 314 or 315 (`evidence/2026-10-22-battle-window-score/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

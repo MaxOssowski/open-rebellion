@@ -74,6 +74,48 @@ pub enum MusicTrack {
     Hoth,
     /// Battle of Endor III medley (MDATA.315)
     Endor,
+    /// The original score's track `index` (`FUN_00417520` plays
+    /// [`ORIGINAL_MUSIC`]`[index]`), staged as `{mdata}.wav`.
+    Original(u8),
+}
+
+/// The pointer table `FUN_00417520` plays from (`0x006a8478`, read from
+/// REBEXE.EXE): track `index` is `MDATA.{ORIGINAL_MUSIC[index]}`.
+pub const ORIGINAL_MUSIC: [u16; 16] = [
+    300, 301, 302, 303, 304, 305, 306, 310, 311, 312, 307, 313, 308, 309, 314, 315,
+];
+
+impl MusicTrack {
+    /// The MDATA file an original track plays, `None` for the port's own
+    /// named tracks.
+    #[must_use]
+    pub fn mdata(self) -> Option<u16> {
+        match self {
+            Self::Original(index) => ORIGINAL_MUSIC.get(usize::from(index)).copied(),
+            _ => None,
+        }
+    }
+}
+
+/// The Battle Alert's track (`FUN_0044f860` -> `FUN_00417610`): 10 for
+/// the Alliance's viewer (MDATA.307), 11 for the Empire's (MDATA.313).
+#[must_use]
+pub const fn battle_alert_music(viewer_alliance: bool) -> MusicTrack {
+    MusicTrack::Original(if viewer_alliance { 10 } else { 11 })
+}
+
+/// The Battle Summary's track (`FUN_0046f360` sets `+0x18c`, which
+/// `FUN_00470e70` plays on the first paint): the viewer's win 12 or 14
+/// (MDATA.308, MDATA.314), otherwise (no winner, a loss, a withdrawal) 13
+/// or 15 (MDATA.309, MDATA.315); the first of each pair for the Alliance.
+#[must_use]
+pub const fn battle_summary_music(viewer_alliance: bool, viewer_won: bool) -> MusicTrack {
+    MusicTrack::Original(match (viewer_alliance, viewer_won) {
+        (true, true) => 12,
+        (true, false) => 13,
+        (false, true) => 14,
+        (false, false) => 15,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -253,6 +295,22 @@ pub fn draw_audio_controls(ui: &mut egui::Ui, state: &mut AudioVolumeState) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_battle_windows_play_the_original_score_by_side_and_outcome() {
+        // 0x006a8478 in REBEXE.EXE; FUN_0044f860 plays 10 / 11, FUN_0046f360
+        // picks 12..15.
+        assert_eq!(battle_alert_music(true).mdata(), Some(307));
+        assert_eq!(battle_alert_music(false).mdata(), Some(313));
+        assert_eq!(battle_summary_music(true, true).mdata(), Some(308));
+        assert_eq!(battle_summary_music(true, false).mdata(), Some(309));
+        assert_eq!(battle_summary_music(false, true).mdata(), Some(314));
+        assert_eq!(battle_summary_music(false, false).mdata(), Some(315));
+        assert_eq!(MusicTrack::Original(0).mdata(), Some(300));
+        assert_eq!(MusicTrack::Original(7).mdata(), Some(310));
+        assert_eq!(MusicTrack::Original(16).mdata(), None);
+        assert_eq!(MusicTrack::Battle.mdata(), None);
+    }
 
     #[test]
     fn muting_silences_cutscenes_too() {
