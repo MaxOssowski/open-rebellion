@@ -114,6 +114,26 @@ class RuntimePackBuilderTests(unittest.TestCase):
             self.assertEqual(first.read_bytes(), second.read_bytes())
             PACKER.verify_pack(second, entries)
 
+    def test_legend_layouts_are_packed_with_the_text_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            bmp = root / "ui" / "strategy-dll" / "BMP"
+            base.mkdir()
+            bmp.mkdir(parents=True)
+            (base / "SYSTEMSD.DAT").write_bytes(b"systems")
+            (bmp / "900.bmp").write_bytes(b"bitmap")
+            (base / "gid-legends.json").write_text(
+                '{"10183":{"width":180},"10179":{"height":135}}', encoding="utf-8"
+            )
+            entries = PACKER.collect_entries(base, root / "ui")
+            legends = [entry for entry in entries if entry.key == "gid-legends.json"]
+            self.assertEqual(len(legends), 1)
+            self.assertEqual(
+                PACKER.entry_bytes(legends[0]),
+                b'{"10179":{"height":135},"10183":{"width":180}}',
+            )
+
     def test_optional_audio_uses_relative_runtime_keys(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

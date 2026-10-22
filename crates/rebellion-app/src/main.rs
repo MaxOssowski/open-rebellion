@@ -665,6 +665,9 @@ fn install_runtime_pack(
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
 
+    if let Some(legends) = pack.game_files.remove("gid-legends.json") {
+        rebellion_data::set_gid_legends_json(&legends);
+    }
     rebellion_data::set_message_texts(message_texts);
     rebellion_data::set_string_table(string_table);
     rebellion_render::set_encyclopedia_asset_cache(encyclopedia_assets);
@@ -729,6 +732,9 @@ async fn load_legacy_wasm_assets() {
             Err(_) => HashMap::new(),
         };
     rebellion_data::set_message_texts(message_texts);
+    if let Ok(legends) = macroquad::file::load_file("data/base/gid-legends.json").await {
+        rebellion_data::set_gid_legends_json(&legends);
+    }
     rebellion_data::set_file_cache(files);
 
     #[derive(serde::Deserialize)]

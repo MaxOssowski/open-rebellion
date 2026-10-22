@@ -32,9 +32,10 @@ class Entry:
     expected_sha256: str | None = None
 
 
-# TEXTSTRA string table and message texts, extracted from the player's own
-# TEXTSTRA.DLL by dat-dumper --extract-strings; key order is normalised.
-TEXT_TABLES = ("textstra.json", "textstra-messages.json")
+# TEXTSTRA string table and message texts, and STRATEGY.DLL's legend
+# layouts, extracted from the player's own DLLs by dat-dumper
+# --extract-strings; key order is normalised.
+TEXT_TABLES = ("textstra.json", "textstra-messages.json", "gid-legends.json")
 
 def validate_options_resources(ui_dir: Path) -> None:
     """Refuse stale UI staging that would omit the original confirmation controls."""

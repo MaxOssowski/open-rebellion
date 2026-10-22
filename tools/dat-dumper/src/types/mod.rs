@@ -30,6 +30,9 @@ pub mod syfc_table;
 // Pattern 3 — seed tables (generic, shared by all CMUN*/FACL* files)
 pub mod seed_table;
 
+// The GID legends from STRATEGY.DLL (their loader is native only).
+pub mod gid_legend;
+
 // Win32 PE resource extraction (native only — uses memory-mapped file I/O)
 #[cfg(not(target_arch = "wasm32"))]
 pub mod textstra;

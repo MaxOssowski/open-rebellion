@@ -86,6 +86,18 @@ fn main() -> anyhow::Result<()> {
                     messages_path.display(),
                     messages.len()
                 );
+                // The galaxy view's legend layouts (RT_RCDATA), from STRATEGY.DLL.
+                let strategy = cli.gdata.join("STRATEGY.DLL");
+                if strategy.exists() {
+                    let legends = types::gid_legend::load(&strategy)?;
+                    let legends_path = out_dir.join("gid-legends.json");
+                    std::fs::write(&legends_path, serde_json::to_string_pretty(&legends)?)?;
+                    eprintln!(
+                        "OK   STRATEGY.DLL -> {} ({} legends)",
+                        legends_path.display(),
+                        legends.len()
+                    );
+                }
             }
             None => {
                 println!("{json}");

@@ -90,3 +90,21 @@ Which displays the player can reach (read 2026-10-22):
 port: a killed character counts as not usable. The port's fleets carry
 no special forces. The fleets a system holds are those in orbit and
 those en route to it (`movement::listed_fleets`).
+
+The legend windows (read 2026-10-22):
+- `FUN_00426d00` opens the legend through `FUN_00452090`, which keeps the
+  window's size at `+0x11c`/`+0x120`; `FUN_004522f0` paints it.
+- `FUN_004522f0` picks one STRATEGY.DLL `RT_RCDATA` layout per display:
+  `0x11` 0x27c7 (Alliance) or 0x27c8 (Empire), `0x12` 0x2d50, `0x21`
+  0x2d51, `0x22` 0x2d52, `0x43` 0x2d53, `0x44` 0x2d54, `0x51..0x54`
+  0x27cc..0x27cf, `0x62..0x64` 0x27d1..0x27d3, `0x65..0x67`
+  0x2d55..0x2d57, `0x71..0x75` 0x27d4..0x27d8.
+- `FUN_00452630` reads a layout as `u16` words: width, height, the bitmap
+  module (7, STRATEGY.DLL), the string module (2, TEXTSTRA); then items
+  up to a 0 word: kind 1 or 2 a bitmap (x, y, id), kind 3 a text (x, y,
+  string id, font, red, green, blue), `y` 1 centring the text across the
+  top.
+- The 22 layouts hold 186 bitmaps and 186 texts; every text id is in
+  TEXTSTRA's string table (0x1655 is "Loyalty to the Alliance").
+- `dat_dumper::types::gid_legend` decodes them and re-encodes each to its
+  bytes; `rebellion_data::gid_legends` gives them with their texts.

@@ -12,6 +12,7 @@ use dat_dumper::types::defense_facilities::DefenseFacilitiesFile;
 use dat_dumper::types::entity_table::EntityTableFile;
 use dat_dumper::types::fighters::FightersFile;
 use dat_dumper::types::general_params::GeneralParamsFile;
+use dat_dumper::types::gid_legend;
 use dat_dumper::types::int_table::IntTableFile;
 use dat_dumper::types::major_characters::{CharacterEntry, MajorCharactersFile};
 use dat_dumper::types::manufacturing_facilities::ManufacturingFacilitiesFile;
@@ -25,6 +26,7 @@ use dat_dumper::types::systems::SystemsFile;
 use dat_dumper::types::textstra;
 use dat_dumper::types::troops::TroopsFile;
 use rebellion_core::dat::{ExplorationStatus, SectorGroup};
+use rebellion_core::gid_legend::{GidLegend, GidLegendItem, GidLegends};
 use rebellion_core::ids::{DatId, SectorKey, SystemKey};
 use rebellion_core::world::{
     BuildableClass, CapitalShipClass, ClassStats, Character, ControlKind, DefenseFacilityClassDef,
@@ -1051,6 +1053,86 @@ pub fn set_message_texts(texts: HashMap<u16, String>) {
 static WASM_MESSAGE_TEXTS: std::sync::LazyLock<std::sync::Mutex<HashMap<u16, String>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 
+/// The galaxy view's legend windows (`FUN_004522f0`), by their
+/// STRATEGY.DLL `RT_RCDATA` id, with their texts read from TEXTSTRA's string
+/// table. Native builds read the player's STRATEGY.DLL; browser builds use
+/// the layouts extracted from it at build time (`gid-legends.json`). Empty
+/// when neither exists; a text without its string is left out.
+#[must_use]
+pub fn gid_legends(gdata_path: &Path) -> GidLegends {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let dll = gdata_path.join("STRATEGY.DLL");
+        let records = if dll.exists() {
+            gid_legend::load(&dll).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+        let strings = textstra::load_strings(&gdata_path.join("TEXTSTRA.DLL")).unwrap_or_default();
+        resolve_gid_legends(&records, &strings)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = gdata_path;
+        resolve_gid_legends(
+            &WASM_GID_LEGENDS.lock().unwrap(),
+            &WASM_STRING_TABLE.lock().unwrap(),
+        )
+    }
+}
+
+fn resolve_gid_legends(
+    records: &HashMap<u16, gid_legend::GidLegendRecord>,
+    strings: &HashMap<u16, String>,
+) -> GidLegends {
+    let channel = |value: u16| u8::try_from(value).unwrap_or(u8::MAX);
+    records
+        .iter()
+        .map(|(&id, record)| {
+            let items = record
+                .items
+                .iter()
+                .filter_map(|item| match *item {
+                    gid_legend::GidLegendItem::Bitmap { x, y, id, .. } => {
+                        Some(GidLegendItem::Bitmap { x, y, id })
+                    }
+                    gid_legend::GidLegendItem::Text {
+                        x,
+                        y,
+                        string,
+                        font,
+                        rgb,
+                    } => strings.get(&string).map(|text| GidLegendItem::Text {
+                        x,
+                        y,
+                        text: text.clone(),
+                        font,
+                        rgb: rgb.map(channel),
+                    }),
+                })
+                .collect();
+            let legend = GidLegend {
+                width: record.width,
+                height: record.height,
+                items,
+            };
+            (id, legend)
+        })
+        .collect()
+}
+
+/// Pre-load the legend layouts (`gid-legends.json`) for WASM; a table that
+/// does not parse leaves none.
+#[cfg(target_arch = "wasm32")]
+pub fn set_gid_legends_json(data: &[u8]) {
+    *WASM_GID_LEGENDS.lock().unwrap() = serde_json::from_slice(data).unwrap_or_default();
+}
+
+#[cfg(target_arch = "wasm32")]
+static WASM_GID_LEGENDS: std::sync::LazyLock<
+    std::sync::Mutex<HashMap<u16, gid_legend::GidLegendRecord>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
 /// Pre-load TEXTSTRA string table for WASM. Call before `load_game_data()`.
 /// The HashMap maps string resource IDs to their display names.
 #[cfg(target_arch = "wasm32")]
@@ -1093,6 +1175,64 @@ pub fn parse_dat_bytes<T: DatRecord>(data: &[u8], name: &str) -> anyhow::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_legend_reads_its_texts_from_the_string_table() {
+        // FUN_00452630: a text item names a TEXTSTRA string (0x1655,
+        // "Loyalty to the Alliance", in RCDATA 0x27c7).
+        let record = gid_legend::GidLegendRecord {
+            width: 180,
+            height: 135,
+            bitmap_module: 7,
+            string_module: 2,
+            items: vec![
+                gid_legend::GidLegendItem::Text {
+                    x: 21,
+                    y: 1,
+                    string: 0x1655,
+                    font: 4,
+                    rgb: [255, 300, 0],
+                },
+                gid_legend::GidLegendItem::Bitmap {
+                    op: 2,
+                    x: 7,
+                    y: 20,
+                    id: 10181,
+                },
+                gid_legend::GidLegendItem::Text {
+                    x: 30,
+                    y: 20,
+                    string: 0x1656,
+                    font: 10,
+                    rgb: [1, 2, 3],
+                },
+            ],
+            tail: Vec::new(),
+        };
+        let strings = HashMap::from([(0x1655, "Loyalty to the Alliance".to_string())]);
+        let legends = resolve_gid_legends(&HashMap::from([(0x27c7, record)]), &strings);
+        assert_eq!(
+            legends[&0x27c7],
+            GidLegend {
+                width: 180,
+                height: 135,
+                items: vec![
+                    GidLegendItem::Text {
+                        x: 21,
+                        y: 1,
+                        text: "Loyalty to the Alliance".to_string(),
+                        font: 4,
+                        rgb: [255, 255, 0],
+                    },
+                    GidLegendItem::Bitmap {
+                        x: 7,
+                        y: 20,
+                        id: 10181
+                    },
+                ],
+            }
+        );
+    }
 
     #[test]
     fn the_side_names_join_the_message_texts_without_replacing_one() {

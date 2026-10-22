@@ -38,6 +38,7 @@ pub mod fleet_name_bank;
 pub mod fog;
 pub mod force_discovery;
 pub mod game_events;
+pub mod gid_legend;
 pub mod healing;
 pub mod ids;
 pub mod informant;

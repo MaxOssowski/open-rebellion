@@ -108,6 +108,7 @@ if [ -f "$GDATA/TEXTSTRA.DLL" ]; then
 else
     echo "{}" > "$WEB_DATA/textstra.json"
     echo "{}" > "$WEB_DATA/textstra-messages.json"
+    echo "{}" > "$WEB_DATA/gid-legends.json"
     echo "WARNING: TEXTSTRA.DLL not found. Entity names will use fallback format."
 fi
 
