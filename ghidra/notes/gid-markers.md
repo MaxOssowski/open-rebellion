@@ -83,9 +83,20 @@ Which displays the player can reach (read 2026-10-22):
   the high word. `FUN_00422ce0` hands it to `FUN_00425d00`, and the
   accelerators `0xbca..0xbd2` hand it `0x11`, `0x12`, `0x21`, `0x22`,
   `0x43`, `0x44`, `0x65`, `0x66`, `0x67` (the port's Alt+1..9).
-- `FUN_00425d00` is called from nowhere else. So `0x13..0x17`, `0x61` and
-  `0x91..0x93`, which `FUN_0042b330` still handles, are never shown; the
-  port needs no menu entry for them.
+- `FUN_00425d00` is called from nowhere else, but command `0x140` has a
+  second sender. Correction (read 2026-10-22):
+  - `FUN_0041d8c0(display, ..)` sends `WM_COMMAND` (`display << 16 |
+    0x140`) to the galaxy view.
+  - `FUN_004c0fc0(code)` calls it: code 1 and `0xb` give `0x11`, 4 and
+    `0x11` give `0x17`, 5 gives `0x20`, 6 gives `0x91`, 9 gives `0x80`,
+    `0xe` gives `0x13`, `0xf` gives `0x15`, `0x10` gives `0x14`.
+  - `FUN_004c0a60` (the advisor's renderer) runs it through
+    `FUN_004c0f60` when the pending action `DAT_006b28c4` is 2. That
+    action is set by `FUN_00439eb0` from a `Class_00658848` item's
+    `+0x54`/`+0x58` (slot `0x20`, `FUN_00412400` -> `FUN_0041d140`).
+  - So `0x13`, `0x14`, `0x15`, `0x17`, `0x20` and `0x91` can be shown,
+    though not from the menu or the keys. Who makes those items is not
+    traced; the port has none of these displays.
 
 port: a killed character counts as not usable. The port's fleets carry
 no special forces. The fleets a system holds are those in orbit and
@@ -135,8 +146,11 @@ How the legend window behaves (read 2026-10-22):
   `FUN_00422ce0` case 3 hides the legend and shows the button. The button
   (command `0x134`) shows the legend and hides itself.
 - The window drags by its body (`FUN_00606650`: `0x201` `FUN_00606ee0`,
-  `0x200` `FUN_006071e0`, `0x202` `FUN_00607010`) within the parent's
-  rectangle (`FUN_006071a0`).
+  `0x200` `FUN_006071e0`, `0x202` `FUN_00607010`). `FUN_00606380` sets
+  `+0xf4` to 1, so it moves live and unbounded while held. The drop
+  moves it back inside the bounds `FUN_006071a0` took from the parent:
+  to `left` when left of them, else to `right - width` when past them,
+  and the same for the height. Ported the same day.
 - Fonts (`FUN_0060eed0`): index 4 is the default 16-pixel cell, 10 a
   14-pixel one, both weight 400. The face is "Arial" for every font:
   `FUN_0060ee20` copies the string at `0x6ac7b8` to the table's `+0x38`

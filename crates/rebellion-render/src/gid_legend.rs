@@ -213,24 +213,32 @@ impl GidLegendWindow {
             || (self.open && window.is_some_and(|window| window.contains(logical)))
     }
 
-    /// Follow a drag `total` logical pixels from where it started, keeping
-    /// the window inside the command centre; `None` ends the drag.
-    /// hyp: the original drags its windows (`FUN_00606650`) within their
-    /// parent (`FUN_006071a0`); the drop's exact clamp is not read.
+    /// Follow a drag `total` logical pixels from where it started; `None`
+    /// drops it. The window moves live (`FUN_006071e0`, `+0xf4` bit 0, set
+    /// by `FUN_00606380`) and may leave the command centre while held; the
+    /// drop (`FUN_00607010`) moves it back inside the bounds `FUN_006071a0`
+    /// took from the command centre: `left` when it is left of them, else
+    /// `right - width` when it passes them, and the same for the height.
     fn drag(&mut self, total: Option<egui::Vec2>, size: egui::Vec2) {
         let Some(total) = total else {
-            self.drag_anchor = None;
+            if self.drag_anchor.take().is_some() {
+                let inside = |at: f32, length: f32, bound: f32| {
+                    if at < 0.0 {
+                        0.0
+                    } else if at + length > bound {
+                        bound - length
+                    } else {
+                        at
+                    }
+                };
+                self.position = egui::pos2(
+                    inside(self.position.x, size.x, STRATEGIC_LOGICAL_WIDTH),
+                    inside(self.position.y, size.y, STRATEGIC_LOGICAL_HEIGHT),
+                );
+            }
             return;
         };
-        let moved = *self.drag_anchor.get_or_insert(self.position) + total;
-        self.position = egui::pos2(
-            moved
-                .x
-                .clamp(0.0, (STRATEGIC_LOGICAL_WIDTH - size.x).max(0.0)),
-            moved
-                .y
-                .clamp(0.0, (STRATEGIC_LOGICAL_HEIGHT - size.y).max(0.0)),
-        );
+        self.position = *self.drag_anchor.get_or_insert(self.position) + total;
     }
 }
 
@@ -400,7 +408,12 @@ pub fn draw_gid_legend(
                 egui::Id::new("gid_legend_close"),
                 egui::Sense::click(),
             );
-            let painter = ui.painter_at(screen);
+            // A window dragged past the command centre is cut at its edge.
+            let canvas = egui::Rect::from_min_size(
+                egui::pos2(layout.canvas.x, layout.canvas.y),
+                egui::vec2(layout.canvas.width, layout.canvas.height),
+            );
+            let painter = ui.painter_at(screen.intersect(canvas));
             // Each item at its offset from the window's top left.
             let at = |offset: egui::Vec2| to_screen(layout, window.position + offset);
             let mut image = |id: u32, offset: egui::Vec2, logical: Option<egui::Vec2>| {
@@ -579,17 +592,32 @@ mod tests {
     }
 
     #[test]
-    fn a_dragged_legend_stays_in_the_command_centre() {
+    fn a_dropped_legend_comes_back_inside_the_command_centre() {
+        // FUN_006071e0 moves the window live, unbounded; FUN_00607010 moves
+        // it back inside its parent's bounds on the drop.
         let mut window = GidLegendWindow::default();
         let size = egui::vec2(180.0, 135.0);
         window.drag(Some(egui::vec2(20.0, -10.0)), size);
         assert_eq!(window.position, egui::pos2(170.0, 110.0));
-        // The drag counts from where it started.
+        // The drag counts from where it started, and may leave the centre.
         window.drag(Some(egui::vec2(-500.0, 900.0)), size);
-        assert_eq!(window.position, egui::pos2(0.0, 345.0));
+        assert_eq!(window.position, egui::pos2(-350.0, 1020.0));
         window.drag(None, size);
+        assert_eq!(window.position, egui::pos2(0.0, 345.0));
         window.drag(Some(egui::vec2(900.0, -900.0)), size);
+        assert_eq!(window.position, egui::pos2(900.0, -555.0));
+        window.drag(None, size);
         assert_eq!(window.position, egui::pos2(460.0, 0.0));
+        // A drop a little past the right and bottom edges.
+        window.drag(Some(egui::vec2(40.0, 400.0)), size);
+        window.drag(None, size);
+        assert_eq!(window.position, egui::pos2(460.0, 345.0));
+        window.drag(Some(egui::vec2(-60.0, -305.0)), size);
+        window.drag(None, size);
+        assert_eq!(window.position, egui::pos2(400.0, 40.0));
+        // A drop inside stays; no drag, no move.
+        window.drag(None, size);
+        assert_eq!(window.position, egui::pos2(400.0, 40.0));
     }
 
     #[test]
