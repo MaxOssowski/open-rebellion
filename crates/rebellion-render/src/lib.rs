@@ -575,11 +575,20 @@ fn gid_marker_for_system(
     mode: GidMode,
     gid: &GidOverlayContext<'_>,
 ) -> u32 {
+    let unexplored = bmp_cache::resources::strategy::GID_UNEXPLORED;
+    if gid_shows_unexplored(mode, system) {
+        return unexplored;
+    }
     if mode == GidMode::PopularSupport {
         return popular_support_marker_resource(system, faction);
     }
-    if system.exploration_status != ExplorationStatus::Explored || !system.is_populated {
-        return bmp_cache::resources::strategy::GID_UNEXPLORED;
+    // port: an unpopulated system keeps the unexplored mark, and so does a
+    // system the two counting displays reach unexplored when they count
+    // nobody; the original's mark for a side without a table
+    // (FUN_00426e70 returns 0) is not read.
+    let known = system.exploration_status == ExplorationStatus::Explored && system.is_populated;
+    if !known && !gid_counts_unexplored(mode) {
+        return unexplored;
     }
 
     let player_is_alliance = faction == CockpitFaction::Alliance;
@@ -591,6 +600,9 @@ fn gid_marker_for_system(
             mode == GidMode::ActivePersonnel,
             gid.movement,
         );
+        if !known && count.total() == 0 {
+            return unexplored;
+        }
         // FUN_00426e70(.., 1, 1, 1, 1, 1): one person is the largest mark.
         return gid_marker_for_side(
             count.colour(system.control.faction()),
@@ -598,21 +610,45 @@ fn gid_marker_for_system(
         );
     }
     if matches!(mode, GidMode::IdleFleets | GidMode::FleetsEnRoute) {
-        return gid_fleet_mark(
-            gid_fleets(
-                world,
-                system_key,
-                player_is_alliance,
-                mode == GidMode::FleetsEnRoute,
-                gid.movement,
-            ),
+        let counts = gid_fleets(
+            world,
+            system_key,
             player_is_alliance,
-            system.control.faction(),
+            mode == GidMode::FleetsEnRoute,
+            gid.movement,
         );
+        if !known && counts == (0, 0) {
+            return unexplored;
+        }
+        return gid_fleet_mark(counts, player_is_alliance, system.control.faction());
     }
     let value = gid_metric(world, system_key, system, player_is_alliance, mode, gid);
     let size = gid_metric_size(mode, value);
     gid_marker_resource_for_size(system.control, true, size)
+}
+
+/// Fleets Enroute (`0x22`) and Active Personnel (`0x44`) count even an
+/// unexplored system (`FUN_0042b330`'s `bVar3`).
+fn gid_counts_unexplored(mode: GidMode) -> bool {
+    matches!(mode, GidMode::FleetsEnRoute | GidMode::ActivePersonnel)
+}
+
+/// Whether a system shows the unexplored mark before its display counts
+/// anything (`FUN_0042b330`): an unexplored system (`+0x88` bit 1,
+/// `System_SetExplored`) does, and a destroyed one (`+0x50` bit 3) does
+/// outside the fleet and personnel displays (`bVar4`); Fleets Enroute and
+/// Active Personnel count either.
+fn gid_shows_unexplored(mode: GidMode, system: &System) -> bool {
+    let fleets_or_personnel = matches!(
+        mode,
+        GidMode::IdleFleets
+            | GidMode::FleetsEnRoute
+            | GidMode::IdlePersonnel
+            | GidMode::ActivePersonnel
+    );
+    let explored = system.exploration_status == ExplorationStatus::Explored;
+    let hidden = !explored || (system.is_destroyed && !fleets_or_personnel);
+    hidden && !gid_counts_unexplored(mode)
 }
 
 /// The fleets the Idle Fleets (`0x21`) and Fleets Enroute (`0x22`)
@@ -2057,6 +2093,132 @@ mod interaction_tests {
         let metric = |mode| gid_metric(&world, here, &world.systems[here], false, mode, &gid);
         assert_eq!(metric(GidMode::IdleFleets), 2);
         assert_eq!(metric(GidMode::FleetsEnRoute), 0);
+    }
+
+    #[test]
+    fn unexplored_and_destroyed_systems_show_what_the_original_shows() {
+        // FUN_0042b330: an unexplored system shows the unexplored mark, and
+        // a destroyed one does outside the fleet and personnel displays;
+        // Fleets Enroute (0x22) and Active Personnel (0x44) count either.
+        use rebellion_core::dat::ExplorationStatus;
+        use rebellion_core::world::Fleet;
+        let mut world = GameWorld::default();
+        let mut system = |control| {
+            world.systems.insert(System {
+                last_arrival: None,
+                dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+                name: "Naboo".into(),
+                sector: Default::default(),
+                x: 0,
+                y: 0,
+                exploration_status: ExplorationStatus::Unexplored,
+                popularity_alliance: 0.9,
+                popularity_empire: 0.1,
+                is_populated: true,
+                total_energy: 12,
+                raw_materials: 11,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control,
+            })
+        };
+        let here = system(ControlKind::Controlled(
+            rebellion_core::dat::Faction::Empire,
+        ));
+        let there = system(ControlKind::Uncontrolled);
+        let empire = world.fleets.insert(Fleet {
+            location: there,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+        });
+        let mut movement = rebellion_core::movement::MovementState::new();
+        assert!(movement.order(empire, there, here, 5));
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+        };
+        use bmp_cache::resources::strategy as art;
+        let mark = |world: &GameWorld, key, mode| {
+            gid_marker_for_system(
+                world,
+                key,
+                &world.systems[key],
+                CockpitFaction::Alliance,
+                mode,
+                &gid,
+            )
+        };
+        // Unexplored: the enemy fleet en route still shows; nothing else.
+        assert_eq!(
+            mark(&world, here, GidMode::PopularSupport),
+            art::GID_UNEXPLORED
+        );
+        assert_eq!(
+            mark(&world, here, GidMode::AvailableEnergy),
+            art::GID_UNEXPLORED
+        );
+        assert_eq!(mark(&world, here, GidMode::IdleFleets), art::GID_UNEXPLORED);
+        assert_eq!(
+            mark(&world, here, GidMode::FleetsEnRoute),
+            art::GID_EMPIRE_MEDIUM
+        );
+        // port: counting nobody there keeps the unexplored mark.
+        assert_eq!(
+            mark(&world, there, GidMode::FleetsEnRoute),
+            art::GID_UNEXPLORED
+        );
+        assert_eq!(
+            mark(&world, here, GidMode::ActivePersonnel),
+            art::GID_UNEXPLORED
+        );
+        // Destroyed and explored: only the fleet and personnel displays count.
+        let mut world = world;
+        world.systems[here].exploration_status = ExplorationStatus::Explored;
+        world.systems[here].is_destroyed = true;
+        assert_eq!(
+            mark(&world, here, GidMode::PopularSupport),
+            art::GID_UNEXPLORED
+        );
+        assert_eq!(
+            mark(&world, here, GidMode::AvailableEnergy),
+            art::GID_UNEXPLORED
+        );
+        assert_eq!(
+            mark(&world, here, GidMode::FleetsEnRoute),
+            art::GID_EMPIRE_MEDIUM
+        );
+        assert_ne!(mark(&world, here, GidMode::IdleFleets), art::GID_UNEXPLORED);
+        assert_ne!(
+            mark(&world, here, GidMode::IdlePersonnel),
+            art::GID_UNEXPLORED
+        );
+        world.systems[here].is_destroyed = false;
+        assert_ne!(
+            mark(&world, here, GidMode::AvailableEnergy),
+            art::GID_UNEXPLORED
+        );
+        assert_ne!(
+            mark(&world, here, GidMode::PopularSupport),
+            art::GID_UNEXPLORED
+        );
     }
 
     #[test]

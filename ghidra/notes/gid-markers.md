@@ -140,5 +140,28 @@ How the legend window behaves (read 2026-10-22):
 - Fonts (`FUN_0060eed0`): index 4 is the default 16-pixel cell, 10 a
   14-pixel one, both weight 400; the face name (`+0x38`) is not read.
 
-port: the legend button opens the legend even before a display has
-created it, since the port starts on Popular Support, not Display Off.
+The reference capture 0119
+(`docs/qa/2026-09-10-interface-parity-audit/reference-captures/`) shows
+the game open on Popular Support with the legend button and no legend
+window, as the port does; how the original leaves the constructor's
+Display Off is not read. hyp: the button opens the legend before a
+display change has created one (the original's `0x134` needs `+0x124`).
+
+What a mark may reveal (read 2026-10-22): nothing in `FUN_0042b330` asks
+what the player knows. The counts walk the system's children
+(`FUN_00513090`, `object-state-flags.md`) for either side, so the fleet
+and personnel displays show the enemy's fleets and the people aboard
+them wherever they are. The only gate is the one at the top:
+- unexplored (`+0x88` & 2, `System_SetExplored` in `setters.tsv`) gives
+  the unexplored mark;
+- so does destroyed (`+0x50` & 8) outside `0x20..0x22`, `0x43`, `0x44`,
+  `0x92`, `0x93`;
+- `0x22` Fleets Enroute and `0x44` Active Personnel skip the gate and
+  count even an unexplored system.
+
+Ported the same day (`gid_shows_unexplored`, `gid_counts_unexplored`).
+Before, the port gave every unexplored or unpopulated system the
+unexplored mark and showed a destroyed system's values. port: an
+unpopulated system still shows the unexplored mark, and so does an
+unexplored one that the two counting displays find empty; the original's
+mark for a side without a table (`FUN_00426e70` returns 0) is not read.

@@ -124,10 +124,11 @@ pub struct GidLegendWindow {
 }
 
 impl Default for GidLegendWindow {
-    /// The button shows with the port's first display (Popular Support);
-    /// the legend waits for a display to be chosen. port: the original
-    /// starts with Display Off (`FUN_00421c70`, `+0xc8` = `0x80`). The kept
-    /// position starts at (150, 120) (`FUN_00421c70`, `+0x11c`/`+0x120`).
+    /// The game opens on Popular Support with the button and no legend, as
+    /// the original's reference capture 0119 shows. hyp: how it leaves the
+    /// constructor's Display Off (`FUN_00421c70`, `+0xc8` = `0x80`) is not
+    /// read. The kept position starts at (150, 120) (`FUN_00421c70`,
+    /// `+0x11c`/`+0x120`).
     fn default() -> Self {
         Self {
             open: false,
@@ -166,8 +167,8 @@ impl GidLegendWindow {
     }
 
     /// The legend button (command `0x134`): the legend shows, the button
-    /// hides. port: the original ignores the button before a display has
-    /// opened a legend; the port starts on a display, so it opens one.
+    /// hides. hyp: the original shows nothing until a legend exists
+    /// (`+0x124`); the port opens one, the button being on screen.
     pub fn restore(&mut self) {
         self.open = true;
         self.button_shown = false;
