@@ -12,8 +12,8 @@
 //!
 //! ```ignore
 //! egui_macroquad::ui(|ctx| {
-//!     if let Some(action) = panels::draw_officers(ctx, world, &mut officer_state) {
-//!         apply_officer_action(&mut world, &mut missions, action);
+//!     if let Some(action) = panels::draw_fleets(ctx, world, &movement, &transport, &mut fleets, side, &mut cache) {
+//!         apply_panel_action(&mut world, &mut missions, action);
 //!     }
 //! });
 //! egui_macroquad::draw();
@@ -27,7 +27,6 @@ pub mod jedi;
 pub mod loyalty;
 pub mod missions;
 pub mod mod_manager;
-pub mod officers;
 pub mod save_load;
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
@@ -36,7 +35,6 @@ pub mod command_palette;
 pub use fleets::{draw_fleets, FleetsState};
 pub use missions::draw_missions;
 pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState};
-pub use officers::{draw_officers, OfficersState};
 pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
 
 use rebellion_core::fleet_join::FleetMover;
@@ -54,10 +52,6 @@ pub enum PanelAction {
     // ── Faction Selection ─────────────────────────────────────────────────────
     /// Player has chosen a starting faction.  Gates all other panels.
     SelectFaction(MissionFaction),
-
-    // ── Officers ──────────────────────────────────────────────────────────────
-    /// Show detailed stats for the selected character (sets panel focus).
-    FocusCharacter(CharacterKey),
 
     // ── Fleets ────────────────────────────────────────────────────────────────
     /// Focus the galaxy map on the system where a fleet is located.

@@ -118,13 +118,13 @@ use rebellion_render::{
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
     draw_encyclopedia, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
     draw_game_setup, draw_gid_caption, draw_main_menu, draw_missions, draw_multiplayer_setup,
-    draw_officers, draw_save_load, draw_sector_windows, draw_system_windows, draw_tactical_view,
+    draw_save_load, draw_sector_windows, draw_system_windows, draw_tactical_view,
     handle_cockpit_egui_input, set_cockpit_viewport_clip, AdvisorFaction, AdvisorState,
     AssetRenderProfile, AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState,
     CreditsState, EncyclopediaState, FleetsState, GalaxyMapState, GameMessage, GameOptionsAction,
     GameOptionsOrigin, GameOptionsState, GameSetupAction, GameSetupState, MainMenuAction,
     MainMenuState, MenuDestinationAction, MessageCategory, MessageLog, MessageLogState,
-    MessageRail, MultiplayerSetupAction, MultiplayerSetupState, MusicContext, OfficersState,
+    MessageRail, MultiplayerSetupAction, MultiplayerSetupState, MusicContext,
     OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry, PanelAction, RailAudience,
     SectorWindowAction, SectorWindowState, SfxKind, SystemWindowAction, SystemWindowState,
     TacticalAction, TacticalState, TacticalTrenchRunOutcome, VideoError, VideoPlayer,
@@ -1139,7 +1139,6 @@ async fn main() {
 
     // ── War Room panel state ────────────────────────────────────────────────
     let mut player_faction = MissionFaction::Alliance;
-    let mut officers_state = OfficersState::default();
     let mut fleets_state = FleetsState::default();
     let mut build_selection_state = BuildSelectionState::default();
     let mut mission_dialog_state = MissionDialogState::default();
@@ -1176,7 +1175,6 @@ async fn main() {
     enc_state.set_hd_path(hd_path);
 
     // Panel visibility (mutually exclusive left panels)
-    let mut show_officers = false;
     let mut show_fleets = false;
     let mut show_missions = false;
     let mut show_jedi = false;
@@ -1567,7 +1565,6 @@ async fn main() {
                     cockpit_state.gid_ui.menu_open = false;
                     cockpit_state.gid_ui.category = None;
                 } else {
-                    show_officers = false;
                     show_fleets = false;
                     show_missions = false;
                     show_jedi = false;
@@ -1678,7 +1675,6 @@ async fn main() {
                     if !alt_down && is_key_pressed($key) {
                         toggle_exclusive_panel(
                             &mut [
-                                &mut show_officers,
                                 &mut show_fleets,
                                 &mut show_missions,
                                 &mut show_jedi,
@@ -1691,13 +1687,12 @@ async fn main() {
                     }
                 };
             }
-            toggle_panel!(KeyCode::O, 0);
-            toggle_panel!(KeyCode::F, 1);
-            toggle_panel!(KeyCode::N, 2);
-            toggle_panel!(KeyCode::J, 3);
-            toggle_panel!(KeyCode::B, 4);
-            toggle_panel!(KeyCode::D, 5);
-            toggle_panel!(KeyCode::L, 6);
+            toggle_panel!(KeyCode::F, 0);
+            toggle_panel!(KeyCode::N, 1);
+            toggle_panel!(KeyCode::J, 2);
+            toggle_panel!(KeyCode::B, 3);
+            toggle_panel!(KeyCode::D, 4);
+            toggle_panel!(KeyCode::L, 5);
             if !alt_down
                 && is_key_pressed(KeyCode::S)
                 && !matches!(
@@ -4070,7 +4065,6 @@ async fn main() {
                                     warmed_galaxy_font_sizes.clear();
                                     msg_log = MessageLog::default();
                                     log_state = MessageLogState::default();
-                                    officers_state = OfficersState::default();
                                     fleets_state = FleetsState::default();
                                     build_selection_state = BuildSelectionState::default();
                                     mission_dialog_state = MissionDialogState::default();
@@ -4093,7 +4087,6 @@ async fn main() {
                                             .join("hd")
                                             .join("EData"),
                                     );
-                                    show_officers = false;
                                     show_fleets = false;
                                     show_missions = false;
                                     show_jedi = false;
@@ -4591,17 +4584,6 @@ async fn main() {
                     }
 
                     // War Room panels (mutually exclusive left panels)
-                    if show_officers {
-                        if let Some(action) = draw_officers(
-                            ctx,
-                            &world,
-                            &mut officers_state,
-                            player_faction,
-                            &mut bmp_cache,
-                        ) {
-                            panel_actions.push(action);
-                        }
-                    }
                     if show_fleets {
                         if let Some(action) = draw_fleets(
                             ctx,
@@ -6840,7 +6822,6 @@ async fn main() {
                             missions_window_state.clear();
                             object_menu = None;
                             targeting = None;
-                            officers_state = OfficersState::default();
                             fleets_state = FleetsState::default();
                             build_selection_state = BuildSelectionState::default();
                             mission_dialog_state = MissionDialogState::default();
@@ -6863,7 +6844,6 @@ async fn main() {
                                     .join("hd")
                                     .join("EData"),
                             );
-                            show_officers = false;
                             show_fleets = false;
                             show_missions = false;
                             show_jedi = false;
@@ -7231,8 +7211,7 @@ async fn main() {
                         fleets: &fleet_window_state,
                         sectors: &sector_window_state,
                         map: &map_state,
-                        left_panel_open: show_officers
-                            || show_fleets
+                        left_panel_open: show_fleets
                             || show_missions
                             || show_jedi
                             || show_bombardment
@@ -8171,7 +8150,6 @@ fn apply_panel_action(
         // they require access to the full save state and are not routed through
         // this helper.
         PanelAction::SelectFaction(_)
-        | PanelAction::FocusCharacter(_)
         | PanelAction::OpenSaveLoad
         | PanelAction::SaveGame { .. }
         | PanelAction::LoadGame { .. }
