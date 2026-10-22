@@ -325,6 +325,12 @@ cross-runtime proof remain open
     (`evidence/2026-10-22-assault-summary/`). The orbital bombardment's
     summary followed the same day (`0x7098..0x709a`, pictures
     `0x2b9a..0x2b9c`; `evidence/2026-10-22-bombardment-summary/`).
+  - The Battle Summary's forces page follows `FUN_0046f360` /
+    `FUN_004714e0` since 2026-10-22 (`ghidra/notes/battle-summary-window.md`).
+    It has Operational and Destroyed columns (Survivors, Captured and
+    Killed for personnel), the category bar and the original empty-column
+    lines. The port's Damaged column is gone
+    (`evidence/2026-10-22-battle-summary-forces/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 
