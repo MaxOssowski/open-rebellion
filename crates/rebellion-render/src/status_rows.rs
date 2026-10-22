@@ -21,7 +21,7 @@ use rebellion_core::world::{CapitalShipClass, GameWorld, ShipInstance};
 use crate::bmp_cache::DllSource;
 use crate::mission_dialog::{kind_icon, kind_name};
 use crate::status_window::{character_rows, StatusRow};
-use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
+use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::system_window::{
     character_mini_resource_id, defense_facility_mini, fleet_label, manufacturing_facility_mini,
     production_facility_mini, special_force_mini, troop_mini,

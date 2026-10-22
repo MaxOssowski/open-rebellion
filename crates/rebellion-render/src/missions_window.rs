@@ -23,7 +23,7 @@ use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::defenses_window::title_resource;
 use crate::fleet_window::{faction_side, mini_marks, paint_native, MiniObject};
 use crate::mission_dialog::{kind_icon, kind_name};
-use crate::panels::fleets::capital_ship_mini_id;
+use crate::minis::capital_ship_mini_id;
 use crate::quadrant_icons::{mission_keys, missions_side, visible_members};
 use crate::sector_window::planet_resource_id;
 use crate::system_window::{
@@ -753,7 +753,7 @@ fn target_view(world: &GameWorld, target: Target) -> Option<(DllSource, Option<u
             let class = world.fighter_classes.get(class)?;
             Some((
                 DllSource::Gokres,
-                crate::panels::fleets::fighter_mini_id(class.dat_id)
+                crate::minis::fighter_mini_id(class.dat_id)
                     .map(|mini| mini - MISSION_MINI_BASE),
                 class.name.clone(),
             ))

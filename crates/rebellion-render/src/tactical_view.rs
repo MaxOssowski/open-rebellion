@@ -5206,7 +5206,7 @@ fn battle_result_entries(
                         world
                             .capital_ship_classes
                             .get(ship.class_key)
-                            .and_then(|class| crate::panels::fleets::capital_ship_mini_id(class.dat_id)),
+                            .and_then(|class| crate::minis::capital_ship_mini_id(class.dat_id)),
                     ),
                     backdrop: None,
                 })
@@ -5218,7 +5218,7 @@ fn battle_result_entries(
                 entries.push(BattleResultEntry {
                     name: "Death Star".into(),
                     condition: condition(death_star.destroyed || death_star.hull <= 0.0),
-                    picture: portrait(crate::panels::fleets::capital_ship_mini_id(
+                    picture: portrait(crate::minis::capital_ship_mini_id(
                         rebellion_core::ids::DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
                     )),
                     backdrop: None,
@@ -5237,7 +5237,7 @@ fn battle_result_entries(
                     world
                         .fighter_classes
                         .get(fighter.class_key)
-                        .and_then(|class| crate::panels::fleets::fighter_mini_id(class.dat_id)),
+                        .and_then(|class| crate::minis::fighter_mini_id(class.dat_id)),
                 ),
                 backdrop: None,
             })
@@ -6369,7 +6369,7 @@ fn battle_alert_rows(
                 class.name.clone(),
                 AlertFont::Plain,
                 MiniObject::Craft,
-                crate::panels::fleets::fighter_mini_id(class.dat_id),
+                crate::minis::fighter_mini_id(class.dat_id),
                 false,
                 indent,
             )
@@ -6433,7 +6433,7 @@ fn battle_alert_rows(
                             .to_owned(),
                         AlertFont::Bold,
                         MiniObject::Craft,
-                        crate::panels::fleets::capital_ship_mini_id(class.dat_id),
+                        crate::minis::capital_ship_mini_id(class.dat_id),
                         crate::status_rows::damaged(ship, class),
                         false,
                     ));
@@ -8792,7 +8792,7 @@ mod tests {
             true,
             BattleResultCategory::CapitalShips,
         );
-        let mini = crate::panels::fleets::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
+        let mini = crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
         assert_eq!(entries[0].picture, Some((DllSource::Gokres, mini - 0x4000)));
         assert_eq!(entries[0].backdrop, None);
         let ops = battle_force_page(
@@ -9285,7 +9285,7 @@ mod tests {
             rows[2].picture,
             [(
                 DllSource::Gokres,
-                crate::panels::fleets::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap()
+                crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap()
             )]
         );
         // The Empire's tab: its empty fleet's name, its TIE on the planet.

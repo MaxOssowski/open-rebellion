@@ -12,7 +12,7 @@
 //!
 //! ```ignore
 //! egui_macroquad::ui(|ctx| {
-//!     if let Some(action) = panels::draw_fleets(ctx, world, &movement, &transport, &mut fleets, side, &mut cache) {
+//!     if let Some(action) = panels::draw_missions(ctx, world, &missions, side, tick) {
 //!         apply_panel_action(&mut world, &mut missions, action);
 //!     }
 //! });
@@ -21,9 +21,7 @@
 
 pub mod bombardment;
 pub mod death_star;
-pub mod fleets;
 pub mod game_setup;
-pub mod jedi;
 pub mod loyalty;
 pub mod missions;
 pub mod mod_manager;
@@ -32,7 +30,6 @@ pub mod save_load;
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 pub mod command_palette;
 
-pub use fleets::{draw_fleets, FleetsState};
 pub use missions::draw_missions;
 pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState};
 pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
@@ -60,18 +57,8 @@ pub enum PanelAction {
     Retire(MissionMember),
 
     // ── Fleets ────────────────────────────────────────────────────────────────
-    /// Focus the galaxy map on the system where a fleet is located.
+    /// Select a system on the galaxy map (the Encyclopedia's system entry).
     FocusFleetSystem(SystemKey),
-    /// Assign a character to a fleet as commander.
-    AssignCharacterToFleet {
-        character: CharacterKey,
-        fleet: FleetKey,
-    },
-    /// Remove a character from a fleet.
-    RemoveCharacterFromFleet {
-        character: CharacterKey,
-        fleet: FleetKey,
-    },
     /// A fleet's or capital ships' Move (`0x201`) released on a Fleet window
     /// (`fleet_join::join_fleet`).
     JoinFleet { mover: FleetMover, target: FleetKey },

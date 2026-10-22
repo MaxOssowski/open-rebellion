@@ -2114,7 +2114,7 @@ mod tests {
         let run = run_with(&world, &manufacturing, &mut state, hover(at(150.0, 10.0)));
         assert_eq!(text(&run, "Corellian Corvette").1, at(60.0, 73.0));
         assert_eq!(text(&run, "Building: 2").1, at(60.0, 104.0));
-        let mini = crate::panels::fleets::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
+        let mini = crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
         assert!(
             run.painted.contains(&(mini, at(95.0, 72.0))),
             "{:?}",

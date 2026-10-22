@@ -24,6 +24,7 @@ pub mod manufacturing_window;
 pub mod message_index;
 pub mod message_log;
 pub mod message_pictures;
+pub mod minis;
 pub mod mission_dialog;
 pub mod missions_window;
 pub mod move_confirmation;
@@ -114,8 +115,8 @@ pub use missions_window::{
 };
 pub use panels::game_setup::{draw_game_setup, Difficulty, GameSetupAction, GameSetupState};
 pub use panels::{
-    draw_fleets, draw_missions, draw_mod_manager, draw_save_load, FleetsState, ModInfo,
-    ModManagerAction, ModManagerState, PanelAction, SaveLoadPanelState, SaveSlotInfo,
+    draw_missions, draw_mod_manager, draw_save_load, ModInfo, ModManagerAction, ModManagerState,
+    PanelAction, SaveLoadPanelState, SaveSlotInfo,
 };
 pub use rebellion_core::tactical::{
     BattlePhase, BattleSession, CombatWinner, OriginalTacticalRng, TacticalTrenchRunOutcome,

@@ -22,7 +22,7 @@ use rebellion_core::world::{ControlKind, GameWorld};
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::object_menu::MenuObject;
-use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
+use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::quadrant_icons::{quadrant_art, Quadrant};
 use crate::system_window::{
     canvas_point, character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label,

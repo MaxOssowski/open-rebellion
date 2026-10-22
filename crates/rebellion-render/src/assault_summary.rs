@@ -20,7 +20,7 @@ use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::paint_native;
 use crate::message_log::MessageId;
 use crate::mission_dialog::{galaxy_centered_rect, paint_centered};
-use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
+use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::story_messages::{fill_message_text, side_parameter, MessageParameter};
 use crate::system_window::{
     character_mini_resource_id, defense_facility_mini, exact_clicked, logical_rect,

@@ -12,7 +12,7 @@ use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, Productio
 use rebellion_core::world::GameWorld;
 
 use crate::fleet_window::{control_side, fleet_side};
-use crate::panels::fleets::{capital_ship_mini_id, fighter_mini_id};
+use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::system_window::{
     defense_facility_mini, manufacturing_facility_mini, opposing_contents_visible,
     production_facility_mini, special_force_mini, troop_mini,

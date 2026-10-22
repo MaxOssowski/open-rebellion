@@ -87,6 +87,11 @@ already traced, in the note cited.
      "JEDI" badge had followed the class's `jedi_probability` and marked
      many characters with no Force; it is now "FORCE".
    - `PanelAction::StartJediTraining` and `StopJediTraining` are gone.
+   - Removed 2026-10-22, at the user's decision on the replacement
+     panels: the Officers panel (key O) and "The Force" (key J). The
+     original shows a character's Force only in the Status window's
+     "Force Ranking:" row (`FUN_004486f0`), which the port has; it shows
+     neither `ForceAware`, `ForcePotential` nor the discoverer.
 4. **The save.**
    - Remove `force_tier`, `force_experience`, `is_discovered_jedi` and
      `SaveState::jedi`, and delete `jedi.rs`.

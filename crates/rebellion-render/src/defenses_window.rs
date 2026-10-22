@@ -25,7 +25,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::{control_side, faction_side, fleet_side, paint_native};
 use crate::object_menu::MenuObject;
-use crate::panels::fleets::fighter_mini_id;
+use crate::minis::fighter_mini_id;
 use crate::quadrant_icons::{mission_keys, system_members};
 use crate::system_window::{
     canvas_point, character_mini_resource_id, clamp_window_to_galaxy, defense_facility_mini,

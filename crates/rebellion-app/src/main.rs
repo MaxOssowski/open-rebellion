@@ -103,7 +103,6 @@ use rebellion_render::object_menu::{
 use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::quadrant_icons::Quadrant;
 use rebellion_render::panels::death_star::draw_death_star;
-use rebellion_render::panels::jedi::{draw_jedi, JediPanelState};
 use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::status_rows::StatusSources;
 use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
@@ -117,12 +116,12 @@ use rebellion_render::{
     advisor_combat_result, advisor_greet, advisor_manufacturing_complete,
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
-    draw_encyclopedia, draw_fleets, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
+    draw_encyclopedia, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
     draw_game_setup, draw_gid_caption, draw_main_menu, draw_missions, draw_multiplayer_setup,
     draw_save_load, draw_sector_windows, draw_system_windows, draw_tactical_view,
     handle_cockpit_egui_input, set_cockpit_viewport_clip, AdvisorFaction, AdvisorState,
     AssetRenderProfile, AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState,
-    CreditsState, EncyclopediaState, FleetsState, GalaxyMapState, GameMessage, GameOptionsAction,
+    CreditsState, EncyclopediaState, GalaxyMapState, GameMessage, GameOptionsAction,
     GameOptionsOrigin, GameOptionsState, GameSetupAction, GameSetupState, MainMenuAction,
     MainMenuState, MenuDestinationAction, MessageCategory, MessageLog, MessageLogState,
     MessageRail, MultiplayerSetupAction, MultiplayerSetupState, MusicContext,
@@ -1140,7 +1139,6 @@ async fn main() {
 
     // ── War Room panel state ────────────────────────────────────────────────
     let mut player_faction = MissionFaction::Alliance;
-    let mut fleets_state = FleetsState::default();
     let mut build_selection_state = BuildSelectionState::default();
     let mut mission_dialog_state = MissionDialogState::default();
     let mut move_confirmation_state = MoveConfirmationState::default();
@@ -1153,7 +1151,6 @@ async fn main() {
     let mut message_index: Option<MessageIndexState> = None;
     let mut advice_saved_speed: Option<GameSpeed> = None;
     let mut enc_state = EncyclopediaState::new();
-    let mut jedi_panel_state = JediPanelState::default();
     let mut bombardment_panel_state = BombardmentPanelState::default();
     let mut mod_manager_state = rebellion_render::ModManagerState::default();
     #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
@@ -1176,9 +1173,7 @@ async fn main() {
     enc_state.set_hd_path(hd_path);
 
     // Panel visibility (mutually exclusive left panels)
-    let mut show_fleets = false;
     let mut show_missions = false;
-    let mut show_jedi = false;
     let mut show_bombardment = false;
     let mut show_death_star = false;
     let mut show_loyalty = false;
@@ -1566,9 +1561,7 @@ async fn main() {
                     cockpit_state.gid_ui.menu_open = false;
                     cockpit_state.gid_ui.category = None;
                 } else {
-                    show_fleets = false;
                     show_missions = false;
-                    show_jedi = false;
                     show_bombardment = false;
                     show_death_star = false;
                     show_loyalty = false;
@@ -1676,9 +1669,7 @@ async fn main() {
                     if !alt_down && is_key_pressed($key) {
                         toggle_exclusive_panel(
                             &mut [
-                                &mut show_fleets,
                                 &mut show_missions,
-                                &mut show_jedi,
                                 &mut show_bombardment,
                                 &mut show_death_star,
                                 &mut show_loyalty,
@@ -1688,12 +1679,10 @@ async fn main() {
                     }
                 };
             }
-            toggle_panel!(KeyCode::F, 0);
-            toggle_panel!(KeyCode::N, 1);
-            toggle_panel!(KeyCode::J, 2);
-            toggle_panel!(KeyCode::B, 3);
-            toggle_panel!(KeyCode::D, 4);
-            toggle_panel!(KeyCode::L, 5);
+            toggle_panel!(KeyCode::N, 0);
+            toggle_panel!(KeyCode::B, 1);
+            toggle_panel!(KeyCode::D, 2);
+            toggle_panel!(KeyCode::L, 3);
             if !alt_down
                 && is_key_pressed(KeyCode::S)
                 && !matches!(
@@ -4066,7 +4055,6 @@ async fn main() {
                                     warmed_galaxy_font_sizes.clear();
                                     msg_log = MessageLog::default();
                                     log_state = MessageLogState::default();
-                                    fleets_state = FleetsState::default();
                                     build_selection_state = BuildSelectionState::default();
                                     mission_dialog_state = MissionDialogState::default();
                                     move_confirmation_state = MoveConfirmationState::default();
@@ -4076,7 +4064,6 @@ async fn main() {
                                     personnel_finder_state = PersonnelFinderState::default();
                                     message_index = None;
                                     advice_saved_speed = None;
-                                    jedi_panel_state = JediPanelState::default();
                                     bombardment_panel_state = BombardmentPanelState::default();
                                     enc_state = EncyclopediaState::new();
                                     enc_state.set_edata_path(configured_edata_path(&gdata_path));
@@ -4088,9 +4075,7 @@ async fn main() {
                                             .join("hd")
                                             .join("EData"),
                                     );
-                                    show_fleets = false;
                                     show_missions = false;
-                                    show_jedi = false;
                                     show_bombardment = false;
                                     show_death_star = false;
                                     show_loyalty = false;
@@ -4585,29 +4570,9 @@ async fn main() {
                     }
 
                     // War Room panels (mutually exclusive left panels)
-                    if show_fleets {
-                        if let Some(action) = draw_fleets(
-                            ctx,
-                            &world,
-                            &movement_state,
-                            &troop_transport_state,
-                            &mut fleets_state,
-                            player_faction,
-                            &mut bmp_cache,
-                        ) {
-                            panel_actions.push(action);
-                        }
-                    }
                     if show_missions {
                         if let Some(action) =
                             draw_missions(ctx, &world, &mission_state, player_faction, clock.tick)
-                        {
-                            panel_actions.push(action);
-                        }
-                    }
-                    if show_jedi {
-                        if let Some(action) =
-                            draw_jedi(ctx, &world, &mut jedi_panel_state, player_faction)
                         {
                             panel_actions.push(action);
                         }
@@ -6934,7 +6899,6 @@ async fn main() {
                             missions_window_state.clear();
                             object_menu = None;
                             targeting = None;
-                            fleets_state = FleetsState::default();
                             build_selection_state = BuildSelectionState::default();
                             mission_dialog_state = MissionDialogState::default();
                             move_confirmation_state = MoveConfirmationState::default();
@@ -6944,7 +6908,6 @@ async fn main() {
                             personnel_finder_state = PersonnelFinderState::default();
                             message_index = None;
                             advice_saved_speed = None;
-                            jedi_panel_state = JediPanelState::default();
                             bombardment_panel_state = BombardmentPanelState::default();
                             enc_state = EncyclopediaState::new();
                             enc_state.set_edata_path(configured_edata_path(&gdata_path));
@@ -6956,9 +6919,7 @@ async fn main() {
                                     .join("hd")
                                     .join("EData"),
                             );
-                            show_fleets = false;
                             show_missions = false;
-                            show_jedi = false;
                             show_bombardment = false;
                             show_death_star = false;
                             show_loyalty = false;
@@ -7323,9 +7284,7 @@ async fn main() {
                         fleets: &fleet_window_state,
                         sectors: &sector_window_state,
                         map: &map_state,
-                        left_panel_open: show_fleets
-                            || show_missions
-                            || show_jedi
+                        left_panel_open: show_missions
                             || show_bombardment
                             || show_death_star
                             || show_loyalty,
@@ -8032,38 +7991,6 @@ fn apply_panel_action(
         PanelAction::FocusFleetSystem(sys_key) => {
             if world.systems.contains_key(sys_key) {
                 map_state.selected_system = Some(sys_key);
-            }
-        }
-        PanelAction::AssignCharacterToFleet { character, fleet } => {
-            if let Some(f) = world.fleets.get_mut(fleet) {
-                if !f.characters.contains(&character) {
-                    f.characters.push(character);
-                }
-            }
-            if let Some(c) = world.characters.get_mut(character) {
-                let name = c.name.clone();
-                let system = c.current_system;
-                c.move_to(Some(fleet), system);
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("{name} assigned to fleet"),
-                    MessageCategory::Event,
-                ));
-            }
-        }
-        PanelAction::RemoveCharacterFromFleet { character, fleet } => {
-            if let Some(f) = world.fleets.get_mut(fleet) {
-                f.characters.retain(|&c| c != character);
-            }
-            if let Some(c) = world.characters.get_mut(character) {
-                let name = c.name.clone();
-                let system = c.current_system;
-                c.move_to(None, system);
-                msg_log.push(GameMessage::new(
-                    clock.tick,
-                    format!("{name} removed from fleet"),
-                    MessageCategory::Event,
-                ));
             }
         }
         // ghidra/notes/fleet-join-split.md.
