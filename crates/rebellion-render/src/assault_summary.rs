@@ -183,6 +183,13 @@ impl AssaultSummaryState {
         self.windows.len()
     }
 
+    /// Whether an open window covers `point`, so the galaxy view under it
+    /// takes no pointer input.
+    #[must_use]
+    pub fn contains_screen_point(&self, layout: CockpitLayout, point: (f32, f32)) -> bool {
+        !self.windows.is_empty() && rect_contains(window_rect(layout), egui::pos2(point.0, point.1))
+    }
+
     pub fn clear(&mut self) {
         self.windows.clear();
     }
@@ -1418,6 +1425,18 @@ mod tests {
         let frame = run(&mut state, key(egui::Key::Escape));
         assert_eq!(frame.actions, [AssaultSummaryAction::Closed(None)]);
         assert_eq!(state.window_count(), 1);
+    }
+
+    #[test]
+    fn an_open_window_covers_its_rectangle() {
+        let (mut state, _) = opened(1);
+        let rect = window_rect(layout());
+        let inside = (rect.min.x, rect.min.y);
+        assert!(state.contains_screen_point(layout(), inside));
+        assert!(!state.contains_screen_point(layout(), (rect.min.x - 1.0, rect.min.y)));
+        assert!(!state.contains_screen_point(layout(), (rect.max.x, rect.max.y)));
+        state.clear();
+        assert!(!state.contains_screen_point(layout(), inside));
     }
 
     #[test]

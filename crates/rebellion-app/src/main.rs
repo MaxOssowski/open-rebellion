@@ -4274,6 +4274,7 @@ async fn main() {
                     || build_selection_state.contains_screen_point(cockpit_layout, pointer)
                     || move_confirmation_state.contains_screen_point(cockpit_layout, pointer)
                     || status_window_state.contains_screen_point(cockpit_layout, pointer)
+                    || assault_summary_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_finder_state.contains_screen_point(cockpit_layout, pointer)
                     || troop_finder_state.contains_screen_point(cockpit_layout, pointer)
                     || personnel_finder_state.contains_screen_point(cockpit_layout, pointer)
