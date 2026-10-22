@@ -170,7 +170,13 @@ port:
   place each fleet orbits the system out of hyperspace, the system stands,
   is not the side's and has at most one shield (the manual's
   fully-shielded rule).
-- hyp: phase 2 fires every defense facility of the system; phase 4's
+- phase 2 fires every defense facility of the system (read 2026-10-22):
+  `FUN_00526fd0(system, 1)` builds a `FUN_00513050` walk over families
+  `0x22..0x27` in mode 1 (usable, `+0x50` bit 0) with no side filter
+  (`object-state-flags.md`, "Child-list walk").
+- phase 4's walk `FUN_00539d70(system, 1)` (read 2026-10-22) is also
+  mode 1 with no side filter, in the system's child-list order.
+- port: phase 4's
   facilities are the system's defenses, then manufacturing, then
   production facilities, of any side, the headquarters placeholder left
   out.

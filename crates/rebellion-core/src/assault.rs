@@ -173,8 +173,10 @@ fn troop_stat(world: &GameWorld, troop: TroopKey, attack: bool) -> i32 {
 /// (`FUN_00539d70`, families `0x20..0x2f`), without the placeholders
 /// (`FUN_00526cf0`, `0x20..0x21`: the Alliance's headquarters).
 ///
-/// hyp: the walk's order is the families' (defenses, then manufacturing,
-/// then production facilities), each of any side.
+/// `FUN_00539d70(system, 1)` walks the usable ones (mode 1) of any side
+/// (no side filter, `FUN_00513050`) in the system's child-list order.
+/// port: the world keeps the facilities in one list per kind, so the
+/// order is the kinds' (defenses, then manufacturing, then production).
 fn collateral_facilities(world: &GameWorld, system: SystemKey) -> Vec<Target> {
     let Some(sys) = world.systems.get(system) else {
         return Vec::new();
@@ -232,8 +234,10 @@ pub fn resolve(
     // Phase 2 (FUN_0058c3c0): each defense facility fires with chance
     // attack / G0x200 percent at a drawn landing regiment (from those
     // counted at the start; a draw past those left finds none).
-    // hyp: every defense facility of the system, the walk's side filter
-    // not read.
+    // Every defense facility of the system fires: FUN_00526fd0(system, 1)
+    // walks families 0x22..0x27 in mode 1 (usable, +0x50 bit 0) with no
+    // side filter (FUN_00513050). port: the world keeps only finished
+    // facilities in the system's list.
     let divisor = gnprtb(world, GNPRTB_DEFENSE_DIVISOR).max(1);
     for &d in &system.defense_facilities {
         if attackers.is_empty() {
