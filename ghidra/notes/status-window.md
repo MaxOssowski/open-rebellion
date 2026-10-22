@@ -593,8 +593,21 @@ The labels are 34418..34421, not the Character Status strings 34598..34601.
   system's holder except in a contested system, where it keeps the last
   holder (`facility-ownership.md`). A production manager's follows the
   system's holder.
-- port: the picture's marks (the regiment's 11514, en route, damage and
-  unbuilt) are not drawn.
+- The picture's marks (`FUN_0042c3b0(.., 1, 1)`, read in full 2026-10-22)
+  are drawn under it, at its top-left and within its size
+  (`StatusView::marks`): a regiment's backdrop STRATEGY 11514; en route
+  (`+0x50` bit `0x10`, not destroyed) GOKRES portrait `+0x1000` for craft,
+  STRATEGY 11516 for a regiment (GOKRES for `0x10000002`/`0x10000008`),
+  11520 for a special force (GOKRES for `0x3c000003`/`0x3c000005`), 10426
+  / 10476 for a fleet, none for a character; damaged (bit `0x200`) GOKRES
+  portrait `+0x2000`, none for personnel. port: the unbuilt mark (bit 4
+  clear, STRATEGY 11571 / 11573) never shows, as every port object is
+  built; a fleet's bit `0x200` mark (10427 / 10477) is not drawn, its
+  writer untraced; facilities are never en route. With the mini instead
+  of the portrait (`param_4` 0) the function also draws a character's
+  backdrop 11500 and, for a captive (`+0xac` bit 0), GOKRES mini
+  `+0x7000` over it; the mark ids are the mini's (`+0x5000`, `+0x6000`,
+  11515, 11501, 11502, 11509, 11505, 11570 / 11572).
 - port: each family's own Port section lists the rows the port cannot hold
   (command ranks, damage nibbles, fighter losses, Under Construction and
   Training states, facility Enroute).

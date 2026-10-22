@@ -87,6 +87,10 @@ pub struct StatusView {
     /// The background row (`FUN_00443130`): 0 side 1, 1 side 2, 2 other.
     pub side: usize,
     pub picture: Option<(DllSource, u32)>,
+    /// What `FUN_0042c3b0(.., 1, 1)` draws under the picture, at its
+    /// top-left and within its size, in order: a regiment's backdrop, then
+    /// the en route and damage marks.
+    pub marks: Vec<(DllSource, u32)>,
     /// `FUN_0044a210`: the object's name.
     pub name: String,
     pub rows: Vec<StatusRow>,
@@ -205,6 +209,61 @@ fn maintenance(world: &GameWorld, class: DatId) -> String {
 /// mark (STRATEGY 11514) and the status marks are not drawn.
 fn picture(mini: Option<u32>) -> Option<(DllSource, u32)> {
     mini.map(|mini| (DllSource::Gokres, mini - 0x4000))
+}
+
+/// `FUN_0042c3b0(.., 1, 1)`'s marks for a craft's portrait: GOKRES
+/// portrait `+ 0x1000` while en route (`+0x50` bit `0x10`), `+ 0x2000`
+/// while damaged (bit `0x200`). port: an object is always built, so the
+/// unbuilt mark (bit 4 clear, STRATEGY 11571 / 11573) never shows.
+fn craft_marks(
+    portrait: Option<(DllSource, u32)>,
+    en_route: bool,
+    damaged: bool,
+) -> Vec<(DllSource, u32)> {
+    let Some((_, portrait)) = portrait else {
+        return Vec::new();
+    };
+    [(en_route, 0x1000), (damaged, 0x2000)]
+        .into_iter()
+        .filter(|&(shown, _)| shown)
+        .map(|(_, offset)| (DllSource::Gokres, portrait + offset))
+        .collect()
+}
+
+/// A regiment's backdrop, STRATEGY 11514 (`0x2cfa`), and its en route
+/// mark: STRATEGY 11516 (`0x2cfc`), but the GOKRES default for classes
+/// `0x10000002` and `0x10000008` (`FUN_0042c3b0`).
+fn regiment_marks(
+    portrait: Option<(DllSource, u32)>,
+    class: DatId,
+    en_route: bool,
+) -> Vec<(DllSource, u32)> {
+    let mut marks = vec![(DllSource::Strategy, 11_514)];
+    if en_route {
+        if matches!(class.raw(), 0x1000_0002 | 0x1000_0008) {
+            marks.extend(craft_marks(portrait, true, false));
+        } else {
+            marks.push((DllSource::Strategy, 11_516));
+        }
+    }
+    marks
+}
+
+/// A special force's en route mark: STRATEGY 11520 (`0x2d00`), but the
+/// GOKRES default for classes `0x3c000003` and `0x3c000005`
+/// (`FUN_0042c3b0`). Its damage mark has no portrait (`0x2cee` wraps to 0).
+fn special_force_marks(
+    portrait: Option<(DllSource, u32)>,
+    class: DatId,
+    en_route: bool,
+) -> Vec<(DllSource, u32)> {
+    if !en_route {
+        Vec::new()
+    } else if matches!(class.raw(), 0x3c00_0003 | 0x3c00_0005) {
+        craft_marks(portrait, true, false)
+    } else {
+        vec![(DllSource::Strategy, 11_520)]
+    }
 }
 
 /// A fleet's arrival day: today plus the transit left (`move-order.md`).
@@ -859,6 +918,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         manager_title: false,
         side,
         picture,
+        marks: Vec::new(),
         name,
         rows,
     };
@@ -883,48 +943,83 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         }
         StatusObject::SpecialForce(key) => {
             let unit = world.special_forces.get(key)?;
-            view(
-                "Spec Forces Status",
-                side_index(unit.is_alliance),
-                picture(special_force_mini(unit.class_dat_id).map(|(mini, _)| mini)),
-                class_name(world, unit.class_dat_id),
-                special_force_rows(sources, key)?,
-            )
+            let portrait = picture(special_force_mini(unit.class_dat_id).map(|(mini, _)| mini));
+            let en_route = sources
+                .missions
+                .en_route()
+                .iter()
+                .any(|transit| transit.member == MissionMember::SpecialForce(key));
+            let marks = special_force_marks(portrait, unit.class_dat_id, en_route);
+            StatusView {
+                marks,
+                ..view(
+                    "Spec Forces Status",
+                    side_index(unit.is_alliance),
+                    portrait,
+                    class_name(world, unit.class_dat_id),
+                    special_force_rows(sources, key)?,
+                )
+            }
         }
         StatusObject::Fleet(key) => {
             let fleet = world.fleets.get(key)?;
             // FUN_0042c3b0: STRATEGY 0x28b9 for side 1, 0x28eb otherwise.
             let picture = if fleet.is_alliance { 10_425 } else { 10_475 };
-            view(
-                "Fleet Status",
-                side_index(fleet.is_alliance),
-                Some((DllSource::Strategy, picture)),
-                fleet_label(world, key).unwrap_or_default(),
-                fleet_rows(sources, key)?,
-            )
+            // 10426 / 10476 en route (+0x50 bit 0x10). port: the 10427 /
+            // 10477 mark on bit 0x200 is not drawn; what sets it on a fleet
+            // is untraced.
+            let en_route = fleet_arrival(sources, key).is_some();
+            let marks = en_route
+                .then_some((DllSource::Strategy, picture + 1))
+                .into_iter()
+                .collect();
+            StatusView {
+                marks,
+                ..view(
+                    "Fleet Status",
+                    side_index(fleet.is_alliance),
+                    Some((DllSource::Strategy, picture)),
+                    fleet_label(world, key).unwrap_or_default(),
+                    fleet_rows(sources, key)?,
+                )
+            }
         }
         StatusObject::Ship { fleet, index } => {
             let value = world.fleets.get(fleet)?;
             let ship = value.capital_ships.get(index)?;
             let class = world.capital_ship_classes.get(ship.class)?;
-            view(
-                "Capital Ship Status",
-                side_index(value.is_alliance),
-                picture(capital_ship_mini_id(class.dat_id)),
-                ship.name.clone().unwrap_or_else(|| class.name.clone()),
-                ship_rows(sources, fleet, index)?,
-            )
+            let portrait = picture(capital_ship_mini_id(class.dat_id));
+            let marks = craft_marks(
+                portrait,
+                fleet_arrival(sources, fleet).is_some(),
+                damaged(ship, class),
+            );
+            StatusView {
+                marks,
+                ..view(
+                    "Capital Ship Status",
+                    side_index(value.is_alliance),
+                    portrait,
+                    ship.name.clone().unwrap_or_else(|| class.name.clone()),
+                    ship_rows(sources, fleet, index)?,
+                )
+            }
         }
         StatusObject::Fighter { fleet, index } => {
             let value = world.fleets.get(fleet)?;
             let class = world.fighter_classes.get(value.fighters.get(index)?.class)?;
-            view(
-                "Fighter Squadron Status",
-                side_index(value.is_alliance),
-                picture(fighter_mini_id(class.dat_id)),
-                class.name.clone(),
-                fighter_rows(sources, fleet, index)?,
-            )
+            let portrait = picture(fighter_mini_id(class.dat_id));
+            let marks = craft_marks(portrait, fleet_arrival(sources, fleet).is_some(), false);
+            StatusView {
+                marks,
+                ..view(
+                    "Fighter Squadron Status",
+                    side_index(value.is_alliance),
+                    portrait,
+                    class.name.clone(),
+                    fighter_rows(sources, fleet, index)?,
+                )
+            }
         }
         StatusObject::PlanetFighter { system, class } => {
             let fighter = world.fighter_classes.get(class)?;
@@ -938,13 +1033,19 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         }
         StatusObject::Troop(key) => {
             let troop = world.troops.get(key)?;
-            view(
-                "Trooper Regiment Status",
-                side_index(troop.is_alliance),
-                picture(troop_mini(troop.class_dat_id).map(|(mini, _)| mini)),
-                class_name(world, troop.class_dat_id),
-                troop_rows(sources, key)?,
-            )
+            let portrait = picture(troop_mini(troop.class_dat_id).map(|(mini, _)| mini));
+            let en_route = regiment_place(sources, key).1.is_some();
+            let marks = regiment_marks(portrait, troop.class_dat_id, en_route);
+            StatusView {
+                marks,
+                ..view(
+                    "Trooper Regiment Status",
+                    side_index(troop.is_alliance),
+                    portrait,
+                    class_name(world, troop.class_dat_id),
+                    troop_rows(sources, key)?,
+                )
+            }
         }
         StatusObject::DefenseFacility(key) => {
             let facility = world.defense_facilities.get(key)?;
@@ -1243,6 +1344,88 @@ mod tests {
     }
 
     #[test]
+    fn a_picture_carries_the_en_route_and_damage_marks() {
+        // FUN_0042c3b0(.., 1, 1): a craft's GOKRES portrait + 0x1000 en
+        // route, + 0x2000 damaged; a fleet's 10426 en route; a regiment's
+        // 11514 backdrop.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        let there = system(&mut world, "Hoth", ControlKind::Uncontrolled);
+        let fleet = carrier_fleet(&mut world, here);
+        let mut states = States::new();
+        let marks = |states: &States, world: &GameWorld, object| {
+            status_view(states.sources(world), object).unwrap().marks
+        };
+        let ship = |index| StatusObject::Ship { fleet, index };
+        // At rest: the damaged second ship (hull 60 of 100) has its mark.
+        assert_eq!(marks(&states, &world, StatusObject::Fleet(fleet)), []);
+        assert_eq!(marks(&states, &world, ship(0)), []);
+        let class = world.capital_ship_classes[world.fleets[fleet].capital_ships[1].class].dat_id;
+        let portrait = capital_ship_mini_id(class).unwrap() - 0x4000;
+        assert_eq!(
+            marks(&states, &world, ship(1)),
+            [(DllSource::Gokres, portrait + 0x2000)]
+        );
+        assert!(states.movement.order(fleet, here, there, 5));
+        assert_eq!(
+            marks(&states, &world, StatusObject::Fleet(fleet)),
+            [(DllSource::Strategy, 10_426)]
+        );
+        assert_eq!(
+            marks(&states, &world, ship(1)),
+            [
+                (DllSource::Gokres, portrait + 0x1000),
+                (DllSource::Gokres, portrait + 0x2000)
+            ]
+        );
+        let squadron = StatusObject::Fighter { fleet, index: 0 };
+        let fighter = fighter_mini_id(DatId::new(0x1c00_0001)).unwrap() - 0x4000;
+        assert_eq!(
+            marks(&states, &world, squadron),
+            [(DllSource::Gokres, fighter + 0x1000)]
+        );
+    }
+
+    #[test]
+    fn a_regiment_and_a_special_force_take_their_own_marks() {
+        // FUN_0042c3b0: 11514 behind every regiment; en route 11516, but
+        // the GOKRES mark for classes 0x10000002 and 0x10000008; a special
+        // force's 11520, but GOKRES for 0x3c000003 and 0x3c000005.
+        let portrait = Some((DllSource::Gokres, 100));
+        let infantry = DatId::new(0x1000_0001);
+        let special = DatId::new(0x1000_0002);
+        assert_eq!(
+            regiment_marks(portrait, infantry, false),
+            [(DllSource::Strategy, 11_514)]
+        );
+        assert_eq!(
+            regiment_marks(portrait, infantry, true),
+            [(DllSource::Strategy, 11_514), (DllSource::Strategy, 11_516)]
+        );
+        assert_eq!(
+            regiment_marks(portrait, special, true),
+            [(DllSource::Strategy, 11_514), (DllSource::Gokres, 0x1064)]
+        );
+        assert_eq!(
+            regiment_marks(portrait, DatId::new(0x1000_0008), true)[1],
+            (DllSource::Gokres, 0x1064)
+        );
+        let force = DatId::new(0x3c00_0001);
+        assert_eq!(special_force_marks(portrait, force, false), []);
+        assert_eq!(
+            special_force_marks(portrait, force, true),
+            [(DllSource::Strategy, 11_520)]
+        );
+        for class in [0x3c00_0003, 0x3c00_0005] {
+            assert_eq!(
+                special_force_marks(portrait, DatId::new(class), true),
+                [(DllSource::Gokres, 0x1064)]
+            );
+        }
+        assert_eq!(craft_marks(None, true, true), []);
+    }
+
+    #[test]
     fn a_moving_fleet_is_enroute_with_its_arrival_day() {
         // FUN_00449200 34628 "Enroute"; FUN_004fd2b0 "ETA Destination:".
         let mut world = GameWorld::default();
@@ -1517,6 +1700,9 @@ mod tests {
                 ("Detection Value:", "3"),
             ]
         );
+        // FUN_0042c3b0: a regiment's picture stands on STRATEGY 11514.
+        let view = status_view(states.sources(&world), StatusObject::Troop(troop)).unwrap();
+        assert_eq!(view.marks, [(DllSource::Strategy, 11_514)]);
     }
 
     #[test]
@@ -1834,6 +2020,9 @@ mod tests {
                 ("ETA Destination:", "Day 15"),
             ]
         );
+        // FUN_0042c3b0: its picture carries STRATEGY 11520 en route.
+        let view = status_view(states.sources(&world), StatusObject::SpecialForce(unit)).unwrap();
+        assert_eq!(view.marks, [(DllSource::Strategy, 11_520)]);
     }
 
     #[test]

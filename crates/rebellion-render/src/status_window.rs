@@ -14,7 +14,7 @@ use rebellion_core::ids::CharacterKey;
 use rebellion_core::missions::{MemberTransit, MissionMember};
 use rebellion_core::world::{GameWorld, Skill};
 
-use crate::bmp_cache::BmpCache;
+use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::paint_native;
 use crate::mission_dialog::{button, galaxy_centered_rect, paint};
@@ -265,6 +265,15 @@ fn row_tops(heights: &[(f32, f32)]) -> (Vec<(f32, f32)>, f32) {
     (tops, y)
 }
 
+/// The picture's layers bottom to top (`FUN_0042c3b0`): the marks, then the
+/// object keyed over them.
+fn picture_layers(
+    marks: &[(DllSource, u32)],
+    picture: (DllSource, u32),
+) -> impl Iterator<Item = (DllSource, u32)> + '_ {
+    marks.iter().copied().chain(std::iter::once(picture))
+}
+
 /// The picture's top-left in the window: centred on (307, 64) with integer
 /// halves (`FUN_00443130`).
 #[expect(
@@ -379,20 +388,17 @@ pub fn draw_status_window(
 
             // The picture, keyed (FUN_005fd0f0), centred with integer
             // offsets on (307, 64).
+            // FUN_0042c3b0 draws the marks into the picture's own bitmap
+            // first, at its top-left, so they show within its size and under
+            // the object.
             if let Some((source, picture)) = view.picture {
                 if let Some([width, height]) = cache.original_resource_size(source, picture) {
                     let (x, y) = picture_origin(width, height);
-                    paint_native(
-                        &painter,
-                        ctx,
-                        cache,
-                        source,
-                        picture,
-                        frame,
-                        scale,
-                        x,
-                        y,
-                    );
+                    let bounds = logical_rect(frame, scale, x, y, width as f32, height as f32);
+                    let layers = painter.with_clip_rect(bounds.intersect(painter.clip_rect()));
+                    for (layer_source, layer) in picture_layers(&view.marks, (source, picture)) {
+                        paint_native(&layers, ctx, cache, layer_source, layer, frame, scale, x, y);
+                    }
                 }
             }
 
@@ -1212,6 +1218,36 @@ mod tests {
         world.characters[key].is_empire = false;
         let (_, painted) = render(&world, &mut state);
         assert!(painted.contains(&(11_556, frame)), "{painted:?}");
+    }
+
+    #[test]
+    fn the_marks_come_before_the_picture() {
+        let marks = [(DllSource::Strategy, 11_514), (DllSource::Gokres, 0x1064)];
+        let layers: Vec<_> = picture_layers(&marks, (DllSource::Gokres, 0x64)).collect();
+        assert_eq!(
+            layers,
+            [
+                (DllSource::Strategy, 11_514),
+                (DllSource::Gokres, 0x1064),
+                (DllSource::Gokres, 0x64)
+            ]
+        );
+    }
+
+    #[test]
+    fn the_marks_are_painted_under_the_picture_at_its_origin() {
+        // FUN_0042c3b0 draws the marks into the picture's bitmap first, at
+        // its (0, 0); the window blits the result at the picture's origin.
+        let (world, key, ..) = world_with_luke();
+        let mut state = StatusWindowState::default();
+        state.open_character(key);
+        let frame = window_rect(scaled()).min;
+        let (_, painted) = render(&world, &mut state);
+        let origin = frame + egui::vec2(267.0, 24.0) * 2.0;
+        let picture = painted.iter().position(|entry| *entry == (2_114, origin));
+        assert!(picture.is_some(), "{painted:?}");
+        // A character's portrait has no mark (FUN_0042c3b0: 0x2ced wraps).
+        assert!(!painted.iter().any(|(id, at)| *at == origin && *id != 2_114));
     }
 
     #[test]

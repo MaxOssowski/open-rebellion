@@ -1810,6 +1810,12 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 11127..=11128
                 | 11533..=11541
                 | 11560..=11569
+                // The Status window picture's regiment backdrop and en route
+                // marks (`FUN_0042c3b0`): drawn into the picture's bitmap,
+                // which the window blits keyed (`FUN_00443130`).
+                | 11514
+                | 11516
+                | 11520
         ),
         // The unit and facility pictures (`0x001..0x584`, all 122 by 50 on
         // a blue matte), which the Status window blits keyed through
@@ -1829,6 +1835,9 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 1_600..=1_935
                 | 2_112..=2_715
                 | 5_696..=6_031
+                // The craft portraits' damage marks (`+0x2000`,
+                // `0x2640..0x278f`, `FUN_0042c3b0`).
+                | 9_792..=10_127
                 | 16_000..=19_999
                 | 20_480..=22_527
                 | 23_552..=23_807
@@ -2320,6 +2329,29 @@ mod tests {
 
         assert_eq!(decoded.get_pixel(0, 0)[3], 0);
         assert_eq!(decoded.get_pixel(1, 0)[3], 255);
+    }
+
+    #[test]
+    fn the_status_pictures_marks_are_keyed() {
+        // FUN_0042c3b0 draws them into the picture's bitmap, which the
+        // Status window blits keyed: STRATEGY 11514, 11516, 11520 and the
+        // craft portraits' damage marks GOKRES 0x2640..0x278f.
+        for (source, resource_id) in [
+            (DllSource::Strategy, 11_514),
+            (DllSource::Strategy, 11_516),
+            (DllSource::Strategy, 11_520),
+            (DllSource::Gokres, 0x2640),
+            (DllSource::Gokres, 0x278f),
+        ] {
+            assert!(uses_blue_screen_transparency(source, resource_id), "{resource_id}");
+        }
+        for (source, resource_id) in [
+            (DllSource::Strategy, 11_515),
+            (DllSource::Gokres, 0x263f),
+            (DllSource::Gokres, 0x2790),
+        ] {
+            assert!(!uses_blue_screen_transparency(source, resource_id), "{resource_id}");
+        }
     }
 
     #[test]
