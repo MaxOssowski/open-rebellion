@@ -142,7 +142,7 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
 3. The loser is the other side: winner 1 gives 2, and winner 2 gives 1.
    Winner 3 gives 3, every side (the side mask of `FUN_004ffef0`).
 4. When `FUN_00506e60` allows, each of the winner's planet squadrons goes
-   to `FUN_00556710` (not read).
+   to `FUN_00556710` (read 2026-10-22, below).
 5. Each of the loser's fleets, then each of its planet squadrons, is set
    Autorouting (`FUN_004f78e0(1)`, `+0x50` bit `0x1000`).
 
@@ -166,8 +166,27 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
   candidate passed, and the unit is destroyed with reason 2 (slot
   `+0xac`). Whether a candidate passes rests on the route planner:
   `FUN_005513a0` -> `FUN_00552d10` -> `FUN_00550700`, which calls the
-  route context's virtual slots `+0x74..+0x80` for up to 9 legs. That is
-  not read, so the port cannot yet say which fleets find no route.
+  route context's virtual slots `+0x74..+0x80` for up to 9 legs.
+  - (read 2026-10-22) Those are the moving object's slots, once per
+    family range of `FUN_0054f5b0` (ships, squadrons, facilities,
+    personnel, regiments, fleets...). A fleet's `+0x74` is `FUN_004fe0d0`,
+    a capital ship's `FUN_00500ac0`; both run `FUN_00553410`. It refuses
+    an object of another side (`0x24`, `0x28`), an unfinished one (`0x20`,
+    `+0x50` bit 2 clear), a destroyed one (`0x22`) and one en route
+    (`0x21`). The `+0x78` slots (`FUN_004fe160`, `FUN_00500b40`) count
+    carried capacity.
+  - So a loser's fleet standing at the battle always gets a destination,
+    and reason 2 does not arise in play.
+- Reason 5 (read 2026-10-22): `FUN_00555410` -> `FUN_00555460` sets its
+  flag when the unit and the destination resolve to the same place
+  (`FUN_00555540`). A unit sent elsewhere whose slot `+0x34` speed is 0 is
+  destroyed. A fleet's speed (`FUN_004fd900`) reads only its finished
+  capital ships, and an original fleet disbands when its last capital ship
+  leaves (`FUN_004fe630`, `squadrons.rs`). So a withdrawing fleet always
+  has a speed, and reason 5 does not arise for fleets either.
+- port: `withdraw_loser` leaves in place a fleet whose speed is `None`.
+  Only the port's fleets of squadrons alone have no capital ship. The
+  original has no such fleet, so no original rule covers them.
 
 **In the port** (2026-10-21, W2j):
 
@@ -203,7 +222,18 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
     side holds, stays. A squadron's speed is never 0 in the port.
   - The winner's squadrons go to `FUN_00556710` when `FUN_00506e60` (game
     `+0xbc`) allows. That is a generic check of an object in its
-    container (it also follows a destroyed fleet), not read further.
+    container (read 2026-10-22):
+    - a destroyed container sends the object to slot `+0xb4` (adrift);
+    - the container's slot `+0x54` refusing it sends it to `+0xb0`;
+    - a route refusal (`FUN_00551270`, `FUN_00551c80` for side mask
+      `0x3f0`) sends it to `+0xb8`;
+    - an object that is en route, or unfinished and away from its
+      `+0x38` parent, at a system blockaded (`+0x88` bit `0x20`) by
+      another side (`FUN_00509890`), unless it is a fleet or a capital
+      ship, also goes to `+0xb8`.
+
+    A winner's squadron on its planet after the battle meets none of
+    these, so the port needs no step for it.
 - Every battle path lands the scrambled planet squadrons back
   (`squadrons::recover`) before the withdrawal, as the headless
   simulation does. The app's AI battles and Auto Resolve did it after.
