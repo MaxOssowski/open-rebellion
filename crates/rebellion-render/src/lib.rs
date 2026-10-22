@@ -595,10 +595,11 @@ fn gid_marker_for_system(
     }
     // An unpopulated system is marked like any other: FUN_0050b610 gives it
     // the no-side holder 3, whose table (+0x2b4) holds the neutral marks.
-    // hyp: a system the two counting displays reach unexplored keeps the
-    // unexplored mark when they count nobody; there FUN_00426e70 gets side
-    // 0 and returns no mark, and whether the view's +0x3c keeps its
-    // unexplored bit 0x80 (FUN_0042cde0 draws +0x2c4, 0x27ae) is not read.
+    // At an unexplored system Fleets Enroute counting no fleet takes side
+    // 0, and FUN_0042b330 sets the item's flag 0x80 for side 0 (its jump
+    // table at 0x42c39c), so FUN_0042cde0 draws the unexplored mark
+    // (+0x2c4, 0x27ae). Active Personnel counting nobody takes the
+    // holder's side even there.
     let known = system.exploration_status == ExplorationStatus::Explored;
 
     let player_is_alliance = faction == CockpitFaction::Alliance;
@@ -610,9 +611,6 @@ fn gid_marker_for_system(
             mode == GidMode::ActivePersonnel,
             gid.movement,
         );
-        if !known && count.total() == 0 {
-            return unexplored;
-        }
         // FUN_00426e70(.., 1, 1, 1, 1, 1): one person is the largest mark.
         return gid_marker_for_side(
             count.colour(system.control.faction()),
@@ -2263,14 +2261,17 @@ mod interaction_tests {
             mark(&world, here, GidMode::FleetsEnRoute),
             art::GID_EMPIRE_MEDIUM
         );
-        // port: counting nobody there keeps the unexplored mark.
+        // Fleets Enroute counting no fleet there takes side 0, whose flag
+        // 0x80 (jump table 0x42c39c) draws the unexplored mark.
         assert_eq!(
             mark(&world, there, GidMode::FleetsEnRoute),
             art::GID_UNEXPLORED
         );
+        // Active Personnel counting nobody takes the holder's side, the
+        // Empire here, at its smallest (FUN_0042b330 0x43/0x44).
         assert_eq!(
             mark(&world, here, GidMode::ActivePersonnel),
-            art::GID_UNEXPLORED
+            art::GID_EMPIRE_SMALLEST
         );
         // Destroyed and explored: only the fleet and personnel displays count.
         let mut world = world;

@@ -237,10 +237,18 @@ The mark tables and how a mark is drawn (read 2026-10-22):
   system shows a no-side mark sized by its value, not the unexplored
   mark. Ported the same day: the port's gate no longer asks for a
   population.
-- Side 0 reaches `FUN_00426e70` only from Fleets Enroute at an
-  unexplored system with no fleet; it returns no mark. hyp: the port
-  shows the unexplored mark there, whether the item keeps flag `0x80`
-  not being read.
+- After the switch, `FUN_0042b330` (`0x42c0e5..0x42c191`) rebuilds the
+  item's flags:
+  - 8 when the system has children of type 3 (`FUN_00526cf0(system, 3)`);
+  - one bit by side, through the jump table at `0x42c39c`: side 0 gives
+    `0x80`, 1 gives `0x10`, 2 gives `0x20`, 3 gives `0x40`.
+  It stores them when they changed.
+- Side 0 reaches it only from Fleets Enroute at an unexplored system with
+  no fleet. `FUN_00426e70` returns no mark there, and flag `0x80` makes
+  `FUN_0042cde0` draw the unexplored mark. The port does the same.
+- Active Personnel counting nobody takes the holder's side, even at an
+  unexplored system, so it shows the holder's smallest mark. Ported the
+  same day; before, the port gave the unexplored mark.
 
 A click on the map closes the legend (read 2026-10-22): `FUN_00422ce0`'s
 `WM_LBUTTONUP` in the galaxy view (`+0xc0` = 1), with an item under the
