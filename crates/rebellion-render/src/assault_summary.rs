@@ -391,6 +391,21 @@ fn unit_picture(unit: &ReportUnit) -> Option<u32> {
     mini.checked_sub(0x4000)
 }
 
+/// The backdrop `FUN_0042c3b0` lays under a row's picture
+/// (`FUN_0044edb0`): a regiment's portrait stands on STRATEGY 11514, a
+/// personnel mini on 11500 (`fleet-window.md`). port: the report keeps no
+/// unit flags, so the en route and damage marks are not drawn.
+fn unit_backdrop(unit: &ReportUnit) -> Option<(DllSource, u32)> {
+    match unit.category {
+        ReportCategory::Troops => Some((DllSource::Strategy, 11_514)),
+        ReportCategory::Personnel => Some((DllSource::Strategy, 11_500)),
+        ReportCategory::CapitalShips
+        | ReportCategory::Fighters
+        | ReportCategory::Manufacturing
+        | ReportCategory::Defense => None,
+    }
+}
+
 #[derive(Default)]
 struct DrawResult {
     close: bool,
@@ -634,6 +649,17 @@ fn draw_window(
                                 let (x, y) = cell_origin(window.category, column, row);
                                 let cell = logical_rect(local, scale, x, y, cell_w, cell_h);
                                 let painted = unit_picture(unit).and_then(|picture| {
+                                    for (source, id) in unit_backdrop(unit) {
+                                        paint_centered(
+                                            &list_painter,
+                                            ctx,
+                                            cache,
+                                            source,
+                                            id,
+                                            cell,
+                                            scale,
+                                        );
+                                    }
                                     paint_centered(
                                         &list_painter,
                                         ctx,
@@ -1437,6 +1463,30 @@ mod tests {
         assert!(!state.contains_screen_point(layout(), (rect.max.x, rect.max.y)));
         state.clear();
         assert!(!state.contains_screen_point(layout(), inside));
+    }
+
+    #[test]
+    fn a_regiment_and_a_character_stand_on_their_backdrops() {
+        // FUN_0044edb0 -> FUN_0042c3b0: 11514 under a regiment's portrait,
+        // 11500 under a personnel mini; nothing under a craft or facility.
+        let unit =
+            |category| ReportUnit::new(category, DatId::new(0x1000_0001), String::new(), true);
+        assert_eq!(
+            unit_backdrop(&unit(ReportCategory::Troops)),
+            Some((DllSource::Strategy, 11_514))
+        );
+        assert_eq!(
+            unit_backdrop(&unit(ReportCategory::Personnel)),
+            Some((DllSource::Strategy, 11_500))
+        );
+        for category in [
+            ReportCategory::CapitalShips,
+            ReportCategory::Fighters,
+            ReportCategory::Manufacturing,
+            ReportCategory::Defense,
+        ] {
+            assert_eq!(unit_backdrop(&unit(category)), None);
+        }
     }
 
     #[test]

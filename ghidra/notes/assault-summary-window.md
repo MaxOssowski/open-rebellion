@@ -141,7 +141,10 @@ port:
 - hyp: Operational lists the units that survive; the assault captures no
   personnel, so Captured is empty.
 - The window is centred in the galaxy view; a row shows its GOKRES picture
-  (the name when none is loaded), the name also as a hover text; the list
+  (the name when none is loaded) on its `FUN_0042c3b0` backdrop (11514
+  under a regiment's portrait, 11500 under a personnel mini; 2026-10-22),
+  the name also as a hover text; no en route or damage mark, since the
+  report keeps no unit flags; the list
   scrolls with the wheel and draws no scroll bar; the RCDATA `0x7013`
   line sits above the Display buttons.
 - The port's log line ("Planetary assault at ...") stays.
