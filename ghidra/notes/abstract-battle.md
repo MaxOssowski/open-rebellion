@@ -464,8 +464,18 @@ The terms:
     exists or when the pick is the system's Imperial Commander.
   - Ported as `abstract_battle::trench_commander_term`. `hyp:` every
     character at the battle has a battle person.
-- Open: the Death Star's lists `+0x38` and `+0x3c`, which are the units
-  it carries.
+- The Death Star's lists `+0x38` and `+0x3c` (read 2026-10-22, partly):
+  - The battle's Death Star object (0x7c bytes) is built by `FUN_005a9220`
+    (the displayed battle, from `FUN_0059a750`) or `FUN_005af4e0`, and
+    registered at `DAT_006bc470 + 0x44`.
+  - Its sub-object at `+0x1c` is a unit group (`FUN_005b82a0`, vtable
+    `0x66c698`, then `0x66c3b8`), the same base as a task force. The
+    group's lists at its `+0x1c` and `+0x20` are the object's `+0x38`
+    and `+0x3c`.
+  - Neither constructor adds to them, and no other reader of
+    `FUN_005a66a0` touches them besides the trench run's clean-up. What
+    fills them is still open; calling them "the units it carries" was a
+    guess.
 
 In the port, the displayed battle's run (`BattleSession::
 prepare_original_trench_run`, `FUN_005d04e0`) is a different function, with
