@@ -5138,14 +5138,6 @@ fn winner_is_alliance(session: &BattleSession) -> Option<bool> {
     }
 }
 
-fn winner_fleet(session: &BattleSession) -> Option<FleetKey> {
-    match session.winner {
-        Some(CombatWinner::Attacker) => Some(session.attacker_fleet),
-        Some(CombatWinner::Defender) => Some(session.defender_fleet),
-        Some(CombatWinner::Draw) | None => None,
-    }
-}
-
 fn result_fleet_for_faction(session: &BattleSession, alliance: bool) -> FleetKey {
     if session.attacker_is_alliance == alliance {
         session.attacker_fleet
@@ -5357,7 +5349,21 @@ pub fn set_battle_texts(texts: HashMap<u16, String>) {
 }
 
 fn battle_result_summary_lines(session: &BattleSession, world: &GameWorld) -> Vec<String> {
-    let viewer_alliance = player_is_alliance(session);
+    let system_side = world
+        .systems
+        .get(session.system)
+        .and_then(|system| system.control.faction())
+        .and_then(|faction| match faction {
+            rebellion_core::dat::Faction::Alliance => Some(true),
+            rebellion_core::dat::Faction::Empire => Some(false),
+            rebellion_core::dat::Faction::Neutral => None,
+        });
+    battle_report_lines(&loaded_battle_texts(), &battle_report(session, system_side))
+}
+
+/// The report's fields for the session's viewer; `system_side` is the
+/// system's side after the battle.
+fn battle_report(session: &BattleSession, system_side: Option<bool>) -> BattleReport<'_> {
     // +0x54: the side whose fleet withdrew (FUN_0049b060, +0x78 >> 2).
     let withdrew = |alliance: bool| {
         session.ships.iter().any(|ship| {
@@ -5371,26 +5377,21 @@ fn battle_result_summary_lines(session: &BattleSession, world: &GameWorld) -> Ve
     } else {
         None
     };
-    let system_side = world
-        .systems
-        .get(session.system)
-        .and_then(|system| system.control.faction())
-        .and_then(|faction| match faction {
-            rebellion_core::dat::Faction::Alliance => Some(true),
-            rebellion_core::dat::Faction::Empire => Some(false),
-            rebellion_core::dat::Faction::Neutral => None,
-        });
-    let texts = BATTLE_TEXTS.read().ok().and_then(|slot| slot.clone()).unwrap_or_default();
-    battle_report_lines(
-        &texts,
-        &BattleReport {
-            system_name: &session.system_name,
-            viewer_alliance,
-            winner_alliance: winner_is_alliance(session),
-            withdrawn,
-            system_side,
-        },
-    )
+    BattleReport {
+        system_name: &session.system_name,
+        viewer_alliance: player_is_alliance(session),
+        winner_alliance: winner_is_alliance(session),
+        withdrawn,
+        system_side,
+    }
+}
+
+fn loaded_battle_texts() -> HashMap<u16, String> {
+    BATTLE_TEXTS
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .unwrap_or_default()
 }
 
 /// What the battle report reads (`FUN_0049ac00`'s object).
@@ -5496,6 +5497,174 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
                 },
             ]
         }
+    }
+}
+
+/// The Display page's message line (`+0xac`) and instruction (`+0xb8`),
+/// and whether the viewer's fleet gets a button: the viewer's win reads
+/// `0x7012` and `0x7013` (`FUN_0049b330`); the viewer's withdrawal reads
+/// `0x7011` and `0x7013`; otherwise `0x7010` and `0x7014`, the fleet gone
+/// (`FUN_0049b150`, `FUN_0049b4d0`). port: the withdrawn fleet's
+/// destination (`+0x48`) is decided after the report, so `0x7011` drops
+/// its " to {3:1}", as the body reads `0x700c` for `0x700d`.
+fn battle_display_lines(
+    texts: &HashMap<u16, String>,
+    report: &BattleReport<'_>,
+) -> ([String; 2], bool) {
+    use crate::story_messages::{fill_message_text, side_parameter, MessageParameter};
+    let viewer = side_parameter(report.viewer_alliance, texts);
+    let system = MessageParameter::Unit {
+        name: report.system_name,
+        class: "",
+    };
+    let side = if report.viewer_alliance {
+        "Alliance"
+    } else {
+        "Imperial"
+    };
+    let (message, instruction, fleet, fallback) =
+        if report.winner_alliance == Some(report.viewer_alliance) {
+            (
+                0x7012,
+                0x7013,
+                true,
+                format!(
+                    "The {side} fleet is victorious. The world {} is now under {side} blockade.",
+                    report.system_name
+                ),
+            )
+        } else if report.withdrawn == Some(report.viewer_alliance) {
+            (
+                0x7011,
+                0x7013,
+                true,
+                format!(
+                    "The {side} fleet was defeated at {}. Your fleet has withdrawn.",
+                    report.system_name
+                ),
+            )
+        } else {
+            (
+                0x7010,
+                0x7014,
+                false,
+                format!(
+                    "The {side} fleet was defeated at {}. Your fleet has been destroyed.",
+                    report.system_name
+                ),
+            )
+        };
+    let message = texts.get(&message).map_or(fallback, |template| {
+        fill_message_text(&template.replace(" to {3:1}", ""), &[viewer, system])
+            .trim_end()
+            .to_owned()
+    });
+    let instruction = texts.get(&instruction).map_or_else(
+        || {
+            if fleet {
+                "Select one of the following buttons to close this display and go directly to..."
+            } else {
+                "Select the following button to close this display and go directly to..."
+            }
+            .to_owned()
+        },
+        |text| text.trim_end().to_owned(),
+    );
+    ([message, instruction], fleet)
+}
+
+/// A Display page button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DisplayButton {
+    System,
+    Fleet,
+}
+
+/// The Battle Summary's Display page (`FUN_0046f360`): the message line
+/// at (24, 40) and the instruction at (24, 130), 328 wide, word-wrapped,
+/// font 6 and font 7, in the viewer's colour; the system button `0xcb`
+/// at (29, 182), 169 by 96, STRATEGY 10764 (`0x2a0c`); the fleet button
+/// `0xca` at (229, 182), 10765 / 10766 by the viewer's side, only while
+/// the viewer has a fleet there (`FUN_004f36a0`). Both press to 10767 /
+/// 10768 by the viewer's side. Under each, at y 278, 169 wide, centred,
+/// white, font 4: the system's name and "Fleet" (`0x1942`).
+fn battle_display_page(
+    system_name: &str,
+    lines: &[String; 2],
+    viewer_alliance: bool,
+    fleet: bool,
+    pressed: Option<DisplayButton>,
+    text_color: Color,
+) -> Vec<PageOp> {
+    use resources::strategy as art;
+    let mut ops = vec![PageOp::Bitmap {
+        source: DllSource::Strategy,
+        id: art::BATTLE_DESTINATION_BACKGROUND,
+        x: BATTLE_RESULTS_SCENE_X,
+        y: BATTLE_RESULTS_SCENE_Y,
+    }];
+    for (line, top) in lines.iter().zip([40.0, 130.0]) {
+        ops.push(PageOp::Wrapped {
+            lines: vec![line.clone()],
+            x: 24.0,
+            baseline: top + 12.0,
+            width: 328.0,
+            size: 12.0,
+            color: text_color,
+        });
+    }
+    let pressed_art = if viewer_alliance {
+        art::BATTLE_DESTINATION_ALLIANCE_SELECTED
+    } else {
+        art::BATTLE_DESTINATION_EMPIRE_SELECTED
+    };
+    let fleet_art = if viewer_alliance {
+        art::BATTLE_DESTINATION_ALLIANCE_FLEET
+    } else {
+        art::BATTLE_DESTINATION_EMPIRE_FLEET
+    };
+    let mut buttons = vec![(
+        DisplayButton::System,
+        29.0,
+        art::BATTLE_DESTINATION_SYSTEM,
+        system_name,
+    )];
+    if fleet {
+        buttons.push((DisplayButton::Fleet, 229.0, fleet_art, "Fleet"));
+    }
+    for (button, x, id, label) in buttons {
+        ops.push(PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: if pressed == Some(button) {
+                pressed_art
+            } else {
+                id
+            },
+            x,
+            y: 182.0,
+        });
+        ops.push(PageOp::Text {
+            text: label.to_owned(),
+            x: x + 84.5,
+            baseline: 278.0 + 14.0,
+            size: 14.0,
+            color: WHITE,
+            centered: true,
+        });
+    }
+    ops
+}
+
+/// The Display page's button under the mouse.
+fn display_button_at(x: f32, y: f32, fleet: bool) -> Option<DisplayButton> {
+    let inside =
+        |left: f32| (left..left + 169.0).contains(&x) && (182.0..182.0 + 96.0).contains(&y);
+    if inside(29.0) {
+        Some(DisplayButton::System)
+    } else if fleet && inside(229.0) {
+        Some(DisplayButton::Fleet)
+    } else {
+        None
     }
 }
 
@@ -5871,101 +6040,34 @@ fn draw_battle_result_destinations(
     mouse_released: bool,
     text_color: Color,
 ) -> TacticalAction {
-    use resources::strategy as art;
-    draw_strategy_bitmap(
-        cache,
-        art::BATTLE_DESTINATION_BACKGROUND,
-        canvas,
-        BATTLE_RESULTS_WINDOW_X + BATTLE_RESULTS_SCENE_X,
-        BATTLE_RESULTS_WINDOW_Y + BATTLE_RESULTS_SCENE_Y,
+    let (lines, fleet) =
+        battle_display_lines(&loaded_battle_texts(), &battle_report(session, None));
+    let hovered = display_button_at(
+        mouse.0 - BATTLE_RESULTS_WINDOW_X,
+        mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+        fleet,
     );
-    draw_result_text_centered(
-        canvas,
-        "Go Directly To...",
-        BATTLE_RESULTS_WINDOW_X + 212.0,
-        BATTLE_RESULTS_WINDOW_Y + 56.0,
-        18.0,
+    let ops = battle_display_page(
+        &session.system_name,
+        &lines,
+        player_alliance,
+        fleet,
+        hovered.filter(|_| mouse_down),
         text_color,
     );
+    draw_page_ops(cache, canvas, ops);
 
-    let system_rect = NativeRect::new(
-        BATTLE_RESULTS_WINDOW_X + 29.0,
-        BATTLE_RESULTS_WINDOW_Y + 182.0,
-        169.0,
-        96.0,
-    );
-    let fleet_rect = NativeRect::new(
-        BATTLE_RESULTS_WINDOW_X + 229.0,
-        BATTLE_RESULTS_WINDOW_Y + 182.0,
-        169.0,
-        96.0,
-    );
-    draw_strategy_bitmap(
-        cache,
-        art::BATTLE_DESTINATION_SYSTEM,
-        canvas,
-        system_rect.x,
-        system_rect.y,
-    );
-    let winning_alliance = winner_is_alliance(session);
-    if let Some(winning_alliance) = winning_alliance {
-        draw_strategy_bitmap(
-            cache,
-            if winning_alliance {
-                art::BATTLE_DESTINATION_ALLIANCE_FLEET
-            } else {
-                art::BATTLE_DESTINATION_EMPIRE_FLEET
-            },
-            canvas,
-            fleet_rect.x,
-            fleet_rect.y,
-        );
-    }
-    let selected = if player_alliance {
-        art::BATTLE_DESTINATION_ALLIANCE_SELECTED
-    } else {
-        art::BATTLE_DESTINATION_EMPIRE_SELECTED
-    };
-    if mouse_down && system_rect.contains(mouse.0, mouse.1) {
-        draw_strategy_bitmap(cache, selected, canvas, system_rect.x, system_rect.y);
-    }
-    if winning_alliance.is_some() && mouse_down && fleet_rect.contains(mouse.0, mouse.1) {
-        draw_strategy_bitmap(cache, selected, canvas, fleet_rect.x, fleet_rect.y);
-    }
-    draw_result_text_centered(
-        canvas,
-        &session.system_name,
-        system_rect.x + system_rect.width * 0.5,
-        BATTLE_RESULTS_WINDOW_Y + 174.0,
-        14.0,
-        WHITE,
-    );
-    if let Some(winning_alliance) = winning_alliance {
-        draw_result_text_centered(
-            canvas,
-            if winning_alliance {
-                "Alliance Fleet"
-            } else {
-                "Imperial Fleet"
-            },
-            fleet_rect.x + fleet_rect.width * 0.5,
-            BATTLE_RESULTS_WINDOW_Y + 174.0,
-            14.0,
-            WHITE,
-        );
-    }
-
-    if mouse_released && system_rect.contains(mouse.0, mouse.1) {
-        macroquad::logging::info!("[tactical-results] destination=system");
-        return TacticalAction::OpenBattleSystem(session.system);
-    }
-    if mouse_released && fleet_rect.contains(mouse.0, mouse.1) {
-        if let Some(fleet) = winner_fleet(session) {
-            macroquad::logging::info!("[tactical-results] destination=fleet");
-            return TacticalAction::OpenBattleFleet(fleet);
+    match hovered.filter(|_| mouse_released) {
+        Some(DisplayButton::System) => {
+            macroquad::logging::info!("[tactical-results] destination=system");
+            TacticalAction::OpenBattleSystem(session.system)
         }
+        Some(DisplayButton::Fleet) => {
+            macroquad::logging::info!("[tactical-results] destination=fleet");
+            TacticalAction::OpenBattleFleet(result_fleet_for_faction(session, player_alliance))
+        }
+        None => TacticalAction::None,
     }
-    TacticalAction::None
 }
 
 fn battle_alert_retreat_enabled(session: &BattleSession) -> bool {
@@ -8400,6 +8502,209 @@ mod tests {
             },
         );
         assert_eq!(none[0], "Neither fleet is victorious.");
+    }
+
+    #[test]
+    fn the_display_page_tells_the_viewer_where_its_fleet_is() {
+        // FUN_0049b330 / FUN_0049b4d0 / FUN_0049b150: +0xac reads 0x7012
+        // on the viewer's win, 0x7011 on its withdrawal (port: without
+        // the destination), else 0x7010; +0xb8 reads 0x7013 for two
+        // buttons, 0x7014 for one. TEXTSTRA as shipped.
+        let mut texts = battle_texts();
+        for (id, text) in [
+            (
+                0x7010,
+                "The {1:4} fleet was defeated at {2:1}. Your fleet has been destroyed. ",
+            ),
+            (
+                0x7011,
+                "The {1:4} fleet was defeated at {2:1}. Your fleet has withdrawn to {3:1}. ",
+            ),
+            (
+                0x7012,
+                "The {1:4} fleet is victorious. The world {2:1} is now under {1:4} blockade. ",
+            ),
+            (
+                0x7013,
+                "Select one of the following buttons to close this display and go directly to... ",
+            ),
+            (
+                0x7014,
+                "Select the following button to close this display and go directly to... ",
+            ),
+        ] {
+            texts.insert(id, text.to_owned());
+        }
+        let display = |texts: &HashMap<u16, String>, winner, withdrawn| {
+            battle_display_lines(
+                texts,
+                &BattleReport {
+                    system_name: "Deyer",
+                    viewer_alliance: false,
+                    winner_alliance: winner,
+                    withdrawn,
+                    system_side: None,
+                },
+            )
+        };
+        let two = "Select one of the following buttons to close this display and go directly to...";
+        let one = "Select the following button to close this display and go directly to...";
+        assert_eq!(
+            display(&texts, Some(false), Some(true)),
+            (
+                [
+                    "The Imperial fleet is victorious. The world Deyer is now under Imperial blockade.".to_owned(),
+                    two.to_owned()
+                ],
+                true
+            )
+        );
+        assert_eq!(
+            display(&texts, Some(true), Some(false)),
+            (
+                [
+                    "The Imperial fleet was defeated at Deyer. Your fleet has withdrawn."
+                        .to_owned(),
+                    two.to_owned()
+                ],
+                true
+            )
+        );
+        // No winner, the viewer withdrew: its fleet still has a button.
+        assert!(display(&texts, None, Some(false)).1);
+        let lost = (
+            [
+                "The Imperial fleet was defeated at Deyer. Your fleet has been destroyed."
+                    .to_owned(),
+                one.to_owned(),
+            ],
+            false,
+        );
+        assert_eq!(display(&texts, Some(true), None), lost);
+        // The enemy's withdrawal leaves the viewer's fleet destroyed.
+        assert_eq!(display(&texts, None, Some(true)), lost);
+        // Without the texts, the port's English says the same.
+        assert_eq!(display(&HashMap::new(), Some(true), None), lost);
+        assert_eq!(display(&HashMap::new(), Some(false), None).0[1], two);
+        assert_eq!(
+            display(&HashMap::new(), None, Some(false)).0[0],
+            "The Imperial fleet was defeated at Deyer. Your fleet has withdrawn."
+        );
+    }
+
+    #[test]
+    fn the_display_page_lays_out_its_buttons_like_the_original() {
+        // FUN_0046f360: the lines at (24, 40) and (24, 130), 328 wide; the
+        // system button 0xcb at (29, 182) with 0x2a0c, the fleet button
+        // 0xca at (229, 182) with 0x2a0d / 0x2a0e by the viewer, pressed
+        // 0x2a0f / 0x2a10; the labels at y 278, the fleet's 0x1942.
+        let lines = ["message".to_owned(), "instruction".to_owned()];
+        let red = Color::from_rgba(255, 0, 0, 255);
+        let ops = battle_display_page("Deyer", &lines, true, true, Some(DisplayButton::Fleet), red);
+        let bitmaps: Vec<(u32, f32, f32)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Bitmap { id, x, y, .. } => Some((*id, *x, *y)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            bitmaps,
+            [
+                (10763, 12.0, 13.0),
+                (10764, 29.0, 182.0),
+                (10767, 229.0, 182.0)
+            ]
+        );
+        let wrapped: Vec<(f32, f32, f32)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Wrapped {
+                    x,
+                    baseline,
+                    width,
+                    color,
+                    ..
+                } => {
+                    assert_eq!(*color, red);
+                    Some((*x, *baseline, *width))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(wrapped, [(24.0, 52.0, 328.0), (24.0, 142.0, 328.0)]);
+        let labels: Vec<(&str, f32, f32)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Text {
+                    text,
+                    x,
+                    baseline,
+                    centered: true,
+                    color,
+                    ..
+                } => {
+                    assert_eq!(*color, WHITE);
+                    Some((text.as_str(), *x, *baseline))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(labels, [("Deyer", 113.5, 292.0), ("Fleet", 313.5, 292.0)]);
+        // The Empire's viewer: its fleet art and pressed system art.
+        let ops = battle_display_page(
+            "Deyer",
+            &lines,
+            false,
+            true,
+            Some(DisplayButton::System),
+            red,
+        );
+        assert!(ops.contains(&PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: 10768,
+            x: 29.0,
+            y: 182.0
+        }));
+        assert!(ops.contains(&PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: 10766,
+            x: 229.0,
+            y: 182.0
+        }));
+        // No fleet: one button.
+        let ops = battle_display_page("Deyer", &lines, false, false, None, red);
+        assert!(!ops
+            .iter()
+            .any(|op| matches!(op, PageOp::Bitmap { x, .. } if *x == 229.0)));
+        assert!(!ops
+            .iter()
+            .any(|op| matches!(op, PageOp::Text { text, .. } if text == "Fleet")));
+    }
+
+    #[test]
+    fn the_display_buttons_answer_inside_their_rectangles() {
+        assert_eq!(
+            display_button_at(29.0, 182.0, false),
+            Some(DisplayButton::System)
+        );
+        assert_eq!(
+            display_button_at(197.9, 277.9, true),
+            Some(DisplayButton::System)
+        );
+        assert_eq!(display_button_at(198.0, 200.0, true), None);
+        assert_eq!(display_button_at(28.9, 200.0, true), None);
+        assert_eq!(display_button_at(100.0, 181.9, true), None);
+        assert_eq!(display_button_at(100.0, 278.0, true), None);
+        assert_eq!(
+            display_button_at(229.0, 182.0, true),
+            Some(DisplayButton::Fleet)
+        );
+        assert_eq!(
+            display_button_at(397.9, 277.9, true),
+            Some(DisplayButton::Fleet)
+        );
+        assert_eq!(display_button_at(300.0, 200.0, false), None);
     }
 
     #[test]

@@ -330,7 +330,11 @@ cross-runtime proof remain open
     It has Operational and Destroyed columns (Survivors, Captured and
     Killed for personnel), the category bar and the original empty-column
     lines. The port's Damaged column is gone
-    (`evidence/2026-10-22-battle-summary-forces/`).
+    (`evidence/2026-10-22-battle-summary-forces/`). The summary page,
+    the report's TEXTSTRA sentences for the viewer and the Display page
+    (message line, instruction, system and viewer-fleet buttons) followed
+    the same day (`evidence/2026-10-22-battle-summary-page/`,
+    `2026-10-22-battle-report-texts/`, `2026-10-22-battle-display-page/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

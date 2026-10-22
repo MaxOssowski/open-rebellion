@@ -83,3 +83,33 @@ port:
 - No scroll bar; the list shows its first rows.
 - A regiment is lost when the surviving ships cannot carry it, or at
   strength 0. This is the port's earlier rule.
+
+## The Display page (read 2026-10-22)
+
+`FUN_0046f360` paints the message line `+0xac` at (24, 40), 328 wide,
+word-wrapped, font 6 (18 px), and the instruction `+0xb8` at (24, 130),
+328 wide, font 7 (18 px bold; `FUN_0060eed0` builds the fonts), both in
+the viewer's colour. The report fills them:
+
+- the viewer's win (`FUN_0049b330`): `0x7012` "The {1:4} fleet is
+  victorious. The world {2:1} is now under {1:4} blockade." and `0x7013`
+  "Select one of the following buttons to close this display and go
+  directly to...";
+- the viewer's withdrawal (`FUN_0049b150` when `+0x54` is the viewer,
+  `FUN_0049b4d0` when `+0x54` is set): `0x7011` "The {1:4} fleet was
+  defeated at {2:1}. Your fleet has withdrawn to {3:1}." and `0x7013`;
+- otherwise `0x7010` "... Your fleet has been destroyed." and `0x7014`
+  "Select the following button ...".
+
+The system button `0xcb` sits at (29, 182), 169 by 96, art `0x2a0c`
+(10764), pressed `0x2a0f` / `0x2a10` by the viewer's side. The fleet
+button `0xca` sits at (229, 182) only when `FUN_004f36a0` finds the
+viewer's fleet at the system; it keeps that fleet at `+0x170`. Its art is
+`0x2a0d` / `0x2a0e` by the viewer's side, pressed `0x2a0f` / `0x2a10`.
+The labels sit under the buttons at y 278 (`0x116`), 169 wide, centred,
+white, font 4: the system's name, and "Fleet" (string `0x1942`).
+
+Ported in `tactical_view.rs` (`battle_display_lines`,
+`battle_display_page`). port: the withdrawn fleet's destination is
+decided after the report, so `0x7011` drops " to {3:1}". The fleet
+button follows the text: it shows when the viewer won or withdrew.

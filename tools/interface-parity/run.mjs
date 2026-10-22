@@ -3166,11 +3166,15 @@ async function probeTacticalBattleResultsPresentation(
     ),
   }, {
     type: "battle-results-destination-background",
+    // FUN_0046f360: the message line at (24, 40) and the instruction at
+    // (24, 130), 328 wide; the buttons at (29, 182) and (229, 182); their
+    // labels at y 278 (window coordinates; the art sits at (12, 13)).
     ...verifyStrategyBitmap(viewport, capture, 10763, 97, 87, [
-      { x: 0, y: 20, width: 400, height: 45 },
-      { x: 0, y: 142, width: 400, height: 40 },
+      { x: 0, y: 24, width: 400, height: 70 },
+      { x: 0, y: 114, width: 400, height: 55 },
       { x: 17, y: 169, width: 169, height: 96 },
       { x: 217, y: 169, width: 169, height: 96 },
+      { x: 0, y: 265, width: 400, height: 22 },
     ]),
   }, {
     type: "battle-results-system-destination",
