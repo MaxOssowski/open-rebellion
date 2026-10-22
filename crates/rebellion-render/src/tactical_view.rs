@@ -8674,6 +8674,8 @@ mod tests {
             combat_speed: 1,
             step_accumulator: 0.0,
             winner: None,
+            retreat_allowed: [false; 2],
+            retreat_done: [false; 2],
             diagnostic_log: Vec::new(),
         }
     }

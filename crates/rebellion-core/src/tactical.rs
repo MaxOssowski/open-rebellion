@@ -1264,6 +1264,14 @@ pub struct BattleSession {
     pub step_accumulator: f32,
     /// Winner once battle ends (None during combat).
     pub winner: Option<CombatWinner>,
+    /// Each side's retreat order from the battle choice (Alliance, Empire;
+    /// `FUN_004362b0`'s `+0x3c` word). Both modes share the battle object
+    /// and its side commanders (`FUN_00596f30`, `abstract-battle.md`), so
+    /// in the tactical battle too an AI side with the order leaves under
+    /// `FUN_005d19a0`.
+    pub retreat_allowed: [bool; 2],
+    /// Whether each side has left (Alliance, Empire).
+    pub retreat_done: [bool; 2],
     /// Diagnostic lines the simulation produced since the host last drained
     /// them; the host prints each one on its own console.
     pub diagnostic_log: Vec<String>,
@@ -3236,6 +3244,8 @@ impl BattleSession {
             combat_speed: 1,
             step_accumulator: 0.0,
             winner: None,
+            retreat_allowed: [false; 2],
+            retreat_done: [false; 2],
             diagnostic_log: Vec::new(),
         };
         FleetBattle {
@@ -4372,6 +4382,7 @@ impl BattleSession {
         // batteries. Their own readiness and recharge record gates each shot.
         self.fighter_step();
         self.advance_original_trench_run(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        self.ai_side_leaves();
 
         // Check for battle end.
         let atk_remaining = self.ships.iter().any(|s| s.is_attacker && s.alive)
@@ -5307,6 +5318,28 @@ impl BattleSession {
         } else {
             TacticalVoiceFaction::Empire
         }
+    }
+
+    /// The AI side's commander, `FUN_005d14d0` step 5: with its retreat
+    /// order it leaves when `FUN_005d19a0` says so, as in the abstract
+    /// battle (`abstract_battle::leave`). The field counts a unit that left
+    /// as gone. port: the jump is not drawn.
+    fn ai_side_leaves(&mut self) {
+        let alliance = self.attacker_is_alliance != self.player_is_attacker;
+        let side = usize::from(!alliance);
+        if !self.retreat_allowed[side]
+            || self.retreat_done[side]
+            || !crate::abstract_battle::side_should_leave(self, alliance)
+        {
+            return;
+        }
+        crate::abstract_battle::leave(self, alliance);
+        for ship in &mut self.ships {
+            if ship.retreated {
+                ship.alive = false;
+            }
+        }
+        self.retreat_done[side] = true;
     }
 
     pub fn queue_battle_outcome_voice(&mut self, winner: CombatWinner) {

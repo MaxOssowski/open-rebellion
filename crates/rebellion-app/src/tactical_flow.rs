@@ -216,7 +216,10 @@ pub(crate) fn apply_results(
                     if let Some(class) = world.capital_ship_classes.get(ship_inst.class) {
                         ship_inst.subsystem_hits = result.strategic_hits(class);
                     }
-                    ship_inst.alive = result.alive && ship_inst.hull_current > 0;
+                    // A ship that escaped (state 9, FUN_005af910) left the
+                    // field but is not destroyed.
+                    ship_inst.alive =
+                        (result.alive || result.retreated) && ship_inst.hull_current > 0;
                     if !ship_inst.alive {
                         ship_inst.hull_current = 0;
                     }
@@ -699,6 +702,40 @@ mod tests {
         assert!(!world.systems[system].fleets.contains(&reserve));
         assert_eq!(world.fleets[attacker].capital_ships[0].hull_current, 40);
         assert_eq!(world.fleets[defender].capital_ships[0].hull_current, 100);
+    }
+
+    #[test]
+    fn a_ship_that_escaped_the_battle_keeps_its_hull() {
+        // FUN_005d14d0 step 5: a capital ship with a working hyperdrive
+        // escapes (FUN_005af910, state 9); it is not destroyed, as in the
+        // abstract battle (`AbstractBattle::retreat`).
+        let (mut world, system, attacker, defender) = opposing_empty_fleets();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Corvette".into(),
+            hull: 100,
+            ..Default::default()
+        });
+        for fleet in [attacker, defender] {
+            let is_alliance = world.fleets[fleet].is_alliance;
+            world.fleets[fleet]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, is_alliance));
+        }
+        let mut session =
+            BattleSession::new(&world, system, attacker, defender, true, 23, 0x1111_0006);
+        // The tactical battle's leave: off the field, no longer alive there.
+        session.ships[0].hull_current = 80;
+        session.ships[0].alive = false;
+        session.ships[0].retreated = true;
+        session.winner = Some(CombatWinner::Defender);
+
+        apply_results(&session, &mut world, &mut TroopTransportState::default());
+
+        assert!(world.fleets.contains_key(attacker));
+        let ship = &world.fleets[attacker].capital_ships[0];
+        assert!(ship.alive);
+        assert_eq!(ship.hull_current, 80);
     }
 
     #[test]

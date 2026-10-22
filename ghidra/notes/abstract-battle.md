@@ -367,8 +367,14 @@ is the side commander's `+0x24` = 0.33.
 - The player's Battle Alert: Simulate Results gives no order, and Retreat
   (`TacticalAction::RetreatBeforeBattle`) gives one. Both run the abstract
   battle. Retreat no longer opens the tactical battle.
-- `port:` Take Command (the tactical battle) does not yet pass the AI
-  side's order to the tactical engine.
+- Take Command (2026-10-23): the AI side's order is set on the tactical
+  session at the battle's start (`BattleSession::retreat_allowed`; the
+  player's side stays unset), and each tactical step asks
+  `abstract_battle::side_should_leave` (`FUN_005d19a0`) for the AI side
+  and runs the same `leave` (`FUN_005d14d0` step 5). A ship that escaped
+  keeps its hull in the strategic result (`tactical_flow::apply_results`);
+  before, the tactical battle counted it destroyed. port: the jump is not
+  drawn.
 
 ## The Death Star in the abstract battle (read 2026-10-21, W2i)
 

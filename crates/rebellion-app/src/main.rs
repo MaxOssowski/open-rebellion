@@ -2156,6 +2156,23 @@ async fn main() {
                         continue;
                     }
                     battle_sorties = sorties;
+                    // FUN_00485d50: the AI side answers the battle choice
+                    // with its retreat order, which Take Command's battle
+                    // keeps (the battle object is shared by both modes).
+                    let ais: Vec<&AIState> = std::iter::once(&ai_state)
+                        .chain(&secondary_ai_state)
+                        .collect();
+                    let orders = rebellion_core::ai_strategy::retreat_orders(
+                        &ais,
+                        &world,
+                        &movement_state,
+                        &troop_transport_state,
+                        sys_key,
+                    );
+                    if let Some(session) = tactical_state.session.as_mut() {
+                        session.retreat_allowed = orders;
+                        session.retreat_allowed[usize::from(!player_is_alliance)] = false;
+                    }
                     tactical_state.set_display_options(game_options_state.tactical_flags());
                     #[cfg(not(target_arch = "wasm32"))]
                     audio_engine.play_sfx(SfxKind::CombatStart, &audio_vol);
@@ -10150,6 +10167,8 @@ mod tactical_ground_tests {
             combat_speed: 1,
             step_accumulator: 0.0,
             winner: Some(rebellion_render::CombatWinner::Attacker),
+            retreat_allowed: [false; 2],
+            retreat_done: [false; 2],
             diagnostic_log: Vec::new(),
         };
 
