@@ -1228,24 +1228,19 @@ fn draw_missions_window(
                         .and_then(|mini| cache.original_resource_size(DllSource::Gokres, mini));
                     if let Some(mini) = member.mini {
                         let (x, y) = size.map_or((0.0, 0.0), |size| centered(MEMBER_IMAGE, size));
-                        paint_native(
-                            &member_painter,
-                            ctx,
-                            cache,
-                            DllSource::Gokres,
-                            mini,
-                            cell,
-                            scale,
-                            x,
-                            y,
-                        );
-                        if let Some((source, mark)) = member.en_route {
+                        // FUN_0042c3b0: the mark under the mini, which is
+                        // blitted keyed over it (`fleet-window.md`).
+                        for (source, id) in member
+                            .en_route
+                            .into_iter()
+                            .chain(std::iter::once((DllSource::Gokres, mini)))
+                        {
                             paint_native(
                                 &member_painter,
                                 ctx,
                                 cache,
                                 source,
-                                mark,
+                                id,
                                 cell,
                                 scale,
                                 x,

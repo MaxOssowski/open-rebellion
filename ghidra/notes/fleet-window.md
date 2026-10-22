@@ -201,7 +201,14 @@ object through `FUN_0042c3b0(gokres, id, object, picture, 1)`: `picture` 0
 for a mini (GOKRES `(class & 0xfff) + 0x4000`), 1 for a portrait (`& 0xfff`).
 Its last argument draws the status marks. The en route mark needs `+0x50`
 bit 4 set and bit 3 (destroyed) clear, and goes at the image's origin
-(`FUN_005fd0f0(.., 0, 0)`, keyed):
+(`FUN_005fd0f0(.., 0, 0)`, keyed). The marks go into the image's bitmap
+first (`0x42ca71`..`0x42cc87`: the mark is `ECX`, the bitmap the pushed
+destination) and the object is blitted keyed over them last (`0x42ccd9`),
+so every mark shows behind the object, through its matte (corrected
+2026-10-22; the port drew them over it). A damaged object (bit `0x200`)
+also takes its GOKRES mark `+0x6000` (mini) or `+0x2000` (portrait), or
+STRATEGY 11502 for a character's or special force's mini
+(`status-window.md`):
 
 | Object (`id >> 24`) | Mini | Portrait |
 |---|---|---|
@@ -216,7 +223,8 @@ bit 4 set and bit 3 (destroyed) clear, and goes at the image's origin
 The excepted regiment and special force classes keep the GOKRES default,
 and GOKRES has exactly those four marks (21569, 21634, 21826, 21888). The
 craft marks are engine glows on the blue key; the STRATEGY marks and the
-four class marks are starfields with one key pixel, so they cover the mini.
+four class marks are starfields with one key pixel, which show around the
+object through its matte.
 `FUN_004f8240` makes an object en route while its container is, so every
 ship, squadron, regiment and character aboard a travelling fleet carries
 its mark. The manual's "blue engine glow" (Fleet window, pp. 112-113) and

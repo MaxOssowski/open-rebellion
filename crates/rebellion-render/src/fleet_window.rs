@@ -68,8 +68,8 @@ pub(crate) enum MiniObject {
     SpecialForce(DatId),
 }
 
-/// The mark `FUN_0042c3b0(.., 0, 1)` draws over an en route object's `mini`
-/// (`+0x50` bit 4 set, bit 3 clear), at the mini's origin. Its default is the
+/// The mark `FUN_0042c3b0(.., 0, 1)` draws for an en route object's `mini`
+/// (`+0x50` bit 4 set, bit 3 clear), at the mini's origin, under the mini. Its default is the
 /// object's own GOKRES mark `(class & 0xfff) + 0x5000`, the mini's id plus
 /// `0x1000`; it stays for craft, regiment classes `0x10000002` and
 /// `0x10000008`, and special force classes `0x3c000003` and `0x3c000005`.
@@ -90,6 +90,39 @@ pub(crate) fn en_route_mark(object: MiniObject, mini: u32) -> (DllSource, u32) {
             _ => (DllSource::Strategy, EN_ROUTE_PERSONNEL),
         },
     }
+}
+
+/// The mark `FUN_0042c3b0(.., 0, 1)` draws for a damaged object (`+0x50`
+/// bit `0x200`): the object's own GOKRES mark `(class & 0xfff) + 0x6000`,
+/// the mini's id plus `0x2000`, but STRATEGY 11502 (`0x2cee`) for
+/// personnel (`0x30..0x3f`).
+pub(crate) fn damage_mark(object: MiniObject, mini: u32) -> (DllSource, u32) {
+    match object {
+        MiniObject::Character | MiniObject::SpecialForce(_) => (DllSource::Strategy, DAMAGED_PERSONNEL),
+        MiniObject::Craft | MiniObject::Regiment(_) => (DllSource::Gokres, mini + 0x2000),
+    }
+}
+
+/// STRATEGY 11502 (`0x2cee`): the damage mark of a character's mini.
+const DAMAGED_PERSONNEL: u32 = 11_502;
+
+/// `FUN_0042c3b0`'s marks for a mini, bottom to top under the object: en
+/// route (`+0x50` bit `0x10`), then damaged (bit `0x200`). The object is
+/// blitted keyed over them last, so they show through its matte.
+pub(crate) fn mini_marks(
+    object: MiniObject,
+    mini: u32,
+    en_route: bool,
+    damaged: bool,
+) -> Vec<(DllSource, u32)> {
+    let mut marks = Vec::new();
+    if en_route {
+        marks.push(en_route_mark(object, mini));
+    }
+    if damaged {
+        marks.push(damage_mark(object, mini));
+    }
+    marks
 }
 
 /// A craft's GOKRES portrait (`FUN_0042c3b0(.., 1, ..)`: `class & 0xfff`),
@@ -1063,6 +1096,8 @@ struct RightItem {
     kind: MiniObject,
     label: String,
     no_hyperdrive: bool,
+    /// A damaged ship (`+0x50` bit `0x200`, `FUN_00501c00`).
+    damaged: bool,
     /// The regiment or ship the item stands for.
     object: Option<ItemObject>,
 }
@@ -1155,8 +1190,10 @@ fn right_items(
             .iter()
             .enumerate()
             .filter(|(_, ship)| ship.alive)
-            .filter_map(|(index, ship)| Some((index, world.capital_ship_classes.get(ship.class)?)))
-            .map(|(index, class)| RightItem {
+            .filter_map(|(index, ship)| {
+                Some((index, ship, world.capital_ship_classes.get(ship.class)?))
+            })
+            .map(|(index, ship, class)| RightItem {
                 mini: capital_ship_mini_id(class.dat_id),
                 kind: MiniObject::Craft,
                 // FUN_004f6270: the ship's own name, else its class's.
@@ -1165,6 +1202,7 @@ fn right_items(
                     .unwrap_or(&class.name)
                     .to_owned(),
                 no_hyperdrive: class.hyperdrive == 0,
+                damaged: crate::status_rows::damaged(ship, class),
                 object: Some(ItemObject::Ship {
                     fleet,
                     index,
@@ -1186,6 +1224,7 @@ fn right_items(
                     kind: MiniObject::Craft,
                     label: class.name.clone(),
                     no_hyperdrive: false,
+                    damaged: false,
                     object: Some(ItemObject::Fighter { fleet, index }),
                 })
             })
@@ -1202,6 +1241,7 @@ fn right_items(
                 kind: MiniObject::Regiment(class),
                 label: label.to_owned(),
                 no_hyperdrive: false,
+                damaged: false,
                 object: Some(ItemObject::Regiment(key)),
             })
             .collect(),
@@ -1214,6 +1254,7 @@ fn right_items(
                 kind: MiniObject::Character,
                 label: character.name.clone(),
                 no_hyperdrive: false,
+                damaged: false,
                 object: Some(ItemObject::Character(key)),
             })
             .collect(),
@@ -1707,25 +1748,27 @@ fn draw_fleet_window(
                         // untraced, so its entry draws as unselected.
                         if let Some(class) = class {
                             if let Some(mini) = capital_ship_mini_id(class.dat_id) {
-                                paint_native(
-                                    &list_painter,
-                                    ctx,
-                                    cache,
-                                    DllSource::Gokres,
+                                let damaged = world
+                                    .fleets
+                                    .get(fleet)
+                                    .and_then(|value| value.capital_ships.get(index))
+                                    .is_some_and(|ship| crate::status_rows::damaged(ship, class));
+                                let marks = mini_marks(
+                                    MiniObject::Craft,
                                     mini,
-                                    item,
-                                    scale,
-                                    5.0,
-                                    15.0,
+                                    movement.is_in_transit(fleet),
+                                    damaged,
                                 );
-                                if movement.is_in_transit(fleet) {
-                                    let (source, mark) = en_route_mark(MiniObject::Craft, mini);
+                                for (source, id) in marks
+                                    .into_iter()
+                                    .chain(std::iter::once((DllSource::Gokres, mini)))
+                                {
                                     paint_native(
                                         &list_painter,
                                         ctx,
                                         cache,
                                         source,
-                                        mark,
+                                        id,
                                         item,
                                         scale,
                                         5.0,
@@ -1828,18 +1871,24 @@ fn draw_fleet_window(
                     }
                 }
                 if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
-                    let mini = world
+                    let ship = world
                         .fleets
                         .get(fleet)
                         .and_then(|value| value.capital_ships.get(index))
-                        .and_then(|ship| world.capital_ship_classes.get(ship.class))
-                        .and_then(|class| capital_ship_mini_id(class.dat_id));
-                    if let Some(mini) = mini {
+                        .and_then(|ship| Some((ship, world.capital_ship_classes.get(ship.class)?)));
+                    let mini = ship.and_then(|(_, class)| capital_ship_mini_id(class.dat_id));
+                    if let (Some(mini), Some((ship, class))) = (mini, ship) {
+                        // FUN_0042c3b0(.., 1, 1): the marks under the
+                        // portrait, which is blitted keyed over them.
                         let portrait = ship_portrait(mini);
-                        let mut layers = vec![portrait];
+                        let mut layers = Vec::new();
                         if movement.is_in_transit(fleet) {
                             layers.push(en_route_portrait_mark(portrait));
                         }
+                        if crate::status_rows::damaged(ship, class) {
+                            layers.push(portrait + 0x2000);
+                        }
+                        layers.push(portrait);
                         // The panel is a 125 by 49 bitmap; the 50-row
                         // portrait loses its last row.
                         let panel = painter.with_clip_rect(logical_rect(
@@ -1974,25 +2023,17 @@ fn draw_fleet_window(
                         );
                     }
                     if let Some(mini) = item.mini {
-                        paint_native(
-                            &right_painter,
-                            ctx,
-                            cache,
-                            DllSource::Gokres,
-                            mini,
-                            cell,
-                            scale,
-                            28.0,
-                            4.0,
-                        );
-                        if travelling {
-                            let (source, mark) = en_route_mark(item.kind, mini);
+                        let marks = mini_marks(item.kind, mini, travelling, item.damaged);
+                        for (source, id) in marks
+                            .into_iter()
+                            .chain(std::iter::once((DllSource::Gokres, mini)))
+                        {
                             paint_native(
                                 &right_painter,
                                 ctx,
                                 cache,
                                 source,
-                                mark,
+                                id,
                                 cell,
                                 scale,
                                 28.0,
@@ -2527,6 +2568,7 @@ pub(crate) mod tests {
                 kind: MiniObject::Regiment(DatId::new(0x1000_0001)),
                 label: "Alliance Fleet Regiment".into(),
                 no_hyperdrive: false,
+                damaged: false,
                 object: Some(ItemObject::Regiment(troop)),
             }]
         );
@@ -3951,7 +3993,7 @@ pub(crate) mod tests {
         // FUN_004a37c0 draws 10423 at the entry's (5, 5) on +0x50 bit 4 and
         // FUN_004a5c00 10426 over the one selected fleet's picture. Its ships
         // are en route with it (FUN_004f8240), so FUN_0042c3b0 draws each
-        // mini's own mark (+0x1000) over the ship entry's mini at (5, 15)
+        // mini's own mark (+0x1000) under the ship entry's mini at (5, 15)
         // (FUN_004a3d40) and the right item's at (28, 4) (FUN_004a6e70).
         let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
         let fleet = add_fleet(&mut world, system, true, 0);
@@ -4006,8 +4048,11 @@ pub(crate) mod tests {
         );
 
         // One ship selected: its portrait (FUN_0042c3b0(.., 1, 1), the mini
-        // less 0x4000) at the panel's origin, and its own mark (+0x1000)
-        // over it while en route.
+        // less 0x4000) at the panel's origin, over its own mark (+0x1000)
+        // while en route. FUN_0042c3b0 blits each mark into the picture's
+        // bitmap first (0x42ca71..0x42cc87) and the object keyed last
+        // (0x42ccd9), so the mark shows behind it (manual pp. 96-97: the
+        // starfield behind the portrait). The same holds for the minis.
         if let Some(window) = state.window_mut(system) {
             window.selected = Some(FleetWindowEntry::Ship { fleet, index: 0 });
         }
@@ -4016,10 +4061,88 @@ pub(crate) mod tests {
         let panel = at(100.0, 42.0);
         assert!(ship.contains(&(portrait, panel)), "{ship:?}");
         assert!(ship.contains(&(portrait + 0x1000, panel)), "{ship:?}");
-        assert!(order(&ship, portrait) < order(&ship, portrait + 0x1000));
+        assert!(order(&ship, portrait + 0x1000) < order(&ship, portrait));
+        assert!(order(&en_route, mini + 0x1000) < order(&en_route, mini));
         let orbiting = paint(&mut state, &MovementState::default());
         assert!(orbiting.contains(&(portrait, panel)), "{orbiting:?}");
         assert!(!orbiting.iter().any(|(id, _)| *id == portrait + 0x1000));
+    }
+
+    #[test]
+    fn a_damaged_ship_shows_its_damage_mark_under_its_mini_and_portrait() {
+        // FUN_0042c3b0 (+0x50 bit 0x200): GOKRES mini + 0x2000 ((class &
+        // 0xfff) + 0x6000) and portrait + 0x2000, under the object; a ship
+        // is damaged with hull damage or a hit (FUN_00501c00).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[class].dat_id = DatId::new(0x1400_0040);
+        world.capital_ship_classes[class].hull = 100;
+        world.fleets[fleet].capital_ships[0].hull_current = 100;
+        let mini = capital_ship_mini_id(world.capital_ship_classes[class].dat_id).unwrap();
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.expanded.push(fleet);
+        }
+        let movement = MovementState::default();
+        let paint = |world: &GameWorld, state: &mut FleetWindowState| {
+            run_moving(
+                world,
+                &movement,
+                &transport,
+                state,
+                CockpitFaction::Alliance,
+                hover(at(-50.0, 0.0)),
+            )
+            .painted
+        };
+        let whole = paint(&world, &mut state);
+        assert!(!whole.iter().any(|(id, _)| *id == mini + 0x2000));
+        world.fleets[fleet].capital_ships[0]
+            .set_hits(rebellion_core::world::Subsystem::Tractor, 1);
+        let hit = paint(&world, &mut state);
+        let order = |painted: &[(u32, egui::Pos2)], id, at: egui::Pos2| {
+            painted.iter().position(|entry| *entry == (id, at))
+        };
+        for spot in [at(9.0, 94.0), at(129.0, 131.0)] {
+            let mark = order(&hit, mini + 0x2000, spot);
+            assert!(mark.is_some(), "{spot:?} {hit:?}");
+            assert!(mark < order(&hit, mini, spot), "{hit:?}");
+        }
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Ship { fleet, index: 0 });
+        }
+        let portrait = mini - 0x4000;
+        let panel = at(100.0, 42.0);
+        let selected = paint(&world, &mut state);
+        let mark = order(&selected, portrait + 0x2000, panel);
+        assert!(mark.is_some(), "{selected:?}");
+        assert!(mark < order(&selected, portrait, panel));
+    }
+
+    #[test]
+    fn the_marks_of_a_mini_stack_en_route_then_damaged() {
+        // FUN_0042c3b0: en route first, then damaged; personnel take
+        // STRATEGY 11502 for damage.
+        assert_eq!(mini_marks(MiniObject::Craft, 17_473, false, false), []);
+        assert_eq!(
+            mini_marks(MiniObject::Craft, 17_473, true, true),
+            [(DllSource::Gokres, 21_569), (DllSource::Gokres, 25_665)]
+        );
+        assert_eq!(
+            mini_marks(MiniObject::Character, 17_473, false, true),
+            [(DllSource::Strategy, 11_502)]
+        );
+        assert_eq!(
+            damage_mark(MiniObject::SpecialForce(DatId::new(0x3c00_0001)), 1),
+            (DllSource::Strategy, 11_502)
+        );
+        assert_eq!(
+            damage_mark(MiniObject::Regiment(DatId::new(0x1000_0001)), 1),
+            (DllSource::Gokres, 0x2001)
+        );
     }
 
     #[test]

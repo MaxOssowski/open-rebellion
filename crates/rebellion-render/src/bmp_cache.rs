@@ -1835,9 +1835,10 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 1_600..=1_935
                 | 2_112..=2_715
                 | 5_696..=6_031
-                // The craft portraits' damage marks (`+0x2000`,
-                // `0x2640..0x278f`, `FUN_0042c3b0`).
+                // The craft portraits' and minis' damage marks (`+0x2000`,
+                // `0x2640..0x278f` and `0x6640..0x678f`, `FUN_0042c3b0`).
                 | 9_792..=10_127
+                | 26_176..=26_511
                 | 16_000..=19_999
                 | 20_480..=22_527
                 | 23_552..=23_807
@@ -2342,6 +2343,8 @@ mod tests {
             (DllSource::Strategy, 11_520),
             (DllSource::Gokres, 0x2640),
             (DllSource::Gokres, 0x278f),
+            (DllSource::Gokres, 0x6640),
+            (DllSource::Gokres, 0x678f),
         ] {
             assert!(uses_blue_screen_transparency(source, resource_id), "{resource_id}");
         }
@@ -2349,6 +2352,8 @@ mod tests {
             (DllSource::Strategy, 11_515),
             (DllSource::Gokres, 0x263f),
             (DllSource::Gokres, 0x2790),
+            (DllSource::Gokres, 0x663f),
+            (DllSource::Gokres, 0x6790),
         ] {
             assert!(!uses_blue_screen_transparency(source, resource_id), "{resource_id}");
         }

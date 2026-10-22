@@ -299,7 +299,7 @@ fn alive_ships(
 
 /// hyp: the port's nearest field to the damage bit (`+0x50` bit `0x200`):
 /// a hull below its class's.
-fn damaged(ship: &ShipInstance, class: &CapitalShipClass) -> bool {
+pub(crate) fn damaged(ship: &ShipInstance, class: &CapitalShipClass) -> bool {
     ship.subsystem_hits != 0 || u32::try_from(ship.hull_current).unwrap_or(0) < class.hull
 }
 
