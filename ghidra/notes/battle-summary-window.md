@@ -40,6 +40,35 @@ font `0xb`, and the rest at (24, 255), 352 wide, word-wrapped, font 6,
 over a black shadow at (25, 256). All take the viewer's colour (`0xff`,
 or `0xff00` for side 2). guide-059 shows it.
 
+## The report's texts
+
+The report class (vtable `0x0065bc08`, built by `FUN_0049ac00` for one
+viewer) stores the title `0x7001` at `+0x88`, the headline at `+0x94`, the
+body at `+0xa0` (its sentences appended), the message line at `+0xac`
+and the Display page's line (`0x7013`/`0x7014`) at `+0xb8`. Fields:
+`+0x50` the winner and `+0x54` the side that withdrew (the system's
+`+0x78` bits 0..1 and 2..3, `FUN_0049b060` on `0x14d`), `+0x58` the
+viewer's side, `+0x5c` from the source's `+0x4c`, `+0x48` the withdrawn
+fleet's destination. `FUN_0049b0f0` calls `FUN_0049b150` with no winner,
+`FUN_0049b330` for the viewer's win and `FUN_0049b4d0` for its loss:
+
+- no winner: `0x7004` "The battle at {1:1} is indecisive."; `0x700e`
+  "There has been no victor."; then `0x700f` "All {1:4} and {2:4} ships
+  have been destroyed." when nobody withdrew. When the viewer withdrew it
+  is `0x700d` "...withdrawn to {2:1}." and the enemy's `0x700b`. When the
+  enemy withdrew it is the viewer's `0x700b` and the enemy's `0x700c`;
+- the viewer's win: `0x7002` "The {1:4} fleet is victorious."; by the
+  system's side: neutral `0x7007` "cleared of {enemy}", the viewer's
+  `0x7005` "successfully defended from {enemy}", the enemy's `0x7006`
+  "now under blockade by {viewer}". When `+0x5c` equals the system's side
+  it is instead `0x7016` "broken the blockade" or `0x7015` "maintained
+  the blockade". Then the enemy's `0x700b` "completely destroyed" or
+  `0x700c` "withdrawn";
+- the viewer's loss: `0x7003` "The {1:4} fleet is defeated."; by the
+  system's side: neutral `0x700a`, the viewer's `0x7008` "now under
+  blockade by {enemy}", the enemy's `0x7009` "The {viewer} attack on
+  {1:1} has failed."; then the viewer's `0x700b` or `0x700d`.
+
 ## Ported (2026-10-22)
 
 `tactical_view.rs` (`battle_force_page`, `battle_summary_page`, drawn by

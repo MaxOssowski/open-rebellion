@@ -21,7 +21,7 @@ use rebellion_core::world::GameWorld;
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::defenses_window::title_resource;
-use crate::fleet_window::{en_route_mark, faction_side, mini_marks, paint_native, MiniObject};
+use crate::fleet_window::{faction_side, mini_marks, paint_native, MiniObject};
 use crate::mission_dialog::{kind_icon, kind_name};
 use crate::panels::fleets::capital_ship_mini_id;
 use crate::quadrant_icons::{mission_keys, missions_side, visible_members};
@@ -1307,6 +1307,7 @@ fn draw_missions_window(
 mod tests {
     use super::*;
     use crate::cockpit::CockpitViewport;
+    use crate::fleet_window::en_route_mark;
     use crate::fleet_window::tests::PAINTED;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::ids::DatId;

@@ -960,6 +960,8 @@ async fn main() {
     // The original message titles and bodies, from the player's own
     // TEXTSTRA.DLL (or the table extracted from it for the browser).
     let message_texts = rebellion_data::message_texts(&gdata_path);
+    // The battle report's sentences (TEXTSTRA RCDATA 0x7001..0x7016).
+    rebellion_render::tactical_view::set_battle_texts(message_texts.clone());
 
     // The Galactic Encyclopedia is immutable reference data, not campaign
     // state. Rebuild it from the installed DAT/TEXTSTRA source so opening the
