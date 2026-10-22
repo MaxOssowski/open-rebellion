@@ -110,6 +110,12 @@ Pages (`FUN_0044e3d0`):
   (226, 182), `0x2a0d`/`0x2a0f` (Alliance) or `0x2a0e`/`0x2a10`, labelled
   "Fleet" `0x1942`.
 
+The paint slot (`FUN_0044e290`, slot `+0x44`) draws on a forces page the
+rail button's label at (12, 36), 347 wide, centred, font 6, in the
+attacker's colour, and the category button's label at (38, 100), 400
+wide, left-aligned, font 4, white (guide-062: "System Forces", "Trooper
+Regiments"). A row shows its unit's name under the picture (item `+0x34`).
+
 Commands (`FUN_0044df90`, keys `FUN_0044e180`):
 - `10` Close, or Escape: closes the window and marks the message
   (`FUN_00469d60(+0x18)`).

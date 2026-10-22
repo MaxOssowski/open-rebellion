@@ -391,6 +391,21 @@ fn unit_picture(unit: &ReportUnit) -> Option<u32> {
     mini.checked_sub(0x4000)
 }
 
+/// The height a row keeps under its picture for the name.
+const NAME_HEIGHT: f32 = 14.0;
+
+/// A category button's label (`FUN_0044c630`), shown over the columns.
+const fn category_label(category: ReportCategory) -> &'static str {
+    match category {
+        ReportCategory::CapitalShips => "Capital Ships",
+        ReportCategory::Fighters => "Fighter Squadrons",
+        ReportCategory::Manufacturing => "Manufacturing",
+        ReportCategory::Defense => "Defense Facilities",
+        ReportCategory::Troops => "Trooper Regiments",
+        ReportCategory::Personnel => "Personnel",
+    }
+}
+
 /// The backdrop `FUN_0042c3b0` lays under a row's picture
 /// (`FUN_0044edb0`): a regiment's portrait stands on STRATEGY 11514, a
 /// personnel mini on 11500 (`fleet-window.md`). port: the report keeps no
@@ -607,6 +622,18 @@ fn draw_window(
                     };
                     paint(cache, DllSource::Strategy, art, PAGE.0, PAGE.1);
                     text(&window.title, 12.0, 13.0, 400.0, 14.0, color);
+                    // FUN_0044e290: the page's rail label at (12, 36), 347 wide,
+                    // centred, in the attacker's colour; the category's label at
+                    // (38, 100), white, left-aligned.
+                    let (_, _, page_label) = rail_art(window.page, report, viewer);
+                    text(&page_label, 12.0, 36.0, 347.0, 11.0, color);
+                    painter.text(
+                        logical_rect(local, scale, 38.0, 100.0, 0.0, 0.0).min,
+                        egui::Align2::LEFT_TOP,
+                        category_label(window.category),
+                        egui::FontId::proportional((10.0 * scale).max(6.0)),
+                        egui::Color32::WHITE,
+                    );
                     for (index, category) in ReportCategory::ALL.into_iter().enumerate() {
                         let (normal, pressed) = category_art(category, viewer);
                         let (x, y) = (CATEGORY_BAR.0 + CATEGORY_X[index], CATEGORY_BAR.1);
@@ -648,37 +675,43 @@ fn draw_window(
                             for (row, unit) in shown.enumerate() {
                                 let (x, y) = cell_origin(window.category, column, row);
                                 let cell = logical_rect(local, scale, x, y, cell_w, cell_h);
-                                let painted = unit_picture(unit).and_then(|picture| {
-                                    for (source, id) in unit_backdrop(unit) {
+                                // The item's picture centred over its name
+                                // (`FUN_0044edb0`, item `+0x34`).
+                                let picture_box = logical_rect(
+                                    local,
+                                    scale,
+                                    x,
+                                    y,
+                                    cell_w,
+                                    cell_h - NAME_HEIGHT,
+                                );
+                                if let Some(picture) = unit_picture(unit) {
+                                    for (source, id) in unit_backdrop(unit)
+                                        .into_iter()
+                                        .chain(std::iter::once((DllSource::Gokres, picture)))
+                                    {
                                         paint_centered(
                                             &list_painter,
                                             ctx,
                                             cache,
                                             source,
                                             id,
-                                            cell,
+                                            picture_box,
                                             scale,
                                         );
                                     }
-                                    paint_centered(
-                                        &list_painter,
-                                        ctx,
-                                        cache,
-                                        DllSource::Gokres,
-                                        picture,
-                                        cell,
-                                        scale,
-                                    )
-                                });
-                                if painted.is_none() {
-                                    let galley = list_painter.layout(
-                                        unit.name.clone(),
-                                        egui::FontId::proportional((9.0 * scale).max(6.0)),
-                                        egui::Color32::WHITE,
-                                        cell_w * scale,
-                                    );
-                                    list_painter.galley(cell.min, galley, egui::Color32::WHITE);
                                 }
+                                let galley = list_painter.layout(
+                                    unit.name.clone(),
+                                    egui::FontId::proportional((9.0 * scale).max(6.0)),
+                                    egui::Color32::WHITE,
+                                    cell_w * scale,
+                                );
+                                let name_at = egui::pos2(
+                                    cell.center().x - galley.size().x / 2.0,
+                                    picture_box.max.y,
+                                );
+                                list_painter.galley(name_at, galley, egui::Color32::WHITE);
                                 let response = ui.interact(
                                     cell.intersect(list),
                                     ui.id().with((window.serial, "unit", column, row)),
@@ -1247,6 +1280,13 @@ mod tests {
     /// An Imperial assault on an Alliance system with three regiments.
     fn opened(regiments: usize) -> (AssaultSummaryState, SystemKey) {
         let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        world.buildable_classes.insert(
+            DatId::new(0x1000_0001),
+            rebellion_core::world::BuildableClass {
+                name: "Rebel Infantry".into(),
+                ..Default::default()
+            },
+        );
         for _ in 1..regiments {
             let troop = world.troops.insert(TroopUnit {
                 class_dat_id: DatId::new(0x1000_0001),
@@ -1318,6 +1358,14 @@ mod tests {
             has(&frame, "Operational").unwrap().0.y
         );
         // The attacker had no regiments: both columns are empty.
+        // FUN_0044e290: the page's rail label under the title, in the
+        // attacker's colour, and the category's label over the columns
+        // (guide-062: "System Forces" and "Trooper Regiments").
+        let (subtitle, colour) = has(&frame, "Imperial Forces").unwrap();
+        assert_eq!(colour, egui::Color32::from_rgb(0, 255, 0));
+        assert_eq!(subtitle.y, at(0.0, 36.0).y);
+        let (category, colour) = has(&frame, "Trooper Regiments").unwrap();
+        assert_eq!((category, colour), (at(38.0, 100.0), egui::Color32::WHITE));
         assert_eq!(has(&frame, "None").unwrap().0.y, at(0.0, 140.0).y);
         assert!(has(&frame, "No Casualties").is_some());
         let (font, _, wrap) = metrics(&frame, "None");
@@ -1330,16 +1378,23 @@ mod tests {
         assert_eq!(painted(&frame, 0x286c), [at(36.0, 59.0)]);
         let frame = run(&mut state, click(at(438.0, 215.0)));
         assert_eq!(state.report().unwrap().page, SummaryPage::SystemForces);
-        // No picture is loaded here, so each regiment shows its name.
+        // Each regiment's name shows under its picture's box.
         let names = frame
             .texts
             .iter()
-            .filter(|(text, ..)| text.is_empty())
+            .filter(|(text, ..)| text == "Rebel Infantry")
             .count();
         // Two rows fit; the third is drawn under the list's clip.
         assert_eq!(names, 3);
-        let (font, _, wrap) = metrics(&frame, "");
+        assert!(has(&frame, "System Forces").is_some());
+        // The name is centred in its cell, under the cell less 14.
+        let (first, _) = has(&frame, "Rebel Infantry").unwrap();
+        let (font, size, wrap) = metrics(&frame, "Rebel Infantry");
         assert_eq!((font, wrap), (18.0, 330.0));
+        assert_eq!(first.y, at(0.0, 136.0 + 70.0 - 14.0).y);
+        assert_eq!(first.x, at(37.0 + 165.0 / 2.0, 0.0).x - size.x / 2.0);
+        let (font, ..) = metrics(&frame, "Trooper Regiments");
+        assert_eq!(font, 20.0);
         assert!(has(&frame, "None").is_none());
         // The wheel scrolls the third into view.
         let wheel = egui::Event::MouseWheel {
