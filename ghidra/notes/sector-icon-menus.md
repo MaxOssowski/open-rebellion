@@ -116,6 +116,17 @@ into sub-orders").
   (`main.rs`) validates every member (`FUN_0053c1a0`: one refusal refuses
   all), asks once when any member's `FUN_00487cc0` rule asks, listing a line
   per fleet, or departs them all; onto a fleet, each joins it.
+- The missions icon's Abort (`0x250`, order `FUN_00580580`, vtable
+  `0x669b70`) is enabled when the player has a visible mission in the
+  system (`quadrant_icons::own_visible_missions`, the team of
+  `FUN_00512700` kind `0x40` filtered to the side). It asks with TEXTSTRA
+  `0x7052` and picture `0x40c`/`0x40d` (`FUN_0049a350` case `0x250`); the
+  answer builds event `0x261` (`FUN_0054e090`, vtable `0x661f20`), which
+  checks each mission again through slot `+0x1c0` (`FUN_00521600`: the
+  side's, refused in phase 4 with `0x40` and in any phase but 8 with
+  `0x41`, `MissionState::abort_allowed`) and fires `+0x1d4`
+  (`FUN_005233a0` -> `+0x1dc(2)`), ending it with code 2
+  (`MissionState::abort`).
 - A left press on a shown icon keeps its canvas point; a left release more
   than four pixels away in x or y (`FUN_004593e0` case `0x202`) drops the
   selection (`SectorWindowAction::DropSelection`), a Confirmed Move with

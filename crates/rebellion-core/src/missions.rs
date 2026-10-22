@@ -2030,6 +2030,19 @@ impl MissionState {
         self.missions.push_back(mission);
     }
 
+    /// Whether `faction` may abort mission `id`: the mission's slot `+0x1c0`
+    /// (`FUN_00521600`) runs the base check (`FUN_004f9860`: the ordering
+    /// side's), then refuses phase 4 (`FUN_00520b20`, code `0x40`) and any
+    /// phase but 8 (`FUN_00520b30`, code `0x41`); an ended mission has
+    /// nothing to abort.
+    #[must_use]
+    pub fn abort_allowed(&self, id: u64, faction: MissionFaction) -> bool {
+        self.missions
+            .iter()
+            .find(|m| m.id == id)
+            .is_some_and(|m| m.faction == faction && m.phase == 8 && m.end_code == 0)
+    }
+
     /// End a running mission as its owner's abort does: order `0x250`
     /// (`FUN_00580580`, executed by `FUN_0054e310`) calls the mission's slot
     /// `+0x1d4` -> `+0x1d8` (`FUN_005233a0`) -> `+0x1dc(2)`, end code 2 while
@@ -6332,8 +6345,16 @@ mod tests {
             here,
             5,
         ));
+        // FUN_00521600: only in phase 8 and only by the mission's side.
+        state.missions[0].phase = 4;
+        assert!(!state.abort_allowed(0, MissionFaction::Alliance));
+        state.missions[0].phase = 8;
+        assert!(!state.abort_allowed(0, MissionFaction::Empire));
+        assert!(state.abort_allowed(0, MissionFaction::Alliance));
+        assert!(!state.abort_allowed(1, MissionFaction::Alliance));
         assert!(state.abort(0));
         assert!(!state.abort(0));
+        assert!(!state.abort_allowed(0, MissionFaction::Alliance));
 
         let advance = step(&mut state, &world, 1, &[]);
 

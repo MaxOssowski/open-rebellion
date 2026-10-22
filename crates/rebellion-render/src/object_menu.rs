@@ -530,6 +530,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 // FUN_00442590: a submenu parent (flags 8) is enabled.
                 ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
                 ObjectMenuCommand::Assault => gates.assault,
+                ObjectMenuCommand::Abort => gates.abort,
                 ObjectMenuCommand::Retire => {
                     matches!(
                         selection,
@@ -632,6 +633,9 @@ pub struct OrderGates {
     /// The Command orders `0x260..0x263` on a character (`FUN_004ed750`,
     /// `rebellion_core::character_command::order_allowed`).
     pub command: [bool; 4],
+    /// Abort (`0x250`) on a mission icon: every mission it names passes
+    /// `FUN_00521600` (`MissionState::abort_allowed`).
+    pub abort: bool,
     /// Retire (`0x242`) on a character (`FUN_004ed460`,
     /// `rebellion_core::character_retire::order_allowed`) or a special
     /// force (`FUN_00533ba0`, `special_force_allowed`).
@@ -816,6 +820,7 @@ mod tests {
         assault: false,
         command: [false; 4],
         retire: false,
+        abort: false,
     };
 
     fn labels(rows: &[ObjectMenuRow]) -> Vec<&'static str> {
@@ -1009,6 +1014,7 @@ mod tests {
             assault: false,
             command: [false; 4],
             retire: false,
+            abort: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
@@ -1078,6 +1084,7 @@ mod tests {
         // regiment, whose list has no 0x242.
         let gates = OrderGates {
             retire: true,
+            abort: false,
             ..OrderGates::default()
         };
         let character = Some(MenuObject::Character(CharacterKey::default()));
@@ -1220,6 +1227,15 @@ mod tests {
             (abort.label, abort.sort_key, abort.label_string_id),
             ("Abort", 2003, 12362)
         );
+        // Abort follows its rule (FUN_00521600 through event 0x261).
+        let gates = OrderGates {
+            abort: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(icon(Quadrant::Missions), gates)),
+            ["Encyclopedia", "Abort"]
+        );
     }
 
     #[test]
@@ -1260,6 +1276,7 @@ mod tests {
             assault: false,
             command: [false; 4],
             retire: false,
+            abort: false,
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),

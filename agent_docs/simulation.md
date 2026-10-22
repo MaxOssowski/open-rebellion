@@ -174,7 +174,7 @@ All simulation states are created in `main.rs` and included in `SaveState` (`reb
 3. If new effects are needed, add variant to `MissionEffect` enum
 4. Add match arm in `integrator.rs` `apply_mission_effects_inner()` to mutate `GameWorld`
 5. Telemetry is automatic via `apply_mission_result()` on PerceptionIntegrator
-6. Add to panel UI: `rebellion-render/src/panels/missions.rs`
+6. Add its order to the object pop-up menu (`rebellion-render/src/object_menu.rs`) and its targeting (`targeting.rs`)
 7. If the mission needs a probability table, add a `*MSTB.DAT` parser and register the table name in `world.mission_tables`
 8. Add `target_character` if the mission targets a specific character (assassination, abduction, rescue pattern)
 9. Test: create an `ActiveMission`, advance to completion, verify effects

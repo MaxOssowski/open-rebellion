@@ -100,10 +100,7 @@ use rebellion_render::move_confirmation::{
 use rebellion_render::object_menu::{
     draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
 };
-use rebellion_render::panels::bombardment::{draw_bombardment, BombardmentPanelState};
 use rebellion_render::quadrant_icons::Quadrant;
-use rebellion_render::panels::death_star::draw_death_star;
-use rebellion_render::panels::loyalty::draw_loyalty;
 use rebellion_render::status_rows::StatusSources;
 use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
 use rebellion_render::system_window::fleet_label;
@@ -117,7 +114,7 @@ use rebellion_render::{
     advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer, draw_credits,
     draw_encyclopedia, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
-    draw_game_setup, draw_gid_caption, draw_main_menu, draw_missions, draw_multiplayer_setup,
+    draw_game_setup, draw_gid_caption, draw_main_menu, draw_multiplayer_setup,
     draw_save_load, draw_sector_windows, draw_system_windows, draw_tactical_view,
     handle_cockpit_egui_input, set_cockpit_viewport_clip, AdvisorFaction, AdvisorState,
     AssetRenderProfile, AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState,
@@ -857,44 +854,6 @@ fn prewarm_galaxy_font_sizes(
     }
 }
 
-fn toggle_exclusive_panel(panels: &mut [&mut bool], selected: usize) {
-    let was_open = *panels[selected];
-    if !was_open {
-        for panel in panels.iter_mut() {
-            **panel = false;
-        }
-    }
-    *panels[selected] = !was_open;
-}
-
-#[cfg(test)]
-mod panel_toggle_tests {
-    use super::toggle_exclusive_panel;
-
-    #[test]
-    fn opens_closes_and_switches_exclusive_panels() {
-        let mut panels = [false; 9];
-        let press = |panels: &mut [bool; 9], selected| {
-            let mut refs: Vec<&mut bool> = panels.iter_mut().collect();
-            toggle_exclusive_panel(&mut refs, selected);
-        };
-
-        press(&mut panels, 0);
-        assert_eq!(
-            panels,
-            [true, false, false, false, false, false, false, false, false]
-        );
-        press(&mut panels, 0);
-        assert_eq!(panels, [false; 9]);
-        press(&mut panels, 2);
-        press(&mut panels, 8);
-        assert_eq!(
-            panels,
-            [false, false, false, false, false, false, false, false, true]
-        );
-    }
-}
-
 #[macroquad::main(window_conf)]
 async fn main() {
     #![expect(
@@ -1151,7 +1110,6 @@ async fn main() {
     let mut message_index: Option<MessageIndexState> = None;
     let mut advice_saved_speed: Option<GameSpeed> = None;
     let mut enc_state = EncyclopediaState::new();
-    let mut bombardment_panel_state = BombardmentPanelState::default();
     let mut mod_manager_state = rebellion_render::ModManagerState::default();
     #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
     let mut command_palette_state = rebellion_render::CommandPaletteState::new();
@@ -1173,10 +1131,6 @@ async fn main() {
     enc_state.set_hd_path(hd_path);
 
     // Panel visibility (mutually exclusive left panels)
-    let mut show_missions = false;
-    let mut show_bombardment = false;
-    let mut show_death_star = false;
-    let mut show_loyalty = false;
     let mut show_save_load = false;
     let mut save_load_panel_state = rebellion_render::SaveLoadPanelState::default();
     let saves_dir = rebellion_data::save::default_saves_dir();
@@ -1561,10 +1515,6 @@ async fn main() {
                     cockpit_state.gid_ui.menu_open = false;
                     cockpit_state.gid_ui.category = None;
                 } else {
-                    show_missions = false;
-                    show_bombardment = false;
-                    show_death_star = false;
-                    show_loyalty = false;
                     show_save_load = false;
                     save_load_panel_state.close();
                     game_mode = GameMode::MainMenu;
@@ -1662,27 +1612,6 @@ async fn main() {
                     }
                 }
             }
-            // Panel toggles (mutually exclusive left panels). Alt chords
-            // belong to the original accelerators, never these letters.
-            macro_rules! toggle_panel {
-                ($key:expr, $index:expr) => {
-                    if !alt_down && is_key_pressed($key) {
-                        toggle_exclusive_panel(
-                            &mut [
-                                &mut show_missions,
-                                &mut show_bombardment,
-                                &mut show_death_star,
-                                &mut show_loyalty,
-                            ],
-                            $index,
-                        );
-                    }
-                };
-            }
-            toggle_panel!(KeyCode::N, 0);
-            toggle_panel!(KeyCode::B, 1);
-            toggle_panel!(KeyCode::D, 2);
-            toggle_panel!(KeyCode::L, 3);
             if !alt_down
                 && is_key_pressed(KeyCode::S)
                 && !matches!(
@@ -4064,7 +3993,6 @@ async fn main() {
                                     personnel_finder_state = PersonnelFinderState::default();
                                     message_index = None;
                                     advice_saved_speed = None;
-                                    bombardment_panel_state = BombardmentPanelState::default();
                                     enc_state = EncyclopediaState::new();
                                     enc_state.set_edata_path(configured_edata_path(&gdata_path));
                                     enc_state.set_asset_profile(asset_render_profile);
@@ -4075,10 +4003,6 @@ async fn main() {
                                             .join("hd")
                                             .join("EData"),
                                     );
-                                    show_missions = false;
-                                    show_bombardment = false;
-                                    show_death_star = false;
-                                    show_loyalty = false;
                                     show_save_load = false;
                                     save_load_panel_state =
                                         rebellion_render::SaveLoadPanelState::default();
@@ -4569,35 +4493,6 @@ async fn main() {
                         clock.resume();
                     }
 
-                    // War Room panels (mutually exclusive left panels)
-                    if show_missions {
-                        if let Some(action) =
-                            draw_missions(ctx, &world, &mission_state, player_faction, clock.tick)
-                        {
-                            panel_actions.push(action);
-                        }
-                    }
-                    if show_bombardment {
-                        if let Some(action) = draw_bombardment(
-                            ctx,
-                            &world,
-                            &mut bombardment_panel_state,
-                            player_faction,
-                        ) {
-                            panel_actions.push(action);
-                        }
-                    }
-                    if show_death_star {
-                        draw_death_star(ctx, &world, player_faction);
-                    }
-                    if show_loyalty {
-                        if let Some(action) =
-                            draw_loyalty(ctx, &world, &uprising_state, player_faction)
-                        {
-                            panel_actions.push(action);
-                        }
-                    }
-
                     // Save/Load panel (floating window)
                     if show_save_load {
                         save_load_panel_state.open = true;
@@ -4817,7 +4712,7 @@ async fn main() {
                                 );
                             }
                             SectorWindowAction::OpenObjectMenu { selection, point } => {
-                                let gates = order_gates(
+                                let mut gates = order_gates(
                                     selection,
                                     &world,
                                     &mission_state,
@@ -4827,6 +4722,14 @@ async fn main() {
                                     &research_state,
                                     player_faction,
                                 );
+                                gates.abort = !abort_missions(
+                                    &world,
+                                    fog_state,
+                                    &mission_state,
+                                    selection,
+                                    player_faction,
+                                )
+                                .is_empty();
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
                             // FUN_00422ce0, window type 1: the selection moves
@@ -5454,6 +5357,7 @@ async fn main() {
                                             fleets: Vec::new(),
                                             characters,
                                             special_forces,
+                                            missions: Vec::new(),
                                             blockaded: false,
                                             destination: SystemKey::default(),
                                             join: None,
@@ -5469,6 +5373,34 @@ async fn main() {
                                     }
                                     None => {}
                                 }
+                            }
+                        }
+                        // FUN_00487740: the Abort validates (FUN_00521600),
+                        // then FUN_00487cc0 asks (FUN_0049a350, case 0x250).
+                        Some((ObjectMenuCommand::Abort, selection @ Some(_))) => {
+                            let missions = abort_missions(
+                                &world,
+                                fog_state,
+                                &mission_state,
+                                selection,
+                                player_faction,
+                            );
+                            macroquad::logging::info!(
+                                "[interface] command=0x250 missions={missions:?}"
+                            );
+                            if !missions.is_empty() {
+                                move_confirmation_state.open(MoveConfirmation {
+                                    order: ConfirmedOrder::Abort,
+                                    faction: player_faction,
+                                    fleets: Vec::new(),
+                                    characters: Vec::new(),
+                                    special_forces: Vec::new(),
+                                    missions,
+                                    blockaded: false,
+                                    destination: SystemKey::default(),
+                                    join: None,
+                                    lines: Vec::new(),
+                                });
                             }
                         }
                         // FUN_00487c50 builds the order with the selection
@@ -5990,6 +5922,17 @@ async fn main() {
                         cockpit_layout,
                         &mut bmp_cache,
                     );
+                    // FUN_0041ce20(order, 1): each mission validates again
+                    // and event 0x261 ends it (FUN_005233a0 -> +0x1dc(2)).
+                    if let Some(MoveConfirmationAction::Abort { missions }) = &answer {
+                        for &id in missions {
+                            let aborted = mission_state.abort_allowed(id, player_faction)
+                                && mission_state.abort(id);
+                            macroquad::logging::info!(
+                                "[interface] command=0x250 destination=abort mission={id} result={aborted}"
+                            );
+                        }
+                    }
                     if let Some(MoveConfirmationAction::Retire {
                         characters,
                         special_forces,
@@ -6908,7 +6851,6 @@ async fn main() {
                             personnel_finder_state = PersonnelFinderState::default();
                             message_index = None;
                             advice_saved_speed = None;
-                            bombardment_panel_state = BombardmentPanelState::default();
                             enc_state = EncyclopediaState::new();
                             enc_state.set_edata_path(configured_edata_path(&gdata_path));
                             enc_state.set_asset_profile(asset_render_profile);
@@ -6919,10 +6861,6 @@ async fn main() {
                                     .join("hd")
                                     .join("EData"),
                             );
-                            show_missions = false;
-                            show_bombardment = false;
-                            show_death_star = false;
-                            show_loyalty = false;
                             show_save_load = false;
                             save_load_panel_state.close();
                             tactical_state = TacticalState::new();
@@ -7284,10 +7222,9 @@ async fn main() {
                         fleets: &fleet_window_state,
                         sectors: &sector_window_state,
                         map: &map_state,
-                        left_panel_open: show_missions
-                            || show_bombardment
-                            || show_death_star
-                            || show_loyalty,
+                        // No replacement side panel remains; the Fleet
+                        // Finder probe still checks no letter opens one.
+                        left_panel_open: false,
                     },
                 );
                 quadrant_watch.observe(
@@ -7447,6 +7384,7 @@ fn issue_fleet_move(
         fleets: fleets.to_vec(),
         characters: Vec::new(),
         special_forces: Vec::new(),
+        missions: Vec::new(),
         blockaded: false,
         destination,
         join,
@@ -7501,11 +7439,43 @@ fn confirm_character_move(
         fleets: Vec::new(),
         characters: vec![character],
         special_forces: Vec::new(),
+        missions: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,
         lines: vec![(c.name.clone(), days)],
     });
+}
+
+/// The missions a mission icon's Abort (`0x250`) acts on, when every one
+/// passes `FUN_00521600` (`MissionState::abort_allowed`); empty otherwise
+/// or for any other selection.
+fn abort_missions(
+    world: &GameWorld,
+    fog: &rebellion_core::fog::FogState,
+    missions: &MissionState,
+    selection: Option<MenuObject>,
+    faction: MissionFaction,
+) -> Vec<u64> {
+    let Some(MenuObject::SystemIcon {
+        system,
+        quadrant: Quadrant::Missions,
+    }) = selection
+    else {
+        return Vec::new();
+    };
+    let ids = rebellion_render::quadrant_icons::own_visible_missions(
+        world,
+        fog,
+        missions,
+        Faction::from(faction),
+        system,
+    );
+    if ids.iter().all(|&id| missions.abort_allowed(id, faction)) {
+        ids
+    } else {
+        Vec::new()
+    }
 }
 
 /// A special force's Confirmed Move (`0x202`), as a character's: the Move's
@@ -7553,6 +7523,7 @@ fn confirm_special_force_move(
         fleets: Vec::new(),
         characters: Vec::new(),
         special_forces: vec![unit],
+        missions: Vec::new(),
         blockaded,
         destination: system,
         join: None,
@@ -7758,6 +7729,9 @@ fn order_gates(
         // FUN_004ed750 for each of 0x260..0x263.
         command: command_rows(world, mission_state, selection, is_alliance),
         // FUN_004ed460 (the Retire order's +0x18 through event 0x230).
+        // Set where a mission icon is chosen, with the player's fog
+        // (`abort_gate`).
+        abort: false,
         retire: selection
             .and_then(MenuObject::mission_member)
             .and_then(|member| retire_check(world, mission_state, member, is_alliance))
@@ -8279,9 +8253,6 @@ fn apply_panel_action(
                 MessageCategory::Mission,
                 target,
             ));
-        }
-        PanelAction::CancelMission(id) => {
-            mission_state.release(id, world);
         }
         // Save/load actions are handled by the caller before dispatching here;
         // they require access to the full save state and are not routed through

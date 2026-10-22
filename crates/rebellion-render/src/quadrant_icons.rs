@@ -103,6 +103,34 @@ pub(crate) fn visible_members(
         .unwrap_or_default()
 }
 
+/// The player's visible missions at `system`, which a mission icon's Abort
+/// (`0x250`) acts on: `FUN_00512700` kind `0x40` gives the members on a
+/// visible mission (`+0x78` bit 8 clear), `FUN_00553350` keeps the order's
+/// side, and event `0x261` resolves each to its mission (`FUN_00505a10`).
+/// Distinct, in mission order.
+#[must_use]
+pub fn own_visible_missions(
+    world: &GameWorld,
+    fog: &FogState,
+    missions: &MissionState,
+    player: Faction,
+    system: SystemKey,
+) -> Vec<u64> {
+    let Some(contents) = SystemContents::new(world, fog, player, system) else {
+        return Vec::new();
+    };
+    let keys = mission_keys(missions);
+    let own = contents.player_side;
+    let mut ids: Vec<u64> = contents
+        .members()
+        .filter(|&(_, side, hidden)| side == own && !hidden)
+        .filter_map(|(member, _, _)| keys.get(&member).copied())
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
+}
+
 /// `FUN_004a1f60(system, player side)` over what the player sees: the other
 /// side's missions win, then the player's, else 3.
 pub(crate) fn missions_side(
@@ -660,6 +688,26 @@ mod tests {
             ),
             Some(1)
         );
+    }
+
+    #[test]
+    fn an_icons_abort_names_the_players_visible_missions_there() {
+        // FUN_00512700 kind 0x40 and FUN_00553350: the player's members on
+        // a visible mission; event 0x261 takes each one's mission.
+        let (mut world, system) = alliance_world();
+        let ours = add_character(&mut world, system, true);
+        let hidden = add_character(&mut world, system, true);
+        let theirs = add_character(&mut world, system, false);
+        let mut missions = MissionState::new();
+        send_on_mission(&mut missions, ours, system);
+        send_on_mission(&mut missions, hidden, system);
+        send_on_mission(&mut missions, theirs, system);
+        world.characters[hidden].on_hidden_mission = true;
+        let fog = FogState::new(Faction::Alliance);
+        let ids = own_visible_missions(&world, &fog, &missions, Faction::Alliance, system);
+        assert_eq!(ids.len(), 1);
+        let first = missions.missions().front().map(|m| m.id);
+        assert_eq!(ids.first().copied(), first);
     }
 
     #[test]

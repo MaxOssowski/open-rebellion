@@ -1,4 +1,4 @@
-//! War Room player-facing UI panels.
+//! The port's remaining panels: game setup, saves and mods.
 //!
 //! Each panel is a standalone function that accepts the egui context, read-only
 //! world data, and mutable panel-local state.  Every panel returns
@@ -12,25 +12,20 @@
 //!
 //! ```ignore
 //! egui_macroquad::ui(|ctx| {
-//!     if let Some(action) = panels::draw_missions(ctx, world, &missions, side, tick) {
+//!     if let Some(action) = panels::draw_save_load(ctx, &slots, &mut save_load) {
 //!         apply_panel_action(&mut world, &mut missions, action);
 //!     }
 //! });
 //! egui_macroquad::draw();
 //! ```
 
-pub mod bombardment;
-pub mod death_star;
 pub mod game_setup;
-pub mod loyalty;
-pub mod missions;
 pub mod mod_manager;
 pub mod save_load;
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 pub mod command_palette;
 
-pub use missions::draw_missions;
 pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState};
 pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
 
@@ -156,8 +151,6 @@ pub enum PanelAction {
         target_object: Option<rebellion_core::missions::MissionTarget>,
         tick: u64,
     },
-    /// Cancel a mission that is currently in progress.
-    CancelMission(u64),
 
     // ── Save / Load ───────────────────────────────────────────────────────────
     /// Open (toggle) the save/load panel.

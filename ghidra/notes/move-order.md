@@ -475,7 +475,7 @@ the same slots but the kind) for the Move mission `0x41000001`.
   original reroutes a traveller whose target container moves
   (`FUN_004fbc20`, `GameObjParentReroutedNotif`). port: the port reroutes
   on arrival, not at the moment the fleet moves.
-  A special force's Move and Confirmed Move (2026-10-23) follow a
+  A special force's Move and Confirmed Move (2026-10-22) follow a
   character's: the unit class lists the same unit orders (`FUN_00536bc0`,
   `character-retire.md`), and the Move mission takes the unit as its team
   (`PanelAction::MoveSpecialForce`, `missions::member_move_days` at the

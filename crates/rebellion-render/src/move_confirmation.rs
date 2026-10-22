@@ -39,6 +39,10 @@ const RETIRE: &str = "Are you sure you want to retire the following characters?"
 /// The Retire order's picture `+0x2e`: `0x40a` for side 1, `0x40b`
 /// otherwise (`FUN_0049a350`).
 const RETIRE_PICTURE: [u32; 2] = [1034, 1035];
+/// TEXTSTRA `RT_RCDATA` 0x7052, the Abort order's text (`FUN_0049a350`).
+const ABORT: &str = "Are you sure you want to abort this mission?";
+/// The Abort order's picture `+0x2e`: `0x40c` for side 1, `0x40d` otherwise.
+const ABORT_PICTURE: [u32; 2] = [1036, 1037];
 /// TEXTSTRA `RT_RCDATA` 0x7056 (`ghidra/notes/move-order.md`).
 const EVACUATION: &str = "Units evacuating from worlds under blockade risk being destroyed by blockading vessels.  Are you sure you want to proceed with the evacuation?\nTransit time in days";
 
@@ -51,6 +55,8 @@ pub enum ConfirmedOrder {
     Move,
     /// A Retire (`0x242`): the characters leave the game.
     Retire,
+    /// An Abort (`0x250`): the missions end.
+    Abort,
 }
 
 /// An order waiting for the player's answer: a fleet move, a character's
@@ -65,6 +71,8 @@ pub struct MoveConfirmation {
     pub characters: Vec<CharacterKey>,
     /// A Retire's special forces (the unit order list, `FUN_00536bc0`).
     pub special_forces: Vec<SpecialForceKey>,
+    /// An Abort's missions.
+    pub missions: Vec<u64>,
     /// The first member is not a fleet and its container is a blockaded
     /// system (`FUN_0049a350`): the evacuation warning.
     pub blockaded: bool,
@@ -88,6 +96,9 @@ impl MoveConfirmation {
     /// character's name.
     #[must_use]
     pub fn text(&self) -> String {
+        if self.order == ConfirmedOrder::Abort {
+            return ABORT.to_string();
+        }
         if self.order == ConfirmedOrder::Retire {
             let mut text = RETIRE.to_string();
             for (name, _) in &self.lines {
@@ -114,6 +125,9 @@ impl MoveConfirmation {
         if self.order == ConfirmedOrder::Retire {
             return RETIRE_PICTURE[side(self.faction)];
         }
+        if self.order == ConfirmedOrder::Abort {
+            return ABORT_PICTURE[side(self.faction)];
+        }
         if self.blockaded {
             BLOCKADE_PICTURE[side(self.faction)]
         } else {
@@ -139,6 +153,8 @@ pub enum MoveConfirmationAction {
         characters: Vec<CharacterKey>,
         special_forces: Vec<SpecialForceKey>,
     },
+    /// The checkmark on an Abort: the missions end.
+    Abort { missions: Vec<u64> },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
 }
@@ -175,7 +191,11 @@ impl MoveConfirmationState {
     /// Either control closes the window (`+0x30`) after acting.
     fn answer(&mut self, confirm: bool) -> Option<MoveConfirmationAction> {
         let window = self.window.take()?;
-        Some(if confirm && window.order == ConfirmedOrder::Retire {
+        Some(if confirm && window.order == ConfirmedOrder::Abort {
+            MoveConfirmationAction::Abort {
+                missions: window.missions,
+            }
+        } else if confirm && window.order == ConfirmedOrder::Retire {
             MoveConfirmationAction::Retire {
                 characters: window.characters,
                 special_forces: window.special_forces,
@@ -294,11 +314,44 @@ mod tests {
             fleets: vec![FleetKey::default()],
             characters: Vec::new(),
             special_forces: Vec::new(),
+            missions: Vec::new(),
             blockaded: false,
             destination: SystemKey::default(),
             join: None,
             lines: vec![("Red Fleet".into(), 12)],
         }
+    }
+
+    #[test]
+    fn an_abort_asks_with_its_own_text_and_picture_and_aborts_on_the_checkmark() {
+        // FUN_0049a350 case 0x250: text 0x7052, no names; picture 0x40c
+        // (side 1) / 0x40d.
+        let window = MoveConfirmation {
+            order: ConfirmedOrder::Abort,
+            fleets: Vec::new(),
+            missions: vec![7],
+            ..confirmation(MissionFaction::Alliance)
+        };
+        assert_eq!(
+            window.text(),
+            "Are you sure you want to abort this mission?"
+        );
+        assert_eq!(window.picture(), 1036);
+        assert_eq!(
+            MoveConfirmation {
+                faction: MissionFaction::Empire,
+                ..window.clone()
+            }
+            .picture(),
+            1037
+        );
+        let mut state = MoveConfirmationState::default();
+        state.open(window);
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+        assert_eq!(
+            action,
+            Some(MoveConfirmationAction::Abort { missions: vec![7] })
+        );
     }
 
     #[test]
