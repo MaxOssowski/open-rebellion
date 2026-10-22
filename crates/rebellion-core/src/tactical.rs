@@ -1197,9 +1197,14 @@ pub struct BattleSession {
     pub trench_run_remaining_ms: Option<f32>,
     /// RGBY group that entered the active run and owns its ordered voice path.
     pub trench_run_group: Option<u8>,
-    /// Source `FUN_005ad7e0` commander-rating result, clamped to 1 through 9.
-    /// The current strategic model does not persist the original tactical
-    /// commander slot, so production uses the source's unassigned fallback 1.
+    /// Source `FUN_005ad7e0` commander-rating result, clamped to 1 through 9:
+    /// the person in the side's commander slot `+0x950` (set by
+    /// `FUN_005a93e0` from a person flagged `+0x58`, the flag
+    /// `FUN_0040c200` gives the Alliance's battle commander), its `+0x50`
+    /// minus -1.0 (`DAT_0066c27c`), or 1.0 with none. These are the abstract
+    /// battle's person and constants, so a session takes
+    /// [`crate::abstract_battle::trench_commander_term`]. The trench run
+    /// compares an integer 1..100 draw with it, so the fraction drops.
     pub trench_run_success_rating: u8,
     /// Result selected by `FUN_005d04e0` when state 5 begins. State 6 or 7
     /// applies it only after the two-minute presentation timer completes.
@@ -3109,6 +3114,13 @@ impl BattleSession {
             .systems
             .get(system)
             .map_or(1, |system| planet_picture_id(system.dat_id));
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "the term is clamped to 1.0..9.0; the draw it meets is an integer"
+        )]
+        let trench_run_success_rating =
+            crate::abstract_battle::trench_commander_term(world, system) as u8;
 
         let mut ships = Vec::new();
         let mut fighters = Vec::new();
@@ -3195,7 +3207,7 @@ impl BattleSession {
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
-            trench_run_success_rating: 1,
+            trench_run_success_rating,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
             trench_run_chatter: [ORIGINAL_TRENCH_RUN_SILENT_EVENT; 9],

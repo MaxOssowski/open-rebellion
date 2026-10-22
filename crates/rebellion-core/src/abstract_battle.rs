@@ -3651,6 +3651,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_tactical_session_takes_the_alliance_commanders_rating() {
+        // FUN_005ad7e0 reads the commander slot +0x950 that FUN_005a93e0
+        // fills from the person FUN_0040c200 flags (+0x58): +0x50 + 1.0,
+        // clamped to 1..9, else 1. The trench run's integer draw drops the
+        // fraction.
+        use crate::character_command::CommandKind::Commander;
+        let (mut world, [battle, ..], alliance, empire) = withdrawal_world();
+        let rating = |world: &GameWorld| {
+            BattleSession::new(world, battle, alliance, empire, true, 0, 1)
+                .trench_run_success_rating
+        };
+        assert_eq!(rating(&world), 1);
+        officer(&mut world, true, Commander, 107, Some(alliance), battle);
+        assert_eq!(rating(&world), 6);
+    }
+
     // FUN_00509330 starts from the system's own side's Commander; a fleet's
     // replaces it only with more combat. FUN_0040c200 flags only an Alliance
     // person against +0x1c, so an Imperial pick leaves the term at 1.

@@ -1046,7 +1046,7 @@ would tune around known simulation feedback defects.
   native timed trench-run producer with ordered chatter and casualty rules.
   The final fresh-process muted matrix passes 144/144, and independent review
   finds no P0/P1 visual blocker across 88 full-resolution captures.
-  Whole-process RNG continuity, strategic commander-slot binding, native beam
+  Whole-process RNG continuity, native beam
   and playback comparison, rare audio routes, and all 106 strict A0 cells stay
   open.
 - [ ] After original parity, use a separate Fable and `/ce:plan` design pass for

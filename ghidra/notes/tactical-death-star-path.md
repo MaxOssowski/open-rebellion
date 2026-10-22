@@ -102,13 +102,19 @@ result then routes to MDATA 201 or 202 and returns to the paused tactical view.
 Open Rebellion now follows that producer with one source-compatible tactical
 RNG stream, the exact timer, ordered chatter, success rating, maneuver damage,
 casualty rules, and movie route. Campaign entry seeds the tactical stream once.
-The wider strategic model does not yet persist the executable's tactical
-commander assignment slot, so an ordinary campaign battle uses the source's
-unassigned rating of 1; deterministic fixtures set the rating explicitly.
+The tactical commander slot (read 2026-10-23): `FUN_005ad7e0` reads the
+side's slot `+0x950`, which `FUN_005a93e0` (from `FUN_00596340`) fills
+with a battle person flagged `+0x58`, the flag `FUN_0040c200` gives the
+Alliance's battle commander. The rating is the person's `+0x50` minus
+`DAT_0066c27c` (-1.0), clamped to `DAT_0066c298` (1.0) and `DAT_0066c2b8`
+(9.0). Those are the abstract battle's person and constants
+(`abstract-battle.md`, `FUN_0040d680`), so a session takes
+`abstract_battle::trench_commander_term` (`BattleSession::new_for_fleets`);
+the integer 1..100 draw drops its fraction. Deterministic fixtures still
+set the rating explicitly.
 
 Exact retained-mode beam raster comparison, whole-process RNG continuity,
-strategic commander-slot binding, audible native playback, and lossless A0
-comparison remain open. The current beam shape is bounded A1 implementation
+audible native playback, and lossless A0 comparison remain open. The current beam shape is bounded A1 implementation
 evidence. A custom target cursor is not an open requirement:
 `FUN_005d6700` calls `LoadCursorA` with `IDC_ARROW` for the native tactical 3D
 window.
