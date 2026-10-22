@@ -343,7 +343,10 @@ cross-runtime proof remain open
     where the original paints them (`evidence/2026-10-22-battle-alert-layout/`),
     and Retreat is offered by the original's test: no enemy Interdictor, a
     unit that can move and somewhere to go
-    (`evidence/2026-10-22-battle-alert-retreat/`).
+    (`evidence/2026-10-22-battle-alert-retreat/`). The alert's list and the
+    Battle Summary's forces list scroll with the wheel; neither draws the
+    original scroll bar yet (`evidence/2026-10-22-battle-alert-scroll/`,
+    `2026-10-22-battle-summary-scroll/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 
