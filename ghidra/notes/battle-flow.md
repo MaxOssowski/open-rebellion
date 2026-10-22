@@ -159,7 +159,15 @@ the system's slot `+0xd0` (`FUN_00508660`, `this` = the system) calls
     unit cannot move (slot `+0x34`, its speed, is 0), it is destroyed
     with reason 5 (slot `+0xac`).
   - The move itself is `FUN_00556390`, as for a player's move.
-- Open: the branch with `local_10 != -1`, which calls slot `+0xac(2)`.
+- The branch with `local_10 != -1` (read 2026-10-22): the search's
+  result is a status pair whose second word becomes -1 once
+  `FUN_005571c0` accepts a candidate (it sets `{1, -1}` before the
+  checks and `{1, 1}` on a refusal). So `local_10 != -1` means no
+  candidate passed, and the unit is destroyed with reason 2 (slot
+  `+0xac`). Whether a candidate passes rests on the route planner:
+  `FUN_005513a0` -> `FUN_00552d10` -> `FUN_00550700`, which calls the
+  route context's virtual slots `+0x74..+0x80` for up to 9 legs. That is
+  not read, so the port cannot yet say which fleets find no route.
 
 **In the port** (2026-10-21, W2j):
 

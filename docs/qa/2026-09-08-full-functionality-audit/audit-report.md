@@ -335,6 +335,9 @@ cross-runtime proof remain open
     (message line, instruction, system and viewer-fleet buttons) followed
     the same day (`evidence/2026-10-22-battle-summary-page/`,
     `2026-10-22-battle-report-texts/`, `2026-10-22-battle-display-page/`).
+    The Battle Alert's title and summary come from TEXTSTRA `0x7020..0x7025`
+    by the system's side and its last arrival
+    (`evidence/2026-10-22-battle-alert-texts/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

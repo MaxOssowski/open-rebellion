@@ -6079,37 +6079,45 @@ fn battle_alert_retreat_enabled(session: &BattleSession) -> bool {
     })
 }
 
-fn draw_battle_alert_text(state: &TacticalState, canvas: TacticalCanvas, text_color: Color) {
+fn draw_battle_alert_text(
+    state: &TacticalState,
+    world: &GameWorld,
+    canvas: TacticalCanvas,
+    text_color: Color,
+) {
     let session = state.session.as_ref().expect("active Battle Alert session");
+    let player_alliance = player_is_alliance(session);
+    let (system_side, last_arrival) = battle_alert_sides(world, session.system);
+    let [title, summary] = battle_alert_lines(
+        &loaded_battle_texts(),
+        player_alliance,
+        &session.system_name,
+        system_side,
+        last_arrival,
+    );
     draw_result_text_centered(
         canvas,
-        &format!("Battle at {}", session.system_name),
+        &title,
         BATTLE_ALERT_WINDOW_X + 212.0,
         BATTLE_ALERT_WINDOW_Y + 40.0,
         18.0,
         text_color,
     );
-    let player_alliance = player_is_alliance(session);
     let lines = match state.battle_alert_tab {
-        BattleAlertTab::Summary => vec![
-            format!(
-                "The {} fleet has entered the {} system.",
-                if player_alliance {
-                    "Imperial"
-                } else {
-                    "Alliance"
-                },
-                session.system_name
-            ),
-            format!(
-                "{} forces have been detected on an intercept course.",
-                if player_alliance {
-                    "Alliance"
-                } else {
-                    "Imperial"
-                }
-            ),
-        ],
+        BattleAlertTab::Summary => {
+            // FUN_0044f860: the summary over a black shadow one pixel down
+            // and right.
+            draw_result_wrapped_lines(
+                canvas,
+                std::slice::from_ref(&summary),
+                BATTLE_ALERT_WINDOW_X + 39.0,
+                BATTLE_ALERT_WINDOW_Y + 226.0,
+                340.0,
+                14.0,
+                BLACK,
+            );
+            vec![summary]
+        }
         BattleAlertTab::AllianceForces => vec![
             "Alliance forces".to_owned(),
             format!(
@@ -6158,7 +6166,93 @@ fn draw_battle_alert_text(state: &TacticalState, canvas: TacticalCanvas, text_co
     );
 }
 
-fn draw_original_battle_alert(state: &mut TacticalState, cache: &mut BmpCache) -> TacticalAction {
+/// The system's side (`+0x24` bits 6..7) and its last arrived side
+/// (`+0x78` bits 6..7) as the alert reads them: `Some(true)` for the
+/// Alliance, `Some(false)` for the Empire, `None` for neither.
+fn battle_alert_sides(world: &GameWorld, system: SystemKey) -> (Option<bool>, Option<bool>) {
+    use rebellion_core::dat::Faction;
+    let side_of = |faction: Option<Faction>| match faction {
+        Some(Faction::Alliance) => Some(true),
+        Some(Faction::Empire) => Some(false),
+        _ => None,
+    };
+    let system = world.systems.get(system);
+    (
+        side_of(system.and_then(|system| system.control.faction())),
+        side_of(system.and_then(|system| system.last_arrival)),
+    )
+}
+
+/// The Battle Alert's title (`+0x54`, `0x7020` "Battle at {1:1}") and
+/// summary (`+0x60`), as `FUN_0049c0d0` picks it for the viewer from the
+/// system's side and its last arrived side (`+0x78` bits 6..7): on the
+/// viewer's system, `0x7022` (the viewer arrived last: breaking the
+/// enemy's blockade) or `0x7021` (the enemy threatens it); on a neutral
+/// one, `0x7025`; on the enemy's, `0x7024` (the enemy arrived last:
+/// breaking the viewer's blockade) or `0x7023` (the viewer's fleet has
+/// entered). guide-055 shows `0x7023` for the Empire at Deyer.
+fn battle_alert_lines(
+    texts: &HashMap<u16, String>,
+    viewer_alliance: bool,
+    system_name: &str,
+    system_side: Option<bool>,
+    last_arrival: Option<bool>,
+) -> [String; 2] {
+    use crate::story_messages::{fill_message_text, side_parameter, MessageParameter};
+    let side_word = |alliance: bool| if alliance { "Alliance" } else { "Imperial" };
+    let (viewer, enemy) = (side_word(viewer_alliance), side_word(!viewer_alliance));
+    let (id, fallback) = match system_side {
+        Some(side) if side == viewer_alliance && last_arrival == Some(side) => (
+            0x7022,
+            format!("The {viewer} fleet is attempting to break the {enemy} blockade of {system_name}."),
+        ),
+        Some(side) if side == viewer_alliance => (
+            0x7021,
+            format!("The {enemy} fleet is threatening {system_name}. {viewer} forces are moving to intercept."),
+        ),
+        None => (
+            0x7025,
+            format!("{viewer} and {enemy} forces are about to engage in battle near the {system_name} system."),
+        ),
+        Some(side) if last_arrival == Some(side) => (
+            0x7024,
+            format!("The {enemy} fleet is attempting to break the {viewer} blockade at {system_name}"),
+        ),
+        Some(_) => (
+            0x7023,
+            format!("The {viewer} fleet has entered the {system_name} system. {enemy} forces have been detected on an intercept course."),
+        ),
+    };
+    let viewer = side_parameter(viewer_alliance, texts);
+    let enemy = side_parameter(!viewer_alliance, texts);
+    let system = MessageParameter::Unit {
+        name: system_name,
+        class: "",
+    };
+    let parameters = match id {
+        0x7022 | 0x7023 => [viewer, system, enemy],
+        0x7021 => [enemy, system, viewer],
+        0x7024 => [enemy, viewer, system],
+        _ => [viewer, enemy, system],
+    };
+    let fill = |id: u16, parameters: &[MessageParameter<'_>]| {
+        texts.get(&id).map(|template| {
+            fill_message_text(template, parameters)
+                .trim_end()
+                .to_owned()
+        })
+    };
+    [
+        fill(0x7020, &[system]).unwrap_or_else(|| format!("Battle at {system_name}")),
+        fill(id, &parameters).unwrap_or(fallback),
+    ]
+}
+
+fn draw_original_battle_alert(
+    state: &mut TacticalState,
+    cache: &mut BmpCache,
+    world: &GameWorld,
+) -> TacticalAction {
     let canvas = TacticalCanvas::new(screen_width(), screen_height());
     let session = state.session.as_ref().expect("active Battle Alert session");
     prewarm_tactical_font_atlas(session, canvas, &mut state.warmed_font_sizes);
@@ -6198,7 +6292,7 @@ fn draw_original_battle_alert(state: &mut TacticalState, cache: &mut BmpCache) -
         BATTLE_ALERT_WINDOW_X + 12.0,
         BATTLE_ALERT_WINDOW_Y + 13.0,
     );
-    draw_battle_alert_text(state, canvas, text_color);
+    draw_battle_alert_text(state, world, canvas, text_color);
     draw_strategy_bitmap(
         cache,
         skin.rail,
@@ -6503,7 +6597,7 @@ pub fn draw_tactical_view(
     }
 
     if state.battle_alert_open {
-        return draw_original_battle_alert(state, bmp_cache);
+        return draw_original_battle_alert(state, bmp_cache, world);
     }
 
     let mut action = TacticalAction::None;
@@ -8502,6 +8596,118 @@ mod tests {
             },
         );
         assert_eq!(none[0], "Neither fleet is victorious.");
+    }
+
+    #[test]
+    fn the_battle_alert_tells_the_viewer_who_is_moving_on_whom() {
+        // FUN_0049c0d0 with TEXTSTRA RCDATA 0x7020..0x7025 as shipped.
+        let mut texts = battle_texts();
+        for (id, text) in [
+            (0x7020, "Battle at {1:1}"),
+            (0x7021, "The {1:4} fleet is threatening {2:1}. {3:4} forces are moving to intercept. "),
+            (0x7022, "The {1:4} fleet is attempting to break the {3:4} blockade of {2:4}. "),
+            (0x7023, "The {1:4} fleet has entered the {2:1} system. {3:4} forces have been detected on an intercept course. "),
+            (0x7024, "The {1:4} fleet is attempting to break the {2:4} blockade at {3:1}"),
+            (0x7025, "{1:4} and {2:4} forces are about to engage in battle near the {3:1} system. "),
+        ] {
+            texts.insert(id, text.to_owned());
+        }
+        // guide-055: the Empire's viewer at the Alliance's Deyer, where the
+        // Empire arrived last.
+        assert_eq!(
+            battle_alert_lines(&texts, false, "Deyer", Some(true), Some(false)),
+            [
+                "Battle at Deyer",
+                "The Imperial fleet has entered the Deyer system. Alliance forces have been detected on an intercept course."
+            ]
+        );
+        // The Alliance's viewer of the same battle: its system is threatened.
+        assert_eq!(
+            battle_alert_lines(&texts, true, "Deyer", Some(true), Some(false))[1],
+            "The Imperial fleet is threatening Deyer. Alliance forces are moving to intercept."
+        );
+        // The viewer arrived last at its own system: it breaks a blockade.
+        assert_eq!(
+            battle_alert_lines(&texts, true, "Deyer", Some(true), Some(true))[1],
+            "The Alliance fleet is attempting to break the Imperial blockade of Deyer."
+        );
+        // The enemy arrived last at its own system.
+        assert_eq!(
+            battle_alert_lines(&texts, true, "Deyer", Some(false), Some(false))[1],
+            "The Imperial fleet is attempting to break the Alliance blockade at Deyer"
+        );
+        assert_eq!(
+            battle_alert_lines(&texts, false, "Deyer", None, Some(true))[1],
+            "Imperial and Alliance forces are about to engage in battle near the Deyer system."
+        );
+        // Without the texts, the port's English says the same.
+        let empty = HashMap::new();
+        for (viewer, side, last) in [
+            (false, Some(true), Some(false)),
+            (true, Some(true), Some(false)),
+            (true, Some(true), Some(true)),
+            (true, Some(false), Some(false)),
+            (false, None, Some(true)),
+        ] {
+            assert_eq!(
+                battle_alert_lines(&empty, viewer, "Deyer", side, last),
+                battle_alert_lines(&texts, viewer, "Deyer", side, last)
+            );
+        }
+    }
+
+    #[test]
+    fn the_battle_alert_reads_the_system_side_and_last_arrival() {
+        // FUN_0049c0d0: +0x24 bits 6..7 and +0x78 bits 6..7.
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{ControlKind, System};
+        let mut world = GameWorld::default();
+        let mut system = |control, last_arrival| {
+            world.systems.insert(System {
+                last_arrival,
+                dat_id: DatId::new(0x9000_0001),
+                name: "Deyer".into(),
+                sector: Default::default(),
+                x: 0,
+                y: 0,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                fighters: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                is_headquarters: false,
+                is_destroyed: false,
+                control,
+            })
+        };
+        let rebel = system(
+            ControlKind::Controlled(Faction::Alliance),
+            Some(Faction::Empire),
+        );
+        let imperial = system(
+            ControlKind::Controlled(Faction::Empire),
+            Some(Faction::Alliance),
+        );
+        let neutral = system(ControlKind::Uncontrolled, None);
+        assert_eq!(battle_alert_sides(&world, rebel), (Some(true), Some(false)));
+        assert_eq!(
+            battle_alert_sides(&world, imperial),
+            (Some(false), Some(true))
+        );
+        assert_eq!(battle_alert_sides(&world, neutral), (None, None));
+        assert_eq!(
+            battle_alert_sides(&GameWorld::default(), rebel),
+            (None, None)
+        );
     }
 
     #[test]
