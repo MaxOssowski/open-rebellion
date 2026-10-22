@@ -595,9 +595,93 @@ fn gid_marker_for_system(
             usize::from(count.total() > 0) * 3,
         );
     }
+    if matches!(mode, GidMode::IdleFleets | GidMode::FleetsEnRoute) {
+        return gid_fleet_mark(
+            gid_fleets(
+                world,
+                system_key,
+                player_is_alliance,
+                mode == GidMode::FleetsEnRoute,
+                gid.movement,
+            ),
+            player_is_alliance,
+            system.control.faction(),
+        );
+    }
     let value = gid_metric(world, system_key, system, player_is_alliance, mode, gid);
     let size = gid_metric_size(mode, value);
     gid_marker_resource_for_size(system.control, true, size)
+}
+
+/// The fleets the Idle Fleets (`0x21`) and Fleets Enroute (`0x22`)
+/// displays count at a system, the player's and the enemy's
+/// (`FUN_004feea0(system, side, 1 / 2)`). port: an idle fleet orbits the
+/// system; an en route one has a move order to it.
+fn gid_fleets(
+    world: &GameWorld,
+    system: SystemKey,
+    player_is_alliance: bool,
+    en_route: bool,
+    movement: &MovementState,
+) -> (u32, u32) {
+    let fleets: Vec<rebellion_core::ids::FleetKey> = if en_route {
+        movement
+            .orders()
+            .iter()
+            .filter(|(_, order)| order.destination == system)
+            .map(|(&key, _)| key)
+            .collect()
+    } else {
+        world
+            .systems
+            .get(system)
+            .map(|place| place.fleets.clone())
+            .unwrap_or_default()
+    };
+    let mut counts = (0, 0);
+    for alliance in fleets
+        .iter()
+        .filter_map(|key| world.fleets.get(*key))
+        .map(|fleet| fleet.is_alliance)
+    {
+        if alliance == player_is_alliance {
+            counts.0 += 1;
+        } else {
+            counts.1 += 1;
+        }
+    }
+    counts
+}
+
+/// The fleet displays' mark (`FUN_0042b330` cases `0x20..0x22`): both
+/// sides' fleets give the special art `0x27b0`; else the counting side's
+/// colour, sized by its count through `(3, 2, 2, 1, 1)`; with none, the
+/// holder's smallest mark.
+fn gid_fleet_mark(
+    (player, enemy): (u32, u32),
+    player_is_alliance: bool,
+    holder: Option<rebellion_core::dat::Faction>,
+) -> u32 {
+    use rebellion_core::dat::Faction;
+    let side = |alliance: bool| {
+        Some(if alliance {
+            Faction::Alliance
+        } else {
+            Faction::Empire
+        })
+    };
+    match (player, enemy) {
+        (0, 0) => gid_marker_for_side(holder, 0),
+        (_, 0) => gid_marker_for_side(
+            side(player_is_alliance),
+            gid_metric_size(GidMode::IdleFleets, player),
+        ),
+        (0, _) => gid_marker_for_side(
+            side(!player_is_alliance),
+            gid_metric_size(GidMode::IdleFleets, enemy),
+        ),
+        _ => bmp_cache::resources::strategy::GID_BOTH_SIDES,
+    }
 }
 
 /// The people the Idle and Active Personnel displays count at a system
@@ -737,28 +821,16 @@ fn gid_metric(
     match mode {
         GidMode::PopularSupport | GidMode::DisplayOff => 0,
         GidMode::Uprisings => u32::from(system_in_revolt(system_key, system, gid.uprisings)),
-        GidMode::IdleFleets => system
-            .fleets
-            .iter()
-            .filter(|key| {
-                world
-                    .fleets
-                    .get(**key)
-                    .is_some_and(|fleet| same_faction(fleet.is_alliance))
-            })
-            .count() as u32,
-        GidMode::FleetsEnRoute => gid
-            .movement
-            .orders()
-            .iter()
-            .filter(|(key, order)| {
-                order.destination == system_key
-                    && world
-                        .fleets
-                        .get(**key)
-                        .is_some_and(|fleet| same_faction(fleet.is_alliance))
-            })
-            .count() as u32,
+        GidMode::IdleFleets | GidMode::FleetsEnRoute => {
+            gid_fleets(
+                world,
+                system_key,
+                player_is_alliance,
+                mode == GidMode::FleetsEnRoute,
+                gid.movement,
+            )
+            .0
+        }
         GidMode::IdlePersonnel | GidMode::ActivePersonnel => gid_personnel(
             world,
             system_key,
@@ -1867,6 +1939,122 @@ mod interaction_tests {
             assert_eq!(gid_metric_size(mode, 0), 0);
             assert_eq!(gid_metric_size(mode, 1), 3);
         }
+    }
+
+    #[test]
+    fn the_fleet_displays_mark_both_sides_and_the_counting_side() {
+        // FUN_0042b330 0x21 / 0x22: both sides' fleets give 0x27b0 (STRATEGY
+        // 10160); else the counting side's colour by (3, 2, 2, 1, 1); none,
+        // the holder's smallest.
+        use bmp_cache::resources::strategy as art;
+        use rebellion_core::dat::Faction;
+        assert_eq!(gid_fleet_mark((1, 1), true, None), art::GID_BOTH_SIDES);
+        assert_eq!(
+            gid_fleet_mark((3, 0), true, None),
+            art::GID_ALLIANCE_LARGEST
+        );
+        assert_eq!(gid_fleet_mark((1, 0), false, None), art::GID_EMPIRE_MEDIUM);
+        assert_eq!(
+            gid_fleet_mark((0, 2), true, Some(Faction::Alliance)),
+            art::GID_EMPIRE_LARGE
+        );
+        assert_eq!(
+            gid_fleet_mark((0, 1), false, None),
+            art::GID_ALLIANCE_MEDIUM
+        );
+        assert_eq!(
+            gid_fleet_mark((0, 0), true, Some(Faction::Empire)),
+            art::GID_EMPIRE_SMALLEST
+        );
+        assert_eq!(
+            gid_fleet_mark((0, 0), true, None),
+            art::GID_NEUTRAL_SMALLEST
+        );
+    }
+
+    #[test]
+    fn the_fleet_displays_count_each_side_in_orbit_or_en_route() {
+        use rebellion_core::world::Fleet;
+        let mut world = GameWorld::default();
+        let mut system = || {
+            world.systems.insert(System {
+                last_arrival: None,
+                dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+                name: "Naboo".into(),
+                sector: Default::default(),
+                x: 0,
+                y: 0,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control: ControlKind::Uncontrolled,
+            })
+        };
+        let here = system();
+        let there = system();
+        let mut fleet = |world: &mut GameWorld, is_alliance, location| {
+            world.fleets.insert(Fleet {
+                location,
+                capital_ships: vec![],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+            })
+        };
+        let rebels = fleet(&mut world, true, here);
+        let empire = fleet(&mut world, false, here);
+        let second = fleet(&mut world, false, here);
+        world.systems[here].fleets = vec![rebels, empire, second];
+        let traveller = fleet(&mut world, true, there);
+        let mut movement = rebellion_core::movement::MovementState::new();
+        assert!(movement.order(traveller, there, here, 5));
+        assert_eq!(gid_fleets(&world, here, true, false, &movement), (1, 2));
+        assert_eq!(gid_fleets(&world, here, false, false, &movement), (2, 1));
+        assert_eq!(gid_fleets(&world, here, true, true, &movement), (1, 0));
+        assert_eq!(gid_fleets(&world, there, true, true, &movement), (0, 0));
+        // The displays draw from them: both sides in orbit, the player's
+        // alone en route.
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+        };
+        let mark = |mode| {
+            gid_marker_for_system(
+                &world,
+                here,
+                &world.systems[here],
+                CockpitFaction::Empire,
+                mode,
+                &gid,
+            )
+        };
+        use bmp_cache::resources::strategy as art;
+        assert_eq!(mark(GidMode::IdleFleets), art::GID_BOTH_SIDES);
+        assert_eq!(mark(GidMode::FleetsEnRoute), art::GID_ALLIANCE_MEDIUM);
+        let metric = |mode| gid_metric(&world, here, &world.systems[here], false, mode, &gid);
+        assert_eq!(metric(GidMode::IdleFleets), 2);
+        assert_eq!(metric(GidMode::FleetsEnRoute), 0);
     }
 
     #[test]

@@ -69,8 +69,13 @@ Before this change:
 - the idle yards counted facilities;
 - the personnel displays counted only the player's people, in bands.
 
+Since the same day the fleet displays follow the rule above
+(`gid_fleets`, `gid_fleet_mark`; STRATEGY 10160 is `0x27b0`). port: an
+idle fleet orbits the system; an en route one has a move order to it.
+The `+0x88` bit 1 test for Fleets Enroute with no fleet is not kept: an
+unexplored system shows the unexplored mark first.
+
 Open:
-- the fleets' both-sides art `0x27b0` and the fleet displays' colours;
 - display `0x61`;
 - the `0x13..0x17` and `0x91..0x93` displays the port's menu lacks.
 

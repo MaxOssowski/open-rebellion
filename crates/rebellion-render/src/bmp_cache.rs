@@ -543,6 +543,9 @@ pub mod resources {
         pub const GID_NEUTRAL_LARGEST: u32 = 10157;
         /// Unexplored or unpopulated GID system marker.
         pub const GID_UNEXPLORED: u32 = 10158;
+        /// The GID fleet displays' mark when both sides have fleets there
+        /// (`FUN_0042b330`, `0x27b0`).
+        pub const GID_BOTH_SIDES: u32 = 10160;
         /// Additional native GID selection/special marker, not yet assigned.
         pub const GID_SPECIAL: u32 = 10166;
         /// Compact strategic-map legend control.
