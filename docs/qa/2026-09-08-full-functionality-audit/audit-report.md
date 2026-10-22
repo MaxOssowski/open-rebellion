@@ -348,7 +348,9 @@ cross-runtime proof remain open
     original scroll bar yet (`evidence/2026-10-22-battle-alert-scroll/`,
     `2026-10-22-battle-summary-scroll/`). Both windows play the original
     score from REBEXE's track table: the alert MDATA.307 or 313, the summary
-    308, 309, 314 or 315 (`evidence/2026-10-22-battle-window-score/`).
+    308, 309, 314 or 315 (`evidence/2026-10-22-battle-window-score/`). The
+    summary's scene is picked for the viewer, so a withdrawal shows the
+    fleet beaten off (`evidence/2026-10-22-battle-summary-scene/`).
 - Acceptance: deterministic fixtures prove that all entry paths use the
   accepted mechanics and apply identical permanent losses and conquest state.
 

@@ -40,6 +40,22 @@ font `0xb`, and the rest at (24, 255), 352 wide, word-wrapped, font 6,
 over a black shadow at (25, 256). All take the viewer's colour (`0xff`,
 or `0xff00` for side 2). guide-059 shows it.
 
+The scene (read 2026-10-22) is picked for the viewer (`FUN_0046f360`,
+before the paint). With no winner (`+0x50` = 0) it is `0x2d63` (11619).
+For the Alliance's viewer:
+- a win is `0x2a07` (10759), or `0x2a06` (10758) when the Empire
+  withdrew (`+0x54` = 2);
+- its own withdrawal is `0x2a05` (10757);
+- a loss is `0x2a08` (10760).
+
+For the Empire's viewer:
+- a win is `0x2a08`, or `0x2a05` when the Alliance withdrew;
+- its own withdrawal is `0x2a06`;
+- a loss is `0x2a07`.
+
+Ported as `battle_summary_scene`. The port had picked the scene by the
+winner alone.
+
 ## The report's texts
 
 The report class (vtable `0x0065bc08`, built by `FUN_0049ac00` for one

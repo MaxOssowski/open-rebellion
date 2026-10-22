@@ -5707,11 +5707,53 @@ fn draw_battle_result_summary(
 ) {
     let ops = battle_summary_page(
         &session.system_name,
-        winner_is_alliance(session),
+        battle_summary_scene(&battle_report(session, None)),
         &battle_result_summary_lines(session, world),
         text_color,
     );
     draw_page_ops(cache, canvas, ops);
+}
+
+/// The summary page's scene, which `FUN_0046f360` picks for the viewer
+/// from the report's winner (`+0x50`) and the side that withdrew
+/// (`+0x54`): with no winner `0x2d63` (11619). Otherwise, for the
+/// Alliance's viewer: a win `0x2a07` (10759), or `0x2a06` (10758) when the
+/// Empire withdrew; its own withdrawal `0x2a05` (10757); a loss `0x2a08`
+/// (10760). For the Empire's: a win `0x2a08`, or `0x2a05` when the
+/// Alliance withdrew; its own withdrawal `0x2a06`; a loss `0x2a07`.
+fn battle_summary_scene(report: &BattleReport<'_>) -> u32 {
+    use resources::strategy as art;
+    let Some(winner) = report.winner_alliance else {
+        return art::EVENT_BATTLE_MUTUAL_DESTRUCTION;
+    };
+    let viewer = report.viewer_alliance;
+    // 10757 / 10758: the Alliance's or the Empire's fleet beaten off.
+    let beaten = |alliance: bool| {
+        if alliance {
+            art::EVENT_BATTLE_ALLIANCE_DEFEATED
+        } else {
+            art::EVENT_BATTLE_EMPIRE_DEFEATED
+        }
+    };
+    // 10759 / 10760: the Alliance's or the Empire's victory.
+    let victory = |alliance: bool| {
+        if alliance {
+            art::EVENT_BATTLE_ALLIANCE_VICTORY
+        } else {
+            art::EVENT_BATTLE_EMPIRE_VICTORY
+        }
+    };
+    if winner == viewer {
+        if report.withdrawn == Some(!viewer) {
+            beaten(!viewer)
+        } else {
+            victory(viewer)
+        }
+    } else if report.withdrawn == Some(viewer) {
+        beaten(viewer)
+    } else {
+        victory(!viewer)
+    }
 }
 
 /// The Battle Summary's summary page (`FUN_0046f360`): the scene; the title
@@ -5722,16 +5764,10 @@ fn draw_battle_result_summary(
 /// capture guide-059 shows the same layout.
 fn battle_summary_page(
     system_name: &str,
-    winner_alliance: Option<bool>,
+    scene: u32,
     lines: &[String],
     text_color: Color,
 ) -> Vec<PageOp> {
-    use resources::strategy as art;
-    let scene = match winner_alliance {
-        Some(true) => art::EVENT_BATTLE_ALLIANCE_VICTORY,
-        Some(false) => art::EVENT_BATTLE_EMPIRE_VICTORY,
-        None => art::EVENT_BATTLE_MUTUAL_DESTRUCTION,
-    };
     let mut ops = vec![
         PageOp::Bitmap {
             source: DllSource::Strategy,
@@ -9941,7 +9977,12 @@ mod tests {
             "The Alliance fleet has been completely destroyed.".to_owned(),
         ];
         let green = Color::from_rgba(0, 255, 0, 255);
-        let ops = battle_summary_page("Hoth", Some(false), &lines, green);
+        let ops = battle_summary_page(
+            "Hoth",
+            resources::strategy::EVENT_BATTLE_EMPIRE_VICTORY,
+            &lines,
+            green,
+        );
         assert_eq!(
             ops[0],
             PageOp::Bitmap {
@@ -9985,12 +10026,41 @@ mod tests {
             }
         );
         assert!(matches!(&ops[1], PageOp::Text { text, baseline, .. } if text == "Battle at Hoth" && *baseline == 34.0));
-        // No outcome, no lines; a draw shows the mutual destruction scene.
-        let ops = battle_summary_page("Hoth", None, &[], green);
+        // No outcome, no lines: the scene and the title only.
+        let ops = battle_summary_page(
+            "Hoth",
+            resources::strategy::EVENT_BATTLE_MUTUAL_DESTRUCTION,
+            &[],
+            green,
+        );
         assert_eq!(ops.len(), 2);
         assert!(matches!(ops[0], PageOp::Bitmap { id, .. } if id == resources::strategy::EVENT_BATTLE_MUTUAL_DESTRUCTION));
-        let ops = battle_summary_page("Hoth", Some(true), &[], green);
-        assert!(matches!(ops[0], PageOp::Bitmap { id, .. } if id == resources::strategy::EVENT_BATTLE_ALLIANCE_VICTORY));
+    }
+
+    #[test]
+    fn the_summary_scene_follows_the_viewer_and_the_withdrawal() {
+        // FUN_0046f360: 0x2d63 with no winner; 0x2a05..0x2a08 by the
+        // viewer's win, withdrawal or loss. guide-059 is the Empire's win
+        // (0x2a08, 10760).
+        let scene = |viewer, winner, withdrawn| {
+            battle_summary_scene(&BattleReport {
+                system_name: "Deyer",
+                viewer_alliance: viewer,
+                winner_alliance: winner,
+                withdrawn,
+                system_side: None,
+            })
+        };
+        assert_eq!(scene(false, Some(false), None), 10_760);
+        assert_eq!(scene(true, Some(true), None), 10_759);
+        assert_eq!(scene(true, Some(true), Some(false)), 10_758);
+        assert_eq!(scene(false, Some(false), Some(true)), 10_757);
+        assert_eq!(scene(true, Some(false), Some(true)), 10_757);
+        assert_eq!(scene(false, Some(true), Some(false)), 10_758);
+        assert_eq!(scene(true, Some(false), None), 10_760);
+        assert_eq!(scene(false, Some(true), None), 10_759);
+        assert_eq!(scene(true, None, Some(true)), 11_619);
+        assert_eq!(scene(false, None, None), 11_619);
     }
 
     #[test]
