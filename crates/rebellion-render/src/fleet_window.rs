@@ -103,6 +103,13 @@ pub(crate) fn damage_mark(object: MiniObject, mini: u32) -> (DllSource, u32) {
     }
 }
 
+/// The mark `FUN_0042c3b0(.., 0, 1)` blits over a captive character's
+/// mini (`+0xac` bit 0), after the mini: its GOKRES `(class & 0xfff) +
+/// 0x7000`, the mini's id plus `0x3000`.
+pub(crate) const fn captive_mark(mini: u32) -> (DllSource, u32) {
+    (DllSource::Gokres, mini + 0x3000)
+}
+
 /// STRATEGY 11502 (`0x2cee`): the damage mark of a character's mini.
 const DAMAGED_PERSONNEL: u32 = 11_502;
 
@@ -1098,6 +1105,8 @@ struct RightItem {
     no_hyperdrive: bool,
     /// A damaged ship (`+0x50` bit `0x200`, `FUN_00501c00`).
     damaged: bool,
+    /// A captive character (`+0xac` bit 0), marked over its mini.
+    captive: bool,
     /// The regiment or ship the item stands for.
     object: Option<ItemObject>,
 }
@@ -1203,6 +1212,7 @@ fn right_items(
                     .to_owned(),
                 no_hyperdrive: class.hyperdrive == 0,
                 damaged: crate::status_rows::damaged(ship, class),
+                captive: false,
                 object: Some(ItemObject::Ship {
                     fleet,
                     index,
@@ -1225,6 +1235,7 @@ fn right_items(
                     label: class.name.clone(),
                     no_hyperdrive: false,
                     damaged: false,
+                    captive: false,
                     object: Some(ItemObject::Fighter { fleet, index }),
                 })
             })
@@ -1242,6 +1253,7 @@ fn right_items(
                 label: label.to_owned(),
                 no_hyperdrive: false,
                 damaged: false,
+                captive: false,
                 object: Some(ItemObject::Regiment(key)),
             })
             .collect(),
@@ -1256,6 +1268,7 @@ fn right_items(
                 no_hyperdrive: false,
                 // FUN_004f7800: an injured character is damaged.
                 damaged: character.injury > 0,
+                captive: character.is_captive,
                 object: Some(ItemObject::Character(key)),
             })
             .collect(),
@@ -2025,9 +2038,11 @@ fn draw_fleet_window(
                     }
                     if let Some(mini) = item.mini {
                         let marks = mini_marks(item.kind, mini, travelling, item.damaged);
+                        let captive = item.captive.then(|| captive_mark(mini));
                         for (source, id) in marks
                             .into_iter()
                             .chain(std::iter::once((DllSource::Gokres, mini)))
+                            .chain(captive)
                         {
                             paint_native(
                                 &right_painter,
@@ -2570,6 +2585,7 @@ pub(crate) mod tests {
                 label: "Alliance Fleet Regiment".into(),
                 no_hyperdrive: false,
                 damaged: false,
+                captive: false,
                 object: Some(ItemObject::Regiment(troop)),
             }]
         );
@@ -4147,6 +4163,11 @@ pub(crate) mod tests {
             mini_marks(hurt.kind, hurt.mini.unwrap(), false, hurt.damaged),
             [(DllSource::Strategy, 11_502)]
         );
+        // A captive (+0xac bit 0) is marked over its mini, GOKRES + 0x3000.
+        assert!(!hurt.captive);
+        world.characters[character].is_captive = true;
+        assert!(item(&world).captive);
+        assert_eq!(captive_mark(19_008), (DllSource::Gokres, 0x7a40));
     }
 
     #[test]

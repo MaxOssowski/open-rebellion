@@ -193,6 +193,13 @@ Port consequence: an escaped character does not reappear at home. It
 travels from where it was held to the nearest unblockaded system of its own
 side (in practice), with the transit time of `FUN_0055d8c0`.
 
+## The captive mark (ported 2026-10-22)
+
+`FUN_0042c3b0(.., 0, 1)` blits a captive character's (`+0xac` bit 0) GOKRES
+`(class & 0xfff) + 0x7000` over its mini, after the mini itself
+(`fleet-window.md`). The port draws it in the Fleet window's Personnel
+tab and the Defenses window's personnel page (`captive_mark`).
+
 ## Still open
 
 - `+0x74` on a character, and the per-side default origin. (`+0x70` is

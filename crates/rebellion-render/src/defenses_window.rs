@@ -1091,9 +1091,14 @@ fn draw_defenses_window(
                 let selected = window.selected == Some(row.item);
                 // FUN_0042c3b0: an injured character's damage mark under
                 // its mini (`+0x50` bit `0x200`, FUN_004f7800).
+                // A captive's mark goes over the mini (FUN_0042c3b0).
+                let captive = matches!(row.item, DefensesItem::Character(key)
+                    if world.characters.get(key).is_some_and(|value| value.is_captive))
+                .then(|| crate::fleet_window::captive_mark(row.mini));
                 for (source, id) in row_marks(world, row)
                     .into_iter()
                     .chain(std::iter::once((DllSource::Gokres, row.mini)))
+                    .chain(captive)
                 {
                     paint_native(&list_painter, ctx, cache, source, id, cell, scale, 0.0, 0.0);
                 }
@@ -1828,6 +1833,27 @@ mod tests {
             hurt.painted.iter().filter(|(id, _)| *id == 11_502).count(),
             1
         );
+        // A captive (+0xac bit 0) takes GOKRES mini + 0x3000 over the mini.
+        assert!(!hurt.painted.iter().any(|(id, _)| *id == 18_176 + 832 + 0x3000));
+        // The other side's character held here by the Alliance carries its
+        // captor's side (FUN_004eec60), so the Alliance's page lists it.
+        let enemy = world
+            .characters
+            .iter()
+            .find(|(_, value)| value.name == "Enemy")
+            .map(|(key, _)| key)
+            .unwrap();
+        world.characters[enemy].is_captive = true;
+        world.characters[enemy].captured_by = Some(Faction::Alliance);
+        let held = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        let (index, &(_, spot)) = held
+            .painted
+            .iter()
+            .enumerate()
+            .find(|(_, (id, _))| *id == 18_176 + 832 + 0x3000)
+            .unwrap_or_else(|| panic!("{:?}", held.painted));
+        let mini = held.painted.iter().position(|entry| *entry == (18_176 + 832, spot));
+        assert!(mini.is_some_and(|mini| mini < index), "{:?}", held.painted);
     }
 
     #[test]

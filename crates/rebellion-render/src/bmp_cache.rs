@@ -1840,6 +1840,9 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // `0x2640..0x278f` and `0x6640..0x678f`, `FUN_0042c3b0`).
                 | 9_792..=10_127
                 | 26_176..=26_511
+                // The captive marks over the character minis (`+0x7000`,
+                // `0x7840..0x7a9b`, `FUN_0042c3b0`).
+                | 30_784..=31_387
                 | 16_000..=19_999
                 | 20_480..=22_527
                 | 23_552..=23_807
@@ -2349,6 +2352,8 @@ mod tests {
             (DllSource::Gokres, 0x278f),
             (DllSource::Gokres, 0x6640),
             (DllSource::Gokres, 0x678f),
+            (DllSource::Gokres, 0x7840),
+            (DllSource::Gokres, 0x7a9b),
         ] {
             assert!(uses_blue_screen_transparency(source, resource_id), "{resource_id}");
         }
