@@ -4253,6 +4253,8 @@ async fn main() {
                 // 2. Recovered GID baseline. Replacement fog, fleet, sector,
                 // facility, and blockade primitives stay off the parity surface
                 // until their original GID modes are reconstructed.
+                // FUN_004c0fc0 selects the system 0x92 / 0x93 mark.
+                let marked_system = map_state.selected_system;
                 let galaxy_camera = draw_galaxy_map(
                     &world,
                     &mut map_state,
@@ -4265,6 +4267,7 @@ async fn main() {
                         economy: &economy_state,
                         missions: &mission_state,
                         uprisings: &uprising_state,
+                        marked_system,
                     },
                 );
                 #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]

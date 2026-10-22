@@ -91,7 +91,19 @@ pub fn legend_resource(mode: GidMode, faction: CockpitFaction) -> Option<u16> {
         GidMode::DeathStarShields => 0x27d6,
         GidMode::PlanetaryShieldGenerators => 0x27d7,
         GidMode::PlanetaryDefenseBatteries => 0x27d8,
-        GidMode::DisplayOff => return None,
+        // FUN_004522f0 has no layout for the briefing's displays: its
+        // default returns before FUN_00452630, so the original's legend
+        // window is empty. port: no legend.
+        GidMode::DisplayOff
+        | GidMode::OwnLoyalSystems
+        | GidMode::OwnMilitaryControl
+        | GidMode::EnemyLoyalSystems
+        | GidMode::EnemyMilitaryControl
+        | GidMode::UnexploredSystems
+        | GidMode::BriefingFleets
+        | GidMode::AllDefenses
+        | GidMode::MarkedImperialSystem
+        | GidMode::MarkedAllianceSystem => return None,
     })
 }
 

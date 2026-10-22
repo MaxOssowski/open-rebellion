@@ -111,6 +111,26 @@ pub enum GidMode {
     PlanetaryDefenseBatteries,
     /// Native Display Off item, which removes markers and uses bright resource 902.
     DisplayOff,
+    // The advisor briefing's displays (`FUN_004c0fc0`; not in the GID
+    // menu, `ghidra/notes/advisor-briefing.md`).
+    /// `0x13`: the viewer's systems whose support side is the viewer's.
+    OwnLoyalSystems,
+    /// `0x14`: the viewer's systems whose support side is not the viewer's.
+    OwnMilitaryControl,
+    /// `0x15`: the enemy's systems whose support side is the enemy's.
+    EnemyLoyalSystems,
+    /// `0x16`: the enemy's systems whose support side is not the enemy's.
+    EnemyMilitaryControl,
+    /// `0x17`: the unexplored systems.
+    UnexploredSystems,
+    /// `0x20`: drawn as Idle Fleets (`FUN_0042b330` shares the case).
+    BriefingFleets,
+    /// `0x91`: the holder's regiments, armed defenses and squadrons.
+    AllDefenses,
+    /// `0x92`: one system in the Empire's colour.
+    MarkedImperialSystem,
+    /// `0x93`: one system in the Alliance's colour.
+    MarkedAllianceSystem,
 }
 
 impl GidMode {
@@ -140,6 +160,15 @@ impl GidMode {
             Self::PlanetaryShieldGenerators => 0x74,
             Self::PlanetaryDefenseBatteries => 0x75,
             Self::DisplayOff => 0x80,
+            Self::OwnLoyalSystems => 0x13,
+            Self::OwnMilitaryControl => 0x14,
+            Self::EnemyLoyalSystems => 0x15,
+            Self::EnemyMilitaryControl => 0x16,
+            Self::UnexploredSystems => 0x17,
+            Self::BriefingFleets => 0x20,
+            Self::AllDefenses => 0x91,
+            Self::MarkedImperialSystem => 0x92,
+            Self::MarkedAllianceSystem => 0x93,
         }
     }
 
@@ -169,6 +198,30 @@ impl GidMode {
             Self::PlanetaryShieldGenerators => "Planetary Shield Generators",
             Self::PlanetaryDefenseBatteries => "Planetary Defense Batteries",
             Self::DisplayOff => "Display Off",
+            // TEXTSTRA 0x1621, 0x1629, 0x162a. The loyal displays are
+            // named by the viewer's side (`loyal_systems_label`); the
+            // others have no name of their own.
+            Self::OwnMilitaryControl | Self::EnemyMilitaryControl => {
+                "Systems Under Military Control"
+            }
+            Self::UnexploredSystems => "Unexplored Systems",
+            Self::AllDefenses => "All Defenses",
+            Self::OwnLoyalSystems
+            | Self::EnemyLoyalSystems
+            | Self::BriefingFleets
+            | Self::MarkedImperialSystem
+            | Self::MarkedAllianceSystem => "",
+        }
+    }
+
+    /// TEXTSTRA `0x161f` "Systems Loyal to the Alliance" or `0x1620`
+    /// "Systems Loyal to the Empire", for the side the loyal display shows.
+    #[must_use]
+    pub const fn loyal_systems_label(alliance: bool) -> &'static str {
+        if alliance {
+            "Systems Loyal to the Alliance"
+        } else {
+            "Systems Loyal to the Empire"
         }
     }
 
@@ -1601,6 +1654,32 @@ fn macroquad_accelerator(key: KeyCode) -> Option<CockpitButton> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_briefing_displays_carry_their_textstra_names() {
+        // TEXTSTRA 0x161f, 0x1620, 0x1621, 0x1629, 0x162a.
+        assert_eq!(
+            GidMode::OwnMilitaryControl.label(),
+            "Systems Under Military Control"
+        );
+        assert_eq!(
+            GidMode::EnemyMilitaryControl.label(),
+            "Systems Under Military Control"
+        );
+        assert_eq!(GidMode::UnexploredSystems.label(), "Unexplored Systems");
+        assert_eq!(GidMode::AllDefenses.label(), "All Defenses");
+        assert_eq!(GidMode::OwnLoyalSystems.label(), "");
+        assert_eq!(
+            GidMode::loyal_systems_label(true),
+            "Systems Loyal to the Alliance"
+        );
+        assert_eq!(
+            GidMode::loyal_systems_label(false),
+            "Systems Loyal to the Empire"
+        );
+        assert_eq!(GidMode::AllDefenses.command_id(), 0x91);
+    }
+
     use super::*;
 
     fn assert_close(actual: f32, expected: f32) {

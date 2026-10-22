@@ -756,10 +756,6 @@ fn calculate_resource_allocation(world: &GameWorld, sys: &crate::world::System) 
 /// previous side is the side holding the system, if any. port: a side's
 /// uprising (`ControlKind::Uprising`) stays while that side holds the
 /// system.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "GNPRTB values are small integers."
-)]
 #[must_use]
 pub fn resolve_system_control(
     sys: &crate::world::System,
@@ -779,24 +775,41 @@ pub fn resolve_system_control(
         (true, true) => held,
         (false, false) => None,
     };
-    let support = if sys.is_populated {
-        let threshold = gnprtb.value(GNPRTB_SUPPORT_CONTROL_THRESHOLD, difficulty) as i32;
-        let alliance = crate::uprising::support_points(sys, Faction::Alliance);
-        if alliance >= threshold {
-            Some(Faction::Alliance)
-        } else if 100 - alliance >= threshold {
-            Some(Faction::Empire)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let support = support_side(sys, gnprtb, difficulty);
     match regiments.or(support) {
         Some(side) if sys.control == ControlKind::Uprising(side) => sys.control,
         Some(side) => ControlKind::Controlled(side),
         None if sys.control == ControlKind::Controlled(Faction::Neutral) => sys.control,
         None => ControlKind::Uncontrolled,
+    }
+}
+
+/// The support side (`+0x84` bits 2-3, `FUN_0055a080`): none for an
+/// unpopulated system (`+0x88` bit 0 clear; the original's 3); the
+/// Alliance when its support (`+0x58`) reaches GNPRTB 7760, the Empire
+/// when 100 less it does, else none.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "GNPRTB values are small integers."
+)]
+#[must_use]
+pub fn support_side(
+    sys: &crate::world::System,
+    gnprtb: &GnprtbParams,
+    difficulty: u8,
+) -> Option<crate::dat::Faction> {
+    use crate::dat::Faction;
+    if !sys.is_populated {
+        return None;
+    }
+    let threshold = gnprtb.value(GNPRTB_SUPPORT_CONTROL_THRESHOLD, difficulty) as i32;
+    let alliance = crate::uprising::support_points(sys, Faction::Alliance);
+    if alliance >= threshold {
+        Some(Faction::Alliance)
+    } else if 100 - alliance >= threshold {
+        Some(Faction::Empire)
+    } else {
+        None
     }
 }
 

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "family": "CMD-02",
+  "status": "pass",
+  "run_id": "2026-10-22T23-40-05-762Z-511958",
+  "cases": 152,
+  "executions": 152,
+  "passed": 152,
+  "failed": 0,
+  "screenshots_with_matching_goldens": 0,
+  "unbaselined": 152,
+  "unstable_screenshots": 0,
+  "four_request_startups": 152,
+  "browser_executions": 152,
+  "muted_launches": 152,
+  "launch_timeouts": 0,
+  "recovered_launch_timeouts": 0,
+  "execution_timeouts": 0,
+  "recovered_execution_timeouts": 0,
+  "browser_processes_closed": 152,
+  "browser_executions_closed": 152,
+  "raw_artifacts": ".artifacts/interface-parity/2026-10-22T23-40-05-762Z-511958"
+}

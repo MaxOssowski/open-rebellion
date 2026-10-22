@@ -60,9 +60,8 @@ use rebellion_core::world::{ControlKind, GameWorld, System};
 #[cfg(target_arch = "wasm32")]
 pub use advisor::set_advisor_asset_cache;
 pub use advisor::{
-    advisor_combat_result, advisor_greet, advisor_manufacturing_complete,
-    advisor_mission_result, advisor_uprising, draw_advisor, AdvisorFaction, AdvisorMessage,
-    AdvisorPriority, AdvisorState,
+    advisor_combat_result, advisor_greet, advisor_manufacturing_complete, advisor_mission_result,
+    advisor_uprising, draw_advisor, AdvisorFaction, AdvisorMessage, AdvisorPriority, AdvisorState,
 };
 pub use audio::{draw_audio_controls, AudioVolumeState, MusicContext, MusicTrack, SfxKind};
 #[cfg(target_arch = "wasm32")]
@@ -115,8 +114,8 @@ pub use missions_window::{
 };
 pub use panels::game_setup::{draw_game_setup, Difficulty, GameSetupAction, GameSetupState};
 pub use panels::{
-    draw_mod_manager, draw_save_load, ModInfo, ModManagerAction, ModManagerState,
-    PanelAction, SaveLoadPanelState, SaveSlotInfo,
+    draw_mod_manager, draw_save_load, ModInfo, ModManagerAction, ModManagerState, PanelAction,
+    SaveLoadPanelState, SaveSlotInfo,
 };
 pub use rebellion_core::tactical::{
     BattlePhase, BattleSession, CombatWinner, OriginalTacticalRng, TacticalTrenchRunOutcome,
@@ -305,6 +304,9 @@ pub struct GidOverlayContext<'a> {
     pub missions: &'a MissionState,
     /// Systems in revolt (system `+0x88` bit 2).
     pub uprisings: &'a rebellion_core::uprising::UprisingState,
+    /// The system displays `0x92` and `0x93` mark (the briefing's action
+    /// selects it, `FUN_004c0fc0`).
+    pub marked_system: Option<SystemKey>,
 }
 
 impl Default for GalaxyMapState {
@@ -593,6 +595,9 @@ fn gid_marker_for_system(
     if mode == GidMode::PopularSupport {
         return popular_support_marker_resource(system, faction);
     }
+    if let Some(marker) = gid_briefing_marker(world, system_key, system, faction, mode, gid) {
+        return marker;
+    }
     // An unpopulated system is marked like any other: FUN_0050b610 gives it
     // the no-side holder 3, whose table (+0x2b4) holds the neutral marks.
     // At an unexplored system Fleets Enroute counting no fleet takes side
@@ -617,7 +622,10 @@ fn gid_marker_for_system(
             usize::from(count.total() > 0) * 3,
         );
     }
-    if matches!(mode, GidMode::IdleFleets | GidMode::FleetsEnRoute) {
+    if matches!(
+        mode,
+        GidMode::IdleFleets | GidMode::FleetsEnRoute | GidMode::BriefingFleets
+    ) {
         let counts = gid_fleets(
             world,
             system_key,
@@ -635,6 +643,55 @@ fn gid_marker_for_system(
     gid_marker_resource_for_size(system.control, true, size)
 }
 
+/// The briefing's displays (`FUN_0042b330` cases `0x13..0x17`, `0x92`,
+/// `0x93`; `ghidra/notes/advisor-briefing.md`), or `None` for the others.
+///
+/// - `0x13..0x16`: the largest mark (`0x52`) when the holder is the side
+///   the display names and the support side (`+0x84` bits 2-3) is, or for
+///   military control is not, that side; else the smallest; in the
+///   holder's colour.
+/// - `0x17`: the largest no-side mark; only unexplored systems reach it.
+/// - `0x92`, `0x93`: the largest Empire / Alliance mark (value 7) for the
+///   marked system, the unexplored mark for every other.
+fn gid_briefing_marker(
+    world: &GameWorld,
+    system_key: SystemKey,
+    system: &System,
+    faction: CockpitFaction,
+    mode: GidMode,
+    gid: &GidOverlayContext<'_>,
+) -> Option<u32> {
+    use rebellion_core::dat::Faction;
+    let (viewer, enemy) = match faction {
+        CockpitFaction::Alliance => (Faction::Alliance, Faction::Empire),
+        CockpitFaction::Empire => (Faction::Empire, Faction::Alliance),
+    };
+    let (side, loyal) = match mode {
+        GidMode::OwnLoyalSystems => (viewer, true),
+        GidMode::OwnMilitaryControl => (viewer, false),
+        GidMode::EnemyLoyalSystems => (enemy, true),
+        GidMode::EnemyMilitaryControl => (enemy, false),
+        GidMode::UnexploredSystems => return Some(gid_marker_for_side(Some(Faction::Neutral), 3)),
+        GidMode::MarkedImperialSystem | GidMode::MarkedAllianceSystem => {
+            if gid.marked_system != Some(system_key) {
+                return Some(bmp_cache::resources::strategy::GID_UNEXPLORED);
+            }
+            let side = if mode == GidMode::MarkedImperialSystem {
+                Faction::Empire
+            } else {
+                Faction::Alliance
+            };
+            return Some(gid_marker_for_side(Some(side), 3));
+        }
+        _ => return None,
+    };
+    let holder = system.control.faction();
+    let support =
+        rebellion_core::economy::support_side(system, &world.gnprtb, world.difficulty_index);
+    let shown = holder == Some(side) && (support == Some(side)) == loyal;
+    Some(gid_marker_for_side(holder, usize::from(shown) * 3))
+}
+
 /// Fleets Enroute (`0x22`) and Active Personnel (`0x44`) count even an
 /// unexplored system (`FUN_0042b330`'s `bVar3`).
 fn gid_counts_unexplored(mode: GidMode) -> bool {
@@ -647,15 +704,26 @@ fn gid_counts_unexplored(mode: GidMode) -> bool {
 /// outside the fleet and personnel displays (`bVar4`); Fleets Enroute and
 /// Active Personnel count either.
 fn gid_shows_unexplored(mode: GidMode, system: &System) -> bool {
+    // bVar4: 0x20..0x22, 0x43, 0x44, 0x92, 0x93.
     let fleets_or_personnel = matches!(
         mode,
-        GidMode::IdleFleets
+        GidMode::BriefingFleets
+            | GidMode::IdleFleets
             | GidMode::FleetsEnRoute
             | GidMode::IdlePersonnel
             | GidMode::ActivePersonnel
+            | GidMode::MarkedImperialSystem
+            | GidMode::MarkedAllianceSystem
     );
     let explored = system.exploration_status == ExplorationStatus::Explored;
-    let hidden = !explored || (system.is_destroyed && !fleets_or_personnel);
+    // Unexplored Systems (0x17) turns the gate round: an explored system
+    // takes the unexplored mark, an unexplored one is counted.
+    let unseen = if mode == GidMode::UnexploredSystems {
+        explored
+    } else {
+        !explored
+    };
+    let hidden = unseen || (system.is_destroyed && !fleets_or_personnel);
     hidden && !gid_counts_unexplored(mode)
 }
 
@@ -865,9 +933,23 @@ fn gid_metric(
             .is_none_or(rebellion_core::manufacturing::ProductionQueue::is_empty)
     };
     match mode {
-        GidMode::PopularSupport | GidMode::DisplayOff => 0,
+        // The briefing's side displays and marked systems take their mark in
+        // gid_marker_for_system.
+        GidMode::PopularSupport
+        | GidMode::DisplayOff
+        | GidMode::OwnLoyalSystems
+        | GidMode::OwnMilitaryControl
+        | GidMode::EnemyLoyalSystems
+        | GidMode::EnemyMilitaryControl
+        | GidMode::UnexploredSystems
+        | GidMode::MarkedImperialSystem
+        | GidMode::MarkedAllianceSystem => 0,
+        // FUN_0042b330 case 0x91: the holder's regiments (FUN_005044f0,
+        // families 0x10..0x13), armed defenses (FUN_00526e90, 0x22..0x27)
+        // and squadrons (FUN_00503550).
+        GidMode::AllDefenses => gid_all_defenses(world, system_key, system),
         GidMode::Uprisings => u32::from(system_in_revolt(system_key, system, gid.uprisings)),
-        GidMode::IdleFleets | GidMode::FleetsEnRoute => {
+        GidMode::IdleFleets | GidMode::FleetsEnRoute | GidMode::BriefingFleets => {
             gid_fleets(
                 world,
                 system_key,
@@ -1051,6 +1133,48 @@ fn gid_metric_size(mode: GidMode, value: u32) -> usize {
             _ => 3,
         },
     }
+}
+
+/// `0x91` All Defenses: the holder's regiments, armed defense facilities
+/// (families `0x22..0x27`) and squadrons on the planet and aboard its
+/// fleets at the system. hyp: the squadrons count as Fighter Squadrons'
+/// do (`FUN_00503550` is that display's counter).
+fn gid_all_defenses(world: &GameWorld, system_key: SystemKey, system: &System) -> u32 {
+    use rebellion_core::dat::Faction;
+    let Some(holder) = system
+        .control
+        .faction()
+        .filter(|&side| side != Faction::Neutral)
+    else {
+        return 0;
+    };
+    let alliance = holder == Faction::Alliance;
+    let regiments = system
+        .ground_units
+        .iter()
+        .filter_map(|key| world.troops.get(*key))
+        .filter(|troop| troop.is_alliance == alliance)
+        .count();
+    let defenses = system
+        .defense_facilities
+        .iter()
+        .filter_map(|key| world.defense_facilities.get(*key))
+        .filter(|facility| {
+            facility.side == holder && (0x22..=0x27).contains(&facility.class_dat_id.family())
+        })
+        .count();
+    let squadrons = system
+        .fleets
+        .iter()
+        .filter_map(|key| world.fleets.get(*key))
+        .filter(|fleet| fleet.is_alliance == alliance)
+        .flat_map(|fleet| fleet.fighters.iter())
+        .map(|fighters| fighters.count)
+        .sum::<u32>()
+        + rebellion_core::squadrons::on_planet(world, system_key, alliance);
+    u32::try_from(regiments + defenses)
+        .unwrap_or(u32::MAX)
+        .saturating_add(squadrons)
 }
 
 fn gid_marker_resource_for_size(control: ControlKind, explored: bool, size: usize) -> u32 {
@@ -2092,6 +2216,229 @@ mod interaction_tests {
     }
 
     #[test]
+    fn the_briefing_displays_follow_the_holder_and_the_support_side() {
+        // FUN_0042b330 cases 0x13..0x17, 0x91..0x93
+        // (ghidra/notes/advisor-briefing.md): 0x52 when the holder is the
+        // named side and its support side (+0x84 bits 2-3, GNPRTB 7760) is
+        // or is not that side; 0x17 marks the unexplored systems, the gate
+        // turned round; 0x92 / 0x93 mark one system.
+        use bmp_cache::resources::strategy as art;
+        use rebellion_core::dat::{ExplorationStatus, Faction};
+        let mut world = GameWorld::default();
+        world.gnprtb =
+            rebellion_core::world::GnprtbParams::new(vec![rebellion_core::world::GnprtbEntry {
+                parameter_id: 7760,
+                development: 60,
+                alliance_sp_easy: 60,
+                alliance_sp_medium: 60,
+                alliance_sp_hard: 60,
+                empire_sp_easy: 60,
+                empire_sp_medium: 60,
+                empire_sp_hard: 60,
+                multiplayer: 60,
+            }]);
+        let mut place = |control, alliance_support: f32, explored| {
+            world.systems.insert(System {
+                last_arrival: None,
+                dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+                name: "Naboo".into(),
+                sector: Default::default(),
+                x: 0,
+                y: 0,
+                exploration_status: if explored {
+                    ExplorationStatus::Explored
+                } else {
+                    ExplorationStatus::Unexplored
+                },
+                popularity_alliance: alliance_support,
+                popularity_empire: 1.0 - alliance_support,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control,
+            })
+        };
+        let loyal = place(ControlKind::Controlled(Faction::Alliance), 0.8, true);
+        let held = place(ControlKind::Controlled(Faction::Alliance), 0.5, true);
+        let imperial = place(ControlKind::Controlled(Faction::Empire), 0.2, true);
+        let occupied = place(ControlKind::Controlled(Faction::Empire), 0.5, true);
+        let unknown = place(ControlKind::Controlled(Faction::Empire), 0.2, false);
+        let movement = rebellion_core::movement::MovementState::new();
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+            marked_system: Some(loyal),
+        };
+        let mark = |key, mode| {
+            gid_marker_for_system(
+                &world,
+                key,
+                &world.systems[key],
+                CockpitFaction::Alliance,
+                mode,
+                &gid,
+            )
+        };
+        assert_eq!(
+            mark(loyal, GidMode::OwnLoyalSystems),
+            art::GID_ALLIANCE_LARGEST
+        );
+        assert_eq!(
+            mark(held, GidMode::OwnLoyalSystems),
+            art::GID_ALLIANCE_SMALLEST
+        );
+        assert_eq!(
+            mark(held, GidMode::OwnMilitaryControl),
+            art::GID_ALLIANCE_LARGEST
+        );
+        assert_eq!(
+            mark(loyal, GidMode::OwnMilitaryControl),
+            art::GID_ALLIANCE_SMALLEST
+        );
+        assert_eq!(
+            mark(imperial, GidMode::EnemyLoyalSystems),
+            art::GID_EMPIRE_LARGEST
+        );
+        assert_eq!(
+            mark(imperial, GidMode::EnemyMilitaryControl),
+            art::GID_EMPIRE_SMALLEST
+        );
+        assert_eq!(
+            mark(occupied, GidMode::EnemyMilitaryControl),
+            art::GID_EMPIRE_LARGEST
+        );
+        assert_eq!(
+            mark(loyal, GidMode::EnemyLoyalSystems),
+            art::GID_ALLIANCE_SMALLEST
+        );
+        // 0x17: unexplored systems take the largest no-side mark, explored
+        // ones the unexplored mark.
+        assert_eq!(
+            mark(unknown, GidMode::UnexploredSystems),
+            art::GID_NEUTRAL_LARGEST
+        );
+        assert_eq!(mark(loyal, GidMode::UnexploredSystems), art::GID_UNEXPLORED);
+        assert_eq!(mark(unknown, GidMode::OwnLoyalSystems), art::GID_UNEXPLORED);
+        // 0x92 / 0x93: the marked system alone.
+        assert_eq!(
+            mark(loyal, GidMode::MarkedImperialSystem),
+            art::GID_EMPIRE_LARGEST
+        );
+        assert_eq!(
+            mark(loyal, GidMode::MarkedAllianceSystem),
+            art::GID_ALLIANCE_LARGEST
+        );
+        assert_eq!(
+            mark(held, GidMode::MarkedImperialSystem),
+            art::GID_UNEXPLORED
+        );
+    }
+
+    #[test]
+    fn all_defenses_counts_the_holders_regiments_defenses_and_squadrons() {
+        // FUN_0042b330 case 0x91: FUN_005044f0 + FUN_00526e90 (families
+        // 0x22..0x27) + FUN_00503550, for the holder; (6, 5, 3, 2, 1).
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{DefenseFacilityInstance, TroopUnit};
+        let mut world = GameWorld::default();
+        let key = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector: Default::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(Faction::Empire),
+        });
+        for is_alliance in [false, false, true] {
+            let troop = world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+                is_alliance,
+                regiment_strength: 100,
+            });
+            world.systems[key].ground_units.push(troop);
+        }
+        for (family, side) in [
+            (0x22_u32, Faction::Empire),
+            (0x27, Faction::Empire),
+            (0x28, Faction::Empire),
+            (0x23, Faction::Alliance),
+        ] {
+            let facility = world.defense_facilities.insert(DefenseFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(family << 24 | 1),
+                side,
+            });
+            world.systems[key].defense_facilities.push(facility);
+        }
+        // Two Imperial regiments and two armed defenses (0x28 is not one,
+        // nor is the Alliance's).
+        assert_eq!(gid_all_defenses(&world, key, &world.systems[key]), 4);
+        assert_eq!(gid_metric_size(GidMode::AllDefenses, 4), 2);
+        // The holder's squadrons aboard its fleets and on the planet.
+        let imperial_class = world.fighter_classes.insert(Default::default());
+        let rebel_class = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                is_alliance: true,
+                ..Default::default()
+            });
+        for (is_alliance, class, count) in [(false, imperial_class, 2), (true, rebel_class, 5)] {
+            let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+                location: key,
+                capital_ships: vec![],
+                fighters: vec![rebellion_core::world::FighterEntry { class, count }],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            });
+            world.systems[key].fleets.push(fleet);
+            world.systems[key]
+                .fighters
+                .push(rebellion_core::world::FighterEntry { class, count: 1 });
+        }
+        assert_eq!(
+            gid_all_defenses(&world, key, &world.systems[key]),
+            4 + 2 + 1
+        );
+        world.systems[key].control = ControlKind::Uncontrolled;
+        assert_eq!(gid_all_defenses(&world, key, &world.systems[key]), 0);
+    }
+
+    #[test]
     fn the_fleet_displays_count_each_side_in_orbit_or_en_route() {
         use rebellion_core::world::Fleet;
         let mut world = GameWorld::default();
@@ -2158,6 +2505,7 @@ mod interaction_tests {
             economy: &economy,
             missions: &missions,
             uprisings: &uprisings,
+            marked_system: None,
         };
         let mark = |mode| {
             gid_marker_for_system(
@@ -2237,6 +2585,7 @@ mod interaction_tests {
             economy: &economy,
             missions: &missions,
             uprisings: &uprisings,
+            marked_system: None,
         };
         use bmp_cache::resources::strategy as art;
         let mark = |world: &GameWorld, key, mode| {
@@ -2491,6 +2840,7 @@ mod interaction_tests {
             economy: &economy,
             missions: &missions,
             uprisings: &uprisings,
+            marked_system: None,
         };
         let mark = |world: &GameWorld, mode| {
             gid_marker_for_system(
@@ -2602,6 +2952,7 @@ mod interaction_tests {
                 economy: &economy,
                 missions: &missions,
                 uprisings,
+                marked_system: None,
             };
             gid_metric(
                 world,
@@ -2690,6 +3041,7 @@ mod interaction_tests {
             economy: &economy,
             missions: &missions,
             uprisings: &uprisings,
+            marked_system: None,
         };
         let metric = |mode| gid_metric(&world, key, &world.systems[key], true, mode, &gid);
 
@@ -2749,6 +3101,7 @@ mod interaction_tests {
             economy: &economy,
             missions: &missions,
             uprisings: &uprisings,
+            marked_system: None,
         };
         let metric = |alliance| {
             gid_metric(
