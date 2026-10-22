@@ -75,9 +75,17 @@ idle fleet orbits the system; an en route one has a move order to it.
 The `+0x88` bit 1 test for Fleets Enroute with no fleet is not kept: an
 unexplored system shows the unexplored mark first.
 
-Open:
-- display `0x61`;
-- the `0x13..0x17` and `0x91..0x93` displays the port's menu lacks.
+Which displays the player can reach (read 2026-10-22):
+- `FUN_004511e0` builds the GID menu with exactly `0x11`, `0x12`; `0x21`,
+  `0x22`; `0x43`, `0x44`; `0x51..0x54`; `0x62`, `0x65`, `0x63`, `0x66`,
+  `0x64`, `0x67`; `0x71..0x75`; and Display Off `0x80`, the port's menu.
+- Its window (`FUN_00451130`) sends command `0x140` with the display in
+  the high word. `FUN_00422ce0` hands it to `FUN_00425d00`, and the
+  accelerators `0xbca..0xbd2` hand it `0x11`, `0x12`, `0x21`, `0x22`,
+  `0x43`, `0x44`, `0x65`, `0x66`, `0x67` (the port's Alt+1..9).
+- `FUN_00425d00` is called from nowhere else. So `0x13..0x17`, `0x61` and
+  `0x91..0x93`, which `FUN_0042b330` still handles, are never shown; the
+  port needs no menu entry for them.
 
 port: a killed character counts as not usable. The port's fleets carry
 no special forces. The fleets a system holds are those in orbit and
