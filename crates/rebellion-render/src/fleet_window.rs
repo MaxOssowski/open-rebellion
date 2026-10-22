@@ -357,6 +357,9 @@ enum ItemObject {
     /// A Personnel tab character (manual p. 111: drag a character onto a
     /// system or fleet; p. 56: right-click it for Command).
     Character(rebellion_core::ids::CharacterKey),
+    /// A Personnel tab special force (`FUN_00536da0(ship, 3)` lists them
+    /// with the characters).
+    SpecialForce(rebellion_core::ids::SpecialForceKey),
 }
 
 impl ItemObject {
@@ -366,6 +369,7 @@ impl ItemObject {
             Self::Fleet(fleet) => MenuObject::Fleet(fleet),
             Self::Regiment(troop) => MenuObject::Troop(troop),
             Self::Character(character) => MenuObject::Character(character),
+            Self::SpecialForce(unit) => MenuObject::SpecialForce(unit),
             Self::Ship {
                 fleet,
                 index,
@@ -774,6 +778,9 @@ impl FleetWindowState {
             ItemObject::Character(character) => {
                 FleetWindowAction::DragCharacter { character, point }
             }
+            // port: a special force's drag is not ported (nor from the
+            // Defenses window); its menu's Move targets instead.
+            ItemObject::SpecialForce(_) => return None,
             ItemObject::Ship {
                 fleet,
                 index,
@@ -1152,7 +1159,9 @@ fn tab_enabled(
         FleetWindowTab::CapitalShips => true,
         FleetWindowTab::Fighters => value.fighters.iter().any(|entry| entry.count > 0),
         FleetWindowTab::Troops => transport.carried_count(fleet) > 0,
-        FleetWindowTab::Personnel => !value.characters.is_empty(),
+        FleetWindowTab::Personnel => {
+            !value.characters.is_empty() || !value.special_forces.is_empty()
+        }
     }
 }
 
@@ -1204,20 +1213,6 @@ fn right_target(
     window: &OpenFleetWindow,
     index: usize,
 ) -> Option<Option<ItemTarget>> {
-    if window.tab == FleetWindowTab::Personnel {
-        let Some(FleetWindowEntry::Fleet(fleet)) = window.selected else {
-            return None;
-        };
-        let character = world
-            .fleets
-            .get(fleet)?
-            .characters
-            .iter()
-            .copied()
-            .filter(|key| world.characters.contains_key(*key))
-            .nth(index)?;
-        return Some(Some(ItemTarget::Character(character)));
-    }
     let item = right_items(world, transport, window.selected, window.tab)
         .into_iter()
         .nth(index)?;
@@ -1237,6 +1232,9 @@ fn right_target(
                 })
             }),
         Some(ItemObject::Character(key)) => Some(ItemTarget::Character(key)),
+        Some(ItemObject::SpecialForce(key)) => {
+            Some(ItemTarget::Object(MissionTarget::SpecialForce(key)))
+        }
         Some(ItemObject::Fleet(_)) | None => None,
     })
 }
@@ -1333,6 +1331,20 @@ fn right_items(
                 captive: character.is_captive,
                 object: Some(ItemObject::Character(key)),
             })
+            // hyp: the special forces after the characters.
+            .chain(value.special_forces.iter().filter_map(|&key| {
+                let unit = world.special_forces.get(key)?;
+                let (mini, label) = crate::system_window::special_force_mini(unit.class_dat_id)?;
+                Some(RightItem {
+                    mini: Some(mini),
+                    kind: MiniObject::SpecialForce(unit.class_dat_id),
+                    label: label.to_owned(),
+                    no_hyperdrive: false,
+                    damaged: false,
+                    captive: false,
+                    object: Some(ItemObject::SpecialForce(key)),
+                })
+            }))
             .collect(),
     }
 }
@@ -2401,6 +2413,7 @@ pub(crate) mod tests {
             characters: Vec::new(),
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         fleet
@@ -4517,6 +4530,52 @@ pub(crate) mod tests {
         let character = world.characters.insert(Default::default());
         world.fleets[fleet].characters.push(character);
         assert!(lit(&world, FleetWindowTab::Personnel));
+    }
+
+    #[test]
+    fn the_personnel_tab_lists_special_forces_aboard_after_the_characters() {
+        // FUN_00536da0(ship, 3) gives the Personnel tab the characters and
+        // special forces aboard; a unit alone lights the tab (FUN_004a5c00
+        // flag 3), and its right-click menu is a special force's.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        let transport = TroopTransportState::default();
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        let unit = world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0004),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        world.fleets[fleet].special_forces.push(unit);
+        assert!(tab_enabled(
+            &world,
+            &transport,
+            selected,
+            FleetWindowTab::Personnel
+        ));
+        let character = world.characters.insert(rebellion_core::world::Character {
+            name: "Mon Mothma".into(),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(character);
+
+        let items = right_items(&world, &transport, selected, FleetWindowTab::Personnel);
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Mon Mothma", "Bothan Spies"]
+        );
+        assert_eq!(items[1].mini, Some(17_731));
+        assert_eq!(items[1].object, Some(ItemObject::SpecialForce(unit)));
+        assert_eq!(
+            ItemObject::SpecialForce(unit).menu_object(),
+            MenuObject::SpecialForce(unit)
+        );
     }
 
     #[test]

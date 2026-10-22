@@ -479,8 +479,17 @@ the same slots but the kind) for the Move mission `0x41000001`.
   character's: the unit class lists the same unit orders (`FUN_00536bc0`,
   `character-retire.md`), and the Move mission takes the unit as its team
   (`PanelAction::MoveSpecialForce`, `missions::member_move_days` at the
-  default speed). port: the port's fleets carry no special forces, so a
-  release on a fleet sends the unit to the fleet's system.
+  default speed). Since 2026-10-23 a release on a fleet of the side boards
+  it, as a character's (`Fleet::special_forces`, save v105): the unit lands
+  in the fleet (`MissionEffect::MemberBoarded`), travels with it, merges
+  with its ships (`fleet_join::merge_fleet_into`) and, when the fleet is
+  destroyed, stands at its system (slot `+0xb4` `FUN_00503e20(0)` sets it
+  Autorouting; port: the autoroute away from another side's place is not
+  ported for special forces). The Fleet window's Personnel tab lists it
+  after the characters (hyp: the order), and the Personnel Finder's
+  SpecForces view gives the fleet a row of its own (`FUN_00464e10`).
+  port: a special force's drag is not ported (nor from the Defenses
+  window); its menu's Move targets instead.
 - A character's Confirmed Move (`0x202`, 2026-10-20) validates the same
   way, then opens the confirmation window with one line, the character's
   name and the trip's days (`missions::move_days`: `FUN_004f4850` at the

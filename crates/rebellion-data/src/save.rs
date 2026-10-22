@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 104;
+pub const SAVE_VERSION: u32 = 105;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1070,6 +1070,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         state.world.systems[system].fleets.push(fleet);
         // The drivers number new ships before each day (GameWorld::number_ships);
@@ -1308,6 +1309,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         state.world.systems[system].fleets.push(fleet);
         let troop = state.world.troops.insert(rebellion_core::world::TroopUnit {
@@ -1466,6 +1468,38 @@ mod tests {
             .unwrap();
         assert_eq!(troops.active().unwrap().destination, Some(destination));
         assert_eq!(loaded.manufacturing.queued_at(origin), 2);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_special_forces_aboard_a_fleet() {
+        // v105: a fleet's special forces aboard (FUN_00536da0(ship, 3)).
+        let saves_dir = tmp_dir("v105_special_forces_aboard");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let unit = state
+            .world
+            .special_forces
+            .insert(rebellion_core::world::SpecialForceUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x3c00_0004),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: vec![unit],
+        });
+        state.world.systems[system].fleets.push(fleet);
+        save_slot(&saves_dir, 0, "Aboard", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.world.fleets[fleet].special_forces, vec![unit]);
     }
 
     #[test]

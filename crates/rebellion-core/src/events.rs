@@ -1291,6 +1291,7 @@ mod tests {
             characters: vec![luke, vader, emperor],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[sys_key].fleets.push(fleet);
 
@@ -1386,6 +1387,7 @@ mod tests {
             characters: vec![luke],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[sys1].fleets.push(fleet1);
 
@@ -1396,6 +1398,7 @@ mod tests {
             characters: vec![vader],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[sys2].fleets.push(fleet2);
 
@@ -1530,6 +1533,7 @@ mod tests {
             characters: vec![luke],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let fleet2 = world.fleets.insert(crate::world::Fleet {
             location: sys_key,
@@ -1538,6 +1542,7 @@ mod tests {
             characters: vec![vader],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[sys_key].fleets.push(fleet1);
         world.systems[sys_key].fleets.push(fleet2);
@@ -1613,6 +1618,7 @@ mod tests {
             characters: vec![luke],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[sys_key].fleets.push(fleet);
 
@@ -1691,6 +1697,7 @@ mod tests {
             characters: vec![han_key],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters.get_mut(han_key).unwrap().current_fleet = Some(fleet_key);
 
@@ -1751,6 +1758,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         han.current_fleet = Some(fleet_key);
         let han_key = world.characters.insert(han);

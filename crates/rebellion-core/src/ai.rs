@@ -6385,6 +6385,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[sys_key].fleets.push(fleet);
         let tie = world.fighter_classes.keys().next().unwrap();
@@ -6714,6 +6715,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[blockaded_sys].fleets.push(blockader);
 
@@ -6753,6 +6755,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[home_sys].fleets.push(fleet_key);
 
@@ -6802,6 +6805,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         world.systems[home_sys].fleets.push(death_star);
         let escort = world.fleets.insert(Fleet {
@@ -6811,6 +6815,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[staging_sys].fleets.push(escort);
 
@@ -8536,6 +8541,7 @@ mod tests {
             characters: vec![luke],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[open].fleets.push(fleet);
         world.characters[luke].current_system = None;
@@ -8582,6 +8588,7 @@ mod tests {
             characters: vec![leia],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[target].fleets.push(fleet);
         world.characters[leia].current_system = None;
@@ -8594,6 +8601,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[target].fleets.push(own);
         let state = AIState::new(AiFaction::Empire);
@@ -9096,6 +9104,7 @@ mod tests {
             characters: vec![leia],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[aboard].fleets.push(fleet);
         world.characters[leia].current_system = None;
@@ -9143,6 +9152,7 @@ mod tests {
             characters: vec![minor],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[aboard].fleets.push(own);
         world.characters[minor].current_system = None;
@@ -9371,6 +9381,7 @@ mod tests {
                 characters: vec![],
                 is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             })
         });
         world.systems[system].fleets.extend(fleets);
@@ -10848,6 +10859,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
         }
         let ship = designer(&mut world, TechType::Ship, 50);
@@ -10893,6 +10905,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[blockaded].fleets.push(fleet);
         // An own system under an Empire fleet is blockaded too, but the
@@ -10904,6 +10917,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[own].fleets.push(enemy);
         let mut state = AIState::new(AiFaction::Alliance);
@@ -11369,6 +11383,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[site].fleets.push(raider);
         assert_eq!(capacity(&world, &uprisings), 0);
@@ -11647,6 +11662,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let far = add_system(&mut world, sector, 0.5, 0.5);
         world.systems[far].x = 40;
@@ -11711,6 +11727,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[here].fleets.push(fleet);
         world.number_ships();
@@ -11776,6 +11793,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[here].fleets.push(fleet);
         world.number_ships();
@@ -11866,6 +11884,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[home].fleets.push(fleet);
         let mut state = AIState::new(AiFaction::Alliance);
@@ -11919,6 +11938,7 @@ mod tests {
                 characters: vec![],
                 is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[system].fleets.push(key);
             key
@@ -12070,6 +12090,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[at].fleets.push(key);
             key

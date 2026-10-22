@@ -1801,6 +1801,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         assert_eq!(
             target_view(&world, Target::Object(MissionTarget::DeathStar(fleet))),

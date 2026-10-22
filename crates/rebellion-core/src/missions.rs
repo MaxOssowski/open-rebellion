@@ -825,13 +825,20 @@ fn member_state(world: &GameWorld, member: MissionMember) -> Option<MemberState>
         }
         MissionMember::SpecialForce(key) => {
             let unit = world.special_forces.get(key)?;
-            let location = world
-                .systems
+            let aboard = world
+                .fleets
                 .iter()
-                .find(|(_, system)| system.special_forces.contains(&key))
-                .map_or(MemberLocation::Nowhere, |(system, _)| {
-                    MemberLocation::System(system)
-                });
+                .find(|(_, fleet)| fleet.special_forces.contains(&key))
+                .map(|(fleet, _)| MemberLocation::Fleet(fleet));
+            let location = aboard.unwrap_or_else(|| {
+                world
+                    .systems
+                    .iter()
+                    .find(|(_, system)| system.special_forces.contains(&key))
+                    .map_or(MemberLocation::Nowhere, |(system, _)| {
+                        MemberLocation::System(system)
+                    })
+            });
             Some(MemberState {
                 is_alliance: unit.is_alliance,
                 recruited: true,
@@ -1311,12 +1318,7 @@ pub fn move_member(world: &mut GameWorld, member: MissionMember, to: Option<Syst
             if !world.special_forces.contains_key(key) {
                 return;
             }
-            for (_, system) in &mut world.systems {
-                system.special_forces.retain(|&unit| unit != key);
-            }
-            for (_, abode) in &mut world.abodes {
-                abode.special_forces.retain(|&unit| unit != key);
-            }
+            take_special_force(world, key);
             if let Some(system) = to.and_then(|to| world.systems.get_mut(to)) {
                 system.special_forces.push(key);
             }
@@ -1395,13 +1397,22 @@ fn landing(
 /// `MissionSystem::send_adrift` to settle or send away. Call it before the
 /// fleet is removed.
 pub fn cast_adrift(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
-    let Some((characters, location)) = world
-        .fleets
-        .get(fleet)
-        .map(|value| (value.characters.clone(), value.location))
-    else {
+    let Some((characters, units, location)) = world.fleets.get_mut(fleet).map(|value| {
+        (
+            value.characters.clone(),
+            std::mem::take(&mut value.special_forces),
+            value.location,
+        )
+    }) else {
         return;
     };
+    // A special force's slot +0xb4 (FUN_00503e20) on a destroyed container
+    // sets it Autorouting (FUN_004f78e0(1)). port: it stands at the fleet's
+    // system; the autoroute away from another side's place
+    // (FUN_0054c7d0) is not ported for special forces.
+    if let Some(system) = world.systems.get_mut(location) {
+        system.special_forces.extend(units);
+    }
     for key in characters {
         if let Some(c) = world.characters.get_mut(key) {
             c.move_to(None, Some(location));
@@ -1412,11 +1423,32 @@ pub fn cast_adrift(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
     }
 }
 
-/// Apply [`MissionEffect::MemberBoarded`]: the character joins `fleet`'s
-/// roster at the fleet's system. port: a special force does not board.
+/// Take a special force out of every system, abode and fleet that lists it.
+fn take_special_force(world: &mut GameWorld, key: crate::ids::SpecialForceKey) {
+    for (_, system) in &mut world.systems {
+        system.special_forces.retain(|&unit| unit != key);
+    }
+    for (_, abode) in &mut world.abodes {
+        abode.special_forces.retain(|&unit| unit != key);
+    }
+    for (_, fleet) in &mut world.fleets {
+        fleet.special_forces.retain(|&unit| unit != key);
+    }
+}
+
+/// Apply [`MissionEffect::MemberBoarded`]: the character or special force
+/// joins `fleet` at the fleet's system (`FUN_004f7640` into the container
+/// `+0x74`).
 pub fn board_fleet(world: &mut GameWorld, member: MissionMember, fleet: crate::ids::FleetKey) {
-    let MissionMember::Character(key) = member else {
-        return;
+    let key = match member {
+        MissionMember::Character(key) => key,
+        MissionMember::SpecialForce(unit) => {
+            if world.special_forces.contains_key(unit) && world.fleets.contains_key(fleet) {
+                take_special_force(world, unit);
+                world.fleets[fleet].special_forces.push(unit);
+            }
+            return;
+        }
     };
     let Some(location) = world.fleets.get(fleet).map(|value| value.location) else {
         return;
@@ -1652,10 +1684,13 @@ pub fn kill_character(world: &mut GameWorld, character: CharacterKey) {
     }
 }
 
-/// Remove a special force from its system and the world.
+/// Remove a special force from its system or fleet and the world.
 pub fn destroy_special_force(world: &mut GameWorld, unit: crate::ids::SpecialForceKey) {
     for (_, system) in &mut world.systems {
         system.special_forces.retain(|&key| key != unit);
+    }
+    for (_, fleet) in &mut world.fleets {
+        fleet.special_forces.retain(|&key| key != unit);
     }
     world.special_forces.remove(unit);
 }
@@ -5079,6 +5114,7 @@ mod tests {
             characters: vec![],
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
     }
@@ -6656,6 +6692,7 @@ mod tests {
             characters: vec![victim],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters[victim].current_fleet = Some(fleet);
         world.characters[victim].current_abode = Some(crate::ids::AbodeKey::default());
@@ -7633,6 +7670,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let traveller = agent_at(&mut world, from, true);
         let mut state = MissionState::new();
@@ -7708,6 +7746,95 @@ mod tests {
     }
 
     #[test]
+    fn a_special_force_boards_a_fleet_and_goes_where_it_goes() {
+        // FUN_004f7640 lands a Move's member in the container +0x74, the
+        // fleet, for a special force as for a character; the Fleet window
+        // then lists it aboard (FUN_00536da0(ship, 3)).
+        let (mut world, _, _, fleet, to) = move_to_fleet();
+        let from = world.fleets[fleet].location;
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0004),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[to].special_forces.push(unit);
+        let member = MissionMember::SpecialForce(unit);
+        // A fleet gone before the landing takes no one; the unit stays.
+        let gone = world.fleets.insert(world.fleets[fleet].clone());
+        world.fleets.remove(gone);
+        apply_advance_effects(
+            &mut world,
+            &[MissionEffect::MemberBoarded {
+                member,
+                fleet: gone,
+            }],
+        );
+        assert_eq!(world.systems[to].special_forces, vec![unit]);
+
+        apply_advance_effects(
+            &mut world,
+            &[MissionEffect::MemberBoarded { member, fleet }],
+        );
+
+        assert_eq!(world.fleets[fleet].special_forces, vec![unit]);
+        assert!(world
+            .systems
+            .values()
+            .all(|s| !s.special_forces.contains(&unit)));
+        assert_eq!(member_location_kind(&world, member), Some(true));
+        assert_eq!(member_location(&world, member), Some(from));
+        // The fleet moves, and the unit with it.
+        let elsewhere = system_at(&mut world, 300);
+        world.fleets[fleet].location = elsewhere;
+        assert_eq!(member_location(&world, member), Some(elsewhere));
+
+        // A later move takes it off the fleet.
+        move_member(&mut world, member, Some(to));
+        assert!(world.fleets[fleet].special_forces.is_empty());
+        assert_eq!(world.systems[to].special_forces, vec![unit]);
+        assert_eq!(member_location_kind(&world, member), Some(false));
+    }
+
+    #[test]
+    fn a_destroyed_fleets_special_forces_stand_at_its_system() {
+        // FUN_00556710 -> slot +0xb4 FUN_00503e20(0): a special force whose
+        // container is destroyed is set Autorouting, not destroyed. port: it
+        // stands at the fleet's system.
+        let (mut world, _, _, fleet, to) = move_to_fleet();
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0004),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.fleets[fleet].special_forces.push(unit);
+
+        cast_adrift(&mut world, fleet);
+
+        assert!(world.fleets[fleet].special_forces.is_empty());
+        assert_eq!(world.systems[to].special_forces, vec![unit]);
+        assert!(world.special_forces.contains_key(unit));
+    }
+
+    #[test]
+    fn a_destroyed_special_force_leaves_the_fleet_it_was_aboard() {
+        let (mut world, _, _, fleet, _) = move_to_fleet();
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0004),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.fleets[fleet].special_forces.push(unit);
+
+        destroy_special_force(&mut world, unit);
+
+        assert!(world.fleets[fleet].special_forces.is_empty());
+        assert!(!world.special_forces.contains_key(unit));
+    }
+
+    #[test]
     fn a_character_boarding_a_fleet_leaves_the_fleet_it_was_on() {
         // FUN_004f7640 puts the member in its new container; it leaves the
         // old one's roster.
@@ -7719,6 +7846,7 @@ mod tests {
             characters: vec![traveller],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters[traveller].current_fleet = Some(old);
 
@@ -8322,6 +8450,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         fleet
@@ -8789,6 +8918,7 @@ mod tests {
             characters: vec![pilot],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters[pilot].current_fleet = Some(fleet);
         world.characters[pilot].command = crate::character_command::CommandKind::Admiral;
@@ -9423,6 +9553,7 @@ mod tests {
             characters: vec![spy],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters[spy].current_fleet = Some(fleet);
         let unit = |world: &mut GameWorld| {
@@ -10386,6 +10517,7 @@ mod tests {
             characters: vec![luke, other],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters[luke].current_fleet = Some(fleet);
         enter_abode(&mut world, MissionMember::Character(luke), dagobah);
@@ -10801,6 +10933,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[here].fleets.push(fleet);
         let ship = MissionTarget::CapitalShip {
@@ -10873,6 +11006,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let ship = MissionTarget::CapitalShip {
             fleet,

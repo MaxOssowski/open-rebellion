@@ -147,7 +147,8 @@ For each system (`FUN_004f31b0(side)`):
 2. The system's fleets (`FUN_004ffef0(system, 3, tab_side)`) are walked.
    For each fleet of the tab's side, `FUN_00502db0(fleet, 3)` iterates
    sub-containers. For each sub-container, `FUN_00504040(sub, 3)` checks
-   for special forces. If any fleet has special forces, the system is listed.
+   for special forces. Each fleet with special forces is listed as a row of
+   its own (corrected 2026-10-23 from the decompile, below).
 
 Each row renders a 350 by 20 bitmap strip via `FUN_00465540`.
 
@@ -155,10 +156,14 @@ Each row renders a 350 by 20 bitmap strip via `FUN_00465540`.
 
 The same two-level walk (direct at system, then in fleets) but using
 `FUN_005040c0` (special forces `0x3c..0x3f`) instead of `FUN_00504cc0`
-(regiments `0x10..0x13`). hyp: the SpecForces view therefore lists all
-systems that contain special forces on the selected side, whether
-in a fleet or directly on the system. Fleets are not listed as
-separate rows; the system that contains the fleet is listed.
+(regiments `0x10..0x13`). Read again 2026-10-23: a system with special
+forces of the side directly on it is a row (`FUN_00442130` with the
+system), and then each fleet of the side at that system whose ships carry
+special forces is a row of its own (`FUN_00442130` with the fleet). Both
+rows draw through `FUN_00465540(object, side)`, which counts a fleet's
+units over its ships (`FUN_00502db0(fleet, 3)`, type 8) and a system's
+directly. The fleet row's Display opens the Fleet window
+(`PersonnelFinderAction::OpenFleet`).
 
 ### The character row text (`FUN_00465bb0`)
 
@@ -282,8 +287,7 @@ separate Personnel window; kind 11 is the Missions window
   dead/captured characters stay in the list.
 - The SpecForces view lists systems, not individual special forces. Each row
   is a system that contains special forces, counting by type in 4 columns.
-- Fleets containing special forces cause their system to be listed; the fleet
-  itself is not a separate row.
+- A fleet carrying special forces is a row of its own (`FUN_00464e10`).
 - Display opens the sector window and the appropriate sub-window based on the
   selected entity's family. A character goes through
   `personnel_finder::character_target`: its fleet, the Missions window

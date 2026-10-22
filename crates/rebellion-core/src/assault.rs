@@ -610,6 +610,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         for (class, attack, defense) in [(ATTACKERS, 5, 0), (DEFENDERS, 0, 5)] {

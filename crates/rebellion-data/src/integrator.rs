@@ -3171,6 +3171,7 @@ mod tests {
             characters: vec![captive, crew],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let member = MissionMember::Character(captive);
         let mut integrator = PerceptionIntegrator::new(5, 0);
@@ -3696,6 +3697,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
 
@@ -3871,6 +3873,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         let tie = world
@@ -3932,6 +3935,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         let mut wing = || {
@@ -4007,6 +4011,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let people: Vec<_> = (0..2)
             .map(|_| {
@@ -4105,6 +4110,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[kuat].fleets.push(fleet);
         let mut env = BombardEnv::new(7, None);
@@ -4162,6 +4168,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[kuat].fleets.push(fleet);
         let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
@@ -4228,6 +4235,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[kuat].fleets.push(fleet);
         let regiment = world.troops.insert(rebellion_core::world::TroopUnit {
@@ -4291,6 +4299,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: false,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[at].fleets.push(key);
             key
@@ -4346,6 +4355,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[kuat].fleets.push(fleet);
         let mut movement = MovementState::new();
@@ -4426,6 +4436,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[kuat].fleets.push(fleet);
         let mut integrator = PerceptionIntegrator::new(5, 0);
@@ -4747,6 +4758,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {
@@ -4808,6 +4820,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {
@@ -4861,6 +4874,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(transit);
         let mut movement = MovementState::new();
@@ -4973,6 +4987,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         let troop = world.troops.insert(rebellion_core::world::TroopUnit {
@@ -5056,6 +5071,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(own);
         let tie = world
@@ -5478,6 +5494,7 @@ mod combat_application_tests {
             characters: vec![],
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         fleet
@@ -5496,6 +5513,7 @@ mod combat_application_tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let defender = world.fleets.insert(Fleet {
             location: SystemKey::default(),
@@ -5507,6 +5525,7 @@ mod combat_application_tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let captive = world.characters.insert(Character {
             name: "Defeated Officer".into(),
@@ -5578,6 +5597,7 @@ mod combat_application_tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let beaten = world.fleets.insert(Fleet {
             location: battle,
@@ -5589,6 +5609,7 @@ mod combat_application_tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let officer = world.characters.insert(Character {
             name: "Officer".into(),
@@ -5664,6 +5685,7 @@ mod combat_application_tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(defender);
         let result = SpaceCombatResult {
@@ -5982,6 +6004,7 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                     characters: vec![],
                     is_alliance,
                     has_death_star: is_death_star,
+                    special_forces: Vec::new(),
                 };
                 let fk = world.insert_fleet(fleet);
                 if let Some(sys) = world.systems.get_mut(sys_key) {

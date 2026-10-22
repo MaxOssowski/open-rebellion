@@ -313,6 +313,7 @@ mod tests {
                     characters: vec![c],
                     is_alliance: alliance,
                     has_death_star: false,
+                    special_forces: Vec::new(),
                 });
                 w.characters[c].current_fleet = Some(key);
                 w.characters[c].current_system = Some(enemy);

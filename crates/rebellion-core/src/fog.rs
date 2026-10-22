@@ -306,6 +306,7 @@ mod tests {
                     characters: vec![],
                     is_alliance,
                     has_death_star: false,
+                    special_forces: Vec::new(),
                 })
             })
             .collect();
@@ -564,6 +565,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
 
         let mut fog = FogState::new(Faction::Alliance);
@@ -671,6 +673,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
 
         let mut fog = FogState::new(Faction::Alliance);

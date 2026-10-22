@@ -234,13 +234,16 @@ pub(crate) fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, in
     disband_if_empty(world, fleet);
 }
 
-/// Disband `fleet` when it holds no ship, squadron or character
-/// (`FUN_004fe630`).
+/// Disband `fleet` when it holds no ship, squadron, character or special
+/// force (`FUN_004fe630`).
 pub(crate) fn disband_if_empty(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
     let Some(value) = world.fleets.get(fleet) else {
         return;
     };
-    if !(value.capital_ships.is_empty() && value.fighters.is_empty() && value.characters.is_empty())
+    if !(value.capital_ships.is_empty()
+        && value.fighters.is_empty()
+        && value.characters.is_empty()
+        && value.special_forces.is_empty())
     {
         return;
     }
@@ -391,6 +394,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             f.world.systems[f.system].fleets.push(key);
             key

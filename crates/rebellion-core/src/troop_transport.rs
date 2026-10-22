@@ -966,6 +966,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
 
@@ -1057,6 +1058,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let mut state = TroopTransportState::new();
         state.embark(&mut world, first, &troops[..2]).unwrap();
@@ -1140,6 +1142,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let mut state = TroopTransportState::new();
         state.embark(&mut world, second, &troops[..1]).unwrap();
@@ -1227,6 +1230,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let mut state = TroopTransportState::new();
         state.embark(&mut world, first, &troops[..1]).unwrap();
@@ -1274,6 +1278,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         fleet

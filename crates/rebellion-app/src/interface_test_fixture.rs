@@ -908,6 +908,7 @@ fn place_sabotage_targets(
         characters: Vec::new(),
         is_alliance: enemy == Faction::Alliance,
         has_death_star: wants_death_star,
+        special_forces: Vec::new(),
     });
     if wants_death_star {
         world.systems[secondary].fleets.push(fleet);
@@ -1046,6 +1047,7 @@ fn place_boarding_fleet(
         characters: Vec::new(),
         is_alliance: player_is_alliance,
         has_death_star: false,
+        special_forces: Vec::new(),
     });
     world.systems[secondary].fleets = vec![fleet];
     // CharacterAboard: the agent (the first who may be an admiral) is
@@ -4459,6 +4461,7 @@ mod tests {
                 characters: Vec::new(),
                 is_alliance: false,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
         }
         world
@@ -5924,6 +5927,7 @@ mod tests {
                     characters: Vec::new(),
                     is_alliance,
                     has_death_star: false,
+                    special_forces: Vec::new(),
                 });
             }
             for (name, location) in [("Bystander", fourth), ("Waiting", second)] {
@@ -5942,6 +5946,7 @@ mod tests {
                 characters: vec![carried],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             for (index, is_alliance) in [true, true, true, false, false, false]
                 .into_iter()

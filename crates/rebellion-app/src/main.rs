@@ -5962,6 +5962,7 @@ async fn main() {
                             PanelAction::MoveSpecialForce {
                                 unit,
                                 system: destination,
+                                fleet: join,
                             }
                         }));
                         // FUN_0041ce20(order, 1): a character's 0x202 is
@@ -6139,16 +6140,17 @@ async fn main() {
                                         });
                                     }
                                 }
-                                // A special force's 0x201 -> 0x241. port: the
-                                // port's fleets carry no special forces, so a
-                                // fleet gives its system.
+                                // A special force's 0x201 -> 0x241, as a
+                                // character's: onto a fleet, it boards.
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::SpecialForceMove { unit, confirmed },
                                     target,
                                 }) => {
-                                    let system = match target {
-                                        ReleaseTarget::System(system)
-                                        | ReleaseTarget::Fleet { system, .. } => system,
+                                    let (system, fleet) = match target {
+                                        ReleaseTarget::System(system) => (system, None),
+                                        ReleaseTarget::Fleet { fleet, system } => {
+                                            (system, Some(fleet))
+                                        }
                                     };
                                     if confirmed {
                                         confirm_special_force_move(
@@ -6156,13 +6158,17 @@ async fn main() {
                                             player_faction,
                                             unit,
                                             system,
+                                            fleet,
                                             clock.tick,
                                             &mut msg_log,
                                             &mut move_confirmation_state,
                                         );
                                     } else {
-                                        panel_actions
-                                            .push(PanelAction::MoveSpecialForce { unit, system });
+                                        panel_actions.push(PanelAction::MoveSpecialForce {
+                                            unit,
+                                            system,
+                                            fleet,
+                                        });
                                     }
                                 }
                                 // A regiment's 0x201 against the release
@@ -7486,6 +7492,7 @@ fn confirm_special_force_move(
     faction: MissionFaction,
     unit: rebellion_core::ids::SpecialForceKey,
     system: rebellion_core::ids::SystemKey,
+    fleet: Option<rebellion_core::ids::FleetKey>,
     tick: u64,
     msg_log: &mut MessageLog,
     move_confirmation_state: &mut MoveConfirmationState,
@@ -7495,7 +7502,7 @@ fn confirm_special_force_move(
     let (Some(value), Some(days), true) = (
         world.special_forces.get(unit),
         days,
-        rebellion_core::missions::move_place_allowed(world, faction, system, None),
+        rebellion_core::missions::move_place_allowed(world, faction, system, fleet),
     ) else {
         macroquad::logging::info!("[interface] special_force_move confirm refused");
         msg_log.push(GameMessage::new(
@@ -7505,7 +7512,8 @@ fn confirm_special_force_move(
         ));
         return;
     };
-    // The first member is not a fleet; its container is its system.
+    // The first member is not a fleet; its container is its system, or a
+    // fleet, which takes no warning.
     let blockaded = world.systems.values().any(|sys| {
         sys.special_forces.contains(&unit)
             && rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, sys)
@@ -7526,7 +7534,7 @@ fn confirm_special_force_move(
         missions: Vec::new(),
         blockaded,
         destination: system,
-        join: None,
+        join: fleet,
         lines: vec![(name, days)],
     });
 }
@@ -8400,12 +8408,12 @@ fn apply_panel_action(
         }
         // A special force's Move: the Move mission 0x41000001 with the unit
         // as its team, as a character's.
-        PanelAction::MoveSpecialForce { unit, system } => {
+        PanelAction::MoveSpecialForce { unit, system, fleet } => {
             let result = if rebellion_core::missions::move_place_allowed(
                 world,
                 *player_faction,
                 system,
-                None,
+                fleet,
             ) {
                 mission_state
                     .dispatch_guarded(
@@ -8421,13 +8429,19 @@ fn apply_panel_action(
                         },
                         world,
                     )
+                    .inspect(|&id| {
+                        if let Some(fleet) = fleet {
+                            mission_state.set_target_fleet(id, fleet);
+                        }
+                    })
                     .map_err(|refusal| format!("{refusal:?}"))
             } else {
                 Err("1/0x28".to_string())
             };
             macroquad::logging::info!(
-                "[interface] special_force_move unit={unit:?} to={:?} result={result:?}",
+                "[interface] special_force_move unit={unit:?} to={:?} fleet={:?} result={result:?}",
                 world.systems.get(system).map(|s| s.name.as_str()),
+                fleet.and_then(|key| fleet_label(world, key)),
             );
             if result.is_err() {
                 msg_log.push(GameMessage::new(
@@ -9971,6 +9985,7 @@ mod tactical_ground_tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         let defender = world.fleets.insert(Fleet {
             location: system,
@@ -9979,6 +9994,7 @@ mod tactical_ground_tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets = vec![attacker, defender];
         let session = rebellion_render::BattleSession {
@@ -10302,6 +10318,7 @@ mod fleet_move_tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(enemy);
         let icon = |quadrant| {
@@ -10354,6 +10371,7 @@ mod fleet_move_tests {
                     characters: vec![],
                     is_alliance: true,
                     has_death_star: false,
+                    special_forces: Vec::new(),
                 });
                 world.systems[origin].fleets.push(fleet);
                 fleet

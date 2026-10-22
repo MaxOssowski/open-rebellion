@@ -453,12 +453,23 @@ pub fn specforces_rows(
             });
         }
 
-        // hyp: fleets at this system carrying SF units. The decompile
-        // (FUN_00464e10) walks each fleet's ships and checks for SF
-        // cargo; the port approximates by walking fleet characters and
-        // system SF associations.
-        // port: fleet-carried SF is not yet modelled in the port; only
-        // surface SF units appear.
+        // FUN_00464e10: then each fleet of the tab's side at the system
+        // (FUN_004ffef0) whose ships carry special forces is a row of its
+        // own, counted by FUN_00465540 over the fleet.
+        for &fleet_key in &system.fleets {
+            let Some(fleet) = world.fleets.get(fleet_key) else {
+                continue;
+            };
+            if !tab.lists(fleet.is_alliance) || fleet.special_forces.is_empty() {
+                continue;
+            }
+            rows.push(PersonnelFinderRow::SpecForces {
+                name: crate::system_window::fleet_label(world, fleet_key).unwrap_or_default(),
+                system: system_key,
+                fleet: Some(fleet_key),
+                counts: count_sf(world, &fleet.special_forces, tab),
+            });
+        }
     }
 
     rows.sort_by_cached_key(|row| row.display_name().to_ascii_lowercase());
@@ -1162,6 +1173,51 @@ mod tests {
         } else {
             panic!("expected SpecForces row");
         }
+    }
+
+    #[test]
+    fn a_fleet_carrying_the_tabs_sf_units_is_a_row_of_its_own() {
+        // FUN_00464e10: after a system's own row, each fleet of the tab's
+        // side there whose ships carry special forces gets a row
+        // (FUN_00442130 with the fleet), counted over the fleet
+        // (FUN_00465540, type 8).
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        let unit = add_sf(&mut world, yavin, 0x3c00_0002, true);
+        world.systems[yavin].special_forces.clear();
+        let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+            location: yavin,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: vec![unit],
+        });
+        world.systems[yavin].fleets.push(fleet);
+        let fog = FogState::new(Faction::Alliance);
+
+        let listed = specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
+        assert_eq!(listed.len(), 1);
+        let PersonnelFinderRow::SpecForces {
+            name,
+            system,
+            fleet: row_fleet,
+            counts,
+        } = &listed[0]
+        else {
+            panic!("expected a SpecForces row");
+        };
+        assert_eq!(
+            Some(name.clone()),
+            crate::system_window::fleet_label(&world, fleet)
+        );
+        assert_eq!((*system, *row_fleet), (yavin, Some(fleet)));
+        assert_eq!(counts[1].count, 1);
+        // The other side's tab lists nothing.
+        assert!(
+            specforces_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial).is_empty()
+        );
     }
 
     #[test]

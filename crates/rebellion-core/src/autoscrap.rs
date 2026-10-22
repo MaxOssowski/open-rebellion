@@ -549,6 +549,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         f.world.systems[f.here].fleets.push(fleet);
         // Upkeep-free facilities are not candidates.
@@ -614,6 +615,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         f.world.systems[f.here].fleets.push(enemy_fleet);
         let free_troop = f.world.troops.insert(TroopUnit {
@@ -731,6 +733,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         f.world.systems[f.here].fleets.push(fleet);
         let scrap = Autoscrap {
@@ -769,6 +772,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         f.world.systems[f.here].fleets.push(fleet);
         let troop = regiment(&mut f, true);

@@ -461,7 +461,10 @@ impl SquadronTransits {
 /// squadrons alone, which disband when their last squadron leaves.
 fn disband_if_empty(world: &mut GameWorld, fleet: FleetKey) {
     let empty = world.fleets.get(fleet).is_some_and(|value| {
-        value.capital_ships.is_empty() && value.fighters.is_empty() && value.characters.is_empty()
+        value.capital_ships.is_empty()
+            && value.fighters.is_empty()
+            && value.characters.is_empty()
+            && value.special_forces.is_empty()
     });
     if !empty {
         return;
@@ -559,6 +562,7 @@ pub fn scramble(world: &mut GameWorld, system: SystemKey) -> Vec<Sortie> {
                 characters: Vec::new(),
                 is_alliance: alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[system].fleets.push(fleet);
             (fleet, true)
@@ -680,6 +684,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[here].fleets.push(fleet);
         let x_wing = world.fighter_classes.insert(FighterClass {

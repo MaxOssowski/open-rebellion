@@ -1127,6 +1127,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         let name = |object| {
             object_target_name(

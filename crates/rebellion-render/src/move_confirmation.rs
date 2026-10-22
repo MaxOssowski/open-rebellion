@@ -550,6 +550,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let mut state = MoveConfirmationState::default();
         state.open(MoveConfirmation {
@@ -578,6 +579,7 @@ mod tests {
                 characters: Vec::new(),
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             })
         };
         let team = vec![fleet(), fleet()];

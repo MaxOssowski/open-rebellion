@@ -441,6 +441,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[here].fleets.push(key);
             key

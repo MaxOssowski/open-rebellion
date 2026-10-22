@@ -2567,6 +2567,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[here].fleets.push(fleet);
         let mut transport = crate::troop_transport::TroopTransportState::new();
@@ -2628,6 +2629,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         };
         let record = |ship: &crate::world::ShipInstance| {
             ship_record(&world, &classes, ship, &fleet, false, None).1
@@ -2689,6 +2691,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[here].fleets.push(key);
             key
@@ -3170,6 +3173,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.number_ships();
         let classes = ClassRecords::build(&world);
@@ -3267,6 +3271,7 @@ mod tests {
                 characters: vec![],
                 is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[at].fleets.push(f);
             f
@@ -3341,6 +3346,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let classes = ClassRecords::build(&world);
         let mut movement = crate::movement::MovementState::new();
@@ -3417,6 +3423,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let own = fixture.world.fleets.insert(crate::world::Fleet {
             location: fixture.system,
@@ -3425,6 +3432,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         fixture.world.systems[fixture.system].fleets = vec![fleet, own];
         let mut values = [0; 30];
@@ -4078,6 +4086,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         fixture.world.systems[other].fleets.push(raider);
         let classes = ClassRecords::build(&fixture.world);
@@ -4188,6 +4197,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         };
         let classes = ClassRecords::build(&world);
         let record = |class| {
@@ -4237,6 +4247,7 @@ mod tests {
             characters: vec![officer],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let classes = ClassRecords::build(&world);
 
@@ -4302,6 +4313,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         fixture.world.systems[fixture.system].fleets.push(fleet);
 
@@ -4380,6 +4392,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: !is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             fixture.world.systems[fixture.system].fleets.push(key);
             let fleets = HashMap::from([(
@@ -4453,6 +4466,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         for (is_killed, current_fleet) in [(true, None), (false, Some(fleet))] {
             fixture.world.characters.insert(crate::world::Character {
@@ -5267,6 +5281,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         fixture.world.systems[fixture.system].fleets.push(fleet);
         let r = system_record(&fixture, true, 0x20_0000);

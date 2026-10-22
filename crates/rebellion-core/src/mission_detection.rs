@@ -1906,6 +1906,7 @@ mod tests {
             characters: vec![],
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         })
     }
 

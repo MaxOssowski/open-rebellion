@@ -1019,6 +1019,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {
@@ -1438,6 +1439,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[target].fleets.push(fleet);
             world.systems[target].is_destroyed = destroyed;
@@ -1556,6 +1558,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[target].fleets.push(fleet);
         let troop_class = DatId::new(20);
@@ -1757,6 +1760,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let empire_fleet = world.fleets.insert(Fleet {
             location: alliance_hq,
@@ -1765,6 +1769,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[alliance_hq]
             .fleets
@@ -1910,6 +1915,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {
@@ -2067,6 +2073,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
         let troop = world.troops.insert(TroopUnit {

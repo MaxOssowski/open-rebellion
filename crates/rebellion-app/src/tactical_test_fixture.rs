@@ -579,6 +579,7 @@ pub(crate) fn apply(
             characters: vec![],
             is_alliance,
             has_death_star: request.death_star_presentation && !is_alliance,
+            special_forces: Vec::new(),
         }
     };
     let attacker = world.fleets.insert(make_fleet(

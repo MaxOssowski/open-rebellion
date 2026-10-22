@@ -667,13 +667,22 @@ pub fn special_force_rows(
         .en_route()
         .iter()
         .find(|transit| transit.member == MissionMember::SpecialForce(key));
+    // Attached names the unit's container: a fleet it is aboard, else its
+    // system.
     let attached = transit.map_or_else(
         || {
             world
-                .systems
+                .fleets
                 .iter()
                 .find(|(_, value)| value.special_forces.contains(&key))
-                .map(|(_, value)| value.name.clone())
+                .and_then(|(fleet, _)| fleet_label(world, fleet))
+                .or_else(|| {
+                    world
+                        .systems
+                        .iter()
+                        .find(|(_, value)| value.special_forces.contains(&key))
+                        .map(|(_, value)| value.name.clone())
+                })
                 .unwrap_or_default()
         },
         |transit| system_name(world, transit.to),
@@ -1269,6 +1278,7 @@ mod tests {
             characters: vec![character],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[at].fleets.push(fleet);
         fleet
@@ -1738,6 +1748,34 @@ mod tests {
                 ("Combat Rating:", "15"),
                 ("Leadership Rating:", "16"),
             ]
+        );
+    }
+
+    #[test]
+    fn a_special_force_aboard_a_fleet_is_attached_to_the_fleet() {
+        // FUN_00445780: Attached names the unit's container, a fleet it is
+        // aboard (FUN_00536da0(ship, 3)).
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Yavin",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let fleet = carrier_fleet(&mut world, here);
+        let unit = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.fleets[fleet].special_forces.push(unit);
+        let states = States::new();
+
+        let rows = special_force_rows(states.sources(&world), unit).unwrap();
+
+        assert_eq!(
+            super::tests::rows(&rows)[0],
+            ("Attached: ", fleet_label(&world, fleet).unwrap().as_str())
         );
     }
 

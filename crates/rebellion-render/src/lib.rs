@@ -2132,6 +2132,7 @@ mod interaction_tests {
                 characters: vec![],
                 is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             })
         };
         let rebels = fleet(&mut world, true, here);
@@ -2222,6 +2223,7 @@ mod interaction_tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let mut movement = rebellion_core::movement::MovementState::new();
         assert!(movement.order(empire, there, here, 5));
@@ -2380,6 +2382,7 @@ mod interaction_tests {
             characters: vec![vader],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[key].fleets.push(fleet);
         world.characters[vader].current_fleet = Some(fleet);
@@ -2448,6 +2451,7 @@ mod interaction_tests {
             characters: vec![mon],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[key].fleets.push(rebels);
         world.characters[mon].current_fleet = Some(rebels);

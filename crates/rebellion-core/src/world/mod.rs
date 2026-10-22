@@ -1023,6 +1023,11 @@ pub struct Fleet {
     /// Enables the Death Star win-condition check in `VictorySystem`.
     /// Set by `rebellion-data` when loading fleet composition from CAPSHPSD.
     pub has_death_star: bool,
+    /// Special forces aboard (`FUN_00536da0(ship, 3)` lists them with the
+    /// characters on the Fleet window's Personnel tab). port: on the fleet,
+    /// not a ship, as the port keeps its characters; a unit aboard is in no
+    /// system's list.
+    pub special_forces: Vec<SpecialForceKey>,
 }
 
 impl Fleet {
@@ -2374,6 +2379,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         }
     }
 
@@ -3034,6 +3040,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
 
         let mut c = default_character();
@@ -3076,6 +3083,7 @@ mod tests {
                 characters: vec![],
                 is_alliance: true,
                 has_death_star: false,
+                special_forces: Vec::new(),
             })
         };
         let a = fleet(ShipInstance::make(class, 10, true, 2));
@@ -3128,6 +3136,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         };
         assert!(!fleet.is_empty());
     }

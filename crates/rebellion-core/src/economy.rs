@@ -1386,6 +1386,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         world.systems[station].fleets.push(fleet);
         assert_eq!(nearby(&world), [true, true, false]);
@@ -1474,6 +1475,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: death_star,
+            special_forces: Vec::new(),
         });
         let troop = world.troops.insert(crate::world::TroopUnit {
             class_dat_id: DatId(0),
@@ -2324,6 +2326,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let fleet2 = world.fleets.insert(crate::world::Fleet {
             location: crate::ids::SystemKey::default(),
@@ -2337,6 +2340,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let sys_key = world.systems.insert(crate::world::System {
             last_arrival: None,

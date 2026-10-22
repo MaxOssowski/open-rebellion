@@ -265,6 +265,12 @@ pub fn merge_fleet_into(
             target.characters.push(character);
         }
     }
+    // Special forces aboard go with their ships too.
+    for unit in source.special_forces {
+        if !target.special_forces.contains(&unit) {
+            target.special_forces.push(unit);
+        }
+    }
     target.has_death_star |= source.has_death_star;
     troop_transport.transfer_fleet(from, to);
     world.name_flagship_fleets();
@@ -348,6 +354,7 @@ fn new_fleet(world: &mut GameWorld, like: FleetKey) -> FleetKey {
         characters: Vec::new(),
         is_alliance: source.is_alliance,
         has_death_star: false,
+        special_forces: Vec::new(),
     });
     if let Some(system) = world.systems.get_mut(location) {
         system.fleets.push(fleet);
@@ -733,6 +740,7 @@ mod tests {
             characters: vec![],
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         setup.world.systems[system].fleets.push(key);
         setup.world.systems[system].fleets.sort_unstable();
@@ -786,6 +794,16 @@ mod tests {
         });
         setup.world.fleets[mover].characters.push(admiral);
         setup.world.fleets[mover].has_death_star = true;
+        let unit = setup
+            .world
+            .special_forces
+            .insert(crate::world::SpecialForceUnit {
+                class_dat_id: crate::ids::DatId::new(0x3c00_0004),
+                is_alliance: true,
+                skills: [0; 8],
+                on_mission: false,
+            });
+        setup.world.fleets[mover].special_forces.push(unit);
         let mut transport = TroopTransportState::default();
         let troop = embark(&mut setup, &mut transport, mover);
         let mut movement = MovementState::new();
@@ -814,6 +832,8 @@ mod tests {
             crate::character_command::CommandKind::None
         );
         assert!(world.fleets[target].has_death_star);
+        // The special forces aboard the ships go with them.
+        assert_eq!(world.fleets[target].special_forces, [unit]);
         assert_eq!(transport.cargo(target), [troop]);
         assert!(movement.is_empty());
     }

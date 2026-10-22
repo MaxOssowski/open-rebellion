@@ -334,6 +334,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.fleets.insert(Fleet {
             location: here,
@@ -342,6 +343,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         for is_alliance in [false, false, true] {
             world.troops.insert(TroopUnit {

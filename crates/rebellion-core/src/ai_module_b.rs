@@ -851,6 +851,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         f.world.systems[at].fleets.push(fleet);
         fleet
@@ -1533,6 +1534,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         f.world.systems[here].fleets.push(wings);
         let mut state = AIState::new(AiFaction::Alliance);

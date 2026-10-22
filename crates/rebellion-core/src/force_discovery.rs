@@ -435,6 +435,7 @@ mod tests {
             characters: vec![trainer],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.characters[trainer].current_fleet = Some(fleet);
         let aboard = latent(&mut world, here);

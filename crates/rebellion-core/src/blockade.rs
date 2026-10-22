@@ -740,6 +740,7 @@ mod tests {
             characters: vec![],
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems.get_mut(system).unwrap().fleets.push(fk);
     }
@@ -1265,6 +1266,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[origin].fleets.push(fleet);
         let troop = add_troop(&mut world, origin, false);

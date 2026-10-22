@@ -376,6 +376,7 @@ mod tests {
             characters: vec![],
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         };
         let attacker = world.fleets.insert(make_fleet(true));
         let defender = world.fleets.insert(make_fleet(false));
@@ -445,6 +446,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets.push(fleet);
         let attacker = world.troops.insert(TroopUnit {

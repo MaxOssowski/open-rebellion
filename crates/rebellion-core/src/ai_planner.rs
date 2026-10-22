@@ -1272,6 +1272,7 @@ pub(crate) mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         fx.world.systems[at].fleets.push(fleet);
         fx.world.number_ships();

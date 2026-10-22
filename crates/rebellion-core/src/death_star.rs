@@ -202,6 +202,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: true,
+            special_forces: Vec::new(),
         });
         world.systems.get_mut(sys).unwrap().fleets.push(fk);
         fk

@@ -940,6 +940,7 @@ mod tests {
                 characters: Vec::new(),
                 is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[system].fleets.push(fleet);
             fleet

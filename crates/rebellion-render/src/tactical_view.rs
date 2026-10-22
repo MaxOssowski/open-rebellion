@@ -9227,6 +9227,7 @@ mod tests {
             characters,
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         };
         let rebels = world.fleets.insert(fleet(
             true,
@@ -12384,6 +12385,7 @@ mod tests {
             characters: Vec::new(),
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let mut ships = Vec::new();
         let mut fighters = Vec::new();
@@ -13313,6 +13315,7 @@ mod tests {
                 characters: vec![],
                 is_alliance,
                 has_death_star,
+                special_forces: Vec::new(),
             })
         };
         let rebels = fleet(true, false);

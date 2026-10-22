@@ -871,6 +871,7 @@ fn apply_fleet_seed(
             characters: Vec::new(),
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         };
         let fleet_key = world.insert_fleet(fleet);
         world.systems[system_key].fleets.push(fleet_key);
@@ -1838,6 +1839,7 @@ fn deploy_bundle_to_system<R: Rng + ?Sized>(
             characters: Vec::new(),
             is_alliance,
             has_death_star: false,
+            special_forces: Vec::new(),
         };
         let fleet_key = world.insert_fleet(fleet);
         if let Some(sys) = world.systems.get_mut(system_key) {

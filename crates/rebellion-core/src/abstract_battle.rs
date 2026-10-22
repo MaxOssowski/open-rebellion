@@ -2535,6 +2535,7 @@ mod tests {
             characters: vec![],
             is_alliance: true,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let ships = world.fleets.insert(Fleet {
             location: system,
@@ -2547,6 +2548,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         let squadrons = world.fleets.insert(Fleet {
             location: system,
@@ -2558,6 +2560,7 @@ mod tests {
             characters: vec![],
             is_alliance: false,
             has_death_star: false,
+            special_forces: Vec::new(),
         });
         world.systems[system].fleets = vec![alliance, ships, squadrons];
         (world, system, alliance, ships, squadrons)
@@ -3115,6 +3118,7 @@ mod tests {
                 characters: vec![],
                 is_alliance,
                 has_death_star: false,
+                special_forces: Vec::new(),
             });
             world.systems[battle].fleets.push(key);
             key
