@@ -541,7 +541,8 @@ pub mod resources {
         pub const GID_NEUTRAL_MEDIUM: u32 = 10155;
         pub const GID_NEUTRAL_LARGE: u32 = 10156;
         pub const GID_NEUTRAL_LARGEST: u32 = 10157;
-        /// Unexplored or unpopulated GID system marker.
+        /// The unexplored system mark (`FUN_00426ee0` loads `0x27ae` at the
+        /// view's `+0x2c4`; `FUN_0042cde0` draws it for item flag `0x80`).
         pub const GID_UNEXPLORED: u32 = 10158;
         /// The GID fleet displays' mark when both sides have fleets there
         /// (`FUN_0042b330`, `0x27b0`).

@@ -161,7 +161,23 @@ them wherever they are. The only gate is the one at the top:
 
 Ported the same day (`gid_shows_unexplored`, `gid_counts_unexplored`).
 Before, the port gave every unexplored or unpopulated system the
-unexplored mark and showed a destroyed system's values. port: an
-unpopulated system still shows the unexplored mark, and so does an
-unexplored one that the two counting displays find empty; the original's
-mark for a side without a table (`FUN_00426e70` returns 0) is not read.
+unexplored mark and showed a destroyed system's values.
+
+The mark tables and how a mark is drawn (read 2026-10-22):
+- `FUN_00426ee0` fills the tables, smallest to largest: side 1 (the
+  Alliance) `0x27a5`, `0x27a4`, `0x27a3`, `0x27a2`; side 2 (the Empire)
+  `0x27a6..0x27a9`; side 3 (no side) `0x27aa..0x27ad`. It loads `0x27ae`
+  (10158) at the view's `+0x2c4` and `0x27b6` (10166) at `+0x2c8`.
+- `FUN_0042cde0` draws a system's item: with its flag `0x80` (set by the
+  gate above) only `+0x2c4`, the unexplored mark; else `+0x2c8` under the
+  mark when flag 8 is set, then the mark (`+0x20`) when there is one.
+- A system's holder is never 0 in play: `FUN_0050b610` takes the
+  regiments' side, else the support side, which is 3 (no side) for an
+  unpopulated system (`system-control.md`). So an explored, unpopulated
+  system shows a no-side mark sized by its value, not the unexplored
+  mark. Ported the same day: the port's gate no longer asks for a
+  population.
+- Side 0 reaches `FUN_00426e70` only from Fleets Enroute at an
+  unexplored system with no fleet; it returns no mark. hyp: the port
+  shows the unexplored mark there, whether the item keeps flag `0x80`
+  not being read.

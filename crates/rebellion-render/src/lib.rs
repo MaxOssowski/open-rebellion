@@ -559,7 +559,7 @@ fn draw_gid_marker(
 }
 
 fn popular_support_marker_resource(system: &System, faction: CockpitFaction) -> u32 {
-    let explored = system.exploration_status == ExplorationStatus::Explored && system.is_populated;
+    let explored = system.exploration_status == ExplorationStatus::Explored;
     let popularity = match faction {
         CockpitFaction::Alliance => system.popularity_alliance,
         CockpitFaction::Empire => system.popularity_empire,
@@ -582,14 +582,13 @@ fn gid_marker_for_system(
     if mode == GidMode::PopularSupport {
         return popular_support_marker_resource(system, faction);
     }
-    // port: an unpopulated system keeps the unexplored mark, and so does a
-    // system the two counting displays reach unexplored when they count
-    // nobody; the original's mark for a side without a table
-    // (FUN_00426e70 returns 0) is not read.
-    let known = system.exploration_status == ExplorationStatus::Explored && system.is_populated;
-    if !known && !gid_counts_unexplored(mode) {
-        return unexplored;
-    }
+    // An unpopulated system is marked like any other: FUN_0050b610 gives it
+    // the no-side holder 3, whose table (+0x2b4) holds the neutral marks.
+    // hyp: a system the two counting displays reach unexplored keeps the
+    // unexplored mark when they count nobody; there FUN_00426e70 gets side
+    // 0 and returns no mark, and whether the view's +0x3c keeps its
+    // unexplored bit 0x80 (FUN_0042cde0 draws +0x2c4, 0x27ae) is not read.
+    let known = system.exploration_status == ExplorationStatus::Explored;
 
     let player_is_alliance = faction == CockpitFaction::Alliance;
     if matches!(mode, GidMode::IdlePersonnel | GidMode::ActivePersonnel) {
@@ -2096,7 +2095,7 @@ mod interaction_tests {
     }
 
     #[test]
-    fn unexplored_and_destroyed_systems_show_what_the_original_shows() {
+    fn unexplored_destroyed_and_unpopulated_systems_show_what_the_original_shows() {
         // FUN_0042b330: an unexplored system shows the unexplored mark, and
         // a destroyed one does outside the fleet and personnel displays;
         // Fleets Enroute (0x22) and Active Personnel (0x44) count either.
@@ -2218,6 +2217,25 @@ mod interaction_tests {
         assert_ne!(
             mark(&world, here, GidMode::PopularSupport),
             art::GID_UNEXPLORED
+        );
+        // An explored, unpopulated system takes its holder's marks: with no
+        // side, holder 3 (FUN_0050b610), the neutral table at +0x2b4
+        // (FUN_00426ee0, 0x27aa..0x27ad).
+        world.systems[there].exploration_status = ExplorationStatus::Explored;
+        world.systems[there].is_populated = false;
+        world.systems[there].total_energy = 0;
+        world.systems[there].popularity_alliance = 0.0;
+        assert_eq!(
+            mark(&world, there, GidMode::AvailableEnergy),
+            art::GID_NEUTRAL_SMALLEST
+        );
+        assert_eq!(
+            mark(&world, there, GidMode::PopularSupport),
+            art::GID_NEUTRAL_SMALLEST
+        );
+        assert_eq!(
+            mark(&world, there, GidMode::FleetsEnRoute),
+            art::GID_NEUTRAL_SMALLEST
         );
     }
 
