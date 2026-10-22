@@ -80,7 +80,9 @@ port:
   squadron's portrait, a regiment's portrait on 11514, a character's mini
   on 11500. Names under them.
 - The battle captures and kills no personnel, so they are all survivors.
-- No scroll bar; the list shows its first rows.
+- No scroll bar. Since 2026-10-22 the wheel over the list scrolls all
+  its columns together a row at a time (two rows of 70 show, or three of
+  50 for Personnel). Another tab or category starts at the top.
 - A regiment is lost when the surviving ships cannot carry it, or at
   strength 0. This is the port's earlier rule.
 

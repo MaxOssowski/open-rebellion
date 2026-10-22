@@ -344,6 +344,8 @@ pub struct TacticalState {
     pub battle_result_tab: BattleResultTab,
     /// Active force family in the Alliance or Imperial result tab.
     pub battle_result_category: BattleResultCategory,
+    /// The first row the forces page's list shows (the wheel scrolls it).
+    battle_result_scroll: usize,
     /// The original strategic Battle Alert owns entry until the player takes
     /// command, simulates, or attempts to retreat.
     battle_alert_open: bool,
@@ -404,6 +406,7 @@ impl Default for TacticalState {
             highlight_empire: true,
             battle_result_tab: BattleResultTab::Summary,
             battle_result_category: BattleResultCategory::CapitalShips,
+            battle_result_scroll: 0,
             battle_alert_open: false,
             battle_alert_tab: BattleAlertTab::Summary,
             battle_alert_scroll: 0,
@@ -490,6 +493,7 @@ impl TacticalState {
         self.highlight_empire = true;
         self.battle_result_tab = BattleResultTab::Summary;
         self.battle_result_category = BattleResultCategory::CapitalShips;
+        self.battle_result_scroll = 0;
         self.battle_alert_open = true;
         self.battle_alert_tab = BattleAlertTab::Summary;
         self.battle_alert_scroll = 0;
@@ -884,6 +888,7 @@ impl TacticalState {
         session.selected_fighter_group = None;
         self.battle_result_tab = BattleResultTab::Summary;
         self.battle_result_category = BattleResultCategory::CapitalShips;
+        self.battle_result_scroll = 0;
         self.command_panel = TacticalCommandPanel::Display;
     }
 
@@ -1793,6 +1798,7 @@ impl TacticalState {
         session.selected_fighter_group = None;
         self.battle_result_tab = BattleResultTab::Summary;
         self.battle_result_category = BattleResultCategory::CapitalShips;
+        self.battle_result_scroll = 0;
         self.strategic_results_applied = true;
         true
     }
@@ -5766,20 +5772,67 @@ fn draw_battle_result_force_details(
     troop_transport: &TroopTransportState,
     alliance: bool,
     category: BattleResultCategory,
+    scroll: usize,
     player_alliance: bool,
     text_color: Color,
-) {
+) -> usize {
     let entries = battle_result_entries(session, world, troop_transport, alliance, category);
     let ops = battle_force_page(
         &session.system_name,
         &entries,
         alliance,
         category,
+        scroll,
         player_alliance,
         text_color,
         |source, id| cache.original_resource_size(source, id),
     );
     draw_page_ops(cache, canvas, ops);
+    battle_result_list_length(&entries, category)
+}
+
+/// The forces list's rows: its longest column.
+fn battle_result_list_length(
+    entries: &[BattleResultEntry],
+    category: BattleResultCategory,
+) -> usize {
+    battle_result_columns(entries, category == BattleResultCategory::Personnel)
+        .iter()
+        .map(Vec::len)
+        .max()
+        .unwrap_or(0)
+}
+
+/// The rows the forces page's list shows: 166 high, of 70-high rows, or
+/// 50-high for Personnel.
+fn result_list_rows(category: BattleResultCategory) -> usize {
+    let height = if category == BattleResultCategory::Personnel {
+        50.0
+    } else {
+        70.0
+    };
+    (BATTLE_RESULT_LIST_HEIGHT / height) as usize
+}
+
+/// The forces list's first row after the wheel turns `wheel` with the
+/// pointer at `pointer` (logical coordinates): only over the list at (37,
+/// 136) in the window, 347 by 166.
+fn result_list_scroll(
+    scroll: usize,
+    pointer: (f32, f32),
+    wheel: f32,
+    rows: usize,
+    category: BattleResultCategory,
+) -> usize {
+    let (x, y) = (
+        pointer.0 - BATTLE_RESULTS_WINDOW_X,
+        pointer.1 - BATTLE_RESULTS_WINDOW_Y,
+    );
+    let over = (37.0..37.0 + 347.0).contains(&x)
+        && (136.0..136.0 + BATTLE_RESULT_LIST_HEIGHT).contains(&y);
+    over.then(|| crate::assault_summary::scrolled(scroll, wheel, rows, result_list_rows(category)))
+        .flatten()
+        .unwrap_or(scroll)
 }
 
 /// Draw a results page's steps in the Battle Results window.
@@ -5870,12 +5923,18 @@ enum PageOp {
 
 /// The Battle Summary's forces page as drawing steps (see
 /// `draw_battle_result_force_details` for the sources); `size_of` gives a
-/// bitmap's size for centring the pictures.
+/// bitmap's size for centring the pictures. The list starts at row
+/// `scroll`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The page reads the battle's units, the tab and the viewer's art."
+)]
 fn battle_force_page(
     system_name: &str,
     entries: &[BattleResultEntry],
     alliance: bool,
     category: BattleResultCategory,
+    scroll: usize,
     player_alliance: bool,
     text_color: Color,
     mut size_of: impl FnMut(DllSource, u32) -> Option<[usize; 2]>,
@@ -5938,14 +5997,14 @@ fn battle_force_page(
 
     let columns = battle_result_columns(entries, personnel);
     let (cell_w, cell_h) = if personnel { (110.0, 50.0) } else { (165.0, 70.0) };
-    let rows = (BATTLE_RESULT_LIST_HEIGHT / cell_h) as usize;
+    let rows = result_list_rows(category);
     let empty = battle_result_empty_labels(&columns);
     for (column, units) in columns.iter().enumerate() {
         let left = 37.0 + column as f32 * cell_w;
         if let Some(label) = empty[column] {
             ops.push(text(label, left + cell_w / 2.0, 140.0, 10.0, WHITE, true));
         }
-        for (row, entry) in units.iter().take(rows).enumerate() {
+        for (row, entry) in units.iter().skip(scroll).take(rows).enumerate() {
             let top = 136.0 + row as f32 * cell_h;
             // FUN_004724a0: the picture centred over the name.
             if let Some(picture) = entry.picture {
@@ -6424,12 +6483,12 @@ const ALERT_LIST_WIDTH: f32 = 256.0;
 const ALERT_LIST_HEIGHT: f32 = 234.0;
 const ALERT_LIST_ROWS: usize = 6;
 
-/// Show a Battle Alert tab; another tab's list starts at its top.
-fn select_battle_alert_tab(shown: &mut BattleAlertTab, scroll: &mut usize, tab: BattleAlertTab) {
-    if *shown != tab {
+/// Show a tab or category; another one's list starts at its top.
+fn select_resetting_scroll<T: PartialEq>(shown: &mut T, scroll: &mut usize, choice: T) {
+    if *shown != choice {
         *scroll = 0;
     }
-    *shown = tab;
+    *shown = choice;
 }
 
 /// The list's first row after the wheel turns `wheel` with the pointer
@@ -6666,7 +6725,7 @@ fn draw_original_battle_alert(
             BATTLE_ALERT_WINDOW_Y + rect.y,
         );
         if mouse_released && rect.contains(local_mouse.0, local_mouse.1) {
-            select_battle_alert_tab(
+            select_resetting_scroll(
                 &mut state.battle_alert_tab,
                 &mut state.battle_alert_scroll,
                 tab,
@@ -6808,7 +6867,7 @@ fn draw_original_battle_results(
             TacticalAction::None
         }
         BattleResultTab::AllianceForces => {
-            draw_battle_result_force_details(
+            let rows = draw_battle_result_force_details(
                 cache,
                 canvas,
                 session,
@@ -6816,13 +6875,23 @@ fn draw_original_battle_results(
                 troop_transport,
                 true,
                 state.battle_result_category,
+                state.battle_result_scroll,
                 player_alliance,
                 text_color,
+            );
+            // port: the list's scroll bar is not drawn; the wheel over the
+            // list scrolls it a row at a time, as the port's other lists.
+            state.battle_result_scroll = result_list_scroll(
+                state.battle_result_scroll,
+                mouse,
+                mouse_wheel().1,
+                rows,
+                state.battle_result_category,
             );
             TacticalAction::None
         }
         BattleResultTab::ImperialForces => {
-            draw_battle_result_force_details(
+            let rows = draw_battle_result_force_details(
                 cache,
                 canvas,
                 session,
@@ -6830,8 +6899,18 @@ fn draw_original_battle_results(
                 troop_transport,
                 false,
                 state.battle_result_category,
+                state.battle_result_scroll,
                 player_alliance,
                 text_color,
+            );
+            // port: the list's scroll bar is not drawn; the wheel over the
+            // list scrolls it a row at a time, as the port's other lists.
+            state.battle_result_scroll = result_list_scroll(
+                state.battle_result_scroll,
+                mouse,
+                mouse_wheel().1,
+                rows,
+                state.battle_result_category,
             );
             TacticalAction::None
         }
@@ -6890,7 +6969,11 @@ fn draw_original_battle_results(
             BATTLE_RESULTS_WINDOW_Y + rect.y,
         );
         if mouse_released && rect.contains(local_mouse.0, local_mouse.1) {
-            state.battle_result_tab = BattleResultTab::from_index(index);
+            select_resetting_scroll(
+                &mut state.battle_result_tab,
+                &mut state.battle_result_scroll,
+                BattleResultTab::from_index(index),
+            );
             macroquad::logging::info!(
                 "[tactical-results] tab={} category={}",
                 state.battle_result_tab.label(),
@@ -6910,7 +6993,11 @@ fn draw_original_battle_results(
                 mouse.0 - BATTLE_RESULTS_WINDOW_X,
                 mouse.1 - BATTLE_RESULTS_WINDOW_Y,
             ) {
-                state.battle_result_category = category;
+                select_resetting_scroll(
+                    &mut state.battle_result_category,
+                    &mut state.battle_result_scroll,
+                    category,
+                );
                 macroquad::logging::info!(
                     "[tactical-results] tab={} category={}",
                     state.battle_result_tab.label(),
@@ -8657,6 +8744,7 @@ mod tests {
             &entries,
             true,
             BattleResultCategory::CapitalShips,
+            0,
             true,
             WHITE,
             |_, _| Some([10, 10]),
@@ -8688,6 +8776,7 @@ mod tests {
             &entries,
             false,
             BattleResultCategory::Troops,
+            0,
             true,
             WHITE,
             size,
@@ -8738,6 +8827,7 @@ mod tests {
             &[],
             true,
             BattleResultCategory::Personnel,
+            0,
             false,
             WHITE,
             size,
@@ -9318,6 +9408,110 @@ mod tests {
     }
 
     #[test]
+    fn the_wheel_scrolls_the_forces_list_a_row_at_a_time() {
+        // port: the list (37, 136), 347 by 166, draws no scroll bar; two
+        // 70-high rows show, or three 50-high for Personnel.
+        assert_eq!(result_list_rows(BattleResultCategory::CapitalShips), 2);
+        assert_eq!(result_list_rows(BattleResultCategory::Personnel), 3);
+        // The window at (85, 74).
+        let at = |x: f32, y: f32| (85.0 + x, 74.0 + y);
+        let scroll = |from, (x, y), wheel, rows, category| {
+            result_list_scroll(from, at(x, y), wheel, rows, category)
+        };
+        assert_eq!(
+            scroll(0, (37.0, 136.0), -1.0, 3, BattleResultCategory::Fighters),
+            1
+        );
+        assert_eq!(
+            scroll(1, (37.0, 136.0), -1.0, 3, BattleResultCategory::Fighters),
+            1
+        );
+        assert_eq!(
+            scroll(0, (37.0, 136.0), -1.0, 3, BattleResultCategory::Personnel),
+            0
+        );
+        assert_eq!(
+            scroll(1, (383.5, 301.5), 1.0, 3, BattleResultCategory::Troops),
+            0
+        );
+        for point in [
+            (36.5, 200.0),
+            (384.0, 200.0),
+            (100.0, 135.5),
+            (100.0, 302.0),
+        ] {
+            assert_eq!(scroll(0, point, -1.0, 9, BattleResultCategory::Troops), 0);
+        }
+        // The rows are the longest column's: three operational, one
+        // destroyed.
+        let entry = |condition| BattleResultEntry {
+            name: String::new(),
+            condition,
+            picture: None,
+            backdrop: None,
+        };
+        let mixed = [
+            entry(BattleResultCondition::Operational),
+            entry(BattleResultCondition::Destroyed),
+            entry(BattleResultCondition::Operational),
+            entry(BattleResultCondition::Operational),
+        ];
+        assert_eq!(
+            battle_result_list_length(&mixed, BattleResultCategory::CapitalShips),
+            3
+        );
+        assert_eq!(
+            battle_result_list_length(&[], BattleResultCategory::CapitalShips),
+            0
+        );
+        // A new tab or category starts at the top; the same keeps it.
+        let (mut shown, mut at_row) = (BattleResultCategory::Fighters, 2);
+        select_resetting_scroll(&mut shown, &mut at_row, BattleResultCategory::Fighters);
+        assert_eq!(at_row, 2);
+        select_resetting_scroll(&mut shown, &mut at_row, BattleResultCategory::Troops);
+        assert_eq!((shown, at_row), (BattleResultCategory::Troops, 0));
+        // A scrolled page starts its first row at the list's top.
+        let entries: Vec<BattleResultEntry> = (0..4)
+            .map(|index| BattleResultEntry {
+                name: format!("Ship {index}"),
+                condition: BattleResultCondition::Operational,
+                picture: None,
+                backdrop: None,
+            })
+            .collect();
+        let names = |scroll| {
+            battle_force_page(
+                "Hoth",
+                &entries,
+                true,
+                BattleResultCategory::CapitalShips,
+                scroll,
+                true,
+                WHITE,
+                |_, _| None,
+            )
+            .into_iter()
+            .filter_map(|op| match op {
+                PageOp::Text { text, baseline, .. } if text.starts_with("Ship") => {
+                    Some((text, baseline))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(names(0).len(), 2);
+        assert_eq!(
+            names(2),
+            names(0)
+                .into_iter()
+                .map(|(_, baseline)| baseline)
+                .zip(["Ship 2", "Ship 3"])
+                .map(|(baseline, text)| (text.to_owned(), baseline))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn the_wheel_scrolls_the_battle_alert_list_a_row_at_a_time() {
         // port: the list's scroll bar (0x29fc) is not drawn; a scrolled
         // list starts its first row at the top (83, 40).
@@ -9374,9 +9568,9 @@ mod tests {
         assert_eq!(alert_list_scroll(0, inside, -1.0, ALERT_LIST_ROWS), 0);
 
         let (mut tab, mut scroll) = (BattleAlertTab::AllianceForces, 2);
-        select_battle_alert_tab(&mut tab, &mut scroll, BattleAlertTab::AllianceForces);
+        select_resetting_scroll(&mut tab, &mut scroll, BattleAlertTab::AllianceForces);
         assert_eq!(scroll, 2);
-        select_battle_alert_tab(&mut tab, &mut scroll, BattleAlertTab::System);
+        select_resetting_scroll(&mut tab, &mut scroll, BattleAlertTab::System);
         assert_eq!((tab, scroll), (BattleAlertTab::System, 0));
     }
 
