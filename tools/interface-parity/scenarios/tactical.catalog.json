@@ -317,7 +317,7 @@
     },
     {
       "slug": "production-battle-results-presentation",
-      "description": "Original bitmap Battle Results summary, faction force tabs, operational/damaged/destroyed categories, and Go Directly To routing",
+      "description": "Original bitmap Battle Results summary, faction force tabs, the original category bar and Operational/Destroyed (Survivors/Captured/Killed) columns, and Go Directly To routing",
       "fixture_codes": {
         "alliance": 65817,
         "empire": 66073

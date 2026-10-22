@@ -3075,10 +3075,10 @@ async function probeTacticalBattleResultsPresentation(
   const alliance = faction === "alliance";
   const resources = alliance ? {
     frame: 10335, close: 10370, tabs: [10729, 10731, 10733, 10792],
-    summary: 10759, detail: 10762, fleet: 10765,
+    summary: 10759, detail: 10761, fleet: 10765,
   } : {
     frame: 10336, close: 10376, tabs: [10739, 10741, 10743, 10521],
-    summary: 10760, detail: 10762, fleet: 10766,
+    summary: 10760, detail: 10761, fleet: 10766,
   };
   const tabX = alliance ? 523.5 : 533;
   const tabY = alliance ? [182.5, 236.5, 290.5, 344.5] : [183.5, 242.5, 301.5, 360.5];
@@ -3127,8 +3127,11 @@ async function probeTacticalBattleResultsPresentation(
     ]),
   });
 
+  // FUN_0046f360: the category bar at (130, 59), four 49 by 41 buttons;
+  // Capital Ships opens on the two-column page (STRATEGY 10761), Personnel
+  // on the three-column one (10762).
   for (let category = 0; category < 4; category++) {
-    const location = point(85 + 62 + category * 96, 74 + 70);
+    const location = point(85 + 130 + category * 49 + 24, 74 + 59 + 20);
     await page.mouse.click(location.x, location.y);
     capture = await stableInteractionFrame(page, folder, `results-category-${category + 1}`);
     probes.push({
@@ -3136,6 +3139,15 @@ async function probeTacticalBattleResultsPresentation(
       category: ["capital-ships", "fighters", "troops", "personnel"][category],
       screenshot_sha256: sha256(capture),
     });
+    if (category === 3) {
+      probes.push({
+        type: "battle-results-personnel-detail",
+        ...verifyStrategyBitmap(viewport, capture, 10762, 97, 87, [
+          { x: 0, y: 0, width: 400, height: 100 },
+          { x: 0, y: 100, width: 340, height: 196 },
+        ]),
+      });
+    }
   }
 
   capture = await clickTab(2, "results-imperial-forces");
@@ -3181,12 +3193,10 @@ async function probeTacticalBattleResultsPresentation(
   const persistence = consoleLines.find(({ text }) =>
     text.includes("[tactical_results] strategic_persistence applied=true"));
   assert.ok(persistence, `${faction}: strategic result was not persisted before routing`);
-  const postBattle = consoleLines.find(({ text }) =>
-    text.includes("[post_battle] mode=interactive"));
-  assert.ok(postBattle, `${faction}: shared post-battle campaign path did not run`);
-  assert.match(postBattle.text,
-    /landed=0 bombardment_damage=1 headquarters_destroyed=false/,
-    `${faction}: shared post-battle fixture did not apply its expected bombardment`);
+  // The post-battle bombardment and landing this once checked were the
+  // port's invention, removed in 6c9220a5 (the original never bombards or
+  // lands after a battle, ghidra/notes/bombardment-order.md), with their
+  // "[post_battle]" log.
   assert.match(persistence.text, /attacker_capitals=3->2/,
     `${faction}: destroyed attacker capital was not removed from strategic state`);
   assert.match(persistence.text, /defender_capitals=3->2/,
@@ -3198,7 +3208,6 @@ async function probeTacticalBattleResultsPresentation(
   probes.push({ type: "battle-results-route", destination: route,
     screenshot_sha256: sha256(routed) });
   probes.push({ type: "strategic-result-persistence", log: persistence.text });
-  probes.push({ type: "shared-post-battle-campaign-path", log: postBattle.text });
 
   for (const category of ["Capital Ships", "Fighters", "Troops", "Personnel"]) {
     assert.ok(consoleLines.some(({ text }) => text.includes(`category=${category}`)),

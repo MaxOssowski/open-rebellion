@@ -4862,9 +4862,9 @@ fn camera_offset_for_target(x: f32, y: f32) -> (f32, f32) {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A unit's column (`FUN_004714e0`): a damaged unit is still operational.
 enum BattleResultCondition {
     Operational,
-    Damaged,
     Destroyed,
 }
 
@@ -4872,6 +4872,12 @@ enum BattleResultCondition {
 struct BattleResultEntry {
     name: String,
     condition: BattleResultCondition,
+    /// Its `FUN_0042c3b0` picture (`FUN_004724a0`): a craft's or a
+    /// regiment's GOKRES portrait, personnel's mini.
+    picture: Option<(DllSource, u32)>,
+    /// The backdrop under it: a regiment's STRATEGY 11514, personnel's
+    /// 11500.
+    backdrop: Option<(DllSource, u32)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -5111,6 +5117,17 @@ impl BattleResultCategory {
             Self::Personnel => "Personnel",
         }
     }
+
+    /// The category button's label (`FUN_0046f360`: TEXTSTRA 0x1928,
+    /// 0x1929, 0x1930, 0x1931), shown over the columns (`FUN_00471200`).
+    const fn title(self) -> &'static str {
+        match self {
+            Self::CapitalShips => "Capital Ships",
+            Self::Fighters => "Fighter Squadrons",
+            Self::Troops => "Trooper Regiments",
+            Self::Personnel => "Personnel",
+        }
+    }
 }
 
 fn winner_is_alliance(session: &BattleSession) -> Option<bool> {
@@ -5144,6 +5161,16 @@ fn battle_result_entries(
     alliance: bool,
     category: BattleResultCategory,
 ) -> Vec<BattleResultEntry> {
+    // FUN_0042c3b0(.., 1, 1): a craft's or a regiment's portrait, the mini
+    // less 0x4000.
+    let portrait = |mini: Option<u32>| mini.map(|mini| (DllSource::Gokres, mini - 0x4000));
+    let condition = |destroyed: bool| {
+        if destroyed {
+            BattleResultCondition::Destroyed
+        } else {
+            BattleResultCondition::Operational
+        }
+    };
     match category {
         BattleResultCategory::CapitalShips => {
             let mut entries = session
@@ -5152,15 +5179,14 @@ fn battle_result_entries(
                 .filter(|ship| ship.identity.is_alliance == alliance)
                 .map(|ship| BattleResultEntry {
                     name: ship.name.clone(),
-                    condition: if !ship.alive || ship.hull_current <= 0 {
-                        BattleResultCondition::Destroyed
-                    } else if ship.hull_current < ship.hull_max
-                        || ship.subsystem_damage.total_hits() > 0
-                    {
-                        BattleResultCondition::Damaged
-                    } else {
-                        BattleResultCondition::Operational
-                    },
+                    condition: condition(!ship.alive || ship.hull_current <= 0),
+                    picture: portrait(
+                        world
+                            .capital_ship_classes
+                            .get(ship.class_key)
+                            .and_then(|class| crate::panels::fleets::capital_ship_mini_id(class.dat_id)),
+                    ),
+                    backdrop: None,
                 })
                 .collect::<Vec<_>>();
             if let Some(death_star) = session
@@ -5169,13 +5195,11 @@ fn battle_result_entries(
             {
                 entries.push(BattleResultEntry {
                     name: "Death Star".into(),
-                    condition: if death_star.destroyed || death_star.hull <= 0.0 {
-                        BattleResultCondition::Destroyed
-                    } else if death_star.hull < ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE {
-                        BattleResultCondition::Damaged
-                    } else {
-                        BattleResultCondition::Operational
-                    },
+                    condition: condition(death_star.destroyed || death_star.hull <= 0.0),
+                    picture: portrait(crate::panels::fleets::capital_ship_mini_id(
+                        rebellion_core::ids::DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
+                    )),
+                    backdrop: None,
                 });
             }
             entries
@@ -5186,13 +5210,14 @@ fn battle_result_entries(
             .filter(|fighter| fighter.identity.is_alliance == alliance)
             .map(|fighter| BattleResultEntry {
                 name: fighter.name.clone(),
-                condition: if !fighter.alive || fighter.squad_count == 0 {
-                    BattleResultCondition::Destroyed
-                } else if fighter.hull_current < fighter.hull_max {
-                    BattleResultCondition::Damaged
-                } else {
-                    BattleResultCondition::Operational
-                },
+                condition: condition(!fighter.alive || fighter.squad_count == 0),
+                picture: portrait(
+                    world
+                        .fighter_classes
+                        .get(fighter.class_key)
+                        .and_then(|class| crate::panels::fleets::fighter_mini_id(class.dat_id)),
+                ),
+                backdrop: None,
             })
             .collect(),
         BattleResultCategory::Troops => {
@@ -5209,19 +5234,21 @@ fn battle_result_entries(
                 .iter()
                 .enumerate()
                 .map(|(index, troop)| {
-                    let strength = world
-                        .troops
-                        .get(*troop)
-                        .map_or(0, |unit| unit.regiment_strength);
+                    let unit = world.troops.get(*troop);
+                    let strength = unit.map_or(0, |unit| unit.regiment_strength);
+                    let class = unit.map(|unit| unit.class_dat_id);
                     BattleResultEntry {
-                        name: format!("Regiment {}", index + 1),
-                        condition: if index >= surviving_capacity || strength <= 0 {
-                            BattleResultCondition::Destroyed
-                        } else if strength < 100 {
-                            BattleResultCondition::Damaged
-                        } else {
-                            BattleResultCondition::Operational
-                        },
+                        // FUN_004f62d0: the regiment's class name.
+                        name: class
+                            .and_then(|class| world.buildable_classes.get(&class))
+                            .map_or_else(|| format!("Regiment {}", index + 1), |value| value.name.clone()),
+                        condition: condition(index >= surviving_capacity || strength <= 0),
+                        picture: portrait(
+                            class.and_then(|class| {
+                                crate::system_window::troop_mini(class).map(|(mini, _)| mini)
+                            }),
+                        ),
+                        backdrop: Some((DllSource::Strategy, 11_514)),
                     }
                 })
                 .collect()
@@ -5237,6 +5264,13 @@ fn battle_result_entries(
                 .map(|character| BattleResultEntry {
                     name: character.name.clone(),
                     condition: BattleResultCondition::Operational,
+                    // A personnel mini (FUN_004724a0 passes 0) on 11500.
+                    picture: rebellion_core::pictures::character_mini_resource_id(
+                        character.dat_id,
+                        character.is_major,
+                    )
+                    .map(|mini| (DllSource::Gokres, mini)),
+                    backdrop: Some((DllSource::Strategy, 11_500)),
                 })
                 .collect()
         }
@@ -5384,6 +5418,19 @@ fn draw_battle_result_summary(
     );
 }
 
+/// The Battle Summary's forces page (`FUN_0046f360` builds it,
+/// `FUN_004714e0` fills the list, `FUN_00471200` paints its labels): the
+/// side's rail label at (12, 40), 400 wide, centred, red for the Alliance
+/// and green for the Empire; "Filters" at (86, 70); the category bar at
+/// (130, 59); the category's label at (37, 99); the column heads at y 118;
+/// the list at (37, 136), 347 by 166, of 165 by 70 cells in two columns
+/// (Operational, Destroyed), or 110 by 50 in three for Personnel
+/// (Survivors, Captured, Killed). The page art is the two- or
+/// three-column bitmap (STRATEGY 10761 / 10762).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The page reads the battle, the world and the viewer's art."
+)]
 fn draw_battle_result_force_details(
     cache: &mut BmpCache,
     canvas: TacticalCanvas,
@@ -5392,86 +5439,242 @@ fn draw_battle_result_force_details(
     troop_transport: &TroopTransportState,
     alliance: bool,
     category: BattleResultCategory,
+    player_alliance: bool,
     text_color: Color,
 ) {
-    use resources::strategy as art;
-    draw_strategy_bitmap(
-        cache,
-        art::BATTLE_FORCE_DETAIL_THREE_COLUMN,
-        canvas,
-        BATTLE_RESULTS_WINDOW_X + BATTLE_RESULTS_SCENE_X,
-        BATTLE_RESULTS_WINDOW_Y + BATTLE_RESULTS_SCENE_Y,
-    );
-    let faction = if alliance { "Alliance" } else { "Imperial" };
-    draw_result_text_centered(
-        canvas,
-        &format!("Battle at {}", session.system_name),
-        BATTLE_RESULTS_WINDOW_X + 212.0,
-        BATTLE_RESULTS_WINDOW_Y + 32.0,
-        18.0,
-        text_color,
-    );
-    draw_result_text_centered(
-        canvas,
-        &format!("{faction} Forces"),
-        BATTLE_RESULTS_WINDOW_X + 212.0,
-        BATTLE_RESULTS_WINDOW_Y + 52.0,
-        16.0,
-        text_color,
-    );
-
-    for (index, item) in BattleResultCategory::ALL.into_iter().enumerate() {
-        let center = BATTLE_RESULTS_WINDOW_X + 62.0 + index as f32 * 96.0;
-        let color = if item == category { WHITE } else { text_color };
-        draw_result_text_centered(
-            canvas,
-            item.label(),
-            center,
-            BATTLE_RESULTS_WINDOW_Y + 78.0,
-            10.0,
-            color,
-        );
-    }
-
-    for (index, label) in ["Operational", "Damaged", "Destroyed"]
-        .into_iter()
-        .enumerate()
-    {
-        draw_result_text_centered(
-            canvas,
-            label,
-            BATTLE_RESULTS_WINDOW_X + 80.0 + index as f32 * 111.0,
-            BATTLE_RESULTS_WINDOW_Y + 99.0,
-            11.0,
-            text_color,
-        );
-    }
-
     let entries = battle_result_entries(session, world, troop_transport, alliance, category);
-    for (column, condition) in [
-        BattleResultCondition::Operational,
-        BattleResultCondition::Damaged,
-        BattleResultCondition::Destroyed,
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        for (row, entry) in entries
-            .iter()
-            .filter(|entry| entry.condition == condition)
-            .take(9)
-            .enumerate()
-        {
-            draw_result_text_centered(
+    let ops = battle_force_page(
+        &session.system_name,
+        &entries,
+        alliance,
+        category,
+        player_alliance,
+        text_color,
+        |source, id| cache.original_resource_size(source, id),
+    );
+    for op in ops {
+        match op {
+            PageOp::Bitmap { source, id, x, y } => draw_original_bitmap(
+                cache,
+                source,
+                id,
                 canvas,
-                &entry.name,
-                BATTLE_RESULTS_WINDOW_X + 80.0 + column as f32 * 111.0,
-                BATTLE_RESULTS_WINDOW_Y + 122.0 + row as f32 * 20.0,
-                11.0,
-                WHITE,
-            );
+                BATTLE_RESULTS_WINDOW_X + x,
+                BATTLE_RESULTS_WINDOW_Y + y,
+                None,
+            ),
+            PageOp::Text {
+                text,
+                x,
+                baseline,
+                size,
+                color,
+                centered,
+            } => {
+                let (x, y) = (BATTLE_RESULTS_WINDOW_X + x, BATTLE_RESULTS_WINDOW_Y + baseline);
+                if centered {
+                    draw_result_text_centered(canvas, &text, x, y, size, color);
+                } else {
+                    draw_result_text(canvas, &text, x, y, size, color);
+                }
+            }
         }
     }
+}
+
+/// One drawing step of a results page, in window coordinates.
+#[derive(Debug, Clone, PartialEq)]
+enum PageOp {
+    Bitmap {
+        source: DllSource,
+        id: u32,
+        x: f32,
+        y: f32,
+    },
+    /// Text at its baseline; `centered` on `x`, else from it.
+    Text {
+        text: String,
+        x: f32,
+        baseline: f32,
+        size: f32,
+        color: Color,
+        centered: bool,
+    },
+}
+
+/// The Battle Summary's forces page as drawing steps (see
+/// `draw_battle_result_force_details` for the sources); `size_of` gives a
+/// bitmap's size for centring the pictures.
+fn battle_force_page(
+    system_name: &str,
+    entries: &[BattleResultEntry],
+    alliance: bool,
+    category: BattleResultCategory,
+    player_alliance: bool,
+    text_color: Color,
+    mut size_of: impl FnMut(DllSource, u32) -> Option<[usize; 2]>,
+) -> Vec<PageOp> {
+    use resources::strategy as art;
+    let text = |text: &str, x: f32, top: f32, size: f32, color: Color, centered: bool| {
+        PageOp::Text {
+            text: text.to_owned(),
+            x,
+            baseline: top + size,
+            size,
+            color,
+            centered,
+        }
+    };
+    let personnel = category == BattleResultCategory::Personnel;
+    let mut ops = vec![
+        PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: if personnel {
+                art::BATTLE_FORCE_DETAIL_THREE_COLUMN
+            } else {
+                art::BATTLE_FORCE_DETAIL_TWO_COLUMN
+            },
+            x: BATTLE_RESULTS_SCENE_X,
+            y: BATTLE_RESULTS_SCENE_Y,
+        },
+        text(&format!("Battle at {system_name}"), 212.0, 14.0, 18.0, text_color, true),
+    ];
+    // FUN_00471200: rail 0x70 (Alliance) red, 0x71 (Empire) green.
+    let (label, side_color) = if alliance {
+        ("Alliance Forces", Color::from_rgba(255, 0, 0, 255))
+    } else {
+        ("Imperial Forces", Color::from_rgba(0, 255, 0, 255))
+    };
+    ops.push(text(label, 212.0, 40.0, 14.0, side_color, true));
+    ops.push(text("Filters", 86.0, 70.0, 10.0, WHITE, false));
+    for (index, item) in BattleResultCategory::ALL.into_iter().enumerate() {
+        let (normal, pressed) = battle_category_art(item, player_alliance);
+        let rect = battle_category_rect(index);
+        ops.push(PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: if item == category { pressed } else { normal },
+            x: rect.x,
+            y: rect.y,
+        });
+    }
+    ops.push(text(category.title(), 37.0, 99.0, 10.0, WHITE, false));
+    let (heads, width): (&[(f32, &str)], f32) = if personnel {
+        (
+            &[(37.0, "Survivors"), (149.0, "Captured"), (260.0, "Killed")],
+            110.0,
+        )
+    } else {
+        (&[(37.0, "Operational"), (204.0, "Destroyed")], 165.0)
+    };
+    for &(x, head) in heads {
+        ops.push(text(head, x + width / 2.0, 118.0, 10.0, WHITE, true));
+    }
+
+    let columns = battle_result_columns(entries, personnel);
+    let (cell_w, cell_h) = if personnel { (110.0, 50.0) } else { (165.0, 70.0) };
+    let rows = (BATTLE_RESULT_LIST_HEIGHT / cell_h) as usize;
+    let empty = battle_result_empty_labels(&columns);
+    for (column, units) in columns.iter().enumerate() {
+        let left = 37.0 + column as f32 * cell_w;
+        if let Some(label) = empty[column] {
+            ops.push(text(label, left + cell_w / 2.0, 140.0, 10.0, WHITE, true));
+        }
+        for (row, entry) in units.iter().take(rows).enumerate() {
+            let top = 136.0 + row as f32 * cell_h;
+            // FUN_004724a0: the picture centred over the name.
+            if let Some(picture) = entry.picture {
+                for (source, id) in entry.backdrop.into_iter().chain(std::iter::once(picture)) {
+                    if let Some([w, h]) = size_of(source, id) {
+                        ops.push(PageOp::Bitmap {
+                            source,
+                            id,
+                            x: left + ((cell_w - w as f32) / 2.0).floor(),
+                            y: top + ((cell_h - BATTLE_RESULT_NAME_HEIGHT - h as f32) / 2.0).floor(),
+                        });
+                    }
+                }
+            }
+            ops.push(text(
+                &entry.name,
+                left + cell_w / 2.0,
+                top + cell_h - BATTLE_RESULT_NAME_HEIGHT,
+                9.0,
+                WHITE,
+                true,
+            ));
+        }
+    }
+    ops
+}
+
+/// The height a row keeps under its picture for the name.
+const BATTLE_RESULT_NAME_HEIGHT: f32 = 14.0;
+
+/// The list's height (`FUN_00607ea0` at (37, 136), 347 by 166).
+const BATTLE_RESULT_LIST_HEIGHT: f32 = 166.0;
+
+/// A category button's rectangle in the window: the bar at (130, 59), four
+/// 49 by 41 buttons (`FUN_0046f360`).
+fn battle_category_rect(index: usize) -> NativeRect {
+    NativeRect::new(130.0 + index as f32 * 49.0, 59.0, 49.0, 41.0)
+}
+
+/// A category button's art (normal, pressed) by the viewer's side
+/// (`FUN_0046f360`).
+const fn battle_category_art(category: BattleResultCategory, alliance: bool) -> (u32, u32) {
+    match (category, alliance) {
+        (BattleResultCategory::CapitalShips, true) => (0x286c, 0x286b),
+        (BattleResultCategory::CapitalShips, false) => (0x2878, 0x2877),
+        (BattleResultCategory::Fighters, true) => (0x2872, 0x2871),
+        (BattleResultCategory::Fighters, false) => (0x287c, 0x287b),
+        (BattleResultCategory::Troops, true) => (0x2870, 0x286f),
+        (BattleResultCategory::Troops, false) => (0x287a, 0x2879),
+        (BattleResultCategory::Personnel, true) => (0x286a, 0x2869),
+        (BattleResultCategory::Personnel, false) => (0x2876, 0x2875),
+    }
+}
+
+/// The columns `FUN_004714e0` fills: Operational and Destroyed, or for
+/// Personnel Survivors, Captured and Killed. port: the battle captures
+/// and kills no personnel, so they are all survivors.
+fn battle_result_columns(
+    entries: &[BattleResultEntry],
+    personnel: bool,
+) -> Vec<Vec<&BattleResultEntry>> {
+    let of = |condition| {
+        entries
+            .iter()
+            .filter(|entry| entry.condition == condition)
+            .collect::<Vec<_>>()
+    };
+    let operational = of(BattleResultCondition::Operational);
+    let destroyed = of(BattleResultCondition::Destroyed);
+    if personnel {
+        vec![operational, Vec::new(), destroyed]
+    } else {
+        vec![operational, destroyed]
+    }
+}
+
+/// `FUN_004714e0`'s lines for empty columns: the first reads "None"
+/// (`0x8526`) when every column is empty and "No Survivors" (`0x1940`)
+/// otherwise; the middle "None"; the last "No Casualties" (`0x1941`).
+fn battle_result_empty_labels(columns: &[Vec<&BattleResultEntry>]) -> Vec<Option<&'static str>> {
+    let all_empty = columns.iter().all(Vec::is_empty);
+    let last = columns.len() - 1;
+    columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| {
+            column.is_empty().then_some(if index == last {
+                "No Casualties"
+            } else if index == 0 && !all_empty {
+                "No Survivors"
+            } else {
+                "None"
+            })
+        })
+        .collect()
 }
 
 fn draw_battle_result_destinations(
@@ -5882,6 +6085,7 @@ fn draw_original_battle_results(
                 troop_transport,
                 true,
                 state.battle_result_category,
+                player_alliance,
                 text_color,
             );
             TacticalAction::None
@@ -5895,6 +6099,7 @@ fn draw_original_battle_results(
                 troop_transport,
                 false,
                 state.battle_result_category,
+                player_alliance,
                 text_color,
             );
             TacticalAction::None
@@ -5969,13 +6174,11 @@ fn draw_original_battle_results(
     ) && mouse_released
     {
         for (index, category) in BattleResultCategory::ALL.into_iter().enumerate() {
-            let rect = NativeRect::new(
-                BATTLE_RESULTS_WINDOW_X + 14.0 + index as f32 * 96.0,
-                BATTLE_RESULTS_WINDOW_Y + 58.0,
-                96.0,
-                25.0,
-            );
-            if rect.contains(mouse.0, mouse.1) {
+            let rect = battle_category_rect(index);
+            if rect.contains(
+                mouse.0 - BATTLE_RESULTS_WINDOW_X,
+                mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+            ) {
                 state.battle_result_category = category;
                 macroquad::logging::info!(
                     "[tactical-results] tab={} category={}",
@@ -7595,6 +7798,288 @@ mod tests {
             winner: None,
             diagnostic_log: Vec::new(),
         }
+    }
+
+    #[test]
+    fn the_battle_summary_columns_hold_operational_and_destroyed_units() {
+        // FUN_004714e0: a damaged ship stays operational; only the lost
+        // go to Destroyed. Personnel take three columns.
+        let mut damaged = test_ship(64, 1, true, true);
+        damaged.hull_current = 40;
+        damaged.hull_max = 100;
+        let mut lost = test_ship(64, 2, true, true);
+        lost.alive = false;
+        let session = test_session(vec![damaged, lost], Vec::new(), true);
+        let world = GameWorld::default();
+        let transport = TroopTransportState::default();
+        let entries = battle_result_entries(
+            &session,
+            &world,
+            &transport,
+            true,
+            BattleResultCategory::CapitalShips,
+        );
+        let columns = battle_result_columns(&entries, false);
+        assert_eq!((columns[0].len(), columns[1].len()), (1, 1));
+        assert_eq!(battle_result_columns(&entries, true).len(), 3);
+        assert_eq!(battle_result_columns(&entries, true)[1].len(), 0);
+        // Empty columns: the first "No Survivors" unless all are empty,
+        // the middle "None", the last "No Casualties".
+        assert_eq!(battle_result_empty_labels(&columns), [None, None]);
+        let only_lost = vec![Vec::new(), columns[1].clone()];
+        assert_eq!(
+            battle_result_empty_labels(&only_lost),
+            [Some("No Survivors"), None]
+        );
+        let none: Vec<Vec<&BattleResultEntry>> = vec![Vec::new(), Vec::new(), Vec::new()];
+        assert_eq!(
+            battle_result_empty_labels(&none),
+            [Some("None"), Some("None"), Some("No Casualties")]
+        );
+    }
+
+    #[test]
+    fn a_unit_is_destroyed_only_when_lost() {
+        // FUN_004714e0: Destroyed holds the units the battle ended; every
+        // other stays Operational, damaged or not.
+        let mut whole = test_ship(64, 1, true, true);
+        whole.hull_current = 100;
+        let mut sunk = test_ship(64, 2, true, true);
+        sunk.hull_current = 0;
+        let lost = test_ship(64, 3, true, false);
+        let enemy = test_ship(64, 4, false, true);
+        let mut fighters = vec![test_fighter(1, true), test_fighter(1, true), test_fighter(1, true)];
+        fighters[1].squad_count = 0;
+        fighters[2].alive = false;
+        let session = test_session(vec![whole, sunk, lost, enemy], fighters, true);
+        let world = GameWorld::default();
+        let transport = TroopTransportState::default();
+        let conditions = |category| {
+            battle_result_entries(&session, &world, &transport, true, category)
+                .into_iter()
+                .map(|entry| entry.condition)
+                .collect::<Vec<_>>()
+        };
+        use BattleResultCondition::{Destroyed, Operational};
+        assert_eq!(
+            conditions(BattleResultCategory::CapitalShips),
+            [Operational, Destroyed, Destroyed]
+        );
+        assert_eq!(
+            conditions(BattleResultCategory::Fighters),
+            [Operational, Destroyed, Destroyed]
+        );
+        // A Death Star is lost when destroyed or out of hull.
+        let mut session = session;
+        let mut death_star = |destroyed, hull| {
+            session.death_star = Some(rebellion_core::tactical::TacticalDeathStar {
+                resource: rebellion_core::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+                is_attacker: true,
+                is_alliance: true,
+                source_position: TacticalWorldPosition::ORIGIN,
+                hull,
+                laser_charge: 0.0,
+                shielded: false,
+                destroyed,
+                action_committed: false,
+            });
+            battle_result_entries(&session, &world, &transport, true, BattleResultCategory::CapitalShips)
+                .last()
+                .map(|entry| (entry.name.clone(), entry.condition))
+                .unwrap()
+        };
+        assert_eq!(death_star(false, 5.0), ("Death Star".into(), Operational));
+        assert_eq!(death_star(true, 5.0).1, Destroyed);
+        assert_eq!(death_star(false, 0.0).1, Destroyed);
+    }
+
+    #[test]
+    fn a_ships_picture_is_its_classs_portrait_and_two_rows_fit() {
+        // FUN_0042c3b0(.., 1, 1): the mini less 0x4000; the list's 166
+        // fits two 70-high rows (FUN_004714e0's 165 by 70 cells).
+        let mut world = GameWorld::default();
+        let class = world.capital_ship_classes.insert(rebellion_core::world::CapitalShipClass {
+            dat_id: DatId::new(0x1400_0040),
+            ..Default::default()
+        });
+        let ships: Vec<_> = (1..=3)
+            .map(|roster| {
+                let mut ship = test_ship(64, roster, true, true);
+                ship.class_key = class;
+                ship
+            })
+            .collect();
+        let session = test_session(ships, Vec::new(), true);
+        let transport = TroopTransportState::default();
+        let entries = battle_result_entries(
+            &session,
+            &world,
+            &transport,
+            true,
+            BattleResultCategory::CapitalShips,
+        );
+        let mini = crate::panels::fleets::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
+        assert_eq!(entries[0].picture, Some((DllSource::Gokres, mini - 0x4000)));
+        assert_eq!(entries[0].backdrop, None);
+        let ops = battle_force_page(
+            "Hoth",
+            &entries,
+            true,
+            BattleResultCategory::CapitalShips,
+            true,
+            WHITE,
+            |_, _| Some([10, 10]),
+        );
+        let pictures = ops
+            .iter()
+            .filter(|op| matches!(op, PageOp::Bitmap { id, .. } if *id == mini - 0x4000))
+            .count();
+        assert_eq!(pictures, 2);
+    }
+
+    #[test]
+    fn the_forces_page_draws_the_originals_layout() {
+        // FUN_0046f360 / FUN_00471200 / FUN_004714e0 / FUN_004724a0.
+        let entry = |name: &str, condition| BattleResultEntry {
+            name: name.into(),
+            condition,
+            picture: Some((DllSource::Gokres, 0x640)),
+            backdrop: Some((DllSource::Strategy, 11_514)),
+        };
+        let entries = [
+            entry("Kept", BattleResultCondition::Operational),
+            entry("Gone", BattleResultCondition::Destroyed),
+            entry("Gone too", BattleResultCondition::Destroyed),
+        ];
+        let size = |_, id| Some(if id == 11_514 { [122, 50] } else { [100, 40] });
+        let ops = battle_force_page(
+            "Hoth",
+            &entries,
+            false,
+            BattleResultCategory::Troops,
+            true,
+            WHITE,
+            size,
+        );
+        let texts: Vec<(String, f32, f32, f32, bool)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Text { text, x, baseline, size, centered, .. } => {
+                    Some((text.clone(), *x, *baseline, *size, *centered))
+                }
+                PageOp::Bitmap { .. } => None,
+            })
+            .collect();
+        let find = |name: &str| texts.iter().find(|entry| entry.0 == name).cloned().unwrap();
+        assert_eq!(find("Battle at Hoth"), ("Battle at Hoth".into(), 212.0, 32.0, 18.0, true));
+        assert_eq!(find("Imperial Forces"), ("Imperial Forces".into(), 212.0, 54.0, 14.0, true));
+        assert_eq!(find("Filters"), ("Filters".into(), 86.0, 80.0, 10.0, false));
+        assert_eq!(
+            find("Trooper Regiments"),
+            ("Trooper Regiments".into(), 37.0, 109.0, 10.0, false)
+        );
+        assert_eq!(find("Operational").1, 37.0 + 82.5);
+        assert_eq!(find("Destroyed").1, 204.0 + 82.5);
+        assert_eq!(find("Destroyed").2, 128.0);
+        assert_eq!(find("Kept"), ("Kept".into(), 37.0 + 82.5, 136.0 + 70.0 - 14.0 + 9.0, 9.0, true));
+        assert_eq!(find("Gone too").1, 202.0 + 82.5);
+        assert_eq!(find("Gone too").2, 206.0 + 70.0 - 14.0 + 9.0);
+        let bitmaps: Vec<(u32, f32, f32)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Bitmap { id, x, y, .. } => Some((*id, *x, *y)),
+                PageOp::Text { .. } => None,
+            })
+            .collect();
+        // The two-column art, the pressed Trooper Regiments button.
+        assert_eq!(bitmaps[0], (10_761, 12.0, 13.0));
+        assert!(bitmaps.contains(&(0x286f, 228.0, 59.0)));
+        assert!(bitmaps.contains(&(0x286c, 130.0, 59.0)));
+        // The backdrop and the picture centred over the name: (165 - 122)
+        // / 2 = 21, (70 - 14 - 50) / 2 = 3; (165 - 100) / 2 = 32, (56 -
+        // 40) / 2 = 8.
+        assert!(bitmaps.contains(&(11_514, 37.0 + 21.0, 136.0 + 3.0)));
+        assert!(bitmaps.contains(&(0x640, 37.0 + 32.0, 136.0 + 8.0)));
+        assert!(bitmaps.contains(&(0x640, 202.0 + 32.0, 206.0 + 8.0)));
+        // Personnel: three columns and the three-column art.
+        let ops = battle_force_page(
+            "Hoth",
+            &[],
+            true,
+            BattleResultCategory::Personnel,
+            false,
+            WHITE,
+            size,
+        );
+        assert!(ops.contains(&PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: 10_762,
+            x: 12.0,
+            y: 13.0
+        }));
+        let heads: Vec<(String, f32)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Text { text, x, .. } if ["Survivors", "Captured", "Killed"].contains(&text.as_str()) => {
+                    Some((text.clone(), *x))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            heads,
+            [
+                ("Survivors".into(), 92.0),
+                ("Captured".into(), 204.0),
+                ("Killed".into(), 315.0)
+            ]
+        );
+        let labels: Vec<(String, f32, f32)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Text { text, x, baseline, .. } if ["None", "No Casualties"].contains(&text.as_str()) => {
+                    Some((text.clone(), *x, *baseline))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            labels,
+            // The list's 110-wide cells from x 37 (FUN_004714e0), not the
+            // heads' x (FUN_0046f360 places those at 37, 149, 260).
+            [
+                ("None".into(), 92.0, 150.0),
+                ("None".into(), 202.0, 150.0),
+                ("No Casualties".into(), 312.0, 150.0)
+            ]
+        );
+        assert!(ops.iter().any(|op| matches!(op, PageOp::Text { text, color, .. } if text == "Alliance Forces" && *color == Color::from_rgba(255, 0, 0, 255))));
+    }
+
+    #[test]
+    fn the_battle_summary_category_bar_follows_the_original() {
+        // FUN_0046f360: the bar at (130, 59), 49 by 41 buttons, the
+        // viewer's art; the labels TEXTSTRA 0x1928..0x1931.
+        assert_eq!(battle_category_rect(0), NativeRect::new(130.0, 59.0, 49.0, 41.0));
+        assert_eq!(battle_category_rect(3), NativeRect::new(277.0, 59.0, 49.0, 41.0));
+        assert_eq!(
+            battle_category_art(BattleResultCategory::CapitalShips, true),
+            (0x286c, 0x286b)
+        );
+        assert_eq!(
+            battle_category_art(BattleResultCategory::Fighters, false),
+            (0x287c, 0x287b)
+        );
+        assert_eq!(
+            battle_category_art(BattleResultCategory::Troops, true),
+            (0x2870, 0x286f)
+        );
+        assert_eq!(
+            battle_category_art(BattleResultCategory::Personnel, false),
+            (0x2876, 0x2875)
+        );
+        assert_eq!(BattleResultCategory::Troops.title(), "Trooper Regiments");
+        assert_eq!(BattleResultCategory::Fighters.title(), "Fighter Squadrons");
     }
 
     #[test]
