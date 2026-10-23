@@ -10314,6 +10314,7 @@ mod tactical_ground_tests {
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
             withdrawal_ms: None,
+            ai_withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         };
 

@@ -96,8 +96,9 @@ pub const ORIGINAL_WITHDRAWAL_MILLISECONDS: f32 = 30_000.0;
 /// `DAT_0066c234`: the Empire's withdrawal time while its Death Star is
 /// operational (`FUN_005a9330`, `FUN_005ba420`).
 pub const ORIGINAL_DEATH_STAR_WITHDRAWAL_MILLISECONDS: f32 = 150_000.0;
-/// `FUN_005af5f0` gives the Alliance's commander (side 0) the vector
-/// `+0x48` = (0, 0, 1) and the Empire's (0, 0, -1). `FUN_005cc300` heads a
+/// `FUN_005be160` gives the tactical battle's Alliance commander (side 0,
+/// `+0x08`) the vector `+0x48` = (0, 0, 1) and the Empire's (`+0x0c`)
+/// (0, 0, -1); `FUN_005af5f0` gives the abstract ones the same. `FUN_005cc300` heads a
 /// withdrawing capital-ship force for it times `-1.0` (`_DAT_0066cff8`) and
 /// half (`_DAT_0066cffc`) the battle extent `+0x8cc`.
 pub const ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE: f32 = 0.5;
@@ -1291,10 +1292,10 @@ pub struct BattleSession {
     /// Winner once battle ends (None during combat).
     pub winner: Option<CombatWinner>,
     /// Each side's retreat order from the battle choice (Alliance, Empire;
-    /// `FUN_004362b0`'s `+0x3c` word). Both modes share the battle object
-    /// and its side commanders (`FUN_00596f30`, `abstract-battle.md`), so
-    /// in the tactical battle too an AI side with the order leaves under
-    /// `FUN_005d19a0`.
+    /// `FUN_004362b0`'s `+0x3c` word). The battle start (`FUN_00599c90`)
+    /// gives it to the abstract commanders (`FUN_005afb30`) and to the
+    /// tactical ones (`FUN_005a8af0`, `+0x80`), so in the tactical battle
+    /// too an AI side with the order withdraws (`FUN_005c8780`).
     pub retreat_allowed: [bool; 2],
     /// Whether each side has left (Alliance, Empire).
     pub retreat_done: [bool; 2],
@@ -1302,6 +1303,8 @@ pub struct BattleSession {
     /// `FUN_005ad530`, `FUN_005c8780`; state 2), then 0 while its ships
     /// jump out (state 3).
     pub withdrawal_ms: Option<f32>,
+    /// The AI side's withdrawal time, as `withdrawal_ms`.
+    pub ai_withdrawal_ms: Option<f32>,
     /// Diagnostic lines the simulation produced since the host last drained
     /// them; the host prints each one on its own console.
     pub diagnostic_log: Vec<String>,
@@ -3277,6 +3280,7 @@ impl BattleSession {
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
             withdrawal_ms: None,
+            ai_withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         };
         FleetBattle {
@@ -5349,19 +5353,23 @@ impl BattleSession {
         }
     }
 
-    /// `FUN_005ad530` for the player's side: each living capital ship with
-    /// a working hyperdrive drops its attack (`FUN_005a8d30`), takes order 3
+    /// `FUN_005ad530` for the player's side.
+    pub fn begin_player_withdrawal(&mut self) {
+        self.begin_withdrawal(self.player_is_attacker);
+    }
+
+    /// `FUN_005ad530` for a side's capital ships: each living one with a
+    /// working hyperdrive drops its attack (`FUN_005a8d30`), takes order 3
     /// and heads for its exit (`FUN_005cc300`). The side's time becomes at
     /// least 30 s, or 150 s for the Empire while its Death Star is
     /// operational. port: a ship without one fights on; the original's also
     /// heads out and returns to the fight when the time ends
     /// (`FUN_005b2720`).
-    pub fn begin_player_withdrawal(&mut self) {
-        let player = self.player_is_attacker;
+    pub fn begin_withdrawal(&mut self, side_is_attacker: bool) {
         for ship in &mut self.ships {
             if ship.alive
                 && !ship.retreating
-                && ship.is_attacker == player
+                && ship.is_attacker == side_is_attacker
                 && ship.subsystem_capacity.hyperdrive > 0
                 && ship.subsystem_condition.hyperdrive > 0
             {
@@ -5372,31 +5380,143 @@ impl BattleSession {
                 ship.manual_targets.clear();
             }
         }
-        self.start_withdrawal_time();
+        self.start_side_withdrawal_time(side_is_attacker);
+    }
+
+    /// `FUN_005ad530`'s task-force loop for a side's fighter groups (class
+    /// 4, `FUN_005a6700`): a group whose hyperdrive count (`FUN_005b1bc0`) is
+    /// 0 takes order 2, the recovery to a carrier (`FUN_005ca6d0` installs
+    /// the `FUN_005cf980` executor); the others take order 3 and jump when
+    /// the side's time ends. Either order ends the group's attack. port: the
+    /// original's force heads for its side's exit meanwhile (`FUN_005c6610`);
+    /// here it holds.
+    pub fn withdraw_fighters(&mut self, side_is_attacker: bool) {
+        let mut groups = Vec::new();
+        for (index, fighter) in self.fighters.iter_mut().enumerate() {
+            if fighter.alive && fighter.squad_count > 0 && fighter.is_attacker == side_is_attacker {
+                fighter.attack_target = None;
+                fighter.escort_target = None;
+                fighter.selected = false;
+                if fighter.has_hyperdrive {
+                    fighter.order = TacticalOrder::None;
+                } else {
+                    fighter.order = TacticalOrder::Recover;
+                    groups.push(index);
+                }
+            }
+        }
+        self.begin_original_fighter_recovery(&groups);
+    }
+
+    /// `FUN_005cf940` resets each selected group's recovery and
+    /// `FUN_005cf980` reserves a compatible carrier with room and begins the
+    /// inbound leg. A player's group with no room queues its voice once.
+    pub fn begin_original_fighter_recovery(&mut self, selected: &[usize]) {
+        let player_is_attacker = self.player_is_attacker;
+        let player_faction = self.player_voice_faction();
+        let mut warned_groups = [false; 4];
+        let mut capacity_cues = Vec::new();
+        let mut carrier_slots = self
+            .ships
+            .iter()
+            .enumerate()
+            .filter(|(_, ship)| ship.alive && ship.fighter_capacity > 0)
+            .map(|(index, ship)| (index, ship.is_attacker, ship.fighter_capacity))
+            .collect::<Vec<_>>();
+        for (index, fighter) in self.fighters.iter().enumerate() {
+            if selected.contains(&index)
+                || !matches!(
+                    fighter.recovery_state,
+                    TacticalFighterRecoveryState::Reserved
+                        | TacticalFighterRecoveryState::Returning
+                        | TacticalFighterRecoveryState::Docking
+                )
+            {
+                continue;
+            }
+            if let Some((_, _, remaining)) = fighter.recovery_target.and_then(|target| {
+                carrier_slots
+                    .iter_mut()
+                    .find(|(carrier, _, _)| *carrier == target)
+            }) {
+                *remaining = remaining.saturating_sub(1);
+            }
+        }
+        for &fighter_index in selected {
+            let fighter = &mut self.fighters[fighter_index];
+            // `FUN_005cf940` always resets the state before `FUN_005cf980`
+            // reserves a compatible carrier and begins the inbound leg.
+            fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
+            fighter.recovery_target = None;
+            if let Some((carrier, _, remaining)) = carrier_slots
+                .iter_mut()
+                .find(|(_, side, remaining)| *side == fighter.is_attacker && *remaining > 0)
+            {
+                fighter.recovery_state = TacticalFighterRecoveryState::Reserved;
+                fighter.recovery_target = Some(*carrier);
+                *remaining -= 1;
+                fighter.recovery_state = TacticalFighterRecoveryState::Returning;
+            } else {
+                let group = usize::from(fighter.fighter_group);
+                if fighter.is_attacker == player_is_attacker
+                    && group < warned_groups.len()
+                    && !warned_groups[group]
+                {
+                    warned_groups[group] = true;
+                    capacity_cues.push(TacticalVoiceCue::fighter_recovery_capacity(
+                        player_faction,
+                        fighter.fighter_group,
+                    ));
+                }
+            }
+        }
+        self.pending_voice_cues.extend(capacity_cues);
+    }
+
+    /// The player's side's withdrawal time.
+    pub fn start_withdrawal_time(&mut self) {
+        self.start_side_withdrawal_time(self.player_is_attacker);
     }
 
     /// The side's withdrawal time, `FUN_005ad530`: the larger of what is
-    /// left and the floor.
-    pub fn start_withdrawal_time(&mut self) {
-        let empire = self.attacker_is_alliance != self.player_is_attacker;
+    /// left and the floor, 150 s for the Empire (side 1) while its Death Star
+    /// is operational.
+    fn start_side_withdrawal_time(&mut self, side_is_attacker: bool) {
+        let empire = self.attacker_is_alliance != side_is_attacker;
         let floor = if empire && self.death_star.is_some_and(TacticalDeathStar::operational) {
             ORIGINAL_DEATH_STAR_WITHDRAWAL_MILLISECONDS
         } else {
             ORIGINAL_WITHDRAWAL_MILLISECONDS
         };
-        self.withdrawal_ms = Some(self.withdrawal_ms.map_or(floor, |left| left.max(floor)));
+        let slot = self.withdrawal_slot(side_is_attacker);
+        *slot = Some(slot.map_or(floor, |left| left.max(floor)));
     }
 
-    /// The exit line of a side's withdrawal: its commander's vector
-    /// (`FUN_005af5f0`) times `-1.0` and half the battle extent
+    /// The time of the player's side or of the AI's.
+    fn withdrawal_slot(&mut self, side_is_attacker: bool) -> &mut Option<f32> {
+        if side_is_attacker == self.player_is_attacker {
+            &mut self.withdrawal_ms
+        } else {
+            &mut self.ai_withdrawal_ms
+        }
+    }
+
+    /// The exit line of a side's withdrawal: its tactical commander's
+    /// vector (`FUN_005be160`) times `-1.0` and half the battle extent
     /// (`FUN_005cc300`).
     pub fn withdrawal_exit_z(&self, is_alliance: bool) -> f32 {
         let side_z = if is_alliance { 1.0 } else { -1.0 };
         -side_z * self.source_layout.battle_extent * ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE
     }
 
+    /// Both sides' withdrawals, the player's first.
+    fn advance_withdrawal(&mut self) {
+        self.advance_side_withdrawal(self.player_is_attacker);
+        self.advance_side_withdrawal(!self.player_is_attacker);
+    }
+
     /// `FUN_005c8780`: the withdrawing side's time runs down by the step.
-    /// When it ends, the player's fighter groups with a working hyperdrive
+    /// When it ends, the side's fighter groups with a working hyperdrive
     /// (`FUN_005b1b70`; `FUN_005ad530` gave them order 3) leave. Then each
     /// withdrawing ship with a working hyperdrive starts its jump once it is
     /// within 8.0 of its exit line (`FUN_005cc300`: state 6, event `0x2d`,
@@ -5405,21 +5525,20 @@ impl BattleSession {
     /// lost its hyperdrive returns to the fight (`FUN_005b1e40` ->
     /// `FUN_005b2720`). The side waits until none is left (`FUN_005c8780`
     /// state 3 -> 4). port: the jump's flight is not drawn.
-    fn advance_withdrawal(&mut self) {
-        let Some(left) = self.withdrawal_ms else {
+    fn advance_side_withdrawal(&mut self, side: bool) {
+        let Some(left) = *self.withdrawal_slot(side) else {
             return;
         };
         let now = (left - ORIGINAL_TACTICAL_STEP_MILLISECONDS).max(0.0);
-        self.withdrawal_ms = Some(now);
+        *self.withdrawal_slot(side) = Some(now);
         if now > 0.0 {
             return;
         }
         if left > 0.0 {
-            let player = self.player_is_attacker;
             for fighter in &mut self.fighters {
                 // port: a group's engine power is its sublight rating.
                 if fighter.alive
-                    && fighter.is_attacker == player
+                    && fighter.is_attacker == side
                     && fighter.has_hyperdrive
                     && fighter.sublight_engine_power != 0.0
                 {
@@ -5429,7 +5548,7 @@ impl BattleSession {
         }
         let exits = [self.withdrawal_exit_z(true), self.withdrawal_exit_z(false)];
         for ship in &mut self.ships {
-            if !ship.alive || !ship.retreating {
+            if !ship.alive || !ship.retreating || ship.is_attacker != side {
                 continue;
             }
             if ship.retreat_progress > 0.0 {
@@ -5463,6 +5582,7 @@ impl BattleSession {
                 .and_then(|carrier| ships.get(carrier))
                 .is_some_and(|carrier| carrier.retreated);
             if fighter.alive
+                && fighter.is_attacker == side
                 && carrier_escaped
                 && matches!(
                     fighter.recovery_state,
@@ -5474,15 +5594,23 @@ impl BattleSession {
                 fighter.alive = false;
             }
         }
-        if !self.ships.iter().any(|ship| ship.alive && ship.retreating) {
-            self.withdrawal_ms = None;
+        if !self
+            .ships
+            .iter()
+            .any(|ship| ship.alive && ship.retreating && ship.is_attacker == side)
+        {
+            *self.withdrawal_slot(side) = None;
         }
     }
 
-    /// The AI side's commander, `FUN_005d14d0` step 5: with its retreat
-    /// order it leaves when `FUN_005d19a0` says so, as in the abstract
-    /// battle (`abstract_battle::leave`). The field counts a unit that left
-    /// as gone. port: the jump is not drawn.
+    /// The AI side's tactical commander, `FUN_005c8780`: with its retreat
+    /// order (`+0x80`) and a way out (`FUN_005c7e80`), it withdraws through
+    /// `FUN_005ad530` like the player's side once its strength falls under
+    /// 0.33 of the enemy's (`+0x24`). port: the rule is the abstract one's
+    /// port (`abstract_battle::side_should_leave`, `FUN_005d19a0`, with the
+    /// abstract strength `FUN_005d0ce0`; the tactical `FUN_005c7f70` is
+    /// unread), asked every step rather than every sixth (`+0x40` counts
+    /// down by 1.0, `_DAT_0066cbd4`, from 6.0, `DAT_0066cba4`).
     fn ai_side_leaves(&mut self) {
         let alliance = self.attacker_is_alliance != self.player_is_attacker;
         let side = usize::from(!alliance);
@@ -5492,12 +5620,10 @@ impl BattleSession {
         {
             return;
         }
-        crate::abstract_battle::leave(self, alliance);
-        for ship in &mut self.ships {
-            if ship.retreated {
-                ship.alive = false;
-            }
-        }
+        let ai = !self.player_is_attacker;
+        self.begin_withdrawal(ai);
+        self.withdraw_fighters(ai);
+        // `+0x84` = 2: the side cannot order it again (`FUN_005c7e80`).
         self.retreat_done[side] = true;
     }
 

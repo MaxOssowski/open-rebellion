@@ -1584,7 +1584,8 @@ fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after
 /// ship with a working hyperdrive escapes (`FUN_005af910`, state 9); the
 /// others are destroyed (`FUN_005af7a0`). hyp: a fighter group without one
 /// escapes when its side has an escaping carrier (`FUN_005afe40` recovers
-/// it), and is destroyed otherwise. Both modes run it (the shared battle object, `FUN_00596f30`).
+/// it), and is destroyed otherwise. The tactical battle has its own
+/// commanders (`FUN_005be160`) and withdraws through `FUN_005c8780`.
 pub fn leave(session: &mut BattleSession, alliance: bool) {
     let units = units_of(session, alliance);
     let carrier_escapes = units.iter().any(|&unit| match unit {
@@ -1833,6 +1834,7 @@ mod tests {
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
             withdrawal_ms: None,
+            ai_withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         }
     }
@@ -2881,30 +2883,43 @@ mod tests {
         assert!(!battle.can_leave(true));
     }
 
-    // The battle object and its side commanders serve both modes
-    // (FUN_00596f30), so in the tactical battle the AI side with its retreat
-    // order leaves as in the abstract one (FUN_005d19a0, FUN_005d14d0 step
-    // 5); the player's side never leaves on its own. The field counts a
-    // ship that escaped as gone, and the strategic result keeps it.
+    // The tactical battle's own commanders (FUN_005be160) step through
+    // FUN_005c8780: the AI side with its retreat order and a way out
+    // (FUN_005c7e80) withdraws through FUN_005ad530 like the player's once
+    // its strength falls under 0.33 of the enemy's. Its ships with a
+    // working hyperdrive head for their edge and jump after its 30 s; one
+    // without fights on (FUN_005b2720). The player's side never withdraws
+    // on its own. port: the rule is the abstract one's (FUN_005d19a0).
     #[test]
-    fn the_ai_side_of_a_tactical_battle_leaves_under_the_same_rule() {
+    fn the_ai_side_of_a_tactical_battle_withdraws_like_the_player() {
         let weak = |alliance: bool| {
+            let mut fast = jumper(alliance, TacticalWeaponArc::new(0, 0, 1), 1.0);
+            fast.subsystem_condition.hyperdrive = 100;
             let mut slow = ship(alliance, TacticalWeaponArc::new(0, 0, 1), 1.0);
             slow.task_force = 1;
-            vec![
-                jumper(alliance, TacticalWeaponArc::new(0, 0, 1), 1.0),
-                slow,
-                ship(!alliance, TacticalWeaponArc::new(0, 0, 4), 30.0),
-            ]
+            let mut strong = ship(!alliance, TacticalWeaponArc::new(0, 0, 4), 30.0);
+            strong.hull_current = 1_000_000;
+            strong.hull_max = 1_000_000;
+            vec![fast, slow, strong]
         };
         // The player has the Alliance (the attacker); the AI the Empire.
         let mut tactical = session(weak(false), Vec::new());
         tactical.retreat_allowed = [true, true];
-        assert!(tactical.step(), "the Empire left");
-        assert_eq!(tactical.winner, Some(CombatWinner::Attacker));
-        assert!(tactical.ships[0].retreated && !tactical.ships[0].alive);
-        assert!(!tactical.ships[1].alive && !tactical.ships[1].retreated);
+        assert!(!tactical.step());
         assert_eq!(tactical.retreat_done, [false, true]);
+        assert_eq!(tactical.ai_withdrawal_ms, Some(30_000.0));
+        assert_eq!(tactical.withdrawal_ms, None);
+        assert!(tactical.ships[0].retreating && tactical.ships[0].alive);
+        assert!(!tactical.ships[1].retreating);
+        // At its edge when the time ends, it jumps for 4000 ms and leaves.
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false);
+        tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        for _ in 0..16 {
+            tactical.step();
+        }
+        assert!(tactical.ships[0].retreated && !tactical.ships[0].alive);
+        assert!(!tactical.ships[1].retreated);
+        assert_eq!(tactical.ai_withdrawal_ms, None);
 
         // Without its order the AI side fights on.
         let mut ordered = session(weak(false), Vec::new());
@@ -4048,7 +4063,7 @@ mod tests {
         assert!(tactical.fighters[2].alive);
     }
 
-    // FUN_005af5f0 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
+    // FUN_005be160 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
     // FUN_005cc300 heads for it times -1.0 and half the extent +0x8cc.
     #[test]
     fn each_side_withdraws_to_its_own_edge() {
@@ -4165,5 +4180,90 @@ mod tests {
         tactical.step();
         assert_eq!(tactical.ships[1].source_waypoint, None);
         assert!(tactical.fighters[0].alive);
+    }
+
+    // FUN_005ad530 for the AI side's fighter groups (class 4): one with a
+    // hyperdrive takes order 3 and leaves when the AI's time ends; one
+    // without takes order 2 to a carrier of its own side (FUN_005cf980).
+    // The player's groups and time are untouched. The Empire's floor is
+    // 150000 ms (DAT_0066c234) while its Death Star is operational.
+    #[test]
+    fn the_ai_sides_fighters_withdraw_by_their_hyperdrive() {
+        use crate::tactical::TacticalFighterRecoveryState as Recovery;
+        let mut carrier = ship(false, TacticalWeaponArc::default(), 0.0);
+        carrier.fighter_capacity = 1;
+        let mut enemy = ship(true, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut defender = fighter(false, TacticalWeaponArc::default());
+        defender.has_hyperdrive = true;
+        defender.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(1));
+        let tie = fighter(false, TacticalWeaponArc::default());
+        let mut own = fighter(true, TacticalWeaponArc::default());
+        own.has_hyperdrive = true;
+        let mut tactical = session(vec![carrier, enemy], vec![defender, tie, own]);
+        tactical.death_star = Some(crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: crate::tactical::TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        tactical.begin_withdrawal(false);
+        tactical.withdraw_fighters(false);
+        assert_eq!(tactical.ai_withdrawal_ms, Some(150_000.0));
+        assert_eq!(tactical.withdrawal_ms, None);
+        assert_eq!(tactical.fighters[0].order, TacticalOrder::None);
+        assert_eq!(tactical.fighters[0].attack_target, None);
+        assert_eq!(tactical.fighters[1].order, TacticalOrder::Recover);
+        assert_eq!(tactical.fighters[1].recovery_target, Some(0));
+        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Returning);
+        assert_eq!(tactical.fighters[2].order, TacticalOrder::None);
+        tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
+        assert!(tactical.fighters[2].alive);
+    }
+
+    // FUN_005cf980 reserves a living carrier of the group's side with room;
+    // a group already returning holds its place, a stale target outside
+    // the recovery states does not, and one place serves one group. A
+    // player's group with no room and no colour (4) queues no voice.
+    #[test]
+    fn a_recovery_reserves_one_free_place_on_a_living_carrier() {
+        use crate::tactical::TacticalFighterRecoveryState as Recovery;
+        let mut dead = ship(true, TacticalWeaponArc::default(), 0.0);
+        dead.fighter_capacity = 2;
+        dead.alive = false;
+        let mut carrier = ship(true, TacticalWeaponArc::default(), 0.0);
+        carrier.fighter_capacity = 2;
+        let mut returning = fighter(true, TacticalWeaponArc::default());
+        returning.recovery_state = Recovery::Returning;
+        returning.recovery_target = Some(1);
+        let mut stale = fighter(true, TacticalWeaponArc::default());
+        stale.recovery_state = Recovery::AwaitingCarrier;
+        stale.recovery_target = Some(1);
+        let mut first = fighter(true, TacticalWeaponArc::default());
+        first.fighter_group = 4;
+        let mut second = fighter(true, TacticalWeaponArc::default());
+        second.fighter_group = 4;
+        let mut tactical = session(vec![dead, carrier], vec![returning, stale, first, second]);
+        tactical.begin_original_fighter_recovery(&[2, 3]);
+        assert_eq!(tactical.fighters[2].recovery_target, Some(1));
+        assert_eq!(tactical.fighters[2].recovery_state, Recovery::Returning);
+        assert_eq!(tactical.fighters[3].recovery_target, None);
+        assert_eq!(
+            tactical.fighters[3].recovery_state,
+            Recovery::AwaitingCarrier
+        );
+        assert!(tactical.take_pending_voice_cues().is_empty());
     }
 }

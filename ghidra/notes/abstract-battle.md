@@ -15,8 +15,15 @@ It continues `battle-flow.md`, "Abstract mode in the tactical module".
 ## The battle object
 
 - `FUN_00596f30` returns the battle singleton `DAT_006bc4a8`, built by
-  `FUN_005af5f0` (0x274 bytes). Both modes use it, and the side code
-  reaches it through `FUN_00596f30`.
+  `FUN_005af5f0` (0x274 bytes). The abstract mode runs on it.
+  Correction (2026-10-23, s55): the tactical battle has its own manager
+  `DAT_006bc4a0` (`FUN_005aaf90`, built by `FUN_005be0f0` ->
+  `FUN_005be160`, 0xea4 bytes). That manager has its own commanders at
+  `+0x08` (vtable `0x66c7a0`, side 0) and `+0x0c` (`0x66c778`, side 1),
+  and they step through `FUN_005c8780` (`FUN_005a9d10`), not
+  `FUN_005d14d0`. The battle start `FUN_00599c90` gives both sets the
+  retreat order (`FUN_005afb30` abstract, `FUN_005a8af0` tactical,
+  `+0x80`).
 - `FUN_005af5f0` builds two side commanders. Both are derived from
   `FUN_005c7cb0`, and both are 0xb4 bytes.
   - `+0x24c`: vtable `0x66c428`. Its lane fields are `+0x50` = 1.0 and
@@ -454,11 +461,13 @@ is the side commander's `+0x24` = 0.33.
     `+0x9f0`..`+0x9fc` mark a side withdrawn when its `+0x84` is 3, 4 or 5,
     none of its units is active or jumping, and one reached state 9;
     voice `0x96`..`0x99` / `0x118`..`0x11b` announces it.
-  - The side vector is fixed when the battle object is built
-    (`FUN_005af5f0`): the commander with vtable `0x66c428` (slot `+0x04`
-    `FUN_005a5b60` = side 0, the Alliance) gets (0, 0, 1, -1), the one with
-    `0x66c3f8` (`FUN_005a66f0` = side 1, the Empire) gets (0, 0, -1, -1).
-    `FUN_005c7cb0` only zeroes it first. So a capital force heads for
+  - The side vector is fixed when the tactical manager is built
+    (`FUN_005be160`, `0x5be1c6`..`0x5be221`): its commander `+0x08`
+    (vtable `0x66c7a0`, slot `+0x04` `FUN_006158b0` = side 0, the Alliance)
+    gets (0, 0, 1, -1), `+0x0c` (`0x66c778`, `FUN_0040f340` = side 1, the
+    Empire) gets (0, 0, -1, -1); `FUN_005a7490` reads them. The abstract
+    commanders (`FUN_005af5f0`) get the same values. `FUN_005c7cb0` only
+    zeroes it first. (s54 cited `FUN_005af5f0`; corrected in s55.) So a capital force heads for
     z = -0.5 * extent (Alliance) or +0.5 * extent (Empire), `+0x8cc`
     (`_DAT_0066cffc` = 0.5); disassembly `0x5cc3b1`..`0x5cc3e4`. The
     exit test (`0x5cc46f`..`0x5cc487`) is
@@ -475,16 +484,24 @@ is the side commander's `+0x24` = 0.33.
     drawn (k unread); a ship without a hyperdrive fights on throughout
     (the original's also heads out first); fighter groups with a
     hyperdrive still leave when the time ends (`FUN_005c6610` flight not
-    ported); the AI side still leaves at once (`abstract_battle::leave`),
-    though `FUN_005c8780` also runs `FUN_005ad530` for it.
+    ported); the AI side withdraws the same way since s55.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
-  player's side stays unset), and each tactical step asks
-  `abstract_battle::side_should_leave` (`FUN_005d19a0`) for the AI side
-  and runs the same `leave` (`FUN_005d14d0` step 5). A ship that escaped
-  keeps its hull in the strategic result (`tactical_flow::apply_results`);
-  before, the tactical battle counted it destroyed. port: the jump is not
-  drawn.
+  player's side stays unset). A ship that escaped keeps its hull in the
+  strategic result (`tactical_flow::apply_results`); before, the tactical
+  battle counted it destroyed. The s42 port ran the abstract `leave`
+  (`FUN_005d14d0` step 5) for the AI side. That was wrong: the tactical
+  commander's step `FUN_005c8780` waits for its count `+0x40` (1.0 a
+  step, `_DAT_0066cbd4`, from 6.0, `DAT_0066cba4`). Then it re-plans
+  (`FUN_005c9200`) and, when the enemy's strength is above 0 and its own
+  is under `+0x24` of it or 0, and it may leave (`FUN_005c7e80`, with
+  `+0x80` set and `+0x84` 0), it runs `FUN_005ad530` for any side but a
+  player-controlled one, unless a trench run is under way
+  (`FUN_005d0ae0`). Ported 2026-10-23 (s55,
+  `BattleSession::begin_withdrawal`, `withdraw_fighters`,
+  `ai_withdrawal_ms`): the AI side withdraws like the player's. port: the
+  test is `side_should_leave` with the abstract strength, every step;
+  the trench-run check is not ported.
 
 ## The Death Star in the abstract battle (read 2026-10-21, W2i)
 

@@ -3123,92 +3123,14 @@ fn begin_original_attack_order(
     }
 }
 
-/// `FUN_005ad530`'s task-force loop for the player's fighter groups (class
-/// 4, `FUN_005a6700`): a group whose hyperdrive count (`FUN_005b1bc0`) is 0
-/// takes order 2, the recovery to a carrier (`FUN_005ca6d0` installs the
-/// `FUN_005cf980` executor); the others take order 3 and jump when the
-/// side's time ends. Either order ends the group's attack. port: the
-/// original's force heads for its side's exit meanwhile (`FUN_005c6610`,
-/// side vector `+0x48` not traced); here it holds.
+/// `FUN_005ad530`'s task-force loop for the player's fighter groups
+/// (`BattleSession::withdraw_fighters`).
 pub fn withdraw_player_fighters(session: &mut BattleSession) {
-    let player = session.player_is_attacker;
-    let mut groups = Vec::new();
-    for (index, fighter) in session.fighters.iter_mut().enumerate() {
-        if fighter.alive && fighter.squad_count > 0 && fighter.is_attacker == player {
-            fighter.attack_target = None;
-            fighter.escort_target = None;
-            fighter.selected = false;
-            if fighter.has_hyperdrive {
-                fighter.order = TacticalOrder::None;
-            } else {
-                fighter.order = TacticalOrder::Recover;
-                groups.push(index);
-            }
-        }
-    }
-    begin_original_fighter_recovery(session, &groups);
+    session.withdraw_fighters(session.player_is_attacker);
 }
 
 fn begin_original_fighter_recovery(session: &mut BattleSession, selected: &[usize]) {
-    let player_is_attacker = session.player_is_attacker;
-    let player_faction = session.player_voice_faction();
-    let mut warned_groups = [false; 4];
-    let mut capacity_cues = Vec::new();
-    let mut carrier_slots = session
-        .ships
-        .iter()
-        .enumerate()
-        .filter(|(_, ship)| ship.alive && ship.fighter_capacity > 0)
-        .map(|(index, ship)| (index, ship.is_attacker, ship.fighter_capacity))
-        .collect::<Vec<_>>();
-    for (index, fighter) in session.fighters.iter().enumerate() {
-        if selected.contains(&index)
-            || !matches!(
-                fighter.recovery_state,
-                TacticalFighterRecoveryState::Reserved
-                    | TacticalFighterRecoveryState::Returning
-                    | TacticalFighterRecoveryState::Docking
-            )
-        {
-            continue;
-        }
-        if let Some((_, _, remaining)) = fighter.recovery_target.and_then(|target| {
-            carrier_slots
-                .iter_mut()
-                .find(|(carrier, _, _)| *carrier == target)
-        }) {
-            *remaining = remaining.saturating_sub(1);
-        }
-    }
-    for &fighter_index in selected {
-        let fighter = &mut session.fighters[fighter_index];
-        // `FUN_005cf940` always resets the state before `FUN_005cf980`
-        // reserves a compatible carrier and begins the inbound leg.
-        fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
-        fighter.recovery_target = None;
-        if let Some((carrier, _, remaining)) = carrier_slots
-            .iter_mut()
-            .find(|(_, side, remaining)| *side == fighter.is_attacker && *remaining > 0)
-        {
-            fighter.recovery_state = TacticalFighterRecoveryState::Reserved;
-            fighter.recovery_target = Some(*carrier);
-            *remaining -= 1;
-            fighter.recovery_state = TacticalFighterRecoveryState::Returning;
-        } else {
-            let group = usize::from(fighter.fighter_group);
-            if fighter.is_attacker == player_is_attacker
-                && group < warned_groups.len()
-                && !warned_groups[group]
-            {
-                warned_groups[group] = true;
-                capacity_cues.push(TacticalVoiceCue::fighter_recovery_capacity(
-                    player_faction,
-                    fighter.fighter_group,
-                ));
-            }
-        }
-    }
-    session.pending_voice_cues.extend(capacity_cues);
+    session.begin_original_fighter_recovery(selected);
 }
 
 fn assign_selected_command(
@@ -8704,6 +8626,7 @@ mod tests {
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
             withdrawal_ms: None,
+            ai_withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         }
     }
