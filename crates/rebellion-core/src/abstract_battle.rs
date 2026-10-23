@@ -1621,15 +1621,46 @@ pub fn leave(session: &mut BattleSession, alliance: bool) {
     }
 }
 
-/// `FUN_005d19a0` on a running battle: whether `alliance`'s side leaves
-/// now, with the session's retreat orders. The tactical battle asks it for
-/// the AI side.
+/// The tactical commander's test in `FUN_005c8780`: with its retreat order
+/// and a way out (`FUN_005c7e80`), a side withdraws when the enemy's
+/// strength is above 0 (`_DAT_0066cbb4`) and its own is under 0.33 (`+0x24`)
+/// of it, or 0. The strengths are `FUN_005c7f70`: `FUN_005d0ce0`'s sum (the
+/// same per-unit terms and Death Star bonus) over the tactical task forces,
+/// whose targets are the units' current attack targets (`FUN_005d2190`).
+/// hyp: a port task force's target is its first member's; port: no
+/// arrivals are pending (`FUN_005ae1d0`).
 #[must_use]
-pub fn side_should_leave(session: &BattleSession, alliance: bool) -> bool {
+pub fn tactical_side_withdraws(session: &BattleSession, alliance: bool) -> bool {
     let mut probe = AbstractBattle::new(session.clone());
     probe.retreat_allowed = session.retreat_allowed;
     probe.retreat_done = session.retreat_done;
-    probe.should_retreat(alliance)
+    for side in [true, false] {
+        for (group, members) in probe.groups(side) {
+            let target = members.iter().find_map(|&member| match member {
+                AbstractUnit::Capital(index) => session.ships[index].attack_target,
+                AbstractUnit::Fighter(index) => session.fighters[index].attack_target,
+            });
+            let target = match target {
+                Some(crate::tactical::TacticalAttackTarget::CapitalShip(index)) => {
+                    AbstractUnit::Capital(index)
+                }
+                Some(crate::tactical::TacticalAttackTarget::FighterGroup(index)) => {
+                    AbstractUnit::Fighter(index)
+                }
+                None => continue,
+            };
+            probe.targets.insert(group, target);
+        }
+    }
+    if !probe.can_leave(alliance) {
+        return false;
+    }
+    let enemy = probe.side_strength(!alliance);
+    if enemy <= 0.0 {
+        return false;
+    }
+    let own = probe.side_strength(alliance);
+    own / enemy < ABSTRACT_RETREAT_RATIO || own == 0.0
 }
 
 /// The fleets of `lead`'s side at `system`, `lead` first: a battle takes
@@ -4265,5 +4296,73 @@ mod tests {
             Recovery::AwaitingCarrier
         );
         assert!(tactical.take_pending_voice_cues().is_empty());
+    }
+
+    // FUN_005c7f70 (as FUN_005d0ce0) leaves out a capital ship whose enemy
+    // task force out-damages its shield recharge at it (FUN_005d2190,
+    // FUN_005cb650 against slot +0x64). In the tactical battle that target
+    // is the units' current attack target. FUN_005c8780 then wants the
+    // enemy's strength above 0.
+    #[test]
+    fn a_tactical_side_counts_the_targets_of_the_enemys_task_forces() {
+        let mut big = ship(false, TacticalWeaponArc::new(0, 0, 4), 30.0);
+        big.task_force = 1;
+        let mut small = jumper(false, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        small.task_force = 2;
+        let player = ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0);
+        let mut tactical = session(vec![big, small, player], Vec::new());
+        tactical.retreat_allowed = [false, true];
+        assert!(!tactical_side_withdraws(&tactical, false));
+        tactical.ships[2].attack_target =
+            Some(crate::tactical::TacticalAttackTarget::CapitalShip(0));
+        assert!(tactical_side_withdraws(&tactical, false));
+
+        // No strength on either side: the enemy's is not above 0.
+        let mut idle = jumper(false, TacticalWeaponArc::default(), 0.0);
+        idle.subsystem_condition.hyperdrive = 100;
+        let mut tactical = session(
+            vec![idle, ship(true, TacticalWeaponArc::default(), 0.0)],
+            Vec::new(),
+        );
+        tactical.retreat_allowed = [false, true];
+        assert!(!tactical_side_withdraws(&tactical, false));
+    }
+
+    // FUN_005c8780: the AI commander reviews the battle on the first step
+    // and every sixth after (+0x40 from 0, -1.0 a step, reset to 6.0), and
+    // not while a trench run is under way (FUN_005d0ae0).
+    #[test]
+    fn the_ai_commander_reviews_every_sixth_step() {
+        let weak = || {
+            let mut fast = jumper(false, TacticalWeaponArc::new(0, 0, 1), 1.0);
+            fast.subsystem_condition.hyperdrive = 100;
+            let mut strong = ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0);
+            strong.hull_current = 1_000_000;
+            strong.hull_max = 1_000_000;
+            vec![fast, strong]
+        };
+        let mut tactical = session(weak(), Vec::new());
+        tactical.step();
+        tactical.retreat_allowed = [false, true];
+        for _ in 0..5 {
+            tactical.step();
+            assert!(!tactical.retreat_done[1]);
+        }
+        tactical.step();
+        assert!(tactical.retreat_done[1]);
+        // A side already withdrawing (+0x84 = 2) is not ordered again: the
+        // next review leaves its time running down.
+        for _ in 0..6 {
+            tactical.step();
+        }
+        assert!(tactical.ai_withdrawal_ms.is_some_and(|left| left < 30_000.0));
+
+        let mut running = session(weak(), Vec::new());
+        running.retreat_allowed = [false, true];
+        running.trench_run_remaining_ms = Some(60_000.0);
+        running.trench_run_pending_outcome =
+            Some(crate::tactical::TacticalTrenchRunOutcome::Failure);
+        running.step();
+        assert!(!running.retreat_done[1]);
     }
 }

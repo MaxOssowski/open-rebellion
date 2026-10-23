@@ -499,9 +499,17 @@ is the side commander's `+0x24` = 0.33.
   player-controlled one, unless a trench run is under way
   (`FUN_005d0ae0`). Ported 2026-10-23 (s55,
   `BattleSession::begin_withdrawal`, `withdraw_fighters`,
-  `ai_withdrawal_ms`): the AI side withdraws like the player's. port: the
-  test is `side_should_leave` with the abstract strength, every step;
-  the trench-run check is not ported.
+  `ai_withdrawal_ms`): the AI side withdraws like the player's.
+  `FUN_005c7f70` (the tactical commander's slot `+0x14`) is
+  `FUN_005d0ce0` line for line, with the tactical manager's lists
+  (`+0x08`/`+0x0c` -> `+0x70`, `+0x9c4` for side 1), the same Death Star
+  bonus (`_DAT_0066cba0` = 20,000,000) and `FUN_005ad930` for
+  `FUN_005afcc0`. Ported 2026-10-23 (s56,
+  `abstract_battle::tactical_side_withdraws`): the task forces' targets
+  are the units' attack targets, the enemy's strength must be above 0,
+  the review comes on the first step and every sixth after
+  (`ORIGINAL_COMMANDER_REVIEW_STEPS`), and none while a trench run is
+  under way. hyp: a port task force's target is its first member's.
 
 ## The Death Star in the abstract battle (read 2026-10-21, W2i)
 

@@ -108,6 +108,10 @@ pub const ORIGINAL_JUMP_EXIT_DISTANCE: f32 = 8.0;
 /// `_DAT_0066c24c`: `FUN_005a6b40` ends the jump (state 7 -> 8) when its
 /// clock `+0x50` reaches 4000 ms; event `0x2e` then removes the unit.
 pub const ORIGINAL_JUMP_MILLISECONDS: f32 = 4_000.0;
+/// `FUN_005c8780`: a tactical commander reviews the battle when its count
+/// `+0x40`, falling by 1.0 a step (`_DAT_0066cbd4`), reaches 0, then sets
+/// it to 6.0 (`DAT_0066cba4`): every sixth step.
+pub const ORIGINAL_COMMANDER_REVIEW_STEPS: u32 = 6;
 /// `FUN_005ba7f0` advances the tactical Death Star laser by elapsed
 /// milliseconds times one third times 0.001, capped at 100.
 pub const ORIGINAL_DEATH_STAR_LASER_CHARGE_PER_SECOND: f32 = 1.0 / 3.0;
@@ -5603,20 +5607,25 @@ impl BattleSession {
         }
     }
 
-    /// The AI side's tactical commander, `FUN_005c8780`: with its retreat
-    /// order (`+0x80`) and a way out (`FUN_005c7e80`), it withdraws through
-    /// `FUN_005ad530` like the player's side once its strength falls under
-    /// 0.33 of the enemy's (`+0x24`). port: the rule is the abstract one's
-    /// port (`abstract_battle::side_should_leave`, `FUN_005d19a0`, with the
-    /// abstract strength `FUN_005d0ce0`; the tactical `FUN_005c7f70` is
-    /// unread), asked every step rather than every sixth (`+0x40` counts
-    /// down by 1.0, `_DAT_0066cbd4`, from 6.0, `DAT_0066cba4`).
+    /// The AI side's tactical commander, `FUN_005c8780`: its count `+0x40`
+    /// starts at 0 (`FUN_005c7cb0`) and falls by 1.0 a step
+    /// (`_DAT_0066cbd4`); at 0 or under it is set to 6.0 (`DAT_0066cba4`) and
+    /// the commander reviews the battle, so on the first step and every
+    /// sixth after. With its retreat order it withdraws through
+    /// `FUN_005ad530` like the player's side when
+    /// `abstract_battle::tactical_side_withdraws` says so, unless a trench
+    /// run is under way (`FUN_005d0ae0`; port: from state 5's timer to its
+    /// result).
     fn ai_side_leaves(&mut self) {
+        if (self.combat_tick - 1) % ORIGINAL_COMMANDER_REVIEW_STEPS != 0 {
+            return;
+        }
         let alliance = self.attacker_is_alliance != self.player_is_attacker;
         let side = usize::from(!alliance);
         if !self.retreat_allowed[side]
             || self.retreat_done[side]
-            || !crate::abstract_battle::side_should_leave(self, alliance)
+            || self.trench_run_remaining_ms.is_some()
+            || !crate::abstract_battle::tactical_side_withdraws(self, alliance)
         {
             return;
         }
