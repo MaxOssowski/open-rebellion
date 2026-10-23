@@ -10855,8 +10855,15 @@ mod tests {
         carrier.subsystem_condition.hyperdrive = 100;
         let mut wing = test_fighter(1, true);
         wing.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
-        let enemy_ship = test_ship(64, 0, false, true);
-        let enemy_wing = test_fighter(5, false);
+        // The enemy outlasts the jump, so the battle goes on.
+        let mut enemy_ship = test_ship(64, 0, false, true);
+        enemy_ship.hull_current = 1_000_000;
+        enemy_ship.hull_max = 1_000_000;
+        let mut enemy_wing = test_fighter(5, false);
+        enemy_wing.hull_current = 1_000_000.0;
+        enemy_wing.hull_max = 1_000_000.0;
+        enemy_wing.weapon_arc = TacticalWeaponArc::default();
+        enemy_wing.torpedo_strength = 0;
         // A carrier with no hyperdrive stays.
         let mut grounded = test_ship(64, 1, true, true);
         grounded.fighter_capacity = 1;
@@ -10890,15 +10897,23 @@ mod tests {
         session.fighters.push(bound);
         session.fighters.push(waiting);
 
-        // The side's time ends on the next step.
+        // The side's time ends on the next step; the carrier, at its exit
+        // line, then jumps for 4000 ms (FUN_005cc300, FUN_005a6b40).
         session.paused = false;
+        session.ships[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        session.step();
+        for _ in 0..16 {
+            session.step();
+        }
         assert!(session.ships[0].retreated);
         let wing = &session.fighters[0];
         assert!(!wing.alive && wing.squad_count > 0);
         assert!(session.fighters[1].alive);
-        assert!(session.fighters[3].alive && session.fighters[4].alive);
+        // The group bound for the carrier that stays may dock on it during
+        // the jump (FUN_005cf980); neither leaves with the escaped carrier.
+        let bound = &session.fighters[3];
+        assert!(bound.alive || bound.recovery_state == TacticalFighterRecoveryState::Recovered);
+        assert!(session.fighters[4].alive);
     }
 
     // FUN_005ad530: a fighter group with a hyperdrive (FUN_005b1bc0 above 0;

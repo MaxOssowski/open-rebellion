@@ -417,7 +417,7 @@ is the side commander's `+0x24` = 0.33.
   battle now lets a fighter group with a working hyperdrive leave on its
   own and count for `FUN_005d0f50` (`abstract_battle::hyperdrive_works`);
   before, the port gave fighters no hyperdrive.
-- The jump out (read 2026-10-23, s53; not ported):
+- The jump out (read 2026-10-23, s53; capital ships ported in s54):
   - Order 3's executor step (`FUN_005ae1e0`) is empty, but the task
     force's own step, slot `+0x14`, acts on order 3: `FUN_005c6610` for a
     fighter force (vtable `0x66bee0`), `FUN_005cc300` for a capital-ship
@@ -454,12 +454,29 @@ is the side commander's `+0x24` = 0.33.
     `+0x9f0`..`+0x9fc` mark a side withdrawn when its `+0x84` is 3, 4 or 5,
     none of its units is active or jumping, and one reached state 9;
     voice `0x96`..`0x99` / `0x118`..`0x11b` announces it.
-  - Open: where the side vector `+0x48` is set. `FUN_005c7cb0` starts it
-    at (0, 0, 0, -1). No writer has been found in the battle setup
-    (`FUN_005ab650`, `FUN_005ab0e0`) or the commander step yet.
-  - port: the port's withdrawing units hold where they are and leave
-    together when the time ends; a unit without a hyperdrive stays and
-    fights on, as `FUN_005b2720` has it.
+  - The side vector is fixed when the battle object is built
+    (`FUN_005af5f0`): the commander with vtable `0x66c428` (slot `+0x04`
+    `FUN_005a5b60` = side 0, the Alliance) gets (0, 0, 1, -1), the one with
+    `0x66c3f8` (`FUN_005a66f0` = side 1, the Empire) gets (0, 0, -1, -1).
+    `FUN_005c7cb0` only zeroes it first. So a capital force heads for
+    z = -0.5 * extent (Alliance) or +0.5 * extent (Empire), `+0x8cc`
+    (`_DAT_0066cffc` = 0.5); disassembly `0x5cc3b1`..`0x5cc3e4`. The
+    exit test (`0x5cc46f`..`0x5cc487`) is
+    `-((exit_z - z) * side_z) <= 8.0`, one-sided. `FUN_005a6b40` moves the
+    jumping unit by `-side_z * k * (0.001 t)^2`, k one of four globals
+    (`DAT_006bc47c`, `DAT_006bc488`, `DAT_006bc484`, `DAT_006bc494`) by
+    `(id + slot +0x24) & 3`.
+  - Ported 2026-10-23 (s54, `BattleSession::withdrawal_exit_z`,
+    `advance_withdrawal`, `advance_original_tactical_movement`): the
+    player's withdrawing ships drop their attack, fly to their exit line,
+    and after the time jump one by one within 8.0 of it for 4000 ms; a
+    ship that lost its hyperdrive returns to the fight; the side's time
+    stays 0 until the last jump ends. port: the jump's flight is not
+    drawn (k unread); a ship without a hyperdrive fights on throughout
+    (the original's also heads out first); fighter groups with a
+    hyperdrive still leave when the time ends (`FUN_005c6610` flight not
+    ported); the AI side still leaves at once (`abstract_battle::leave`),
+    though `FUN_005c8780` also runs `FUN_005ad530` for it.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
   player's side stays unset), and each tactical step asks

@@ -2924,7 +2924,8 @@ mod tests {
     // order 3, and the side's time (+0x7c) becomes at least 30000 ms
     // (DAT_0066c240), or 150000 (DAT_0066c234) for the Empire with an
     // operational Death Star. FUN_005c8780 counts it down by the step; at 0
-    // the withdrawal ends and they escape.
+    // a ship at its exit line starts its jump (FUN_005cc300) and leaves when
+    // the jump's 4000 ms (_DAT_0066c24c) end (FUN_005a6b40, event 0x2e).
     #[test]
     fn the_players_withdrawal_ends_after_the_sides_time() {
         let mut stranded = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
@@ -2946,12 +2947,23 @@ mod tests {
         missing.subsystem_condition.hyperdrive = 100;
         tactical.ships.push(damaged);
         tactical.ships.push(missing);
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true);
         tactical.begin_player_withdrawal();
         assert!(tactical.ships[0].retreating && !tactical.ships[1].retreating);
         assert!(!tactical.ships[3].retreating && !tactical.ships[4].retreating);
         assert_eq!(tactical.withdrawal_ms, Some(30_000.0));
         // 30000 ms is 120 steps of 250 ms.
         for _ in 0..119 {
+            tactical.step();
+        }
+        assert!(tactical.ships[0].alive && !tactical.ships[0].retreated);
+        assert_eq!(tactical.ships[0].retreat_progress, 0.0);
+        tactical.step();
+        // The jump starts; the side waits on it (state 3).
+        assert!(tactical.ships[0].alive && tactical.ships[0].retreat_progress > 0.0);
+        assert_eq!(tactical.withdrawal_ms, Some(0.0));
+        // 4000 ms is 16 steps from the first.
+        for _ in 0..14 {
             tactical.step();
         }
         assert!(tactical.ships[0].alive && !tactical.ships[0].retreated);
@@ -3018,8 +3030,12 @@ mod tests {
             ],
         );
         tactical.ships[0].retreating = true;
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        tactical.step();
+        // The time ends, then the carrier's jump takes 4000 ms.
+        for _ in 0..16 {
+            tactical.step();
+        }
         assert!(tactical.ships[0].retreated);
         assert!(!tactical.fighters[0].alive);
         assert!(tactical.fighters[1].alive);
@@ -4030,5 +4046,124 @@ mod tests {
         assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
         assert!(tactical.fighters[1].alive);
         assert!(tactical.fighters[2].alive);
+    }
+
+    // FUN_005af5f0 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
+    // FUN_005cc300 heads for it times -1.0 and half the extent +0x8cc.
+    #[test]
+    fn each_side_withdraws_to_its_own_edge() {
+        let tactical = session(Vec::new(), Vec::new());
+        let half = tactical.source_layout.battle_extent * 0.5;
+        assert_eq!(tactical.withdrawal_exit_z(true), -half);
+        assert_eq!(tactical.withdrawal_exit_z(false), half);
+    }
+
+    // FUN_005ad530 drops a withdrawing ship's attack (FUN_005a8d30) and
+    // gives it order 3; FUN_005cc300 heads it for its exit line each step.
+    #[test]
+    fn a_withdrawing_ship_drops_its_attack_and_heads_for_its_exit() {
+        let mut own = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        own.subsystem_condition.hyperdrive = 100;
+        own.order = TacticalOrder::LeftHook;
+        own.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(1));
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![own, enemy], Vec::new());
+        tactical.begin_player_withdrawal();
+        let ship = &tactical.ships[0];
+        assert_eq!(ship.order, TacticalOrder::None);
+        assert_eq!(ship.attack_target, None);
+        tactical.step();
+        let ship = &tactical.ships[0];
+        let exit = tactical.withdrawal_exit_z(true);
+        assert_eq!(ship.source_waypoint.map(|waypoint| waypoint.z), Some(exit));
+        assert_eq!(
+            ship.source_waypoint
+                .map(|waypoint| (waypoint.x, waypoint.y)),
+            Some((ship.source_position.x, ship.source_position.y))
+        );
+    }
+
+    // FUN_005cc300: after the side's time a ship jumps only within 8.0
+    // (_DAT_0066cff0) of its exit line; the side waits on one still on its
+    // way. FUN_005b1e40 -> FUN_005b2720: one whose hyperdrive was lost
+    // returns to the fight.
+    #[test]
+    fn after_the_time_a_ship_jumps_only_near_its_exit() {
+        let run = |offset: f32, hyperdrive: u8| {
+            let mut own = jumper(true, TacticalWeaponArc::default(), 0.0);
+            own.subsystem_condition.hyperdrive = hyperdrive;
+            let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+            enemy.hull_current = 1_000_000;
+            enemy.hull_max = 1_000_000;
+            let mut tactical = session(vec![own, enemy], Vec::new());
+            tactical.ships[0].retreating = true;
+            tactical.ships[0].sublight_engine_power = 0.0;
+            tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true) + offset;
+            tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            tactical.step();
+            let ship = &tactical.ships[0];
+            (
+                ship.retreating,
+                ship.retreat_progress > 0.0,
+                tactical.withdrawal_ms,
+            )
+        };
+        assert_eq!(run(7.5, 100), (true, true, Some(0.0)));
+        // Beyond its line counts too: the test is one-sided.
+        assert_eq!(run(-30.0, 100), (true, true, Some(0.0)));
+        assert_eq!(run(8.5, 100), (true, false, Some(0.0)));
+        assert_eq!(run(0.0, 0), (false, false, None));
+        // The Empire's line is on the other edge.
+        let mut own = jumper(false, TacticalWeaponArc::default(), 0.0);
+        own.subsystem_condition.hyperdrive = 100;
+        let mut enemy = ship(true, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![own, enemy], Vec::new());
+        tactical.player_is_attacker = false;
+        tactical.ships[0].retreating = true;
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 7.5;
+        tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert!(tactical.ships[0].retreat_progress > 0.0);
+        // Away from it, toward the field's middle, it does not.
+        tactical.ships[0].retreat_progress = 0.0;
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 30.0;
+        tactical.step();
+        assert_eq!(tactical.ships[0].retreat_progress, 0.0);
+    }
+
+    // FUN_005c8780 and FUN_005cc300 act on the withdrawing side's order-3
+    // units only: a ship that was not withdrawing does not jump, a jumping
+    // ship is not steered again (FUN_005a6b40 owns it), and a fighter group
+    // with a hyperdrive that appears after the time ended stays (port: the
+    // groups leave when the time ends).
+    #[test]
+    fn only_the_withdrawing_units_leave() {
+        let mut staying = jumper(true, TacticalWeaponArc::default(), 0.0);
+        staying.subsystem_condition.hyperdrive = 100;
+        let mut jumping = jumper(true, TacticalWeaponArc::default(), 0.0);
+        jumping.subsystem_condition.hyperdrive = 100;
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![staying, jumping, enemy], Vec::new());
+        let exit = tactical.withdrawal_exit_z(true);
+        tactical.ships[0].source_position.z = exit;
+        tactical.ships[1].source_position.z = exit;
+        tactical.ships[1].retreating = true;
+        tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert!(!tactical.ships[0].retreating);
+        assert_eq!(tactical.ships[0].retreat_progress, 0.0);
+        assert!(tactical.ships[1].retreat_progress > 0.0);
+        let mut late = fighter(true, TacticalWeaponArc::default());
+        late.has_hyperdrive = true;
+        tactical.fighters.push(late);
+        tactical.step();
+        assert_eq!(tactical.ships[1].source_waypoint, None);
+        assert!(tactical.fighters[0].alive);
     }
 }
