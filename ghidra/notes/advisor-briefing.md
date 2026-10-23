@@ -182,6 +182,15 @@ then "Systems Under Military Control", are of the Empire's briefing.
 - The advice flag `0x2000` (`DAT_006b28b0`) schedules the short briefing
   for 40000 days and calls `FUN_0041da30`: message `0x28` in the
   Alliance's `FUN_004c2dd0`, `0x49` in the Empire's `FUN_004c0d00`.
+- The writer of flag `0x2000` (read 2026-10-23): the briefing's first
+  action, code `0xc`, is `FUN_0041d9d0`, which installs a keyboard hook
+  (`SetWindowsHookExA(2, LAB_0041d8f0)`) and a mouse hook (`7`,
+  `FUN_0041d950`). The mouse hook swallows the left and right buttons
+  (`0x201..0x205`) and, on a press, sets `0x2000` (`FUN_0043a200`). So a
+  click during the briefing ends it: the side's update schedules the short
+  form (`0x28` / `0x49`: action `0xb`, one clip, action `0xd`) and calls
+  `FUN_0041da30` (hyp: it removes the hooks). The keyboard hook's body is
+  not read.
 - `FUN_004c22f0(event)` maps advisor events to messages; event `0x1f`
   schedules `0x29`, the Alliance's full briefing, for 40000 days.
   `FUN_004c44b0` maps event `0x1f` to `0x1b` (offset `0x6c`); which
@@ -189,9 +198,9 @@ then "Systems Under Military Control", are of the Empire's briefing.
 
 ## Open
 
-- What sets advice flag `0x2000` and sends event `0x1f` at a new game;
-  how the Empire's full briefing `0x4a` is scheduled; what the panel's
-  `+0xc0` value 8 drives.
+- What sends event `0x1f` at a new game; how the Empire's full briefing
+  `0x4a` is scheduled; what the panel's `+0xc0` value 8 drives; the
+  keyboard hook `LAB_0041d8f0`.
 - Action code `0xa`, kind 3, and the functions behind codes `0xb`, `0xc`
   and `0xd` (`FUN_0041dbe0`, `FUN_0041d9d0`, `FUN_0042d760`,
   `FUN_0041da80`).
