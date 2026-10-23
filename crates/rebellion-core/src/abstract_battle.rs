@@ -2986,6 +2986,41 @@ mod tests {
         assert_eq!(imperial.withdrawal_ms, Some(30_000.0));
     }
 
+    // hyp (with FUN_005ad530's order 3 for fighter groups): when the side's
+    // time ends a group still bound for a carrier that escaped goes with
+    // it; one bound for a carrier that stays, or only awaiting one, stays.
+    #[test]
+    fn a_fighter_group_bound_for_an_escaped_carrier_goes_with_it() {
+        use crate::tactical::TacticalFighterRecoveryState as Recovery;
+        let mut carrier = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        carrier.subsystem_condition.hyperdrive = 100;
+        carrier.fighter_capacity = 2;
+        let mut grounded = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        grounded.fighter_capacity = 1;
+        let enemy = ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        let group = |state, target| {
+            let mut value = fighter(true, TacticalWeaponArc::default());
+            value.recovery_state = state;
+            value.recovery_target = Some(target);
+            value
+        };
+        let mut tactical = session(
+            vec![carrier, grounded, enemy],
+            vec![
+                group(Recovery::Returning, 0),
+                group(Recovery::Returning, 1),
+                group(Recovery::AwaitingCarrier, 0),
+            ],
+        );
+        tactical.ships[0].retreating = true;
+        tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert!(tactical.ships[0].retreated);
+        assert!(!tactical.fighters[0].alive);
+        assert!(tactical.fighters[1].alive);
+        assert!(tactical.fighters[2].alive);
+    }
+
     // FUN_005d0f50: without +0x80 a side cannot leave and fights on.
     #[test]
     fn a_side_not_allowed_to_leave_fights_on() {

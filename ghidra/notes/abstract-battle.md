@@ -380,8 +380,12 @@ is the side commander's `+0x24` = 0.33.
   3 at 0 (`DAT_0066cbb4`). Ported 2026-10-23
   (`BattleSession::begin_player_withdrawal`, `withdrawal_ms`); before,
   the port moved each withdrawing ship off the field over 20 steps (5 s).
-  hyp: the ships with order 3 leave when the time ends. port: fighter
-  groups do not withdraw.
+  hyp: the ships with order 3 leave when the time ends. The fighter
+  groups (the second loop: `FUN_005a8d30` drops an attack with command
+  `0x37`, then order 3) take the recovery to a carrier
+  (`tactical_view::withdraw_player_fighters`, 2026-10-23); hyp: order 3
+  is that recovery, and a group still bound for a carrier that escaped
+  goes with it.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
   player's side stays unset), and each tactical step asks

@@ -5371,6 +5371,26 @@ impl BattleSession {
                 ship.retreated = true;
             }
         }
+        // hyp: a group still on its way to a carrier that escaped goes with
+        // it, as in the abstract battle's departure (`abstract_battle::leave`).
+        let ships = &self.ships;
+        for fighter in &mut self.fighters {
+            let carrier_escaped = fighter
+                .recovery_target
+                .and_then(|carrier| ships.get(carrier))
+                .is_some_and(|carrier| carrier.retreated);
+            if fighter.alive
+                && carrier_escaped
+                && matches!(
+                    fighter.recovery_state,
+                    TacticalFighterRecoveryState::Reserved
+                        | TacticalFighterRecoveryState::Returning
+                        | TacticalFighterRecoveryState::Docking
+                )
+            {
+                fighter.alive = false;
+            }
+        }
     }
 
     /// The AI side's commander, `FUN_005d14d0` step 5: with its retreat

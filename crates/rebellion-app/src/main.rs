@@ -6626,6 +6626,7 @@ async fn main() {
                     TacticalAction::WithdrawFromBattle => {
                         if let Some(ref mut session) = tactical_state.session {
                             session.begin_player_withdrawal();
+                            rebellion_render::tactical_view::withdraw_player_fighters(session);
                             session.selected_ship = None;
                             session.selected_fighter_group = None;
                         }

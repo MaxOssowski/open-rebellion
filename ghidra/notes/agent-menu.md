@@ -453,10 +453,14 @@ preserving only 0x4000 and 0x8000.
 
 ## Open
 
-- The exact advisor animation/speech text triggered by each reaction slot
-  (offsets +0x68..+0x14c in the reaction array). These are likely TEXTSTRA
-  ids or SPT/BIN animation indices, but the mapping from slot to visible
-  advisor content is untraced.
+- Resolved 2026-10-23 (`advisor-briefing.md`, "Scheduling"): the
+  reaction slots are the schedule `+0x168` indexed by message id, so an
+  offset is the id times 4 in the side's SPT file (`+0x70` is message
+  `0x1c`, `+0x124` is `0x49`). `FUN_004c0d00` is the Empire's class
+  (IMP22ACT.SPT); the Alliance's is `FUN_004c2dd0` (C3POACT.SPT), with its
+  own offsets (bit `0x2000` gives `+0xa0`, message `0x28`, the Alliance's
+  short briefing; the Empire's `+0x124` is `0x49`, its short briefing).
+  The offsets in the table above are the Empire's.
 - What game mode value 4 represents (FUN_00401b00). Mode 1 = Easy is
   confirmed by manual p. 22. Mode 4 may be a tutorial variant.
 - The writer of bit 0x4000000 (agent deactivation trigger). FUN_00487f80
