@@ -3126,9 +3126,10 @@ fn begin_original_attack_order(
 /// `FUN_005ad530`'s task-force loop for the player's fighter groups (class
 /// 4, `FUN_005a6700`): a group whose hyperdrive count (`FUN_005b1bc0`) is 0
 /// takes order 2, the recovery to a carrier (`FUN_005ca6d0` installs the
-/// `FUN_005cf980` executor); the others take order 3, whose step
-/// (`FUN_005ae1e0`) is empty, and wait for the side's time to end. Either
-/// order ends the group's attack.
+/// `FUN_005cf980` executor); the others take order 3 and jump when the
+/// side's time ends. Either order ends the group's attack. port: the
+/// original's force heads for its side's exit meanwhile (`FUN_005c6610`,
+/// side vector `+0x48` not traced); here it holds.
 pub fn withdraw_player_fighters(session: &mut BattleSession) {
     let player = session.player_is_attacker;
     let mut groups = Vec::new();
@@ -10902,8 +10903,8 @@ mod tests {
 
     // FUN_005ad530: a fighter group with a hyperdrive (FUN_005b1bc0 above 0;
     // every Alliance FIGHTSD class, of the Empire's only record 8) takes
-    // order 3, whose step FUN_005ae1e0 is empty: it holds, and jumps when
-    // the side's time ends (FUN_005c8780, FUN_005b1b70) with its craft.
+    // order 3 and jumps when the side's time ends (FUN_005c6610,
+    // FUN_005b1b70) with its craft; port: it holds meanwhile.
     #[test]
     fn a_withdrawal_holds_fighters_with_a_hyperdrive_then_they_jump() {
         let mut carrier = test_ship(64, 0, true, true);

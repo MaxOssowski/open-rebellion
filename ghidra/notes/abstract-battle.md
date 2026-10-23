@@ -392,8 +392,8 @@ is the side commander's `+0x24` = 0.33.
     `FUN_005ca6d0` makes it current (`+0x64`) and installs its executor.
     Order 2's executor (vtable `0x66cdf8`) steps with `FUN_005cf980`, the
     recovery to a carrier (`tactical-command-progression.md`). Order 3's
-    (vtable `0x66cdc8`) steps with `FUN_005ae1e0`, which is empty: the
-    force holds.
+    (vtable `0x66cdc8`) steps with `FUN_005ae1e0`, which is empty; the
+    force's own step heads it for the exit (see "The jump out").
   - FIGHTSD: the four Alliance classes have hyperdrive 60, the Empire's
     records 5–7 have 0 and record 8 has 60. So the Alliance's fighters
     hold and jump with the side; the TIEs without one go to a carrier.
@@ -417,6 +417,49 @@ is the side commander's `+0x24` = 0.33.
   battle now lets a fighter group with a working hyperdrive leave on its
   own and count for `FUN_005d0f50` (`abstract_battle::hyperdrive_works`);
   before, the port gave fighters no hyperdrive.
+- The jump out (read 2026-10-23, s53; not ported):
+  - Order 3's executor step (`FUN_005ae1e0`) is empty, but the task
+    force's own step, slot `+0x14`, acts on order 3: `FUN_005c6610` for a
+    fighter force (vtable `0x66bee0`), `FUN_005cc300` for a capital-ship
+    force (`0x66bf70`). Each sets the force's maneuver target to the
+    side's vector `+0x48..+0x54` (`FUN_005a7490`) times `-1.0`
+    (`_DAT_0066cb10`, fighters) or `_DAT_0066cff8` (capital ships), so the
+    force heads for its side's exit through the withdrawal.
+  - While the side's time `+0x7c` (`FUN_005a8ad0`) is above 0.0
+    (`_DAT_0066cb18`, `_DAT_0066d000`), nothing more happens. After it,
+    each unit of the force with a working hyperdrive (`FUN_005b1b70`),
+    still in the fight (`FUN_005ad870`: state `+0x170` 2, 4 or 6), within
+    8.0 (`_DAT_0066cb0c`; `_DAT_0066cff0` for capital ships) of the exit
+    along the side vector, not already in state 6, 7 or 8, and with
+    `+0x124` clear, enters state 6 and posts event `0x2d`. A capital
+    force does this for its first unit (`FUN_005c6070`) only.
+  - Event `0x2d` (`FUN_005a96b0` -> `FUN_005b1e40`): with a working
+    hyperdrive the unit enters state 7; without one, `FUN_005b2720`
+    (below).
+  - State 7, in the battle step `FUN_005a9ec0`: `FUN_005a6b40` turns the
+    unit to the side vector's opposite, queues voice `0x1d` / `0x1f`
+    on its first frame, and accelerates it (`+0x50` grows by the step up
+    to `_DAT_0066c24c`). When that returns 1 the unit enters state 8 and
+    posts event `0x2e`, which (`FUN_005b26d0` -> `FUN_005a90c0`) puts it
+    in state 9 (gone, `FUN_005aa760`) and sets its side's `+0x84` to 5
+    when its commander `+0x10` is set.
+  - `FUN_005c8780` (state 3) waits while a unit with a working hyperdrive
+    is in state 2/4/6 or 7/8. Then it sets 4 and posts event `0x2f` for
+    each unit without one: `FUN_005b2720` returns a unit still in the
+    fight with hull (`+0x3cc` above 0) to state 2. It fights on; it is
+    not destroyed.
+  - The battle step counts each side's units in states 2, 4, 6, 7, 8 and
+    10 (`+0x818`, `+0x81c`). The battle ends only when a side has none,
+    so it lasts until the last jump ends. The result words
+    `+0x9f0`..`+0x9fc` mark a side withdrawn when its `+0x84` is 3, 4 or 5,
+    none of its units is active or jumping, and one reached state 9;
+    voice `0x96`..`0x99` / `0x118`..`0x11b` announces it.
+  - Open: where the side vector `+0x48` is set. `FUN_005c7cb0` starts it
+    at (0, 0, 0, -1). No writer has been found in the battle setup
+    (`FUN_005ab650`, `FUN_005ab0e0`) or the commander step yet.
+  - port: the port's withdrawing units hold where they are and leave
+    together when the time ends; a unit without a hyperdrive stays and
+    fights on, as `FUN_005b2720` has it.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
   player's side stays unset), and each tactical step asks
