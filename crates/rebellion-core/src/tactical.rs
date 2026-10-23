@@ -121,6 +121,25 @@ pub const ORIGINAL_JUMP_EXIT_DISTANCE: f32 = 8.0;
 /// `_DAT_0066c24c`: `FUN_005a6b40` ends the jump (state 7 -> 8) when its
 /// clock `+0x50` reaches 4000 ms; event `0x2e` then removes the unit.
 pub const ORIGINAL_JUMP_MILLISECONDS: f32 = 4_000.0;
+/// `FUN_005a6b40` draws a jumping unit at `z - side_z * k * (0.001 t)^2`.
+/// The four factors `k` are set at start-up (`0x5a69b0`..`0x5a6a7c`) as a
+/// distance over the squared seconds left of the 4000 ms jump:
+/// `DAT_006bc47c` = 400 / 4^2, `DAT_006bc488` = 575 / 3.75^2,
+/// `DAT_006bc484` = 650 / 3.925^2 and `DAT_006bc494` = 325 / 3.725^2, picked
+/// by `(id + slot +0x24) & 3` in that order.
+pub const ORIGINAL_JUMP_ACCELERATIONS: [f32; 4] = [
+    400.0 / (4.0 * 4.0),
+    575.0 / (3.75 * 3.75),
+    650.0 / (3.925 * 3.925),
+    325.0 / (3.725 * 3.725),
+];
+
+/// How far a jump of `factor` draws its unit from `from` ms to `to` ms of
+/// its clock `+0x50` (`FUN_005a6b40`).
+fn original_jump_travel(factor: f32, from: f32, to: f32) -> f32 {
+    let (from, to) = (from * 0.001, to * 0.001);
+    factor * (to * to - from * from)
+}
 /// `FUN_005c8780`: a tactical commander reviews the battle when its count
 /// `+0x40`, falling by 1.0 a step (`_DAT_0066cbd4`), reaches 0, then sets
 /// it to 6.0 (`DAT_0066cba4`): every sixth step.
@@ -1587,6 +1606,10 @@ pub enum TacticalAudioEvent {
     IonImpact,
     TurbolaserImpact,
     TorpedoImpact,
+    /// A fighter group's jump out (`FUN_005a6b40`, slot `+0x20` = 1).
+    FighterJump,
+    /// A capital ship's jump out (`FUN_005a6b40`, slot `+0x20` = 0).
+    CapitalJump,
 }
 
 impl TacticalAudioEvent {
@@ -1602,6 +1625,8 @@ impl TacticalAudioEvent {
             Self::IonImpact => 0x12,
             Self::TurbolaserImpact => 0x13,
             Self::TorpedoImpact => 0x14,
+            Self::FighterJump => 0x1d,
+            Self::CapitalJump => 0x1f,
         }
     }
 
@@ -1617,6 +1642,10 @@ impl TacticalAudioEvent {
             Self::IonImpact => 13_048,
             Self::TurbolaserImpact => 13_051,
             Self::TorpedoImpact => 13_054,
+            // The table's event 0 is 13000 at `+0x28e` (two words an
+            // event), so `0x1d` and `0x1f` read 13063 and 13065.
+            Self::FighterJump => 13_063,
+            Self::CapitalJump => 13_065,
         }
     }
 
@@ -1625,6 +1654,8 @@ impl TacticalAudioEvent {
     pub const fn variant_count(self) -> u8 {
         match self {
             Self::TorpedoImpact => 1,
+            // hyp: one each; their count words are not read.
+            Self::FighterJump | Self::CapitalJump => 1,
             _ => 3,
         }
     }
@@ -5631,12 +5662,18 @@ impl BattleSession {
         if now > 0.0 {
             return;
         }
-        for ship in &mut self.ships {
+        for (index, ship) in self.ships.iter_mut().enumerate() {
             if !ship.alive || !ship.retreating || ship.is_attacker != side {
                 continue;
             }
+            // hyp: the port's list index stands for `id + slot +0x24`.
+            let factor = ORIGINAL_JUMP_ACCELERATIONS[index & 3];
+            let side_z = if ship.identity.is_alliance { 1.0 } else { -1.0 };
             if ship.retreat_progress > 0.0 {
+                let from = ship.retreat_progress;
                 ship.retreat_progress += ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+                ship.source_position.z -=
+                    side_z * original_jump_travel(factor, from, ship.retreat_progress);
                 if ship.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
                     ship.alive = false;
                     ship.retreated = true;
@@ -5648,14 +5685,20 @@ impl BattleSession {
                 // keeps steering it; it cannot jump).
                 continue;
             }
-            let (exit, side_z) = if ship.identity.is_alliance {
-                (exits[0], 1.0)
+            let exit = if ship.identity.is_alliance {
+                exits[0]
             } else {
-                (exits[1], -1.0)
+                exits[1]
             };
             if -((exit - ship.source_position.z) * side_z) <= ORIGINAL_JUMP_EXIT_DISTANCE {
                 ship.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
                 ship.source_waypoint = None;
+                ship.source_position.z -=
+                    side_z * original_jump_travel(factor, 0.0, ship.retreat_progress);
+                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
+                    TacticalAudioEvent::CapitalJump,
+                    0,
+                ));
             }
         }
         let waiting = self.ships.iter().any(|ship| {
@@ -5709,22 +5752,27 @@ impl BattleSession {
     /// power is its sublight rating.
     fn advance_withdrawing_fighters(&mut self, side: bool, time_left: f32, exits: [f32; 2]) {
         let seconds = ORIGINAL_TACTICAL_STEP_MILLISECONDS * 0.001;
-        for fighter in &mut self.fighters {
+        for (index, fighter) in self.fighters.iter_mut().enumerate() {
             if !fighter.alive || !fighter.retreating || fighter.is_attacker != side {
                 continue;
             }
-            if fighter.retreat_progress > 0.0 {
-                fighter.retreat_progress += ORIGINAL_TACTICAL_STEP_MILLISECONDS;
-                if fighter.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
-                    fighter.alive = false;
-                }
-                continue;
-            }
+            // hyp: the port's list index stands for `id + slot +0x24`.
+            let factor = ORIGINAL_JUMP_ACCELERATIONS[index & 3];
             let (exit, side_z) = if fighter.identity.is_alliance {
                 (exits[0], 1.0)
             } else {
                 (exits[1], -1.0)
             };
+            if fighter.retreat_progress > 0.0 {
+                let from = fighter.retreat_progress;
+                fighter.retreat_progress += ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+                fighter.source_position.z -=
+                    side_z * original_jump_travel(factor, from, fighter.retreat_progress);
+                if fighter.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
+                    fighter.alive = false;
+                }
+                continue;
+            }
             let along = exit - fighter.source_position.z;
             let step = fighter.sublight_engine_power.max(0.0) * seconds;
             fighter.source_position.z += along.clamp(-step, step);
@@ -5733,6 +5781,12 @@ impl BattleSession {
             }
             if -((exit - fighter.source_position.z) * side_z) <= ORIGINAL_JUMP_EXIT_DISTANCE {
                 fighter.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+                fighter.source_position.z -=
+                    side_z * original_jump_travel(factor, 0.0, fighter.retreat_progress);
+                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
+                    TacticalAudioEvent::FighterJump,
+                    0,
+                ));
             }
         }
     }

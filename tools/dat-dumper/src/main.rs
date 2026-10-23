@@ -155,6 +155,8 @@ fn main() -> anyhow::Result<()> {
         std::fs::create_dir_all(out_dir)?;
 
         let mapping = [
+            (13_063, "tactical_event_1d_0.wav"),
+            (13_065, "tactical_event_1f_0.wav"),
             (13_033, "tactical_event_0d_0.wav"),
             (13_034, "tactical_event_0d_1.wav"),
             (13_035, "tactical_event_0d_2.wav"),

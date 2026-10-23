@@ -154,8 +154,10 @@ pub const MENU_SFX_ASSETS: &[(SfxKind, &str, u32)] = &[
     (SfxKind::MenuSelect, "sfx/menu_select.wav", 8004),
 ];
 
-/// Exact weapon-event variant table built by `FUN_005bae60`. Each row is
-/// `(event_id, variant, runtime_path, TACTICAL.DLL WAVE resource)`.
+/// Exact weapon-event variant table built by `FUN_005bae60`, with the jump
+/// events `0x1d` (a fighter group) and `0x1f` (a capital ship) that
+/// `FUN_005a6b40` queues. Each row is `(event_id, variant, runtime_path,
+/// TACTICAL.DLL WAVE resource)`.
 pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
     (0x0d, 0, "sfx/tactical_event_0d_0.wav", 13_033),
     (0x0d, 1, "sfx/tactical_event_0d_1.wav", 13_034),
@@ -179,6 +181,8 @@ pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
     (0x13, 1, "sfx/tactical_event_13_1.wav", 13_052),
     (0x13, 2, "sfx/tactical_event_13_2.wav", 13_053),
     (0x14, 0, "sfx/tactical_event_14_0.wav", 13_054),
+    (0x1d, 0, "sfx/tactical_event_1d_0.wav", 13_063),
+    (0x1f, 0, "sfx/tactical_event_1f_0.wav", 13_065),
 ];
 
 /// A track's staged file under `music/`: the port's named tracks, or an

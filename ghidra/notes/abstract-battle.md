@@ -499,7 +499,19 @@ is the side commander's `+0x24` = 0.33.
     `-((exit_z - z) * side_z) <= 8.0`, one-sided. `FUN_005a6b40` moves the
     jumping unit by `-side_z * k * (0.001 t)^2`, k one of four globals
     (`DAT_006bc47c`, `DAT_006bc488`, `DAT_006bc484`, `DAT_006bc494`) by
-    `(id + slot +0x24) & 3`.
+    `(id + slot +0x24) & 3`. The globals are set at start-up
+    (`0x5a69b0`..`0x5a6a7c`) as a distance over the squared seconds:
+    400 / 4^2 = 25, 575 / 3.75^2, 650 / 3.925^2 and 325 / 3.725^2
+    (`_DAT_0066c24c` = 4000, `_DAT_0066c270`/`274`/`278` = 250/75/275,
+    `_DAT_0066c258`..`264` = 400/575/650/325). The first frame queues
+    sound event `0x1d` for a unit whose slot `+0x20` is 1 (the fighter
+    class, vtable `0x66c028`, `FUN_0040f340`) or `0x1f` for a capital ship
+    (`0x66c140`, `FUN_006158b0`); `FUN_005bae60`'s table (event 0 at
+    `+0x28e` = 13000, two words an event) gives them TACTICAL.DLL WAVE
+    13063 and 13065. Ported 2026-10-23 (s62,
+    `ORIGINAL_JUMP_ACCELERATIONS`, `TacticalAudioEvent::FighterJump` /
+    `CapitalJump`). hyp: the port's list index stands for
+    `id + slot +0x24`; one variant each.
   - Ported 2026-10-23 (s54, `BattleSession::withdrawal_exit_z`,
     `advance_withdrawal`, `advance_original_tactical_movement`): the
     player's withdrawing ships drop their attack, fly to their exit line,

@@ -4149,7 +4149,12 @@ mod tests {
         assert_eq!(tactical.fighters[0].source_position.z, exit + 8.0);
         assert_eq!(tactical.fighters[0].retreat_progress, 0.0);
         tactical.step();
-        assert_eq!(tactical.fighters[0].source_position.z, exit + 7.0);
+        // Its jump starts and moves it on at once: k = 25 (DAT_006bc47c)
+        // for 250 ms (FUN_005a6b40).
+        assert_eq!(
+            tactical.fighters[0].source_position.z,
+            exit + 7.0 - 25.0 * 0.25 * 0.25
+        );
         assert!(tactical.fighters[0].retreat_progress > 0.0);
     }
 
@@ -4673,5 +4678,74 @@ mod tests {
         }
         assert!(!tactical.death_star.unwrap().destroyed);
         assert_eq!(tactical.trench_run_outcome, None);
+    }
+
+    // FUN_005a6b40 draws a jumping unit at z - side_z * k * (0.001 t)^2 over
+    // its 4000 ms, k by (id + slot +0x24) & 3 (port: the list index), and
+    // queues the jump's sound on its first frame: event 0x1f (WAVE 13065)
+    // for a capital ship, 0x1d (13063) for a fighter group.
+    #[test]
+    fn a_jump_flies_its_unit_away_and_sounds_once() {
+        use crate::tactical::{TacticalAudioCue, TacticalAudioEvent, ORIGINAL_JUMP_ACCELERATIONS};
+        let mut own = jumper(true, TacticalWeaponArc::default(), 0.0);
+        own.subsystem_condition.hyperdrive = 100;
+        own.retreating = true;
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.has_hyperdrive = true;
+        wing.retreating = true;
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![own, enemy], vec![wing]);
+        let exit = tactical.withdrawal_exit_z(true);
+        tactical.ships[0].source_position.z = exit;
+        tactical.fighters[0].source_position.z = exit;
+        tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert_eq!(
+            tactical.take_pending_audio_cues(),
+            vec![
+                TacticalAudioCue::from_variant(TacticalAudioEvent::FighterJump, 0),
+                TacticalAudioCue::from_variant(TacticalAudioEvent::CapitalJump, 0),
+            ]
+        );
+        assert_eq!(TacticalAudioEvent::CapitalJump.resource_base(), 13_065);
+        assert_eq!(TacticalAudioEvent::FighterJump.resource_base(), 13_063);
+        let mut last = tactical.ships[0].source_position.z;
+        for _ in 0..15 {
+            tactical.step();
+            let z = tactical.ships[0].source_position.z;
+            assert!(z < last);
+            last = z;
+        }
+        assert!(tactical.take_pending_audio_cues().is_empty());
+        assert!(tactical.ships[0].retreated);
+        // 4 s at k = 25 (DAT_006bc47c = 400 / 4^2): 400 units toward -z.
+        assert_eq!(ORIGINAL_JUMP_ACCELERATIONS[0], 25.0);
+        assert!((tactical.ships[0].source_position.z - (exit - 400.0)).abs() < 1e-3);
+        assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
+        assert!((tactical.fighters[0].source_position.z - (exit - 400.0)).abs() < 1e-3);
+    }
+
+    // 0x5a69b0..0x5a6a7c: each factor carries its unit its distance by the
+    // end of its time, 400 by 4000 ms, 575 by 3750, 650 by 3925 and 325 by
+    // 3725 (_DAT_0066c24c less 0, 250, 75, 275). One variant each (hyp).
+    #[test]
+    fn the_jump_factors_reach_their_distances() {
+        use crate::tactical::{TacticalAudioEvent, ORIGINAL_JUMP_ACCELERATIONS};
+        for (factor, (distance, ms)) in ORIGINAL_JUMP_ACCELERATIONS.into_iter().zip([
+            (400.0, 4000.0),
+            (575.0, 3750.0),
+            (650.0, 3925.0),
+            (325.0, 3725.0),
+        ]) {
+            let seconds: f32 = ms * 0.001;
+            assert!(
+                (factor * seconds * seconds - distance).abs() < 1e-2,
+                "{factor}"
+            );
+        }
+        assert_eq!(TacticalAudioEvent::FighterJump.variant_count(), 1);
+        assert_eq!(TacticalAudioEvent::CapitalJump.variant_count(), 1);
     }
 }
