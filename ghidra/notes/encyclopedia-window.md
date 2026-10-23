@@ -107,9 +107,27 @@ classified original capture.
   switches to the topic of the selected object. The topic data comes from
   `rebellion_data::encyclopedia_topics` (P66A) as
   `OriginalEncyclopediaTopic`.
-- port: like the index (P64, P65) it is not routed: the production window
-  is still the replacement. The body's font and line spacing are the
-  port's (the original's `FUN_005f35b0` text object is not read).
+- The body's font and line spacing are the port's (the original's
+  `FUN_005f35b0` text object is not read).
+
+## Production routing (2026-10-23)
+
+- `FUN_00429f30` (command `0x131`, the cockpit button and F7) builds the
+  window with `FUN_0045d400(parent, 0, 0, 0x1d6, 0x14a, ..)`: 470 x 330
+  at `(0, 0)` of its parent. Where that puts it in the command centre is
+  not read; hyp: the port centres it in the 640 x 480 canvas.
+- The app opens the original index / topic whenever the index catalog and
+  the side's topics loaded (`rebellion_data::encyclopedia_topics::
+  installed_encyclopedia_topics`: native `data/base/encyclopedia/source.json`
+  and its manifest; the browser's runtime pack carries them byte for byte
+  as `encyclopedia-source.json` / `.manifest.json`). Else the replacement
+  stays. The rail's close `0xfb` closes it.
+- Every opening (cockpit, object menu, mission dialog, build selection,
+  status window) shows the index at the last selection; contextual entry
+  at an object (`FUN_0045d400`'s initial object) is not ported. The
+  replacement's "focus system" action has no original counterpart and is
+  gone with it.
+
 
 ## Evidence boundary
 

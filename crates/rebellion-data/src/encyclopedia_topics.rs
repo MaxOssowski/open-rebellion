@@ -212,6 +212,54 @@ pub fn parse_encyclopedia_source_with_manifest(
     Ok((source, manifest))
 }
 
+/// The extracted source catalog and its manifest: native builds read
+/// `encyclopedia/source.json` and `source.json.manifest.json` beside the DAT
+/// files, browser builds the runtime pack's `encyclopedia-source.json` and
+/// `encyclopedia-source.manifest.json`.
+///
+/// # Errors
+/// Returns an error when either file is missing.
+pub fn encyclopedia_source_bytes(gdata_path: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let dir = gdata_path.join("encyclopedia");
+        let catalog = std::fs::read(dir.join("source.json"))
+            .with_context(|| format!("reading {}", dir.join("source.json").display()))?;
+        let manifest = std::fs::read(dir.join("source.json.manifest.json")).with_context(|| {
+            format!(
+                "reading {}",
+                dir.join("source.json.manifest.json").display()
+            )
+        })?;
+        Ok((catalog, manifest))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = gdata_path;
+        let catalog = crate::wasm_file("encyclopedia-source.json")
+            .context("encyclopedia-source.json is not in the runtime pack")?;
+        let manifest = crate::wasm_file("encyclopedia-source.manifest.json")
+            .context("encyclopedia-source.manifest.json is not in the runtime pack")?;
+        Ok((catalog, manifest))
+    }
+}
+
+/// The Encyclopedia's topics for `audience`, from the installed source
+/// (`FUN_0045fa60`'s text and artwork, P66A).
+///
+/// # Errors
+/// Returns an error when the source, its manifest, the index catalog or
+/// `SYSTEMSD.DAT` cannot be read or validated.
+pub fn installed_encyclopedia_topics(
+    gdata_path: &Path,
+    audience: EncyclopediaAudience,
+) -> Result<EncyclopediaTopicCatalog> {
+    let (catalog, manifest) = encyclopedia_source_bytes(gdata_path)?;
+    let (source, _) = parse_encyclopedia_source_with_manifest(&catalog, &manifest)?;
+    let index = crate::encyclopedia_catalog::load_encyclopedia_catalog(gdata_path)?;
+    load_encyclopedia_topics(gdata_path, &index, &source, audience)
+}
+
 /// Load system picture identities and join every index object to source topic
 /// text/artwork. This function performs no filesystem lookup for `EDATA` bytes.
 ///
@@ -351,6 +399,22 @@ fn sha256_hex(value: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_installed_source_binds_the_topics_when_present() {
+        // P66A: 356 index objects, 346 complete topics per side. The owned
+        // data is not in the repository; without it there is nothing to bind.
+        let gdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        if !gdata.join("encyclopedia/source.json").exists() {
+            return;
+        }
+        for audience in [EncyclopediaAudience::Alliance, EncyclopediaAudience::Empire] {
+            let topics = installed_encyclopedia_topics(&gdata, audience).unwrap();
+            assert_eq!(topics.entries.len(), 356);
+            assert_eq!(topics.complete_count(), 346);
+        }
+    }
+
     use super::*;
     use crate::encyclopedia_catalog::{EncyclopediaCatalog, EncyclopediaCategory};
 

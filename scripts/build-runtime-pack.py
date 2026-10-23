@@ -36,6 +36,10 @@ class Entry:
 # layouts, extracted from the player's own DLLs by dat-dumper
 # --extract-strings; key order is normalised.
 TEXT_TABLES = ("textstra.json", "textstra-messages.json", "gid-legends.json")
+# The Encyclopedia's topic texts and artwork names (P66A) and their manifest,
+# staged by build-wasm.sh from data/base/encyclopedia/. Packed byte for byte:
+# the manifest's checksum covers the catalog's exact bytes.
+RAW_TABLES = ("encyclopedia-source.json", "encyclopedia-source.manifest.json")
 
 def validate_options_resources(ui_dir: Path) -> None:
     """Refuse stale UI staging that would omit the original confirmation controls."""
@@ -69,7 +73,7 @@ def collect_entries(
         for path in sorted(base_dir.glob("*.DAT"), key=lambda item: item.name)
     ]
 
-    for name in TEXT_TABLES:
+    for name in TEXT_TABLES + RAW_TABLES:
         table = base_dir / name
         if table.is_file():
             entries.append(Entry(KIND_GAME_DATA, table.name, table))

@@ -112,6 +112,15 @@ else
     echo "WARNING: TEXTSTRA.DLL not found. Entity names will use fallback format."
 fi
 
+# The Encyclopedia's topic source (texts and artwork names), extracted by
+# stage-ui-assets; the original window falls back to the replacement without it.
+if [ -f "$GDATA/encyclopedia/source.json" ] && [ -f "$GDATA/encyclopedia/source.json.manifest.json" ]; then
+    cp "$GDATA/encyclopedia/source.json" "$WEB_DATA/encyclopedia-source.json"
+    cp "$GDATA/encyclopedia/source.json.manifest.json" "$WEB_DATA/encyclopedia-source.manifest.json"
+else
+    echo "WARNING: data/base/encyclopedia/source.json not found; the original Encyclopedia stays unavailable in the browser."
+fi
+
 DAT_COUNT=$(ls -1 "$WEB_DATA"/*.DAT 2>/dev/null | wc -l | tr -d ' ')
 echo "Staged $DAT_COUNT DAT files + textstra.json in web/data/base/"
 

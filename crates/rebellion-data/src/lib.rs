@@ -1141,6 +1141,12 @@ pub fn set_string_table(strings: std::collections::HashMap<u16, String>) {
     *WASM_STRING_TABLE.lock().unwrap() = strings;
 }
 
+/// A file's bytes from the WASM file cache.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn wasm_file(name: &str) -> Option<Vec<u8>> {
+    WASM_FILE_CACHE.lock().unwrap().get(name).cloned()
+}
+
 #[cfg(target_arch = "wasm32")]
 static WASM_FILE_CACHE: std::sync::LazyLock<
     std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>,

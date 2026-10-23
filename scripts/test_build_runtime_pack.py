@@ -134,6 +134,27 @@ class RuntimePackBuilderTests(unittest.TestCase):
                 b'{"10179":{"height":135},"10183":{"width":180}}',
             )
 
+    def test_encyclopedia_source_is_packed_byte_for_byte(self) -> None:
+        # The manifest's checksum covers the catalog's exact bytes, so the
+        # pack must not canonicalize them as it does the text tables.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            bmp = root / "ui" / "strategy-dll" / "BMP"
+            base.mkdir()
+            bmp.mkdir(parents=True)
+            (base / "SYSTEMSD.DAT").write_bytes(b"systems")
+            (bmp / "900.bmp").write_bytes(b"bitmap")
+            source = b'{ "b": 1,\n  "a": 2 }\n'
+            manifest = b'{"catalog_sha256": "x"}'
+            (base / "encyclopedia-source.json").write_bytes(source)
+            (base / "encyclopedia-source.manifest.json").write_bytes(manifest)
+            entries = {entry.key: entry for entry in PACKER.collect_entries(base, root / "ui")}
+            self.assertEqual(PACKER.entry_bytes(entries["encyclopedia-source.json"]), source)
+            self.assertEqual(
+                PACKER.entry_bytes(entries["encyclopedia-source.manifest.json"]), manifest
+            )
+
     def test_optional_audio_uses_relative_runtime_keys(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -523,6 +523,8 @@ const REQUIRED_WASM_DATA: &[&str] = &[
 
 #[cfg(any(target_arch = "wasm32", test))]
 const OPTIONAL_WASM_DATA: &[&str] = &[
+    "encyclopedia-source.json",
+    "encyclopedia-source.manifest.json",
     "GNPRTB.DAT",
     "SDPRTB.DAT",
     "DEFFACSD.DAT",
@@ -976,8 +978,55 @@ async fn main() {
                 None
             }
         };
-    #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
-    let _ = original_encyclopedia_catalog.as_ref();
+    // The topics per side (FUN_0045fa60, P66A), from the extracted source.
+    // Without them the original window stays closed to production and the
+    // replacement Encyclopedia remains.
+    let original_encyclopedia_topics =
+        |audience| match rebellion_data::encyclopedia_topics::installed_encyclopedia_topics(
+            &gdata_path,
+            audience,
+        ) {
+            Ok(topics) => Some({
+                macroquad::logging::info!(
+                    "[encyclopedia] topics loaded audience={:?} entries={} complete={}",
+                    audience,
+                    topics.entries.len(),
+                    topics.complete_count()
+                );
+                topics
+                    .entries
+                    .into_iter()
+                    .map(|entry| {
+                        let topic = rebellion_render::OriginalEncyclopediaTopic {
+                            edata: entry.artwork_filename.as_deref().and_then(
+                                rebellion_render::OriginalEncyclopediaTopic::edata_number,
+                            ),
+                            title: entry.title,
+                            body: entry.body,
+                        };
+                        (entry.object_id, topic)
+                    })
+                    .collect::<std::collections::HashMap<u32, _>>()
+            }),
+            Err(error) => {
+                // Not an error: without the extracted source the replacement
+                // window stays.
+                macroquad::logging::info!(
+                    "[encyclopedia] topics unavailable audience={:?} error={:#}",
+                    audience,
+                    error
+                );
+                None
+            }
+        };
+    let original_encyclopedia_topics = [
+        original_encyclopedia_topics(
+            rebellion_data::encyclopedia_topics::EncyclopediaAudience::Alliance,
+        ),
+        original_encyclopedia_topics(
+            rebellion_data::encyclopedia_topics::EncyclopediaAudience::Empire,
+        ),
+    ];
 
     // ── Mod Runtime ──────────────────────────────────────────────────────────
     // mods/ lives alongside data/, not inside it: data/base → data → repo root → mods/
@@ -4531,8 +4580,69 @@ async fn main() {
                         }
                     }
 
-                    // Encyclopedia (floating window)
-                    if let Some(sys_key) =
+                    // The original Galactic Encyclopedia (FUN_00429f30,
+                    // FUN_0045d400) when its source loaded, else the
+                    // replacement window.
+                    let original_topics = original_encyclopedia_topics
+                        [usize::from(cockpit_state.faction == CockpitFaction::Empire)]
+                    .as_ref();
+                    if let (true, Some(catalog), Some(topics)) = (
+                        enc_state.open,
+                        original_encyclopedia_catalog.as_ref(),
+                        original_topics,
+                    ) {
+                        // hyp: centred in the 640 x 480 command centre;
+                        // FUN_0045d400 is created at (0, 0) of its parent,
+                        // whose placement is not read.
+                        let origin = egui_macroquad::egui::pos2(
+                            cockpit_layout.canvas.x
+                                + (640.0 - rebellion_render::ENCYCLOPEDIA_INDEX_WIDTH) / 2.0
+                                    * cockpit_layout.scale,
+                            cockpit_layout.canvas.y
+                                + (480.0 - rebellion_render::ENCYCLOPEDIA_INDEX_HEIGHT) / 2.0
+                                    * cockpit_layout.scale,
+                        );
+                        let selected_topic = enc_state
+                            .original_selected_object_id
+                            .and_then(|object| topics.get(&object))
+                            .cloned();
+                        let command = match (enc_state.original_topic_mode, selected_topic) {
+                            (true, Some(topic)) => rebellion_render::draw_encyclopedia_topic(
+                                ctx,
+                                &mut bmp_cache,
+                                cockpit_state.faction,
+                                origin,
+                                cockpit_layout.scale,
+                                &mut enc_state,
+                                catalog,
+                                &topic,
+                            ),
+                            _ => {
+                                enc_state.original_topic_mode = false;
+                                rebellion_render::draw_encyclopedia_index_catalog(
+                                    ctx,
+                                    &mut bmp_cache,
+                                    cockpit_state.faction,
+                                    origin,
+                                    cockpit_layout.scale,
+                                    &mut enc_state,
+                                    catalog,
+                                )
+                            }
+                        };
+                        if let Some(command) = command {
+                            macroquad::logging::info!(
+                                "[encyclopedia] command={command:#x} topic_mode={} object={:?}",
+                                enc_state.original_topic_mode,
+                                enc_state.original_selected_object_id,
+                            );
+                        }
+                        // The rail's close (0xfb).
+                        if command == Some(0xfb) {
+                            enc_state.open = false;
+                            enc_state.original_topic_mode = false;
+                        }
+                    } else if let Some(sys_key) =
                         draw_encyclopedia(ctx, &world, &mut enc_state, &mut bmp_cache)
                     {
                         panel_actions.push(PanelAction::FocusFleetSystem(sys_key));
