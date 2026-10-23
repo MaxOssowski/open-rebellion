@@ -4788,4 +4788,20 @@ mod tests {
             assert_eq!(tactical.withdrawal_ms, None);
         }
     }
+
+    // FUN_005a0240 warns (voice 0x95 / 0x10e) when a capital ship of the
+    // withdrawing player's side cannot jump (FUN_005b1b70: a hyperdrive and
+    // engine power).
+    #[test]
+    fn the_withdrawal_warns_of_a_ship_that_cannot_jump() {
+        let mut ready = jumper(true, TacticalWeaponArc::default(), 0.0);
+        ready.subsystem_condition.hyperdrive = 100;
+        let mut tactical = session(vec![ready.clone()], Vec::new());
+        assert!(!tactical.queue_withdrawal_hyperdrive_warning());
+        let mut stalled = ready;
+        stalled.sublight_engine_power = 0.0;
+        tactical.ships.push(stalled);
+        assert!(tactical.queue_withdrawal_hyperdrive_warning());
+        assert_eq!(tactical.take_pending_voice_cues().len(), 1);
+    }
 }

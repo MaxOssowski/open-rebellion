@@ -1878,8 +1878,6 @@ pub enum TacticalAction {
     TogglePause,
     /// Set combat speed multiplier.
     SetSpeed(u32),
-    /// Retreat selected ships.
-    RetreatSelected,
     /// Withdraw every eligible player hull after the Battle Options command.
     WithdrawFromBattle,
     /// The Battle Alert's Retreat (`0x67`, `FUN_00450540`): a simulated
@@ -8090,7 +8088,6 @@ fn draw_projected_frame(projection: TacticalScreenProjection, canvas_scale: f32,
 /// - Left-click: select a player ship.
 /// - Right-click on friendly: issue the original order-1 Escort command.
 /// - Right-click on enemy: issue focus-fire order to all selected player ships.
-/// - R key: retreat selected ships.
 fn handle_combat_input(
     session: &mut BattleSession,
     death_star_targeting: &mut bool,
@@ -8351,17 +8348,6 @@ fn handle_combat_input(
         }
     }
 
-    // R key: retreat selected ships.
-    if is_key_pressed(KeyCode::R) {
-        for ship in &mut session.ships {
-            if ship.selected && ship.is_attacker == session.player_is_attacker && ship.alive {
-                ship.retreating = true;
-                ship.selected = false;
-            }
-        }
-        session.selected_ship = None;
-        session.selected_fighter_group = None;
-    }
 }
 
 // ---------------------------------------------------------------------------

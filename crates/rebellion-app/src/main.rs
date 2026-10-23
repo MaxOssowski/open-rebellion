@@ -6750,22 +6750,6 @@ async fn main() {
                             session.combat_speed = speed.clamp(1, 4);
                         }
                     }
-                    // port: the R key withdraws the selected ships; they
-                    // leave when the side's withdrawal time (FUN_005ad530)
-                    // ends, as a Withdraw's do.
-                    TacticalAction::RetreatSelected => {
-                        if let Some(ref mut session) = tactical_state.session {
-                            let player_side = session.player_is_attacker;
-                            for ship in &mut session.ships {
-                                if ship.selected && ship.is_attacker == player_side && ship.alive {
-                                    ship.retreating = true;
-                                    ship.selected = false;
-                                }
-                            }
-                            session.selected_ship = None;
-                            session.start_withdrawal_time();
-                        }
-                    }
                     // FUN_005f1170 -> command 0x7a -> FUN_005ad530.
                     TacticalAction::WithdrawFromBattle => {
                         if let Some(ref mut session) = tactical_state.session {

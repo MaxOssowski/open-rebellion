@@ -5449,17 +5449,15 @@ impl BattleSession {
             ));
     }
 
-    /// Queue the warning recovered from `FUN_005a0240` when a withdrawing
-    /// player fleet contains at least one live ship that cannot enter
-    /// hyperspace. The source leaves those ships behind while operational
-    /// hyperdrive ships continue the withdrawal.
+    /// Queue the warning of `FUN_005a0240` (voice `0x95` / `0x10e`) when the
+    /// withdrawing player's side has a live capital ship that cannot jump
+    /// (`FUN_005b1b70`: a hyperdrive and engine power). The source leaves
+    /// such ships behind, to be destroyed at the side's end.
     pub fn queue_withdrawal_hyperdrive_warning(&mut self) -> bool {
-        let has_stranded_ship = self.ships.iter().any(|ship| {
+        let has_stranded_ship = self.ships.iter().enumerate().any(|(index, ship)| {
             ship.alive
-                && !ship.retreating
                 && ship.is_attacker == self.player_is_attacker
-                && (ship.subsystem_capacity.hyperdrive == 0
-                    || ship.subsystem_condition.hyperdrive == 0)
+                && !original_ship_hyperdrive_works(&self.ships, &self.field_effects, index)
         });
         if has_stranded_ship {
             self.pending_voice_cues
