@@ -126,8 +126,11 @@ classified original capture.
   `pending_original_window` until 2026-10-23; they open the original
   window when its source loaded. Every opening (cockpit, F7, object menu,
   mission dialog, build selection, status window) shows the index at the
-  last selection; contextual entry
-  at an object (`FUN_0045d400`'s initial object) is not ported. The
+  last selection. Since the same day the object menu's Encyclopedia
+  opens at the object's topic (`FUN_0045d400`'s initial object:
+  `original_encyclopedia_object`, the class's or the object's DAT id;
+  All Databases), or the index when the catalog lacks it; a system icon
+  opens its system (port), a fleet or production manager the index. The
   replacement's "focus system" action has no original counterpart and is
   gone with it.
 

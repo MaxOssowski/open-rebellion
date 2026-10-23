@@ -927,6 +927,59 @@ pub fn draw_encyclopedia_index_catalog(
     outcome.activated_command
 }
 
+/// The Encyclopedia object a menu object opens at (`FUN_0045d400` resolves
+/// its initial object, else the index): its class's or its own DAT id,
+/// the catalog's compound id. A fleet or a production manager has none.
+/// port: a system icon opens its system.
+#[must_use]
+pub fn original_encyclopedia_object(
+    world: &GameWorld,
+    object: crate::object_menu::MenuObject,
+) -> Option<u32> {
+    use crate::object_menu::MenuObject;
+    let dat_id = match object {
+        MenuObject::Character(key) => world.characters.get(key)?.dat_id,
+        MenuObject::SpecialForce(key) => world.special_forces.get(key)?.class_dat_id,
+        MenuObject::Troop(key) => world.troops.get(key)?.class_dat_id,
+        MenuObject::Ship { fleet, index, .. } => {
+            let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
+            world.capital_ship_classes.get(ship.class)?.dat_id
+        }
+        MenuObject::Fighter { fleet, index } => {
+            let entry = world.fleets.get(fleet)?.fighters.get(index)?;
+            world.fighter_classes.get(entry.class)?.dat_id
+        }
+        MenuObject::PlanetFighter { class, .. } => world.fighter_classes.get(class)?.dat_id,
+        MenuObject::DefenseFacility(key) => world.defense_facilities.get(key)?.class_dat_id,
+        MenuObject::SystemIcon { system, .. } => world.systems.get(system)?.dat_id,
+        MenuObject::Fleet(_) | MenuObject::Producer { .. } => return None,
+    };
+    Some(dat_id.raw())
+}
+
+/// Open the original window at `object`'s topic when the catalog lists it
+/// (All Databases, so the topic steps through every object), else at the
+/// index.
+pub fn open_original_encyclopedia_at(
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+    object: Option<u32>,
+) {
+    state.open = true;
+    state.original_topic_mode = false;
+    if let Some(object) = object.filter(|object| {
+        catalog
+            .entries_for(0x6f)
+            .iter()
+            .any(|entry| entry.object_id == *object)
+    }) {
+        state.original_category_command = 0x6f;
+        state.original_selected_object_id = Some(object);
+        state.original_topic_mode = true;
+        reconcile_original_index_state(state, catalog, true);
+    }
+}
+
 /// One object's topic, from the source bindings
 /// (`rebellion_data::encyclopedia_topics`, `FUN_0045fa60`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2225,6 +2278,46 @@ mod tests {
             .expect("the body");
         assert_eq!(*body_pos, egui::pos2(10.0 + 17.0 * 2.0, 20.0 + 231.0 * 2.0));
         assert_eq!(body_clip.size(), egui::vec2(395.0 * 2.0, 80.0 * 2.0));
+    }
+
+    #[test]
+    fn a_menu_object_opens_the_encyclopedia_at_its_topic() {
+        // FUN_0045d400 resolves the initial object: its topic when the
+        // catalog lists it, else the index.
+        use crate::object_menu::MenuObject;
+        let catalog = original_catalog_fixture();
+        let mut world = GameWorld::default();
+        let ackbar = world.characters.insert(rebellion_core::world::Character {
+            dat_id: rebellion_core::ids::DatId::new(0x3000_0001),
+            ..Default::default()
+        });
+        let unknown = world.characters.insert(rebellion_core::world::Character {
+            dat_id: rebellion_core::ids::DatId::new(0x3000_0099),
+            ..Default::default()
+        });
+        assert_eq!(
+            original_encyclopedia_object(&world, MenuObject::Character(ackbar)),
+            Some(0x3000_0001)
+        );
+        assert_eq!(
+            original_encyclopedia_object(&world, MenuObject::Fleet(Default::default())),
+            None
+        );
+
+        let mut state = EncyclopediaState {
+            original_category_command: 0x70,
+            ..EncyclopediaState::default()
+        };
+        open_original_encyclopedia_at(&mut state, &catalog, Some(0x3000_0001));
+        assert!(state.open && state.original_topic_mode);
+        assert_eq!(state.original_category_command, 0x6f);
+        assert_eq!(state.original_selected_object_id, Some(0x3000_0001));
+
+        let mut state = EncyclopediaState::default();
+        let object = original_encyclopedia_object(&world, MenuObject::Character(unknown));
+        open_original_encyclopedia_at(&mut state, &catalog, object);
+        assert!(state.open && !state.original_topic_mode);
+        assert_eq!(state.original_selected_object_id, None);
     }
 
     #[test]

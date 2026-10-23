@@ -5439,7 +5439,22 @@ async fn main() {
                                 });
                             }
                         }
-                        Some((ObjectMenuCommand::Encyclopedia, _)) => enc_state.open = true,
+                        // FUN_0045d400 opens at the object's topic when the
+                        // original window's source loaded.
+                        Some((ObjectMenuCommand::Encyclopedia, selection)) => {
+                            match original_encyclopedia_catalog.as_ref() {
+                                Some(catalog) => rebellion_render::open_original_encyclopedia_at(
+                                    &mut enc_state,
+                                    catalog,
+                                    selection.and_then(|object| {
+                                        rebellion_render::original_encyclopedia_object(
+                                            &world, object,
+                                        )
+                                    }),
+                                ),
+                                None => enc_state.open = true,
+                            }
+                        }
                         // FUN_00486fb0 0x103 → FUN_0042a440: the Status
                         // window (type 0x1a) for the selection.
                         Some((ObjectMenuCommand::Status, Some(selection)))
