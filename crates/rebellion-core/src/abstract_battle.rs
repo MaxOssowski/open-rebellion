@@ -4546,4 +4546,50 @@ mod tests {
             Some(crate::tactical::TacticalAttackTarget::CapitalShip(1))
         );
     }
+
+    // FUN_005ad870 and FUN_005cdf50 leave a unit in its jump (state 6 on)
+    // out of the fight: a jumping fighter group picks no target, has no
+    // strength against one, and is no one's target.
+    #[test]
+    fn a_jumping_fighter_group_drops_out_of_the_fight() {
+        use crate::tactical::{
+            first_original_attack_target, manual_attack_target_is_eligible,
+            tactical_attack_target_is_eligible, OriginalFighterTarget, TacticalAttackTarget,
+        };
+        let ranges = TacticalWeaponRanges {
+            laser_cannon: 100.0,
+            ion_cannon: 100.0,
+            turbolaser: 100.0,
+        };
+        let mut own = fighter(true, TacticalWeaponArc::new(4, 0, 0));
+        own.weapon_ranges = ranges;
+        let mut enemy = fighter(false, TacticalWeaponArc::new(4, 0, 0));
+        enemy.weapon_ranges = ranges;
+        enemy.source_position.z = 5.0;
+        let tactical = session(Vec::new(), vec![own, enemy]);
+        let target = TacticalAttackTarget::FighterGroup(1);
+        let check = |tactical: &BattleSession| {
+            (
+                tactical_attack_target_is_eligible(
+                    tactical,
+                    true,
+                    target,
+                    TacticalOrder::AttackFighters,
+                ),
+                manual_attack_target_is_eligible(tactical, true, target),
+                first_original_attack_target(tactical, true, TacticalOrder::AttackFighters),
+                tactical.fighter_target(1).is_some(),
+                tactical.fighter_target_strength(1, OriginalFighterTarget::Fighter(0)) > 0.0,
+                tactical.fighter_target_strength(0, OriginalFighterTarget::Fighter(1)) > 0.0,
+            )
+        };
+        assert_eq!(
+            check(&tactical),
+            (true, true, Some(target), true, true, true)
+        );
+        let mut jumping = tactical.clone();
+        jumping.fighters[1].retreating = true;
+        jumping.fighters[1].retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+        assert_eq!(check(&jumping), (false, false, None, false, false, false));
+    }
 }

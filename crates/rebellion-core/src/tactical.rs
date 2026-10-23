@@ -1091,6 +1091,14 @@ pub struct TacticalFighter {
 }
 
 impl TacticalFighter {
+    /// The group has started its jump out: like a jumping ship
+    /// ([`TacticalShip::jumping`]) it no longer fires or can be targeted
+    /// (`FUN_005ad870`, `FUN_005cdf50`).
+    #[must_use]
+    pub fn jumping(&self) -> bool {
+        self.retreat_progress > 0.0
+    }
+
     pub fn effective_maneuverability(&self) -> f32 {
         (self.maneuverability as f32 + 1.0).clamp(1.0, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX)
     }
@@ -4641,6 +4649,7 @@ impl BattleSession {
                 || !self.fighters.get(target).is_some_and(|fighter| {
                     fighter.alive
                         && fighter.squad_count > 0
+                        && !fighter.jumping()
                         && fighter.is_attacker != self.ships[source].is_attacker
                 })
             {
@@ -4736,6 +4745,9 @@ impl BattleSession {
 
     pub fn fighter_target(&self, source: usize) -> Option<OriginalFighterTarget> {
         let fighter = self.fighters.get(source)?;
+        if fighter.jumping() {
+            return None;
+        }
         let requested = match (fighter.order, fighter.attack_target) {
             (
                 TacticalOrder::AttackCapitalShips,
@@ -4796,11 +4808,12 @@ impl BattleSession {
     /// Fighter receivers clamp the maneuverability ratio at 0.1 (`FUN_005b5100`).
 
     pub fn fighter_target_strength(&self, source: usize, target: OriginalFighterTarget) -> f32 {
-        let Some(fighter) = self
-            .fighters
-            .get(source)
-            .filter(|fighter| fighter.alive && fighter.squad_count > 0 && fighter.weapon_arc.ready)
-        else {
+        let Some(fighter) = self.fighters.get(source).filter(|fighter| {
+            fighter.alive
+                && fighter.squad_count > 0
+                && !fighter.jumping()
+                && fighter.weapon_arc.ready
+        }) else {
             return 0.0;
         };
         let (position, target_is_fighter, target_maneuverability, target_unshielded) = match target
@@ -4817,6 +4830,7 @@ impl BattleSession {
                 let Some(opponent) = self.fighters.get(index).filter(|opponent| {
                     opponent.alive
                         && opponent.squad_count > 0
+                        && !opponent.jumping()
                         && opponent.recovery_state != TacticalFighterRecoveryState::Recovered
                         && opponent.is_attacker != fighter.is_attacker
                 }) else {
@@ -5850,6 +5864,7 @@ pub fn tactical_attack_target_is_eligible(
             session.fighters.get(index).is_some_and(|fighter| {
                 fighter.alive
                     && fighter.squad_count > 0
+                    && !fighter.jumping()
                     && fighter.recovery_state != TacticalFighterRecoveryState::Recovered
                     && fighter.is_attacker != source_is_attacker
             })
@@ -5871,6 +5886,7 @@ pub fn manual_attack_target_is_eligible(
             session.fighters.get(index).is_some_and(|fighter| {
                 fighter.alive
                     && fighter.squad_count > 0
+                    && !fighter.jumping()
                     && fighter.recovery_state != TacticalFighterRecoveryState::Recovered
                     && fighter.is_attacker != source_is_attacker
             })
@@ -5899,6 +5915,7 @@ pub fn first_original_attack_target(
             .find(|(_, fighter)| {
                 fighter.alive
                     && fighter.squad_count > 0
+                    && !fighter.jumping()
                     && fighter.recovery_state != TacticalFighterRecoveryState::Recovered
                     && fighter.is_attacker != source_is_attacker
             })
