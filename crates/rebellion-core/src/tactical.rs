@@ -96,6 +96,19 @@ pub const ORIGINAL_WITHDRAWAL_MILLISECONDS: f32 = 30_000.0;
 /// `DAT_0066c234`: the Empire's withdrawal time while its Death Star is
 /// operational (`FUN_005a9330`, `FUN_005ba420`).
 pub const ORIGINAL_DEATH_STAR_WITHDRAWAL_MILLISECONDS: f32 = 150_000.0;
+/// `FUN_005b1b70` for a tactical ship: an installed hyperdrive that is not
+/// knocked out. port: the engines' power is not asked, as at the
+/// withdrawal's start.
+fn original_ship_hyperdrive_works(ship: &TacticalShip) -> bool {
+    ship.subsystem_capacity.hyperdrive > 0 && ship.subsystem_condition.hyperdrive > 0
+}
+
+/// `FUN_005b1b70` for a fighter group: a hyperdrive and engine power (port:
+/// its sublight rating).
+fn original_fighter_hyperdrive_works(fighter: &TacticalFighter) -> bool {
+    fighter.has_hyperdrive && fighter.sublight_engine_power != 0.0
+}
+
 /// `FUN_005be160` gives the tactical battle's Alliance commander (side 0,
 /// `+0x08`) the vector `+0x48` = (0, 0, 1) and the Empire's (`+0x0c`)
 /// (0, 0, -1); `FUN_005af5f0` gives the abstract ones the same. `FUN_005cc300` heads a
@@ -5394,21 +5407,14 @@ impl BattleSession {
         self.begin_withdrawal(self.player_is_attacker);
     }
 
-    /// `FUN_005ad530` for a side's capital ships: each living one with a
-    /// working hyperdrive drops its attack (`FUN_005a8d30`), takes order 3
-    /// and heads for its exit (`FUN_005cc300`). The side's time becomes at
-    /// least 30 s, or 150 s for the Empire while its Death Star is
-    /// operational. port: a ship without one fights on; the original's also
-    /// heads out and returns to the fight when the time ends
-    /// (`FUN_005b2720`).
+    /// `FUN_005ad530` for a side's capital ships: each living one, with a
+    /// hyperdrive or not (its second loop over `+0x58`), drops its attack
+    /// (`FUN_005a8d30`), takes order 3 and heads for its exit
+    /// (`FUN_005cc300`). The side's time becomes at least 30 s, or 150 s
+    /// for the Empire while its Death Star is operational.
     pub fn begin_withdrawal(&mut self, side_is_attacker: bool) {
         for ship in &mut self.ships {
-            if ship.alive
-                && !ship.retreating
-                && ship.is_attacker == side_is_attacker
-                && ship.subsystem_capacity.hyperdrive > 0
-                && ship.subsystem_condition.hyperdrive > 0
-            {
+            if ship.alive && !ship.retreating && ship.is_attacker == side_is_attacker {
                 ship.retreating = true;
                 ship.selected = false;
                 ship.order = TacticalOrder::None;
@@ -5552,15 +5558,16 @@ impl BattleSession {
     }
 
     /// `FUN_005c8780`: the withdrawing side's time runs down by the step.
-    /// When it ends, the side's fighter groups with a working hyperdrive
-    /// (`FUN_005b1b70`; `FUN_005ad530` gave them order 3) leave. Then each
-    /// withdrawing ship with a working hyperdrive starts its jump once it is
-    /// within 8.0 of its exit line (`FUN_005cc300`: state 6, event `0x2d`,
-    /// `FUN_005b1e40`: state 7) and leaves when the jump's 4000 ms end
-    /// (`FUN_005a6b40`, event `0x2e`, `FUN_005a90c0`: state 9). One that
-    /// lost its hyperdrive returns to the fight (`FUN_005b1e40` ->
-    /// `FUN_005b2720`). The side waits until none is left (`FUN_005c8780`
-    /// state 3 -> 4). port: the jump's flight is not drawn.
+    /// When it ends, each withdrawing ship and fighter group with a working
+    /// hyperdrive (`FUN_005b1b70`) starts its jump once it is within 8.0 of
+    /// its exit line (`FUN_005cc300`, `FUN_005c6610`: state 6, event
+    /// `0x2d`, `FUN_005b1e40`: state 7) and leaves when the jump's 4000 ms
+    /// end (`FUN_005a6b40`, event `0x2e`, `FUN_005a90c0`: state 9). The side
+    /// waits while any unit with a working hyperdrive is still in the fight
+    /// (state 3). Then (state 4) every unit of the side without one gets
+    /// event `0x2f` and is destroyed (`FUN_005b2720` -> slot `+0x1c`,
+    /// `FUN_005b2d20`: hull 0, state `0xb`). port: the jump's flight is not
+    /// drawn.
     fn advance_side_withdrawal(&mut self, side: bool) {
         let Some(left) = *self.withdrawal_slot(side) else {
             return;
@@ -5584,8 +5591,9 @@ impl BattleSession {
                 }
                 continue;
             }
-            if ship.subsystem_capacity.hyperdrive == 0 || ship.subsystem_condition.hyperdrive == 0 {
-                ship.retreating = false;
+            if !original_ship_hyperdrive_works(ship) {
+                // It waits at its exit for the side's end (`FUN_005cc300`
+                // keeps steering it; it cannot jump).
                 continue;
             }
             let (exit, side_z) = if ship.identity.is_alliance {
@@ -5598,38 +5606,43 @@ impl BattleSession {
                 ship.source_waypoint = None;
             }
         }
-        // hyp: a group still on its way to a carrier that escaped goes with
-        // it, as in the abstract battle's departure (`abstract_battle::leave`).
-        let ships = &self.ships;
-        for fighter in &mut self.fighters {
-            let carrier_escaped = fighter
-                .recovery_target
-                .and_then(|carrier| ships.get(carrier))
-                .is_some_and(|carrier| carrier.retreated);
-            if fighter.alive
+        let waiting = self.ships.iter().any(|ship| {
+            ship.alive
+                && ship.retreating
+                && ship.is_attacker == side
+                && original_ship_hyperdrive_works(ship)
+        }) || self.fighters.iter().any(|fighter| {
+            fighter.alive
+                && fighter.retreating
                 && fighter.is_attacker == side
-                && carrier_escaped
-                && matches!(
-                    fighter.recovery_state,
-                    TacticalFighterRecoveryState::Reserved
-                        | TacticalFighterRecoveryState::Returning
-                        | TacticalFighterRecoveryState::Docking
-                )
-            {
-                fighter.alive = false;
+                && original_fighter_hyperdrive_works(fighter)
+        });
+        if waiting {
+            return;
+        }
+        // State 4: event `0x2f` for each unit of the side without a working
+        // hyperdrive still in the fight.
+        for ship in &mut self.ships {
+            if ship.alive && ship.is_attacker == side && !original_ship_hyperdrive_works(ship) {
+                ship.hull_current = 0;
+                ship.shield = 0;
+                ship.alive = false;
+                ship.retreating = false;
             }
         }
-        let ships_left = self
-            .ships
-            .iter()
-            .any(|ship| ship.alive && ship.retreating && ship.is_attacker == side);
-        let fighters_left = self
-            .fighters
-            .iter()
-            .any(|fighter| fighter.alive && fighter.retreating && fighter.is_attacker == side);
-        if !ships_left && !fighters_left {
-            *self.withdrawal_slot(side) = None;
+        for fighter in &mut self.fighters {
+            if fighter.alive
+                && fighter.squad_count > 0
+                && fighter.is_attacker == side
+                && !original_fighter_hyperdrive_works(fighter)
+            {
+                fighter.hull_current = 0.0;
+                fighter.refresh_craft_count();
+                fighter.alive = false;
+                fighter.retreating = false;
+            }
         }
+        *self.withdrawal_slot(side) = None;
     }
 
     /// `FUN_005c6610`, a fighter force's step on order 3: it heads for its
@@ -5639,7 +5652,7 @@ impl BattleSession {
     /// (`FUN_005b1b70`) within 8.0 (`_DAT_0066cb0c`) of that line starts its
     /// jump (state 6, event `0x2d`), and leaves when the jump's 4000 ms end
     /// (`FUN_005a6b40`, event `0x2e`) with its craft. One that cannot jump
-    /// returns to the fight (`FUN_005b2720`). port: the group flies straight
+    /// is destroyed at the side's end (`FUN_005b2720`). port: the group flies straight
     /// at its sublight rating, as on its way to a carrier; a group's engine
     /// power is its sublight rating.
     fn advance_withdrawing_fighters(&mut self, side: bool, time_left: f32, exits: [f32; 2]) {
@@ -5663,11 +5676,7 @@ impl BattleSession {
             let along = exit - fighter.source_position.z;
             let step = fighter.sublight_engine_power.max(0.0) * seconds;
             fighter.source_position.z += along.clamp(-step, step);
-            if time_left > 0.0 {
-                continue;
-            }
-            if !fighter.has_hyperdrive || fighter.sublight_engine_power == 0.0 {
-                fighter.retreating = false;
+            if time_left > 0.0 || !original_fighter_hyperdrive_works(fighter) {
                 continue;
             }
             if -((exit - fighter.source_position.z) * side_z) <= ORIGINAL_JUMP_EXIT_DISTANCE {

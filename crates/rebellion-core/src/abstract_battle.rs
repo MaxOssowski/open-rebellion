@@ -2942,16 +2942,19 @@ mod tests {
         assert_eq!(tactical.retreat_done, [false, true]);
         assert_eq!(tactical.ai_withdrawal_ms, Some(30_000.0));
         assert_eq!(tactical.withdrawal_ms, None);
+        // FUN_005ad530 gives every capital ship order 3.
         assert!(tactical.ships[0].retreating && tactical.ships[0].alive);
-        assert!(!tactical.ships[1].retreating);
-        // At its edge when the time ends, it jumps for 4000 ms and leaves.
+        assert!(tactical.ships[1].retreating);
+        // At its edge when the time ends, it jumps for 4000 ms and leaves;
+        // then the ship without a hyperdrive is destroyed (event 0x2f,
+        // FUN_005b2720 -> FUN_005b2d20).
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false);
         tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         for _ in 0..16 {
             tactical.step();
         }
         assert!(tactical.ships[0].retreated && !tactical.ships[0].alive);
-        assert!(!tactical.ships[1].retreated);
+        assert!(!tactical.ships[1].retreated && !tactical.ships[1].alive);
         assert_eq!(tactical.ai_withdrawal_ms, None);
 
         // Without its order the AI side fights on.
@@ -2988,7 +2991,8 @@ mod tests {
         );
         // FUN_005b1bc0: the hyperdrive is ready (its condition too).
         tactical.ships[0].subsystem_condition.hyperdrive = 100;
-        // A damaged hyperdrive and a missing one stay (order 2).
+        // FUN_005ad530 gives every capital ship order 3, a damaged or a
+        // missing hyperdrive too.
         let mut damaged = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
         damaged.subsystem_condition.hyperdrive = 0;
         let mut missing = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
@@ -2997,8 +3001,9 @@ mod tests {
         tactical.ships.push(missing);
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true);
         tactical.begin_player_withdrawal();
-        assert!(tactical.ships[0].retreating && !tactical.ships[1].retreating);
-        assert!(!tactical.ships[3].retreating && !tactical.ships[4].retreating);
+        assert!(tactical.ships[0].retreating && tactical.ships[1].retreating);
+        assert!(tactical.ships[3].retreating && tactical.ships[4].retreating);
+        assert!(!tactical.ships[2].retreating);
         assert_eq!(tactical.withdrawal_ms, Some(30_000.0));
         // 30000 ms is 120 steps of 250 ms.
         for _ in 0..119 {
@@ -3017,7 +3022,13 @@ mod tests {
         assert!(tactical.ships[0].alive && !tactical.ships[0].retreated);
         tactical.step();
         assert!(!tactical.ships[0].alive && tactical.ships[0].retreated);
-        assert!(tactical.ships[1].alive);
+        // The side's end (state 4): those that cannot jump are destroyed
+        // (event 0x2f, FUN_005b2720 -> FUN_005b2d20).
+        for index in [1, 3, 4] {
+            let ship = &tactical.ships[index];
+            assert!(!ship.alive && !ship.retreated && ship.hull_current == 0);
+        }
+        assert!(tactical.ships[2].alive);
         assert_eq!(tactical.withdrawal_ms, None);
 
         // A second order keeps the larger time left.
@@ -3051,11 +3062,14 @@ mod tests {
         assert_eq!(imperial.withdrawal_ms, Some(30_000.0));
     }
 
-    // hyp (with FUN_005ad530's order 3 for fighter groups): when the side's
-    // time ends a group still bound for a carrier that escaped goes with
-    // it; one bound for a carrier that stays, or only awaiting one, stays.
+    // FUN_005c8780 state 4: when the side's last jump ends, each unit of the
+    // side without a working hyperdrive still in the fight is destroyed
+    // (event 0x2f, FUN_005b2720 -> FUN_005b2d20): a group still on its way
+    // to the carrier that escaped, one on its way to the carrier that
+    // stays, one only awaiting a carrier, and the carrier without a
+    // hyperdrive.
     #[test]
-    fn a_fighter_group_bound_for_an_escaped_carrier_goes_with_it() {
+    fn units_left_behind_are_destroyed_at_the_sides_end() {
         use crate::tactical::TacticalFighterRecoveryState as Recovery;
         let mut carrier = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
         carrier.subsystem_condition.hyperdrive = 100;
@@ -3085,9 +3099,11 @@ mod tests {
             tactical.step();
         }
         assert!(tactical.ships[0].retreated);
-        assert!(!tactical.fighters[0].alive);
-        assert!(tactical.fighters[1].alive);
-        assert!(tactical.fighters[2].alive);
+        for index in 0..3 {
+            assert_eq!(tactical.fighters[index].squad_count, 0);
+        }
+        assert!(!tactical.ships[1].alive && !tactical.ships[1].retreated);
+        assert_eq!(tactical.withdrawal_ms, None);
     }
 
     // FUN_005d0f50: without +0x80 a side cannot leave and fights on.
@@ -4077,8 +4093,8 @@ mod tests {
     // FUN_005c6610 (order 3): when the player's time ends, the player's
     // withdrawing fighter groups with a working hyperdrive (FUN_005b1b70:
     // engine power too) at their exit line jump and leave 4000 ms later
-    // with their craft; one without engine power returns to the fight
-    // (FUN_005b2720); the other side's do not jump.
+    // with their craft; one without engine power is destroyed at the side's
+    // end (FUN_005b2720 -> FUN_005b2d20); the other side's do not jump.
     #[test]
     fn the_players_fighters_with_a_hyperdrive_jump_when_the_time_ends() {
         let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
@@ -4098,14 +4114,15 @@ mod tests {
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         tactical.step();
         assert!(tactical.fighters[0].alive && tactical.fighters[0].retreat_progress > 0.0);
-        assert!(tactical.fighters[1].alive && !tactical.fighters[1].retreating);
+        assert!(tactical.fighters[1].alive && tactical.fighters[1].retreating);
         for _ in 0..14 {
             tactical.step();
         }
         assert!(tactical.fighters[0].alive);
         tactical.step();
         assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
-        assert!(tactical.fighters[1].alive);
+        // It could not jump: destroyed at the side's end (FUN_005b2720).
+        assert!(!tactical.fighters[1].alive && tactical.fighters[1].squad_count == 0);
         assert!(tactical.fighters[2].alive);
         assert_eq!(tactical.withdrawal_ms, None);
     }

@@ -453,9 +453,26 @@ is the side commander's `+0x24` = 0.33.
     when its commander `+0x10` is set.
   - `FUN_005c8780` (state 3) waits while a unit with a working hyperdrive
     is in state 2/4/6 or 7/8. Then it sets 4 and posts event `0x2f` for
-    each unit without one: `FUN_005b2720` returns a unit still in the
-    fight with hull (`+0x3cc` above 0) to state 2. It fights on; it is
-    not destroyed.
+    each unit of the side (capital list `+0x58`, fighters `+0x64`)
+    without one. Correction (2026-10-23, s59 reading): `FUN_005b2720`
+    DESTROYS such a unit. For one still in the fight with hull
+    (`+0x3cc` above 0) it runs slot `+0xd0` (`FUN_005b0170`, voice 9),
+    the effect `FUN_005c13d0(id, 4, ...)`, sets state 2 and calls slot
+    `+0x1c`, which is `FUN_005b2d20` for both capital ships (vtable
+    `0x66c140`) and fighter groups (`0x66c560`): from state 2 it zeroes
+    the hull `+0x3cc`, takes the unit out of its task force and sets state
+    `0xb`, destroyed. The s53-s57 notes and ports read it as a return to
+    the fight; that was wrong. This matches the abstract departure
+    (`FUN_005d14d0` step 5: those without a hyperdrive are destroyed).
+  - `FUN_005ad530` gives every capital ship order 3, hyperdrive or not
+    (the second loop over `+0x58`, `FUN_005aded0`), so ships without one
+    also head for the exit and wait there until the side's end.
+  - For the player's side it also takes each withdrawing task force off
+    the command panel: fighter groups through `FUN_0059ed70` +
+    `FUN_005a0320` (the button flags `+0x154`), capital task forces
+    through `FUN_005a0410` (`+0x164`; `FUN_0059f5d0`/`FUN_0059f5f0` gate
+    the selection commands 2..9 and 0xb..0xe in `FUN_0059fd40`). So the
+    player cannot select or re-order a withdrawing unit.
   - The battle step counts each side's units in states 2, 4, 6, 7, 8 and
     10 (`+0x818`, `+0x81c`). The battle ends only when a side has none,
     so it lasts until the last jump ends. The result words
@@ -479,11 +496,16 @@ is the side commander's `+0x24` = 0.33.
   - Ported 2026-10-23 (s54, `BattleSession::withdrawal_exit_z`,
     `advance_withdrawal`, `advance_original_tactical_movement`): the
     player's withdrawing ships drop their attack, fly to their exit line,
-    and after the time jump one by one within 8.0 of it for 4000 ms; a
-    ship that lost its hyperdrive returns to the fight; the side's time
-    stays 0 until the last jump ends. port: the jump's flight is not
-    drawn (k unread); a ship without a hyperdrive fights on throughout
-    (the original's also heads out first);
+    and after the time jump one by one within 8.0 of it for 4000 ms; the
+    side's time stays 0 until the last jump ends. port: the jump's flight
+    is not drawn (k unread). Corrected in s60: every capital ship
+    withdraws (a ship without a hyperdrive also flies out and waits at
+    its edge), and when the side's last jump ends every unit of the side
+    without a working hyperdrive still in the fight is destroyed
+    (`FUN_005b2720`, `FUN_005b2d20`); s54-s57 had such units return to the
+    fight, and fighter groups bound for an escaped carrier leave with it
+    (hyp, now dropped). The player's fighter groups cannot be selected
+    while the player's side withdraws (`FUN_005a0320`);
   - A withdrawing unit stays in the fight until its jump starts (read
     2026-10-23, s58): the weapon loop `FUN_005b3a40` (and `FUN_005b3f10`)
     fires only from a unit in state 2, 4 or 6 (`FUN_005ad870`) that is not

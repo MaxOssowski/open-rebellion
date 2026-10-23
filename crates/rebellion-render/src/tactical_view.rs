@@ -2771,6 +2771,12 @@ fn assign_selected_to_task_force(session: &mut BattleSession, group: u8) -> usiz
 }
 
 fn select_fighter_group(session: &mut BattleSession, group: u8) -> bool {
+    // `FUN_005ad530` takes every fighter group of the withdrawing player's
+    // side off the command panel (`FUN_005a0320`, the flags `+0x154` that
+    // `FUN_0059f5f0` asks).
+    if session.withdrawal_ms.is_some() {
+        return false;
+    }
     let assigned = session.fighters.iter().any(|fighter| {
         fighter.alive
             && fighter.squad_count > 0
@@ -10834,14 +10840,19 @@ mod tests {
             session.step();
         }
         assert!(session.ships[0].retreated);
-        let wing = &session.fighters[0];
-        assert!(!wing.alive && wing.squad_count > 0);
-        assert!(session.fighters[1].alive);
-        // The group bound for the carrier that stays may dock on it during
-        // the jump (FUN_005cf980); neither leaves with the escaped carrier.
+        // At the side's end the groups left in the fight without a
+        // hyperdrive are destroyed (event 0x2f, FUN_005b2720): the one still
+        // on its way to the escaped carrier and the one only awaiting it.
+        assert_eq!(session.fighters[0].squad_count, 0);
+        assert_eq!(session.fighters[4].squad_count, 0);
+        // The group bound for the carrier that stays docked on it first
+        // (FUN_005cf980) and keeps its craft; that carrier, without a
+        // hyperdrive, is destroyed.
         let bound = &session.fighters[3];
-        assert!(bound.alive || bound.recovery_state == TacticalFighterRecoveryState::Recovered);
-        assert!(session.fighters[4].alive);
+        assert!(bound.recovery_state == TacticalFighterRecoveryState::Recovered);
+        assert!(bound.squad_count > 0);
+        assert!(!session.ships[2].alive && !session.ships[2].retreated);
+        assert!(session.fighters[1].alive);
     }
 
     // FUN_005ad530: a fighter group with a hyperdrive (FUN_005b1bc0 above 0;
@@ -10896,10 +10907,27 @@ mod tests {
         }
         let wing = &session.fighters[0];
         assert!(!wing.alive && wing.squad_count > 0);
-        // No engine power, no jump: it returns to the fight; the other
-        // side's group stays.
-        assert!(session.fighters[1].alive && !session.fighters[1].retreating);
+        // No engine power, no jump: destroyed at the side's end
+        // (FUN_005b2720); the other side's group stays.
+        assert!(!session.fighters[1].alive && session.fighters[1].squad_count == 0);
         assert!(session.fighters[2].alive);
+    }
+
+    // FUN_005ad530 takes the withdrawing player's task forces off the
+    // command panel (FUN_005a0320, FUN_005a0410; FUN_0059f5f0 gates the
+    // group commands): no fighter group or capital task force can be
+    // selected while the withdrawal runs.
+    #[test]
+    fn a_withdrawing_side_cannot_select_its_groups() {
+        let carrier = test_ship(64, 0, true, true);
+        let mut wing = test_fighter(1, true);
+        wing.fighter_group = 0;
+        let mut session = test_session(vec![carrier], vec![wing], true);
+        assert!(select_fighter_group(&mut session, 0));
+        session.begin_player_withdrawal();
+        withdraw_player_fighters(&mut session);
+        assert!(!select_fighter_group(&mut session, 0));
+        assert_eq!(select_task_force(&mut session, 0), 0);
     }
 
     // Source: FUN_005cf980 fighter recovery completion.
