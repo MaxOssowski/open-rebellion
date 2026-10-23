@@ -429,8 +429,8 @@ fn engine_speed(session: &BattleSession, unit: AbstractUnit) -> f32 {
 }
 
 /// `FUN_005b1b70`: installed hyperdrives outnumber hyperdrive hits
-/// (`FUN_005b1bc0`) and the engines have power (slot `+0x90`). The port's
-/// fighter groups carry no hyperdrive.
+/// (`FUN_005b1bc0`) and the engines have power (slot `+0x90`), for a
+/// capital ship or a fighter group alike (`FUN_005d0f50`, `FUN_005d14d0`).
 fn hyperdrive_works(session: &BattleSession, unit: AbstractUnit) -> bool {
     match unit {
         AbstractUnit::Capital(index) => {
@@ -439,7 +439,11 @@ fn hyperdrive_works(session: &BattleSession, unit: AbstractUnit) -> bool {
                 && original_tactical_mobility(&session.ships, &session.field_effects, index)
                     .is_some_and(|mobility| mobility.effective_engine_power != 0.0)
         }
-        AbstractUnit::Fighter(_) => false,
+        AbstractUnit::Fighter(index) => {
+            let fighter = &session.fighters[index];
+            // port: a group's engine power is its sublight rating.
+            fighter.has_hyperdrive && fighter.sublight_engine_power != 0.0
+        }
     }
 }
 
@@ -797,7 +801,7 @@ impl AbstractBattle {
     }
 
     /// Slot `+0x0c` (`FUN_005d0f50`): the side may leave, has not yet, and a
-    /// capital ship has a working hyperdrive; for the Empire, an operational
+    /// fighter group or capital ship has a working hyperdrive; for the Empire, an operational
     /// Death Star also lets it. No arrivals are pending (`FUN_005c7e40`).
     pub fn can_leave(&self, alliance: bool) -> bool {
         let side = side_index(alliance);
@@ -1576,11 +1580,11 @@ fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after
     hull_after != before.hull_current || hits_after != before.subsystem_hits
 }
 
-/// `FUN_005d14d0` step 5, the side leaving: each capital ship with a
-/// working hyperdrive escapes (`FUN_005af910`, state 9); the others are
-/// destroyed (`FUN_005af7a0`). hyp: a fighter group escapes when its side
-/// has an escaping carrier (`FUN_005afe40` recovers it), and is destroyed
-/// otherwise. Both modes run it (the shared battle object, `FUN_00596f30`).
+/// `FUN_005d14d0` step 5, the side leaving: each fighter group and capital
+/// ship with a working hyperdrive escapes (`FUN_005af910`, state 9); the
+/// others are destroyed (`FUN_005af7a0`). hyp: a fighter group without one
+/// escapes when its side has an escaping carrier (`FUN_005afe40` recovers
+/// it), and is destroyed otherwise. Both modes run it (the shared battle object, `FUN_00596f30`).
 pub fn leave(session: &mut BattleSession, alliance: bool) {
     let units = units_of(session, alliance);
     let carrier_escapes = units.iter().any(|&unit| match unit {
@@ -1592,7 +1596,7 @@ pub fn leave(session: &mut BattleSession, alliance: bool) {
     for unit in units {
         let escapes = match unit {
             AbstractUnit::Capital(_) => hyperdrive_works(session, unit),
-            AbstractUnit::Fighter(_) => carrier_escapes,
+            AbstractUnit::Fighter(_) => hyperdrive_works(session, unit) || carrier_escapes,
         };
         match (unit, escapes) {
             (AbstractUnit::Capital(index), true) => {
@@ -1771,6 +1775,7 @@ mod tests {
             torpedo_strength: 0,
             torpedo_range: 0.0,
             maneuverability: 5,
+            has_hyperdrive: false,
             is_attacker: alliance,
             alive: true,
             fighter_group: 0,
@@ -3923,8 +3928,8 @@ mod tests {
         );
     }
 
-    // hyp (FUN_005afe40): fighters leave only with a carrier that both has
-    // room and jumps; otherwise they are destroyed.
+    // hyp (FUN_005afe40): fighters without a hyperdrive leave only with a
+    // carrier that both has room and jumps; otherwise they are destroyed.
     #[test]
     fn fighters_leave_only_with_a_jumping_carrier() {
         let run = |capacity: u32, hyperdrive: u8| {
@@ -3942,5 +3947,88 @@ mod tests {
         assert!(run(1, 1));
         assert!(!run(0, 1));
         assert!(!run(1, 0));
+    }
+
+    // FUN_005d14d0 step 5 tests each fighter group with FUN_005b1b70 and
+    // sends one with a working hyperdrive away itself (FUN_005af910), with
+    // no carrier; FUN_005d0f50 lets such a group alone take its side away.
+    #[test]
+    fn a_fighter_group_with_a_hyperdrive_leaves_without_a_carrier() {
+        let run = |has_hyperdrive: bool| {
+            let mut own = fighter(true, TacticalWeaponArc::default());
+            own.has_hyperdrive = has_hyperdrive;
+            let mut battle = AbstractBattle::new(session(
+                vec![ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)],
+                vec![own],
+            ));
+            battle.retreat_allowed[0] = true;
+            let can_leave = battle.can_leave(true);
+            battle.retreat(true);
+            (can_leave, battle.session.fighters[0].squad_count > 0)
+        };
+        assert_eq!(run(true), (true, true));
+        assert_eq!(run(false), (false, false));
+    }
+
+    // FUN_005b1b70 also needs engine power (slot +0x90).
+    #[test]
+    fn a_fighter_group_without_engine_power_cannot_jump() {
+        let mut own = fighter(true, TacticalWeaponArc::default());
+        own.has_hyperdrive = true;
+        own.sublight_engine_power = 0.0;
+        let mut battle = AbstractBattle::new(session(
+            vec![ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)],
+            vec![own],
+        ));
+        battle.retreat_allowed[0] = true;
+        assert!(!battle.can_leave(true));
+    }
+
+    // FUN_005b1bc0 counts the installed hyperdrives (+0x3ec); hyp: a fighter
+    // group's are its FIGHTSD primary and backup ratings.
+    #[test]
+    fn a_battle_gives_a_fighter_group_its_class_hyperdrive() {
+        let has = |primary: u32, backup: u32| {
+            let (mut world, system, alliance, ships, squadrons) = world_with_battle();
+            let class = world.fleets[alliance].fighters[0].class;
+            world.fighter_classes[class].hyperdrive = primary;
+            world.fighter_classes[class].hyperdrive_if_damaged = backup;
+            let FleetBattle { session, .. } = BattleSession::new_for_fleets(
+                &world,
+                system,
+                &[alliance],
+                &[ships, squadrons],
+                true,
+                3,
+                7,
+            );
+            session.fighters[0].has_hyperdrive
+        };
+        assert!(has(60, 0));
+        assert!(has(0, 60));
+        assert!(has(1, 1));
+        assert!(!has(0, 0));
+    }
+
+    // FUN_005c8780: when the player's time ends, the player's fighter groups
+    // with a working hyperdrive (FUN_005b1b70: engine power too) jump; the
+    // other side's do not.
+    #[test]
+    fn the_players_fighters_with_a_hyperdrive_jump_when_the_time_ends() {
+        let group = |alliance: bool, power: f32| {
+            let mut value = fighter(alliance, TacticalWeaponArc::default());
+            value.has_hyperdrive = true;
+            value.sublight_engine_power = power;
+            value
+        };
+        let mut tactical = session(
+            vec![ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)],
+            vec![group(true, 10.0), group(true, 0.0), group(false, 10.0)],
+        );
+        tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
+        assert!(tactical.fighters[1].alive);
+        assert!(tactical.fighters[2].alive);
     }
 }

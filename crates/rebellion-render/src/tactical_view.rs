@@ -3123,19 +3123,26 @@ fn begin_original_attack_order(
     }
 }
 
-/// `FUN_005ad530`'s second loop: each of the player's fighter groups drops
-/// its attack (command `0x37`, `FUN_005a8d30`) and takes order 3. hyp:
-/// order 3 is the recovery to a carrier, as a Recover command's.
+/// `FUN_005ad530`'s task-force loop for the player's fighter groups (class
+/// 4, `FUN_005a6700`): a group whose hyperdrive count (`FUN_005b1bc0`) is 0
+/// takes order 2, the recovery to a carrier (`FUN_005ca6d0` installs the
+/// `FUN_005cf980` executor); the others take order 3, whose step
+/// (`FUN_005ae1e0`) is empty, and wait for the side's time to end. Either
+/// order ends the group's attack.
 pub fn withdraw_player_fighters(session: &mut BattleSession) {
     let player = session.player_is_attacker;
     let mut groups = Vec::new();
     for (index, fighter) in session.fighters.iter_mut().enumerate() {
         if fighter.alive && fighter.squad_count > 0 && fighter.is_attacker == player {
-            fighter.order = TacticalOrder::Recover;
             fighter.attack_target = None;
             fighter.escort_target = None;
             fighter.selected = false;
-            groups.push(index);
+            if fighter.has_hyperdrive {
+                fighter.order = TacticalOrder::None;
+            } else {
+                fighter.order = TacticalOrder::Recover;
+                groups.push(index);
+            }
         }
     }
     begin_original_fighter_recovery(session, &groups);
@@ -8634,6 +8641,7 @@ mod tests {
             torpedo_strength: 0,
             torpedo_range: 0.0,
             maneuverability: 5,
+            has_hyperdrive: false,
             is_attacker: is_alliance,
             alive: true,
             fighter_group: 0,
@@ -10834,10 +10842,10 @@ mod tests {
         );
     }
 
-    // FUN_005ad530's second loop: the player's fighter groups drop their
-    // attack and take order 3 (hyp: the recovery to a carrier); when the
-    // side's time ends a group still bound for an escaped carrier goes with
-    // it and keeps its craft.
+    // FUN_005ad530: the player's fighter groups without a hyperdrive drop
+    // their attack and take order 2, the recovery to a carrier
+    // (FUN_005ca6d0, FUN_005cf980); when the side's time ends a group still
+    // bound for an escaped carrier goes with it and keeps its craft (hyp).
     #[test]
     fn a_withdrawal_sends_the_fighters_to_their_carriers_and_away() {
         let mut carrier = test_ship(64, 0, true, true);
@@ -10890,6 +10898,50 @@ mod tests {
         assert!(!wing.alive && wing.squad_count > 0);
         assert!(session.fighters[1].alive);
         assert!(session.fighters[3].alive && session.fighters[4].alive);
+    }
+
+    // FUN_005ad530: a fighter group with a hyperdrive (FUN_005b1bc0 above 0;
+    // every Alliance FIGHTSD class, of the Empire's only record 8) takes
+    // order 3, whose step FUN_005ae1e0 is empty: it holds, and jumps when
+    // the side's time ends (FUN_005c8780, FUN_005b1b70) with its craft.
+    #[test]
+    fn a_withdrawal_holds_fighters_with_a_hyperdrive_then_they_jump() {
+        let mut carrier = test_ship(64, 0, true, true);
+        carrier.fighter_capacity = 2;
+        let mut wing = test_fighter(1, true);
+        wing.has_hyperdrive = true;
+        wing.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        let mut stalled = test_fighter(1, true);
+        stalled.has_hyperdrive = true;
+        stalled.sublight_engine_power = 0.0;
+        let mut enemy_wing = test_fighter(8, false);
+        enemy_wing.has_hyperdrive = true;
+        let mut session = test_session(
+            vec![carrier, test_ship(64, 0, false, true)],
+            vec![wing, stalled, enemy_wing],
+            true,
+        );
+
+        session.begin_player_withdrawal();
+        withdraw_player_fighters(&mut session);
+
+        let wing = &session.fighters[0];
+        assert_eq!(wing.order, TacticalOrder::None);
+        assert_eq!(wing.attack_target, None);
+        assert_eq!(wing.recovery_target, None);
+        assert_eq!(
+            wing.recovery_state,
+            TacticalFighterRecoveryState::AwaitingCarrier
+        );
+
+        session.paused = false;
+        session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        session.step();
+        let wing = &session.fighters[0];
+        assert!(!wing.alive && wing.squad_count > 0);
+        // No engine power, no jump; the other side's group stays.
+        assert!(session.fighters[1].alive);
+        assert!(session.fighters[2].alive);
     }
 
     // Source: FUN_005cf980 fighter recovery completion.

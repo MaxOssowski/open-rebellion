@@ -371,21 +371,52 @@ is the side commander's `+0x24` = 0.33.
   Withdraw confirmation (`FUN_005f1170`) sends command `0x7a`
   (`FUN_00596a70`, `FUN_0059a470`); `FUN_0059fd40` checks
   `FUN_005a8a90` and runs `FUN_005ad530(side)`. It sets the side
-  commander's `+0x84` to 2, queues voice `0x8f` / `0x10d`, gives each
-  capital ship order 3 when its hyperdrive is ready (`FUN_005b1bc0` not
-  0) and order 2 otherwise, and fighter groups order 3. The side's time
-  `+0x7c` becomes at least `DAT_0066c240` = 30000, or `DAT_0066c234` =
-  150000 for the Empire (side 1) while its Death Star is operational.
-  `FUN_005c8780` lowers `+0x7c` by the step while `+0x84` is 2 and sets
-  3 at 0 (`DAT_0066cbb4`). Ported 2026-10-23
-  (`BattleSession::begin_player_withdrawal`, `withdrawal_ms`); before,
-  the port moved each withdrawing ship off the field over 20 steps (5 s).
-  hyp: the ships with order 3 leave when the time ends. The fighter
-  groups (the second loop: `FUN_005a8d30` drops an attack with command
-  `0x37`, then order 3) take the recovery to a carrier
-  (`tactical_view::withdraw_player_fighters`, 2026-10-23); hyp: order 3
-  is that recovery, and a group still bound for a carrier that escaped
-  goes with it.
+  commander's `+0x84` to 2 and queues voice `0x8f` / `0x10d`. Re-read
+  2026-10-23 (s52) with the vtables from `REBEXE.EXE`; an earlier reading
+  here had the two loops the wrong way round:
+  - The first loop walks the side's task forces (`+0x70`). A task
+    force's class is its slot `+0x04`: 3 for a capital-ship task force
+    (vtable `0x66bf70`, `FUN_005a6730`, built by `FUN_005cbf50`), 4 for
+    a fighter task force (vtable `0x66bee0`, `FUN_005a6700`, built by
+    `FUN_005c62b0`). A class-4 force with a member (`FUN_005c6070`: the
+    first unit of its list `+0x1c`) cancels a trench run in hand (order
+    6: event `0x3c`), then takes order 2 when that unit's hyperdrive
+    count `FUN_005b1bc0` (`+0x3ec` less `+0x374`) is 0, and order 3
+    otherwise (disassembly `0x5ad5ea`..`0x5ad60f`: `ecx` is the unit). Every
+    other task force takes order 3.
+  - The second loop walks the capital ships (`+0x58`): each drops its
+    attack (`FUN_005a8d30`) and gets a task force of its own
+    (`FUN_005aded0`, class 3) with order 3.
+  - Slot `+0x64` of a task force is `FUN_005ca530`, which sets the
+    pending order `+0x68` (orders 2 and 6 only for class 4);
+    `FUN_005ca6d0` makes it current (`+0x64`) and installs its executor.
+    Order 2's executor (vtable `0x66cdf8`) steps with `FUN_005cf980`, the
+    recovery to a carrier (`tactical-command-progression.md`). Order 3's
+    (vtable `0x66cdc8`) steps with `FUN_005ae1e0`, which is empty: the
+    force holds.
+  - FIGHTSD: the four Alliance classes have hyperdrive 60, the Empire's
+    records 5–7 have 0 and record 8 has 60. So the Alliance's fighters
+    hold and jump with the side; the TIEs without one go to a carrier.
+  The side's time `+0x7c` becomes at least `DAT_0066c240` = 30000, or
+  `DAT_0066c234` = 150000 for the Empire (side 1) while its Death Star
+  is operational. `FUN_005c8780` lowers `+0x7c` by the step while
+  `+0x84` is 2 and sets 3 at 0 (`DAT_0066cbb4`). In state 3 it walks the
+  capital ships, then the fighters, with a working hyperdrive
+  (`FUN_005b1b70`): while one's task-force object is in state 2, 4 or 6
+  (`FUN_005ad870`) or the unit is in state 7 or 8, the side waits. Then
+  it sets 4 and sends event `0x2f` for each unit without one (not read).
+  `FUN_005b1e40` puts a unit with a working hyperdrive into state 7.
+  Ported 2026-10-23 (`BattleSession::begin_player_withdrawal`,
+  `withdrawal_ms`); before, the port moved each withdrawing ship off the
+  field over 20 steps (5 s). Fighter orders ported 2026-10-23 (s52,
+  `tactical_view::withdraw_player_fighters`): a group with a hyperdrive
+  holds and leaves when the time ends; one without takes the recovery to
+  a carrier. hyp: the units leave together when the time ends (the
+  waiting on states 2/4/6/7/8 and event `0x2f` are not ported); a group
+  still bound for a carrier that escaped goes with it. The abstract
+  battle now lets a fighter group with a working hyperdrive leave on its
+  own and count for `FUN_005d0f50` (`abstract_battle::hyperdrive_works`);
+  before, the port gave fighters no hyperdrive.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
   player's side stays unset), and each tactical step asks

@@ -1035,6 +1035,11 @@ pub struct TacticalFighter {
     pub torpedo_range: f32,
     /// Raw FIGHTSD maneuverability consumed by the fighter damage ratio.
     pub maneuverability: u32,
+    /// The group has a hyperdrive: `FUN_005b1bc0` (installed `+0x3ec` less
+    /// hits `+0x374`) is above 0. hyp: installed counts the FIGHTSD primary
+    /// and backup ratings as for a capital ship; port: fighters take no
+    /// hyperdrive hits.
+    pub has_hyperdrive: bool,
     pub is_attacker: bool,
     pub alive: bool,
     /// Zero-based red, blue, green, or gold fighter group; 4 is unassigned.
@@ -3759,6 +3764,7 @@ impl BattleSession {
                     torpedo_strength: class.torpedoes,
                     torpedo_range: class.torpedoes_range as f32,
                     maneuverability: class.maneuverability,
+                    has_hyperdrive: class.hyperdrive > 0 || class.hyperdrive_if_damaged > 0,
                     is_attacker,
                     alive: squad_count > 0,
                     // FUN_005c63f0 initializes color state to 4 (white/unassigned).
@@ -5354,7 +5360,9 @@ impl BattleSession {
 
     /// `FUN_005c8780`: the withdrawing side's time runs down by the step;
     /// at 0 the withdrawal ends and the ships with order 3 escape (state
-    /// 9). hyp: they leave together when it ends.
+    /// 9), with the player's fighter groups that have a working hyperdrive
+    /// (`FUN_005b1b70`; `FUN_005ad530` gave them order 3). hyp: they leave
+    /// together when it ends.
     fn advance_withdrawal(&mut self) {
         let Some(left) = self.withdrawal_ms else {
             return;
@@ -5369,6 +5377,17 @@ impl BattleSession {
             if ship.retreating && ship.alive {
                 ship.alive = false;
                 ship.retreated = true;
+            }
+        }
+        let player = self.player_is_attacker;
+        for fighter in &mut self.fighters {
+            // port: a group's engine power is its sublight rating.
+            if fighter.alive
+                && fighter.is_attacker == player
+                && fighter.has_hyperdrive
+                && fighter.sublight_engine_power != 0.0
+            {
+                fighter.alive = false;
             }
         }
         // hyp: a group still on its way to a carrier that escaped goes with
