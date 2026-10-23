@@ -1282,6 +1282,10 @@ pub struct BattleSession {
     pub trench_run_pending_outcome: Option<TacticalTrenchRunOutcome>,
     /// Stable fighter indices retained by the source result manager.
     pub trench_run_participants: Vec<usize>,
+    /// Each participant's hull and shields when the run began
+    /// (`FUN_005d08d0` copies `+0x3cc` to `+0x3d0` and `+0x3c0` to
+    /// `+0x3c4`); an aborted run restores them (`FUN_005cfec0` state 8).
+    pub trench_run_saved: Vec<(usize, f32, f32)>,
     /// Nine threshold slots selected by `FUN_005d04e0`; `0x13d` is silent.
     pub trench_run_chatter: [u16; 9],
     /// Next threshold slot consumed by `FUN_005d03f0`.
@@ -3295,6 +3299,7 @@ impl BattleSession {
             trench_run_success_rating,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
+            trench_run_saved: Vec::new(),
             trench_run_chatter: [ORIGINAL_TRENCH_RUN_SILENT_EVENT; 9],
             trench_run_chatter_cursor: 0,
             trench_run_cinematic_pending: false,
@@ -5206,6 +5211,15 @@ impl BattleSession {
             .take(1001)
             .collect::<Vec<_>>();
 
+        // `FUN_005d08d0`: the participants' hull and shields are kept for
+        // an abort.
+        self.trench_run_saved = participants
+            .iter()
+            .map(|&index| {
+                let fighter = &self.fighters[index];
+                (index, fighter.hull_current, fighter.shield)
+            })
+            .collect();
         let mut success = false;
         let mut maneuver_damage = false;
         for &index in &participants {
@@ -5304,6 +5318,30 @@ impl BattleSession {
             }
             self.record_trench_run_outcome(outcome);
         }
+    }
+
+    /// `FUN_005cfec0` state 8: a run under way (state 5) ends without a
+    /// result; each participant gets back the hull and shields it had when
+    /// the run began and returns to the fight (state 2). The run's
+    /// executor goes with the group's new order (`FUN_005d0950` clears
+    /// `DAT_006bc978`).
+    pub fn abort_original_trench_run(&mut self) {
+        if self.trench_run_remaining_ms.is_none() || self.trench_run_outcome.is_some() {
+            return;
+        }
+        for (index, hull, shield) in std::mem::take(&mut self.trench_run_saved) {
+            if let Some(fighter) = self.fighters.get_mut(index) {
+                fighter.hull_current = hull;
+                fighter.refresh_craft_count();
+                fighter.alive = fighter.squad_count > 0;
+                fighter.shield = shield;
+            }
+        }
+        self.trench_run_remaining_ms = None;
+        self.trench_run_pending_outcome = None;
+        self.trench_run_participants.clear();
+        self.trench_run_group = None;
+        self.trench_run_chatter_cursor = self.trench_run_chatter.len();
     }
 
     pub fn record_trench_run_outcome(&mut self, outcome: TacticalTrenchRunOutcome) {
@@ -5432,6 +5470,20 @@ impl BattleSession {
     /// the side's time ends; meanwhile it heads for its side's exit
     /// (`FUN_005c6610`). Either order ends the group's attack.
     pub fn withdraw_fighters(&mut self, side_is_attacker: bool) {
+        // A group of the side on the trench run (order 6) has it aborted
+        // first (event `0x3c` with state 8, `FUN_005caf20` -> `FUN_005cfec0`).
+        let on_the_run = self.trench_run_participants.iter().any(|&index| {
+            self.fighters
+                .get(index)
+                .is_some_and(|fighter| fighter.is_attacker == side_is_attacker)
+        }) || self.fighters.iter().any(|fighter| {
+            fighter.alive
+                && fighter.is_attacker == side_is_attacker
+                && fighter.order == TacticalOrder::AttackDeathStar
+        });
+        if on_the_run {
+            self.abort_original_trench_run();
+        }
         let mut groups = Vec::new();
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
             if fighter.alive && fighter.squad_count > 0 && fighter.is_attacker == side_is_attacker {

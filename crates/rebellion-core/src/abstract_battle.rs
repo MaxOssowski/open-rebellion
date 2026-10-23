@@ -1843,6 +1843,7 @@ mod tests {
             trench_run_success_rating: 1,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
+            trench_run_saved: Vec::new(),
             trench_run_chatter: [ORIGINAL_TRENCH_RUN_SILENT_EVENT; 9],
             trench_run_chatter_cursor: 0,
             trench_run_cinematic_pending: false,
@@ -4608,5 +4609,69 @@ mod tests {
         jumping.fighters[1].retreating = true;
         jumping.fighters[1].retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
         assert_eq!(check(&jumping), (false, false, None, false, false, false));
+    }
+
+    // FUN_005ad530 posts event 0x3c (state 8) for a withdrawing fighter
+    // group on the trench run (order 6): FUN_005cfec0 ends the run without
+    // a result and gives each participant back the hull and shields that
+    // FUN_005d08d0 kept when the run began; the group then withdraws.
+    #[test]
+    fn withdrawing_aborts_the_trench_run() {
+        let mut ds_ship = ship(false, TacticalWeaponArc::default(), 0.0);
+        ds_ship.hull_current = 1_000_000;
+        ds_ship.hull_max = 1_000_000;
+        let mut runner = fighter(true, TacticalWeaponArc::default());
+        runner.order = TacticalOrder::AttackDeathStar;
+        runner.has_hyperdrive = true;
+        // Maneuverability 0: the run's maneuver draw always hits it.
+        runner.maneuverability = 0;
+        let mut tactical = session(vec![ds_ship], vec![runner]);
+        tactical.death_star = Some(crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: crate::tactical::TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        let hull = tactical.fighters[0].hull_current;
+        tactical.trench_run_remaining_ms =
+            Some(crate::tactical::ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS);
+        tactical.prepare_original_trench_run();
+        assert!(tactical.trench_run_pending_outcome.is_some());
+        assert!(tactical.fighters[0].hull_current < hull);
+        // The other side's withdrawal leaves the run alone, even with the
+        // runner still flying it.
+        let mut flying = tactical.clone();
+        flying.trench_run_participants.clear();
+        flying.fighters[0].alive = true;
+        flying.fighters[0].squad_count = 1;
+        flying.withdraw_fighters(false);
+        assert!(flying.trench_run_remaining_ms.is_some());
+        // With no list, a live runner of the side still marks its run.
+        flying.withdraw_fighters(true);
+        assert_eq!(flying.trench_run_remaining_ms, None);
+        tactical.begin_player_withdrawal();
+        tactical.withdraw_fighters(true);
+        assert_eq!(tactical.trench_run_remaining_ms, None);
+        assert_eq!(tactical.trench_run_pending_outcome, None);
+        assert!(tactical.trench_run_participants.is_empty());
+        let runner = &tactical.fighters[0];
+        assert_eq!(runner.hull_current, hull);
+        assert!(runner.alive && runner.retreating);
+        assert_eq!(runner.order, TacticalOrder::None);
+        // Nothing resolves the run afterwards.
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert!(!tactical.death_star.unwrap().destroyed);
+        assert_eq!(tactical.trench_run_outcome, None);
     }
 }

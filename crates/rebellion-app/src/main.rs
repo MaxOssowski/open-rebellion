@@ -10294,6 +10294,7 @@ mod tactical_ground_tests {
             trench_run_success_rating: 1,
             trench_run_pending_outcome: None,
             trench_run_participants: vec![],
+            trench_run_saved: Vec::new(),
             trench_run_chatter: [0x13d; 9],
             trench_run_chatter_cursor: 0,
             trench_run_cinematic_pending: false,

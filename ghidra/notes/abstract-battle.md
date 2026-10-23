@@ -467,6 +467,13 @@ is the side commander's `+0x24` = 0.33.
   - `FUN_005ad530` gives every capital ship order 3, hyperdrive or not
     (the second loop over `+0x58`, `FUN_005aded0`), so ships without one
     also head for the exit and wait there until the side's end.
+  - A fighter task force on the trench run (order 6) gets event `0x3c`
+    with state 8 (`FUN_005caf20` -> `FUN_005caf50` -> `FUN_005cfec0`):
+    the run ends without a result, each participant gets back the hull
+    and shields `FUN_005d08d0` kept at the run's start (`+0x3d0` ->
+    `+0x3cc`, `+0x3c4` -> `+0x3c0`), returns to state 2, and the group
+    takes order 3. Ported 2026-10-23 (s61,
+    `BattleSession::abort_original_trench_run`, `trench_run_saved`).
   - For the player's side it also takes each withdrawing task force off
     the command panel: fighter groups through `FUN_0059ed70` +
     `FUN_005a0320` (the button flags `+0x154`), capital task forces
