@@ -114,6 +114,9 @@ pub struct EncyclopediaState {
     pub original_selected_object_id: Option<u32>,
     /// First catalog row shown by the original index list.
     pub original_scroll_row: usize,
+    /// The original window shows the selected object's topic (command
+    /// `0x67`) instead of the index (`0x68`, `FUN_0045f480`).
+    pub original_topic_mode: bool,
     /// EDATA keys explicitly approved by the faithful-HD manifest.
     approved_hd_assets: HashMap<String, ApprovedHdAsset>,
     /// Cached textures keyed by EDATA file number (1-based).
@@ -170,6 +173,7 @@ impl Default for EncyclopediaState {
             original_category_command: 0x6f,
             original_selected_object_id: None,
             original_scroll_row: 0,
+            original_topic_mode: false,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -907,6 +911,10 @@ pub fn draw_encyclopedia_index_catalog(
             state.original_category_command = command;
             reconcile_original_index_state(state, catalog, true);
         }
+        // FUN_0045f480: the rail's topic command shows the selected object.
+        if command == 0x67 && state.original_selected_object_id.is_some() {
+            state.original_topic_mode = true;
+        }
     }
     if let Some(scroll_row) = outcome.scroll_row {
         state.original_scroll_row = scroll_row;
@@ -917,6 +925,256 @@ pub fn draw_encyclopedia_index_catalog(
         reconcile_original_index_state(state, catalog, true);
     }
     outcome.activated_command
+}
+
+/// One object's topic, from the source bindings
+/// (`rebellion_data::encyclopedia_topics`, `FUN_0045fa60`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OriginalEncyclopediaTopic {
+    pub title: String,
+    /// `ENCYTEXT.DLL` text; `None` shows an empty body.
+    pub body: Option<String>,
+    /// The `EDATA.NNN` number of its artwork.
+    pub edata: Option<u16>,
+}
+
+impl OriginalEncyclopediaTopic {
+    /// The `EDATA.NNN` number in an artwork file name such as `EDATA.014`.
+    #[must_use]
+    pub fn edata_number(filename: &str) -> Option<u16> {
+        filename
+            .strip_prefix("EDATA.")
+            .or_else(|| filename.strip_prefix("edata."))?
+            .parse()
+            .ok()
+    }
+}
+
+/// The selected object's neighbours in the current category's list:
+/// previous and next (`FUN_0045fd20` enables `0x83` / `0x84` when the list
+/// item has a previous / next item).
+#[must_use]
+pub fn original_topic_neighbours(
+    state: &EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+) -> (Option<u32>, Option<u32>) {
+    let entries = catalog.entries_for(state.original_category_command);
+    let Some(index) = entries
+        .iter()
+        .position(|entry| Some(entry.object_id) == state.original_selected_object_id)
+    else {
+        return (None, None);
+    };
+    let previous = index
+        .checked_sub(1)
+        .and_then(|before| entries.get(before))
+        .map(|entry| entry.object_id);
+    let next = entries.get(index + 1).map(|entry| entry.object_id);
+    (previous, next)
+}
+
+/// Apply a topic command: `0x83` / `0x84` step to the previous / next
+/// object (`FUN_0045fe60` gives Left and Right the same), `0x68` returns to
+/// the index (`FUN_0045f480`).
+pub fn apply_original_topic_command(
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+    command: u16,
+) {
+    let (previous, next) = original_topic_neighbours(state, catalog);
+    match command {
+        0x83 => {
+            if let Some(object) = previous {
+                state.original_selected_object_id = Some(object);
+            }
+        }
+        0x84 => {
+            if let Some(object) = next {
+                state.original_selected_object_id = Some(object);
+            }
+        }
+        0x68 => state.original_topic_mode = false,
+        _ => {}
+    }
+    reconcile_original_index_state(state, catalog, true);
+}
+
+const TOPIC_CONTENT: u32 = 10_337;
+const TOPIC_PREVIOUS: [u32; 3] = [10_385, 10_386, 10_387];
+const TOPIC_NEXT: [u32; 3] = [10_382, 10_383, 10_384];
+
+/// Paint the original window's topic mode (`FUN_0045ddc0`): the faction
+/// base and rail with Topic current, STRATEGY 10337 at (12, 14), the
+/// object's 400 x 200 EDATA picture at (12, 31), its title at (36, 14) in
+/// a 350 wide box, previous `0x83` at (28, 14) and next `0x84` at
+/// (380, 14) (21 x 17, the third resource when unavailable), and the body
+/// in (17, 231, 395, 80). Returns the command activated.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The window's context, art cache, side, placement, state, catalog and topic."
+)]
+pub fn draw_encyclopedia_topic(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    faction: crate::cockpit::CockpitFaction,
+    origin: egui::Pos2,
+    scale: f32,
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+    topic: &OriginalEncyclopediaTopic,
+) -> Option<u16> {
+    if scale <= 0.0 {
+        return None;
+    }
+    let (previous, next) = original_topic_neighbours(state, catalog);
+    let picture = topic
+        .edata
+        .and_then(|edata| state.artwork_texture(ctx, edata));
+    let mut activated = None;
+    egui::Area::new(egui::Id::new("original-encyclopedia-topic"))
+        .fixed_pos(origin)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            let size = egui::vec2(
+                ENCYCLOPEDIA_INDEX_WIDTH * scale,
+                ENCYCLOPEDIA_INDEX_HEIGHT * scale,
+            );
+            let (window_rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            let (base, rail) = match faction {
+                crate::cockpit::CockpitFaction::Alliance => (10_335, 10_585),
+                crate::cockpit::CockpitFaction::Empire => (10_336, 10_589),
+            };
+            paint_original_resource_native(
+                ui.painter(),
+                ctx,
+                cache,
+                base,
+                window_rect.min,
+                scale,
+                window_rect,
+            );
+            paint_original_resource_native(
+                ui.painter(),
+                ctx,
+                cache,
+                rail,
+                encyclopedia_point(window_rect, scale, 412.0, 0.0),
+                scale,
+                window_rect,
+            );
+            let content_rect = encyclopedia_rect(window_rect, scale, 12.0, 14.0, 400.0, 306.0);
+            paint_original_resource_native(
+                ui.painter(),
+                ctx,
+                cache,
+                TOPIC_CONTENT,
+                content_rect.min,
+                scale,
+                content_rect,
+            );
+            if let Some(texture) = picture {
+                let rect = encyclopedia_rect(window_rect, scale, 12.0, 31.0, 400.0, 200.0);
+                ui.painter().image(
+                    texture.id(),
+                    rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+            }
+            for control in encyclopedia_rail_controls(faction) {
+                // Topic mode makes 0x67 current.
+                if draw_original_control(
+                    ui,
+                    ctx,
+                    cache,
+                    window_rect,
+                    scale,
+                    control,
+                    control.command_id == 0x67,
+                ) {
+                    activated = Some(control.command_id);
+                }
+            }
+            for (command, x, resources, available) in [
+                (0x83_u16, 28_u16, TOPIC_PREVIOUS, previous.is_some()),
+                (0x84, 380, TOPIC_NEXT, next.is_some()),
+            ] {
+                let control = OriginalControlSpec {
+                    command_id: command,
+                    x,
+                    y: 14,
+                    width: 21,
+                    height: 17,
+                    normal_resource: resources[0],
+                    pressed_resource: resources[1],
+                    selected_in_index: false,
+                };
+                if available {
+                    if draw_original_control(ui, ctx, cache, window_rect, scale, control, false) {
+                        activated = Some(command);
+                    }
+                } else {
+                    let rect =
+                        encyclopedia_rect(window_rect, scale, f32::from(x), 14.0, 21.0, 17.0);
+                    paint_original_resource_native(
+                        ui.painter(),
+                        ctx,
+                        cache,
+                        resources[2],
+                        rect.min,
+                        scale,
+                        rect,
+                    );
+                }
+            }
+            let title_font = egui::FontId::proportional(15.0 * scale);
+            ui.painter()
+                .with_clip_rect(encyclopedia_rect(
+                    window_rect,
+                    scale,
+                    36.0,
+                    14.0,
+                    350.0,
+                    17.0,
+                ))
+                .text(
+                    encyclopedia_point(window_rect, scale, 211.0, 14.0),
+                    egui::Align2::CENTER_TOP,
+                    &topic.title,
+                    title_font,
+                    Color32::WHITE,
+                );
+            if let Some(body) = &topic.body {
+                let body_rect = encyclopedia_rect(window_rect, scale, 17.0, 231.0, 395.0, 80.0);
+                let galley = ui.painter().layout(
+                    body.clone(),
+                    egui::FontId::proportional(13.0 * scale),
+                    Color32::WHITE,
+                    body_rect.width(),
+                );
+                ui.painter().with_clip_rect(body_rect).galley(
+                    body_rect.min,
+                    galley,
+                    Color32::WHITE,
+                );
+            }
+        });
+    // FUN_0045fe60: Left and Right step through the topics.
+    if activated.is_none() {
+        activated = ctx.input(|input| {
+            if input.key_pressed(egui::Key::ArrowLeft) && previous.is_some() {
+                Some(0x83)
+            } else if input.key_pressed(egui::Key::ArrowRight) && next.is_some() {
+                Some(0x84)
+            } else {
+                None
+            }
+        });
+    }
+    if let Some(command) = activated {
+        apply_original_topic_command(state, catalog, command);
+    }
+    activated
 }
 
 fn reconcile_original_index_state(
@@ -1772,6 +2030,215 @@ mod tests {
         reconcile_original_index_state(&mut state, &catalog, true);
         assert_eq!(state.original_selected_object_id, Some(0x9000_0001));
         assert_eq!(state.original_scroll_row, 0);
+    }
+
+    #[test]
+    fn a_topic_steps_through_its_category_and_returns_to_the_index() {
+        // FUN_0045fd20: previous / next exist when the list item has a
+        // neighbour; FUN_0045fe60 and commands 0x83 / 0x84 step to it;
+        // 0x68 returns to the index (FUN_0045f480). All Databases sorts
+        // Ackbar, Alliance Army Regiment, Alliance Dreadnaught, Allyuen.
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x3000_0001),
+            original_topic_mode: true,
+            ..EncyclopediaState::default()
+        };
+        assert_eq!(
+            original_topic_neighbours(&state, &catalog),
+            (None, Some(0x1000_0001))
+        );
+        apply_original_topic_command(&mut state, &catalog, 0x83);
+        assert_eq!(state.original_selected_object_id, Some(0x3000_0001));
+        apply_original_topic_command(&mut state, &catalog, 0x84);
+        assert_eq!(state.original_selected_object_id, Some(0x1000_0001));
+        apply_original_topic_command(&mut state, &catalog, 0x84);
+        apply_original_topic_command(&mut state, &catalog, 0x84);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0001));
+        assert_eq!(
+            original_topic_neighbours(&state, &catalog),
+            (Some(0x1400_0001), None)
+        );
+        apply_original_topic_command(&mut state, &catalog, 0x84);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0001));
+        // Within a category, only its objects.
+        state.original_category_command = 0x70;
+        assert_eq!(original_topic_neighbours(&state, &catalog), (None, None));
+        assert!(state.original_topic_mode);
+        apply_original_topic_command(&mut state, &catalog, 0x68);
+        assert!(!state.original_topic_mode);
+        // An unknown selection has no neighbours.
+        state.original_selected_object_id = Some(0x5000_0001);
+        assert_eq!(original_topic_neighbours(&state, &catalog), (None, None));
+    }
+
+    fn run_topic(
+        state: &mut EncyclopediaState,
+        catalog: &OriginalEncyclopediaCatalog,
+        scale: f32,
+        events: Vec<egui::Event>,
+    ) -> (Option<u16>, Vec<egui::epaint::ClippedShape>, egui::Context) {
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let topic = OriginalEncyclopediaTopic {
+            title: "Ackbar".into(),
+            body: Some("A Mon Calamari admiral.".into()),
+            edata: None,
+        };
+        let mut activated = None;
+        let screen = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1000.0),
+        ));
+        // egui draws an Area from its second frame (the first sizes it).
+        let mut warm_up = EncyclopediaState {
+            original_category_command: state.original_category_command,
+            original_selected_object_id: state.original_selected_object_id,
+            original_topic_mode: state.original_topic_mode,
+            ..EncyclopediaState::default()
+        };
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: screen,
+                ..Default::default()
+            },
+            |ctx| {
+                let _ = draw_encyclopedia_topic(
+                    ctx,
+                    &mut cache,
+                    crate::cockpit::CockpitFaction::Alliance,
+                    egui::pos2(10.0, 20.0),
+                    scale,
+                    &mut warm_up,
+                    catalog,
+                    &topic,
+                );
+            },
+        );
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: screen,
+                events,
+                ..Default::default()
+            },
+            |ctx| {
+                activated = draw_encyclopedia_topic(
+                    ctx,
+                    &mut cache,
+                    crate::cockpit::CockpitFaction::Alliance,
+                    egui::pos2(10.0, 20.0),
+                    scale,
+                    state,
+                    catalog,
+                    &topic,
+                );
+            },
+        );
+        (activated, output.shapes, ctx)
+    }
+
+    fn key(key: egui::Key) -> egui::Event {
+        egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn the_topics_keys_step_through_the_category() {
+        // FUN_0045fe60: in topic mode Left and Right are 0x83 and 0x84.
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x3000_0001),
+            original_topic_mode: true,
+            ..EncyclopediaState::default()
+        };
+        let (activated, _, _) =
+            run_topic(&mut state, &catalog, 1.0, vec![key(egui::Key::ArrowLeft)]);
+        assert_eq!(activated, None);
+        let (activated, _, _) =
+            run_topic(&mut state, &catalog, 1.0, vec![key(egui::Key::ArrowRight)]);
+        assert_eq!(activated, Some(0x84));
+        assert_eq!(state.original_selected_object_id, Some(0x1000_0001));
+        let (activated, _, _) =
+            run_topic(&mut state, &catalog, 1.0, vec![key(egui::Key::ArrowLeft)]);
+        assert_eq!(activated, Some(0x83));
+        assert_eq!(state.original_selected_object_id, Some(0x3000_0001));
+        // No window at a zero scale.
+        let (activated, shapes, _) =
+            run_topic(&mut state, &catalog, 0.0, vec![key(egui::Key::ArrowRight)]);
+        assert_eq!(activated, None);
+        assert!(shapes.is_empty());
+    }
+
+    #[test]
+    fn the_topic_lays_out_its_title_and_body_at_the_original_points() {
+        // FUN_0045ddc0: the 470 x 330 client; the title in (36, 14, 350);
+        // the body in (17, 231, 395, 80); here at scale 2 from (10, 20).
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x3000_0001),
+            original_topic_mode: true,
+            ..EncyclopediaState::default()
+        };
+        let (_, shapes, ctx) = run_topic(&mut state, &catalog, 2.0, Vec::new());
+        let area = ctx
+            .memory(|memory| memory.area_rect(egui::Id::new("original-encyclopedia-topic")))
+            .expect("the topic window");
+        assert_eq!(area.min, egui::pos2(10.0, 20.0));
+        assert_eq!(area.size(), egui::vec2(470.0 * 2.0, 330.0 * 2.0));
+        let texts: Vec<(String, egui::Pos2, egui::Rect)> = shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) => {
+                    Some((text.galley.text().to_owned(), text.pos, clipped.clip_rect))
+                }
+                _ => None,
+            })
+            .collect();
+        // The port's sizes: 15 for the title, 13 for the body, scaled.
+        let font_size = |wanted: &str| {
+            shapes.iter().find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with(wanted) => {
+                    Some(text.galley.job.sections[0].format.font_id.size)
+                }
+                _ => None,
+            })
+        };
+        assert_eq!(font_size("Ackbar"), Some(30.0));
+        assert_eq!(font_size("A Mon Calamari"), Some(26.0));
+        let (_, title_pos, title_clip) = texts
+            .iter()
+            .find(|(text, _, _)| text == "Ackbar")
+            .expect("the title");
+        assert_eq!(title_pos.y, 20.0 + 14.0 * 2.0);
+        assert_eq!(
+            *title_clip,
+            egui::Rect::from_min_size(egui::pos2(10.0 + 36.0 * 2.0, 48.0), egui::vec2(700.0, 34.0))
+        );
+        let (_, body_pos, body_clip) = texts
+            .iter()
+            .find(|(text, _, _)| text.starts_with("A Mon Calamari"))
+            .expect("the body");
+        assert_eq!(*body_pos, egui::pos2(10.0 + 17.0 * 2.0, 20.0 + 231.0 * 2.0));
+        assert_eq!(body_clip.size(), egui::vec2(395.0 * 2.0, 80.0 * 2.0));
+    }
+
+    #[test]
+    fn a_topics_artwork_name_gives_its_edata_number() {
+        assert_eq!(
+            OriginalEncyclopediaTopic::edata_number("EDATA.014"),
+            Some(14)
+        );
+        assert_eq!(
+            OriginalEncyclopediaTopic::edata_number("edata.187"),
+            Some(187)
+        );
+        assert_eq!(OriginalEncyclopediaTopic::edata_number("EDATA.x"), None);
+        assert_eq!(OriginalEncyclopediaTopic::edata_number("BMP.014"), None);
     }
 
     #[test]

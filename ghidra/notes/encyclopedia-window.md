@@ -93,6 +93,24 @@ classified original capture.
 - `FUN_0045fe60` routes keyboard navigation; in topic mode Left and Right invoke
   commands `0x83` and `0x84`.
 
+## Topic mode (ported 2026-10-23, not routed)
+
+- `FUN_0045fd20` enables previous (`+0x144`, `0x83`) and next (`+0x140`,
+  `0x84`) from the selected list item's previous (slot `+0x10`) and next
+  (`+0xc`) items, so they step through the current category's list and
+  stop at its ends (no wrap).
+- `encyclopedia::draw_encyclopedia_topic` paints the topic geometry above
+  (base, rail with `0x67` current, STRATEGY 10337 at `(12,14)`, EDATA at
+  `(12,31)`, title, `0x83` / `0x84` with their third resource when
+  unavailable, body in `(17,231,395,80)`); `apply_original_topic_command`
+  and `original_topic_neighbours` carry the state; the index's rail `0x67`
+  switches to the topic of the selected object. The topic data comes from
+  `rebellion_data::encyclopedia_topics` (P66A) as
+  `OriginalEncyclopediaTopic`.
+- port: like the index (P64, P65) it is not routed: the production window
+  is still the replacement. The body's font and line spacing are the
+  port's (the original's `FUN_005f35b0` text object is not read).
+
 ## Evidence boundary
 
 - Static source: `FUN_00429f30.c`, `FUN_0045d400.c`, `FUN_0045ddc0.c`,
