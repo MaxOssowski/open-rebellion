@@ -4641,6 +4641,9 @@ async fn main() {
                         if command == Some(0xfb) {
                             enc_state.open = false;
                             enc_state.original_topic_mode = false;
+                            macroquad::logging::info!(
+                                "[interface] command=0xfb destination=encyclopedia status=closed"
+                            );
                         }
                     } else if let Some(sys_key) =
                         draw_encyclopedia(ctx, &world, &mut enc_state, &mut bmp_cache)
@@ -6392,6 +6395,22 @@ async fn main() {
                                 return;
                             }
                             CockpitButton::GameOptions => (0x133, "game_options"),
+                            // FUN_00429f30 (command 0x131, F7) opens the
+                            // original window when its source loaded.
+                            CockpitButton::Encyclopedia
+                                if original_encyclopedia_catalog.is_some()
+                                    && original_encyclopedia_topics[usize::from(
+                                        cockpit_state.faction == CockpitFaction::Empire,
+                                    )]
+                                    .is_some() =>
+                            {
+                                enc_state.open = true;
+                                enc_state.original_topic_mode = false;
+                                macroquad::logging::info!(
+                                    "[interface] command=0x131 destination=encyclopedia status=opened_original"
+                                );
+                                return;
+                            }
                             CockpitButton::Encyclopedia => (0x131, "encyclopedia"),
                             CockpitButton::GalacticInformationDisplay => {
                                 cockpit_state.gid_ui.menu_open = !cockpit_state.gid_ui.menu_open;

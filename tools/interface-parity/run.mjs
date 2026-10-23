@@ -119,6 +119,24 @@ function fixtureCode(scenario, faction) {
   return (scenario.index + 1) | ((faction === "alliance" ? 1 : 2) << 8);
 }
 
+// The original Encyclopedia's rail close (0xfb): Alliance (423,25,32,31),
+// Empire (426,21,44,41), in the 470 x 330 window the port centres in the
+// 640 x 480 command centre (origin (85,75)). The pointer then goes back to
+// `restore`, off the galaxy map, before the command centre is compared.
+async function closeOriginalEncyclopedia(page, point, faction, restore) {
+  const close = faction === "alliance"
+    ? point(85 + 423 + 16, 75 + 25 + 15)
+    : point(85 + 426 + 22, 75 + 21 + 20);
+  await page.mouse.move(close.x, close.y);
+  await page.mouse.down();
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  await performCommand(page, "command=0xfb destination=encyclopedia status=closed",
+    () => page.mouse.up());
+  await page.mouse.move(restore.x, restore.y);
+}
+
 async function measureBrowserRuntime(page) {
   return page.evaluate(async () => {
     const intervals = [];
@@ -480,13 +498,13 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
           { slug: "game-options", rect: { x: 3, y: 355, width: 27, height: 41 },
             expected: "command=0x133 destination=game_options status=opened_original" },
           { slug: "encyclopedia", rect: { x: 394, y: 405, width: 27, height: 16 },
-            expected: "command=0x131 destination=encyclopedia status=pending_original_window" },
+            expected: "command=0x131 destination=encyclopedia status=opened_original" },
         ]
       : [
           { slug: "game-options", rect: { x: 79, y: 192, width: 35, height: 57 },
             expected: "command=0x133 destination=game_options status=opened_original" },
           { slug: "encyclopedia", rect: { x: 465, y: 434, width: 35, height: 24 },
-            expected: "command=0x131 destination=encyclopedia status=pending_original_window" },
+            expected: "command=0x131 destination=encyclopedia status=opened_original" },
         ];
     for (const command of commandControls) {
       const center = point(command.rect.x + command.rect.width / 2,
@@ -526,8 +544,15 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
         assert.equal(sha256(returned), sha256(commandCenter),
           `${faction}: Game Options did not return to the authentic command center`);
       } else {
-        assert.equal(sha256(released), sha256(commandCenter),
-          `${faction}: ${command.slug} exposed a replacement destination`);
+        // FUN_00429f30 opens the original Encyclopedia; its rail's close
+        // (0xfb) returns to the command centre.
+        assert.notEqual(sha256(released), sha256(commandCenter),
+          `${faction}: the Encyclopedia did not open its original window`);
+        await closeOriginalEncyclopedia(page, point, faction, center);
+        const returned = await stableInteractionFrame(page, folder,
+          `${command.slug}-returned-to-command-center`);
+        assert.equal(sha256(returned), sha256(commandCenter),
+          `${faction}: the Encyclopedia did not return to the command center`);
       }
       probes.push({ type: "physical-command", command: command.slug, expected: command.expected,
         observed, hover_sha256: sha256(hover), pressed_sha256: sha256(pressed),
@@ -536,10 +561,21 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
 
     for (const [key, expected] of [
       ["F1", "command=0x133 destination=game_options status=opened_original"],
-      ["F7", "command=0x131 destination=encyclopedia status=pending_original_window"],
+      ["F7", "command=0x131 destination=encyclopedia status=opened_original"],
     ]) {
       const observed = await performCommand(page, expected, () => page.keyboard.press(key));
       probes.push({ type: "keyboard-command", key, expected, observed });
+      if (key === "F7") {
+        const encyclopedia = await stableInteractionFrame(page, folder, "keyboard-encyclopedia-open");
+        assert.notEqual(sha256(encyclopedia), sha256(commandCenter),
+          `${faction}: F7 did not open the original Encyclopedia`);
+        const restore = faction === "alliance" ? point(407.5, 413) : point(482.5, 446);
+        await closeOriginalEncyclopedia(page, point, faction, restore);
+        const returned = await stableInteractionFrame(page, folder,
+          "keyboard-encyclopedia-returned");
+        assert.equal(sha256(returned), sha256(commandCenter),
+          `${faction}: F7 Encyclopedia did not return to the command center`);
+      }
       if (key === "F1") {
         const options = await stableInteractionFrame(page, folder, "keyboard-game-options-open");
         assert.notEqual(sha256(options), sha256(commandCenter),

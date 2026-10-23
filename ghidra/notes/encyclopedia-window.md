@@ -122,8 +122,11 @@ classified original capture.
   and its manifest; the browser's runtime pack carries them byte for byte
   as `encyclopedia-source.json` / `.manifest.json`). Else the replacement
   stays. The rail's close `0xfb` closes it.
-- Every opening (cockpit, object menu, mission dialog, build selection,
-  status window) shows the index at the last selection; contextual entry
+- The cockpit button and F7 (`0x131`) only logged
+  `pending_original_window` until 2026-10-23; they open the original
+  window when its source loaded. Every opening (cockpit, F7, object menu,
+  mission dialog, build selection, status window) shows the index at the
+  last selection; contextual entry
   at an object (`FUN_0045d400`'s initial object) is not ported. The
   replacement's "focus system" action has no original counterpart and is
   gone with it.
