@@ -521,7 +521,11 @@ is the side commander's `+0x24` = 0.33.
     withdraws (a ship without a hyperdrive also flies out and waits at
     its edge), and when the side's last jump ends every unit of the side
     without a working hyperdrive still in the fight is destroyed
-    (`FUN_005b2720`, `FUN_005b2d20`); s54-s57 had such units return to the
+    (`FUN_005b2720`, `FUN_005b2d20`). s63: a ship's working hyperdrive also
+    wants engine power (`FUN_005b1b70` slot `+0x90`,
+    `tactical::original_ship_hyperdrive_works`), for its jump, the side's
+    wait, the destruction and the Withdraw button (`FUN_005a8a90`); a unit
+    already in its jump is out of the fight and finishes it. s54-s57 had such units return to the
     fight, and fighter groups bound for an escaped carrier leave with it
     (hyp, now dropped). The player's fighter groups cannot be selected
     while the player's side withdraws (`FUN_005a0320`);

@@ -4209,7 +4209,6 @@ mod tests {
             enemy.hull_max = 1_000_000;
             let mut tactical = session(vec![own, enemy], Vec::new());
             tactical.ships[0].retreating = true;
-            tactical.ships[0].sublight_engine_power = 0.0;
             tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true) + offset;
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             tactical.step();
@@ -4747,5 +4746,46 @@ mod tests {
         }
         assert_eq!(TacticalAudioEvent::FighterJump.variant_count(), 1);
         assert_eq!(TacticalAudioEvent::CapitalJump.variant_count(), 1);
+    }
+
+    // FUN_005b1b70 wants engine power (slot +0x90) as well as a hyperdrive:
+    // a ship without it cannot jump and is destroyed at the side's end
+    // (event 0x2f); one already in its jump is no longer in the fight
+    // (FUN_005b2720 asks FUN_005ad870) and finishes it.
+    #[test]
+    fn a_ship_needs_engine_power_to_jump() {
+        let run = |power_after_start: bool| {
+            let mut stalled = jumper(true, TacticalWeaponArc::default(), 0.0);
+            stalled.subsystem_condition.hyperdrive = 100;
+            stalled.retreating = true;
+            stalled.sublight_engine_power = 0.0;
+            let mut mover = jumper(true, TacticalWeaponArc::default(), 0.0);
+            mover.subsystem_condition.hyperdrive = 100;
+            mover.retreating = true;
+            let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+            enemy.hull_current = 1_000_000;
+            enemy.hull_max = 1_000_000;
+            let mut tactical = session(vec![stalled, mover, enemy], Vec::new());
+            let exit = tactical.withdrawal_exit_z(true);
+            tactical.ships[0].source_position.z = exit;
+            tactical.ships[1].source_position.z = exit;
+            tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            tactical.step();
+            assert_eq!(tactical.ships[0].retreat_progress, 0.0);
+            assert!(tactical.ships[1].jumping());
+            if !power_after_start {
+                tactical.ships[1].sublight_engine_power = 0.0;
+            }
+            for _ in 0..15 {
+                tactical.step();
+            }
+            tactical
+        };
+        for power_after_start in [true, false] {
+            let tactical = run(power_after_start);
+            assert!(!tactical.ships[0].alive && !tactical.ships[0].retreated);
+            assert!(tactical.ships[1].retreated && tactical.ships[1].hull_current > 0);
+            assert_eq!(tactical.withdrawal_ms, None);
+        }
     }
 }

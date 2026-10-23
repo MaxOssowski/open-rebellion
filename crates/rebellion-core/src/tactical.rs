@@ -97,10 +97,17 @@ pub const ORIGINAL_WITHDRAWAL_MILLISECONDS: f32 = 30_000.0;
 /// operational (`FUN_005a9330`, `FUN_005ba420`).
 pub const ORIGINAL_DEATH_STAR_WITHDRAWAL_MILLISECONDS: f32 = 150_000.0;
 /// `FUN_005b1b70` for a tactical ship: an installed hyperdrive that is not
-/// knocked out. port: the engines' power is not asked, as at the
-/// withdrawal's start.
-fn original_ship_hyperdrive_works(ship: &TacticalShip) -> bool {
-    ship.subsystem_capacity.hyperdrive > 0 && ship.subsystem_condition.hyperdrive > 0
+/// knocked out (`FUN_005b1bc0`) and engines with power (slot `+0x90`,
+/// [`original_tactical_mobility`]).
+pub fn original_ship_hyperdrive_works(
+    ships: &[TacticalShip],
+    field_effects: &[TacticalFieldEffect],
+    index: usize,
+) -> bool {
+    ships.get(index).is_some_and(|ship| {
+        ship.subsystem_capacity.hyperdrive > 0 && ship.subsystem_condition.hyperdrive > 0
+    }) && original_tactical_mobility(ships, field_effects, index)
+        .is_some_and(|mobility| mobility.effective_engine_power != 0.0)
 }
 
 /// `FUN_005b1b70` for a fighter group: a hyperdrive and engine power (port:
@@ -5662,6 +5669,9 @@ impl BattleSession {
         if now > 0.0 {
             return;
         }
+        let works = (0..self.ships.len())
+            .map(|index| original_ship_hyperdrive_works(&self.ships, &self.field_effects, index))
+            .collect::<Vec<_>>();
         for (index, ship) in self.ships.iter_mut().enumerate() {
             if !ship.alive || !ship.retreating || ship.is_attacker != side {
                 continue;
@@ -5680,7 +5690,7 @@ impl BattleSession {
                 }
                 continue;
             }
-            if !original_ship_hyperdrive_works(ship) {
+            if !works[index] {
                 // It waits at its exit for the side's end (`FUN_005cc300`
                 // keeps steering it; it cannot jump).
                 continue;
@@ -5701,24 +5711,26 @@ impl BattleSession {
                 ));
             }
         }
-        let waiting = self.ships.iter().any(|ship| {
+        // A unit in its jump is waited on (port: one whose engines died
+        // mid-jump still finishes it).
+        let waiting = self.ships.iter().enumerate().any(|(index, ship)| {
             ship.alive
                 && ship.retreating
                 && ship.is_attacker == side
-                && original_ship_hyperdrive_works(ship)
+                && (works[index] || ship.jumping())
         }) || self.fighters.iter().any(|fighter| {
             fighter.alive
                 && fighter.retreating
                 && fighter.is_attacker == side
-                && original_fighter_hyperdrive_works(fighter)
+                && (original_fighter_hyperdrive_works(fighter) || fighter.jumping())
         });
         if waiting {
             return;
         }
         // State 4: event `0x2f` for each unit of the side without a working
         // hyperdrive still in the fight.
-        for ship in &mut self.ships {
-            if ship.alive && ship.is_attacker == side && !original_ship_hyperdrive_works(ship) {
+        for (index, ship) in self.ships.iter_mut().enumerate() {
+            if ship.alive && ship.is_attacker == side && !works[index] && !ship.jumping() {
                 ship.hull_current = 0;
                 ship.shield = 0;
                 ship.alive = false;
@@ -5730,6 +5742,7 @@ impl BattleSession {
                 && fighter.squad_count > 0
                 && fighter.is_attacker == side
                 && !original_fighter_hyperdrive_works(fighter)
+                && !fighter.jumping()
             {
                 fighter.hull_current = 0.0;
                 fighter.refresh_craft_count();

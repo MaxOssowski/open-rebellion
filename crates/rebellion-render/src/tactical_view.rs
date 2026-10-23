@@ -2501,13 +2501,18 @@ fn tactical_death_star_laser_control_at(cache: &mut BmpCache, x: f32, y: f32) ->
         )
 }
 
+/// `FUN_005a8a90` -> `FUN_005c7e80`: a unit of the side with a working
+/// hyperdrive (`FUN_005b1b70`, engine power too) and no withdrawal begun.
 fn tactical_withdraw_enabled(session: &BattleSession) -> bool {
-    session.ships.iter().any(|ship| {
+    session.ships.iter().enumerate().any(|(index, ship)| {
         ship.alive
             && !ship.retreating
             && ship.is_attacker == session.player_is_attacker
-            && ship.subsystem_capacity.hyperdrive > 0
-            && ship.subsystem_condition.hyperdrive > 0
+            && rebellion_core::tactical::original_ship_hyperdrive_works(
+                &session.ships,
+                &session.field_effects,
+                index,
+            )
     })
 }
 
@@ -10788,6 +10793,9 @@ mod tests {
         carrier.fighter_capacity = 1;
         carrier.subsystem_capacity.hyperdrive = 1;
         carrier.subsystem_condition.hyperdrive = 100;
+        // FUN_005b1b70 wants engine power to jump.
+        carrier.subsystem_capacity.engines = true;
+        carrier.subsystem_condition.engines = 100;
         let mut wing = test_fighter(1, true);
         wing.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
         // The enemy outlasts the jump, so the battle goes on.
@@ -10912,6 +10920,22 @@ mod tests {
         // (FUN_005b2720); the other side's group stays.
         assert!(!session.fighters[1].alive && session.fighters[1].squad_count == 0);
         assert!(session.fighters[2].alive);
+    }
+
+    // FUN_005a8a90 -> FUN_005c7e80 asks FUN_005b1b70: Withdraw needs a ship
+    // with a hyperdrive and engine power.
+    #[test]
+    fn withdraw_needs_a_ship_that_can_jump() {
+        let mut ship = test_ship(64, 0, true, true);
+        ship.subsystem_capacity.hyperdrive = 1;
+        ship.subsystem_condition.hyperdrive = 100;
+        let mut session = test_session(vec![ship], Vec::new(), true);
+        assert!(!tactical_withdraw_enabled(&session));
+        session.ships[0].subsystem_capacity.engines = true;
+        session.ships[0].subsystem_condition.engines = 100;
+        assert!(tactical_withdraw_enabled(&session));
+        session.ships[0].subsystem_condition.hyperdrive = 0;
+        assert!(!tactical_withdraw_enabled(&session));
     }
 
     // FUN_005ad530 takes the withdrawing player's task forces off the
