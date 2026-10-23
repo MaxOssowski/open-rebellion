@@ -1212,7 +1212,10 @@ impl TacticalState {
             return;
         };
 
+        // A ship whose jump has started drops out of the target lists
+        // (`FUN_005cdf50` skips state 6).
         session.ships[first_enemy_ship].retreating = true;
+        session.ships[first_enemy_ship].retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
         session.fighters[first_enemy_fighter].recovery_state =
             TacticalFighterRecoveryState::Recovered;
         refresh_original_attack_targets(session);
@@ -11112,8 +11115,11 @@ mod tests {
         let mut player_ship = test_ship(64, 0, true, true);
         player_ship.order = TacticalOrder::AttackCapitalShips;
         player_ship.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
-        let mut retreating_enemy = test_ship(128, 0, false, true);
-        retreating_enemy.retreating = true;
+        // FUN_005cdf50 skips a ship whose jump has started (state 6); a
+        // withdrawing ship before its jump stays a target.
+        let mut jumping_enemy = test_ship(128, 0, false, true);
+        jumping_enemy.retreating = true;
+        jumping_enemy.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
         let live_enemy = test_ship(129, 1, false, true);
 
         let mut player_fighter = test_fighter(1, true);
@@ -11123,7 +11129,7 @@ mod tests {
         recovered_enemy_fighter.recovery_state = TacticalFighterRecoveryState::Recovered;
         let live_enemy_fighter = test_fighter(6, false);
         let mut session = test_session(
-            vec![player_ship, retreating_enemy, live_enemy],
+            vec![player_ship, jumping_enemy, live_enemy],
             vec![player_fighter, recovered_enemy_fighter, live_enemy_fighter],
             true,
         );

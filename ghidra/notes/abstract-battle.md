@@ -484,6 +484,17 @@ is the side commander's `+0x24` = 0.33.
     stays 0 until the last jump ends. port: the jump's flight is not
     drawn (k unread); a ship without a hyperdrive fights on throughout
     (the original's also heads out first);
+  - A withdrawing unit stays in the fight until its jump starts (read
+    2026-10-23, s58): the weapon loop `FUN_005b3a40` (and `FUN_005b3f10`)
+    fires only from a unit in state 2, 4 or 6 (`FUN_005ad870`) that is not
+    in state 6, and the target query `FUN_005cdf50` takes enemy units in
+    state 2 or 4 (not 6). Order 3 keeps a unit in state 2. Ported
+    (`TacticalShip::jumping`): the combat filters that left out every
+    withdrawing ship (the port's invented 5 s retreat) now leave out only a
+    ship whose jump has started. The player's selection in the window
+    still skips withdrawing ships (port). port: fighter groups are never
+    left out, so a jumping group can still fire and be hit for its
+    4000 ms.
   - Ported 2026-10-23 (s57, `advance_withdrawing_fighters`,
     `TacticalFighter::retreating`/`retreat_progress`): `FUN_005c6610` heads
     the fighter force for the same exit line (`-1.0`, `_DAT_0066cb10`;

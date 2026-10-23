@@ -706,6 +706,14 @@ pub struct TacticalSubsystemDamage {
 }
 
 impl TacticalShip {
+    /// The ship has started its jump out (states 6, 7 and 8): it no longer
+    /// fires or can be targeted (`FUN_005ad870`, `FUN_005cdf50`). Until
+    /// then a withdrawing ship stays in the fight.
+    #[must_use]
+    pub fn jumping(&self) -> bool {
+        self.retreat_progress > 0.0
+    }
+
     /// `FUN_0040cfc0`: the unit's hit counts as the ship's `+0x64` counters.
     /// The hyperdrive's hits fill the primary (one, if the class has a
     /// `hyperdrive`, `FUN_00500680`), then the backup (one, if it has a
@@ -2953,7 +2961,7 @@ pub fn original_capital_weapon_candidates(
         }
         let Some(target_ship) = ships
             .get(target)
-            .filter(|ship| ship.alive && !ship.retreating)
+            .filter(|ship| ship.alive && !ship.jumping())
         else {
             continue;
         };
@@ -3476,7 +3484,7 @@ impl BattleSession {
             if self.ships.iter().enumerate().any(|(other_index, other)| {
                 other_index != index
                     && other.alive
-                    && !other.retreating
+                    && !other.jumping()
                     && original_tactical_objects_overlap(&self.ships[index], other)
             }) {
                 self.ships[index].source_position = previous_position;
@@ -4349,19 +4357,21 @@ impl BattleSession {
                 .push(TacticalVoiceCue::death_star_ready());
         }
 
-        // Collect alive (non-retreating) ship indices per side for combat.
+        // Collect the ship indices per side still in the fight: a withdrawing
+        // ship fights and can be hit until its jump starts (`FUN_005cdf50`
+        // and `FUN_005b3a40` take states 2 and 4, not 6, `FUN_005ad870`).
         let atk_alive: Vec<usize> = self
             .ships
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.is_attacker && s.alive && !s.retreating)
+            .filter(|(_, s)| s.is_attacker && s.alive && !s.jumping())
             .map(|(i, _)| i)
             .collect();
         let def_alive: Vec<usize> = self
             .ships
             .iter()
             .enumerate()
-            .filter(|(_, s)| !s.is_attacker && s.alive && !s.retreating)
+            .filter(|(_, s)| !s.is_attacker && s.alive && !s.jumping())
             .map(|(i, _)| i)
             .collect();
 
@@ -4482,7 +4492,7 @@ impl BattleSession {
         }
 
         for &fire_idx in firing {
-            if !ships[fire_idx].alive || ships[fire_idx].retreating {
+            if !ships[fire_idx].alive || ships[fire_idx].jumping() {
                 continue;
             }
 
@@ -4493,7 +4503,7 @@ impl BattleSession {
                 Some(TacticalAttackTarget::CapitalShip(target))
                     if target < ships.len()
                         && ships[target].alive
-                        && !ships[target].retreating
+                        && !ships[target].jumping()
                         && targets.contains(&target) =>
                 {
                     Some(target)
@@ -4627,7 +4637,7 @@ impl BattleSession {
             };
             if self.ships[source].order != TacticalOrder::AttackFighters
                 || !self.ships[source].alive
-                || self.ships[source].retreating
+                || self.ships[source].jumping()
                 || !self.fighters.get(target).is_some_and(|fighter| {
                     fighter.alive
                         && fighter.squad_count > 0
@@ -4750,7 +4760,7 @@ impl BattleSession {
         let mut selected = None;
         let mut selected_strength = 0.0;
         for (target, ship) in self.ships.iter().enumerate() {
-            if !ship.alive || ship.retreating || ship.is_attacker == fighter.is_attacker {
+            if !ship.alive || ship.jumping() || ship.is_attacker == fighter.is_attacker {
                 continue;
             }
             let candidate = OriginalFighterTarget::Capital(target);
@@ -4797,7 +4807,7 @@ impl BattleSession {
         {
             OriginalFighterTarget::Capital(index) => {
                 let Some(ship) = self.ships.get(index).filter(|ship| {
-                    ship.alive && !ship.retreating && ship.is_attacker != fighter.is_attacker
+                    ship.alive && !ship.jumping() && ship.is_attacker != fighter.is_attacker
                 }) else {
                     return 0.0;
                 };
@@ -5833,7 +5843,7 @@ pub fn tactical_attack_target_is_eligible(
     match (order, target) {
         (TacticalOrder::AttackCapitalShips, TacticalAttackTarget::CapitalShip(index)) => {
             session.ships.get(index).is_some_and(|ship| {
-                ship.alive && !ship.retreating && ship.is_attacker != source_is_attacker
+                ship.alive && !ship.jumping() && ship.is_attacker != source_is_attacker
             })
         }
         (TacticalOrder::AttackFighters, TacticalAttackTarget::FighterGroup(index)) => {
@@ -5855,7 +5865,7 @@ pub fn manual_attack_target_is_eligible(
 ) -> bool {
     match target {
         TacticalAttackTarget::CapitalShip(index) => session.ships.get(index).is_some_and(|ship| {
-            ship.alive && !ship.retreating && ship.is_attacker != source_is_attacker
+            ship.alive && !ship.jumping() && ship.is_attacker != source_is_attacker
         }),
         TacticalAttackTarget::FighterGroup(index) => {
             session.fighters.get(index).is_some_and(|fighter| {
@@ -5879,7 +5889,7 @@ pub fn first_original_attack_target(
             .iter()
             .enumerate()
             .find(|(_, ship)| {
-                ship.alive && !ship.retreating && ship.is_attacker != source_is_attacker
+                ship.alive && !ship.jumping() && ship.is_attacker != source_is_attacker
             })
             .map(|(index, _)| TacticalAttackTarget::CapitalShip(index)),
         TacticalOrder::AttackFighters => session
@@ -5933,7 +5943,7 @@ pub fn refresh_original_attack_targets(session: &mut BattleSession) {
         ) {
             continue;
         }
-        if !session.ships[index].alive || session.ships[index].retreating {
+        if !session.ships[index].alive || session.ships[index].jumping() {
             session.ships[index].attack_target = None;
             continue;
         }

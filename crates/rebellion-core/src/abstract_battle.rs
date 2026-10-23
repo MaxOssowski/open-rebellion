@@ -4449,4 +4449,101 @@ mod tests {
         assert_eq!(fighters[3].retreat_progress, 0.0);
         assert!(empire_exit > 20.1);
     }
+
+    // FUN_005cdf50 takes a unit in state 2 or 4, not 6 (FUN_005ad870): a
+    // withdrawing ship stays a target until its jump starts.
+    #[test]
+    fn a_withdrawing_ship_can_be_hit_until_its_jump_starts() {
+        let run = |jumping: bool| {
+            let mut own = jumper(true, TacticalWeaponArc::default(), 0.0);
+            own.subsystem_condition.hyperdrive = 100;
+            own.sublight_engine_power = 0.0;
+            own.retreating = true;
+            if jumping {
+                own.retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+            }
+            let mut enemy = ship(false, TacticalWeaponArc::new(0, 0, 4), 30.0);
+            enemy.order = TacticalOrder::AttackCapitalShips;
+            enemy.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(0));
+            enemy.weapon_ranges = TacticalWeaponRanges {
+                laser_cannon: 100.0,
+                ion_cannon: 100.0,
+                turbolaser: 100.0,
+            };
+            enemy.source_position.z = 10.0;
+            enemy.weapon_arcs = [TacticalWeaponArc::new(0, 0, 4); 4];
+            let mut tactical = session(vec![own, enemy], Vec::new());
+            tactical.withdrawal_ms = Some(if jumping { 0.0 } else { 30_000.0 });
+            for _ in 0..8 {
+                tactical.step();
+            }
+            let ship = &tactical.ships[0];
+            ship.hull_current < 100 || ship.shield < 50
+        };
+        assert!(run(false));
+        assert!(!run(true));
+    }
+
+    // FUN_005cdf50, FUN_005b3a40 and FUN_005b3f10: a dead ship and one whose
+    // jump has started neither fire nor are fired at, by capital ships or
+    // fighter groups; an attack order on one moves to a live ship
+    // (FUN_005d0bb0), and a jumping ship's own order is dropped.
+    #[test]
+    fn dead_and_jumping_ships_drop_out_of_the_fight() {
+        let ranges = TacticalWeaponRanges {
+            laser_cannon: 100.0,
+            ion_cannon: 100.0,
+            turbolaser: 100.0,
+        };
+        let armed = |alliance: bool, z: f32| {
+            let mut value = ship(alliance, TacticalWeaponArc::new(2, 0, 4), 30.0);
+            value.weapon_arcs = [TacticalWeaponArc::new(2, 0, 4); 4];
+            value.weapon_ranges = ranges;
+            value.hull_current = 1_000_000;
+            value.hull_max = 1_000_000;
+            value.source_position.z = z;
+            value
+        };
+        let mut shooter = armed(true, 0.0);
+        shooter.order = TacticalOrder::AttackCapitalShips;
+        shooter.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(1));
+        let mut jumping = armed(false, 10.0);
+        jumping.retreating = true;
+        jumping.retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+        let mut dead = armed(false, 10.0);
+        dead.alive = false;
+        let live = armed(false, 12.0);
+        let mut own_jumping = armed(true, 2.0);
+        own_jumping.retreating = true;
+        own_jumping.retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+        own_jumping.order = TacticalOrder::AttackCapitalShips;
+        own_jumping.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(3));
+        let mut wing = fighter(true, TacticalWeaponArc::new(4, 0, 0));
+        wing.weapon_ranges = ranges;
+        wing.source_position.z = 6.0;
+        wing.order = TacticalOrder::AttackCapitalShips;
+        let mut tactical = session(vec![shooter, jumping, dead, live, own_jumping], vec![wing]);
+        let before = |tactical: &BattleSession, index: usize| {
+            let ship = &tactical.ships[index];
+            (ship.hull_current, ship.shield)
+        };
+        let jumping_before = before(&tactical, 1);
+        let dead_before = before(&tactical, 2);
+        let live_before = before(&tactical, 3);
+        for _ in 0..8 {
+            tactical.step();
+        }
+        assert_eq!(before(&tactical, 1), jumping_before);
+        assert_eq!(before(&tactical, 2), dead_before);
+        assert_ne!(before(&tactical, 3), live_before);
+        assert_eq!(
+            tactical.ships[0].attack_target,
+            Some(crate::tactical::TacticalAttackTarget::CapitalShip(3))
+        );
+        assert_eq!(tactical.ships[4].attack_target, None);
+        assert_ne!(
+            tactical.fighters[0].attack_target,
+            Some(crate::tactical::TacticalAttackTarget::CapitalShip(1))
+        );
+    }
 }
