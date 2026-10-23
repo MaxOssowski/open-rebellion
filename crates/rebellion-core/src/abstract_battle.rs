@@ -1818,6 +1818,8 @@ mod tests {
             escort_target: None,
             recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
             recovery_target: None,
+            retreating: false,
+            retreat_progress: 0.0,
         }
     }
 
@@ -4072,26 +4074,65 @@ mod tests {
         assert!(!has(0, 0));
     }
 
-    // FUN_005c8780: when the player's time ends, the player's fighter groups
-    // with a working hyperdrive (FUN_005b1b70: engine power too) jump; the
-    // other side's do not.
+    // FUN_005c6610 (order 3): when the player's time ends, the player's
+    // withdrawing fighter groups with a working hyperdrive (FUN_005b1b70:
+    // engine power too) at their exit line jump and leave 4000 ms later
+    // with their craft; one without engine power returns to the fight
+    // (FUN_005b2720); the other side's do not jump.
     #[test]
     fn the_players_fighters_with_a_hyperdrive_jump_when_the_time_ends() {
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![enemy], Vec::new());
+        let exit = tactical.withdrawal_exit_z(true);
         let group = |alliance: bool, power: f32| {
             let mut value = fighter(alliance, TacticalWeaponArc::default());
             value.has_hyperdrive = true;
+            value.retreating = alliance;
             value.sublight_engine_power = power;
+            value.source_position.z = exit;
             value
         };
-        let mut tactical = session(
-            vec![ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)],
-            vec![group(true, 10.0), group(true, 0.0), group(false, 10.0)],
-        );
+        tactical.fighters = vec![group(true, 10.0), group(true, 0.0), group(false, 10.0)];
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert!(tactical.fighters[0].alive && tactical.fighters[0].retreat_progress > 0.0);
+        assert!(tactical.fighters[1].alive && !tactical.fighters[1].retreating);
+        for _ in 0..14 {
+            tactical.step();
+        }
+        assert!(tactical.fighters[0].alive);
         tactical.step();
         assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
         assert!(tactical.fighters[1].alive);
         assert!(tactical.fighters[2].alive);
+        assert_eq!(tactical.withdrawal_ms, None);
+    }
+
+    // FUN_005c6610 heads a withdrawing fighter force for its exit line; it
+    // jumps only within 8.0 (_DAT_0066cb0c) of it once the time has ended
+    // (_DAT_0066cb18). port: straight at the sublight rating per second.
+    #[test]
+    fn a_withdrawing_fighter_group_flies_to_its_edge_before_it_jumps() {
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.has_hyperdrive = true;
+        wing.retreating = true;
+        wing.sublight_engine_power = 4.0;
+        let mut tactical = session(vec![enemy], vec![wing]);
+        let exit = tactical.withdrawal_exit_z(true);
+        tactical.fighters[0].source_position.z = exit + 9.0;
+        tactical.withdrawal_ms = Some(2.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        // 4.0 a second for 250 ms: one unit nearer, still beyond 8.0.
+        assert_eq!(tactical.fighters[0].source_position.z, exit + 8.0);
+        assert_eq!(tactical.fighters[0].retreat_progress, 0.0);
+        tactical.step();
+        assert_eq!(tactical.fighters[0].source_position.z, exit + 7.0);
+        assert!(tactical.fighters[0].retreat_progress > 0.0);
     }
 
     // FUN_005be160 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
@@ -4258,8 +4299,12 @@ mod tests {
         assert_eq!(tactical.fighters[1].recovery_target, Some(0));
         assert_eq!(tactical.fighters[1].recovery_state, Recovery::Returning);
         assert_eq!(tactical.fighters[2].order, TacticalOrder::None);
+        assert!(tactical.fighters[0].retreating && !tactical.fighters[2].retreating);
+        tactical.fighters[0].source_position.z = tactical.withdrawal_exit_z(false);
         tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        tactical.step();
+        for _ in 0..16 {
+            tactical.step();
+        }
         assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
         assert!(tactical.fighters[2].alive);
     }
@@ -4364,5 +4409,44 @@ mod tests {
             Some(crate::tactical::TacticalTrenchRunOutcome::Failure);
         running.step();
         assert!(!running.retreat_done[1]);
+    }
+
+    // FUN_005c6610 on each side: a group flies toward its own edge (the
+    // Alliance's at -z, the Empire's at +z) from wherever it is, and once
+    // the time has ended jumps only within 8.0 of that line on its side.
+    #[test]
+    fn withdrawing_fighters_head_for_their_own_edge() {
+        let group = |alliance: bool, z: f32, power: f32| {
+            let mut value = fighter(alliance, TacticalWeaponArc::default());
+            value.has_hyperdrive = true;
+            value.retreating = true;
+            value.sublight_engine_power = power;
+            value.source_position.z = z;
+            value
+        };
+        let mut tactical = session(Vec::new(), Vec::new());
+        let alliance_exit = tactical.withdrawal_exit_z(true);
+        let empire_exit = tactical.withdrawal_exit_z(false);
+        tactical.fighters = vec![
+            // Past the field's middle: it turns back toward -z.
+            group(true, 60.0, 4.0),
+            // Just outside 8.0 after its move: no jump.
+            group(true, alliance_exit + 8.5, 0.4),
+            // Far inside the field: no jump.
+            group(true, alliance_exit + 20.0, 0.4),
+            // The Empire's group well short of its +z edge: no jump.
+            group(false, 20.0, 0.4),
+        ];
+        tactical.withdrawal_ms = Some(0.0);
+        tactical.ai_withdrawal_ms = Some(0.0);
+        tactical.step();
+        let fighters = &tactical.fighters;
+        assert_eq!(fighters[0].source_position.z, 59.0);
+        assert!((fighters[1].source_position.z - (alliance_exit + 8.4)).abs() < 1e-4);
+        assert_eq!(fighters[1].retreat_progress, 0.0);
+        assert_eq!(fighters[2].retreat_progress, 0.0);
+        assert!((fighters[3].source_position.z - 20.1).abs() < 1e-4);
+        assert_eq!(fighters[3].retreat_progress, 0.0);
+        assert!(empire_exit > 20.1);
     }
 }

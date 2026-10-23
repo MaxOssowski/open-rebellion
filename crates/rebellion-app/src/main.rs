@@ -10223,6 +10223,8 @@ mod tactical_ground_tests {
                     escort_target: None,
                     recovery_state: rebellion_render::tactical_view::TacticalFighterRecoveryState::AwaitingCarrier,
                     recovery_target: None,
+                    retreating: false,
+                    retreat_progress: 0.0,
                 },
                 rebellion_render::tactical_view::TacticalFighter {
                     class_key: fighter_class,
@@ -10266,6 +10268,8 @@ mod tactical_ground_tests {
                     escort_target: None,
                     recovery_state: rebellion_render::tactical_view::TacticalFighterRecoveryState::AwaitingCarrier,
                     recovery_target: None,
+                    retreating: false,
+                    retreat_progress: 0.0,
                 },
             ],
             death_star: Some(rebellion_render::tactical_view::TacticalDeathStar {

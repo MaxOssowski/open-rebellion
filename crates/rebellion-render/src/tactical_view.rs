@@ -8575,6 +8575,8 @@ mod tests {
             escort_target: None,
             recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
             recovery_target: None,
+            retreating: false,
+            retreat_progress: 0.0,
         }
     }
 
@@ -10841,8 +10843,8 @@ mod tests {
 
     // FUN_005ad530: a fighter group with a hyperdrive (FUN_005b1bc0 above 0;
     // every Alliance FIGHTSD class, of the Empire's only record 8) takes
-    // order 3 and jumps when the side's time ends (FUN_005c6610,
-    // FUN_005b1b70) with its craft; port: it holds meanwhile.
+    // order 3, heads for its edge and jumps there when the side's time ends
+    // (FUN_005c6610, FUN_005b1b70) with its craft.
     #[test]
     fn a_withdrawal_holds_fighters_with_a_hyperdrive_then_they_jump() {
         let mut carrier = test_ship(64, 0, true, true);
@@ -10855,8 +10857,15 @@ mod tests {
         stalled.sublight_engine_power = 0.0;
         let mut enemy_wing = test_fighter(8, false);
         enemy_wing.has_hyperdrive = true;
+        enemy_wing.hull_current = 1_000_000.0;
+        enemy_wing.hull_max = 1_000_000.0;
+        enemy_wing.weapon_arc = TacticalWeaponArc::default();
+        enemy_wing.torpedo_strength = 0;
+        let mut enemy_ship = test_ship(64, 0, false, true);
+        enemy_ship.hull_current = 1_000_000;
+        enemy_ship.hull_max = 1_000_000;
         let mut session = test_session(
-            vec![carrier, test_ship(64, 0, false, true)],
+            vec![carrier, enemy_ship],
             vec![wing, stalled, enemy_wing],
             true,
         );
@@ -10873,13 +10882,20 @@ mod tests {
             TacticalFighterRecoveryState::AwaitingCarrier
         );
 
+        assert!(wing.retreating);
+
+        // At its edge when the time ends, it jumps for 4000 ms.
         session.paused = false;
+        session.fighters[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        session.step();
+        for _ in 0..16 {
+            session.step();
+        }
         let wing = &session.fighters[0];
         assert!(!wing.alive && wing.squad_count > 0);
-        // No engine power, no jump; the other side's group stays.
-        assert!(session.fighters[1].alive);
+        // No engine power, no jump: it returns to the fight; the other
+        // side's group stays.
+        assert!(session.fighters[1].alive && !session.fighters[1].retreating);
         assert!(session.fighters[2].alive);
     }
 

@@ -424,7 +424,8 @@ is the side commander's `+0x24` = 0.33.
   battle now lets a fighter group with a working hyperdrive leave on its
   own and count for `FUN_005d0f50` (`abstract_battle::hyperdrive_works`);
   before, the port gave fighters no hyperdrive.
-- The jump out (read 2026-10-23, s53; capital ships ported in s54):
+- The jump out (read 2026-10-23, s53; capital ships ported in s54,
+  fighter groups in s57):
   - Order 3's executor step (`FUN_005ae1e0`) is empty, but the task
     force's own step, slot `+0x14`, acts on order 3: `FUN_005c6610` for a
     fighter force (vtable `0x66bee0`), `FUN_005cc300` for a capital-ship
@@ -482,9 +483,16 @@ is the side commander's `+0x24` = 0.33.
     ship that lost its hyperdrive returns to the fight; the side's time
     stays 0 until the last jump ends. port: the jump's flight is not
     drawn (k unread); a ship without a hyperdrive fights on throughout
-    (the original's also heads out first); fighter groups with a
-    hyperdrive still leave when the time ends (`FUN_005c6610` flight not
-    ported); the AI side withdraws the same way since s55.
+    (the original's also heads out first);
+  - Ported 2026-10-23 (s57, `advance_withdrawing_fighters`,
+    `TacticalFighter::retreating`/`retreat_progress`): `FUN_005c6610` heads
+    the fighter force for the same exit line (`-1.0`, `_DAT_0066cb10`;
+    half the extent, `_DAT_0066cb14`) and, after the time
+    (`_DAT_0066cb18` = 0.0), starts the jump of each member with a working
+    hyperdrive within 8.0 (`_DAT_0066cb0c`), every member rather than
+    the first as for capital ships. port: the group flies straight at its
+    sublight rating, as on its way to a carrier (the maneuver object
+    `+0x54` is not ported); the AI side withdraws the same way since s55.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
   player's side stays unset). A ship that escaped keeps its hull in the
