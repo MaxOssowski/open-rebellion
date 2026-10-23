@@ -1827,6 +1827,7 @@ mod tests {
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
+            withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         }
     }
@@ -2912,6 +2913,77 @@ mod tests {
         player.step();
         assert!(!player.ships[0].retreated);
         assert_eq!(player.retreat_done, [false, false]);
+    }
+
+    // FUN_005ad530: the player's ships with a working hyperdrive take
+    // order 3, and the side's time (+0x7c) becomes at least 30000 ms
+    // (DAT_0066c240), or 150000 (DAT_0066c234) for the Empire with an
+    // operational Death Star. FUN_005c8780 counts it down by the step; at 0
+    // the withdrawal ends and they escape.
+    #[test]
+    fn the_players_withdrawal_ends_after_the_sides_time() {
+        let mut stranded = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        stranded.task_force = 1;
+        let mut tactical = session(
+            vec![
+                jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                stranded,
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            Vec::new(),
+        );
+        // FUN_005b1bc0: the hyperdrive is ready (its condition too).
+        tactical.ships[0].subsystem_condition.hyperdrive = 100;
+        // A damaged hyperdrive and a missing one stay (order 2).
+        let mut damaged = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        damaged.subsystem_condition.hyperdrive = 0;
+        let mut missing = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        missing.subsystem_condition.hyperdrive = 100;
+        tactical.ships.push(damaged);
+        tactical.ships.push(missing);
+        tactical.begin_player_withdrawal();
+        assert!(tactical.ships[0].retreating && !tactical.ships[1].retreating);
+        assert!(!tactical.ships[3].retreating && !tactical.ships[4].retreating);
+        assert_eq!(tactical.withdrawal_ms, Some(30_000.0));
+        // 30000 ms is 120 steps of 250 ms.
+        for _ in 0..119 {
+            tactical.step();
+        }
+        assert!(tactical.ships[0].alive && !tactical.ships[0].retreated);
+        tactical.step();
+        assert!(!tactical.ships[0].alive && tactical.ships[0].retreated);
+        assert!(tactical.ships[1].alive);
+        assert_eq!(tactical.withdrawal_ms, None);
+
+        // A second order keeps the larger time left.
+        tactical.withdrawal_ms = Some(40_000.0);
+        tactical.start_withdrawal_time();
+        assert_eq!(tactical.withdrawal_ms, Some(40_000.0));
+
+        // The Empire with an operational Death Star: 150000 ms.
+        let mut imperial = session(Vec::new(), Vec::new());
+        imperial.player_is_attacker = false;
+        imperial.death_star = Some(crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: crate::tactical::TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        imperial.start_withdrawal_time();
+        assert_eq!(imperial.withdrawal_ms, Some(150_000.0));
+        imperial.withdrawal_ms = None;
+        imperial.death_star.as_mut().unwrap().destroyed = true;
+        imperial.start_withdrawal_time();
+        assert_eq!(imperial.withdrawal_ms, Some(30_000.0));
     }
 
     // FUN_005d0f50: without +0x80 a side cannot leave and fights on.

@@ -6606,6 +6606,9 @@ async fn main() {
                             session.combat_speed = speed.clamp(1, 4);
                         }
                     }
+                    // port: the R key withdraws the selected ships; they
+                    // leave when the side's withdrawal time (FUN_005ad530)
+                    // ends, as a Withdraw's do.
                     TacticalAction::RetreatSelected => {
                         if let Some(ref mut session) = tactical_state.session {
                             let player_side = session.player_is_attacker;
@@ -6616,22 +6619,13 @@ async fn main() {
                                 }
                             }
                             session.selected_ship = None;
+                            session.start_withdrawal_time();
                         }
                     }
+                    // FUN_005f1170 -> command 0x7a -> FUN_005ad530.
                     TacticalAction::WithdrawFromBattle => {
                         if let Some(ref mut session) = tactical_state.session {
-                            let player_side = session.player_is_attacker;
-                            for ship in &mut session.ships {
-                                if ship.alive
-                                    && !ship.retreating
-                                    && ship.is_attacker == player_side
-                                    && ship.subsystem_capacity.hyperdrive > 0
-                                    && ship.subsystem_condition.hyperdrive > 0
-                                {
-                                    ship.retreating = true;
-                                    ship.selected = false;
-                                }
-                            }
+                            session.begin_player_withdrawal();
                             session.selected_ship = None;
                             session.selected_fighter_group = None;
                         }
@@ -10172,6 +10166,7 @@ mod tactical_ground_tests {
             winner: Some(rebellion_render::CombatWinner::Attacker),
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
+            withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         };
 

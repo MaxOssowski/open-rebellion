@@ -8676,6 +8676,7 @@ mod tests {
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
+            withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         }
     }

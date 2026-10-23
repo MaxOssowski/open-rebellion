@@ -367,6 +367,21 @@ is the side commander's `+0x24` = 0.33.
 - The player's Battle Alert: Simulate Results gives no order, and Retreat
   (`TacticalAction::RetreatBeforeBattle`) gives one. Both run the abstract
   battle. Retreat no longer opens the tactical battle.
+- The player's withdrawal in the tactical battle (read 2026-10-23): the
+  Withdraw confirmation (`FUN_005f1170`) sends command `0x7a`
+  (`FUN_00596a70`, `FUN_0059a470`); `FUN_0059fd40` checks
+  `FUN_005a8a90` and runs `FUN_005ad530(side)`. It sets the side
+  commander's `+0x84` to 2, queues voice `0x8f` / `0x10d`, gives each
+  capital ship order 3 when its hyperdrive is ready (`FUN_005b1bc0` not
+  0) and order 2 otherwise, and fighter groups order 3. The side's time
+  `+0x7c` becomes at least `DAT_0066c240` = 30000, or `DAT_0066c234` =
+  150000 for the Empire (side 1) while its Death Star is operational.
+  `FUN_005c8780` lowers `+0x7c` by the step while `+0x84` is 2 and sets
+  3 at 0 (`DAT_0066cbb4`). Ported 2026-10-23
+  (`BattleSession::begin_player_withdrawal`, `withdrawal_ms`); before,
+  the port moved each withdrawing ship off the field over 20 steps (5 s).
+  hyp: the ships with order 3 leave when the time ends. port: fighter
+  groups do not withdraw.
 - Take Command (2026-10-23): the AI side's order is set on the tactical
   session at the battle's start (`BattleSession::retreat_allowed`; the
   player's side stays unset), and each tactical step asks

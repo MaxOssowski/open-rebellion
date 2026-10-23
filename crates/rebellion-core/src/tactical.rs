@@ -88,6 +88,14 @@ pub const ORIGINAL_LASER_VS_FIGHTER: f32 = 1.0;
 pub const ORIGINAL_TURBOLASER_VS_FIGHTER: f32 = 0.5;
 /// port: ORIGINAL_TACTICAL_STEP_MILLISECONDS in seconds.
 pub const ORIGINAL_TACTICAL_STEP_SECONDS: f32 = ORIGINAL_TACTICAL_STEP_MILLISECONDS / 1000.0;
+
+/// `FUN_005ad530` sets the withdrawing side's time (`+0x7c`) to at least
+/// `DAT_0066c240`, 30000 ms; `FUN_005c8780` counts it down by the step and
+/// ends the withdrawal (state 2 -> 3) at 0.
+pub const ORIGINAL_WITHDRAWAL_MILLISECONDS: f32 = 30_000.0;
+/// `DAT_0066c234`: the Empire's withdrawal time while its Death Star is
+/// operational (`FUN_005a9330`, `FUN_005ba420`).
+pub const ORIGINAL_DEATH_STAR_WITHDRAWAL_MILLISECONDS: f32 = 150_000.0;
 /// `FUN_005ba7f0` advances the tactical Death Star laser by elapsed
 /// milliseconds times one third times 0.001, capped at 100.
 pub const ORIGINAL_DEATH_STAR_LASER_CHARGE_PER_SECOND: f32 = 1.0 / 3.0;
@@ -547,9 +555,11 @@ pub struct TacticalShip {
     /// Personnel and troops assigned to this physical hull for the selected-
     /// ship contents monitor.
     pub contents: Vec<TacticalShipContent>,
-    /// True if this ship is retreating (moving off-screen).
+    /// True if this ship withdraws with its side (`FUN_005ad530` gives it
+    /// order 3).
     pub retreating: bool,
-    /// Retreat progress: 0.0 = just started, 1.0 = off-screen (removed from combat).
+    /// Unused since the side's withdrawal time replaced the port's own
+    /// per-ship progress; kept for the fixtures' literals.
     pub retreat_progress: f32,
     /// True if this ship successfully retreated (survived, not destroyed).
     pub retreated: bool,
@@ -1272,6 +1282,9 @@ pub struct BattleSession {
     pub retreat_allowed: [bool; 2],
     /// Whether each side has left (Alliance, Empire).
     pub retreat_done: [bool; 2],
+    /// The player's side withdrawing (state 2): the milliseconds left
+    /// (`+0x7c`, `FUN_005ad530`, `FUN_005c8780`).
+    pub withdrawal_ms: Option<f32>,
     /// Diagnostic lines the simulation produced since the host last drained
     /// them; the host prints each one on its own console.
     pub diagnostic_log: Vec<String>,
@@ -3246,6 +3259,7 @@ impl BattleSession {
             winner: None,
             retreat_allowed: [false; 2],
             retreat_done: [false; 2],
+            withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         };
         FleetBattle {
@@ -4261,21 +4275,7 @@ impl BattleSession {
         self.combat_tick += 1;
         self.subsystem_repairs.clear();
 
-        // Process retreating ships: advance retreat progress, move off-screen.
-        for ship in &mut self.ships {
-            if ship.retreating && ship.alive {
-                ship.retreat_progress += 0.05; // ~20 ticks to fully retreat
-                                               // Move ship toward the edge.
-                let retreat_dir = if ship.is_attacker { -1.0 } else { 1.0 };
-                ship.x += retreat_dir * 15.0;
-                if ship.retreat_progress >= 1.0 {
-                    // Ship has escaped — remove from combat but NOT destroyed.
-                    // It survives but doesn't participate further.
-                    ship.alive = false;
-                    ship.retreated = true;
-                }
-            }
-        }
+        self.advance_withdrawal();
         refresh_original_escort_targets(self);
         advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
@@ -5317,6 +5317,59 @@ impl BattleSession {
             TacticalVoiceFaction::Alliance
         } else {
             TacticalVoiceFaction::Empire
+        }
+    }
+
+    /// `FUN_005ad530` for the player's side: each living capital ship with
+    /// a working hyperdrive takes order 3 and withdraws; the others (order
+    /// 2) stay. The side's time becomes at least 30 s, or 150 s for the
+    /// Empire while its Death Star is operational.
+    pub fn begin_player_withdrawal(&mut self) {
+        let player = self.player_is_attacker;
+        for ship in &mut self.ships {
+            if ship.alive
+                && !ship.retreating
+                && ship.is_attacker == player
+                && ship.subsystem_capacity.hyperdrive > 0
+                && ship.subsystem_condition.hyperdrive > 0
+            {
+                ship.retreating = true;
+                ship.selected = false;
+            }
+        }
+        self.start_withdrawal_time();
+    }
+
+    /// The side's withdrawal time, `FUN_005ad530`: the larger of what is
+    /// left and the floor.
+    pub fn start_withdrawal_time(&mut self) {
+        let empire = self.attacker_is_alliance != self.player_is_attacker;
+        let floor = if empire && self.death_star.is_some_and(TacticalDeathStar::operational) {
+            ORIGINAL_DEATH_STAR_WITHDRAWAL_MILLISECONDS
+        } else {
+            ORIGINAL_WITHDRAWAL_MILLISECONDS
+        };
+        self.withdrawal_ms = Some(self.withdrawal_ms.map_or(floor, |left| left.max(floor)));
+    }
+
+    /// `FUN_005c8780`: the withdrawing side's time runs down by the step;
+    /// at 0 the withdrawal ends and the ships with order 3 escape (state
+    /// 9). hyp: they leave together when it ends.
+    fn advance_withdrawal(&mut self) {
+        let Some(left) = self.withdrawal_ms else {
+            return;
+        };
+        let left = left - ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+        if left > 0.0 {
+            self.withdrawal_ms = Some(left);
+            return;
+        }
+        self.withdrawal_ms = None;
+        for ship in &mut self.ships {
+            if ship.retreating && ship.alive {
+                ship.alive = false;
+                ship.retreated = true;
+            }
         }
     }
 
