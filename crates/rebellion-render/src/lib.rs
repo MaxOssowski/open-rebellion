@@ -919,11 +919,26 @@ fn gid_metric(
     mode: GidMode,
     gid: &GidOverlayContext<'_>,
 ) -> u32 {
-    let same_faction = |is_alliance: bool| is_alliance == player_is_alliance;
-    let player_faction = if player_is_alliance {
-        rebellion_core::dat::Faction::Alliance
+    use rebellion_core::dat::Faction;
+    // FUN_0042b330 counts for the system's holder (`+0x24` bits 6..7,
+    // `uVar16`), not the viewer: FUN_0052d370, FUN_0052cf40, FUN_0052c8c0,
+    // FUN_0052c5a0, FUN_0052c270, FUN_005044f0, FUN_00503550,
+    // FUN_0051c0d0, FUN_005276d0, FUN_005273d0 and FUN_00527150 all take
+    // it. The idle yards (0x65..0x67) count only when the holder is the
+    // viewer.
+    let holder = system.control.faction();
+    let held_by = |is_alliance: bool| {
+        holder
+            == Some(if is_alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            })
+    };
+    let viewer = if player_is_alliance {
+        Faction::Alliance
     } else {
-        rebellion_core::dat::Faction::Empire
+        Faction::Empire
     };
     // Manual p. 48: an idle yard is one "that isn't already building
     // something"; each area builds on its own (FUN_00509670).
@@ -991,7 +1006,7 @@ fn gid_metric(
                     .production_facilities
                     .get(**key)
                     .is_some_and(|facility| {
-                        facility.side == player_faction
+                        Some(facility.side) == holder
                             && (facility.is_mine == (mode == GidMode::Mines))
                     })
             })
@@ -1032,9 +1047,10 @@ fn gid_metric(
                             }
                             _ => None,
                         };
-                        facility.side == player_faction
+                        Some(facility.side) == holder
                             && correct_type
-                            && idle_area.is_none_or(area_idle)
+                            && idle_area
+                                .is_none_or(|area| holder == Some(viewer) && area_idle(area))
                     })
             })
             .count() as u32,
@@ -1045,7 +1061,7 @@ fn gid_metric(
                 world
                     .troops
                     .get(**key)
-                    .is_some_and(|troop| same_faction(troop.is_alliance))
+                    .is_some_and(|troop| held_by(troop.is_alliance))
             })
             .count() as u32,
         // hyp: the original's count is untraced; the side's squadrons aboard
@@ -1055,18 +1071,26 @@ fn gid_metric(
                 .fleets
                 .iter()
                 .filter_map(|key| world.fleets.get(*key))
-                .filter(|fleet| same_faction(fleet.is_alliance))
+                .filter(|fleet| held_by(fleet.is_alliance))
                 .flat_map(|fleet| fleet.fighters.iter())
                 .map(|fighters| fighters.count)
                 .sum::<u32>()
-                + rebellion_core::squadrons::on_planet(world, system_key, player_is_alliance)
+                + match holder {
+                    Some(Faction::Alliance) => {
+                        rebellion_core::squadrons::on_planet(world, system_key, true)
+                    }
+                    Some(Faction::Empire) => {
+                        rebellion_core::squadrons::on_planet(world, system_key, false)
+                    }
+                    _ => 0,
+                }
         }
         GidMode::DeathStarShields => system
             .defense_facilities
             .iter()
             .filter(|key| {
                 world.defense_facilities.get(**key).is_some_and(|facility| {
-                    facility.side == player_faction && facility.class_dat_id.index() == 4
+                    Some(facility.side) == holder && facility.class_dat_id.index() == 4
                 })
             })
             .count() as u32,
@@ -1075,8 +1099,7 @@ fn gid_metric(
             .iter()
             .filter(|key| {
                 world.defense_facilities.get(**key).is_some_and(|facility| {
-                    facility.side == player_faction
-                        && matches!(facility.class_dat_id.index(), 3 | 6)
+                    Some(facility.side) == holder && matches!(facility.class_dat_id.index(), 3 | 6)
                 })
             })
             .count() as u32,
@@ -1085,7 +1108,7 @@ fn gid_metric(
             .iter()
             .filter(|key| {
                 world.defense_facilities.get(**key).is_some_and(|facility| {
-                    facility.side == player_faction
+                    Some(facility.side) == holder
                         && matches!(facility.class_dat_id.index(), 1 | 2 | 5)
                 })
             })
@@ -3048,12 +3071,125 @@ mod interaction_tests {
         assert_eq!(metric(GidMode::IdleShipyards), 1);
         assert_eq!(metric(GidMode::IdleTrainingFacilities), 0);
         assert_eq!(metric(GidMode::TrainingFacilities), 1);
+        // FUN_0042b330 0x62..0x64 and 0x71 count for the holder whoever
+        // views; 0x65..0x67 only when the holder is the viewer.
+        let enemy_view = |mode| gid_metric(&world, key, &world.systems[key], false, mode, &gid);
+        assert_eq!(enemy_view(GidMode::Shipyards), 1);
+        assert_eq!(enemy_view(GidMode::TrainingFacilities), 1);
+        assert_eq!(enemy_view(GidMode::IdleShipyards), 0);
     }
 
-    // Our own count: the side's squadrons on the planet (FUN_005039d0) join
-    // those aboard its fleets; hyp: the original's metric is untraced.
     #[test]
-    fn the_squadron_display_counts_the_side_s_squadrons_on_the_planet() {
+    fn the_counting_displays_count_the_holder_s_units_whoever_views() {
+        // FUN_0042b330 0x53, 0x54, 0x71, 0x73..0x75: FUN_0052d370,
+        // FUN_0052cf40, FUN_005044f0, FUN_0051c0d0, FUN_005276d0,
+        // FUN_005273d0 + FUN_00527150, each with the holder (uVar16).
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{
+            DefenseFacilityInstance, ProductionFacilityInstance, TroopUnit,
+        };
+        let mut world = GameWorld::default();
+        let key = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Naboo".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.2,
+            popularity_empire: 0.8,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Controlled(Faction::Empire),
+        });
+        for is_alliance in [false, false, true] {
+            let troop = world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+                is_alliance,
+                regiment_strength: 100,
+            });
+            world.systems[key].ground_units.push(troop);
+        }
+        let mine = world
+            .production_facilities
+            .insert(ProductionFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2b00_0001),
+                side: Faction::Empire,
+                is_mine: true,
+            });
+        world.systems[key].production_facilities.push(mine);
+        for index in [1_u32, 3, 4] {
+            let facility = world.defense_facilities.insert(DefenseFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2200_0000 | index),
+                side: Faction::Empire,
+            });
+            world.systems[key].defense_facilities.push(facility);
+        }
+        let movement = rebellion_core::movement::MovementState::new();
+        let manufacturing = ManufacturingState::new();
+        let economy = rebellion_core::economy::EconomyState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let gid = GidOverlayContext {
+            movement: &movement,
+            manufacturing: &manufacturing,
+            economy: &economy,
+            missions: &missions,
+            uprisings: &uprisings,
+            marked_system: None,
+        };
+        for viewer_is_alliance in [true, false] {
+            let metric = |mode| {
+                gid_metric(
+                    &world,
+                    key,
+                    &world.systems[key],
+                    viewer_is_alliance,
+                    mode,
+                    &gid,
+                )
+            };
+            assert_eq!(metric(GidMode::Troopers), 2);
+            assert_eq!(metric(GidMode::Mines), 1);
+            assert_eq!(metric(GidMode::Refineries), 0);
+            assert_eq!(metric(GidMode::DeathStarShields), 1);
+            assert_eq!(metric(GidMode::PlanetaryShieldGenerators), 1);
+            assert_eq!(metric(GidMode::PlanetaryDefenseBatteries), 1);
+        }
+        // An uncontrolled system's holder is side 0: nothing counts.
+        world.systems[key].control = ControlKind::Uncontrolled;
+        assert_eq!(
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                false,
+                GidMode::Troopers,
+                &gid
+            ),
+            0
+        );
+    }
+
+    // FUN_0042b330 case 0x72: FUN_00503550(system, holder, 1), the holder
+    // being the system's +0x24 bits 6..7 (uVar16), whoever views. The
+    // squadrons on the planet (FUN_005039d0) join those aboard its fleets.
+    // Until 2026-10-23 this test expected the viewer's squadrons, from an
+    // untraced guess.
+    #[test]
+    fn the_squadron_display_counts_the_holder_s_squadrons_on_the_planet() {
         let mut world = GameWorld::default();
         let key = world.systems.insert(System {
             last_arrival: None,
@@ -3114,6 +3250,19 @@ mod interaction_tests {
             )
         };
         assert_eq!(metric(true), 2);
+        assert_eq!(metric(false), 2);
+        world.systems[key].control = ControlKind::Controlled(rebellion_core::dat::Faction::Empire);
+        let metric = |alliance| {
+            gid_metric(
+                &world,
+                key,
+                &world.systems[key],
+                alliance,
+                GidMode::FighterSquadrons,
+                &gid,
+            )
+        };
+        assert_eq!(metric(true), 5);
         assert_eq!(metric(false), 5);
     }
 }

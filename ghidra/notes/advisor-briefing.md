@@ -170,10 +170,28 @@ military control (`0x14`), the unexplored ones (`0x17`). hyp: the
 reference captures, whose captions read "Systems Loyal to the Empire"
 then "Systems Under Military Control", are of the Empire's briefing.
 
+## Scheduling (read 2026-10-23, partial)
+
+- The schedule `+0x168` is indexed by message id: `table[id]` is the last
+  day the message may still play (`FUN_004c0a60` drops a value under the
+  day `DAT_006b28cc`, from `FUN_004fcee0`), and `+0x16c[id]` its next
+  free day (set to day + `0x3c` when it plays).
+- The Empire's class is at `0x4c0xxx` (loader `FUN_004c0ba0`, update
+  `FUN_004c0a60`, `FUN_004c0d00`), the Alliance's at `0x4c2xxx`
+  (`FUN_004c2c70`, `FUN_004c2b20`, `FUN_004c2dd0`).
+- The advice flag `0x2000` (`DAT_006b28b0`) schedules the short briefing
+  for 40000 days and calls `FUN_0041da30`: message `0x28` in the
+  Alliance's `FUN_004c2dd0`, `0x49` in the Empire's `FUN_004c0d00`.
+- `FUN_004c22f0(event)` maps advisor events to messages; event `0x1f`
+  schedules `0x29`, the Alliance's full briefing, for 40000 days.
+  `FUN_004c44b0` maps event `0x1f` to `0x1b` (offset `0x6c`); which
+  side's map each is, and what sends event `0x1f`, are not read.
+
 ## Open
 
-- Which code puts message `0x29` / `0x4a` (or `0x28` / `0x49`) on the
-  schedule at a new game, and what the panel's `+0xc0` value 8 drives.
+- What sets advice flag `0x2000` and sends event `0x1f` at a new game;
+  how the Empire's full briefing `0x4a` is scheduled; what the panel's
+  `+0xc0` value 8 drives.
 - Action code `0xa`, kind 3, and the functions behind codes `0xb`, `0xc`
   and `0xd` (`FUN_0041dbe0`, `FUN_0041d9d0`, `FUN_0042d760`,
   `FUN_0041da80`).

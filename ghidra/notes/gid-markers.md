@@ -75,6 +75,15 @@ idle fleet orbits the system; an en route one has a move order to it.
 The `+0x88` bit 1 test for Fleets Enroute with no fleet is not kept: an
 unexplored system shows the unexplored mark first.
 
+Whose units the counting displays count (read 2026-10-23): `uVar16` in
+`FUN_0042b330` is the system's `+0x24` bits 6..7, its holder, and the
+counters of `0x53`, `0x54`, `0x62..0x64`, `0x71..0x75` (and `0x91`)
+take it, not the viewer `+0x9c`. So a system shows its holder's mines,
+yards, regiments, squadrons and defenses, in the holder's colour, to
+either side. The idle yards `0x65..0x67` give their value only when the
+holder is the viewer. Ported the same day; before, the port counted the
+viewer's units everywhere (the squadron test's untraced guess).
+
 Which displays the player can reach (read 2026-10-22):
 - `FUN_004511e0` builds the GID menu with exactly `0x11`, `0x12`; `0x21`,
   `0x22`; `0x43`, `0x44`; `0x51..0x54`; `0x62`, `0x65`, `0x63`, `0x66`,
