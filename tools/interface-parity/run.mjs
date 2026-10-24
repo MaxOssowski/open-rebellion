@@ -2073,6 +2073,18 @@ async function probeTacticalProjectileFieldPresentation(folder, stable, consoleL
   ];
 }
 
+function verifyDeathStarLaserMeter(viewport, bytes, [r, g, b]) {
+  const screenshot = PNG.sync.read(bytes);
+  const rect = { x: 508, y: 9, width: 95, height: 6 };
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const total = Math.floor((rect.width) * scale) * Math.floor((rect.height) * scale);
+  const pixels = nativeRectPixelCount(viewport, screenshot, rect,
+    (red, green, blue) => red === r && green === g && blue === b);
+  assert.ok(pixels >= total * 0.9,
+    `Death Star laser meter has ${pixels} of ~${total} pixels in ${r},${g},${b}`);
+  return { pixels, expected_rgb: [r, g, b] };
+}
+
 function nativeRectPixelCount(viewport, screenshot, rect, matches) {
   const scale = Math.min(viewport.width / 640, viewport.height / 480);
   const offsetX = (viewport.width - 640 * scale) / 2;
@@ -2882,7 +2894,8 @@ async function probeTacticalDeathStarPresentation(
     opposing_resource_id: 5020,
     operational: true,
     hull: 100,
-    laser_charge: 0,
+    // FUN_005af4e0 stores +0x6c = 100.0 (A0 TAC-05-C017: full at entry).
+    laser_charge: 100,
     destroyed: false,
     action_committed: false,
   });
@@ -2892,9 +2905,10 @@ async function probeTacticalDeathStarPresentation(
   const effectLoad = consoleLines.find(({ text }) =>
     text.includes("[tactical_3d] effect_loaded resource=5010"));
   assert.ok(effectLoad, "Death Star resource 5010 was not decoded into the tactical renderer");
-  const effectScene = consoleLines.find(({ text }) =>
-    text.includes("[tactical_3d] effect_scene") && text.includes("3001:5010:"));
-  assert.ok(effectScene, "Death Star resource 5010 was not submitted as object 3001");
+  // FUN_005d4d10 hangs 5010 as a backdrop decal, not a field object.
+  const backdrop = consoleLines.find(({ text }) =>
+    text.includes("[tactical_3d] death_star_backdrop resource=5010"));
+  assert.ok(backdrop, "Death Star resource 5010 was not submitted as the backdrop decal");
   fs.writeFileSync(path.join(folder, "death-star-overview.png"), stable.bytes);
 
   const scale = Math.min(viewport.width / 640, viewport.height / 480);
@@ -3075,11 +3089,16 @@ async function probeTacticalDeathStarLaserJourney(
       { x: 0, y: 0, width: 1, height: 25 },
       { x: 163, y: 0, width: 3, height: 25 },
       { x: 34, y: 9, width: 95, height: 6 },
-      { x: 139, y: 2, width: 21, height: 20 },
+      { x: 137, y: 2, width: 21, height: 20 },
     ]),
   }, {
     type: "death-star-laser-ready",
-    ...verifyTacticalBitmap(viewport, stable.bytes, 1021, 613, 2),
+    ...verifyTacticalBitmap(viewport, stable.bytes, 1021, 611, 2),
+  }, {
+    // FUN_005c4ed0 meter 95x6 at (508, 9): a full charge is pure green
+    // (A0 TAC-05-C017).
+    type: "death-star-laser-meter-full",
+    ...verifyDeathStarLaserMeter(viewport, stable.bytes, [0, 255, 0]),
   });
 
   await page.mouse.move(button.x, button.y);
@@ -3088,14 +3107,14 @@ async function probeTacticalDeathStarLaserJourney(
   const held = await stableInteractionFrame(page, folder, "death-star-laser-held");
   probes.push({
     type: "death-star-laser-held",
-    ...verifyTacticalBitmap(viewport, held, 1022, 613, 2),
+    ...verifyTacticalBitmap(viewport, held, 1022, 611, 2),
   });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(80);
   const armed = await stableInteractionFrame(page, folder, "death-star-laser-armed");
   probes.push({
     type: "death-star-laser-armed",
-    ...verifyTacticalBitmap(viewport, armed, 1022, 613, 2),
+    ...verifyTacticalBitmap(viewport, armed, 1022, 611, 2),
   });
   assert.ok(consoleLines.some(({ text }) =>
     text.includes("[tactical_death_star] superlaser_targeting status=armed input=right_click")),
@@ -3116,7 +3135,11 @@ async function probeTacticalDeathStarLaserJourney(
   probes.push({
     type: "death-star-laser-committed",
     target_object_id: targetObjectId,
-    ...verifyTacticalBitmap(viewport, committed, 1022, 613, 2),
+    // A0 TAC-05-C018: a committed shot shows 1023 and an empty meter.
+    ...verifyTacticalBitmap(viewport, committed, 1023, 611, 2),
+  }, {
+    type: "death-star-laser-meter-empty",
+    ...verifyDeathStarLaserMeter(viewport, committed, [0, 0, 255]),
   });
   assert.ok(consoleLines.some(({ text }) =>
     text.includes(`[tactical_death_star] superlaser_committed target_object_id=${targetObjectId} charge=0`)),
@@ -3143,7 +3166,7 @@ async function probeTacticalDeathStarLaserJourney(
     beam_frame_sha256: sha256(beam),
     beam_visibility: beamVisibility,
     resolved_frame_sha256: sha256(resolved),
-    control: verifyTacticalBitmap(viewport, resolved, 1023, 613, 2),
+    control: verifyTacticalBitmap(viewport, resolved, 1023, 611, 2),
     executable_functions: ["FUN_005ba5e0", "FUN_005ba7f0", "FUN_005c4ed0", "FUN_005d4d10"],
   });
   return probes;
@@ -3478,18 +3501,19 @@ async function probeTacticalBattleAlertEntry(
 }
 
 function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
-  assert.equal(ready.tactical_music_mdata_id, 307);
+  // FUN_00450540 stops the score at the Battle Alert (FUN_00417640); the
+  // tactical battle has none (A0 TAC-01-C012).
+  assert.equal(ready.tactical_music_mdata_id, null);
   assert.equal(ready.tactical_weapon_audio_wave_first, 13033);
   assert.equal(ready.tactical_weapon_audio_wave_last, 13054);
   assert.equal(ready.tactical_weapon_audio_variant_count, 22);
   assert.equal(ready.tactical_voice_variant_count, 285);
   assert.equal(ready.battle_alert_open, false);
   const music = consoleLines.find(({ text }) =>
-    text.includes("[audio] context=combat track=Battle mdata=307"));
+    text.includes("[audio] context=combat track=none source=FUN_00450540"));
   const cueLogs = consoleLines.filter(({ text }) =>
     text.includes("[audio] context=combat event=0x") && text.includes("routed=true"));
-  assert.ok(music, "tactical music context was not routed");
-  assert.match(music.text, /loaded=true/);
+  assert.ok(music, "tactical combat did not stop the score");
   assert.match(music.text, /muted=true/);
   const routed = cueLogs.map(({ text }) => {
     const match = text.match(/event=0x([0-9a-f]{2}) wave=(\d+)/);

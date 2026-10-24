@@ -1318,6 +1318,50 @@ impl TacticalAssetRenderer {
         project_world_position(camera.matrix(), position, aperture)
     }
 
+    /// Draw a retained-mode decal: a camera-facing texture centred on
+    /// `center` (render space) and `world_size` wide, scaled with depth
+    /// (`SetDecalOrigin` at the texture centre, `SetDecalScale` left on).
+    pub(crate) fn draw_decal(
+        &mut self,
+        aperture: (f32, f32, f32, f32),
+        resource_id: u32,
+        center: Vec3,
+        world_size: f32,
+    ) -> Option<(Vec2, Vec2)> {
+        let source_camera = self.source_camera?;
+        if !self.effect_textures.contains_key(&resource_id)
+            && !self.unavailable_effect_textures.contains(&resource_id)
+        {
+            if let Err(error) = self.load_effect_texture(resource_id) {
+                self.unavailable_effect_textures.insert(resource_id);
+                macroquad::logging::warn!(
+                    "[tactical_3d] decal resource={} unavailable: {}",
+                    resource_id,
+                    error
+                );
+            }
+        }
+        let asset = self.effect_textures.get(&resource_id)?;
+        let pose = source_camera.pose();
+        let right = (pose.target - pose.position).cross(pose.up).normalize_or_zero();
+        let middle = self.project_source_position(aperture, center)?;
+        let edge = self.project_source_position(aperture, center + right * world_size * 0.5)?;
+        let half = middle.distance(edge);
+        let min = middle - Vec2::splat(half);
+        let size = Vec2::splat(half * 2.0);
+        draw_texture_ex(
+            &asset.texture,
+            min.x,
+            min.y,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(size),
+                ..Default::default()
+            },
+        );
+        Some((middle, size))
+    }
+
     #[cfg(feature = "interface-test-fixtures")]
     pub(crate) fn draw_proof(&mut self, aperture: (f32, f32, f32, f32)) {
         if !self.attempted {

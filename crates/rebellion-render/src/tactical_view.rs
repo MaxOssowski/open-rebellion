@@ -624,6 +624,8 @@ pub struct TacticalState {
     withdraw_confirmation_pressed: Option<TacticalWithdrawConfirmationControl>,
     /// The player handed command of their force to the tactical simulation.
     player_observing: bool,
+    /// The Death Star backdrop resource last reported to the console.
+    logged_death_star_backdrop: Option<u32>,
     /// Captured press on the source Death Star superlaser control.
     death_star_laser_pressed: bool,
     /// The next valid right-click assigns the superlaser target.
@@ -677,6 +679,7 @@ impl Default for TacticalState {
             withdraw_confirmation_open: false,
             withdraw_confirmation_pressed: None,
             player_observing: false,
+            logged_death_star_backdrop: None,
             death_star_laser_pressed: false,
             death_star_targeting: false,
             command_panel: TacticalCommandPanel::Display,
@@ -2369,8 +2372,15 @@ const TACTICAL_WITHDRAW_CONFIRMATION_CONTROLS: [TacticalWithdrawConfirmationSpec
 ];
 
 const DEATH_STAR_LASER_GAUGE_RECT: NativeRect = NativeRect::new(474.0, 0.0, 166.0, 25.0);
-const DEATH_STAR_LASER_BUTTON_RECT: NativeRect = NativeRect::new(613.0, 2.0, 21.0, 20.0);
+/// `FUN_005c4ed0` places the control at (0x89, 2) in the gauge window, 21x20;
+/// A0 TAC-05-C017 matches all 381 opaque pixels of 1021 at (611, 2).
+const DEATH_STAR_LASER_BUTTON_RECT: NativeRect = NativeRect::new(611.0, 2.0, 21.0, 20.0);
+/// `FUN_005c4ed0` builds the meter at (0x22, 9), 0x5f by 6, with range 0..100.
 const DEATH_STAR_LASER_FILL_RECT: NativeRect = NativeRect::new(508.0, 9.0, 95.0, 6.0);
+/// The meter's colours, `FUN_0060e150` arguments `0x200ff00` (charge) and
+/// `0x2ff0000` (rest) as COLORREFs: pure green on pure blue (A0 TAC-05-C020).
+const DEATH_STAR_LASER_CHARGE_COLOR: Color = Color::new(0.0, 1.0, 0.0, 1.0);
+const DEATH_STAR_LASER_EMPTY_COLOR: Color = Color::new(0.0, 0.0, 1.0, 1.0);
 
 /// A0 TAC-02-C002: task-force slots every 29 px from x 60 (1007 matches at
 /// 89, 118, ... 263), squadron buttons every 29 px from x 347.
@@ -2740,6 +2750,27 @@ fn player_death_star(session: &BattleSession) -> Option<TacticalDeathStar> {
     session
         .death_star
         .filter(|death_star| death_star.is_attacker == session.player_is_attacker)
+}
+
+/// The charged part of the meter in pixels. port: whole pixels, rounded down.
+fn death_star_laser_charge_width(charge: f32) -> f32 {
+    (DEATH_STAR_LASER_FILL_RECT.width
+        * (charge / ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE).clamp(0.0, 1.0))
+    .floor()
+}
+
+/// The laser control's art. A0 TAC-05-C019 shows 1022 while the control is
+/// armed; TAC-05-C018 shows 1023 as soon as the shot is committed, with the
+/// meter empty, so a committed shot is not drawn as pressed.
+fn death_star_laser_control_resource(ready: bool, armed: bool) -> u32 {
+    use resources::tactical as art;
+    if armed {
+        art::DEATH_STAR_LASER_FIRED
+    } else if ready {
+        art::DEATH_STAR_LASER_READY
+    } else {
+        art::DEATH_STAR_LASER_LOADING
+    }
 }
 
 fn tactical_death_star_laser_ready(session: &BattleSession) -> bool {
@@ -4068,31 +4099,32 @@ fn draw_original_tactical_hud(
             DEATH_STAR_LASER_GAUGE_RECT.x,
             DEATH_STAR_LASER_GAUGE_RECT.y,
         );
-        let fraction =
-            (death_star.laser_charge / ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE).clamp(0.0, 1.0);
-        if fraction > 0.0 {
-            let (x, y) = canvas.point(DEATH_STAR_LASER_FILL_RECT.x, DEATH_STAR_LASER_FILL_RECT.y);
+        let (x, y) = canvas.point(DEATH_STAR_LASER_FILL_RECT.x, DEATH_STAR_LASER_FILL_RECT.y);
+        draw_rectangle(
+            x,
+            y,
+            DEATH_STAR_LASER_FILL_RECT.width * canvas.scale,
+            DEATH_STAR_LASER_FILL_RECT.height * canvas.scale,
+            DEATH_STAR_LASER_EMPTY_COLOR,
+        );
+        let charged = death_star_laser_charge_width(death_star.laser_charge);
+        if charged > 0.0 {
             draw_rectangle(
                 x,
                 y,
-                DEATH_STAR_LASER_FILL_RECT.width * canvas.scale * fraction,
+                charged * canvas.scale,
                 DEATH_STAR_LASER_FILL_RECT.height * canvas.scale,
-                Color::new(0.0, 0.82, 0.0, 1.0),
+                DEATH_STAR_LASER_CHARGE_COLOR,
             );
         }
         let ready = death_star.operational()
             && death_star.laser_charge >= ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE;
-        let active =
-            death_star_laser_pressed || death_star_targeting || death_star.action_committed;
         draw_tactical_bitmap(
             cache,
-            if active {
-                art::DEATH_STAR_LASER_FIRED
-            } else if ready {
-                art::DEATH_STAR_LASER_READY
-            } else {
-                art::DEATH_STAR_LASER_LOADING
-            },
+            death_star_laser_control_resource(
+                ready,
+                death_star_laser_pressed || death_star_targeting,
+            ),
             canvas,
             DEATH_STAR_LASER_BUTTON_RECT.x,
             DEATH_STAR_LASER_BUTTON_RECT.y,
@@ -7587,6 +7619,7 @@ pub fn draw_tactical_view(
     if state.render_original_planet {
         state.asset_renderer.draw_planet(aperture_tuple);
     }
+    draw_tactical_death_star_backdrop(state, aperture_tuple);
     if state.display_holocube {
         draw_tactical_holocube(state, aperture_tuple, canvas.scale);
     }
@@ -7644,7 +7677,7 @@ pub fn draw_tactical_view(
                         })
                     })
                     .collect::<Vec<_>>();
-                let mut effects = if render_pyrotechnics {
+                let effects = if render_pyrotechnics {
                     session
                         .impact_effects
                         .iter()
@@ -7666,15 +7699,6 @@ pub fn draw_tactical_view(
                 } else {
                     Vec::new()
                 };
-                if let Some(death_star) = session.death_star {
-                    effects.push(TacticalEffectRenderObject {
-                        object_id: 3001,
-                        resource_id: death_star.resource_id(),
-                        source_width: 128,
-                        source_height: 128,
-                        position: death_star.source_position.rendered(),
-                    });
-                }
                 let fields = session
                     .field_effects
                     .iter()
@@ -8513,6 +8537,54 @@ fn clip_segment_to_rect(a: Vec2, b: Vec2, rect: (f32, f32, f32, f32)) -> Option<
         }
     }
     (enter <= leave).then(|| (a + delta * enter, a + delta * leave))
+}
+
+/// Where `FUN_005d4d10` hangs the Death Star decal, in source coordinates,
+/// and its width, for a battle extent `e`: a frame at
+/// `(rand(0.4e) - 0.2e, rand(0.4e) - 0.2e, -2e)` (the planet's is at `+2e`)
+/// with a child at `(0, 0.11e, -0.09e)` carrying a `0.5e` decal. port: the
+/// frame's two random offsets, from a local stream, are taken at their
+/// centre (0).
+fn death_star_backdrop_source(extent: f32) -> (TacticalWorldPosition, f32) {
+    (
+        TacticalWorldPosition {
+            x: 0.0,
+            y: 0.11 * extent,
+            z: -2.0 * extent - 0.09 * extent,
+        },
+        0.5 * extent,
+    )
+}
+
+fn draw_tactical_death_star_backdrop(state: &mut TacticalState, aperture: (f32, f32, f32, f32)) {
+    let Some(session) = state.session.as_ref() else {
+        return;
+    };
+    let Some(death_star) = session.death_star else {
+        return;
+    };
+    let (center, size) = death_star_backdrop_source(session.source_layout.battle_extent);
+    let resource_id = death_star.resource_id();
+    let drawn = state
+        .asset_renderer
+        .draw_decal(aperture, resource_id, center.rendered(), size);
+    if state.logged_death_star_backdrop != Some(resource_id) {
+        let placement = drawn.map_or_else(
+            || "visible=false".to_owned(),
+            |(screen, size)| {
+                format!(
+                    "visible=true center={:.1},{:.1} size={:.1}",
+                    screen.x, screen.y, size.x
+                )
+            },
+        );
+        macroquad::logging::info!(
+            "[tactical_3d] death_star_backdrop resource={} {} source=FUN_005ab0e0,FUN_005c1d30,FUN_005d4d10",
+            resource_id,
+            placement,
+        );
+        state.logged_death_star_backdrop = Some(resource_id);
+    }
 }
 
 fn draw_tactical_holocube(state: &TacticalState, aperture: (f32, f32, f32, f32), scale: f32) {
@@ -14295,6 +14367,9 @@ mod tests {
         let death_star = open.death_star.expect("the Empire's Death Star");
         assert!(!death_star.shielded);
         assert!(death_star.attackable());
+        // FUN_005af4e0 stores +0x6c = 100.0; A0 TAC-05-C017 opens with the
+        // meter full and the control ready.
+        assert_eq!(death_star.laser_charge, ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE);
 
         // DEFFACSD 4, the Death Star shield (TEXTSTRA 8832).
         let shield = world.defense_facilities.insert(DefenseFacilityInstance {
@@ -14367,6 +14442,50 @@ mod tests {
         session.fighters[0].order = TacticalOrder::None;
         session.fighters[1].order = TacticalOrder::AttackDeathStar;
         assert!(attack_death_star_enabled(&session));
+    }
+
+    // Source: FUN_005c4ed0 (control at 0x89,2; meter 0x5f wide, range 100);
+    // A0 TAC-05-C017/C018/C019.
+    #[test]
+    fn death_star_laser_control_sits_at_the_a0_position_and_shows_loading_once_committed() {
+        assert_eq!(DEATH_STAR_LASER_BUTTON_RECT.x, 611.0);
+        assert_eq!(DEATH_STAR_LASER_BUTTON_RECT.y, 2.0);
+        assert_eq!(
+            death_star_laser_control_resource(true, false),
+            resources::tactical::DEATH_STAR_LASER_READY
+        );
+        assert_eq!(
+            death_star_laser_control_resource(true, true),
+            resources::tactical::DEATH_STAR_LASER_FIRED
+        );
+        // A committed shot has reset the charge: not ready and not armed.
+        assert_eq!(
+            death_star_laser_control_resource(false, false),
+            resources::tactical::DEATH_STAR_LASER_LOADING
+        );
+    }
+
+    // Source: FUN_005d4d10 (DAT_0066d244 0.2, DAT_0066d248 -2.0,
+    // DAT_0066d250 0.09, DAT_0066d258 0.11, DAT_0066d260 0.5).
+    #[test]
+    fn the_death_star_hangs_behind_the_battle_opposite_the_planet() {
+        let (center, size) = death_star_backdrop_source(400.0);
+        assert_eq!(center.x, 0.0);
+        assert!((center.y - 44.0).abs() < 1e-3);
+        assert!((center.z + 836.0).abs() < 1e-3);
+        assert_eq!(size, 200.0);
+    }
+
+    // Source: FUN_005c4ed0 meter 0x5f px for charge 0..100; A0 TAC-05-C020
+    // shows 18 of 95 px about 58 s into the 300 s charge.
+    #[test]
+    fn death_star_laser_meter_fills_95_pixels_over_the_full_charge() {
+        assert_eq!(death_star_laser_charge_width(0.0), 0.0);
+        assert_eq!(death_star_laser_charge_width(58.0 / 3.0), 18.0);
+        assert_eq!(death_star_laser_charge_width(50.0), 47.0);
+        assert_eq!(death_star_laser_charge_width(100.0), 95.0);
+        assert_eq!(death_star_laser_charge_width(250.0), 95.0);
+        assert_eq!(death_star_laser_charge_width(-5.0), 0.0);
     }
 
     // Source: FUN_005ba7f0 Death Star laser charge rate to 100.

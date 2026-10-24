@@ -229,13 +229,15 @@ fn original_dll_path(game_dir: &Path, gdata_path: &Path, name: &str) -> PathBuf 
 }
 
 /// The score the mode a finished cutscene returns to plays. Opening a
-/// cutscene stops the music, so its end has to start this again.
+/// cutscene stops the music, so its end has to start this again. The
+/// tactical battle has no score (`FUN_00450540` stops it at the Battle
+/// Alert), so a trench run returns to silence.
 #[cfg(not(target_arch = "wasm32"))]
-fn music_context_after_cutscene(kind: &CutsceneKind) -> MusicContext {
+fn music_context_after_cutscene(kind: &CutsceneKind) -> Option<MusicContext> {
     match kind {
-        CutsceneKind::Intro => MusicContext::MainMenu,
-        CutsceneKind::TrenchRun(_) => MusicContext::Combat,
-        CutsceneKind::Story(_) => MusicContext::GalaxyMap,
+        CutsceneKind::Intro => Some(MusicContext::MainMenu),
+        CutsceneKind::TrenchRun(_) => None,
+        CutsceneKind::Story(_) => Some(MusicContext::GalaxyMap),
     }
 }
 
@@ -306,11 +308,11 @@ mod audio_source_tests {
     fn a_finished_cutscene_restarts_the_score_of_the_mode_it_returns_to() {
         assert_eq!(
             music_context_after_cutscene(&CutsceneKind::Intro),
-            MusicContext::MainMenu
+            Some(MusicContext::MainMenu)
         );
         assert_eq!(
             music_context_after_cutscene(&CutsceneKind::Story(101)),
-            MusicContext::GalaxyMap
+            Some(MusicContext::GalaxyMap)
         );
         for outcome in [
             TacticalTrenchRunOutcome::Success,
@@ -318,7 +320,7 @@ mod audio_source_tests {
         ] {
             assert_eq!(
                 music_context_after_cutscene(&CutsceneKind::TrenchRun(outcome)),
-                MusicContext::Combat
+                None
             );
         }
     }
@@ -1282,8 +1284,6 @@ async fn main() {
 
     #[cfg(target_arch = "wasm32")]
     let browser_main_theme = browser_audio_files.remove("music/main_theme.wav");
-    #[cfg(target_arch = "wasm32")]
-    let browser_battle_theme = browser_audio_files.remove("music/battle.wav");
     // The battle windows' original score (FUN_0044f860, FUN_0046f360).
     #[cfg(target_arch = "wasm32")]
     let browser_screen_music: std::collections::HashMap<rebellion_render::MusicTrack, Vec<u8>> = (10..=15)
@@ -1319,7 +1319,6 @@ async fn main() {
         .collect();
     #[cfg(target_arch = "wasm32")]
     let mut browser_menu_audio = if browser_main_theme.is_some()
-        || browser_battle_theme.is_some()
         || !browser_menu_sfx.is_empty()
         || !browser_tactical_sfx.is_empty()
         || !browser_tactical_voice.is_empty()
@@ -3660,7 +3659,13 @@ async fn main() {
                         cutscene_player = None;
                         game_mode = next_mode;
                         #[cfg(not(target_arch = "wasm32"))]
-                        audio_engine.play_music_for_context(next_music, &sounds_dir, &audio_vol);
+                        if let Some(next_music) = next_music {
+                            audio_engine.play_music_for_context(
+                                next_music,
+                                &sounds_dir,
+                                &audio_vol,
+                            );
+                        }
                     }
                 } else {
                     game_mode = next_mode;
@@ -7138,31 +7143,17 @@ async fn main() {
             && !tactical_state.battle_alert_open()
             && screen_music.is_none();
         if tactical_audio_context && !tactical_music_active {
+            // FUN_00450540: each Battle Alert choice calls FUN_00417640,
+            // which stops the score; the tactical battle has none (A0
+            // TAC-01-C012: silence while paused, only effects and voices).
             #[cfg(not(target_arch = "wasm32"))]
-            audio_engine.play_music_for_context(
-                rebellion_render::MusicContext::Combat,
-                &sounds_dir,
-                &audio_vol,
-            );
+            audio_engine.stop_music();
             #[cfg(target_arch = "wasm32")]
-            if let (Some(engine), Some(bytes)) =
-                (browser_menu_audio.as_mut(), browser_battle_theme.as_deref())
-            {
-                engine.load_music_bytes(rebellion_render::MusicTrack::Battle, bytes);
+            if let Some(engine) = browser_menu_audio.as_mut() {
+                engine.stop_music();
             }
             macroquad::logging::info!(
-                "[audio] context=combat track=Battle mdata=307 loaded={} muted={}",
-                {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    {
-                        original_game_dir().join("MDATA/MDATA.307").exists()
-                            || sounds_dir.join("music/battle.wav").exists()
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        browser_battle_theme.is_some()
-                    }
-                },
+                "[audio] context=combat track=none source=FUN_00450540,FUN_00417640 muted={}",
                 audio_vol.muted || audio_vol.music_muted
             );
             tactical_music_active = true;

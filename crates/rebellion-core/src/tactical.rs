@@ -3301,7 +3301,9 @@ impl BattleSession {
                         },
                     },
                     hull: ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
-                    laser_charge: 0.0,
+                    // FUN_005af4e0 stores +0x6c = 100.0: the laser starts
+                    // charged (A0 TAC-05-C017, the first tactical frame).
+                    laser_charge: ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE,
                     shielded,
                     destroyed: false,
                     action_committed: false,
