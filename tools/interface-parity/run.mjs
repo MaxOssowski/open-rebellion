@@ -1855,7 +1855,7 @@ async function probeTacticalDetailEscortPresentation(
     "selected command hull omitted its assigned personnel contents");
   const content = selected.contents[0];
   const contentProof = verifyGokresBitmap(
-    viewport, stable.bytes, content.resource_id, 491, 155,
+    viewport, stable.bytes, content.resource_id, 492, 156,
   );
 
   const destroyed = ready.effects.find(({ resource_base: resourceBase }) => resourceBase === 3360);
@@ -2109,38 +2109,38 @@ function probeTacticalSelectedDamagePresentation(
     ?? Math.max(0, Math.trunc(selected.shield_max / 4)));
 
   const screenshot = PNG.sync.read(stable.bytes);
+  // A0 TAC-03-C006/C005/C003: hull on the left, shield on the right, both
+  // 37x10 with pure blue remaining for either faction.
   const shieldPixels = nativeRectPixelCount(
     viewport,
     screenshot,
-    { x: 514, y: 107, width: selected.shield_current > 0
-      ? 40 * selected.shield_current / selected.shield_max : 40, height: 8 },
+    { x: 585, y: 109, width: selected.shield_current > 0
+      ? 37 * selected.shield_current / selected.shield_max : 37, height: 10 },
     (red, green, blue) => red === 0 && green === 0 && blue === 255,
   );
   const hullPixels = nativeRectPixelCount(
     viewport,
     screenshot,
-    { x: 585, y: 107, width: 39 * selected.hull_current / selected.hull_max, height: 8 },
-    ready.faction === "alliance"
-      ? (red, green, blue) => red === 0 && green >= 48 && blue === 255
-      : (red, green, blue) => red === 255 && green === 0 && blue === 0,
+    { x: 516, y: 109, width: 37 * selected.hull_current / selected.hull_max, height: 10 },
+    (red, green, blue) => red === 0 && green === 0 && blue === 255,
   );
   if (selected.shield_current > 0) {
     assert.ok(shieldPixels > 0, "selected ship shield meter produced no exact blue pixels");
   } else {
     assert.equal(shieldPixels, 0, "empty selected ship shield meter retained blue pixels");
   }
-  assert.ok(hullPixels > 0, "selected ship hull meter produced no exact faction pixels");
+  assert.ok(hullPixels > 0, "selected ship hull meter produced no exact blue pixels");
 
   let panelProof = { status: "non-native-scale", pixels_checked: 0 };
   let portraitProof = { status: "non-native-scale", opaque_pixels_checked: 0 };
   if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1) {
-    panelProof = verifyTacticalBitmap(viewport, stable.bytes, 1302, 481, 27, [
-      { id: 1101, x: 488, y: 37 },
-      { id: 1103, x: 613, y: 37 },
+    panelProof = verifyTacticalBitmap(viewport, stable.bytes, 1302, 482, 28, [
+      { id: 1101, x: 489, y: 38 },
+      { id: 1103, x: 614, y: 38 },
     ], [
-      { x: 10, y: 8, width: 130, height: 42 },
-      { x: 33, y: 80, width: 40, height: 8 },
-      { x: 104, y: 80, width: 39, height: 8 },
+      { x: 10, y: 8, width: 130, height: 49 }, // name and portrait at (26, 17) 96x39
+      { x: 34, y: 81, width: 37, height: 10 },
+      { x: 103, y: 81, width: 37, height: 10 },
       { x: 10, y: 103, width: 130, height: 15 },
       { x: 12, y: 183, width: 130, height: 24 },
       { x: 12, y: 210, width: 126, height: 22 },
@@ -2158,17 +2158,18 @@ function probeTacticalSelectedDamagePresentation(
         const color = portrait.pixel(x, y);
         if (color[0] < 32 && color[1] > 192 && color[2] < 32) continue;
         opaquePixels++;
-        const offset = ((37 + y) * screenshot.width + 507 + x) * 4;
+        const offset = ((45 + y) * screenshot.width + 508 + x) * 4; // A0 TAC-03-C001
         if (Array.from(screenshot.data.subarray(offset, offset + 3))
           .every((channel, index) => channel === color[index])) exactOpaquePixels++;
       }
     }
     assert.ok(opaquePixels > 0 && exactOpaquePixels > opaquePixels / 2,
       "selected ship portrait did not retain a majority of exact source pixels");
-    const matteOffset = (37 * screenshot.width + 507) * 4;
+    // The portrait's bottom-left lime pixel; its top row lies under the name.
+    const matteOffset = (83 * screenshot.width + 508) * 4;
     assert.deepEqual(
       Array.from(screenshot.data.subarray(matteOffset, matteOffset + 3)),
-      panel.pixel(26, 10),
+      panel.pixel(26, 55),
       "selected ship lime matte erased the underlying 1302 display grid",
     );
     portraitProof = {
@@ -2213,7 +2214,7 @@ function probeTacticalLiveSubsystemDamagePresentation(viewport, folder, stable, 
   assert.deepEqual(selected.subsystem_percentages, expectedPercentages);
   assert.deepEqual(selected.subsystem_resources, expectedResources);
   const subsystemProofs = expectedResources.map((resourceId, index) =>
-    verifyTacticalBitmap(viewport, stable.bytes, resourceId, 491 + index * 27, 130));
+    verifyTacticalBitmap(viewport, stable.bytes, resourceId, 492 + index * 27, 131)); // A0 TAC-03-C001
   fs.writeFileSync(path.join(folder, "live-subsystem-damage.png"), stable.bytes);
   probes.push({
     type: "source-traced-live-subsystem-damage",
@@ -2289,7 +2290,7 @@ function probeTacticalSubsystemRepairMobilityPresentation(
     && fieldCenter.y + halfField <= aperture.y1,
   "tractor field source bounds escape the tactical aperture");
   const subsystemProofs = expectedResources.map((resourceId, index) =>
-    verifyTacticalBitmap(viewport, stable.bytes, resourceId, 491 + index * 27, 130));
+    verifyTacticalBitmap(viewport, stable.bytes, resourceId, 492 + index * 27, 131)); // A0 TAC-03-C001
   fs.writeFileSync(path.join(folder, "subsystem-repair-mobility.png"), stable.bytes);
   probes.push({
     type: "source-traced-subsystem-repair-mobility",
@@ -2384,20 +2385,22 @@ async function probeTacticalCommandAssignmentPresentation(
   };
   const capture = async (name) => stableInteractionFrame(page, folder, name);
   const probes = [
-    {
-      type: "missions-button-initial",
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1107, 493, 237),
-    },
+    // A0 TAC-05-C012/C015: Maneuvers Tactics (1107) on the left,
+    // Missions (1105) on the right.
     {
       type: "maneuvers-button-initial",
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1105, 561, 237),
+      ...verifyTacticalBitmap(viewport, stable.bytes, 1107, 494, 238),
+    },
+    {
+      type: "missions-button-initial",
+      ...verifyTacticalBitmap(viewport, stable.bytes, 1105, 562, 238),
     },
   ];
 
-  await click(590, 248);
+  await click(522, 248);
   const maneuversOpen = await capture("maneuvers-open");
   probes.push({ type: "maneuvers-panel", ...verifyTacticalBitmap(
-    viewport, maneuversOpen, 1309, 481, 27, [], [
+    viewport, maneuversOpen, 1309, 482, 28, [], [
       { x: 14, y: 14, width: 126, height: 108 },
       { x: 13, y: 129, width: 58, height: 58 },
       { x: 75, y: 144, width: 28, height: 28 },
@@ -2406,76 +2409,76 @@ async function probeTacticalCommandAssignmentPresentation(
     ],
   ) });
   probes.push({ type: "stand-off-default", ...verifyTacticalBitmap(
-    viewport, maneuversOpen, 1117, 592, 159,
+    viewport, maneuversOpen, 1117, 593, 160,
   ) });
 
   await click(508, 170);
   await click(604, 185);
   const hammerSurround = await capture("maneuvers-hammer-surround");
   probes.push({ type: "hammer-selected", ...verifyTacticalBitmap(
-    viewport, hammerSurround, 1138, 494, 156,
+    viewport, hammerSurround, 1138, 495, 157,
   ) });
   probes.push({ type: "surround-selected", ...verifyTacticalBitmap(
-    viewport, hammerSurround, 1118, 592, 159,
+    viewport, hammerSurround, 1118, 593, 160,
   ) });
   probes.push({ type: "hammer-graphic", ...verifyTacticalTransparentOverlay(
-    viewport, hammerSurround, 2103, 495, 41,
+    viewport, hammerSurround, 2103, 496, 42,
   ) });
   await click(600, 241);
   const afterCancel = await capture("maneuvers-cancelled");
   probes.push({ type: "cancel-restores-display", ...verifyTacticalBitmap(
-    viewport, afterCancel, 1105, 561, 237,
+    viewport, afterCancel, 1105, 562, 238,
   ) });
 
-  await click(590, 248);
+  await click(522, 248);
   await click(508, 170);
   await click(604, 185);
   await click(560, 241);
   const maneuverCommitted = await capture("maneuvers-committed");
   probes.push({ type: "maneuver-commit-restores-display", ...verifyTacticalBitmap(
-    viewport, maneuverCommitted, 1105, 561, 237,
+    viewport, maneuverCommitted, 1105, 562, 238,
   ) });
 
-  await click(590, 248);
+  await click(522, 248);
   await click(538, 170);
   await click(604, 185);
   const anvilStandOff = await capture("maneuvers-anvil-stand-off");
   probes.push({ type: "anvil-selected", ...verifyTacticalBitmap(
-    viewport, anvilStandOff, 1140, 524, 156,
+    viewport, anvilStandOff, 1140, 525, 157,
   ) });
   probes.push({ type: "stand-off-selected", ...verifyTacticalBitmap(
-    viewport, anvilStandOff, 1117, 592, 159,
+    viewport, anvilStandOff, 1117, 593, 160,
   ) });
   probes.push({ type: "anvil-graphic", ...verifyTacticalTransparentOverlay(
-    viewport, anvilStandOff, 2104, 495, 41,
+    viewport, anvilStandOff, 2104, 496, 42,
   ) });
   await click(560, 241);
   await capture("maneuvers-anvil-stand-off-committed");
 
-  await click(520, 248);
+  await click(590, 248);
   const missionsOpen = await capture("missions-open-capital");
   probes.push({ type: "missions-panel", ...verifyTacticalBitmap(
-    viewport, missionsOpen, 1308, 481, 27, [], [
+    viewport, missionsOpen, 1308, 482, 28, [], [
       { x: 14, y: 14, width: 124, height: 106 },
       { x: 18, y: 129, width: 114, height: 56 },
       { x: 66, y: 202, width: 67, height: 25 },
     ],
   ) });
   probes.push({ type: "capital-recover-disabled", ...verifyTacticalBitmap(
-    viewport, missionsOpen, ready.faction === "alliance" ? 1175 : 1172, 567, 156,
+    viewport, missionsOpen, ready.faction === "alliance" ? 1175 : 1172, 568, 157,
   ) });
   probes.push({ type: "death-star-disabled", ...verifyTacticalBitmap(
-    viewport, missionsOpen, 1178, 567, 186,
+    viewport, missionsOpen, 1178, 568, 187,
   ) });
   await click(522, 169);
   const capitalMission = await capture("missions-attack-capital-selected");
   const capitalButton = ready.faction === "alliance" ? 1180 : 1183;
   const capitalGraphic = ready.faction === "alliance" ? 2151 : 2155;
   probes.push({ type: "attack-capital-selected", ...verifyTacticalBitmap(
-    viewport, capitalMission, capitalButton, 499, 156,
+    viewport, capitalMission, capitalButton, 500, 157,
   ) });
   probes.push({ type: "attack-capital-graphic", ...verifyTacticalTransparentOverlay(
-    viewport, capitalMission, capitalGraphic, 495, 41,
+    viewport, capitalMission, capitalGraphic, 496, 42,
   ) });
   await click(560, 241);
 
@@ -2484,18 +2487,18 @@ async function probeTacticalCommandAssignmentPresentation(
   probes.push({ type: "fighter-group-selected", ...verifyTacticalBitmap(
     viewport, fighterSelected, 1016, 330, 2,
   ) });
-  await click(520, 248);
+  await click(590, 248);
   const fighterMissions = await capture("missions-open-fighter");
   probes.push({ type: "fighter-recover-enabled", ...verifyTacticalBitmap(
-    viewport, fighterMissions, ready.faction === "alliance" ? 1173 : 1170, 567, 156,
+    viewport, fighterMissions, ready.faction === "alliance" ? 1173 : 1170, 568, 157,
   ) });
   await click(590, 169);
   const recoverSelected = await capture("missions-recover-selected");
   probes.push({ type: "recover-selected", ...verifyTacticalBitmap(
-    viewport, recoverSelected, ready.faction === "alliance" ? 1174 : 1171, 567, 156,
+    viewport, recoverSelected, ready.faction === "alliance" ? 1174 : 1171, 568, 157,
   ) });
   probes.push({ type: "recover-graphic", ...verifyTacticalTransparentOverlay(
-    viewport, recoverSelected, ready.faction === "alliance" ? 2153 : 2157, 495, 41,
+    viewport, recoverSelected, ready.faction === "alliance" ? 2153 : 2157, 496, 42,
   ) });
   await click(560, 241);
   await capture("fighter-recover-committed");
@@ -2902,12 +2905,12 @@ async function probeTacticalDeathStarPresentation(
   const capture = async (name) => stableInteractionFrame(page, folder, name);
 
   await click(342, 10);
-  await click(520, 248);
+  await click(590, 248);
   const missions = await capture("death-star-missions-open");
   const enabled = ready.faction === "alliance";
   const probes = [{
     type: enabled ? "attack-death-star-enabled" : "attack-death-star-disabled",
-    ...verifyTacticalBitmap(viewport, missions, enabled ? 1176 : 1178, 567, 186),
+    ...verifyTacticalBitmap(viewport, missions, enabled ? 1176 : 1178, 568, 187),
   }];
   if (ready.faction === "alliance") {
     assert.equal(ready.tactical_rng_state, 0x5eedba77,
@@ -2929,11 +2932,11 @@ async function probeTacticalDeathStarPresentation(
   if (enabled) {
     probes.push({
       type: "attack-death-star-selected",
-      ...verifyTacticalBitmap(viewport, afterAttack, 1177, 567, 186),
+      ...verifyTacticalBitmap(viewport, afterAttack, 1177, 568, 187),
     });
     probes.push({
       type: "attack-death-star-graphic",
-      ...verifyTacticalTransparentOverlay(viewport, afterAttack, 2154, 495, 41),
+      ...verifyTacticalTransparentOverlay(viewport, afterAttack, 2154, 496, 42),
     });
     await click(560, 241);
   } else {
@@ -3538,16 +3541,17 @@ async function probeTacticalBattleOptionsPresentation(
   const offsetX = (viewport.width - 640 * scale) / 2;
   const offsetY = (viewport.height - 480 * scale) / 2;
   const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
-  const panelResource = faction === "alliance" ? 1303 : 1304;
+  const panelResource = 1306; // A0 TAC-06-C001: one Battle Options panel
   const controls = [
-    { name: "withdraw", x: 497, y: 47, width: 48, height: 34, normal: 1149, pressed: 1150 },
-    { name: "simulate", x: 497, y: 114, width: 44, height: 25, normal: 1151, pressed: 1152 },
-    { name: "observe", x: 561, y: 114, width: 45, height: 25, normal: 1153, pressed: 1154 },
-    { name: "game-options", x: 494, y: 203, width: 52, height: 33, normal: 1155, pressed: 1156 },
-    { name: "close", x: 565, y: 203, width: 29, height: 33, normal: 1157, pressed: 1158 },
+    // A0 TAC-06-C001 positions.
+    { name: "withdraw", x: 500, y: 47, width: 48, height: 34, normal: 1149, pressed: 1150 },
+    { name: "simulate", x: 496, y: 121, width: 44, height: 25, normal: 1151, pressed: 1152 },
+    { name: "observe", x: 569, y: 121, width: 45, height: 25, normal: 1153, pressed: 1154 },
+    { name: "game-options", x: 505, y: 212, width: 52, height: 33, normal: 1155, pressed: 1156 },
+    { name: "close", x: 579, y: 212, width: 29, height: 33, normal: 1157, pressed: 1158 },
   ];
   const ignored = (included = controls) => included.map(({ x, y, width, height }) => ({
-    x: x - 481, y: y - 27, width, height,
+    x: x - 482, y: y - 28, width, height,
   }));
   const captureHeld = async (control, name) => {
     const location = point(control.x + control.width / 2, control.y + control.height / 2);
@@ -3570,7 +3574,7 @@ async function probeTacticalBattleOptionsPresentation(
   probes.push({
     type: "battle-options-panel",
     faction,
-    ...verifyTacticalBitmap(viewport, panel, panelResource, 481, 27, [], ignored()),
+    ...verifyTacticalBitmap(viewport, panel, panelResource, 482, 28, [], ignored()),
   });
   for (const control of controls) {
     probes.push({
@@ -3599,12 +3603,12 @@ async function probeTacticalBattleOptionsPresentation(
     probes.push({
       type: "withdraw-confirmation-panel",
       ...verifyTacticalBitmap(
-        viewport, confirmation, 1310, 481, 27, [], confirmationIgnored,
+        viewport, confirmation, 1310, 482, 28, [], confirmationIgnored,
       ),
     });
     for (const control of [
-      { name: "confirm", x: 547, y: 229, width: 27, height: 25, normal: 1113, pressed: 1114 },
-      { name: "cancel", x: 587, y: 229, width: 27, height: 25, normal: 1115, pressed: 1116 },
+      { name: "confirm", x: 548, y: 230, width: 27, height: 25, normal: 1113, pressed: 1114 },
+      { name: "cancel", x: 588, y: 230, width: 27, height: 25, normal: 1115, pressed: 1116 },
     ]) {
       probes.push({
         type: "withdraw-confirmation-control",
@@ -3612,7 +3616,7 @@ async function probeTacticalBattleOptionsPresentation(
         ...verifyTacticalBitmap(viewport, confirmation, control.normal, control.x, control.y),
       });
     }
-    const cancel = { x: 587, y: 229, width: 27, height: 25, pressed: 1116 };
+    const cancel = { x: 588, y: 230, width: 27, height: 25, pressed: 1116 };
     const cancelHeld = await captureHeld(cancel, "battle-options-withdraw-cancel-held");
     probes.push({
       type: "withdraw-confirmation-cancel-pressed",
@@ -3626,7 +3630,7 @@ async function probeTacticalBattleOptionsPresentation(
     confirmation = await stableInteractionFrame(
       page, folder, "battle-options-withdraw-confirmation-reopened",
     );
-    const confirm = { x: 547, y: 229, width: 27, height: 25, pressed: 1114 };
+    const confirm = { x: 548, y: 230, width: 27, height: 25, pressed: 1114 };
     const confirmHeld = await captureHeld(confirm, "battle-options-withdraw-confirm-held");
     probes.push({
       type: "withdraw-confirmation-confirm-pressed",
@@ -3638,7 +3642,7 @@ async function probeTacticalBattleOptionsPresentation(
     probes.push({
       type: "battle-options-withdraw-disabled",
       ...verifyTacticalBitmap(
-        viewport, panel, panelResource, 481, 27, [], ignored(controls.slice(1)),
+        viewport, panel, panelResource, 482, 28, [], ignored(controls.slice(1)),
       ),
     });
     const disabledWithdraw = point(521, 64);
@@ -3782,7 +3786,7 @@ function probeTacticalSubsystemFieldCommandPresentation(viewport, folder, stable
   assert.deepEqual(selected.subsystem_resources, expectedResources);
 
   const subsystemProofs = expectedResources.map((resourceId, index) =>
-    verifyTacticalBitmap(viewport, stable.bytes, resourceId, 491 + index * 27, 130));
+    verifyTacticalBitmap(viewport, stable.bytes, resourceId, 492 + index * 27, 131)); // A0 TAC-03-C001
   const tractor = ready.fields.find((field) => field.target === 1);
   const gravity = ready.fields.find((field) => field.target === 4);
   assert.deepEqual(tractor, {
@@ -3912,15 +3916,15 @@ async function probeTacticalGroupPresentation(
     viewport, goldSelected, 1019, 408, 2,
   ) });
   probes.push({ type: "selected-fighter-panel", ...verifyTacticalBitmap(
-    viewport, goldSelected, 1307, 481, 27,
-    [{ id: portraitResource, x: 505, y: 76 }],
+    viewport, goldSelected, 1307, 482, 28,
+    [{ id: portraitResource, x: 506, y: 77 }],
     [
       { x: 8, y: 7, width: 145, height: 40 },
       { x: 12, y: 210, width: 126, height: 22 },
     ],
   ) });
   probes.push({ type: "selected-fighter-portrait", ...verifyTacticalBitmap(
-    viewport, goldSelected, portraitResource, 505, 76,
+    viewport, goldSelected, portraitResource, 506, 77,
   ) });
 
   const participantLine = consoleLines.find(({ text }) =>
@@ -4074,11 +4078,11 @@ async function probeTacticalSelectedNavigationPresentation(
   const probes = [
     {
       type: "previous-capital-rest",
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1101, 488, 37),
+      ...verifyTacticalBitmap(viewport, stable.bytes, 1101, 489, 38),
     },
     {
       type: "next-capital-rest",
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1103, 613, 37),
+      ...verifyTacticalBitmap(viewport, stable.bytes, 1103, 614, 38),
     },
   ];
   const press = async (name, location, pressedResource, pressedX) => {
@@ -4088,7 +4092,7 @@ async function probeTacticalSelectedNavigationPresentation(
     const held = await capture(`${name}-held`);
     probes.push({
       type: `${name}-held`,
-      ...verifyTacticalBitmap(viewport, held, pressedResource, pressedX, 37),
+      ...verifyTacticalBitmap(viewport, held, pressedResource, pressedX, 38),
     });
     await page.mouse.up({ button: "left" });
     await page.waitForTimeout(80);
@@ -4099,9 +4103,9 @@ async function probeTacticalSelectedNavigationPresentation(
     });
   };
 
-  await press("next-capital", point(618, 60), 1104, 613);
-  await press("previous-capital", point(493, 60), 1102, 488);
-  await press("previous-capital-wrap", point(493, 60), 1102, 488);
+  await press("next-capital", point(618, 60), 1104, 614);
+  await press("previous-capital", point(493, 60), 1102, 489);
+  await press("previous-capital-wrap", point(493, 60), 1102, 489);
   const transitions = consoleLines
     .filter(({ text }) => text.includes("[tactical_selection]"))
     .map(({ text }) => text);
@@ -4127,8 +4131,8 @@ async function probeTacticalSelectedNavigationPresentation(
       class_dat_id,
     })),
     controls: {
-      previous: { rect: [488, 37, 11, 53], resources: [1101, 1102] },
-      next: { rect: [613, 37, 11, 53], resources: [1103, 1104] },
+      previous: { rect: [489, 38, 11, 53], resources: [1101, 1102] },
+      next: { rect: [614, 38, 11, 53], resources: [1103, 1104] },
     },
     transitions,
     wraps_within_task_force: true,

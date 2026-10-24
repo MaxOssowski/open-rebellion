@@ -921,14 +921,16 @@ pub mod resources {
         pub const BTN_NEXT_CAPITAL_NORMAL: u32 = 1103;
         /// Selected-capital navigator: next ship in task force, pressed state.
         pub const BTN_NEXT_CAPITAL_PRESSED: u32 = 1104;
-        /// Tactical command button: Maneuvers/Tactics, normal state.
-        pub const BTN_MANEUVERS_TACTICS_NORMAL: u32 = 1105;
-        /// Tactical command button: Maneuvers/Tactics, pressed state.
-        pub const BTN_MANEUVERS_TACTICS_PRESSED: u32 = 1106;
-        /// Tactical command button: Missions, normal state.
-        pub const BTN_MISSIONS_NORMAL: u32 = 1107;
+        /// Tactical command button: Missions, normal state (a ship firing;
+        /// A0 TAC-05-C015 shows it on the right, tooltip "Missions").
+        pub const BTN_MISSIONS_NORMAL: u32 = 1105;
         /// Tactical command button: Missions, pressed state.
-        pub const BTN_MISSIONS_PRESSED: u32 = 1108;
+        pub const BTN_MISSIONS_PRESSED: u32 = 1106;
+        /// Tactical command button: Maneuvers/Tactics, normal state (ships
+        /// circling; A0 TAC-05-C012 shows it on the left).
+        pub const BTN_MANEUVERS_TACTICS_NORMAL: u32 = 1107;
+        /// Tactical command button: Maneuvers/Tactics, pressed state.
+        pub const BTN_MANEUVERS_TACTICS_PRESSED: u32 = 1108;
 
         /// Tactical assignment: confirm, normal state.
         pub const BTN_ASSIGN_CONFIRM_NORMAL: u32 = 1113;
@@ -1036,10 +1038,15 @@ pub mod resources {
 
         /// Right-side hull integrity and shield strength panel.
         pub const RIGHT_PANEL_HULL_AND_SHIELD: u32 = 1302;
-        /// Alliance Battle Options panel.
-        pub const BATTLE_OPTIONS_ALLIANCE_PANEL: u32 = 1303;
-        /// Empire Battle Options panel.
-        pub const BATTLE_OPTIONS_EMPIRE_PANEL: u32 = 1304;
+        /// Alliance emblem panel, shown while nothing is selected
+        /// (A0 TAC-04-C005).
+        pub const ALLIANCE_EMBLEM_PANEL: u32 = 1303;
+        /// Empire emblem panel, shown while nothing is selected
+        /// (A0 TAC-01-C002).
+        pub const EMPIRE_EMBLEM_PANEL: u32 = 1304;
+        /// Battle Options panel, the same circuit-board art for both
+        /// factions (A0 TAC-06-C001; TACTICAL.DLL has no second one).
+        pub const BATTLE_OPTIONS_PANEL: u32 = 1306;
         /// Tactical missions assignment panel.
         pub const MISSIONS_PANEL: u32 = 1308;
         /// Tactical maneuvers and tactics assignment panel.
