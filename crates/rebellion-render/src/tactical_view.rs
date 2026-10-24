@@ -7396,6 +7396,9 @@ pub fn draw_tactical_view(
     if state.render_original_planet {
         state.asset_renderer.draw_planet(aperture_tuple);
     }
+    if state.display_holocube {
+        draw_tactical_holocube(state, aperture_tuple, canvas.scale);
+    }
 
     // 2. Submit mapped production participants through their original 3D and
     // type-303 resource families. Unmapped or unavailable objects retain the
@@ -8257,6 +8260,94 @@ fn tactical_fighter_screen_position(
         || macroquad::math::Vec2::new(offset_x + fighter.x * scale, offset_y + fighter.y * scale),
         |projection| projection.center,
     )
+}
+
+/// The holocube's twelve edges. `FUN_005d4d10` builds two blue (0, 0, 1)
+/// wireframe mesh builders (quality `0x40`) from the unit cube's eight
+/// +-0.5 vertices, one facing out and one in, and scales both by the
+/// battle extent `+0x8cc` that `FUN_005ab650` and `0x5ac5bc` pass through
+/// `FUN_005c1d30`; `FUN_005d58c0` adds them when option `0x2000000` is on.
+/// The cube therefore spans +-extent/2 on every axis.
+fn tactical_holocube_edges(extent: f32) -> [(Vec3, Vec3); 12] {
+    let h = extent * 0.5;
+    let corner = |i: u8| {
+        vec3(
+            if i & 1 == 0 { -h } else { h },
+            if i & 2 == 0 { -h } else { h },
+            if i & 4 == 0 { -h } else { h },
+        )
+    };
+    let mut edges = [(Vec3::ZERO, Vec3::ZERO); 12];
+    let mut next = 0;
+    for a in 0..8_u8 {
+        for bit in [1_u8, 2, 4] {
+            if a & bit == 0 {
+                edges[next] = (corner(a), corner(a | bit));
+                next += 1;
+            }
+        }
+    }
+    edges
+}
+
+/// port: the original's lines are retained-mode meshes depth-tested with the
+/// ships; the port draws them before the ships, so every ship covers them.
+/// Each edge is split so that the parts in front of the camera survive the
+/// projection; A0 TAC-01-C003 shows them pure blue, one pixel wide.
+const TACTICAL_HOLOCUBE_STEPS: u16 = 64;
+
+/// Clip a screen segment to `(x0, y0, x1, y1)` (Liang-Barsky).
+fn clip_segment_to_rect(a: Vec2, b: Vec2, rect: (f32, f32, f32, f32)) -> Option<(Vec2, Vec2)> {
+    let (x0, y0, x1, y1) = rect;
+    let delta = b - a;
+    let mut enter = 0.0_f32;
+    let mut leave = 1.0_f32;
+    for (p, q) in [
+        (-delta.x, a.x - x0),
+        (delta.x, x1 - a.x),
+        (-delta.y, a.y - y0),
+        (delta.y, y1 - a.y),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return None;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                enter = enter.max(t);
+            } else {
+                leave = leave.min(t);
+            }
+        }
+    }
+    (enter <= leave).then(|| (a + delta * enter, a + delta * leave))
+}
+
+fn draw_tactical_holocube(state: &TacticalState, aperture: (f32, f32, f32, f32), scale: f32) {
+    let Some(session) = state.session.as_ref() else {
+        return;
+    };
+    let color = Color::new(0.0, 0.0, 1.0, 1.0);
+    // Keep the whole line width inside the aperture.
+    let inset = scale.ceil() * 0.5 + 0.5;
+    let (x, y, width, height) = aperture;
+    let inner = (x + inset, y + inset, x + width - inset, y + height - inset);
+    for (from, to) in tactical_holocube_edges(session.source_layout.battle_extent) {
+        let mut previous: Option<Vec2> = None;
+        for step in 0..=TACTICAL_HOLOCUBE_STEPS {
+            let point = from.lerp(to, f32::from(step) / f32::from(TACTICAL_HOLOCUBE_STEPS));
+            let screen = state
+                .asset_renderer
+                .project_source_position(aperture, point);
+            if let (Some(a), Some(b)) = (previous, screen) {
+                if let Some((a, b)) = clip_segment_to_rect(a, b, inner) {
+                    draw_line(a.x, a.y, b.x, b.y, scale, color);
+                }
+            }
+            previous = screen;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -13095,6 +13186,80 @@ mod tests {
         assert_eq!(
             tactical_pause_label_color(false),
             Color::new(0.0, 1.0, 0.0, 1.0)
+        );
+    }
+
+    #[test]
+    fn the_holocube_spans_half_the_battle_extent_on_every_axis() {
+        // FUN_005d4d10 scales a +-0.5 unit cube by the extent +0x8cc.
+        let edges = tactical_holocube_edges(112.0);
+        assert_eq!(edges.len(), 12);
+        for (from, to) in edges {
+            assert_eq!((to - from).length(), 112.0);
+            for point in [from, to] {
+                assert_eq!(point.abs(), vec3(56.0, 56.0, 56.0));
+            }
+        }
+        let corners = edges
+            .iter()
+            .flat_map(|(from, to)| [*from, *to])
+            .map(|point| (point.x as i32, point.y as i32, point.z as i32))
+            .collect::<HashSet<_>>();
+        assert_eq!(corners.len(), 8);
+    }
+
+    #[test]
+    fn the_holocube_edges_join_each_corner_to_its_three_neighbours() {
+        let edges = tactical_holocube_edges(2.0);
+        // Each edge changes exactly one coordinate from -1 to +1.
+        for (from, to) in edges {
+            let changed = [from.x != to.x, from.y != to.y, from.z != to.z];
+            assert_eq!(changed.iter().filter(|c| **c).count(), 1);
+            assert!(from.x <= to.x && from.y <= to.y && from.z <= to.z);
+        }
+        assert_eq!(edges[0], (vec3(-1.0, -1.0, -1.0), vec3(1.0, -1.0, -1.0)));
+    }
+
+    #[test]
+    fn a_holocube_segment_is_clipped_to_the_aperture() {
+        let rect = (0.0, 0.0, 10.0, 10.0);
+        assert_eq!(
+            clip_segment_to_rect(vec2(-5.0, 5.0), vec2(15.0, 5.0), rect),
+            Some((vec2(0.0, 5.0), vec2(10.0, 5.0)))
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(-5.0, -1.0), vec2(15.0, -1.0), rect),
+            None
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(2.0, 2.0), vec2(4.0, 6.0), rect),
+            Some((vec2(2.0, 2.0), vec2(4.0, 6.0)))
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(5.0, 12.0), vec2(5.0, 20.0), rect),
+            None
+        );
+        // An offset rectangle, and segments lying on its edges.
+        let offset = (10.0, 20.0, 30.0, 40.0);
+        assert_eq!(
+            clip_segment_to_rect(vec2(0.0, 30.0), vec2(40.0, 30.0), offset),
+            Some((vec2(10.0, 30.0), vec2(30.0, 30.0)))
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(20.0, 0.0), vec2(20.0, 50.0), offset),
+            Some((vec2(20.0, 20.0), vec2(20.0, 40.0)))
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(10.0, 25.0), vec2(10.0, 35.0), offset),
+            Some((vec2(10.0, 25.0), vec2(10.0, 35.0)))
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(12.0, 40.0), vec2(18.0, 40.0), offset),
+            Some((vec2(12.0, 40.0), vec2(18.0, 40.0)))
+        );
+        assert_eq!(
+            clip_segment_to_rect(vec2(5.0, 25.0), vec2(5.0, 35.0), offset),
+            None
         );
     }
 

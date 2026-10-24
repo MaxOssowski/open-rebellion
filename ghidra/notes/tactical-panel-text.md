@@ -61,3 +61,23 @@ sets the colour; `0x2ffffff` is white.
   points.
 - A0 TAC-02-C002 reads "X-wings: 1 12/12": one X-wing squadron at full
   strength.
+
+## Holocube
+
+- `FUN_005d4d10` (vtable `0x66d278`) builds two mesh builders through the
+  Direct3DRM object `DAT_006bcbd0` (`+0x18`).
+- Each gets the eight vertices of the unit cube at +-0.5 and six quads
+  (`AddFaces`, `+0x5c`); the second has the opposite winding.
+- Both are given:
+  - `Scale(e, e, e)` (`+0x34`), where `e` is the argument that
+    `FUN_005c1d30` passes on;
+  - `SetColorRGB(0, 0, 1)` (`+0x64`);
+  - `SetQuality(0x40)` (`+0x78`, `D3DRMFILL_WIREFRAME`).
+- `FUN_005d58c0` adds both to the scene frame when the game option mask
+  `0x2000000` (Holocube) is set.
+- Both callers, `0x5ab535` (`FUN_005ab650`) and `0x5ac5bc`, pass the battle
+  extent `+0x8cc` through `FUN_005c10a0` and `FUN_005c1d30`. So the cube is
+  `extent` wide and centred on the battle, and its faces lie where the
+  withdrawal exits are (`+-extent/2`). The two windings keep every edge
+  visible from inside.
+- A0 TAC-01-C003 shows the edges pure blue, one pixel wide.
