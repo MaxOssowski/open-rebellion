@@ -2125,22 +2125,24 @@ const DEATH_STAR_LASER_GAUGE_RECT: NativeRect = NativeRect::new(474.0, 0.0, 166.
 const DEATH_STAR_LASER_BUTTON_RECT: NativeRect = NativeRect::new(613.0, 2.0, 21.0, 20.0);
 const DEATH_STAR_LASER_FILL_RECT: NativeRect = NativeRect::new(508.0, 9.0, 95.0, 6.0);
 
+/// A0 TAC-02-C002: task-force slots every 29 px from x 60 (1007 matches at
+/// 89, 118, ... 263), squadron buttons every 29 px from x 347.
 const TASK_FORCE_BUTTONS: [NativeRect; 8] = [
     NativeRect::new(60.0, 2.0, 25.0, 17.0),
-    NativeRect::new(86.0, 2.0, 25.0, 17.0),
-    NativeRect::new(112.0, 2.0, 25.0, 17.0),
-    NativeRect::new(138.0, 2.0, 25.0, 17.0),
-    NativeRect::new(164.0, 2.0, 25.0, 17.0),
-    NativeRect::new(190.0, 2.0, 25.0, 17.0),
-    NativeRect::new(216.0, 2.0, 25.0, 17.0),
-    NativeRect::new(242.0, 2.0, 25.0, 17.0),
+    NativeRect::new(89.0, 2.0, 25.0, 17.0),
+    NativeRect::new(118.0, 2.0, 25.0, 17.0),
+    NativeRect::new(147.0, 2.0, 25.0, 17.0),
+    NativeRect::new(176.0, 2.0, 25.0, 17.0),
+    NativeRect::new(205.0, 2.0, 25.0, 17.0),
+    NativeRect::new(234.0, 2.0, 25.0, 17.0),
+    NativeRect::new(263.0, 2.0, 25.0, 17.0),
 ];
 
 const FIGHTER_GROUP_BUTTONS: [NativeRect; 4] = [
-    NativeRect::new(330.0, 2.0, 25.0, 17.0),
-    NativeRect::new(356.0, 2.0, 25.0, 17.0),
-    NativeRect::new(382.0, 2.0, 25.0, 17.0),
-    NativeRect::new(408.0, 2.0, 25.0, 17.0),
+    NativeRect::new(347.0, 2.0, 25.0, 17.0),
+    NativeRect::new(376.0, 2.0, 25.0, 17.0),
+    NativeRect::new(405.0, 2.0, 25.0, 17.0),
+    NativeRect::new(434.0, 2.0, 25.0, 17.0),
 ];
 
 const FIGHTER_GROUP_NORMAL_ART: [u32; 4] = [
@@ -3822,7 +3824,8 @@ fn draw_original_tactical_hud(
         );
     }
 
-    // The top task-force and fighter-group strips occupy slots in bitmap 1000.
+    // The top task-force and fighter-group strips occupy slots in bitmap 1000;
+    // A0 TAC-02-C002 and TAC-01-C002 put the headers at x 9 and 296.
     draw_tactical_bitmap(
         cache,
         if player_is_alliance {
@@ -3831,7 +3834,7 @@ fn draw_original_tactical_hud(
             art::TASK_FORCES_EMPIRE
         },
         canvas,
-        10.0,
+        9.0,
         1.0,
     );
     for index in 0..8_u8 {
@@ -3849,14 +3852,14 @@ fn draw_original_tactical_hud(
                 art::BTN_TASK_FORCE_UNASSIGNED
             },
             canvas,
-            60.0 + f32::from(index) * 26.0,
+            TASK_FORCE_BUTTONS[usize::from(index)].x,
             2.0,
         );
         if assigned {
             let label = (index + 1).to_string();
             let font_size = 13.0 * canvas.scale;
             let width = measure_text(&label, None, font_size as u16, 1.0).width;
-            let (button_x, y) = canvas.point(60.0 + f32::from(index) * 26.0, 16.0);
+            let (button_x, y) = canvas.point(TASK_FORCE_BUTTONS[usize::from(index)].x, 16.0);
             draw_text(
                 &label,
                 button_x + (25.0 * canvas.scale - width) * 0.5,
@@ -3874,7 +3877,7 @@ fn draw_original_tactical_hud(
             art::FIGHTER_SQUADRONS_EMPIRE
         },
         canvas,
-        275.0,
+        296.0,
         1.0,
     );
     for index in 0..4_u8 {
@@ -3892,7 +3895,7 @@ fn draw_original_tactical_hud(
                 art::SQUADRON_UNASSIGNED
             },
             canvas,
-            330.0 + f32::from(index) * 26.0,
+            FIGHTER_GROUP_BUTTONS[usize::from(index)].x,
             2.0,
         );
     }
@@ -12780,6 +12783,15 @@ mod tests {
     }
 
     #[test]
+    fn group_bar_slots_are_29_pixels_apart() {
+        // A0 TAC-02-C002: task forces from x 60, squadrons from x 347.
+        assert_eq!(TASK_FORCE_BUTTONS[1].x - TASK_FORCE_BUTTONS[0].x, 29.0);
+        assert_eq!(TASK_FORCE_BUTTONS[7].x, 263.0);
+        assert_eq!(FIGHTER_GROUP_BUTTONS[0].x, 347.0);
+        assert_eq!(FIGHTER_GROUP_BUTTONS[3].x, 434.0);
+    }
+
+    #[test]
     fn camera_memorize_art_is_on_the_right_and_recall_on_the_left() {
         // A0 TAC-04-C005: bitmap 1040 sits at (594, 444) under the tooltip
         // "Remember Camera Position"; 1042 at (486, 444) recalls the view.
@@ -12953,16 +12965,19 @@ mod tests {
             Some(TacticalHudControl::TaskForce(0))
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 254.1, 10.1),
+            tactical_hud_control_at(&mut cache, 275.1, 10.1),
             Some(TacticalHudControl::TaskForce(7))
         );
         assert_eq!(tactical_hud_control_at(&mut cache, 60.1, 2.1), None);
+        // A0 TAC-02-C002: the old 26 px spacing's slot 2 (86..111) now
+        // falls between slots 1 and 2 (60..85, 89..114).
+        assert_eq!(tactical_hud_control_at(&mut cache, 87.1, 10.1), None);
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 342.1, 10.1),
+            tactical_hud_control_at(&mut cache, 359.1, 10.1),
             Some(TacticalHudControl::FighterGroup(0))
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 420.1, 10.1),
+            tactical_hud_control_at(&mut cache, 446.1, 10.1),
             Some(TacticalHudControl::FighterGroup(3))
         );
     }

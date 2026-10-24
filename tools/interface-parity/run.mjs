@@ -1597,7 +1597,7 @@ async function probeTacticalProductionParticipants(
     if (assignedTaskForces.has(index)) continue;
     unassignedTaskForces.push({
       slot: index + 1,
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1007, 60 + index * 26, 2),
+      ...verifyTacticalBitmap(viewport, stable.bytes, 1007, 60 + index * 29, 2), // A0 TAC-02-C002
     });
   }
   const unassignedFighterGroups = [];
@@ -1605,13 +1605,13 @@ async function probeTacticalProductionParticipants(
     if (assignedFighterGroups.has(index)) continue;
     unassignedFighterGroups.push({
       slot: index + 1,
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1020, 330 + index * 26, 2),
+      ...verifyTacticalBitmap(viewport, stable.bytes, 1020, 347 + index * 29, 2),
     });
   }
   assert.ok(unassignedTaskForces.length > 0 && unassignedFighterGroups.length > 0,
     "production participant fixture omitted unassigned group states");
   const unassignedTaskIndex = unassignedTaskForces[0].slot - 1;
-  const unassignedTask = point(72 + unassignedTaskIndex * 26, 10);
+  const unassignedTask = point(72 + unassignedTaskIndex * 29, 10);
   await page.mouse.move(unassignedTask.x, unassignedTask.y);
   await page.waitForTimeout(80);
   const hovered = await stableInteractionFrame(page, folder, "task-force-unassigned-hover");
@@ -2482,10 +2482,10 @@ async function probeTacticalCommandAssignmentPresentation(
   ) });
   await click(560, 241);
 
-  await click(342, 10);
+  await click(359, 10);
   const fighterSelected = await capture("fighter-group-selected");
   probes.push({ type: "fighter-group-selected", ...verifyTacticalBitmap(
-    viewport, fighterSelected, 1016, 330, 2,
+    viewport, fighterSelected, 1016, 347, 2,
   ) });
   await click(590, 248);
   const fighterMissions = await capture("missions-open-fighter");
@@ -2904,7 +2904,7 @@ async function probeTacticalDeathStarPresentation(
   };
   const capture = async (name) => stableInteractionFrame(page, folder, name);
 
-  await click(342, 10);
+  await click(359, 10);
   await click(590, 248);
   const missions = await capture("death-star-missions-open");
   const enabled = ready.faction === "alliance";
@@ -3842,27 +3842,27 @@ async function probeTacticalGroupPresentation(
   const portraitResource = 2030 + playerFighter.tactical_ordinal - 29;
   const taskButtons = Array.from({ length: 8 }, (_, index) => ({
     id: index === 0 ? 1006 : 1005,
-    x: 60 + index * 26,
+    x: 60 + index * 29, // A0 TAC-02-C002
     y: 2,
   }));
   const fighterButtons = [1012, 1013, 1014, 1015].map((id, index) => ({
-    id, x: 330 + index * 26, y: 2,
+    id, x: 347 + index * 29, y: 2,
   }));
   const probes = [];
   probes.push({
     type: "task-force-header",
     ...verifyTacticalBitmap(viewport, stable.bytes, faction === "alliance" ? 1001 : 1004,
-      10, 1, taskButtons),
+      9, 1, taskButtons),
   });
   probes.push({
     type: "fighter-group-header",
     ...verifyTacticalBitmap(viewport, stable.bytes, faction === "alliance" ? 1008 : 1010,
-      275, 1, fighterButtons),
+      296, 1, fighterButtons),
   });
   for (const button of taskButtons) {
     probes.push({
       type: "task-force-initial",
-      slot: (button.x - 60) / 26 + 1,
+      slot: (button.x - 60) / 29 + 1,
       ...verifyTacticalBitmap(
         viewport, stable.bytes, button.id, button.x, button.y, [], labelMask,
       ),
@@ -3876,44 +3876,44 @@ async function probeTacticalGroupPresentation(
     });
   }
 
-  const matte = point(330.1, 2.1);
+  const matte = point(347.1, 2.1); // top-left matte pixel of the first squadron button
   await page.mouse.click(matte.x, matte.y);
   await page.waitForTimeout(80);
   const matteFrame = await capture("group-transparent-matte");
   assert.equal(sha256(matteFrame), sha256(stable.bytes),
     "transparent fighter-group matte changed the paused battle");
 
-  const taskEight = point(254, 10);
+  const taskEight = point(275, 10);
   await page.mouse.move(taskEight.x, taskEight.y);
   await page.mouse.down({ button: "left" });
   await page.waitForTimeout(80);
   const taskEightHeld = await capture("task-force-8-held");
   probes.push({ type: "task-force-8-held", ...verifyTacticalBitmap(
-    viewport, taskEightHeld, 1006, 242, 2, [], labelMask,
+    viewport, taskEightHeld, 1006, 263, 2, [], labelMask,
   ) });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(80);
   const taskEightSelected = await capture("task-force-8-selected");
   probes.push({ type: "task-force-8-selected", ...verifyTacticalBitmap(
-    viewport, taskEightSelected, 1006, 242, 2, [], labelMask,
+    viewport, taskEightSelected, 1006, 263, 2, [], labelMask,
   ) });
   probes.push({ type: "task-force-1-released", ...verifyTacticalBitmap(
     viewport, taskEightSelected, 1005, 60, 2, [], labelMask,
   ) });
 
-  const gold = point(420, 10);
+  const gold = point(446, 10);
   await page.mouse.move(gold.x, gold.y);
   await page.mouse.down({ button: "left" });
   await page.waitForTimeout(80);
   const goldHeld = await capture("gold-group-held");
   probes.push({ type: "gold-group-held", ...verifyTacticalBitmap(
-    viewport, goldHeld, 1019, 408, 2,
+    viewport, goldHeld, 1019, 434, 2,
   ) });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(80);
   const goldSelected = await capture("gold-group-selected");
   probes.push({ type: "gold-group-selected", ...verifyTacticalBitmap(
-    viewport, goldSelected, 1019, 408, 2,
+    viewport, goldSelected, 1019, 434, 2,
   ) });
   probes.push({ type: "selected-fighter-panel", ...verifyTacticalBitmap(
     viewport, goldSelected, 1307, 482, 28,
@@ -4033,7 +4033,7 @@ async function probeTacticalGroupPresentation(
   await page.waitForTimeout(80);
   const goldHotkey = await capture("gold-group-hotkey");
   probes.push({ type: "gold-group-f12-hotkey", ...verifyTacticalBitmap(
-    viewport, goldHotkey, 1019, 408, 2,
+    viewport, goldHotkey, 1019, 434, 2,
   ) });
 
   assert.ok(consoleLines.some(({ text }) =>
