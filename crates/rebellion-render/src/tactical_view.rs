@@ -1963,6 +1963,8 @@ struct TacticalHudControlSpec {
     hit_resource: u32,
 }
 
+/// Lower HUD controls, at the positions where A0 TAC-04-C005 matches each
+/// TACTICAL.DLL bitmap pixel for pixel (transparent key colour left out).
 const TACTICAL_HUD_CONTROLS: [TacticalHudControlSpec; 17] = [
     TacticalHudControlSpec {
         control: TacticalHudControl::NavigationSet(0),
@@ -1971,84 +1973,84 @@ const TACTICAL_HUD_CONTROLS: [TacticalHudControlSpec; 17] = [
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::NavigationSet(1),
-        rect: NativeRect::new(521.0, 272.0, 27.0, 27.0),
+        rect: NativeRect::new(524.0, 272.0, 27.0, 27.0),
         hit_resource: resources::tactical::BTN_NAVIGATION_SET_NORMAL[1],
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::NavigationSet(2),
-        rect: NativeRect::new(560.0, 272.0, 27.0, 27.0),
+        rect: NativeRect::new(563.0, 272.0, 27.0, 27.0),
         hit_resource: resources::tactical::BTN_NAVIGATION_SET_NORMAL[2],
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::NavigationSet(3),
-        rect: NativeRect::new(601.0, 272.0, 27.0, 27.0),
+        rect: NativeRect::new(602.0, 272.0, 27.0, 27.0),
         hit_resource: resources::tactical::BTN_NAVIGATION_SET_NORMAL[3],
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::Pause,
-        rect: NativeRect::new(560.0, 307.0, 28.0, 21.0),
+        rect: NativeRect::new(561.0, 308.0, 28.0, 21.0),
         hit_resource: resources::tactical::BTN_PAUSE_RUNNING,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::ZoomIn,
-        rect: NativeRect::new(486.0, 343.0, 24.0, 24.0),
+        rect: NativeRect::new(491.0, 343.0, 24.0, 24.0),
         hit_resource: resources::tactical::BTN_CAMERA_ZOOM_IN_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::ZoomOut,
-        rect: NativeRect::new(603.0, 343.0, 24.0, 24.0),
+        rect: NativeRect::new(607.0, 343.0, 24.0, 24.0),
         hit_resource: resources::tactical::BTN_CAMERA_ZOOM_OUT_NORMAL,
     },
     // The target button is painted above the four overlapping D-pad arms and
     // therefore owns opaque pixels in their shared bounding region.
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraTarget,
-        rect: NativeRect::new(538.0, 379.0, 23.0, 23.0),
+        rect: NativeRect::new(549.0, 391.0, 23.0, 23.0),
         hit_resource: resources::tactical::BTN_CAMERA_TARGET_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraLeft,
-        rect: NativeRect::new(511.0, 376.0, 42.0, 43.0),
+        rect: NativeRect::new(497.0, 381.0, 42.0, 43.0),
         hit_resource: resources::tactical::BTN_CAMERA_LEFT_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraRight,
-        rect: NativeRect::new(557.0, 376.0, 43.0, 43.0),
+        rect: NativeRect::new(582.0, 381.0, 43.0, 43.0),
         hit_resource: resources::tactical::BTN_CAMERA_RIGHT_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraUp,
-        rect: NativeRect::new(537.0, 344.0, 43.0, 43.0),
+        rect: NativeRect::new(539.0, 338.0, 43.0, 43.0),
         hit_resource: resources::tactical::BTN_CAMERA_UP_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraDown,
-        rect: NativeRect::new(537.0, 412.0, 43.0, 43.0),
+        rect: NativeRect::new(540.0, 424.0, 43.0, 43.0),
         hit_resource: resources::tactical::BTN_CAMERA_DOWN_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraRecall,
-        rect: NativeRect::new(484.0, 430.0, 43.0, 25.0),
+        rect: NativeRect::new(486.0, 444.0, 43.0, 25.0),
         hit_resource: resources::tactical::BTN_CAMERA_RECALL_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::CameraMemorize,
-        rect: NativeRect::new(585.0, 430.0, 43.0, 25.0),
+        rect: NativeRect::new(594.0, 444.0, 43.0, 25.0),
         hit_resource: resources::tactical::BTN_CAMERA_MEMORIZE_NORMAL,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::HighlightAlliance,
-        rect: NativeRect::new(517.0, 304.0, 30.0, 26.0),
+        rect: NativeRect::new(515.0, 305.0, 30.0, 26.0),
         hit_resource: resources::tactical::DIM_ALLIANCE_SHIPS,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::HighlightEmpire,
-        rect: NativeRect::new(482.0, 304.0, 30.0, 26.0),
+        rect: NativeRect::new(483.0, 305.0, 30.0, 26.0),
         hit_resource: resources::tactical::DIM_EMPIRE_SHIPS,
     },
     TacticalHudControlSpec {
         control: TacticalHudControl::BattleOptions,
-        rect: NativeRect::new(606.0, 308.0, 20.0, 20.0),
+        rect: NativeRect::new(608.0, 309.0, 20.0, 20.0),
         hit_resource: resources::tactical::BTN_BATTLE_OPTIONS_NORMAL,
     },
 ];
@@ -4106,7 +4108,7 @@ fn draw_original_tactical_hud(
         }
     }
 
-    for (index, x) in [485.0, 521.0, 560.0, 601.0].into_iter().enumerate() {
+    for (index, x) in [485.0, 524.0, 563.0, 602.0].into_iter().enumerate() {
         let selected = navigation_sets_visible[index]
             || pressed_control == Some(TacticalHudControl::NavigationSet(index as u8));
         draw_tactical_bitmap(
@@ -4129,8 +4131,8 @@ fn draw_original_tactical_hud(
             art::DIM_EMPIRE_SHIPS
         },
         canvas,
-        482.0,
-        304.0,
+        483.0,
+        305.0,
     );
     draw_tactical_bitmap(
         cache,
@@ -4140,8 +4142,8 @@ fn draw_original_tactical_hud(
             art::DIM_ALLIANCE_SHIPS
         },
         canvas,
-        517.0,
-        304.0,
+        515.0,
+        305.0,
     );
     draw_tactical_bitmap(
         cache,
@@ -4151,8 +4153,8 @@ fn draw_original_tactical_hud(
             art::BTN_PAUSE_RUNNING
         },
         canvas,
-        560.0,
-        307.0,
+        561.0,
+        308.0,
     );
     draw_tactical_bitmap(
         cache,
@@ -4162,8 +4164,8 @@ fn draw_original_tactical_hud(
             art::BTN_BATTLE_OPTIONS_NORMAL
         },
         canvas,
-        606.0,
-        308.0,
+        608.0,
+        309.0,
     );
 
     draw_tactical_bitmap(
@@ -4174,7 +4176,7 @@ fn draw_original_tactical_hud(
             art::BTN_CAMERA_ZOOM_IN_NORMAL
         },
         canvas,
-        486.0,
+        491.0,
         343.0,
     );
     draw_tactical_bitmap(
@@ -4185,7 +4187,7 @@ fn draw_original_tactical_hud(
             art::BTN_CAMERA_ZOOM_OUT_NORMAL
         },
         canvas,
-        603.0,
+        607.0,
         343.0,
     );
     for (id, x, y) in [
@@ -4195,8 +4197,8 @@ fn draw_original_tactical_hud(
             } else {
                 art::BTN_CAMERA_LEFT_NORMAL
             },
-            511.0,
-            376.0,
+            497.0,
+            381.0,
         ),
         (
             if pressed_control == Some(TacticalHudControl::CameraRight) {
@@ -4204,8 +4206,8 @@ fn draw_original_tactical_hud(
             } else {
                 art::BTN_CAMERA_RIGHT_NORMAL
             },
-            557.0,
-            376.0,
+            582.0,
+            381.0,
         ),
         (
             if pressed_control == Some(TacticalHudControl::CameraUp) {
@@ -4213,8 +4215,8 @@ fn draw_original_tactical_hud(
             } else {
                 art::BTN_CAMERA_UP_NORMAL
             },
-            537.0,
-            344.0,
+            539.0,
+            338.0,
         ),
         (
             if pressed_control == Some(TacticalHudControl::CameraDown) {
@@ -4222,8 +4224,8 @@ fn draw_original_tactical_hud(
             } else {
                 art::BTN_CAMERA_DOWN_NORMAL
             },
-            537.0,
-            412.0,
+            540.0,
+            424.0,
         ),
         (
             if pressed_control == Some(TacticalHudControl::CameraTarget) {
@@ -4231,8 +4233,8 @@ fn draw_original_tactical_hud(
             } else {
                 art::BTN_CAMERA_TARGET_NORMAL
             },
-            538.0,
-            379.0,
+            549.0,
+            391.0,
         ),
     ] {
         draw_tactical_bitmap(cache, id, canvas, x, y);
@@ -4245,8 +4247,8 @@ fn draw_original_tactical_hud(
             art::BTN_CAMERA_RECALL_NORMAL
         },
         canvas,
-        484.0,
-        430.0,
+        486.0,
+        444.0,
     );
     draw_tactical_bitmap(
         cache,
@@ -4256,8 +4258,8 @@ fn draw_original_tactical_hud(
             art::BTN_CAMERA_MEMORIZE_NORMAL
         },
         canvas,
-        585.0,
-        430.0,
+        594.0,
+        444.0,
     );
 }
 
@@ -12777,34 +12779,51 @@ mod tests {
         assert!((logical_y - 317.0).abs() < 0.001);
     }
 
-    // Source: FUN_005f0f40 control rect boundaries.
+    #[test]
+    fn camera_memorize_art_is_on_the_right_and_recall_on_the_left() {
+        // A0 TAC-04-C005: bitmap 1040 sits at (594, 444) under the tooltip
+        // "Remember Camera Position"; 1042 at (486, 444) recalls the view.
+        use resources::tactical as art;
+        assert_eq!(art::BTN_CAMERA_MEMORIZE_NORMAL, 1040);
+        assert_eq!(art::BTN_CAMERA_RECALL_NORMAL, 1042);
+        assert_eq!(
+            tactical_hud_rect_control_at(600.0, 450.0),
+            Some(TacticalHudControl::CameraMemorize)
+        );
+        assert_eq!(
+            tactical_hud_rect_control_at(492.0, 450.0),
+            Some(TacticalHudControl::CameraRecall)
+        );
+    }
+
+    // Source: positions of the lower HUD bitmaps in A0 TAC-04-C005.
     #[test]
     fn original_tactical_control_rects_stop_at_bitmap_edges() {
         assert_eq!(
-            tactical_hud_rect_control_at(560.0, 307.0),
+            tactical_hud_rect_control_at(561.0, 308.0),
             Some(TacticalHudControl::Pause)
         );
         assert_eq!(
-            tactical_hud_rect_control_at(587.9, 327.9),
+            tactical_hud_rect_control_at(588.9, 328.9),
             Some(TacticalHudControl::Pause)
         );
-        assert_eq!(tactical_hud_rect_control_at(588.0, 317.0), None);
-        assert_eq!(tactical_hud_rect_control_at(559.9, 317.0), None);
+        assert_eq!(tactical_hud_rect_control_at(589.0, 318.0), None);
+        assert_eq!(tactical_hud_rect_control_at(560.9, 318.0), None);
         assert_eq!(
-            tactical_hud_rect_control_at(486.0, 343.0),
+            tactical_hud_rect_control_at(491.0, 343.0),
             Some(TacticalHudControl::ZoomIn)
         );
-        assert_eq!(tactical_hud_rect_control_at(510.0, 355.0), None);
+        assert_eq!(tactical_hud_rect_control_at(515.0, 355.0), None);
         assert_eq!(
-            tactical_hud_rect_control_at(603.0, 343.0),
+            tactical_hud_rect_control_at(607.0, 343.0),
             Some(TacticalHudControl::ZoomOut)
         );
         assert_eq!(
-            tactical_hud_rect_control_at(517.0, 304.0),
+            tactical_hud_rect_control_at(515.0, 305.0),
             Some(TacticalHudControl::HighlightAlliance)
         );
         assert_eq!(
-            tactical_hud_rect_control_at(482.0, 304.0),
+            tactical_hud_rect_control_at(483.0, 305.0),
             Some(TacticalHudControl::HighlightEmpire)
         );
         assert_eq!(
@@ -12812,22 +12831,23 @@ mod tests {
             Some(TacticalHudControl::NavigationSet(0))
         );
         assert_eq!(
-            tactical_hud_rect_control_at(627.9, 298.9),
+            tactical_hud_rect_control_at(628.9, 298.9),
             Some(TacticalHudControl::NavigationSet(3))
         );
-        assert_eq!(tactical_hud_rect_control_at(628.0, 285.0), None);
+        assert_eq!(tactical_hud_rect_control_at(629.0, 285.0), None);
         assert_eq!(
-            tactical_hud_rect_control_at(484.0, 430.0),
+            tactical_hud_rect_control_at(486.0, 444.0),
             Some(TacticalHudControl::CameraRecall)
         );
         assert_eq!(
-            tactical_hud_rect_control_at(627.9, 454.9),
+            tactical_hud_rect_control_at(636.9, 468.9),
             Some(TacticalHudControl::CameraMemorize)
         );
-        assert_eq!(tactical_hud_rect_control_at(628.0, 442.0), None);
+        assert_eq!(tactical_hud_rect_control_at(637.0, 456.0), None);
     }
 
-    // Source: FUN_005f0f40 / FUN_005f1050 bitmap hit masks.
+    // Source: FUN_005f0f40 / FUN_005f1050 bitmap hit masks, at the bitmap
+    // positions of A0 TAC-04-C005 and TAC-06-C001.
     #[test]
     #[ignore = "requires extracted original bitmaps in data/base/ui"]
     fn original_tactical_controls_use_source_bitmap_hit_masks() {
@@ -12838,93 +12858,93 @@ mod tests {
 
         // Original control hit testing excludes every outer edge, even when
         // the containing rectangle starts there.
-        assert_eq!(tactical_hud_control_at(&mut cache, 560.0, 307.0), None);
+        assert_eq!(tactical_hud_control_at(&mut cache, 561.0, 308.0), None);
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 562.1, 308.1),
+            tactical_hud_control_at(&mut cache, 563.1, 309.1),
             Some(TacticalHudControl::Pause)
         );
 
         // Both zoom controls contain transparent matte pixels inside their
         // bounding rectangles. Those pixels must pass through untouched.
-        assert_eq!(tactical_hud_control_at(&mut cache, 487.1, 344.1), None);
+        assert_eq!(tactical_hud_control_at(&mut cache, 492.1, 344.1), None);
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 491.1, 344.1),
+            tactical_hud_control_at(&mut cache, 496.1, 344.1),
             Some(TacticalHudControl::ZoomIn)
         );
-        assert_eq!(tactical_hud_control_at(&mut cache, 604.1, 344.1), None);
+        assert_eq!(tactical_hud_control_at(&mut cache, 608.1, 344.1), None);
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 609.1, 344.1),
+            tactical_hud_control_at(&mut cache, 613.1, 344.1),
             Some(TacticalHudControl::ZoomOut)
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 520.1, 397.1),
+            tactical_hud_control_at(&mut cache, 506.1, 402.1),
             Some(TacticalHudControl::CameraLeft)
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 590.1, 397.1),
+            tactical_hud_control_at(&mut cache, 615.1, 402.1),
             Some(TacticalHudControl::CameraRight)
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 558.1, 354.1),
+            tactical_hud_control_at(&mut cache, 560.1, 348.1),
             Some(TacticalHudControl::CameraUp)
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 558.1, 444.1),
+            tactical_hud_control_at(&mut cache, 561.1, 456.1),
             Some(TacticalHudControl::CameraDown)
         );
 
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 518.1, 305.1),
+            tactical_hud_control_at(&mut cache, 516.1, 306.1),
             Some(TacticalHudControl::HighlightAlliance)
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 483.1, 305.1),
+            tactical_hud_control_at(&mut cache, 484.1, 306.1),
             Some(TacticalHudControl::HighlightEmpire)
         );
-        assert_eq!(tactical_hud_control_at(&mut cache, 588.0, 317.0), None);
+        assert_eq!(tactical_hud_control_at(&mut cache, 589.0, 318.0), None);
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 616.0, 318.0),
+            tactical_hud_control_at(&mut cache, 618.0, 319.0),
             Some(TacticalHudControl::BattleOptions)
         );
 
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 521.0, 64.0),
+            tactical_battle_options_control_at(&mut cache, true, 524.0, 64.0),
             Some(TacticalBattleOptionsControl::Withdraw)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, false, 521.0, 64.0),
+            tactical_battle_options_control_at(&mut cache, false, 524.0, 64.0),
             None
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 519.0, 126.0),
+            tactical_battle_options_control_at(&mut cache, true, 518.0, 133.0),
             Some(TacticalBattleOptionsControl::SimulateRemainder)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 583.0, 126.0),
+            tactical_battle_options_control_at(&mut cache, true, 591.0, 133.0),
             Some(TacticalBattleOptionsControl::ObserveToggle)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 520.0, 219.0),
+            tactical_battle_options_control_at(&mut cache, true, 531.0, 228.0),
             Some(TacticalBattleOptionsControl::GameOptions)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 579.0, 219.0),
+            tactical_battle_options_control_at(&mut cache, true, 593.0, 228.0),
             Some(TacticalBattleOptionsControl::Close)
         );
         assert_eq!(
-            tactical_withdraw_confirmation_control_at(&mut cache, 560.0, 242.0),
+            tactical_withdraw_confirmation_control_at(&mut cache, 561.0, 243.0),
             Some(TacticalWithdrawConfirmationControl::Confirm)
         );
         assert_eq!(
-            tactical_withdraw_confirmation_control_at(&mut cache, 600.0, 242.0),
+            tactical_withdraw_confirmation_control_at(&mut cache, 601.0, 243.0),
             Some(TacticalWithdrawConfirmationControl::Cancel)
         );
         assert_eq!(
-            tactical_withdraw_confirmation_control_at(&mut cache, 547.0, 229.0),
+            tactical_withdraw_confirmation_control_at(&mut cache, 548.0, 230.0),
             None
         );
         assert_eq!(
-            tactical_withdraw_confirmation_control_at(&mut cache, 614.0, 242.0),
+            tactical_withdraw_confirmation_control_at(&mut cache, 615.0, 243.0),
             None
         );
 
@@ -14302,8 +14322,8 @@ mod tests {
     }
 
     // Source: TACTICAL.DLL resources 1058/1059 paint the 23 by 23 target control
-    // at (538,379) after the D-pad (tactical target control evidence,
-    // 2026-09-13). Centering on the 1200 by 800 arena is the port's 2D fallback.
+    // after the D-pad, at (549,391) in A0 TAC-04-C005. Centering on the 1200
+    // by 800 arena is the port's 2D fallback.
     #[test]
     #[ignore = "requires extracted original bitmaps in data/base/ui"]
     fn target_control_owns_its_topmost_mask_and_centers_the_selected_position() {
@@ -14312,7 +14332,7 @@ mod tests {
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base/ui"),
         );
         assert_eq!(
-            tactical_hud_control_at(&mut cache, 549.1, 390.1),
+            tactical_hud_control_at(&mut cache, 560.1, 402.1),
             Some(TacticalHudControl::CameraTarget)
         );
         assert_eq!(camera_offset_for_target(120.0, 190.0), (-480.0, -210.0));

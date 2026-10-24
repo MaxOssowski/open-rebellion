@@ -1316,13 +1316,13 @@ async function probeTactical(page, viewport, folder, stable) {
   const capture = async (name) => stableInteractionFrame(page, folder, name);
   const probes = [{ type: "tactical-shell", ...verifyTacticalShell(viewport, stable.bytes) }];
   probes.push({ type: "paused-control-bitmap",
-    ...verifyTacticalBitmap(viewport, stable.bytes, 1061, 560, 307) });
+    ...verifyTacticalBitmap(viewport, stable.bytes, 1061, 561, 308) });
   probes.push({ type: "alliance-highlight-on",
-    ...verifyTacticalBitmap(viewport, stable.bytes, 1035, 517, 304) });
+    ...verifyTacticalBitmap(viewport, stable.bytes, 1035, 515, 305) });
   probes.push({ type: "empire-highlight-on",
-    ...verifyTacticalBitmap(viewport, stable.bytes, 1037, 482, 304) });
+    ...verifyTacticalBitmap(viewport, stable.bytes, 1037, 483, 305) });
 
-  const outside = point(558, 318);
+  const outside = point(559, 319);
   await page.mouse.click(outside.x, outside.y);
   await page.waitForTimeout(80);
   const outsideFrame = await capture("pause-outside-edge");
@@ -1337,23 +1337,23 @@ async function probeTactical(page, viewport, folder, stable) {
     "transparent pause-control matte pixel changed paused battle");
   probes.push({ type: "pause-transparent-matte", source_pixel: [1, 1], unchanged: true });
 
-  const pause = point(574, 318);
+  const pause = point(575, 319);
   await page.mouse.click(pause.x, pause.y);
   await page.waitForTimeout(80);
   const resumed = await dynamicInteractionFrame(page, folder, "resumed");
   assert.notEqual(sha256(stable.bytes), sha256(resumed), "pause control did not resume battle");
-  probes.push({ type: "resume", ...verifyTacticalBitmap(viewport, resumed, 1060, 560, 307) });
+  probes.push({ type: "resume", ...verifyTacticalBitmap(viewport, resumed, 1060, 561, 308) });
   await page.mouse.click(pause.x, pause.y);
   await page.waitForTimeout(80);
   const pausedAgain = await capture("paused-again");
-  probes.push({ type: "pause", ...verifyTacticalBitmap(viewport, pausedAgain, 1061, 560, 307) });
+  probes.push({ type: "pause", ...verifyTacticalBitmap(viewport, pausedAgain, 1061, 561, 308) });
   await page.waitForTimeout(250);
   const pauseStable = await capture("pause-stable");
   assert.equal(sha256(pausedAgain), sha256(pauseStable), "battle continued after re-pause");
   probes.push({ type: "paused-stability", stable: true,
     screenshot_sha256: sha256(pauseStable) });
 
-  const allianceHighlight = point(532, 317);
+  const allianceHighlight = point(530, 318);
   await page.mouse.click(allianceHighlight.x, allianceHighlight.y);
   await page.waitForTimeout(80);
   const highlightOff = await capture("alliance-highlight-off");
@@ -1361,7 +1361,7 @@ async function probeTactical(page, viewport, folder, stable) {
   assert.notEqual(tacticalApertureHash(viewport, pauseStable),
     tacticalApertureHash(viewport, highlightOff), "Alliance battle wireframe did not dim");
   probes.push({ type: "alliance-highlight-off",
-    ...verifyTacticalBitmap(viewport, highlightOff, 1034, 517, 304),
+    ...verifyTacticalBitmap(viewport, highlightOff, 1034, 515, 305),
     wireframe: verifyWireframeColor(viewport, pauseStable, highlightOff, "alliance") });
   await page.mouse.click(allianceHighlight.x, allianceHighlight.y);
   await page.waitForTimeout(80);
@@ -1369,9 +1369,9 @@ async function probeTactical(page, viewport, folder, stable) {
   assert.equal(sha256(pauseStable), sha256(allianceRestored),
     "Alliance highlight did not restore the paused display");
   probes.push({ type: "alliance-highlight-restored",
-    ...verifyTacticalBitmap(viewport, allianceRestored, 1035, 517, 304) });
+    ...verifyTacticalBitmap(viewport, allianceRestored, 1035, 515, 305) });
 
-  const empireHighlight = point(497, 317);
+  const empireHighlight = point(498, 318);
   await page.mouse.click(empireHighlight.x, empireHighlight.y);
   await page.waitForTimeout(80);
   const empireOff = await capture("empire-highlight-off");
@@ -1379,7 +1379,7 @@ async function probeTactical(page, viewport, folder, stable) {
   assert.notEqual(tacticalApertureHash(viewport, allianceRestored),
     tacticalApertureHash(viewport, empireOff), "Empire battle wireframe did not dim");
   probes.push({ type: "empire-highlight-off",
-    ...verifyTacticalBitmap(viewport, empireOff, 1036, 482, 304),
+    ...verifyTacticalBitmap(viewport, empireOff, 1036, 483, 305),
     wireframe: verifyWireframeColor(viewport, allianceRestored, empireOff, "empire") });
   await page.mouse.click(empireHighlight.x, empireHighlight.y);
   await page.waitForTimeout(80);
@@ -1387,7 +1387,7 @@ async function probeTactical(page, viewport, folder, stable) {
   assert.equal(sha256(pauseStable), sha256(highlightsRestored),
     "Empire highlight did not restore the paused display");
   probes.push({ type: "empire-highlight-restored",
-    ...verifyTacticalBitmap(viewport, highlightsRestored, 1037, 482, 304) });
+    ...verifyTacticalBitmap(viewport, highlightsRestored, 1037, 483, 305) });
 
   const zoomInMatte = point(487.5, 344.5);
   await page.mouse.click(zoomInMatte.x, zoomInMatte.y);
@@ -1397,18 +1397,18 @@ async function probeTactical(page, viewport, folder, stable) {
     "transparent zoom-in matte pixel changed paused battle");
   probes.push({ type: "zoom-in-transparent-matte", source_pixel: [1, 1], unchanged: true });
 
-  const zoomIn = point(498, 355);
+  const zoomIn = point(503, 355);
   await page.mouse.move(zoomIn.x, zoomIn.y);
   await page.mouse.down({ button: "left" });
   await page.waitForTimeout(80);
   const zoomInPressed = await capture("zoom-in-pressed");
   probes.push({ type: "zoom-in-pressed",
-    ...verifyTacticalBitmap(viewport, zoomInPressed, 1045, 486, 343) });
+    ...verifyTacticalBitmap(viewport, zoomInPressed, 1045, 491, 343) });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(80);
   const zoomed = await capture("zoomed-in");
   assert.notEqual(sha256(highlightsRestored), sha256(zoomed), "zoom-in control did not redraw battle");
-  probes.push({ type: "zoom-in", ...verifyTacticalBitmap(viewport, zoomed, 1044, 486, 343),
+  probes.push({ type: "zoom-in", ...verifyTacticalBitmap(viewport, zoomed, 1044, 491, 343),
     aperture_isolation: verifyTacticalApertureIsolation(viewport, highlightsRestored, zoomed) });
 
   const zoomOutMatte = point(604.5, 344.5);
@@ -1419,19 +1419,19 @@ async function probeTactical(page, viewport, folder, stable) {
     "transparent zoom-out matte pixel changed zoomed battle");
   probes.push({ type: "zoom-out-transparent-matte", source_pixel: [1, 1], unchanged: true });
 
-  const zoomOut = point(615, 355);
+  const zoomOut = point(619, 355);
   await page.mouse.move(zoomOut.x, zoomOut.y);
   await page.mouse.down({ button: "left" });
   await page.waitForTimeout(80);
   const zoomOutPressed = await capture("zoom-out-pressed");
   probes.push({ type: "zoom-out-pressed",
-    ...verifyTacticalBitmap(viewport, zoomOutPressed, 1047, 603, 343) });
+    ...verifyTacticalBitmap(viewport, zoomOutPressed, 1047, 607, 343) });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(80);
   const zoomRestored = await capture("zoom-restored");
   assert.equal(sha256(highlightsRestored), sha256(zoomRestored),
     "zoom-out did not restore the original paused battlefield");
-  probes.push({ type: "zoom-out", ...verifyTacticalBitmap(viewport, zoomRestored, 1046, 603, 343),
+  probes.push({ type: "zoom-out", ...verifyTacticalBitmap(viewport, zoomRestored, 1046, 607, 343),
     aperture_isolation: verifyTacticalApertureIsolation(viewport, zoomed, zoomRestored) });
   return probes;
 }
@@ -1448,8 +1448,8 @@ async function probeTacticalLodJourney(page, viewport, folder, stable) {
       await page.waitForTimeout(80);
     }
   };
-  const zoomOut = point(615, 355);
-  const zoomIn = point(498, 355);
+  const zoomOut = point(619, 355);
+  const zoomIn = point(503, 355);
 
   await clickRepeatedly(zoomOut, 1);
   const medium = await capture("lod-journey-medium");
@@ -1529,22 +1529,22 @@ async function probeTacticalCameraJourney(page, viewport, folder, stable) {
 
   const initialModel = tacticalProofModelHash(viewport, stable.bytes);
   const transitions = [];
-  transitions.push(await press("camera-zoom-in", point(498, 355), 1045, 486, 343));
-  transitions.push(await press("camera-zoom-out", point(615, 355), 1047, 603, 343));
-  const up = { id: 1052, x: 537, y: 344 };
-  const down = { id: 1055, x: 537, y: 412 };
-  const target = { id: 1058, x: 538, y: 379 };
+  transitions.push(await press("camera-zoom-in", point(503, 355), 1045, 491, 343));
+  transitions.push(await press("camera-zoom-out", point(619, 355), 1047, 607, 343));
+  const up = { id: 1052, x: 539, y: 338 };
+  const down = { id: 1055, x: 540, y: 424 };
+  const target = { id: 1058, x: 549, y: 391 };
   transitions.push(await press(
-    "camera-left", point(520, 397), 1049, 511, 376, [up, down, target],
+    "camera-left", point(506, 402), 1049, 497, 381, [up, down, target],
   ));
   transitions.push(await press(
-    "camera-right", point(590, 397), 1051, 557, 376, [up, down, target],
+    "camera-right", point(615, 402), 1051, 582, 381, [up, down, target],
   ));
   transitions.push(await press(
-    "camera-up", point(558, 354), 1053, 537, 344, [target],
+    "camera-up", point(560, 348), 1053, 539, 338, [target],
   ));
-  transitions.push(await press("camera-down", point(558, 444), 1056, 537, 412));
-  transitions.push(await press("camera-target", point(549, 390), 1059, 538, 379));
+  transitions.push(await press("camera-down", point(561, 456), 1056, 540, 424));
+  transitions.push(await press("camera-target", point(560, 402), 1059, 549, 391));
 
   const modelHashes = [initialModel, ...transitions.map(({ released }) =>
     tacticalProofModelHash(viewport, released))];
@@ -1713,8 +1713,8 @@ async function probeTacticalFighterDetailJourney(
   const offsetX = (viewport.width - 640 * scale) / 2;
   const offsetY = (viewport.height - 480 * scale) / 2;
   const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
-  const zoomIn = point(498, 355);
-  const zoomOut = point(615, 355);
+  const zoomIn = point(503, 355);
+  const zoomOut = point(619, 355);
   const capture = async (name) => stableInteractionFrame(page, folder, name);
   const clickRepeatedly = async (location, count) => {
     for (let index = 0; index < count; index++) {
@@ -3120,7 +3120,7 @@ async function probeTacticalDeathStarLaserJourney(
     text.includes(`[tactical_death_star] superlaser_committed target_object_id=${targetObjectId} charge=0`)),
   "Death Star right-click target did not commit the superlaser shot");
 
-  const pause = point(574, 318);
+  const pause = point(575, 319);
   await page.mouse.click(pause.x, pause.y);
   await page.waitForTimeout(1100);
   const beam = await dynamicInteractionFrame(page, folder, "death-star-superlaser-beam");
@@ -3561,13 +3561,13 @@ async function probeTacticalBattleOptionsPresentation(
     await page.mouse.up();
     return capture;
   };
-  const openLocation = point(616, 318);
+  const openLocation = point(618, 319);
   await page.mouse.move(openLocation.x, openLocation.y);
   await page.mouse.down();
   const openHeld = await stableInteractionFrame(page, folder, "battle-options-open-held");
   const probes = [{
     type: "battle-options-hud-pressed",
-    ...verifyTacticalBitmap(viewport, openHeld, 1039, 606, 308),
+    ...verifyTacticalBitmap(viewport, openHeld, 1039, 608, 309),
   }];
   await page.mouse.up();
   let panel = await stableInteractionFrame(page, folder, "battle-options-open");
@@ -4180,9 +4180,9 @@ async function probeTacticalNavigationCameraPresentation(
 
   const navControls = [
     { set: 1, normal: 1026, selected: 1030, x: 485 },
-    { set: 2, normal: 1027, selected: 1031, x: 521 },
-    { set: 3, normal: 1028, selected: 1032, x: 560 },
-    { set: 4, normal: 1029, selected: 1033, x: 601 },
+    { set: 2, normal: 1027, selected: 1031, x: 524 },
+    { set: 3, normal: 1028, selected: 1032, x: 563 },
+    { set: 4, normal: 1029, selected: 1033, x: 602 },
   ];
   for (const control of navControls) {
     probes.push({
@@ -4256,18 +4256,18 @@ async function probeTacticalNavigationCameraPresentation(
   assert.notEqual(sha256(multipleTargets), sha256(routeFrame),
     "multiple targets produced no additional framebuffer evidence");
 
-  await page.mouse.click(point(498, 355).x, point(498, 355).y);
+  await page.mouse.click(point(503, 355).x, point(503, 355).y);
   await page.waitForTimeout(80);
   const memorizedView = await capture("camera-view-to-memorize");
-  const memorized = await press("camera-memorize", point(606, 442), 1043, 585, 430);
-  await page.mouse.click(point(615, 355).x, point(615, 355).y);
-  await page.mouse.click(point(520, 397).x, point(520, 397).y);
+  const memorized = await press("camera-memorize", point(615, 456), 1041, 594, 444);
+  await page.mouse.click(point(619, 355).x, point(619, 355).y);
+  await page.mouse.click(point(506, 402).x, point(506, 402).y);
   await page.waitForTimeout(80);
   const changedView = await capture("camera-view-changed");
   assert.notEqual(tacticalApertureHash(viewport, changedView),
     tacticalApertureHash(viewport, memorizedView),
     "camera changes did not alter the tactical aperture");
-  const recalled = await press("camera-recall", point(505, 442), 1041, 484, 430);
+  const recalled = await press("camera-recall", point(507, 456), 1043, 486, 444);
   assert.equal(tacticalApertureHash(viewport, recalled.released),
     tacticalApertureHash(viewport, memorized.released),
     "camera recall did not restore the memorized retained-mode view");
@@ -4275,7 +4275,7 @@ async function probeTacticalNavigationCameraPresentation(
   await page.keyboard.press("F1");
   await page.waitForTimeout(100);
   const chase = await capture("camera-chase-task-force-1");
-  await page.mouse.click(point(520, 397).x, point(520, 397).y);
+  await page.mouse.click(point(506, 402).x, point(506, 402).y);
   await page.waitForTimeout(80);
   const chaseExited = await capture("camera-chase-exited");
   assert.notEqual(tacticalApertureHash(viewport, chase),

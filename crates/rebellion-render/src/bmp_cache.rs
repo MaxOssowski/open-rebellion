@@ -870,14 +870,18 @@ pub mod resources {
         /// Navigation-point set 1 through 4, selected/pressed states.
         pub const BTN_NAVIGATION_SET_SELECTED: [u32; 4] = [1030, 1031, 1032, 1033];
 
-        /// Return to the memorized camera position, normal state.
-        pub const BTN_CAMERA_RECALL_NORMAL: u32 = 1040;
+        /// Return to the memorized camera position, normal state. A0
+        /// TAC-04-C005 shows this art at the bottom left, where the
+        /// button recalls the memorized view (TAC-04-C013).
+        pub const BTN_CAMERA_RECALL_NORMAL: u32 = 1042;
         /// Return to the memorized camera position, pressed state.
-        pub const BTN_CAMERA_RECALL_PRESSED: u32 = 1041;
-        /// Memorize the current camera position, normal state.
-        pub const BTN_CAMERA_MEMORIZE_NORMAL: u32 = 1042;
+        pub const BTN_CAMERA_RECALL_PRESSED: u32 = 1043;
+        /// Memorize the current camera position, normal state. A0
+        /// TAC-04-C005 shows this art at the bottom right, tooltip
+        /// "Remember Camera Position".
+        pub const BTN_CAMERA_MEMORIZE_NORMAL: u32 = 1040;
         /// Memorize the current camera position, pressed state.
-        pub const BTN_CAMERA_MEMORIZE_PRESSED: u32 = 1043;
+        pub const BTN_CAMERA_MEMORIZE_PRESSED: u32 = 1041;
 
         /// Tactical combat is running; clicking pauses it.
         pub const BTN_PAUSE_RUNNING: u32 = 1060;
@@ -1875,9 +1879,12 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
         // The small tactical control overlays carry a pure-blue matte. The
         // full shell and selected-ship panels do not: their blue display
         // fields are authored pixels and must remain visible.
+        // The Empire highlight (1036/1037) and memorize (1040/1041) art
+        // carry the same blue key; A0 TAC-04-C005 shows the scene through
+        // it at (483, 330) and (632..636, 444..).
         DllSource::Tactical => matches!(
             resource_id,
-            1026..=1033 | 1038..=1039 | 1042..=1056 | 1060..=1061
+            1026..=1033 | 1036..=1056 | 1060..=1061
         ),
         // Alert and dialog frames are opaque windows.
         DllSource::Rebdlog => false,
@@ -2276,6 +2283,18 @@ mod tests {
         let panel = decode_color_image(&encoded, DllSource::Tactical, 1302).unwrap();
         assert_eq!(control.pixels[0].a(), 0);
         assert_eq!(panel.pixels[0].a(), 255);
+    }
+
+    #[test]
+    fn tactical_empire_highlight_and_memorize_art_key_out_blue() {
+        // A0 TAC-04-C005: no blue shows at either bitmap's blue pixels.
+        for id in [1036, 1037, 1040, 1041] {
+            assert!(
+                uses_blue_screen_transparency(DllSource::Tactical, id),
+                "{id}"
+            );
+        }
+        assert!(!uses_blue_screen_transparency(DllSource::Tactical, 1034));
     }
 
     #[test]
