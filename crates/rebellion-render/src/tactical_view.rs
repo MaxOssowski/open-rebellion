@@ -626,6 +626,7 @@ pub struct TacticalState {
     player_observing: bool,
     /// The Death Star backdrop resource last reported to the console.
     logged_death_star_backdrop: Option<u32>,
+    logged_death_star_beam: bool,
     /// Captured press on the source Death Star superlaser control.
     death_star_laser_pressed: bool,
     /// The next valid right-click assigns the superlaser target.
@@ -680,6 +681,7 @@ impl Default for TacticalState {
             withdraw_confirmation_pressed: None,
             player_observing: false,
             logged_death_star_backdrop: None,
+            logged_death_star_beam: false,
             death_star_laser_pressed: false,
             death_star_targeting: false,
             command_panel: TacticalCommandPanel::Display,
@@ -7737,7 +7739,7 @@ pub fn draw_tactical_view(
                         })
                     })
                     .collect::<Vec<_>>();
-                let mut projectiles = session
+                let projectiles = session
                     .weapon_effects
                     .iter()
                     .enumerate()
@@ -7754,21 +7756,6 @@ pub fn draw_tactical_view(
                         color: effect.color(),
                     })
                     .collect::<Vec<_>>();
-                if let Some(beam) = session.death_star_beam {
-                    projectiles.push(TacticalProjectileRenderObject {
-                        object_id: 3999,
-                        origin: beam.source_position.rendered(),
-                        target: beam.target_position.rendered(),
-                        progress: (beam.elapsed / beam.duration).clamp(0.0, 1.0),
-                        // The source projectile mesh collapses below one device pixel
-                        // at the Death Star's tactical scale. Retain a visible authored-
-                        // color beam segment while native dimensions remain unproven.
-                        longitudinal_scale: 12.0,
-                        shape_variant: 3,
-                        color_selector: 1,
-                        color: Color::new(0.25, 1.0, 0.25, 1.0),
-                    });
-                }
                 (ships, fighters, fields, projectiles, effects)
             })
             .unwrap_or_default()
@@ -7784,6 +7771,7 @@ pub fn draw_tactical_view(
     let projectile_report = state
         .asset_renderer
         .draw_projectiles(aperture_tuple, &production_projectiles);
+    draw_tactical_death_star_beam(state, aperture_tuple);
     let _field_report = state
         .asset_renderer
         .draw_fields(aperture_tuple, &production_fields);
@@ -8590,6 +8578,47 @@ fn apply_original_collision_envelopes(state: &mut TacticalState) {
     }
     if changed && session.combat_tick == 0 && session.paused {
         BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+    }
+}
+
+/// How long `0x005da830` grows the superlaser beam: its timer is clamped
+/// to `DAT_0066d4bc` (1.0 s), and the beam ends when the timer passes it.
+const DEATH_STAR_BEAM_GROW_SECONDS: f32 = 1.0;
+
+fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32, f32, f32)) {
+    let Some(session) = state.session.as_ref() else {
+        return;
+    };
+    let Some(beam) = session.death_star_beam else {
+        return;
+    };
+    if beam.elapsed > DEATH_STAR_BEAM_GROW_SECONDS {
+        return;
+    }
+    let extent = session.source_layout.battle_extent;
+    let (origin, _) = death_star_backdrop_source(extent);
+    let progress = beam.elapsed / DEATH_STAR_BEAM_GROW_SECONDS;
+    let drawn = state.asset_renderer.draw_death_star_beam(
+        aperture,
+        origin.rendered(),
+        beam.target_position.rendered(),
+        progress,
+        extent,
+    );
+    if !state.logged_death_star_beam {
+        macroquad::logging::info!(
+            "[tactical_3d] death_star_beam target_object_id={} grow_seconds={} {} source=FUN_005da150,0x005da830",
+            beam.target + 1,
+            DEATH_STAR_BEAM_GROW_SECONDS,
+            drawn.map_or_else(
+                || "visible=false".to_owned(),
+                |(start, tip)| format!(
+                    "visible=true start={:.1},{:.1} tip={:.1},{:.1}",
+                    start.x, start.y, tip.x, tip.y
+                ),
+            ),
+        );
+        state.logged_death_star_beam = true;
     }
 }
 

@@ -2154,6 +2154,58 @@ impl TacticalAssetRenderer {
 
     /// Draw the retained projectile meshes constructed by `FUN_005ee590` at
     /// their source-to-moving-target interpolation point from `LAB_005eeb90`.
+    /// Draw the superlaser beam `FUN_005da150` builds on the Death Star's
+    /// decal frame and `0x005da830` grows each frame: a pure green
+    /// (`SetColorRGB(0, 1, 0)`) box 0.01 wide from the decal centre, scaled
+    /// along its look-at axis to `progress` times the distance to the
+    /// target, and a green cone (8 faces round an apex) scaled
+    /// `(0.06e, 0.06e, 0.15e)` and moved 10 back along the axis. port: the
+    /// sub-pixel box is drawn as one device-pixel line, as for projectiles,
+    /// and the cone is unlit.
+    pub(crate) fn draw_death_star_beam(
+        &mut self,
+        aperture: (f32, f32, f32, f32),
+        origin: Vec3,
+        target: Vec3,
+        progress: f32,
+        extent: f32,
+    ) -> Option<(Vec2, Vec2)> {
+        let source_camera = self.source_camera?;
+        let travel = target - origin;
+        if !travel.is_finite() || travel.length_squared() <= f32::EPSILON {
+            return None;
+        }
+        let axis = travel.normalize();
+        let tip_position = origin + travel * progress.clamp(0.0, 1.0);
+        let (x, y, width, height) = aperture;
+        let pose = source_camera.pose();
+        let camera = Camera3D {
+            position: pose.position,
+            target: pose.target,
+            up: pose.up,
+            fovy: pose.fovy_radians,
+            aspect: Some(width / height),
+            viewport: Some((
+                x.round() as i32,
+                (screen_height() - y - height).round() as i32,
+                width.round() as i32,
+                height.round() as i32,
+            )),
+            z_near: pose.near,
+            z_far: pose.far,
+            ..Default::default()
+        };
+        let camera_matrix = camera.matrix();
+        set_camera(&camera);
+        draw_mesh(&death_star_beam_cone_mesh(origin, axis, extent));
+        set_default_camera();
+        let start = project_world_position(camera_matrix, origin, aperture)?;
+        let tip = project_world_position(camera_matrix, tip_position, aperture)?;
+        let device_pixel = (aperture.2 / 444.0).max(1.0);
+        draw_line(start.x, start.y, tip.x, tip.y, device_pixel, DEATH_STAR_BEAM_COLOR);
+        Some((start, tip))
+    }
+
     pub(crate) fn draw_projectiles(
         &mut self,
         aperture: (f32, f32, f32, f32),
@@ -2701,6 +2753,44 @@ impl TacticalAssetRenderer {
         });
         self.family_loads = self.family_loads.saturating_add(1);
         Ok(())
+    }
+}
+
+/// `FUN_005da150`'s `SetColorRGB(0, 1, 0)` for both beam meshes.
+const DEATH_STAR_BEAM_COLOR: Color = Color::new(0.0, 1.0, 0.0, 1.0);
+
+/// `FUN_005da150`'s second beam mesh: eight unit-ring vertices at
+/// `(cos k45, sin k45, 0)` and an apex at `(0, 0, 1)`, eight faces round the
+/// apex, scaled `(0.06e, 0.06e, 0.15e)` (`DAT_0066d4e0`, `DAT_0066d4e8`) and
+/// translated `(0, 0, -10)`, on a frame at `origin` looking along `axis`.
+fn death_star_beam_cone_mesh(origin: Vec3, axis: Vec3, extent: f32) -> Mesh {
+    let reference = if axis.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
+    let side = reference.cross(axis).normalize();
+    let up = axis.cross(side);
+    let radius = 0.06 * extent;
+    let length = 0.15 * extent;
+    let color: [u8; 4] = DEATH_STAR_BEAM_COLOR.into();
+    let vertex = |position: Vec3| Vertex {
+        position,
+        uv: vec2(0.0, 0.0),
+        color,
+        normal: Vec4::ZERO,
+    };
+    let base = origin - axis * 10.0;
+    let mut vertices = (0..8)
+        .map(|step| {
+            let angle = (step as f32) * std::f32::consts::FRAC_PI_4;
+            vertex(base + (side * angle.cos() + up * angle.sin()) * radius)
+        })
+        .collect::<Vec<_>>();
+    vertices.push(vertex(base + axis * length));
+    let indices = (0..8_u16)
+        .flat_map(|step| [8, step, (step + 1) % 8])
+        .collect();
+    Mesh {
+        vertices,
+        indices,
+        texture: None,
     }
 }
 
@@ -3692,6 +3782,41 @@ mod tests {
         );
         let envelope = tactical_collision_envelope(decoded.source_bounds);
         assert_eq!(envelope.vertical_radius, 1.5);
+    }
+
+    // Source: FUN_005da150 (nine vertices, eight faces round vertex 8,
+    // SetColorRGB(0, 1, 0), Scale(0.06e, 0.06e, 0.15e), Translate(0, 0, -10)).
+    #[test]
+    fn the_superlaser_cone_sits_ten_units_behind_the_decal_pointing_at_the_target() {
+        let origin = vec3(1.0, 2.0, 3.0);
+        let axis = vec3(0.0, 0.0, 1.0);
+        let mesh = death_star_beam_cone_mesh(origin, axis, 100.0);
+        assert_eq!(mesh.vertices.len(), 9);
+        assert_eq!(mesh.indices.len(), 24);
+        assert_eq!(&mesh.indices[..6], &[8, 0, 1, 8, 1, 2]);
+        assert_eq!(&mesh.indices[21..], &[8, 7, 0]);
+        let base = origin - axis * 10.0;
+        for vertex in &mesh.vertices[..8] {
+            let offset = vertex.position - base;
+            assert!((offset.length() - 6.0).abs() < 1e-4);
+            assert!(offset.dot(axis).abs() < 1e-4);
+        }
+        assert!((mesh.vertices[8].position - (base + axis * 15.0)).length() < 1e-4);
+        assert!(mesh.vertices.iter().all(|vertex| vertex.color == [0, 255, 0, 255]));
+        // The ring steps 45 degrees: neighbours are 2r sin 22.5 apart.
+        let chord = 2.0 * 6.0 * std::f32::consts::FRAC_PI_8.sin();
+        for step in 0..8 {
+            let next = (step + 1) % 8;
+            let gap = mesh.vertices[step].position - mesh.vertices[next].position;
+            assert!((gap.length() - chord).abs() < 1e-3, "step {step}: {gap:?}");
+        }
+        // A vertical axis still gives a ring round it.
+        let up = death_star_beam_cone_mesh(Vec3::ZERO, Vec3::Y, 100.0);
+        for vertex in &up.vertices[..8] {
+            let offset = vertex.position - Vec3::Y * -10.0;
+            assert!((offset.length() - 6.0).abs() < 1e-4);
+            assert!(offset.y.abs() < 1e-4);
+        }
     }
 
     // Source: FUN_005ab650 tactical layout and lane derivation.

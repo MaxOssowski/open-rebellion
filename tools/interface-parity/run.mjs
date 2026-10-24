@@ -3171,13 +3171,16 @@ async function probeTacticalDeathStarLaserJourney(
 
   const pause = point(575, 319);
   await page.mouse.click(pause.x, pause.y);
-  await page.waitForTimeout(1100);
+  // 0x005da830 grows the beam for 1 s (DAT_0066d4bc), then it ends. From
+  // the Death Star at -2e x it enters the first Imperial view after ~0.85 s.
+  await page.waitForTimeout(900);
   const beam = await dynamicInteractionFrame(page, folder, "death-star-superlaser-beam");
   const beamVisibility = verifyTacticalGreenBeam(viewport, committed, beam);
   assert.ok(consoleLines.some(({ text }) =>
-    text.includes("[tactical_3d] projectile_scene") && text.includes("3999:3:12.000")),
-  "Death Star beam was not submitted to the production tactical renderer");
-  await page.waitForTimeout(1100);
+    text.includes(`[tactical_3d] death_star_beam target_object_id=${targetObjectId} grow_seconds=1 visible=true`)
+      && text.includes("source=FUN_005da150,0x005da830")),
+  "Death Star beam was not drawn from the backdrop decal to its target");
+  await page.waitForTimeout(1300);
   assert.ok(consoleLines.some(({ text }) =>
     text.includes(`[tactical_death_star] superlaser_resolved target_object_id=${targetObjectId}`)),
   "Death Star beam did not resolve against its assigned target");
