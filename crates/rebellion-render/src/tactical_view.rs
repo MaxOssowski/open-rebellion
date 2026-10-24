@@ -219,6 +219,18 @@ thread_local! {
         const { std::cell::OnceCell::new() };
 }
 
+thread_local! {
+    static TACTICAL_ARIAL_BOLD: std::cell::OnceCell<Option<Font>> =
+        const { std::cell::OnceCell::new() };
+}
+
+fn tactical_arial_bold() -> Option<Font> {
+    TACTICAL_ARIAL_BOLD.with(|cell| {
+        cell.get_or_init(|| load_ttf_font_from_bytes(crate::theme::ARIAL_BOLD).ok())
+            .clone()
+    })
+}
+
 fn tactical_arial() -> Option<Font> {
     TACTICAL_ARIAL.with(|cell| {
         cell.get_or_init(|| load_ttf_font_from_bytes(crate::theme::ARIAL_REGULAR).ok())
@@ -3715,6 +3727,12 @@ fn prewarm_tactical_font_atlas(
     // default font's.
     let panel_size = tactical_text_font_size(canvas);
     if warmed_sizes.insert(u16::MAX - panel_size) {
+        measure_text(
+            &sample,
+            tactical_arial_bold().as_ref(),
+            panel_size,
+            BATTLE_WINDOW_FONT_6 / TACTICAL_FONT_RASTER * TACTICAL_STATUS_ASPECT,
+        );
         for em in [TACTICAL_FONT_8_EM, TACTICAL_FONT_10_EM, TACTICAL_STATUS_EM] {
             measure_text(
                 &sample,
@@ -5617,7 +5635,11 @@ fn battle_window_text_params(
 
 /// Screen width of a battle-window text.
 fn battle_window_text_width(canvas: TacticalCanvas, text: &str, size: f32) -> f32 {
-    let font = tactical_arial();
+    battle_window_text_width_in(canvas, text, size, false)
+}
+
+fn battle_window_text_width_in(canvas: TacticalCanvas, text: &str, size: f32, bold: bool) -> f32 {
+    let font = if bold { tactical_arial_bold() } else { tactical_arial() };
     let params = battle_window_text_params(canvas, size, WHITE);
     measure_text(
         text,
@@ -5636,7 +5658,18 @@ fn draw_result_text(
     size: f32,
     color: Color,
 ) {
-    let font = tactical_arial();
+    draw_result_text_in(canvas, text, x, baseline_y, (size, false), color);
+}
+
+fn draw_result_text_in(
+    canvas: TacticalCanvas,
+    text: &str,
+    x: f32,
+    baseline_y: f32,
+    (size, bold): (f32, bool),
+    color: Color,
+) {
+    let font = if bold { tactical_arial_bold() } else { tactical_arial() };
     let (screen_x, screen_y) = canvas.point(x, baseline_y);
     draw_text_ex(
         text,
@@ -5674,7 +5707,7 @@ fn draw_result_wrapped_lines(
     x: f32,
     mut baseline_y: f32,
     max_width: f32,
-    size: f32,
+    (size, bold): (f32, bool),
     color: Color,
 ) {
     // A line steps by its font's cell: 18 px for font 6.
@@ -5688,9 +5721,9 @@ fn draw_result_wrapped_lines(
                 format!("{current} {word}")
             };
             if !current.is_empty()
-                && battle_window_text_width(canvas, &candidate, size) > max_width * canvas.scale
+                && battle_window_text_width_in(canvas, &candidate, size, bold) > max_width * canvas.scale
             {
-                draw_result_text(canvas, &current, x, baseline_y, size, color);
+                draw_result_text_in(canvas, &current, x, baseline_y, (size, bold), color);
                 baseline_y += line_step;
                 current = word.to_owned();
             } else {
@@ -5698,7 +5731,7 @@ fn draw_result_wrapped_lines(
             }
         }
         if !current.is_empty() {
-            draw_result_text(canvas, &current, x, baseline_y, size, color);
+            draw_result_text_in(canvas, &current, x, baseline_y, (size, bold), color);
             baseline_y += line_step;
         }
     }
@@ -5984,7 +6017,9 @@ fn battle_display_page(
         },
     ];
     // A0 TAC-07-C013: capitals from window rows 43 and 133 at x 24.
-    for (line, cap_top) in lines.iter().zip([43.0, 133.0]) {
+    // FUN_0046f360 sets font 7 (18 px cell, weight 700) for the second
+    // line (`0x46fa33`), the first keeping font 6.
+    for ((line, cap_top), bold) in lines.iter().zip([43.0, 133.0]).zip([false, true]) {
         ops.push(PageOp::Wrapped {
             lines: vec![line.clone()],
             x: 24.0,
@@ -5992,6 +6027,7 @@ fn battle_display_page(
             width: 328.0,
             size: BATTLE_WINDOW_FONT_6,
             color: text_color,
+            bold,
         });
     }
     let pressed_art = if viewer_alliance {
@@ -6155,6 +6191,7 @@ fn battle_summary_page(
                 width: 352.0,
                 size: BATTLE_WINDOW_FONT_6,
                 color,
+                bold: false,
             });
         }
     }
@@ -6289,13 +6326,14 @@ fn draw_page_ops_at(
                 width,
                 size,
                 color,
+                bold,
             } => draw_result_wrapped_lines(
                 canvas,
                 &lines,
                 origin_x + x,
                 origin_y + baseline,
                 width,
-                size,
+                (size, bold),
                 color,
             ),
         }
@@ -6320,7 +6358,8 @@ enum PageOp {
         color: Color,
         centered: bool,
     },
-    /// Lines word-wrapped at `width` from `x`, the first at `baseline`.
+    /// Lines word-wrapped at `width` from `x`, the first at `baseline`;
+    /// `bold` takes the 700-weight face.
     Wrapped {
         lines: Vec<String>,
         x: f32,
@@ -6328,6 +6367,7 @@ enum PageOp {
         width: f32,
         size: f32,
         color: Color,
+        bold: bool,
     },
 }
 
@@ -6678,6 +6718,7 @@ fn battle_alert_scene_text(title: &str, summary: Option<&str>, color: Color) -> 
                 width: 328.0,
                 size: BATTLE_WINDOW_FONT_6,
                 color,
+                bold: false,
             });
         }
     }
@@ -9911,6 +9952,7 @@ mod tests {
                     width: 328.0,
                     size: BATTLE_WINDOW_FONT_6,
                     color: BLACK,
+                    bold: false,
                 },
                 PageOp::Wrapped {
                     lines: vec!["The Imperial fleet".into()],
@@ -9919,6 +9961,7 @@ mod tests {
                     width: 328.0,
                     size: BATTLE_WINDOW_FONT_6,
                     color: green,
+                    bold: false,
                 },
             ]
         );
@@ -10438,6 +10481,15 @@ mod tests {
             })
             .collect();
         assert_eq!(labels, [("Deyer", 113.5, 293.0), ("Fleet", 313.5, 293.0)]);
+        // FUN_0046f360 (0x46fa33): the second line in font 7, bold.
+        let bolds: Vec<bool> = ops
+            .iter()
+            .filter_map(|op| match op {
+                PageOp::Wrapped { bold, .. } => Some(*bold),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bolds, [false, true]);
         // A0 TAC-07-C013: the page keeps its title, font 0xb from row 22.
         assert!(ops.iter().any(|op| matches!(op,
             PageOp::Text { text, baseline, color, .. }
@@ -10544,7 +10596,8 @@ mod tests {
                 baseline: 271.0,
                 width: 352.0,
                 size: BATTLE_WINDOW_FONT_6,
-                color: BLACK
+                color: BLACK,
+                bold: false,
             }
         );
         assert_eq!(
@@ -10555,7 +10608,8 @@ mod tests {
                 baseline: 270.0,
                 width: 352.0,
                 size: BATTLE_WINDOW_FONT_6,
-                color: green
+                color: green,
+                bold: false,
             }
         );
         // A0 TAC-07-C001: font 0xb capitals from window row 22.

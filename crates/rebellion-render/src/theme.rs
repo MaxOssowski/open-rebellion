@@ -52,7 +52,8 @@ pub const DANGER_RED: Color32 = Color32::from_rgb(200, 50, 50);
 /// any working directory get it.
 pub(crate) const ARIAL_REGULAR: &[u8] =
     include_bytes!("../../../assets/fonts/LiberationSans-Regular.ttf");
-const ARIAL_BOLD: &[u8] = include_bytes!("../../../assets/fonts/LiberationSans-Bold.ttf");
+pub(crate) const ARIAL_BOLD: &[u8] =
+    include_bytes!("../../../assets/fonts/LiberationSans-Bold.ttf");
 
 /// The bold face's family name in egui.
 pub const ARIAL_BOLD_FAMILY: &str = "arial-bold";
