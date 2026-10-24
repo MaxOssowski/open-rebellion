@@ -34,7 +34,7 @@ use crate::bmp_cache::{resources, BmpCache, DllSource};
 #[cfg(feature = "interface-test-fixtures")]
 use crate::tactical_assets::TacticalLodView;
 use crate::tactical_assets::{
-    OriginalTacticalCamera, TacticalAssetRenderer, TacticalEffectRenderObject,
+    original_hull_axes, OriginalTacticalCamera, TacticalAssetRenderer, TacticalEffectRenderObject,
     TacticalFighterRenderObject, TacticalProjectileRenderObject, TacticalRenderObject,
     TacticalScreenProjection,
 };
@@ -7644,6 +7644,9 @@ pub fn draw_tactical_view(
     let (scale, offset_x, offset_y) =
         canvas.arena_transform(state.zoom, state.camera_x, state.camera_y);
     let render_pyrotechnics = state.render_pyrotechnics;
+    if state.render_original_participants {
+        apply_original_collision_envelopes(state);
+    }
     let (
         production_objects,
         production_fighters,
@@ -7665,6 +7668,11 @@ pub fn draw_tactical_view(
                             object_id: u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
                             resource_base: resource.mesh_resource_base,
                             position: ship.source_position.rendered(),
+                            axes: original_hull_axes(macroquad::math::vec3(
+                                ship.source_forward.x,
+                                ship.source_forward.y,
+                                ship.source_forward.z,
+                            )),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -8551,6 +8559,38 @@ fn clip_segment_to_rect(a: Vec2, b: Vec2, rect: (f32, f32, f32, f32)) -> Option<
         }
     }
     (enter <= leave).then(|| (a + delta * enter, a + delta * leave))
+}
+
+/// `FUN_005ab0e0` gives each hull its collision envelope when the tactical
+/// object is created, before the first frame; the paused opening formation
+/// is laid out with it.
+fn apply_original_collision_envelopes(state: &mut TacticalState) {
+    let Some(session) = state.session.as_mut() else {
+        return;
+    };
+    let mut changed = false;
+    for ship in session.ships.iter_mut().filter(|ship| ship.alive) {
+        let Some(resource) = ship.tactical_resource else {
+            continue;
+        };
+        let Some(envelope) = state
+            .asset_renderer
+            .participant_collision_envelope(resource.mesh_resource_base)
+        else {
+            continue;
+        };
+        let recovered = OriginalTacticalCollisionEnvelope {
+            vertical_radius: envelope.vertical_radius,
+            planar_diameter: envelope.planar_diameter,
+        };
+        if ship.source_collision_envelope != Some(recovered) {
+            ship.source_collision_envelope = Some(recovered);
+            changed = true;
+        }
+    }
+    if changed && session.combat_tick == 0 && session.paused {
+        BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+    }
 }
 
 /// Where `FUN_005d4d10` hangs the planet decal, in source coordinates, and

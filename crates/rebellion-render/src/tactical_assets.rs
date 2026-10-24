@@ -376,6 +376,9 @@ pub fn select_original_tactical_lod(
 }
 
 const MESH_MAGIC: &[u8; 8] = b"ORTMESH\0";
+/// `0x005d5b10`, the hull cache's loader (vtable `0x0066c990` + 4), loads
+/// each type-301 mesh and scales it by `DAT_0066d2b0` (3.0) on every axis.
+const ORIGINAL_HULL_MESH_SCALE: f32 = 3.0;
 const TEXTURE_MAGIC: &[u8; 8] = b"ORTINDEX";
 const PALETTE_MAGIC: &[u8; 8] = b"ORTPAL00";
 #[cfg(not(target_arch = "wasm32"))]
@@ -907,6 +910,34 @@ pub(crate) struct TacticalRenderObject {
     pub object_id: u32,
     pub resource_base: u32,
     pub position: Vec3,
+    /// Render-space images of the hull's local x, y and z axes
+    /// (`original_hull_axes`).
+    pub axes: [Vec3; 3],
+}
+
+/// The axes of an unturned hull.
+pub(crate) const IDENTITY_HULL_AXES: [Vec3; 3] = [Vec3::X, Vec3::Y, Vec3::Z];
+
+/// The hull frame `0x005d3500` builds from a capital ship's forward
+/// direction `O` (source space) before `AddTransform(REPLACE)`: local x is
+/// `(-Oz, 0, Ox)` normalised (left as it is at zero length), local y is
+/// `(0, 1, 0)` and local z is `-O`. Returned in render space, where source Z
+/// is reflected (`F R F` with `F = diag(1, 1, -1)`).
+pub(crate) fn original_hull_axes(forward: Vec3) -> [Vec3; 3] {
+    let mut side = vec3(-forward.z, 0.0, forward.x);
+    let length = side.length();
+    if length > 0.0 {
+        side /= length;
+    }
+    let rows = [side, Vec3::Y, -forward];
+    let reflect = |row: Vec3| vec3(row.x, row.y, -row.z);
+    [reflect(rows[0]), reflect(rows[1]), -reflect(rows[2])]
+}
+
+fn set_object_axes(material: &Material, axes: [Vec3; 3]) {
+    for (name, axis) in ["ObjectAxisX", "ObjectAxisY", "ObjectAxisZ"].into_iter().zip(axes) {
+        material.set_uniform(name, [axis.x, axis.y, axis.z, 0.0]);
+    }
 }
 
 /// One source-bound fighter group submitted by the live battle.
@@ -1497,6 +1528,7 @@ impl TacticalAssetRenderer {
         let material = self.material.as_ref().unwrap();
         gl_use_material(material);
         material.set_uniform("ObjectTranslation", [0.0_f32; 4]);
+        set_object_axes(material, IDENTITY_HULL_AXES);
         let asset = &self.assets[self.current_lod as usize];
         debug_assert_eq!(asset.resource_id, self.current_lod.resource_id());
         for chunk in &asset.meshes {
@@ -1511,6 +1543,32 @@ impl TacticalAssetRenderer {
     }
 
     /// Draw every mapped live capital ship through its joined three-LOD family.
+    /// The collision envelope `FUN_005ab0e0` takes from a hull family when
+    /// the tactical object is created: the box of its base + 1 member
+    /// (`FUN_005d26c0`'s GetBox of `+0x48`). Loads the family if needed.
+    pub(crate) fn participant_collision_envelope(
+        &mut self,
+        resource_base: u32,
+    ) -> Option<TacticalCollisionEnvelope> {
+        if !self.participant_families.contains_key(&resource_base)
+            && !self.unavailable_families.contains(&resource_base)
+        {
+            if let Err(error) = self.load_participant_family(resource_base) {
+                self.unavailable_families.insert(resource_base);
+                macroquad::logging::warn!(
+                    "[tactical_3d] participant family base={} unavailable: {}",
+                    resource_base,
+                    error
+                );
+            }
+        }
+        let family = self.participant_families.get(&resource_base)?;
+        family
+            .get(1)
+            .or_else(|| family.first())
+            .map(|asset| asset.collision_envelope)
+    }
+
     pub(crate) fn draw_participants(
         &mut self,
         aperture: (f32, f32, f32, f32),
@@ -1629,9 +1687,10 @@ impl TacticalAssetRenderer {
                 continue;
             };
             // FUN_005ab0e0 derives the collision envelope when the source
-            // tactical object is initialized. Keep it stable across visual
-            // LOD transitions by using the close/base resource family member.
-            if let Some(base_asset) = family.first() {
+            // tactical object is initialized, from the box the hull's
+            // vtable +0x2c returns (0x005d43b0: +0xcc). FUN_005d26c0 fills it
+            // with GetBox of +0x48, the base + 1 family member.
+            if let Some(base_asset) = family.get(1).or_else(|| family.first()) {
                 report
                     .collision_envelopes
                     .push((object.object_id, base_asset.collision_envelope));
@@ -1658,6 +1717,7 @@ impl TacticalAssetRenderer {
                 "ObjectTranslation",
                 [object.position.x, object.position.y, object.position.z, 0.0],
             );
+            set_object_axes(material, object.axes);
             for chunk in &asset.meshes {
                 material.set_uniform(
                     "MaterialEmissive",
@@ -1675,9 +1735,13 @@ impl TacticalAssetRenderer {
                 let mut min = screen;
                 let mut max = screen;
                 for vertex in asset.meshes.iter().flat_map(|chunk| &chunk.mesh.vertices) {
+                    let local = vertex.position;
+                    let placed = object.axes[0] * local.x
+                        + object.axes[1] * local.y
+                        + object.axes[2] * local.z;
                     if let Some(projected) = project_world_position(
                         camera_matrix,
-                        vertex.position + object.position,
+                        placed + object.position,
                         aperture,
                     ) {
                         min = min.min(projected);
@@ -2761,7 +2825,7 @@ fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
     }
     let mut bounds = [0.0_f32; 6];
     for value in &mut bounds {
-        *value = reader.f32()?;
+        *value = reader.f32()? * ORIGINAL_HULL_MESH_SCALE;
     }
     let extent = (bounds[3] - bounds[0])
         .max(bounds[4] - bounds[1])
@@ -2804,7 +2868,8 @@ fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
         let decoded_material = &decoded_materials[material];
         let mut vertices = Vec::with_capacity(vertex_count);
         for _ in 0..vertex_count {
-            let position = vec3(reader.f32()?, reader.f32()?, reader.f32()?);
+            let position =
+                vec3(reader.f32()?, reader.f32()?, reader.f32()?) * ORIGINAL_HULL_MESH_SCALE;
             let normal = vec3(reader.f32()?, reader.f32()?, reader.f32()?);
             let uv = vec2(reader.f32()?, reader.f32()?);
             vertices.push(Vertex {
@@ -3083,6 +3148,9 @@ fn load_tactical_material() -> Result<Material, String> {
                 UniformDesc::new("SourceLightColorDirectional", UniformType::Float4),
                 UniformDesc::new("MaterialEmissive", UniformType::Float4),
                 UniformDesc::new("ObjectTranslation", UniformType::Float4),
+                UniformDesc::new("ObjectAxisX", UniformType::Float4),
+                UniformDesc::new("ObjectAxisY", UniformType::Float4),
+                UniformDesc::new("ObjectAxisZ", UniformType::Float4),
             ],
             ..Default::default()
         },
@@ -3104,6 +3172,7 @@ fn load_tactical_material() -> Result<Material, String> {
     );
     material.set_uniform("MaterialEmissive", [0.0_f32; 4]);
     material.set_uniform("ObjectTranslation", [0.0_f32; 4]);
+    set_object_axes(&material, IDENTITY_HULL_AXES);
     Ok(material)
 }
 
@@ -3184,11 +3253,16 @@ uniform vec4 SourceLightDirectionAmbient;
 uniform vec4 SourceLightColorDirectional;
 uniform lowp vec4 MaterialEmissive;
 uniform vec4 ObjectTranslation;
+uniform vec4 ObjectAxisX;
+uniform vec4 ObjectAxisY;
+uniform vec4 ObjectAxisZ;
 void main() {
-    gl_Position = Projection * Model * vec4(position + ObjectTranslation.xyz, 1.0);
+    vec3 placed = position.x * ObjectAxisX.xyz + position.y * ObjectAxisY.xyz + position.z * ObjectAxisZ.xyz;
+    vec3 turned = normal.x * ObjectAxisX.xyz + normal.y * ObjectAxisY.xyz + normal.z * ObjectAxisZ.xyz;
+    gl_Position = Projection * Model * vec4(placed + ObjectTranslation.xyz, 1.0);
     uv = texcoord;
     tint = color0 / 255.0;
-    lowp float diffuse = max(dot(normalize(normal.xyz), normalize(SourceLightDirectionAmbient.xyz)), 0.0);
+    lowp float diffuse = max(dot(normalize(turned), normalize(SourceLightDirectionAmbient.xyz)), 0.0);
     light = min(vec3(1.0), vec3(SourceLightDirectionAmbient.w) + SourceLightColorDirectional.rgb * SourceLightColorDirectional.w * diffuse);
 }"#;
 
@@ -3216,6 +3290,9 @@ struct Uniforms {
     float4 SourceLightColorDirectional;
     float4 MaterialEmissive;
     float4 ObjectTranslation;
+    float4 ObjectAxisX;
+    float4 ObjectAxisY;
+    float4 ObjectAxisZ;
 };
 struct Vertex {
     float3 position [[attribute(0)]];
@@ -3231,10 +3308,12 @@ struct RasterizerData {
 };
 vertex RasterizerData vertexShader(Vertex v [[stage_in]], constant Uniforms& u [[buffer(0)]]) {
     RasterizerData out;
-    out.position = u.Projection * u.Model * float4(v.position + u.ObjectTranslation.xyz, 1.0);
+    float3 placed = v.position.x * u.ObjectAxisX.xyz + v.position.y * u.ObjectAxisY.xyz + v.position.z * u.ObjectAxisZ.xyz;
+    float3 turned = v.normal.x * u.ObjectAxisX.xyz + v.normal.y * u.ObjectAxisY.xyz + v.normal.z * u.ObjectAxisZ.xyz;
+    out.position = u.Projection * u.Model * float4(placed + u.ObjectTranslation.xyz, 1.0);
     out.uv = v.texcoord;
     out.tint = v.color0 / 255.0;
-    float diffuse = max(dot(normalize(v.normal.xyz), normalize(u.SourceLightDirectionAmbient.xyz)), 0.0);
+    float diffuse = max(dot(normalize(turned), normalize(u.SourceLightDirectionAmbient.xyz)), 0.0);
     out.light = min(float3(1.0), float3(u.SourceLightDirectionAmbient.w) + u.SourceLightColorDirectional.rgb * u.SourceLightColorDirectional.w * diffuse);
     return out;
 }
@@ -3537,6 +3616,82 @@ mod tests {
         assert!(decal_overlaps_aperture(vec2(455.0, 467.0), vec2(5.0, 5.0), view));
         assert!(!decal_overlaps_aperture(vec2(456.0, 100.0), vec2(5.0, 5.0), view));
         assert!(!decal_overlaps_aperture(vec2(100.0, 468.0), vec2(5.0, 5.0), view));
+    }
+
+    // Source: 0x005d3500 (vtable 0x0066d198 + 0x1c, called from
+    // FUN_005c1f10 with the hull's position and its +0x10 forward vector):
+    // rows (-Oz, 0, Ox)/|..|, (0, 1, 0), -O, then the position, passed to
+    // AddTransform(REPLACE).
+    #[test]
+    fn a_hull_turns_about_the_vertical_to_face_its_forward_direction() {
+        let source_transform = |forward: Vec3, local: Vec3| {
+            let side = vec3(-forward.z, 0.0, forward.x).normalize();
+            side * local.x + Vec3::Y * local.y - forward * local.z
+        };
+        for forward in [
+            vec3(0.0, 0.0, 1.0),
+            vec3(0.0, 0.0, -1.0),
+            vec3(1.0, 0.0, 0.0),
+            vec3(0.6, 0.0, -0.8),
+            // Not unit length: the side axis is normalised, -O is not.
+            vec3(0.0, 0.5, 2.0),
+        ] {
+            let axes = original_hull_axes(forward);
+            for local in [vec3(1.0, 0.0, 0.0), vec3(0.0, 2.0, 0.0), vec3(0.5, -1.0, 3.0)] {
+                // Render space reflects source Z on both sides.
+                let render_local = vec3(local.x, local.y, -local.z);
+                let placed = axes[0] * render_local.x
+                    + axes[1] * render_local.y
+                    + axes[2] * render_local.z;
+                let expected = source_transform(forward, local);
+                assert!(
+                    (placed - vec3(expected.x, expected.y, -expected.z)).length() < 1e-5,
+                    "forward {forward:?} local {local:?}: {placed:?}"
+                );
+            }
+        }
+        // The source nose, local -z, points along the forward direction.
+        let axes = original_hull_axes(vec3(0.0, 0.0, 1.0));
+        assert_eq!(axes[2], vec3(0.0, 0.0, -1.0));
+        assert_eq!(IDENTITY_HULL_AXES, [Vec3::X, Vec3::Y, Vec3::Z]);
+        // A vertical forward leaves the side axis unnormalised (zero).
+        assert_eq!(original_hull_axes(vec3(0.0, 1.0, 0.0))[0], Vec3::ZERO);
+    }
+
+    // Source: 0x005d5b10 (Load of type 0x12d, then Scale(DAT_0066d2b0 = 3.0)
+    // on all three axes) for every hull in the 0x0066c990 cache.
+    #[test]
+    fn a_hull_mesh_loads_three_times_its_authored_size() {
+        let mut bytes = Vec::from(MESH_MAGIC.as_slice());
+        for value in [1_u32, 1, 1, 3, 1, 0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [-1.0_f32, -0.5, -2.0, 1.0, 0.5, 2.0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [1.0_f32, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        for value in [0_u32, 3, 3] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        for position in [[1.0_f32, 0.5, 2.0], [-1.0, 0.0, 0.0], [0.0, -0.5, -2.0]] {
+            for value in position.into_iter().chain([0.0, 1.0, 0.0, 0.0, 0.0]) {
+                bytes.extend_from_slice(&value.to_le_bytes());
+            }
+        }
+        for index in [0_u16, 1, 2] {
+            bytes.extend_from_slice(&index.to_le_bytes());
+        }
+        let decoded = decode_mesh_object(&bytes).unwrap();
+        assert_eq!(decoded.source_bounds, [-3.0, -1.5, -6.0, 3.0, 1.5, 6.0]);
+        assert_eq!(
+            decoded.chunks[0].mesh.vertices[0].position,
+            authored_position(vec3(3.0, 1.5, 6.0))
+        );
+        let envelope = tactical_collision_envelope(decoded.source_bounds);
+        assert_eq!(envelope.vertical_radius, 1.5);
     }
 
     // Source: FUN_005ab650 tactical layout and lane derivation.
