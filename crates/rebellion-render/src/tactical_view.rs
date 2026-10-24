@@ -5591,6 +5591,12 @@ fn battle_result_entries(
 /// widths that fit those ems.
 const BATTLE_WINDOW_FONT_B: f32 = 22.0;
 const BATTLE_WINDOW_FONT_6: f32 = 16.5;
+/// Font 4 (16 px cell): A0 TAC-07-C005 shows 10-row capitals; "Capital
+/// Ships" spans 76 px. port: fitted em.
+const BATTLE_WINDOW_FONT_4: f32 = 13.75;
+/// The Battle Summary's unit names: "Medium Transport 2" spans 93 px in A0
+/// TAC-07-C005. port: fitted em; the font index is not read.
+const BATTLE_RESULT_NAME_FONT: f32 = 11.0;
 /// Font 6's line step, its 18 px cell (A0 TAC-01-C010 rows 268 and 286).
 const BATTLE_WINDOW_FONT_6_LINE: f32 = 18.0;
 
@@ -5959,12 +5965,24 @@ fn battle_display_page(
     text_color: Color,
 ) -> Vec<PageOp> {
     use resources::strategy as art;
-    let mut ops = vec![PageOp::Bitmap {
-        source: DllSource::Strategy,
-        id: art::BATTLE_DESTINATION_BACKGROUND,
-        x: BATTLE_RESULTS_SCENE_X,
-        y: BATTLE_RESULTS_SCENE_Y,
-    }];
+    let mut ops = vec![
+        PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: art::BATTLE_DESTINATION_BACKGROUND,
+            x: BATTLE_RESULTS_SCENE_X,
+            y: BATTLE_RESULTS_SCENE_Y,
+        },
+        // A0 TAC-07-C013: the Display page keeps the title, font 0xb from
+        // window row 22.
+        PageOp::Text {
+            text: format!("Battle at {system_name}"),
+            x: 212.0,
+            baseline: 22.0 + 15.0,
+            size: BATTLE_WINDOW_FONT_B,
+            color: text_color,
+            centered: true,
+        },
+    ];
     // A0 TAC-07-C013: capitals from window rows 43 and 133 at x 24.
     for (line, cap_top) in lines.iter().zip([43.0, 133.0]) {
         ops.push(PageOp::Wrapped {
@@ -6332,11 +6350,13 @@ fn battle_force_page(
     mut size_of: impl FnMut(DllSource, u32) -> Option<[usize; 2]>,
 ) -> Vec<PageOp> {
     use resources::strategy as art;
-    let text = |text: &str, x: f32, top: f32, size: f32, color: Color, centered: bool| {
+    // `cap_top` is the first capital row; the baseline sits a cap height
+    // (0.7 of the em, as measured for fonts 4, 6 and 0xb) below it.
+    let text = |text: &str, x: f32, cap_top: f32, size: f32, color: Color, centered: bool| {
         PageOp::Text {
             text: text.to_owned(),
             x,
-            baseline: top + size,
+            baseline: cap_top + (size * 0.7).round(),
             size,
             color,
             centered,
@@ -6354,7 +6374,21 @@ fn battle_force_page(
             x: BATTLE_RESULTS_SCENE_X,
             y: BATTLE_RESULTS_SCENE_Y,
         },
-        text(&format!("Battle at {system_name}"), 212.0, 14.0, 18.0, text_color, true),
+        // A0 TAC-07-C005 (window coordinates): the title in font 0xb from
+        // row 22; the rail label (FUN_00471200: (12, 40), 400 wide, font 6)
+        // from row 45; the category label (FUN_00471200: (37, 99), font 4)
+        // from row 102; the column heads (font 4) from row 121; an empty
+        // column's label (font 6) from row 149; a unit's name from 7 rows
+        // into its name strip. port: fonts 4 and the names are fitted to
+        // the capture (em 13.75 and 11).
+        text(
+            &format!("Battle at {system_name}"),
+            212.0,
+            22.0,
+            BATTLE_WINDOW_FONT_B,
+            text_color,
+            true,
+        ),
     ];
     // FUN_00471200: rail 0x70 (Alliance) red, 0x71 (Empire) green.
     let (label, side_color) = if alliance {
@@ -6362,8 +6396,22 @@ fn battle_force_page(
     } else {
         ("Imperial Forces", Color::from_rgba(0, 255, 0, 255))
     };
-    ops.push(text(label, 212.0, 40.0, 14.0, side_color, true));
-    ops.push(text("Filters", 86.0, 70.0, 10.0, WHITE, false));
+    ops.push(text(
+        label,
+        212.0,
+        45.0,
+        BATTLE_WINDOW_FONT_6,
+        side_color,
+        true,
+    ));
+    ops.push(text(
+        "Filters",
+        86.0,
+        73.0,
+        BATTLE_WINDOW_FONT_4,
+        WHITE,
+        false,
+    ));
     for (index, item) in BattleResultCategory::ALL.into_iter().enumerate() {
         let (normal, pressed) = battle_category_art(item, player_alliance);
         let rect = battle_category_rect(index);
@@ -6374,7 +6422,14 @@ fn battle_force_page(
             y: rect.y,
         });
     }
-    ops.push(text(category.title(), 37.0, 99.0, 10.0, WHITE, false));
+    ops.push(text(
+        category.title(),
+        37.0,
+        102.0,
+        BATTLE_WINDOW_FONT_4,
+        WHITE,
+        false,
+    ));
     let (heads, width): (&[(f32, &str)], f32) = if personnel {
         (
             &[(37.0, "Survivors"), (149.0, "Captured"), (260.0, "Killed")],
@@ -6384,7 +6439,14 @@ fn battle_force_page(
         (&[(37.0, "Operational"), (204.0, "Destroyed")], 165.0)
     };
     for &(x, head) in heads {
-        ops.push(text(head, x + width / 2.0, 118.0, 10.0, WHITE, true));
+        ops.push(text(
+            head,
+            x + width / 2.0,
+            121.0,
+            BATTLE_WINDOW_FONT_4,
+            WHITE,
+            true,
+        ));
     }
 
     let columns = battle_result_columns(entries, personnel);
@@ -6394,7 +6456,14 @@ fn battle_force_page(
     for (column, units) in columns.iter().enumerate() {
         let left = 37.0 + column as f32 * cell_w;
         if let Some(label) = empty[column] {
-            ops.push(text(label, left + cell_w / 2.0, 140.0, 10.0, WHITE, true));
+            ops.push(text(
+                label,
+                left + cell_w / 2.0,
+                149.0,
+                BATTLE_WINDOW_FONT_6,
+                WHITE,
+                true,
+            ));
         }
         for (row, entry) in units.iter().skip(scroll).take(rows).enumerate() {
             let top = 136.0 + row as f32 * cell_h;
@@ -6414,8 +6483,8 @@ fn battle_force_page(
             ops.push(text(
                 &entry.name,
                 left + cell_w / 2.0,
-                top + cell_h - BATTLE_RESULT_NAME_HEIGHT,
-                9.0,
+                top + cell_h - BATTLE_RESULT_NAME_HEIGHT + 7.0,
+                BATTLE_RESULT_NAME_FONT,
                 WHITE,
                 true,
             ));
@@ -9279,19 +9348,40 @@ mod tests {
             })
             .collect();
         let find = |name: &str| texts.iter().find(|entry| entry.0 == name).cloned().unwrap();
-        assert_eq!(find("Battle at Hoth"), ("Battle at Hoth".into(), 212.0, 32.0, 18.0, true));
-        assert_eq!(find("Imperial Forces"), ("Imperial Forces".into(), 212.0, 54.0, 14.0, true));
-        assert_eq!(find("Filters"), ("Filters".into(), 86.0, 80.0, 10.0, false));
+        // A0 TAC-07-C005 capital rows (window coordinates): title 22, label
+        // 45, category 102, heads 121, a name 7 rows into its strip; each
+        // baseline is a cap height (0.7 em) lower.
+        assert_eq!(
+            find("Battle at Hoth"),
+            ("Battle at Hoth".into(), 212.0, 37.0, 22.0, true)
+        );
+        assert_eq!(
+            find("Imperial Forces"),
+            ("Imperial Forces".into(), 212.0, 57.0, 16.5, true)
+        );
+        assert_eq!(
+            find("Filters"),
+            ("Filters".into(), 86.0, 83.0, 13.75, false)
+        );
         assert_eq!(
             find("Trooper Regiments"),
-            ("Trooper Regiments".into(), 37.0, 109.0, 10.0, false)
+            ("Trooper Regiments".into(), 37.0, 112.0, 13.75, false)
         );
         assert_eq!(find("Operational").1, 37.0 + 82.5);
         assert_eq!(find("Destroyed").1, 204.0 + 82.5);
-        assert_eq!(find("Destroyed").2, 128.0);
-        assert_eq!(find("Kept"), ("Kept".into(), 37.0 + 82.5, 136.0 + 70.0 - 14.0 + 9.0, 9.0, true));
+        assert_eq!(find("Destroyed").2, 131.0);
+        assert_eq!(
+            find("Kept"),
+            (
+                "Kept".into(),
+                37.0 + 82.5,
+                136.0 + 70.0 - 14.0 + 7.0 + 8.0,
+                11.0,
+                true
+            )
+        );
         assert_eq!(find("Gone too").1, 202.0 + 82.5);
-        assert_eq!(find("Gone too").2, 206.0 + 70.0 - 14.0 + 9.0);
+        assert_eq!(find("Gone too").2, 206.0 + 70.0 - 14.0 + 7.0 + 8.0);
         let bitmaps: Vec<(u32, f32, f32)> = ops
             .iter()
             .filter_map(|op| match op {
@@ -9355,11 +9445,12 @@ mod tests {
         assert_eq!(
             labels,
             // The list's 110-wide cells from x 37 (FUN_004714e0), not the
-            // heads' x (FUN_0046f360 places those at 37, 149, 260).
+            // heads' x (FUN_0046f360 places those at 37, 149, 260); font 6
+            // capitals from row 149 (A0 TAC-07-C005), baseline 12 lower.
             [
-                ("None".into(), 92.0, 150.0),
-                ("None".into(), 202.0, 150.0),
-                ("No Casualties".into(), 312.0, 150.0)
+                ("None".into(), 92.0, 161.0),
+                ("None".into(), 202.0, 161.0),
+                ("No Casualties".into(), 312.0, 161.0)
             ]
         );
         assert!(ops.iter().any(|op| matches!(op, PageOp::Text { text, color, .. } if text == "Alliance Forces" && *color == Color::from_rgba(255, 0, 0, 255))));
@@ -10339,7 +10430,7 @@ mod tests {
                     centered: true,
                     color,
                     ..
-                } => {
+                } if !text.starts_with("Battle at") => {
                     assert_eq!(*color, WHITE);
                     Some((text.as_str(), *x, *baseline))
                 }
@@ -10347,6 +10438,10 @@ mod tests {
             })
             .collect();
         assert_eq!(labels, [("Deyer", 113.5, 293.0), ("Fleet", 313.5, 293.0)]);
+        // A0 TAC-07-C013: the page keeps its title, font 0xb from row 22.
+        assert!(ops.iter().any(|op| matches!(op,
+            PageOp::Text { text, baseline, color, .. }
+                if text == "Battle at Deyer" && *baseline == 37.0 && *color == red)));
         // The Empire's viewer: its fleet art and pressed system art.
         let ops = battle_display_page(
             "Deyer",

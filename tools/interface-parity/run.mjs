@@ -3258,7 +3258,8 @@ async function probeTacticalBattleResultsPresentation(
     type: "battle-results-alliance-detail",
     ...verifyStrategyBitmap(viewport, capture, resources.detail, 97 + dx, 87 + dy, [
       { x: 0, y: 0, width: 400, height: 100 },
-      { x: 0, y: 100, width: 340, height: 196 },
+      // The list (window 37..384); font 6 empty labels reach x 356.
+      { x: 0, y: 100, width: 372, height: 196 },
     ]),
   });
 
@@ -3279,7 +3280,8 @@ async function probeTacticalBattleResultsPresentation(
         type: "battle-results-personnel-detail",
         ...verifyStrategyBitmap(viewport, capture, 10762, 97 + dx, 87 + dy, [
           { x: 0, y: 0, width: 400, height: 100 },
-          { x: 0, y: 100, width: 340, height: 196 },
+          // The list (window 37..384); font 6 empty labels reach x 356.
+          { x: 0, y: 100, width: 372, height: 196 },
         ]),
       });
     }
@@ -3305,6 +3307,8 @@ async function probeTacticalBattleResultsPresentation(
     // (24, 130), 328 wide; the buttons at (29, 182) and (229, 182); their
     // labels at y 278 (window coordinates; the art sits at (12, 13)).
     ...verifyStrategyBitmap(viewport, capture, 10763, 97 + dx, 87 + dy, [
+      // The title, font 0xb from window row 22 (A0 TAC-07-C013).
+      { x: 0, y: 4, width: 400, height: 22 },
       { x: 0, y: 24, width: 400, height: 70 },
       { x: 0, y: 114, width: 400, height: 55 },
       { x: 17, y: 169, width: 169, height: 96 },

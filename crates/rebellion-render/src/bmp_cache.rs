@@ -1806,6 +1806,9 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // pure blue pixel inside either window.
                 | 10710..=10711
                 | 10335..=10336
+                // The Battle Summary's category buttons (`FUN_0046f360`),
+                // whose blue shows nowhere in A0 TAC-07-C005.
+                | 10345..=10364
                 | 10370..=10377
                 | 10716..=10745
                 | 10766
