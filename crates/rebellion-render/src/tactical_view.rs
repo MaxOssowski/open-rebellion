@@ -129,13 +129,48 @@ const BATTLE_APERTURE: NativeRect = NativeRect::new(16.0, 28.0, 444.0, 439.0);
 /// Default placement of the modeless 470x331 Battle Alert / Results window
 /// on the original 640x480 command-center canvas. The original window is
 /// draggable; the deterministic launcher keeps this centered position.
-const BATTLE_RESULTS_WINDOW_X: f32 = 85.0;
-const BATTLE_RESULTS_WINDOW_Y: f32 = 74.0;
 const BATTLE_RESULTS_SCENE_X: f32 = 12.0;
 const BATTLE_RESULTS_SCENE_Y: f32 = 13.0;
 const BATTLE_RESULTS_RAIL_X: f32 = 412.0;
-const BATTLE_ALERT_WINDOW_X: f32 = 65.0;
-const BATTLE_ALERT_WINDOW_Y: f32 = 54.0;
+/// The battle windows' texts: pure red for the Alliance, pure green for the
+/// Empire (A0 TAC-01-C010, TAC-07-C001, TAC-07-C002; `FUN_0044f860` passes
+/// `0xff` or `0xff00`).
+fn battle_window_text_color(player_alliance: bool) -> Color {
+    if player_alliance {
+        Color::from_rgba(255, 0, 0, 255)
+    } else {
+        Color::from_rgba(0, 255, 0, 255)
+    }
+}
+
+/// The Battle Alert and Battle Summary windows' top left in the A0
+/// captures: (62, 49) over the Alliance command center (TAC-01-C010,
+/// TAC-07-C001: frame 10710 and rail 10820 at window x 412) and (125, 52)
+/// over the Empire's (TAC-07-C002, the Umgul alert: frame 10711, rail
+/// 10821 at (537, 52)). port: the original windows are draggable; these
+/// are where they open.
+const BATTLE_WINDOW_ALLIANCE: (f32, f32) = (62.0, 49.0);
+const BATTLE_WINDOW_EMPIRE: (f32, f32) = (125.0, 52.0);
+
+thread_local! {
+    static BATTLE_WINDOW_ORIGIN: std::cell::Cell<(f32, f32)> =
+        const { std::cell::Cell::new(BATTLE_WINDOW_ALLIANCE) };
+}
+
+/// Open the battle windows over the player's command center.
+fn set_battle_window_origin(player_alliance: bool) {
+    BATTLE_WINDOW_ORIGIN.with(|origin| {
+        origin.set(if player_alliance {
+            BATTLE_WINDOW_ALLIANCE
+        } else {
+            BATTLE_WINDOW_EMPIRE
+        });
+    });
+}
+
+fn battle_window_origin() -> (f32, f32) {
+    BATTLE_WINDOW_ORIGIN.with(std::cell::Cell::get)
+}
 
 /// Selected-capital-ship display panel.
 const TACTICAL_SELECTED_SHIP_PANEL: u32 = 1302;
@@ -5549,6 +5584,44 @@ fn battle_result_entries(
     }
 }
 
+/// The battle windows' texts in Arial (Liberation Sans): `size` is the em,
+/// narrowed like the status texts (`TACTICAL_STATUS_ASPECT`). Their fonts
+/// are the original's `0xb` (24 px cell, em 22) and 6 (18 px cell, em
+/// 16.5): A0 TAC-01-C010 and TAC-07-C001 show 15- and 12-row capitals and
+/// widths that fit those ems.
+const BATTLE_WINDOW_FONT_B: f32 = 22.0;
+const BATTLE_WINDOW_FONT_6: f32 = 16.5;
+/// Font 6's line step, its 18 px cell (A0 TAC-01-C010 rows 268 and 286).
+const BATTLE_WINDOW_FONT_6_LINE: f32 = 18.0;
+
+fn battle_window_text_params(
+    canvas: TacticalCanvas,
+    size: f32,
+    color: Color,
+) -> TextParams<'static> {
+    TextParams {
+        font: None,
+        font_size: tactical_text_font_size(canvas),
+        font_scale: size / TACTICAL_FONT_RASTER,
+        font_scale_aspect: TACTICAL_STATUS_ASPECT,
+        color,
+        ..Default::default()
+    }
+}
+
+/// Screen width of a battle-window text.
+fn battle_window_text_width(canvas: TacticalCanvas, text: &str, size: f32) -> f32 {
+    let font = tactical_arial();
+    let params = battle_window_text_params(canvas, size, WHITE);
+    measure_text(
+        text,
+        font.as_ref(),
+        params.font_size,
+        params.font_scale * params.font_scale_aspect,
+    )
+    .width
+}
+
 fn draw_result_text(
     canvas: TacticalCanvas,
     text: &str,
@@ -5557,8 +5630,17 @@ fn draw_result_text(
     size: f32,
     color: Color,
 ) {
+    let font = tactical_arial();
     let (screen_x, screen_y) = canvas.point(x, baseline_y);
-    draw_text(text, screen_x, screen_y, size * canvas.scale, color);
+    draw_text_ex(
+        text,
+        screen_x,
+        screen_y,
+        TextParams {
+            font: font.as_ref(),
+            ..battle_window_text_params(canvas, size, color)
+        },
+    );
 }
 
 fn draw_result_text_centered(
@@ -5569,14 +5651,13 @@ fn draw_result_text_centered(
     size: f32,
     color: Color,
 ) {
-    let font_size = (size * canvas.scale).max(1.0) as u16;
-    let dimensions = measure_text(text, None, font_size, 1.0);
-    let (screen_x, screen_y) = canvas.point(center_x, baseline_y);
-    draw_text(
+    let width = battle_window_text_width(canvas, text, size);
+    draw_result_text(
+        canvas,
         text,
-        screen_x - dimensions.width * 0.5,
-        screen_y,
-        f32::from(font_size),
+        center_x - width * 0.5 / canvas.scale,
+        baseline_y,
+        size,
         color,
     );
 }
@@ -5590,7 +5671,8 @@ fn draw_result_wrapped_lines(
     size: f32,
     color: Color,
 ) {
-    let font_size = (size * canvas.scale).max(1.0) as u16;
+    // A line steps by its font's cell: 18 px for font 6.
+    let line_step = (size * BATTLE_WINDOW_FONT_6_LINE / BATTLE_WINDOW_FONT_6).round();
     for line in lines {
         let mut current = String::new();
         for word in line.split_whitespace() {
@@ -5600,10 +5682,10 @@ fn draw_result_wrapped_lines(
                 format!("{current} {word}")
             };
             if !current.is_empty()
-                && measure_text(&candidate, None, font_size, 1.0).width > max_width * canvas.scale
+                && battle_window_text_width(canvas, &candidate, size) > max_width * canvas.scale
             {
                 draw_result_text(canvas, &current, x, baseline_y, size, color);
-                baseline_y += size + 2.0;
+                baseline_y += line_step;
                 current = word.to_owned();
             } else {
                 current = candidate;
@@ -5611,7 +5693,7 @@ fn draw_result_wrapped_lines(
         }
         if !current.is_empty() {
             draw_result_text(canvas, &current, x, baseline_y, size, color);
-            baseline_y += size + 2.0;
+            baseline_y += line_step;
         }
     }
 }
@@ -5883,13 +5965,14 @@ fn battle_display_page(
         x: BATTLE_RESULTS_SCENE_X,
         y: BATTLE_RESULTS_SCENE_Y,
     }];
-    for (line, top) in lines.iter().zip([40.0, 130.0]) {
+    // A0 TAC-07-C013: capitals from window rows 43 and 133 at x 24.
+    for (line, cap_top) in lines.iter().zip([43.0, 133.0]) {
         ops.push(PageOp::Wrapped {
             lines: vec![line.clone()],
             x: 24.0,
-            baseline: top + 12.0,
+            baseline: cap_top + 12.0,
             width: 328.0,
-            size: 12.0,
+            size: BATTLE_WINDOW_FONT_6,
             color: text_color,
         });
     }
@@ -5926,8 +6009,8 @@ fn battle_display_page(
         ops.push(PageOp::Text {
             text: label.to_owned(),
             x: x + 84.5,
-            baseline: 278.0 + 14.0,
-            size: 14.0,
+            baseline: 281.0 + 12.0,
+            size: BATTLE_WINDOW_FONT_6,
             color: WHITE,
             centered: true,
         });
@@ -6025,11 +6108,14 @@ fn battle_summary_page(
             x: BATTLE_RESULTS_SCENE_X,
             y: BATTLE_RESULTS_SCENE_Y,
         },
+        // A0 TAC-07-C001: title capitals from window row 22, the
+        // headline's from 229 (font 0xb), the rest's from 258 (font 6),
+        // FUN_0046f360's rects plus each font's internal leading.
         PageOp::Text {
             text: format!("Battle at {system_name}"),
             x: 212.0,
-            baseline: 18.0 + 16.0,
-            size: 18.0,
+            baseline: 22.0 + 15.0,
+            size: BATTLE_WINDOW_FONT_B,
             color: text_color,
             centered: true,
         },
@@ -6038,18 +6124,18 @@ fn battle_summary_page(
         ops.push(PageOp::Text {
             text: headline.clone(),
             x: 212.0,
-            baseline: 225.0 + 16.0,
-            size: 18.0,
+            baseline: 229.0 + 15.0,
+            size: BATTLE_WINDOW_FONT_B,
             color: text_color,
             centered: true,
         });
-        for (x, top, color) in [(25.0, 256.0, BLACK), (24.0, 255.0, text_color)] {
+        for (x, cap_top, color) in [(25.0, 259.0, BLACK), (24.0, 258.0, text_color)] {
             ops.push(PageOp::Wrapped {
                 lines: rest.to_vec(),
                 x,
-                baseline: top + 12.0,
+                baseline: cap_top + 12.0,
                 width: 352.0,
-                size: 12.0,
+                size: BATTLE_WINDOW_FONT_6,
                 color,
             });
         }
@@ -6131,8 +6217,8 @@ fn result_list_scroll(
     category: BattleResultCategory,
 ) -> usize {
     let (x, y) = (
-        pointer.0 - BATTLE_RESULTS_WINDOW_X,
-        pointer.1 - BATTLE_RESULTS_WINDOW_Y,
+        pointer.0 - battle_window_origin().0,
+        pointer.1 - battle_window_origin().1,
     );
     let over = (37.0..37.0 + 347.0).contains(&x)
         && (136.0..136.0 + BATTLE_RESULT_LIST_HEIGHT).contains(&y);
@@ -6147,7 +6233,7 @@ fn draw_page_ops(cache: &mut BmpCache, canvas: TacticalCanvas, ops: Vec<PageOp>)
         cache,
         canvas,
         ops,
-        (BATTLE_RESULTS_WINDOW_X, BATTLE_RESULTS_WINDOW_Y),
+        (battle_window_origin().0, battle_window_origin().1),
     );
 }
 
@@ -6421,8 +6507,8 @@ fn draw_battle_result_destinations(
     let (lines, fleet) =
         battle_display_lines(&loaded_battle_texts(), &battle_report(session, None));
     let hovered = display_button_at(
-        mouse.0 - BATTLE_RESULTS_WINDOW_X,
-        mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+        mouse.0 - battle_window_origin().0,
+        mouse.1 - battle_window_origin().1,
         fleet,
     );
     let ops = battle_display_page(
@@ -6466,7 +6552,7 @@ fn draw_battle_alert_text(
         system_side,
         last_arrival,
     );
-    let origin = (BATTLE_ALERT_WINDOW_X, BATTLE_ALERT_WINDOW_Y);
+    let origin = (battle_window_origin().0, battle_window_origin().1);
     let Some(list) = BattleAlertList::of(state.battle_alert_tab) else {
         draw_page_ops_at(
             cache,
@@ -6501,22 +6587,27 @@ fn draw_battle_alert_text(
 /// coordinates the title's top is 29 and the summary's (48, 229).
 /// port: font 6 keeps the port's earlier 14-point size here.
 fn battle_alert_scene_text(title: &str, summary: Option<&str>, color: Color) -> Vec<PageOp> {
+    // FUN_0044f860 places the title at window (0, 16), 400 wide, centred,
+    // font 0xb, and the summary at window (36, 216), 328 wide, font 6, over
+    // a black shadow at (37, 217): the rects are the window's, not the
+    // scene's (A0 TAC-01-C010: capitals from rows 20 and 219, the
+    // summary's left edge at x 36).
     let mut ops = vec![PageOp::Text {
         text: title.to_owned(),
-        x: 212.0,
-        baseline: 29.0 + 16.0,
-        size: 18.0,
+        x: 200.0,
+        baseline: 20.0 + 15.0,
+        size: BATTLE_WINDOW_FONT_B,
         color,
         centered: true,
     }];
     if let Some(summary) = summary {
-        for (x, top, color) in [(49.0, 230.0, BLACK), (48.0, 229.0, color)] {
+        for (x, cap_top, color) in [(37.0, 220.0, BLACK), (36.0, 219.0, color)] {
             ops.push(PageOp::Wrapped {
                 lines: vec![summary.to_owned()],
                 x,
-                baseline: top + 12.0,
+                baseline: cap_top + 12.0,
                 width: 328.0,
-                size: 14.0,
+                size: BATTLE_WINDOW_FONT_6,
                 color,
             });
         }
@@ -6801,8 +6892,8 @@ fn select_resetting_scroll<T: PartialEq>(shown: &mut T, scroll: &mut usize, choi
 /// (in logical coordinates) at `pointer`: it scrolls only over the list.
 fn alert_list_scroll(scroll: usize, pointer: (f32, f32), wheel: f32, rows: usize) -> usize {
     let (x, y) = (
-        pointer.0 - BATTLE_ALERT_WINDOW_X,
-        pointer.1 - BATTLE_ALERT_WINDOW_Y,
+        pointer.0 - battle_window_origin().0,
+        pointer.1 - battle_window_origin().1,
     );
     let over = (ALERT_LIST_LEFT..ALERT_LIST_LEFT + ALERT_LIST_WIDTH).contains(&x)
         && (ALERT_LIST_TOP..ALERT_LIST_TOP + ALERT_LIST_HEIGHT).contains(&y);
@@ -6956,12 +7047,9 @@ fn draw_original_battle_alert(
     let session = state.session.as_ref().expect("active Battle Alert session");
     prewarm_tactical_font_atlas(session, canvas, &mut state.warmed_font_sizes);
     let player_alliance = player_is_alliance(session);
+    set_battle_window_origin(player_alliance);
     let skin = battle_alert_skin(player_alliance);
-    let text_color = if player_alliance {
-        Color::from_rgba(255, 45, 40, 255)
-    } else {
-        Color::from_rgba(40, 255, 65, 255)
-    };
+    let text_color = battle_window_text_color(player_alliance);
 
     clear_background(BLACK);
     draw_original_bitmap(
@@ -6981,15 +7069,15 @@ fn draw_original_battle_alert(
         cache,
         skin.frame,
         canvas,
-        BATTLE_ALERT_WINDOW_X,
-        BATTLE_ALERT_WINDOW_Y,
+        battle_window_origin().0,
+        battle_window_origin().1,
     );
     draw_strategy_bitmap(
         cache,
         skin.scene,
         canvas,
-        BATTLE_ALERT_WINDOW_X + 12.0,
-        BATTLE_ALERT_WINDOW_Y + 13.0,
+        battle_window_origin().0 + 12.0,
+        battle_window_origin().1 + 13.0,
     );
     let rows = draw_battle_alert_text(state, cache, world, troop_transport, canvas, text_color);
     // port: the list's scroll bar (0x29fc) is not drawn; the wheel over
@@ -7001,19 +7089,15 @@ fn draw_original_battle_alert(
         mouse_wheel().1,
         rows,
     );
-    draw_strategy_bitmap(
-        cache,
-        skin.rail,
-        canvas,
-        BATTLE_ALERT_WINDOW_X + BATTLE_RESULTS_RAIL_X,
-        BATTLE_ALERT_WINDOW_Y,
-    );
+    // A0 TAC-01-C010: the alert's tab buttons sit on frame 10710's own
+    // rail; the separate rail 10820 (with its fifth socket) belongs to the
+    // Battle Summary window only.
 
     let (screen_mouse_x, screen_mouse_y) = mouse_position();
     let mouse = canvas.logical_pointer(screen_mouse_x, screen_mouse_y);
     let local_mouse = (
-        mouse.0 - BATTLE_ALERT_WINDOW_X,
-        mouse.1 - BATTLE_ALERT_WINDOW_Y,
+        mouse.0 - battle_window_origin().0,
+        mouse.1 - battle_window_origin().1,
     );
     let mouse_down = is_mouse_button_down(MouseButton::Left);
     let mouse_pressed = is_mouse_button_pressed(MouseButton::Left);
@@ -7027,8 +7111,8 @@ fn draw_original_battle_alert(
             cache,
             skin.tabs[index][usize::from(active)],
             canvas,
-            BATTLE_ALERT_WINDOW_X + rect.x,
-            BATTLE_ALERT_WINDOW_Y + rect.y,
+            battle_window_origin().0 + rect.x,
+            battle_window_origin().1 + rect.y,
         );
         if mouse_released && rect.contains(local_mouse.0, local_mouse.1) {
             select_resetting_scroll(
@@ -7083,8 +7167,8 @@ fn draw_original_battle_alert(
             cache,
             skin.buttons[index][resource_state],
             canvas,
-            BATTLE_ALERT_WINDOW_X + rect.x,
-            BATTLE_ALERT_WINDOW_Y + rect.y,
+            battle_window_origin().0 + rect.x,
+            battle_window_origin().1 + rect.y,
         );
     }
 
@@ -7132,12 +7216,9 @@ fn draw_original_battle_results(
     let session = state.session.as_ref().expect("active result session");
     prewarm_tactical_font_atlas(session, canvas, &mut state.warmed_font_sizes);
     let player_alliance = player_is_alliance(session);
+    set_battle_window_origin(player_alliance);
     let skin = battle_result_skin(player_alliance);
-    let text_color = if player_alliance {
-        Color::from_rgba(255, 45, 40, 255)
-    } else {
-        Color::from_rgba(40, 255, 65, 255)
-    };
+    let text_color = battle_window_text_color(player_alliance);
 
     clear_background(BLACK);
     let shell = if player_alliance {
@@ -7158,8 +7239,8 @@ fn draw_original_battle_results(
         cache,
         skin.frame,
         canvas,
-        BATTLE_RESULTS_WINDOW_X,
-        BATTLE_RESULTS_WINDOW_Y,
+        battle_window_origin().0,
+        battle_window_origin().1,
     );
 
     let (screen_mouse_x, screen_mouse_y) = mouse_position();
@@ -7236,25 +7317,25 @@ fn draw_original_battle_results(
         cache,
         skin.rail,
         canvas,
-        BATTLE_RESULTS_WINDOW_X + BATTLE_RESULTS_RAIL_X,
-        BATTLE_RESULTS_WINDOW_Y,
+        battle_window_origin().0 + BATTLE_RESULTS_RAIL_X,
+        battle_window_origin().1,
     );
     let close_active = mouse_down
         && skin.close_rect.contains(
-            mouse.0 - BATTLE_RESULTS_WINDOW_X,
-            mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+            mouse.0 - battle_window_origin().0,
+            mouse.1 - battle_window_origin().1,
         );
     draw_strategy_bitmap(
         cache,
         skin.close[usize::from(close_active)],
         canvas,
-        BATTLE_RESULTS_WINDOW_X + skin.close_rect.x,
-        BATTLE_RESULTS_WINDOW_Y + skin.close_rect.y,
+        battle_window_origin().0 + skin.close_rect.x,
+        battle_window_origin().1 + skin.close_rect.y,
     );
     if mouse_released
         && skin.close_rect.contains(
-            mouse.0 - BATTLE_RESULTS_WINDOW_X,
-            mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+            mouse.0 - battle_window_origin().0,
+            mouse.1 - battle_window_origin().1,
         )
     {
         action = TacticalAction::ReturnToGalaxy;
@@ -7262,8 +7343,8 @@ fn draw_original_battle_results(
 
     for (index, rect) in skin.tab_rects.into_iter().enumerate() {
         let local_mouse = (
-            mouse.0 - BATTLE_RESULTS_WINDOW_X,
-            mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+            mouse.0 - battle_window_origin().0,
+            mouse.1 - battle_window_origin().1,
         );
         let selected = state.battle_result_tab.index() == index;
         let active = selected || (mouse_down && rect.contains(local_mouse.0, local_mouse.1));
@@ -7271,8 +7352,8 @@ fn draw_original_battle_results(
             cache,
             skin.tabs[index][usize::from(active)],
             canvas,
-            BATTLE_RESULTS_WINDOW_X + rect.x,
-            BATTLE_RESULTS_WINDOW_Y + rect.y,
+            battle_window_origin().0 + rect.x,
+            battle_window_origin().1 + rect.y,
         );
         if mouse_released && rect.contains(local_mouse.0, local_mouse.1) {
             select_resetting_scroll(
@@ -7296,8 +7377,8 @@ fn draw_original_battle_results(
         for (index, category) in BattleResultCategory::ALL.into_iter().enumerate() {
             let rect = battle_category_rect(index);
             if rect.contains(
-                mouse.0 - BATTLE_RESULTS_WINDOW_X,
-                mouse.1 - BATTLE_RESULTS_WINDOW_Y,
+                mouse.0 - battle_window_origin().0,
+                mouse.1 - battle_window_origin().1,
             ) {
                 select_resetting_scroll(
                     &mut state.battle_result_category,
@@ -9713,10 +9794,12 @@ mod tests {
 
     #[test]
     fn the_battle_alert_scene_text_sits_where_the_original_paints_it() {
-        // FUN_0044f860: the scene at (12, 13); the title at (0, 16), 400
-        // wide, centred; the summary at (36, 216), 328 wide, over a black
-        // shadow at (37, 217). guide-055 shows the summary's left edge
-        // under the title's "B" side, about 48 from the window.
+        // FUN_0044f860: the title at (0, 16), 400 wide, centred, font 0xb;
+        // the summary at (36, 216), 328 wide, font 6, over a black shadow at
+        // (37, 217), all in window coordinates: A0 TAC-01-C010 shows the
+        // title centred on window x 200 with capitals from row 20, and the
+        // summary's capitals from row 219 at x 36. (The port had read
+        // guide-055 as about 48 from the window, a scene-relative reading.)
         let green = Color::from_rgba(0, 255, 0, 255);
         let ops = battle_alert_scene_text("Battle at Deyer", Some("The Imperial fleet"), green);
         assert_eq!(
@@ -9724,26 +9807,26 @@ mod tests {
             [
                 PageOp::Text {
                     text: "Battle at Deyer".into(),
-                    x: 212.0,
-                    baseline: 45.0,
-                    size: 18.0,
+                    x: 200.0,
+                    baseline: 35.0,
+                    size: BATTLE_WINDOW_FONT_B,
                     color: green,
                     centered: true,
                 },
                 PageOp::Wrapped {
                     lines: vec!["The Imperial fleet".into()],
-                    x: 49.0,
-                    baseline: 242.0,
+                    x: 37.0,
+                    baseline: 232.0,
                     width: 328.0,
-                    size: 14.0,
+                    size: BATTLE_WINDOW_FONT_6,
                     color: BLACK,
                 },
                 PageOp::Wrapped {
                     lines: vec!["The Imperial fleet".into()],
-                    x: 48.0,
-                    baseline: 241.0,
+                    x: 36.0,
+                    baseline: 231.0,
                     width: 328.0,
-                    size: 14.0,
+                    size: BATTLE_WINDOW_FONT_6,
                     color: green,
                 },
             ]
@@ -9821,8 +9904,8 @@ mod tests {
         // 70-high rows show, or three 50-high for Personnel.
         assert_eq!(result_list_rows(BattleResultCategory::CapitalShips), 2);
         assert_eq!(result_list_rows(BattleResultCategory::Personnel), 3);
-        // The window at (85, 74).
-        let at = |x: f32, y: f32| (85.0 + x, 74.0 + y);
+        // The Alliance window at (62, 49) (A0 TAC-07-C001).
+        let at = |x: f32, y: f32| (62.0 + x, 49.0 + y);
         let scroll = |from, (x, y), wheel, rows, category| {
             result_list_scroll(from, at(x, y), wheel, rows, category)
         };
@@ -9958,17 +10041,18 @@ mod tests {
 
     #[test]
     fn the_wheel_scrolls_the_alert_list_only_over_it_and_a_new_tab_resets_it() {
-        // The list at window (83, 40), 256 by 234; the window at (65, 54).
-        let inside = (65.0 + 83.0, 54.0 + 40.0);
+        // The list at window (83, 40), 256 by 234; the Alliance window at (62, 49)
+        // (A0 TAC-01-C010).
+        let inside = (62.0 + 83.0, 49.0 + 40.0);
         assert_eq!(alert_list_scroll(0, inside, -1.0, 9), 1);
         assert_eq!(alert_list_scroll(1, inside, 1.0, 9), 0);
-        let last = (65.0 + 83.0 + 255.5, 54.0 + 40.0 + 233.5);
+        let last = (62.0 + 83.0 + 255.5, 49.0 + 40.0 + 233.5);
         assert_eq!(alert_list_scroll(0, last, -1.0, 9), 1);
         for outside in [
-            (65.0 + 82.5, 100.0),
-            (65.0 + 83.0 + 256.0, 100.0),
-            (200.0, 54.0 + 39.5),
-            (200.0, 54.0 + 40.0 + 234.0),
+            (62.0 + 82.5, 100.0),
+            (62.0 + 83.0 + 256.0, 100.0),
+            (200.0, 49.0 + 39.5),
+            (200.0, 49.0 + 40.0 + 234.0),
         ] {
             assert_eq!(alert_list_scroll(0, outside, -1.0, 9), 0);
         }
@@ -10243,7 +10327,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(wrapped, [(24.0, 52.0, 328.0), (24.0, 142.0, 328.0)]);
+        // A0 TAC-07-C013: font 6 capitals from window rows 43 and 133.
+        assert_eq!(wrapped, [(24.0, 55.0, 328.0), (24.0, 145.0, 328.0)]);
         let labels: Vec<(&str, f32, f32)> = ops
             .iter()
             .filter_map(|op| match op {
@@ -10261,7 +10346,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(labels, [("Deyer", 113.5, 292.0), ("Fleet", 313.5, 292.0)]);
+        assert_eq!(labels, [("Deyer", 113.5, 293.0), ("Fleet", 313.5, 293.0)]);
         // The Empire's viewer: its fleet art and pressed system art.
         let ops = battle_display_page(
             "Deyer",
@@ -10346,11 +10431,12 @@ mod tests {
         );
         assert_eq!(
             ops[2],
+            // A0 TAC-07-C001: font 0xb capitals from window row 229.
             PageOp::Text {
                 text: lines[0].clone(),
                 x: 212.0,
-                baseline: 241.0,
-                size: 18.0,
+                baseline: 244.0,
+                size: BATTLE_WINDOW_FONT_B,
                 color: green,
                 centered: true
             }
@@ -10360,9 +10446,9 @@ mod tests {
             PageOp::Wrapped {
                 lines: lines[1..].to_vec(),
                 x: 25.0,
-                baseline: 268.0,
+                baseline: 271.0,
                 width: 352.0,
-                size: 12.0,
+                size: BATTLE_WINDOW_FONT_6,
                 color: BLACK
             }
         );
@@ -10371,13 +10457,16 @@ mod tests {
             PageOp::Wrapped {
                 lines: lines[1..].to_vec(),
                 x: 24.0,
-                baseline: 267.0,
+                baseline: 270.0,
                 width: 352.0,
-                size: 12.0,
+                size: BATTLE_WINDOW_FONT_6,
                 color: green
             }
         );
-        assert!(matches!(&ops[1], PageOp::Text { text, baseline, .. } if text == "Battle at Hoth" && *baseline == 34.0));
+        // A0 TAC-07-C001: font 0xb capitals from window row 22.
+        assert!(
+            matches!(&ops[1], PageOp::Text { text, baseline, .. } if text == "Battle at Hoth" && *baseline == 37.0)
+        );
         // No outcome, no lines: the scene and the title only.
         let ops = battle_summary_page(
             "Hoth",
@@ -13260,6 +13349,23 @@ mod tests {
         assert_eq!(
             clip_segment_to_rect(vec2(5.0, 25.0), vec2(5.0, 35.0), offset),
             None
+        );
+    }
+
+    #[test]
+    fn the_battle_windows_open_over_each_sides_command_center() {
+        // A0 TAC-01-C010/TAC-07-C001 (Alliance), TAC-07-C002 (Empire).
+        set_battle_window_origin(false);
+        assert_eq!(battle_window_origin(), (125.0, 52.0));
+        set_battle_window_origin(true);
+        assert_eq!(battle_window_origin(), (62.0, 49.0));
+        assert_eq!(
+            battle_window_text_color(true),
+            Color::from_rgba(255, 0, 0, 255)
+        );
+        assert_eq!(
+            battle_window_text_color(false),
+            Color::from_rgba(0, 255, 0, 255)
         );
     }
 

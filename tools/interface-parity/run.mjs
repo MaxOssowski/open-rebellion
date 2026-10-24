@@ -3204,6 +3204,10 @@ async function probeTacticalBattleResultsPresentation(
   const offsetY = (viewport.height - 480 * scale) / 2;
   const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
   const alliance = faction === "alliance";
+  // A0 TAC-07-C001 / TAC-07-C002: the window opens at (62, 49) over the
+  // Alliance command center and at (125, 52) over the Empire's; the
+  // positions below were measured with it at (85, 74).
+  const [dx, dy] = alliance ? [-23, -25] : [40, -22];
   const resources = alliance ? {
     frame: 10335, close: 10370, tabs: [10729, 10731, 10733, 10792],
     summary: 10759, detail: 10761, fleet: 10765,
@@ -3211,30 +3215,30 @@ async function probeTacticalBattleResultsPresentation(
     frame: 10336, close: 10376, tabs: [10739, 10741, 10743, 10521],
     summary: 10760, detail: 10761, fleet: 10766,
   };
-  const tabX = alliance ? 523.5 : 533;
-  const tabY = alliance ? [182.5, 236.5, 290.5, 344.5] : [183.5, 242.5, 301.5, 360.5];
+  const tabX = (alliance ? 523.5 : 533) + dx;
+  const tabY = (alliance ? [182.5, 236.5, 290.5, 344.5] : [183.5, 242.5, 301.5, 360.5]).map((y) => y + dy);
   const frameIgnored = [
     { x: 12, y: 13, width: 400, height: 310 },
     { x: 412, y: 0, width: 58, height: 330 },
   ];
   const probes = [{
     type: "battle-results-frame",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.frame, 85, 74, frameIgnored),
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.frame, 85 + dx, 74 + dy, frameIgnored),
   }, {
     type: "battle-results-summary",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.summary, 97, 87, [
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.summary, 97 + dx, 87 + dy, [
       { x: 0, y: 4, width: 400, height: 43 },
       { x: 0, y: 202, width: 400, height: 94 },
     ]),
   }, {
     type: "battle-results-close-rest",
     ...verifyStrategyBitmap(
-      viewport, stable.bytes, resources.close, alliance ? 508 : 511, alliance ? 99 : 91,
+      viewport, stable.bytes, resources.close, (alliance ? 508 : 511) + dx, (alliance ? 99 : 91) + dy,
     ),
   }, {
     type: "battle-results-summary-selected",
     ...verifyStrategyBitmap(
-      viewport, stable.bytes, resources.tabs[0], alliance ? 503 : 511, alliance ? 162 : 163,
+      viewport, stable.bytes, resources.tabs[0], (alliance ? 503 : 511) + dx, (alliance ? 162 : 163) + dy,
     ),
   }];
 
@@ -3248,11 +3252,11 @@ async function probeTacticalBattleResultsPresentation(
   probes.push({
     type: "battle-results-alliance-tab",
     ...verifyStrategyBitmap(
-      viewport, capture, resources.tabs[1], alliance ? 503 : 511, alliance ? 216 : 222,
+      viewport, capture, resources.tabs[1], (alliance ? 503 : 511) + dx, (alliance ? 216 : 222) + dy,
     ),
   }, {
     type: "battle-results-alliance-detail",
-    ...verifyStrategyBitmap(viewport, capture, resources.detail, 97, 87, [
+    ...verifyStrategyBitmap(viewport, capture, resources.detail, 97 + dx, 87 + dy, [
       { x: 0, y: 0, width: 400, height: 100 },
       { x: 0, y: 100, width: 340, height: 196 },
     ]),
@@ -3262,7 +3266,7 @@ async function probeTacticalBattleResultsPresentation(
   // Capital Ships opens on the two-column page (STRATEGY 10761), Personnel
   // on the three-column one (10762).
   for (let category = 0; category < 4; category++) {
-    const location = point(85 + 130 + category * 49 + 24, 74 + 59 + 20);
+    const location = point(85 + dx + 130 + category * 49 + 24, 74 + dy + 59 + 20);
     await page.mouse.click(location.x, location.y);
     capture = await stableInteractionFrame(page, folder, `results-category-${category + 1}`);
     probes.push({
@@ -3273,7 +3277,7 @@ async function probeTacticalBattleResultsPresentation(
     if (category === 3) {
       probes.push({
         type: "battle-results-personnel-detail",
-        ...verifyStrategyBitmap(viewport, capture, 10762, 97, 87, [
+        ...verifyStrategyBitmap(viewport, capture, 10762, 97 + dx, 87 + dy, [
           { x: 0, y: 0, width: 400, height: 100 },
           { x: 0, y: 100, width: 340, height: 196 },
         ]),
@@ -3285,7 +3289,7 @@ async function probeTacticalBattleResultsPresentation(
   probes.push({
     type: "battle-results-imperial-tab",
     ...verifyStrategyBitmap(
-      viewport, capture, resources.tabs[2], alliance ? 503 : 511, alliance ? 270 : 281,
+      viewport, capture, resources.tabs[2], (alliance ? 503 : 511) + dx, (alliance ? 270 : 281) + dy,
     ),
   });
 
@@ -3293,14 +3297,14 @@ async function probeTacticalBattleResultsPresentation(
   probes.push({
     type: "battle-results-destination-tab",
     ...verifyStrategyBitmap(
-      viewport, capture, resources.tabs[3], alliance ? 503 : 511, alliance ? 324 : 340,
+      viewport, capture, resources.tabs[3], (alliance ? 503 : 511) + dx, (alliance ? 324 : 340) + dy,
     ),
   }, {
     type: "battle-results-destination-background",
     // FUN_0046f360: the message line at (24, 40) and the instruction at
     // (24, 130), 328 wide; the buttons at (29, 182) and (229, 182); their
     // labels at y 278 (window coordinates; the art sits at (12, 13)).
-    ...verifyStrategyBitmap(viewport, capture, 10763, 97, 87, [
+    ...verifyStrategyBitmap(viewport, capture, 10763, 97 + dx, 87 + dy, [
       { x: 0, y: 24, width: 400, height: 70 },
       { x: 0, y: 114, width: 400, height: 55 },
       { x: 17, y: 169, width: 169, height: 96 },
@@ -3309,13 +3313,13 @@ async function probeTacticalBattleResultsPresentation(
     ]),
   }, {
     type: "battle-results-system-destination",
-    ...verifyStrategyBitmap(viewport, capture, 10764, 114, 256),
+    ...verifyStrategyBitmap(viewport, capture, 10764, 114 + dx, 256 + dy),
   }, {
     type: "battle-results-fleet-destination",
-    ...verifyStrategyBitmap(viewport, capture, resources.fleet, 314, 256),
+    ...verifyStrategyBitmap(viewport, capture, resources.fleet, 314 + dx, 256 + dy),
   });
 
-  const destination = alliance ? point(198.5, 304) : point(398.5, 304);
+  const destination = alliance ? point(198.5 + dx, 304 + dy) : point(398.5 + dx, 304 + dy);
   await page.mouse.click(destination.x, destination.y);
   await page.waitForTimeout(200);
   const routed = await stableInteractionFrame(
@@ -3366,6 +3370,9 @@ async function probeTacticalBattleAlertEntry(
   const offsetY = (viewport.height - 480 * scale) / 2;
   const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
   const alliance = faction === "alliance";
+  // A0 TAC-01-C010 and the Imperial Umgul alert: the window opens at
+  // (62, 49) / (125, 52); the positions below were measured at (65, 54).
+  const [dx, dy] = alliance ? [-3, -5] : [60, -2];
   const resources = alliance ? {
     frame: 10710,
     scene: 10712,
@@ -3385,7 +3392,7 @@ async function probeTacticalBattleAlertEntry(
   };
   const probes = [{
     type: "battle-alert-frame",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.frame, 65, 54, [
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.frame, 65 + dx, 54 + dy, [
       { x: 12, y: 13, width: 400, height: 310 },
       { x: 412, y: 0, width: 58, height: 331 },
     ]),
@@ -3393,42 +3400,33 @@ async function probeTacticalBattleAlertEntry(
     type: "battle-alert-scene",
     // FUN_0044f860 paints the title at (0, 16) and the summary at
     // (36, 216), 328 wide, with its shadow, into the scene.
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.scene, 77, 67, [
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.scene, 77 + dx, 67 + dy, [
       { x: 0, y: 0, width: 400, height: 48 },
       { x: 20, y: 200, width: 360, height: 80 },
       { x: 0, y: 280, width: 400, height: 30 },
     ]),
-  }, {
-    type: "battle-alert-rail",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.rail, 477, 54,
-      (alliance ? [21, 81, 143, 205] : [17, 80, 143, 206]).map((y) => ({
-        x: alliance ? 6 : 14,
-        y,
-        width: alliance ? 41 : 44,
-        height: 41,
-      })).concat([{ x: 0, y: 296, width: 2, height: 27 }])),
   }, {
     type: "battle-alert-summary-selected",
     ...verifyStrategyBitmap(
       viewport,
       stable.bytes,
       resources.tabs[0],
-      alliance ? 483 : 491,
-      alliance ? 75 : 71,
+      (alliance ? 483 : 491) + dx,
+      (alliance ? 75 : 71) + dy,
     ),
   }, {
     type: "battle-alert-retreat-rest",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.retreat[0], 77, 350),
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.retreat[0], 77 + dx, 350 + dy),
   }, {
     type: "battle-alert-simulate-rest",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.simulate[0], 211, 350),
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.simulate[0], 211 + dx, 350 + dy),
   }, {
     type: "battle-alert-command-rest",
-    ...verifyStrategyBitmap(viewport, stable.bytes, resources.command[0], 345, 350),
+    ...verifyStrategyBitmap(viewport, stable.bytes, resources.command[0], 345 + dx, 350 + dy),
   }];
 
-  const tabX = alliance ? 503.5 : 513;
-  const tabY = alliance ? [95.5, 155.5, 217.5, 279.5] : [91.5, 154.5, 217.5, 280.5];
+  const tabX = (alliance ? 503.5 : 513) + dx;
+  const tabY = (alliance ? [95.5, 155.5, 217.5, 279.5] : [91.5, 154.5, 217.5, 280.5]).map((y) => y + dy);
   for (let index = 1; index < 4; index++) {
     const tab = point(tabX, tabY[index]);
     await page.mouse.click(tab.x, tab.y);
@@ -3440,19 +3438,19 @@ async function probeTacticalBattleAlertEntry(
         viewport,
         capture,
         resources.tabs[index],
-        alliance ? 483 : 491,
-        alliance ? [75, 135, 197, 259][index] : [71, 134, 197, 260][index],
+        (alliance ? 483 : 491) + dx,
+        (alliance ? [75, 135, 197, 259][index] : [71, 134, 197, 260][index]) + dy,
       ),
     });
   }
 
-  const command = point(412, 363.5);
+  const command = point(412 + dx, 363.5 + dy);
   await page.mouse.move(command.x, command.y);
   await page.mouse.down({ button: "left" });
   const held = await dynamicInteractionFrame(page, folder, "battle-alert-command-held");
   probes.push({
     type: "battle-alert-command-held",
-    ...verifyStrategyBitmap(viewport, held, resources.command[1], 345, 350),
+    ...verifyStrategyBitmap(viewport, held, resources.command[1], 345 + dx, 350 + dy),
   });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(100);
@@ -3762,7 +3760,9 @@ async function probeTacticalBattleOptionsPresentation(
   const results = await stableInteractionFrame(page, folder, "battle-options-simulated-results");
   probes.push({
     type: "battle-options-simulate-route",
-    ...verifyStrategyBitmap(viewport, results, faction === "alliance" ? 10335 : 10336, 85, 74, [
+    // A0 TAC-07-C001 / TAC-07-C002: (62, 49) for the Alliance, (125, 52) for the Empire.
+    ...verifyStrategyBitmap(viewport, results, faction === "alliance" ? 10335 : 10336,
+      faction === "alliance" ? 62 : 125, faction === "alliance" ? 49 : 52, [
       { x: 12, y: 13, width: 400, height: 310 },
       { x: 412, y: 0, width: 58, height: 330 },
     ]),

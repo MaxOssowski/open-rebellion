@@ -1799,6 +1799,18 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10550..=10576
                 | 10578..=10579
                 | 10771..=10790
+                // The Battle Alert / Summary frames, whose blue surrounds
+                // their scene and rail, and the windows' buttons, tabs and
+                // destination art, all keyed on their first pixel: the A0
+                // captures TAC-01-C010, TAC-07-C001, C005 and C013 hold no
+                // pure blue pixel inside either window.
+                | 10710..=10711
+                | 10335..=10336
+                | 10370..=10377
+                | 10716..=10745
+                | 10766
+                | 10792
+                | 10971..=10976
                 // The System window's facility cell frames (`FUN_004568a0`),
                 // construction band frame and title strips (`FUN_00458080`,
                 // `FUN_00456230`) and yard column (`FUN_00457690`): frames
@@ -2283,6 +2295,22 @@ mod tests {
         let panel = decode_color_image(&encoded, DllSource::Tactical, 1302).unwrap();
         assert_eq!(control.pixels[0].a(), 0);
         assert_eq!(panel.pixels[0].a(), 255);
+    }
+
+    #[test]
+    fn the_battle_windows_art_keys_out_blue() {
+        // A0 TAC-01-C010, TAC-07-C001/C005/C013: no pure blue in either
+        // window.
+        for id in [
+            10335, 10336, 10370, 10376, 10710, 10711, 10716, 10719, 10729, 10745, 10766, 10792,
+            10971, 10976,
+        ] {
+            assert!(
+                uses_blue_screen_transparency(DllSource::Strategy, id),
+                "{id}"
+            );
+        }
+        assert!(!uses_blue_screen_transparency(DllSource::Strategy, 10759));
     }
 
     #[test]
