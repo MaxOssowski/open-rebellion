@@ -2138,7 +2138,7 @@ function probeTacticalSelectedDamagePresentation(
       { id: 1101, x: 489, y: 38 },
       { id: 1103, x: 614, y: 38 },
     ], [
-      { x: 10, y: 8, width: 130, height: 49 }, // name and portrait at (26, 17) 96x39
+      { x: 10, y: 8, width: 130, height: 54 }, // name, portrait (26, 17) 96x39, caption to row 60
       { x: 34, y: 81, width: 37, height: 10 },
       { x: 103, y: 81, width: 37, height: 10 },
       { x: 10, y: 103, width: 130, height: 15 },
@@ -2165,11 +2165,12 @@ function probeTacticalSelectedDamagePresentation(
     }
     assert.ok(opaquePixels > 0 && exactOpaquePixels > opaquePixels / 2,
       "selected ship portrait did not retain a majority of exact source pixels");
-    // The portrait's bottom-left lime pixel; its top row lies under the name.
-    const matteOffset = (83 * screenshot.width + 508) * 4;
+    // The portrait's bottom-right lime pixel; the name and caption cover
+    // its top row and bottom-left corner.
+    const matteOffset = (83 * screenshot.width + 603) * 4;
     assert.deepEqual(
       Array.from(screenshot.data.subarray(matteOffset, matteOffset + 3)),
-      panel.pixel(26, 55),
+      panel.pixel(121, 55),
       "selected ship lime matte erased the underlying 1302 display grid",
     );
     portraitProof = {
@@ -3917,14 +3918,14 @@ async function probeTacticalGroupPresentation(
   ) });
   probes.push({ type: "selected-fighter-panel", ...verifyTacticalBitmap(
     viewport, goldSelected, 1307, 482, 28,
-    [{ id: portraitResource, x: 506, y: 77 }],
+    [{ id: portraitResource, x: 505, y: 87 }], // A0 TAC-02-C002
     [
       { x: 8, y: 7, width: 145, height: 40 },
       { x: 12, y: 210, width: 126, height: 22 },
     ],
   ) });
   probes.push({ type: "selected-fighter-portrait", ...verifyTacticalBitmap(
-    viewport, goldSelected, portraitResource, 506, 77,
+    viewport, goldSelected, portraitResource, 505, 87,
   ) });
 
   const participantLine = consoleLines.find(({ text }) =>

@@ -50,7 +50,8 @@ pub const DANGER_RED: Color32 = Color32::from_rgb(200, 50, 50);
 /// the face "Arial" (`FUN_0060ee20` copies `0x6ac7b8` to the table's `+0x38`,
 /// `FUN_0060eed0` creates each font from it). Built in, so the browser and
 /// any working directory get it.
-const ARIAL_REGULAR: &[u8] = include_bytes!("../../../assets/fonts/LiberationSans-Regular.ttf");
+pub(crate) const ARIAL_REGULAR: &[u8] =
+    include_bytes!("../../../assets/fonts/LiberationSans-Regular.ttf");
 const ARIAL_BOLD: &[u8] = include_bytes!("../../../assets/fonts/LiberationSans-Bold.ttf");
 
 /// The bold face's family name in egui.

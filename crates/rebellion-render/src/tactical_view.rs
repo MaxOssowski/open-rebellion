@@ -163,6 +163,78 @@ const TACTICAL_SELECTED_SHIP_ART_Y: f32 = 45.0;
 const TACTICAL_SUBSYSTEM_X: [f32; 5] = [492.0, 519.0, 546.0, 573.0, 600.0];
 const TACTICAL_SUBSYSTEM_Y: f32 = 131.0;
 
+/// The panel texts' Arial (the original's only face, `FUN_0060eed0`), drawn
+/// with Liberation Sans, which shares its metrics. The fighter panel's
+/// labels take table font 8 (12 px cell, `FUN_005e1fd0`) and the withdrawal
+/// texts font 10 (14 px cell, `FUN_005f1050`). port: in the A0 captures their
+/// capitals are 7 and 8 rows tall and their widths fit Liberation Sans at
+/// 9.36 and 10.9 px, 0.78 of the cell (TAC-03-C016, TAC-02-C002,
+/// TAC-06-C003), so the port draws them at those sizes.
+const TACTICAL_FONT_8_EM: f32 = 9.36;
+const TACTICAL_FONT_10_EM: f32 = 10.9;
+/// Rows from a text's first capital row to its baseline (font 8 and 10).
+const TACTICAL_FONT_8_CAPS: f32 = 7.0;
+const TACTICAL_FONT_10_CAPS: f32 = 8.0;
+/// Glyphs rasterize at this size and scale to the em, since macroquad
+/// takes whole font sizes.
+const TACTICAL_FONT_RASTER: f32 = 10.0;
+
+thread_local! {
+    static TACTICAL_ARIAL: std::cell::OnceCell<Option<Font>> =
+        const { std::cell::OnceCell::new() };
+}
+
+fn tactical_arial() -> Option<Font> {
+    TACTICAL_ARIAL.with(|cell| {
+        cell.get_or_init(|| load_ttf_font_from_bytes(crate::theme::ARIAL_REGULAR).ok())
+            .clone()
+    })
+}
+
+/// Draw `text` with the panel font at `em`, its first capital row at
+/// `cap_top` (native pixels).
+fn draw_tactical_panel_text(
+    canvas: TacticalCanvas,
+    text: &str,
+    x: f32,
+    cap_top: f32,
+    (em, caps): (f32, f32),
+) {
+    let font = tactical_arial();
+    let (screen_x, screen_y) = canvas.point(x, cap_top + caps);
+    draw_text_ex(
+        text,
+        screen_x,
+        screen_y,
+        TextParams {
+            font: font.as_ref(),
+            font_size: tactical_text_font_size(canvas),
+            font_scale: em / TACTICAL_FONT_RASTER,
+            font_scale_aspect: 1.0,
+            color: WHITE,
+            ..Default::default()
+        },
+    );
+}
+
+const TACTICAL_FONT_8: (f32, f32) = (TACTICAL_FONT_8_EM, TACTICAL_FONT_8_CAPS);
+const TACTICAL_FONT_10: (f32, f32) = (TACTICAL_FONT_10_EM, TACTICAL_FONT_10_CAPS);
+
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "Font sizes are small positive pixel counts."
+)]
+fn tactical_text_font_size(canvas: TacticalCanvas) -> u16 {
+    (TACTICAL_FONT_RASTER * canvas.scale).round().max(1.0) as u16
+}
+
+/// The selected capital ship's task-force caption (A0 TAC-03-C016 reads
+/// "Task Force # 1").
+fn tactical_task_force_caption(group: u8) -> String {
+    format!("Task Force # {}", u16::from(group) + 1)
+}
+
 /// Default ship icon size when no sprite is available.
 const DEFAULT_SHIP_SIZE: f32 = 40.0;
 
@@ -3433,14 +3505,16 @@ fn prewarm_tactical_font_atlas(
         (18.0 * canvas.scale) as u16,
     ]);
     sizes.sort_unstable();
-    if sizes.iter().all(|size| warmed_sizes.contains(size)) {
+    if sizes.iter().all(|size| warmed_sizes.contains(size))
+        && warmed_sizes.contains(&(u16::MAX - tactical_text_font_size(canvas)))
+    {
         return;
     }
 
     let mut characters: std::collections::BTreeSet<_> =
         Font::latin_character_list().into_iter().collect();
     for text in [
-        "0123456789x#",
+        "0123456789x# :",
         "Task Force No Orders RETREAT Battle Paused.",
         "Red Group Blue Group Green Group Gold Group",
         "Battle at Alliance Imperial Forces Capital Ships Fighters Troops Personnel",
@@ -3463,6 +3537,19 @@ fn prewarm_tactical_font_atlas(
         if size > 0 && previous != Some(size) && warmed_sizes.insert(size) {
             measure_text(&sample, None, size, 1.0);
             previous = Some(size);
+        }
+    }
+    // The panel font keeps its own atlas; key its size apart from the
+    // default font's.
+    let panel_size = tactical_text_font_size(canvas);
+    if warmed_sizes.insert(u16::MAX - panel_size) {
+        for em in [TACTICAL_FONT_8_EM, TACTICAL_FONT_10_EM] {
+            measure_text(
+                &sample,
+                tactical_arial().as_ref(),
+                panel_size,
+                em / TACTICAL_FONT_RASTER,
+            );
         }
     }
 }
@@ -3736,17 +3823,15 @@ fn draw_tactical_withdraw_confirmation(
     }
 
     // FUN_005f1050 places TEXTTACT 56772 at (20, 28) and TEXTTACT 56771
-    // at (14, 92) in the 149x236 panel. Macroquad takes a text baseline, so
-    // add the recovered ten-pixel font height while preserving those origins.
-    let font_size = 10.0 * canvas.scale;
-    let text_color = Color::new(0.84, 0.92, 0.84, 1.0);
-    for (text, x, top) in [
-        ("Withdraw Confirmation", 502.0, 56.0),
-        ("Are you sure you wish to", 496.0, 120.0),
-        ("order a fleet withdraw?", 496.0, 132.0),
+    // at (14, 92) in the 149x236 panel with font 10 (`FUN_00601c60`), pure
+    // white. A0 TAC-06-C003 shows their capitals from rows 59, 123 and 137,
+    // at x 502 and 496.
+    for (text, x, cap_top) in [
+        ("Withdraw Confirmation", 502.0, 59.0),
+        ("Are you sure you wish to", 496.0, 123.0),
+        ("order a fleet withdraw?", 496.0, 137.0),
     ] {
-        let (screen_x, screen_y) = canvas.point(x, top + 10.0);
-        draw_text(text, screen_x, screen_y, font_size, text_color);
+        draw_tactical_panel_text(canvas, text, x, cap_top, TACTICAL_FONT_10);
     }
 }
 
@@ -4003,56 +4088,60 @@ fn draw_original_tactical_hud(
                     None,
                 );
             }
-            let (x, y) = canvas.point(498.0, 49.0);
-            draw_text(name, x, y, 11.0 * canvas.scale, WHITE);
-            let (x, y) = canvas.point(498.0, 70.0);
-            draw_text(
-                &format!("Task Force #{}", group + 1),
-                x,
-                y,
-                11.0 * canvas.scale,
-                WHITE,
+            // A0 TAC-03-C016: capitals from row 37 at x 508, the caption
+            // from row 82, the orders from rows 212 and 223 at x 497.
+            draw_tactical_panel_text(canvas, name, 508.0, 37.0, TACTICAL_FONT_8);
+            draw_tactical_panel_text(
+                canvas,
+                &tactical_task_force_caption(group),
+                508.0,
+                82.0,
+                TACTICAL_FONT_8,
             );
-            let (x, y) = canvas.point(498.0, 219.0);
-            draw_text(
+            draw_tactical_panel_text(
+                canvas,
                 groups.selected_order.label(),
-                x,
-                y,
-                10.0 * canvas.scale,
-                WHITE,
+                497.0,
+                212.0,
+                TACTICAL_FONT_8,
             );
-            let (x, y) = canvas.point(498.0, 231.0);
-            draw_text(
+            draw_tactical_panel_text(
+                canvas,
                 &format!("Tactics: {}", groups.selected_tactic.label()),
-                x,
-                y,
-                9.0 * canvas.scale,
-                WHITE,
+                497.0,
+                223.0,
+                TACTICAL_FONT_8,
             );
-        } else if let (Some(name), Some(group), Some(hud_resource)) = (
+        } else if let (Some(_), Some(group), Some(hud_resource)) = (
             groups.selected_fighter_name,
             groups.selected_fighter_group,
             groups.selected_fighter_hud,
         ) {
-            draw_tactical_bitmap(cache, hud_resource, canvas, 506.0, 77.0);
-            let (x, y) = canvas.point(491.0, 46.0);
-            draw_text(name, x, y, 10.0 * canvas.scale, WHITE);
+            // A0 TAC-02-C002/C003: the portrait (2030, 2031) at (505, 87);
+            // the group, its orders and its tactics from rows 39, 50 and
+            // 61 at x 508, 503 and 502.
+            draw_tactical_bitmap(cache, hud_resource, canvas, 505.0, 87.0);
             let labels = ["Red Group", "Blue Group", "Green Group", "Gold Group"];
-            let (x, y) = canvas.point(491.0, 59.0);
-            draw_text(
+            draw_tactical_panel_text(
+                canvas,
                 labels[usize::from(group.min(3))],
-                x,
-                y,
-                10.0 * canvas.scale,
-                WHITE,
+                508.0,
+                39.0,
+                TACTICAL_FONT_8,
             );
-            let (x, y) = canvas.point(491.0, 70.0);
-            draw_text(
+            draw_tactical_panel_text(
+                canvas,
                 groups.selected_order.label(),
-                x,
-                y,
-                9.0 * canvas.scale,
-                WHITE,
+                503.0,
+                50.0,
+                TACTICAL_FONT_8,
+            );
+            draw_tactical_panel_text(
+                canvas,
+                &format!("Tactics: {}", groups.selected_tactic.label()),
+                502.0,
+                61.0,
+                TACTICAL_FONT_8,
             );
         }
     }
@@ -12780,6 +12869,13 @@ mod tests {
         let (logical_x, logical_y) = wide.logical_pointer(screen_x, screen_y);
         assert!((logical_x - 574.0).abs() < 0.001);
         assert!((logical_y - 317.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn the_task_force_caption_spaces_its_number() {
+        // A0 TAC-03-C016 reads "Task Force # 1".
+        assert_eq!(tactical_task_force_caption(0), "Task Force # 1");
+        assert_eq!(tactical_task_force_caption(7), "Task Force # 8");
     }
 
     #[test]
