@@ -229,6 +229,76 @@ fn tactical_text_font_size(canvas: TacticalCanvas) -> u16 {
     (TACTICAL_FONT_RASTER * canvas.scale).round().max(1.0) as u16
 }
 
+/// TEXTTACT 56773-56780, the fighter panel's type labels in the order the
+/// original tries the group's types `0x1d..0x24` (code at `0x5e1c80`;
+/// `ghidra/notes/tactical-panel-text.md`). Index k pairs with portrait
+/// 2030 + k, that is tactical ordinal 29 + k.
+const TACTICAL_FIGHTER_TYPE_LABELS: [&str; 8] = [
+    "X-wings:",
+    "Y-wings:",
+    "A-wings:",
+    "B-wings:",
+    "Fighters:",
+    "Intrcpts:",
+    "Bombers:",
+    "Defenders:",
+];
+
+/// The fighter panel's count line for a group's squadrons: the first type
+/// present, its squadron count, then the group's craft as
+/// `trunc(hull / 8)` over `trunc(maximum hull / 8)`, each squadron at least
+/// 1 (`FUN_005c6530`/`FUN_005ba330`, `FUN_005c6570`/`FUN_005ba380`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TacticalFighterCount {
+    kind: usize,
+    squadrons: usize,
+    craft: u32,
+    craft_maximum: u32,
+}
+
+impl TacticalFighterCount {
+    fn line(self) -> String {
+        format!(
+            "{} {} {}/{}",
+            TACTICAL_FIGHTER_TYPE_LABELS[self.kind], self.squadrons, self.craft, self.craft_maximum
+        )
+    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "Hull values are small nonnegative floats; the original truncates with __ftol."
+)]
+fn tactical_fighter_count<'a>(
+    squadrons: impl Iterator<Item = &'a TacticalFighter> + Clone,
+) -> Option<TacticalFighterCount> {
+    let kind = |fighter: &TacticalFighter| {
+        fighter
+            .tactical_resource
+            .and_then(|resource| resource.tactical_ordinal.checked_sub(29))
+            .map(usize::from)
+            .filter(|&k| k < TACTICAL_FIGHTER_TYPE_LABELS.len())
+    };
+    let first = squadrons.clone().filter_map(kind).min()?;
+    let count = squadrons
+        .clone()
+        .filter(|fighter| kind(fighter) == Some(first))
+        .count();
+    let craft = |hull: f32| ((hull.max(0.0) / ORIGINAL_FIGHTER_HULL_PER_CRAFT) as u32).max(1);
+    let current: u32 = squadrons
+        .clone()
+        .map(|fighter| craft(fighter.hull_current))
+        .sum();
+    let maximum: u32 = squadrons.map(|fighter| craft(fighter.hull_max)).sum();
+    Some(TacticalFighterCount {
+        kind: first,
+        squadrons: count,
+        craft: current,
+        craft_maximum: maximum,
+    })
+}
+
 /// The selected capital ship's task-force caption (A0 TAC-03-C016 reads
 /// "Task Force # 1").
 fn tactical_task_force_caption(group: u8) -> String {
@@ -2619,6 +2689,7 @@ struct TacticalGroupHud<'a> {
     selected_ship_contents: &'a [TacticalShipContent],
     selected_fighter_name: Option<&'a str>,
     selected_fighter_hud: Option<u32>,
+    selected_fighter_count: Option<TacticalFighterCount>,
     selected_order: TacticalOrder,
     selected_tactic: TacticalTactic,
 }
@@ -2660,11 +2731,19 @@ impl<'a> TacticalGroupHud<'a> {
                     && fighter.fighter_group == group
             })
         });
+        let selected_fighter_count = session.selected_fighter_group.and_then(|group| {
+            tactical_fighter_count(session.fighters.iter().filter(|fighter| {
+                fighter.alive
+                    && fighter.is_attacker == session.player_is_attacker
+                    && fighter.fighter_group == group
+            }))
+        });
         Self {
             task_forces,
             fighter_groups,
             selected_task_force,
             selected_fighter_group: session.selected_fighter_group,
+            selected_fighter_count,
             selected_ship_name,
             selected_ship_hud: selected_ship
                 .and_then(|ship| ship.tactical_resource)
@@ -4143,6 +4222,11 @@ fn draw_original_tactical_hud(
                 61.0,
                 TACTICAL_FONT_8,
             );
+            // Label `+0xb0` moved to panel (0x17, 0x92): capitals from row
+            // 176 at x 505 (A0 TAC-02-C002 "X-wings: 1 12/12").
+            if let Some(count) = groups.selected_fighter_count {
+                draw_tactical_panel_text(canvas, &count.line(), 505.0, 176.0, TACTICAL_FONT_8);
+            }
         }
     }
     if !withdraw_confirmation_open
@@ -12869,6 +12953,58 @@ mod tests {
         let (logical_x, logical_y) = wide.logical_pointer(screen_x, screen_y);
         assert!((logical_x - 574.0).abs() < 0.001);
         assert!((logical_y - 317.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn a_full_x_wing_squadron_reads_one_twelve_of_twelve() {
+        // A0 TAC-02-C002 reads "X-wings: 1 12/12"; DAT 3 is the X-wing
+        // (tactical ordinal 29, portrait 2030).
+        let squadron = test_fighter(3, true);
+        let count = tactical_fighter_count(std::iter::once(&squadron)).unwrap();
+        assert_eq!(count.line(), "X-wings: 1 12/12");
+    }
+
+    #[test]
+    fn the_count_line_names_the_first_type_and_sums_every_squadron() {
+        // Code at 0x5e1c80 tries types 0x1d..0x24 in order and names the
+        // first present; FUN_005c6530/FUN_005c6570 sum all squadrons with
+        // trunc(hull / 8), at least 1 (FUN_005ba330, FUN_005ba380).
+        let a_wing = test_fighter(1, true);
+        let mut x_wing = test_fighter(3, true);
+        x_wing.hull_current = 50.0;
+        let mut nearly_lost = test_fighter(3, true);
+        nearly_lost.hull_current = 3.0;
+        let group = [a_wing, x_wing, nearly_lost];
+        let count = tactical_fighter_count(group.iter()).unwrap();
+        assert_eq!(count.line(), "X-wings: 2 19/36");
+        assert_eq!(tactical_fighter_count(std::iter::empty()), None);
+    }
+
+    #[test]
+    fn a_squadron_outside_the_eight_types_gives_no_count_line() {
+        let mut unknown = test_fighter(3, true);
+        unknown.tactical_resource = Some(TacticalFighterResource {
+            tactical_ordinal: 37,
+            first_side_resource_base: 0,
+            opposing_side_resource_base: 0,
+        });
+        assert_eq!(tactical_fighter_count(std::iter::once(&unknown)), None);
+    }
+
+    #[test]
+    fn the_count_line_counts_only_the_players_selected_group() {
+        let own = test_fighter(3, true);
+        let mut enemy = test_fighter(1, false);
+        enemy.fighter_group = 0;
+        let mut other_group = test_fighter(4, true);
+        other_group.fighter_group = 1;
+        let mut session = test_session(Vec::new(), vec![own, enemy, other_group], true);
+        session.selected_fighter_group = Some(0);
+        let hud = TacticalGroupHud::from_session(&session);
+        assert_eq!(
+            hud.selected_fighter_count.map(TacticalFighterCount::line),
+            Some("X-wings: 1 12/12".to_owned())
+        );
     }
 
     #[test]

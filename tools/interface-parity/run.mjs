@@ -3921,11 +3921,15 @@ async function probeTacticalGroupPresentation(
     [{ id: portraitResource, x: 505, y: 87 }], // A0 TAC-02-C002
     [
       { x: 8, y: 7, width: 145, height: 40 },
+      // The count line over the portrait's foot (label +0xb0 at panel
+      // (0x17, 0x92), ghidra/notes/tactical-panel-text.md).
+      { x: 23, y: 146, width: 102, height: 12 },
       { x: 12, y: 210, width: 126, height: 22 },
     ],
   ) });
   probes.push({ type: "selected-fighter-portrait", ...verifyTacticalBitmap(
-    viewport, goldSelected, portraitResource, 505, 87,
+    viewport, goldSelected, portraitResource, 505, 87, [],
+    [{ x: 0, y: 87, width: 102, height: 12 }],
   ) });
 
   const participantLine = consoleLines.find(({ text }) =>
