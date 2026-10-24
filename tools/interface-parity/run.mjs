@@ -1317,10 +1317,11 @@ async function probeTactical(page, viewport, folder, stable) {
   const probes = [{ type: "tactical-shell", ...verifyTacticalShell(viewport, stable.bytes) }];
   probes.push({ type: "paused-control-bitmap",
     ...verifyTacticalBitmap(viewport, stable.bytes, 1061, 561, 308) });
-  probes.push({ type: "alliance-highlight-on",
-    ...verifyTacticalBitmap(viewport, stable.bytes, 1035, 515, 305) });
-  probes.push({ type: "empire-highlight-on",
-    ...verifyTacticalBitmap(viewport, stable.bytes, 1037, 483, 305) });
+  // A0 TAC-01-C003/C002: a battle opens with both side highlights off.
+  probes.push({ type: "alliance-highlight-initially-off",
+    ...verifyTacticalBitmap(viewport, stable.bytes, 1034, 515, 305) });
+  probes.push({ type: "empire-highlight-initially-off",
+    ...verifyTacticalBitmap(viewport, stable.bytes, 1036, 483, 305) });
 
   const outside = point(559, 319);
   await page.mouse.click(outside.x, outside.y);
@@ -1356,38 +1357,38 @@ async function probeTactical(page, viewport, folder, stable) {
   const allianceHighlight = point(530, 318);
   await page.mouse.click(allianceHighlight.x, allianceHighlight.y);
   await page.waitForTimeout(80);
-  const highlightOff = await capture("alliance-highlight-off");
-  assert.notEqual(sha256(pausedAgain), sha256(highlightOff), "Alliance highlight did not toggle");
+  const highlightOn = await capture("alliance-highlight-on");
+  assert.notEqual(sha256(pausedAgain), sha256(highlightOn), "Alliance highlight did not toggle");
   assert.notEqual(tacticalApertureHash(viewport, pauseStable),
-    tacticalApertureHash(viewport, highlightOff), "Alliance battle wireframe did not dim");
-  probes.push({ type: "alliance-highlight-off",
-    ...verifyTacticalBitmap(viewport, highlightOff, 1034, 515, 305),
-    wireframe: verifyWireframeColor(viewport, pauseStable, highlightOff, "alliance") });
+    tacticalApertureHash(viewport, highlightOn), "Alliance battle wireframe did not light");
+  probes.push({ type: "alliance-highlight-on",
+    ...verifyTacticalBitmap(viewport, highlightOn, 1035, 515, 305),
+    wireframe: verifyWireframeColor(viewport, highlightOn, pauseStable, "alliance") });
   await page.mouse.click(allianceHighlight.x, allianceHighlight.y);
   await page.waitForTimeout(80);
   const allianceRestored = await capture("alliance-highlight-restored");
   assert.equal(sha256(pauseStable), sha256(allianceRestored),
     "Alliance highlight did not restore the paused display");
   probes.push({ type: "alliance-highlight-restored",
-    ...verifyTacticalBitmap(viewport, allianceRestored, 1035, 515, 305) });
+    ...verifyTacticalBitmap(viewport, allianceRestored, 1034, 515, 305) });
 
   const empireHighlight = point(498, 318);
   await page.mouse.click(empireHighlight.x, empireHighlight.y);
   await page.waitForTimeout(80);
-  const empireOff = await capture("empire-highlight-off");
-  assert.notEqual(sha256(allianceRestored), sha256(empireOff), "Empire highlight did not toggle");
+  const empireOn = await capture("empire-highlight-on");
+  assert.notEqual(sha256(allianceRestored), sha256(empireOn), "Empire highlight did not toggle");
   assert.notEqual(tacticalApertureHash(viewport, allianceRestored),
-    tacticalApertureHash(viewport, empireOff), "Empire battle wireframe did not dim");
-  probes.push({ type: "empire-highlight-off",
-    ...verifyTacticalBitmap(viewport, empireOff, 1036, 483, 305),
-    wireframe: verifyWireframeColor(viewport, allianceRestored, empireOff, "empire") });
+    tacticalApertureHash(viewport, empireOn), "Empire battle wireframe did not light");
+  probes.push({ type: "empire-highlight-on",
+    ...verifyTacticalBitmap(viewport, empireOn, 1037, 483, 305),
+    wireframe: verifyWireframeColor(viewport, empireOn, allianceRestored, "empire") });
   await page.mouse.click(empireHighlight.x, empireHighlight.y);
   await page.waitForTimeout(80);
   const highlightsRestored = await capture("highlights-restored");
   assert.equal(sha256(pauseStable), sha256(highlightsRestored),
     "Empire highlight did not restore the paused display");
   probes.push({ type: "empire-highlight-restored",
-    ...verifyTacticalBitmap(viewport, highlightsRestored, 1037, 483, 305) });
+    ...verifyTacticalBitmap(viewport, highlightsRestored, 1036, 483, 305) });
 
   const zoomInMatte = point(487.5, 344.5);
   await page.mouse.click(zoomInMatte.x, zoomInMatte.y);

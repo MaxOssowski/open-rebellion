@@ -229,6 +229,62 @@ fn tactical_text_font_size(canvas: TacticalCanvas) -> u16 {
     (TACTICAL_FONT_RASTER * canvas.scale).round().max(1.0) as u16
 }
 
+/// The battle view's status texts. port: their capitals are 12 rows tall
+/// and "Battle Paused" spans 96 px in A0 TAC-01-C003; Liberation Sans at
+/// 16.5 px, narrowed to 0.93, gives both (GDI's Arial runs narrower than
+/// FreeType's at the same height, as the panel texts show).
+const TACTICAL_STATUS_EM: f32 = 16.5;
+const TACTICAL_STATUS_ASPECT: f32 = 0.93;
+const TACTICAL_STATUS_CAP_TOP: f32 = 33.0;
+const TACTICAL_STATUS_CAPS: f32 = 12.0;
+
+fn tactical_pause_label_color(player_is_alliance: bool) -> Color {
+    if player_is_alliance {
+        Color::new(1.0, 0.0, 0.0, 1.0)
+    } else {
+        Color::new(0.0, 1.0, 0.0, 1.0)
+    }
+}
+
+fn tactical_status_text_params(canvas: TacticalCanvas, color: Color) -> TextParams<'static> {
+    TextParams {
+        font: None,
+        font_size: tactical_text_font_size(canvas),
+        font_scale: TACTICAL_STATUS_EM / TACTICAL_FONT_RASTER,
+        font_scale_aspect: TACTICAL_STATUS_ASPECT,
+        color,
+        ..Default::default()
+    }
+}
+
+/// Native-pixel width of a status text.
+fn tactical_status_text_width(canvas: TacticalCanvas, text: &str) -> f32 {
+    let font = tactical_arial();
+    let params = tactical_status_text_params(canvas, WHITE);
+    measure_text(
+        text,
+        font.as_ref(),
+        params.font_size,
+        params.font_scale * params.font_scale_aspect,
+    )
+    .width
+        / canvas.scale
+}
+
+fn draw_tactical_status_text(canvas: TacticalCanvas, text: &str, x: f32, color: Color) {
+    let font = tactical_arial();
+    let (screen_x, screen_y) = canvas.point(x, TACTICAL_STATUS_CAP_TOP + TACTICAL_STATUS_CAPS);
+    draw_text_ex(
+        text,
+        screen_x,
+        screen_y,
+        TextParams {
+            font: font.as_ref(),
+            ..tactical_status_text_params(canvas, color)
+        },
+    );
+}
+
 /// TEXTTACT 56773-56780, the fighter panel's type labels in the order the
 /// original tries the group's types `0x1d..0x24` (code at `0x5e1c80`;
 /// `ghidra/notes/tactical-panel-text.md`). Index k pairs with portrait
@@ -557,8 +613,10 @@ impl Default for TacticalState {
             default_camera: None,
             memorized_camera: None,
             camera_follow: None,
-            highlight_alliance: true,
-            highlight_empire: true,
+            // A0 TAC-01-C003 (Alliance) and TAC-01-C002 (Empire): a battle
+            // opens with both side highlights off.
+            highlight_alliance: false,
+            highlight_empire: false,
             battle_result_tab: BattleResultTab::Summary,
             battle_result_category: BattleResultCategory::CapitalShips,
             battle_result_scroll: 0,
@@ -646,8 +704,8 @@ impl TacticalState {
                 });
         self.memorized_camera = None;
         self.camera_follow = None;
-        self.highlight_alliance = true;
-        self.highlight_empire = true;
+        self.highlight_alliance = false;
+        self.highlight_empire = false;
         self.battle_result_tab = BattleResultTab::Summary;
         self.battle_result_category = BattleResultCategory::CapitalShips;
         self.battle_result_scroll = 0;
@@ -3594,7 +3652,7 @@ fn prewarm_tactical_font_atlas(
         Font::latin_character_list().into_iter().collect();
     for text in [
         "0123456789x# :",
-        "Task Force No Orders RETREAT Battle Paused.",
+        "Task Force No Orders RETREAT Battle Paused Observe Battle",
         "Red Group Blue Group Green Group Gold Group",
         "Battle at Alliance Imperial Forces Capital Ships Fighters Troops Personnel",
         "Operational Damaged Destroyed Go Directly To System Fleet victorious withdrawn",
@@ -3622,7 +3680,7 @@ fn prewarm_tactical_font_atlas(
     // default font's.
     let panel_size = tactical_text_font_size(canvas);
     if warmed_sizes.insert(u16::MAX - panel_size) {
-        for em in [TACTICAL_FONT_8_EM, TACTICAL_FONT_10_EM] {
+        for em in [TACTICAL_FONT_8_EM, TACTICAL_FONT_10_EM, TACTICAL_STATUS_EM] {
             measure_text(
                 &sample,
                 tactical_arial().as_ref(),
@@ -8148,9 +8206,21 @@ pub fn draw_tactical_view(
             state.death_star_laser_pressed,
             state.death_star_targeting,
         );
+        // A0 TAC-01-C003/C002: "Battle Paused", capitals from row 33 at
+        // x 22, pure red for the Alliance and pure green for the Empire;
+        // TAC-06-C005: "Observe Battle" in white, its capitals from row 33,
+        // ending at x 451.
         if paused {
-            let (x, y) = canvas.point(25.0, 48.0);
-            draw_text("Battle Paused.", x, y, 16.0 * canvas.scale, RED);
+            draw_tactical_status_text(
+                canvas,
+                "Battle Paused",
+                22.0,
+                tactical_pause_label_color(player_is_alliance),
+            );
+        }
+        if state.player_observing {
+            let width = tactical_status_text_width(canvas, "Observe Battle");
+            draw_tactical_status_text(canvas, "Observe Battle", 451.0 - width, WHITE);
         }
     }
 
@@ -13004,6 +13074,27 @@ mod tests {
         assert_eq!(
             hud.selected_fighter_count.map(TacticalFighterCount::line),
             Some("X-wings: 1 12/12".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_battle_opens_with_both_side_highlights_off() {
+        // A0 TAC-01-C003 (Alliance) and TAC-01-C002 (Empire).
+        let state = TacticalState::default();
+        assert!(!state.highlight_alliance);
+        assert!(!state.highlight_empire);
+    }
+
+    #[test]
+    fn the_pause_label_takes_the_players_colour() {
+        // A0 TAC-01-C003 pure red, TAC-01-C002 pure green.
+        assert_eq!(
+            tactical_pause_label_color(true),
+            Color::new(1.0, 0.0, 0.0, 1.0)
+        );
+        assert_eq!(
+            tactical_pause_label_color(false),
+            Color::new(0.0, 1.0, 0.0, 1.0)
         );
     }
 
