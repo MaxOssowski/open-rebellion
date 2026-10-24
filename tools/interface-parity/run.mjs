@@ -1656,7 +1656,9 @@ async function probeTacticalProductionParticipants(
   const target = positions.get(targetObjectId);
   assert.ok(player && target, "production participant interaction positions are incomplete");
 
-  await page.mouse.click(player.x - 80, player.y, { button: "left" });
+  // Empty space beside the player's ship. FUN_005d9640's camera puts the
+  // Alliance ship near the view's left edge (A0 TAC-01-C003: (28, 428)).
+  await page.mouse.click(player.x + 80, player.y, { button: "left" });
   await page.waitForTimeout(80);
   const deselected = await stableInteractionFrame(page, folder, "production-deselection");
   await page.mouse.click(player.x, player.y, { button: "left" });
@@ -1739,7 +1741,10 @@ async function probeTacticalFighterDetailJourney(
     "fighter detail journey emitted the wrong number of state transitions");
   const states = sceneLines.map(parseFighterSceneResources);
   const details = states.map((state) => state.map(({ detail }) => detail));
-  assert.deepEqual(details, [
+  // Which group crosses each threshold first depends on its distance from
+  // the camera. Under FUN_005d9640's camera the Alliance view has group 1001
+  // nearer, the Imperial view group 1002.
+  const nearerFirst = [
     ["indicator", "indicator"],
     ["far", "indicator"],
     ["far", "far"],
@@ -1749,7 +1754,10 @@ async function probeTacticalFighterDetailJourney(
     ["far", "far"],
     ["far", "indicator"],
     ["indicator", "indicator"],
-  ]);
+  ];
+  assert.deepEqual(details, ready.faction === "empire"
+    ? nearerFirst.map(([first, second]) => [second, first])
+    : nearerFirst);
   const fighterParticipants = ready.participants.filter(({ kind }) => kind === "fighter-group");
   const activeResources = new Map(fighterParticipants.map((participant, index) => [1001 + index, {
     close: participant.active_close_resource,
@@ -1885,7 +1893,23 @@ async function probeTacticalDetailEscortPresentation(
       && participant.faction === ready.faction && participant.active)
     .map(({ objectId }) => objectId);
   assert.ok(friendlyObjectIds.length >= 2, "escort fixture omitted its friendly target hull");
-  const escortTargetId = friendlyObjectIds[1];
+  // FUN_005d9640's camera can leave a friendly hull outside the battle
+  // view (x 16..456, y 28..468) or at its edge; escort the one nearest the
+  // view's centre.
+  const viewScale = Math.min(viewport.width / 640, viewport.height / 480);
+  const viewLeft = (viewport.width - 640 * viewScale) / 2;
+  const viewTop = (viewport.height - 480 * viewScale) / 2;
+  const insideView = (point) => point
+    && point.x >= viewLeft + 16 * viewScale && point.x < viewLeft + 456 * viewScale
+    && point.y >= viewTop + 28 * viewScale && point.y < viewTop + 468 * viewScale;
+  const viewCentre = { x: viewLeft + 236 * viewScale, y: viewTop + 248 * viewScale };
+  const centreDistance = (objectId) => {
+    const point = positions.get(objectId);
+    return (point.x - viewCentre.x) ** 2 + (point.y - viewCentre.y) ** 2;
+  };
+  const escortTargetId = friendlyObjectIds.slice(1)
+    .filter((objectId) => insideView(positions.get(objectId)))
+    .sort((left, right) => centreDistance(left) - centreDistance(right))[0];
   const escortTarget = positions.get(escortTargetId);
   assert.ok(escortTarget, "escort target omitted its source-projected screen position");
   await page.mouse.click(escortTarget.x, escortTarget.y, { button: "right" });
@@ -4911,14 +4935,16 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.match(planetLoadLogs[0]?.text || "",
           new RegExp(`resource=${ready.planet_resource_id} `
             + `palette_resource_id=${ready.palette_resource_id} dimensions=256x256 `
-            + "texture_filter=nearest alpha=opaque "
-            + "source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60"),
+            + "texture_filter=nearest alpha=black_transparent "
+            + "source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_005d4d10"),
         "tactical planet load used the wrong resource, palette, or source state");
         assert.match(planetSceneLogs[0]?.text || "",
           new RegExp(`resource=${ready.planet_resource_id} `
             + `palette_resource_id=${ready.palette_resource_id} dimensions=256x256 `
-            + "source_position=left_edge_provisional "),
-        "tactical planet scene used the wrong resource or provisional placement");
+            // FUN_005d4d10 hangs the planet at +2e x, outside the first
+            // view (A0 TAC-01-C002/C003 show no planet until the camera turns).
+            + "visible=false source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_005d4d10"),
+        "tactical planet scene used the wrong resource or placement");
         probes.push({
           type: "system-selected-tactical-planet",
           executable_functions: [

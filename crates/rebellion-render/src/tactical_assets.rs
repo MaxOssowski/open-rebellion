@@ -205,14 +205,20 @@ impl OriginalTacticalCamera {
         let (sin_pitch, cos_pitch) = pitch.sin_cos();
         let (sin_yaw, cos_yaw) = yaw.sin_cos();
 
-        // Direct3D retained mode is left-handed and the original meshes use
-        // Y-up. Reflecting source Z produces Macroquad's right-handed space.
+        // `FUN_005d9640` replaces the frame with the yaw about +Y, prepends
+        // the pitch about +X and then the local translation (0, 0, -distance):
+        // the camera orbits the vertical axis, raised `pitch` above the
+        // horizontal. In source space it sits at
+        // (-d cos p sin y, d sin p, -d cos p cos y) with local up
+        // (sin p sin y, cos p, sin p cos y). Direct3D retained mode is
+        // left-handed; reflecting source Z gives Macroquad's right-handed
+        // space. A0 TAC-01-C002, C008 and TAC-03-C020 match this pose.
         let position = vec3(
-            -self.distance * sin_pitch * sin_yaw,
-            self.distance * sin_pitch * cos_yaw,
-            self.distance * cos_pitch,
+            -self.distance * cos_pitch * sin_yaw,
+            self.distance * sin_pitch,
+            self.distance * cos_pitch * cos_yaw,
         );
-        let up = vec3(-cos_pitch * sin_yaw, cos_pitch * cos_yaw, -sin_pitch);
+        let up = vec3(sin_pitch * sin_yaw, cos_pitch, -sin_pitch * cos_yaw);
         OriginalCameraPose {
             position,
             up,
@@ -1153,7 +1159,15 @@ impl TacticalAssetRenderer {
     /// left-edge placement follows the best available native screenshots and
     /// remains outside strict A0 acceptance until the retained-frame transform
     /// is recovered.
-    pub(crate) fn draw_planet(&mut self, aperture: (f32, f32, f32, f32)) -> bool {
+    /// Draw the system's planet: `FUN_005d4d10`'s decal (`5500 + selector`,
+    /// origin at the texture centre, transparent black), `world_size` wide
+    /// at `center` (render space). Returns its screen centre and size.
+    pub(crate) fn draw_planet(
+        &mut self,
+        aperture: (f32, f32, f32, f32),
+        center: Vec3,
+        world_size: f32,
+    ) -> Option<(Vec2, Vec2)> {
         let resource_id = 5500 + u32::from(self.palette_selector);
         if self.planet.as_ref().map(|planet| planet.resource_id) != Some(resource_id)
             && self.unavailable_planet != Some(resource_id)
@@ -1167,38 +1181,31 @@ impl TacticalAssetRenderer {
                 );
             }
         }
-        let Some(planet) = self
+        let planet = self
             .planet
             .as_ref()
-            .filter(|planet| planet.resource_id == resource_id)
-        else {
-            return false;
-        };
-        let source_scale = aperture.3 / 439.0;
-        let size = vec2(planet.texture.width(), planet.texture.height()) * source_scale;
-        let x = aperture.0 - size.x * 0.5;
-        let y = aperture.1;
-        draw_texture_ex(
-            &planet.texture,
-            x,
-            y,
-            WHITE,
-            DrawTextureParams {
-                dest_size: Some(size),
-                ..Default::default()
-            },
-        );
+            .filter(|planet| planet.resource_id == resource_id)?;
+        let texture = planet.texture.clone();
+        let palette_resource_id = planet.palette_resource_id;
+        let drawn = self.draw_decal_texture(&texture, aperture, center, world_size);
         if self.logged_planet_scene != Some(resource_id) {
             macroquad::logging::info!(
-                "[tactical_3d] planet_scene resource={} palette_resource_id={} dimensions={}x{} source_position=left_edge_provisional source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_00509610,FUN_0040b0e0",
+                "[tactical_3d] planet_scene resource={} palette_resource_id={} dimensions={}x{} {} source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_005d4d10",
                 resource_id,
-                planet.palette_resource_id,
-                planet.texture.width(),
-                planet.texture.height(),
+                palette_resource_id,
+                texture.width(),
+                texture.height(),
+                drawn.map_or_else(
+                    || "visible=false".to_owned(),
+                    |(screen, size)| format!(
+                        "visible=true center={:.1},{:.1} size={:.1}",
+                        screen.x, screen.y, size.x
+                    ),
+                ),
             );
             self.logged_planet_scene = Some(resource_id);
         }
-        true
+        drawn
     }
 
     #[cfg(feature = "interface-test-fixtures")]
@@ -1328,7 +1335,7 @@ impl TacticalAssetRenderer {
         center: Vec3,
         world_size: f32,
     ) -> Option<(Vec2, Vec2)> {
-        let source_camera = self.source_camera?;
+        self.source_camera?;
         if !self.effect_textures.contains_key(&resource_id)
             && !self.unavailable_effect_textures.contains(&resource_id)
         {
@@ -1341,16 +1348,29 @@ impl TacticalAssetRenderer {
                 );
             }
         }
-        let asset = self.effect_textures.get(&resource_id)?;
-        let pose = source_camera.pose();
+        let texture = self.effect_textures.get(&resource_id)?.texture.clone();
+        self.draw_decal_texture(&texture, aperture, center, world_size)
+    }
+
+    fn draw_decal_texture(
+        &self,
+        texture: &Texture2D,
+        aperture: (f32, f32, f32, f32),
+        center: Vec3,
+        world_size: f32,
+    ) -> Option<(Vec2, Vec2)> {
+        let pose = self.source_camera?.pose();
         let right = (pose.target - pose.position).cross(pose.up).normalize_or_zero();
         let middle = self.project_source_position(aperture, center)?;
         let edge = self.project_source_position(aperture, center + right * world_size * 0.5)?;
         let half = middle.distance(edge);
         let min = middle - Vec2::splat(half);
         let size = Vec2::splat(half * 2.0);
+        if !decal_overlaps_aperture(min, size, aperture) {
+            return None;
+        }
         draw_texture_ex(
-            &asset.texture,
+            texture,
             min.x,
             min.y,
             WHITE,
@@ -2593,17 +2613,18 @@ impl TacticalAssetRenderer {
             (texture, palette)
         };
         let palette = decode_palette_object(&palette_payload, palette_resource_id)?;
-        let texture =
-            decode_indexed_texture_with_rule(&texture_payload, &palette, palette_resource_id, 2)?;
-        if texture.width() != 256.0 || texture.height() != 256.0 {
+        let (width, height, mut rgba) =
+            decode_indexed_rgba_with_rule(&texture_payload, &palette, palette_resource_id, 2)?;
+        if width != 256 || height != 256 {
             return Err(format!(
-                "tactical planet {resource_id} has invalid dimensions {}x{}",
-                texture.width(),
-                texture.height()
+                "tactical planet {resource_id} has invalid dimensions {width}x{height}"
             ));
         }
+        key_black_transparent(&mut rgba);
+        let texture = Texture2D::from_rgba8(width, height, &rgba);
+        texture.set_filter(original_tactical_texture_filter());
         macroquad::logging::info!(
-            "[tactical_3d] planet_loaded resource={} palette_resource_id={} dimensions={}x{} texture_filter=nearest alpha=opaque source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60",
+            "[tactical_3d] planet_loaded resource={} palette_resource_id={} dimensions={}x{} texture_filter=nearest alpha=black_transparent source=FUN_0059a850,FUN_00596ad0,FUN_005c2e60,FUN_005d4d10",
             resource_id,
             palette_resource_id,
             texture.width(),
@@ -2617,6 +2638,12 @@ impl TacticalAssetRenderer {
         self.family_loads = self.family_loads.saturating_add(1);
         Ok(())
     }
+}
+
+/// Whether a decal's screen square reaches into the battle view.
+fn decal_overlaps_aperture(min: Vec2, size: Vec2, aperture: (f32, f32, f32, f32)) -> bool {
+    let (x, y, width, height) = aperture;
+    min.x < x + width && min.x + size.x > x && min.y < y + height && min.y + size.y > y
 }
 
 fn project_world_position(
@@ -2974,6 +3001,19 @@ fn decode_indexed_texture_with_rule(
     expected_palette_id: u32,
     expected_palette_rule: u32,
 ) -> Result<Texture2D, String> {
+    let (width, height, rgba) =
+        decode_indexed_rgba_with_rule(bytes, palette, expected_palette_id, expected_palette_rule)?;
+    let texture = Texture2D::from_rgba8(width, height, &rgba);
+    texture.set_filter(original_tactical_texture_filter());
+    Ok(texture)
+}
+
+fn decode_indexed_rgba_with_rule(
+    bytes: &[u8],
+    palette: &[[u8; 4]; 256],
+    expected_palette_id: u32,
+    expected_palette_rule: u32,
+) -> Result<(u16, u16, Vec<u8>), String> {
     let mut reader = Reader::new(bytes);
     reader.expect(TEXTURE_MAGIC)?;
     if reader.u32()? != 1 {
@@ -3009,9 +3049,18 @@ fn decode_indexed_texture_with_rule(
     for index in indices {
         rgba.extend_from_slice(&palette[usize::from(*index)]);
     }
-    let texture = Texture2D::from_rgba8(width as u16, height as u16, &rgba);
-    texture.set_filter(original_tactical_texture_filter());
-    Ok(texture)
+    Ok((width as u16, height as u16, rgba))
+}
+
+/// `FUN_005d4d10` turns decal transparency on for the planet
+/// (`SetDecalTransparency(TRUE)`) and keeps Direct3D retained mode's default
+/// transparent colour, black: its black pixels show the starfield.
+fn key_black_transparent(rgba: &mut [u8]) {
+    for pixel in rgba.chunks_exact_mut(4) {
+        if pixel[..3] == [0, 0, 0] {
+            pixel[3] = 0;
+        }
+    }
 }
 
 fn load_tactical_material() -> Result<Material, String> {
@@ -3348,6 +3397,29 @@ mod tests {
         );
     }
 
+    // Source: TACTICAL.DLL type-303 indexed texture format; FUN_005d4d10
+    // turns decal transparency on for the planet, whose default transparent
+    // colour is black.
+    #[test]
+    fn the_planet_texture_decodes_its_palette_and_keys_only_black_out() {
+        let mut bytes = Vec::from(TEXTURE_MAGIC.as_slice());
+        for value in [1_u32, 2, 1, 5537, 2, 2, 0] {
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes.extend_from_slice(&[3, 4]);
+        let mut palette = [[0_u8; 4]; 256];
+        palette[3] = [0, 0, 0, 255];
+        palette[4] = [0, 0, 1, 255];
+        let (width, height, mut rgba) =
+            decode_indexed_rgba_with_rule(&bytes, &palette, 5537, 2).unwrap();
+        assert_eq!((width, height), (2, 1));
+        assert_eq!(rgba, vec![0, 0, 0, 255, 0, 0, 1, 255]);
+        key_black_transparent(&mut rgba);
+        assert_eq!(rgba, vec![0, 0, 0, 0, 0, 0, 1, 255]);
+        assert!(decode_indexed_rgba_with_rule(&bytes, &palette, 5538, 2).is_err());
+        assert!(decode_indexed_rgba_with_rule(&bytes, &palette, 5537, 1).is_err());
+    }
+
     // Source: FUN_0059a850, FUN_00596ad0, FUN_005c2e60 planet resource
     // and palette identity.
     #[cfg(not(target_arch = "wasm32"))]
@@ -3393,14 +3465,78 @@ mod tests {
         assert_eq!(alliance.pitch_degrees, 30);
         assert_eq!(alliance.yaw_degrees, -30);
         assert_eq!(empire.yaw_degrees, 150);
+        // FUN_005d9640 yaws about +Y (0x005d967c pushes the axis (0, 1, 0)),
+        // so the sides' views, 180 degrees apart, share their height.
         assert_near(alliance.position.x, -empire.position.x);
-        assert_near(alliance.position.y, -empire.position.y);
-        assert_near(alliance.position.z, empire.position.z);
+        assert_near(alliance.position.y, empire.position.y);
+        assert_near(alliance.position.z, -empire.position.z);
+        assert_near(alliance.position.y, 170.0 * 0.5);
         assert_near(alliance.near, 1.0);
         assert_near(alliance.far, 425.0);
         assert_near(alliance.field, 0.2);
         assert_near(alliance.fovy_radians, 2.0 * 0.2_f32.atan());
         assert_near(alliance.up.length(), 1.0);
+    }
+
+    fn project_for_test(camera: OriginalTacticalCamera, source: Vec3) -> Option<Vec2> {
+        let pose = camera.pose();
+        let matrix = Mat4::perspective_rh_gl(pose.fovy_radians, 1.0, pose.near, pose.far)
+            * Mat4::look_at_rh(pose.position, pose.target, pose.up);
+        project_world_position(
+            matrix,
+            vec3(source.x, source.y, -source.z),
+            (16.0, 28.0, 440.0, 440.0),
+        )
+    }
+
+    // Source: FUN_005d9640 (yaw about +Y, then pitch about +X, then
+    // (0, 0, -distance)). A0 TAC-01-C002: the first Imperial frame shows the
+    // holocube corner (+x, -y, -z) at (157, 290); TAC-01-C008 (16 times left)
+    // shows that corner at (105, 298) with the planet (+2e x) at the top
+    // right; TAC-03-C020 (120 times left, 8 zoom-outs) shows the Death Star
+    // (-2e x) near (267, 90), its random offsets aside.
+    #[test]
+    fn the_camera_orbits_the_vertical_axis_as_the_original_captures_show() {
+        let near = |actual: Option<Vec2>, x: f32, y: f32, tolerance: f32| {
+            let actual = actual.expect("in front of the camera");
+            assert!(
+                (actual.x - x).abs() <= tolerance && (actual.y - y).abs() <= tolerance,
+                "expected near ({x}, {y}), got {actual:?}"
+            );
+        };
+        let extent = 100.0;
+        let corner = vec3(50.0, -50.0, -50.0);
+        let mut camera = OriginalTacticalCamera::new(true, extent);
+        near(project_for_test(camera, corner), 157.0, 290.0, 3.0);
+        for _ in 0..16 {
+            camera.turn_left();
+        }
+        near(project_for_test(camera, vec3(50.0, -50.0, 50.0)), 105.0, 298.0, 3.0);
+        let planet = project_for_test(camera, vec3(2.0 * extent, 0.0, 0.0)).unwrap();
+        assert!(planet.x > 400.0 && planet.y < 28.0, "planet at {planet:?}");
+        for _ in 16..120 {
+            camera.turn_left();
+        }
+        for _ in 0..8 {
+            camera.zoom_out();
+        }
+        near(
+            project_for_test(camera, vec3(-2.0 * extent, 11.0, -9.0)),
+            267.0,
+            90.0,
+            50.0,
+        );
+    }
+
+    #[test]
+    fn a_decal_is_drawn_only_when_its_square_reaches_the_view() {
+        let view = (16.0, 28.0, 440.0, 440.0);
+        assert!(decal_overlaps_aperture(vec2(0.0, 0.0), vec2(20.0, 30.0), view));
+        assert!(!decal_overlaps_aperture(vec2(0.0, 0.0), vec2(16.0, 30.0), view));
+        assert!(!decal_overlaps_aperture(vec2(0.0, 0.0), vec2(20.0, 28.0), view));
+        assert!(decal_overlaps_aperture(vec2(455.0, 467.0), vec2(5.0, 5.0), view));
+        assert!(!decal_overlaps_aperture(vec2(456.0, 100.0), vec2(5.0, 5.0), view));
+        assert!(!decal_overlaps_aperture(vec2(100.0, 468.0), vec2(5.0, 5.0), view));
     }
 
     // Source: FUN_005ab650 tactical layout and lane derivation.

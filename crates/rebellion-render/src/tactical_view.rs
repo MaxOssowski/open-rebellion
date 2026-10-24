@@ -908,9 +908,17 @@ impl TacticalState {
         let Some(session) = self.session.as_mut() else {
             return;
         };
+        let extent = session.source_layout.battle_extent;
         let mut task_force = 0_u8;
         for ship in &mut session.ships {
             if ship.alive && ship.is_attacker == session.player_is_attacker {
+                // FUN_005d9640's first view shows the player's lane at the
+                // corner of the view; spread the ships along their lane so
+                // the browser can click each task force.
+                let step = f32::from(task_force);
+                ship.source_position.x =
+                    -ship.source_position.z.signum() * (0.1 + 0.04 * step) * extent;
+                ship.source_position.y = (0.3 - 0.02 * step) * extent;
                 ship.task_force = task_force.min(7);
                 task_force = task_force.saturating_add(1);
             }
@@ -1041,7 +1049,8 @@ impl TacticalState {
                 .iter_mut()
                 .find(|ship| ship.alive && ship.is_attacker != session.player_is_attacker)
             {
-                target.source_position.x = 0.0;
+                // Inside the first Imperial view of FUN_005d9640's camera.
+                target.source_position.x = -20.0;
                 target.source_position.y = 40.0;
                 target.source_position.z = session.source_layout.outer_positive_z;
             }
@@ -7617,7 +7626,12 @@ pub fn draw_tactical_view(
         state.asset_renderer.draw_backdrop(aperture_tuple);
     }
     if state.render_original_planet {
-        state.asset_renderer.draw_planet(aperture_tuple);
+        if let Some(session) = state.session.as_ref() {
+            let (center, size) = planet_backdrop_source(session.source_layout.battle_extent);
+            state
+                .asset_renderer
+                .draw_planet(aperture_tuple, center.rendered(), size);
+        }
     }
     draw_tactical_death_star_backdrop(state, aperture_tuple);
     if state.display_holocube {
@@ -8539,18 +8553,35 @@ fn clip_segment_to_rect(a: Vec2, b: Vec2, rect: (f32, f32, f32, f32)) -> Option<
     (enter <= leave).then(|| (a + delta * enter, a + delta * leave))
 }
 
+/// Where `FUN_005d4d10` hangs the planet decal, in source coordinates, and
+/// its width, for a battle extent `e`: a frame at
+/// `(2e, rand(0.2e) - 0.1e, rand(0.2e) - 0.1e)` (`DAT_0066d23c` 0.1)
+/// carrying an `e` decal, built only while Show Planet is on (`+0x680`).
+/// port: the two random offsets, from a local stream, are taken at their
+/// centre (0).
+fn planet_backdrop_source(extent: f32) -> (TacticalWorldPosition, f32) {
+    (
+        TacticalWorldPosition {
+            x: 2.0 * extent,
+            y: 0.0,
+            z: 0.0,
+        },
+        extent,
+    )
+}
+
 /// Where `FUN_005d4d10` hangs the Death Star decal, in source coordinates,
 /// and its width, for a battle extent `e`: a frame at
-/// `(rand(0.4e) - 0.2e, rand(0.4e) - 0.2e, -2e)` (the planet's is at `+2e`)
-/// with a child at `(0, 0.11e, -0.09e)` carrying a `0.5e` decal. port: the
-/// frame's two random offsets, from a local stream, are taken at their
-/// centre (0).
+/// `(-2e, rand(0.4e) - 0.2e, rand(0.4e) - 0.2e)` (`DAT_0066d248` -2,
+/// `DAT_0066d244` 0.2), opposite the planet, with a child at
+/// `(0, 0.11e, -0.09e)` carrying a `0.5e` decal. port: the frame's two random
+/// offsets, from a local stream, are taken at their centre (0).
 fn death_star_backdrop_source(extent: f32) -> (TacticalWorldPosition, f32) {
     (
         TacticalWorldPosition {
-            x: 0.0,
+            x: -2.0 * extent,
             y: 0.11 * extent,
-            z: -2.0 * extent - 0.09 * extent,
+            z: -0.09 * extent,
         },
         0.5 * extent,
     )
@@ -8726,14 +8757,29 @@ fn draw_projected_frame(projection: TacticalScreenProjection, canvas_scale: f32,
         .min(projection.center - minimum_half);
     let max = (projection.max + macroquad::math::Vec2::splat(padding))
         .max(projection.center + minimum_half);
+    let thickness = canvas_scale.max(1.0).round();
+    let (origin, max) = (
+        snap_line_to_pixels(origin, thickness),
+        snap_line_to_pixels(max, thickness),
+    );
     let size = max - origin;
     let corner = (size.min_element() * 0.28).clamp(3.0 * canvas_scale, 8.0 * canvas_scale);
-    let thickness = canvas_scale.max(1.0);
     for (x, x_direction) in [(origin.x, 1.0), (origin.x + size.x, -1.0)] {
         for (y, y_direction) in [(origin.y, 1.0), (origin.y + size.y, -1.0)] {
             draw_line(x, y, x + corner * x_direction, y, thickness, color);
             draw_line(x, y, x, y + corner * y_direction, thickness, color);
         }
+    }
+}
+
+/// Centre a line of `thickness` on whole pixels: an odd width sits on a pixel
+/// centre, an even one on a pixel edge, so it is drawn without blending into
+/// the neighbouring rows.
+fn snap_line_to_pixels(point: macroquad::math::Vec2, thickness: f32) -> macroquad::math::Vec2 {
+    if (thickness.round() as i32) % 2 == 1 {
+        point.floor() + macroquad::math::Vec2::splat(0.5)
+    } else {
+        point.round()
     }
 }
 
@@ -14466,14 +14512,37 @@ mod tests {
     }
 
     // Source: FUN_005d4d10 (DAT_0066d244 0.2, DAT_0066d248 -2.0,
-    // DAT_0066d250 0.09, DAT_0066d258 0.11, DAT_0066d260 0.5).
+    // DAT_0066d250 0.09, DAT_0066d258 0.11, DAT_0066d260 0.5). Its
+    // SetPosition passes -2e as x (0x005d5598), and A0 TAC-03-C020 shows the
+    // decal where the camera sees -x.
     #[test]
     fn the_death_star_hangs_behind_the_battle_opposite_the_planet() {
         let (center, size) = death_star_backdrop_source(400.0);
-        assert_eq!(center.x, 0.0);
+        assert!((center.x + 800.0).abs() < 1e-3);
         assert!((center.y - 44.0).abs() < 1e-3);
-        assert!((center.z + 836.0).abs() < 1e-3);
+        assert!((center.z + 36.0).abs() < 1e-3);
         assert_eq!(size, 200.0);
+        let (planet, _) = planet_backdrop_source(400.0);
+        assert_eq!(planet.x, -center.x);
+    }
+
+    #[test]
+    fn a_selection_frame_line_sits_on_whole_pixels() {
+        let one = snap_line_to_pixels(macroquad::math::vec2(60.36, 438.87), 1.0);
+        assert_eq!(one, macroquad::math::vec2(60.5, 438.5));
+        let two = snap_line_to_pixels(macroquad::math::vec2(60.36, 438.87), 2.0);
+        assert_eq!(two, macroquad::math::vec2(60.0, 439.0));
+    }
+
+    // Source: FUN_005d4d10 (DAT_0066d23c 0.1, SetPosition x = 2e at
+    // 0x005d540d, SetDecalSize(e, e)); A0 TAC-01-C008 shows it at +x.
+    #[test]
+    fn the_planet_hangs_two_extents_out_on_x_as_wide_as_the_battle() {
+        let (center, size) = planet_backdrop_source(400.0);
+        assert_eq!(center.x, 800.0);
+        assert_eq!(center.y, 0.0);
+        assert_eq!(center.z, 0.0);
+        assert_eq!(size, 400.0);
     }
 
     // Source: FUN_005c4ed0 meter 0x5f px for charge 0..100; A0 TAC-05-C020
