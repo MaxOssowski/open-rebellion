@@ -1490,6 +1490,10 @@ pub struct BattleSession {
     /// Index: `[attacker as usize][slot]`. A new force starts Stand Off
     /// (`0x005cbf50` builds `0x005ec310`).
     pub task_force_formations: [[TacticalTactic; 8]; 2],
+    /// Each force's band of distance to its target, by its lead unit: the
+    /// tactic object's `+0x30` and `+0x34` (slot `+0x10`), recomputed once
+    /// a turn through the force's slot `+0xc` (`0x005c9bd0`).
+    pub engagement_bands: Vec<TacticalEngagementBand>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -2918,6 +2922,32 @@ pub fn original_formation_capability_score(ship: &TacticalShip) -> f32 {
     maximum_weapon_range.mul_add(ORIGINAL_FORMATION_RANGE_PRIORITY, available_sublight)
 }
 
+/// A force's band of distance to its target (`+0x30`, `+0x34` of its
+/// tactic object), kept by its lead unit.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalEngagementBand {
+    pub leader: usize,
+    pub min: f32,
+    pub max: f32,
+}
+
+/// Surround's band (`0x005edf00`): 0 to 5.0 × 0.5 (`DAT_0066daa8`,
+/// `DAT_0066daac`).
+pub const ORIGINAL_SURROUND_BAND_MAX: f32 = 2.5;
+/// Surround's step toward the target (slot `+0xc`, `DAT_0066cc94`).
+pub const ORIGINAL_SURROUND_APPROACH_STEP: f32 = 5.0;
+/// `FUN_005cc300` compares `r - DAT_0066d008` (-2.0) with the band.
+pub const ORIGINAL_ENGAGEMENT_MARGIN: f32 = 2.0;
+/// Stand Off's smallest step (`DAT_0066d018`) and the mover's radius.
+pub const ORIGINAL_STAND_OFF_MIN_STEP: f32 = 2.0;
+/// A Stand Off force too close backs off by `min × DAT_0066d00c`.
+pub const ORIGINAL_STAND_OFF_BACK_OFF: f32 = -1.1;
+/// Stand Off's band floor (`DAT_0066daa8`).
+pub const ORIGINAL_STAND_OFF_BAND_FLOOR: f32 = 5.0;
+/// Stand Off's max when its band is empty: 5.0 + 5.0 (`DAT_0066daa8`,
+/// `0x005ee1bd`).
+pub const ORIGINAL_STAND_OFF_EMPTY_MAX: f32 = 10.0;
+
 /// `DAT_006bd88c`: 5.0 (`DAT_0066d840`) times 2.5 (`DAT_0066d85c`), set by
 /// the initializer `0x005e9db0`.
 pub const ORIGINAL_SURROUND_SPACING: f32 = 12.5;
@@ -3671,6 +3701,7 @@ impl BattleSession {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
+            engagement_bands: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -3857,7 +3888,17 @@ impl BattleSession {
                             .map_or(TacticalWorldVector::ZERO, |next| {
                                 source_delta(next, ship.source_position).normalized()
                             });
-                        if ship.source_waypoint.is_none() && ship.order != TacticalOrder::Escort {
+                        // A maneuver's executor ends there (`FUN_005a8f70`);
+                        // an attack order outlives its route.
+                        if ship.source_waypoint.is_none()
+                            && matches!(
+                                ship.order,
+                                TacticalOrder::LeftHook
+                                    | TacticalOrder::RightHook
+                                    | TacticalOrder::Hammer
+                                    | TacticalOrder::Anvil
+                            )
+                        {
                             ship.order = TacticalOrder::None;
                             if ship.is_attacker == self.player_is_attacker
                                 && matches!(
@@ -5046,6 +5087,9 @@ impl BattleSession {
         // the first three turns.
         if self.event_turn() >= ORIGINAL_TACTICAL_EVENT_LEAD_TURNS {
             advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            // The forces' order steps (slot `+0x14`) come before the units'
+            // moves (slot `+0x8`) in the frame (`0x005a9ec0`).
+            self.advance_engagement_approach();
             self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.advance_trench_run_approach(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.keep_units_in_the_field();
@@ -5142,6 +5186,9 @@ impl BattleSession {
                 .push(TacticalVoiceCue::death_star_ready());
         }
         self.ai_side_leaves();
+        // `+0x84` (`0x005a9d40`): each force's slot `+0xc` recomputes its
+        // band.
+        self.update_engagement_bands();
 
         for ship in &mut self.ships {
             ship.advance_original_recharge(ORIGINAL_TACTICAL_TURN_SECONDS);
@@ -6600,6 +6647,327 @@ impl BattleSession {
     pub fn withdrawal_exit_z(&self, is_alliance: bool) -> f32 {
         let side_z = if is_alliance { 1.0 } else { -1.0 };
         -side_z * self.source_layout.battle_extent * ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE
+    }
+
+    /// The capital forces in the fight, each lead unit first (`0x005c6070`):
+    /// the group slots (`+0x164`) in their formation order
+    /// (`original_formation_capability_score`, `FUN_005c81d0`) and every
+    /// ship of a force of its own (`FUN_005aded0`) alone.
+    pub(crate) fn capital_forces(&self) -> Vec<Vec<usize>> {
+        let in_force = |ship: &TacticalShip| ship.alive && !ship.jumping() && !ship.retreating;
+        let mut forces = Vec::new();
+        for attacker in [true, false] {
+            for slot in 0_u8..8 {
+                let mut members = (0..self.ships.len())
+                    .filter(|&index| {
+                        let ship = &self.ships[index];
+                        in_force(ship) && ship.is_attacker == attacker && ship.task_force == slot
+                    })
+                    .collect::<Vec<_>>();
+                if members.is_empty() {
+                    continue;
+                }
+                members.sort_by(|left, right| {
+                    original_formation_capability_score(&self.ships[*right])
+                        .total_cmp(&original_formation_capability_score(&self.ships[*left]))
+                });
+                forces.push(members);
+            }
+        }
+        for (index, ship) in self.ships.iter().enumerate() {
+            if in_force(ship) && ship.task_force == TACTICAL_UNGROUPED_TASK_FORCE {
+                forces.push(vec![index]);
+            }
+        }
+        forces
+    }
+
+    /// A force's tactic: its slot's formation (`+0x3c`, set on event
+    /// `0x3d`). port: a force of its own uses its ship's tactic at once.
+    fn force_tactic(&self, leader: usize) -> TacticalTactic {
+        let ship = &self.ships[leader];
+        if ship.task_force < 8 {
+            self.task_force_formations[usize::from(ship.is_attacker)][usize::from(ship.task_force)]
+        } else {
+            ship.tactic
+        }
+    }
+
+    pub(crate) fn attack_target_position(
+        &self,
+        target: TacticalAttackTarget,
+    ) -> Option<TacticalWorldPosition> {
+        match target {
+            TacticalAttackTarget::CapitalShip(index) => self
+                .ships
+                .get(index)
+                .filter(|ship| ship.alive && !ship.jumping())
+                .map(|ship| ship.source_position),
+            TacticalAttackTarget::FighterGroup(index) => self
+                .fighters
+                .get(index)
+                .filter(|fighter| fighter.alive && fighter.squad_count > 0 && !fighter.jumping())
+                .map(|fighter| fighter.source_position),
+        }
+    }
+
+    /// `FUN_005b49e0`: a unit's weapons against a target type, each family
+    /// of its strongest arc (slot `+0x84`, `FUN_005b4c60`) as a band
+    /// [0, range) worth count × slot `+0x60` × strength × modifier; the
+    /// families' ranges are slots `+0x54` (laser), `+0x50` (ion) and `+0x58`
+    /// (turbolaser).
+    pub(crate) fn weapon_bands(
+        arcs: &[TacticalWeaponArc],
+        ranges: TacticalWeaponRanges,
+        recharge: f32,
+        vs_fighter: bool,
+        sign: f32,
+        bands: &mut Vec<(f32, f32)>,
+    ) {
+        let Some(arc) =
+            crate::abstract_battle::strongest_arc(arcs, vs_fighter).map(|arc| arcs[arc])
+        else {
+            return;
+        };
+        let strengths = crate::abstract_battle::family_strengths(vs_fighter);
+        for (count, strength, range) in [
+            (arc.ion_cannons, strengths[1], ranges.ion_cannon),
+            (arc.turbolasers, strengths[2], ranges.turbolaser),
+            (arc.laser_cannons, strengths[0], ranges.laser_cannon),
+        ] {
+            if count > 0 {
+                bands.push((range, sign * count as f32 * recharge * strength));
+            }
+        }
+    }
+
+    /// `FUN_005edf80`, Stand Off's band against the force's first target:
+    /// - the force's weapons add their worth up to their range, and the
+    ///   target's weapons against the lead unit take theirs away
+    ///   (`FUN_005b49e0`, summed band by band as `FUN_005b7e50` splits
+    ///   them);
+    /// - the best band is the worthiest whose far edge the force reaches
+    ///   (the later of equals);
+    /// - min is at least 5.0, and an empty max becomes 10;
+    /// - an unarmed force keeps max(target range × 1.2, 10) to 1e6.
+    pub(crate) fn stand_off_band(
+        &self,
+        members: &[usize],
+        target: TacticalAttackTarget,
+    ) -> (f32, f32) {
+        let (target_arcs, target_ranges, target_recharge) = match target {
+            TacticalAttackTarget::CapitalShip(index) => {
+                let ship = &self.ships[index];
+                (
+                    ship.weapon_arcs.to_vec(),
+                    ship.weapon_ranges,
+                    ship.effective_weapon_recharge(),
+                )
+            }
+            TacticalAttackTarget::FighterGroup(index) => {
+                let fighter = &self.fighters[index];
+                (
+                    vec![fighter.weapon_arc],
+                    fighter.weapon_ranges,
+                    fighter.weapon_hull_factor(),
+                )
+            }
+        };
+        let vs_fighter = matches!(target, TacticalAttackTarget::FighterGroup(_));
+        let max_range = |ranges: TacticalWeaponRanges| {
+            ranges
+                .ion_cannon
+                .max(ranges.laser_cannon)
+                .max(ranges.turbolaser)
+        };
+        let target_reach = max_range(target_ranges);
+        let mut weapons = Vec::new();
+        let mut own_reach = 0.0_f32;
+        for &index in members {
+            let ship = &self.ships[index];
+            Self::weapon_bands(
+                &ship.weapon_arcs,
+                ship.weapon_ranges,
+                ship.effective_weapon_recharge(),
+                vs_fighter,
+                1.0,
+                &mut weapons,
+            );
+            own_reach = own_reach.max(max_range(ship.weapon_ranges));
+        }
+        Self::weapon_bands(
+            &target_arcs,
+            target_ranges,
+            target_recharge,
+            false,
+            -1.0,
+            &mut weapons,
+        );
+        // The bands all start at 0, so they split at each range: band
+        // [lo, hi) is worth every weapon reaching hi.
+        let mut edges = weapons
+            .iter()
+            .map(|(range, _)| *range)
+            .filter(|range| *range > 0.0)
+            .collect::<Vec<_>>();
+        edges.sort_by(f32::total_cmp);
+        edges.dedup();
+        let mut best: Option<(f32, f32)> = None;
+        let mut best_worth = f32::MIN;
+        let mut lo = 0.0;
+        for &hi in &edges {
+            let worth = weapons
+                .iter()
+                .filter(|(range, _)| *range >= hi)
+                .map(|(_, worth)| *worth)
+                .sum::<f32>();
+            if best_worth <= worth && hi <= own_reach {
+                best_worth = worth;
+                best = Some((lo, hi));
+            }
+            lo = hi;
+        }
+        // port: the object's `+0xc` (the reach beyond the target's, or a
+        // third into the band) is not kept: Stand Off's step does not use
+        // it. The band is the best one either way.
+        let (mut min, mut max) = best.unwrap_or((0.0, 0.0));
+        if own_reach == 0.0 {
+            let keep = (target_reach * 1.2).max(10.0);
+            min = keep;
+            max = 1_000_000.0;
+        }
+        if max == 0.0 {
+            max = ORIGINAL_STAND_OFF_EMPTY_MAX;
+        }
+        min = min.max(ORIGINAL_STAND_OFF_BAND_FLOOR);
+        (min, max)
+    }
+
+    /// Once a turn (`0x005a9d40` -> force slot `+0xc`, `0x005c9bd0`): each
+    /// force's tactic object recomputes its band against its first target.
+    pub(crate) fn update_engagement_bands(&mut self) {
+        let mut bands = Vec::new();
+        for members in self.capital_forces() {
+            let leader = members[0];
+            let Some(target) = self.ships[leader].attack_target else {
+                continue;
+            };
+            if self.attack_target_position(target).is_none() {
+                continue;
+            }
+            let (min, max) = if self.force_tactic(leader) == TacticalTactic::Surround {
+                (0.0, ORIGINAL_SURROUND_BAND_MAX)
+            } else {
+                self.stand_off_band(&members, target)
+            };
+            bands.push(TacticalEngagementBand { leader, min, max });
+        }
+        self.engagement_bands = bands;
+    }
+
+    /// `FUN_005cc300`'s step for a force with a target, every frame from
+    /// turn 3: unless it is on a route or holding, its lead unit heads for
+    /// a point one step toward the target while out of its band, and stops
+    /// inside it. Stand Off backs off when too close, unless the target
+    /// attacks one of the force.
+    pub(crate) fn advance_engagement_approach(&mut self) {
+        for members in self.capital_forces() {
+            let leader = members[0];
+            let ship = &self.ships[leader];
+            if matches!(
+                ship.order,
+                TacticalOrder::HoldPosition
+                    | TacticalOrder::Escort
+                    | TacticalOrder::LeftHook
+                    | TacticalOrder::RightHook
+                    | TacticalOrder::Hammer
+                    | TacticalOrder::Anvil
+            ) || !ship.navigation_route.is_empty()
+            {
+                continue;
+            }
+            let Some(target) = ship.attack_target else {
+                continue;
+            };
+            let Some(target_position) = self.attack_target_position(target) else {
+                continue;
+            };
+            let band = self
+                .engagement_bands
+                .iter()
+                .find(|band| band.leader == leader)
+                .copied()
+                .unwrap_or(TacticalEngagementBand {
+                    leader,
+                    min: 0.0,
+                    max: 0.0,
+                });
+            let anchor = ship.source_position;
+            let side_z = if ship.identity.is_alliance { 1.0 } else { -1.0 };
+            let mut delta = source_delta(target_position, anchor);
+            if delta == TacticalWorldVector::ZERO {
+                delta = TacticalWorldVector {
+                    x: 0.0,
+                    y: 0.0,
+                    z: -5.0 * side_z,
+                };
+            }
+            let distance = delta.x.hypot(delta.y).hypot(delta.z);
+            let tactic = self.force_tactic(leader);
+            if band.min <= distance + ORIGINAL_ENGAGEMENT_MARGIN
+                && distance + ORIGINAL_ENGAGEMENT_MARGIN <= band.max
+            {
+                // The mover's goal is cleared (`+0x78`..`+0x84`).
+                self.ships[leader].source_waypoint = None;
+                self.ships[leader].source_desired_forward = TacticalWorldVector::ZERO;
+                continue;
+            }
+            if tactic == TacticalTactic::StandOff && distance < band.min {
+                // The target force's first target among this force's
+                // members (`0x005ca4b0` on `+0x1c`): it holds.
+                let attacks_us = match target {
+                    TacticalAttackTarget::CapitalShip(index) => self.ships[index]
+                        .attack_target
+                        .is_some_and(|its| {
+                            matches!(its, TacticalAttackTarget::CapitalShip(own) if members.contains(&own))
+                        }),
+                    TacticalAttackTarget::FighterGroup(index) => self.fighters[index]
+                        .attack_target
+                        .is_some_and(|its| {
+                            matches!(its, TacticalAttackTarget::CapitalShip(own) if members.contains(&own))
+                        }),
+                };
+                if attacks_us {
+                    self.ships[leader].source_waypoint = None;
+                    self.ships[leader].source_desired_forward = TacticalWorldVector::ZERO;
+                    continue;
+                }
+                delta = TacticalWorldVector {
+                    x: 0.0,
+                    y: 0.0,
+                    z: side_z * band.min * ORIGINAL_STAND_OFF_BACK_OFF,
+                };
+            }
+            let step = if tactic == TacticalTactic::Surround {
+                ORIGINAL_SURROUND_APPROACH_STEP
+            } else {
+                let share = match members.len() {
+                    0..=2 => 0.5,
+                    3..=5 => 0.75,
+                    _ => 0.9,
+                };
+                (share * (band.max - band.min) + band.min).max(ORIGINAL_STAND_OFF_MIN_STEP)
+            };
+            let unit = delta.normalized();
+            let goal = TacticalWorldPosition {
+                x: anchor.x + unit.x * step,
+                y: anchor.y + unit.y * step,
+                z: anchor.z + unit.z * step,
+            };
+            let ship = &mut self.ships[leader];
+            ship.source_waypoint = Some(goal);
+            ship.source_desired_forward = unit;
+        }
     }
 
     /// Both sides' withdrawals, the player's first.

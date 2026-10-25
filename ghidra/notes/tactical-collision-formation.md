@@ -300,5 +300,6 @@ its band (its slot `+4`) once a turn. The objects are:
      and max 1e6.
   7. A max of 0 becomes 10, and min is at least 5.0.
 
-The port moves capital ships only along waypoints (maneuvers, navigation
-routes, the withdrawal). It does not close on attack targets yet.
+Ported in s101 (`update_engagement_bands`, `advance_engagement_approach`;
+`docs/qa/.../2026-10-25-closing-on-targets/`). Not ported: the AI's switch
+to Surround above 7 members, and fighter groups closing (`FUN_005c6610`).

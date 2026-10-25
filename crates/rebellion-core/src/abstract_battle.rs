@@ -220,7 +220,7 @@ fn arcs(session: &BattleSession, unit: AbstractUnit) -> Vec<TacticalWeaponArc> {
 /// `FUN_005d2360` strengths with the `FUN_005d24e0` (laser), `FUN_005d2530`
 /// (ion) and `FUN_005d2490` (turbolaser) target modifiers, per weapon, as
 /// laser, ion and turbolaser. Ion cannons do nothing against fighters.
-fn family_strengths(vs_fighter: bool) -> [f32; 3] {
+pub(crate) fn family_strengths(vs_fighter: bool) -> [f32; 3] {
     let modifiers = if vs_fighter {
         [
             ORIGINAL_LASER_VS_FIGHTER,
@@ -1863,6 +1863,7 @@ mod tests {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
+            engagement_bands: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -6179,6 +6180,385 @@ mod tests {
         BattleSession::refresh_original_task_force_geometry(&mut ships, &formations);
         assert_eq!(ships[1].source_position.y, 2.0);
         assert_ne!(ships[1].source_position, at(10.0, 2.0, -15.0));
+    }
+
+    fn duelists(own_range: f32, target_range: f32) -> BattleSession {
+        use crate::tactical::{TacticalAttackTarget, TacticalWorldPosition};
+        let mut own = ship(true, TacticalWeaponArc::new(2, 0, 0), 1.0);
+        own.weapon_ranges.laser_cannon = own_range;
+        own.hull_current = 1_000_000;
+        own.hull_max = 1_000_000;
+        own.order = TacticalOrder::AttackCapitalShips;
+        own.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        own.source_position = TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: -50.0,
+        };
+        let mut enemy = ship(false, TacticalWeaponArc::new(2, 0, 0), 1.0);
+        enemy.weapon_ranges.laser_cannon = target_range;
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        enemy.source_position.z = 50.0;
+        enemy.task_force = 1;
+        session(vec![own, enemy], Vec::new())
+    }
+
+    // FUN_005edf80: Stand Off's band is the worthiest band the force
+    // reaches. The force's lasers (40) add, the target's (30) subtract
+    // (FUN_005b49e0), so [30, 40) wins; min is at least 5 (DAT_0066daa8).
+    // An unarmed force keeps max(target range x 1.2, 10) to 1e6; Surround
+    // keeps 0 to 2.5 (0x005edf00).
+    #[test]
+    fn a_force_s_band_follows_its_tactic_and_the_weapons_on_both_sides() {
+        use crate::tactical::{TacticalEngagementBand, TacticalTactic};
+        let band = |t: &BattleSession| t.engagement_bands.clone();
+        let mut tactical = duelists(40.0, 30.0);
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(
+            band(&tactical),
+            [TacticalEngagementBand {
+                leader: 0,
+                min: 30.0,
+                max: 40.0
+            }]
+        );
+        let mut close = duelists(4.0, 30.0);
+        close.ships[1].weapon_arcs[0] = TacticalWeaponArc::default();
+        for _ in 0..4 {
+            close.step();
+        }
+        assert_eq!(close.engagement_bands[0].min, 5.0);
+        assert_eq!(close.engagement_bands[0].max, 4.0);
+
+        let mut unarmed = duelists(40.0, 30.0);
+        unarmed.ships[0].weapon_arcs[0] = TacticalWeaponArc::default();
+        unarmed.ships[0].weapon_ranges.laser_cannon = 0.0;
+        for _ in 0..4 {
+            unarmed.step();
+        }
+        assert_eq!(unarmed.engagement_bands[0].min, 36.0);
+        assert_eq!(unarmed.engagement_bands[0].max, 1_000_000.0);
+
+        let mut surround = duelists(40.0, 30.0);
+        surround.task_force_formations[1][0] = TacticalTactic::Surround;
+        for _ in 0..4 {
+            surround.step();
+        }
+        assert_eq!(surround.engagement_bands[0].min, 0.0);
+        assert_eq!(surround.engagement_bands[0].max, 2.5);
+    }
+
+    // FUN_005cc300: from turn 3 a force with a target closes on it while
+    // r + 2 lies outside its band, then stops inside it; holding a
+    // position, it does not move.
+    #[test]
+    fn a_force_closes_on_its_target_and_stops_in_its_band() {
+        let distance = |t: &BattleSession| {
+            let a = t.ships[0].source_position;
+            let b = t.ships[1].source_position;
+            (b.z - a.z).hypot(b.x - a.x).hypot(b.y - a.y)
+        };
+        let mut tactical = duelists(40.0, 30.0);
+        for _ in 0..12 {
+            tactical.step();
+        }
+        assert_eq!(distance(&tactical), 100.0);
+        step_until(&mut tactical, |t| distance(t) + 2.0 <= 40.0);
+        let stopped = distance(&tactical);
+        for _ in 0..40 {
+            tactical.step();
+        }
+        assert!((distance(&tactical) - stopped).abs() < 1.0, "{stopped}");
+        assert!(distance(&tactical) + 2.0 >= 30.0);
+
+        // Holding, it stays (the AI's ship may close on it).
+        let mut holding = duelists(40.0, 30.0);
+        holding.ships[0].order = TacticalOrder::HoldPosition;
+        // As its executor leaves it (FUN_005ca6d0, order 11): no heading.
+        holding.ships[0].source_desired_forward = crate::tactical::TacticalWorldVector::ZERO;
+        for _ in 0..60 {
+            holding.step();
+        }
+        assert_eq!(holding.ships[0].source_position.z, -50.0);
+    }
+
+    // FUN_005cc300: a Stand Off force closer than its band's min backs off
+    // along its side (min x -1.1, DAT_0066d00c), unless the target attacks
+    // one of its members (0x005ca4b0); Surround steps 5 toward the target.
+    #[test]
+    fn a_stand_off_force_backs_off_unless_its_target_attacks_it() {
+        use crate::tactical::{TacticalAttackTarget, TacticalTactic};
+        let mut tactical = duelists(40.0, 30.0);
+        tactical.ships[1].source_position.z = -40.0;
+        for _ in 0..12 {
+            tactical.step();
+        }
+        let waypoint = tactical.ships[0].source_waypoint.expect("backing off");
+        assert!(waypoint.z < tactical.ships[0].source_position.z);
+
+        let mut held = duelists(40.0, 30.0);
+        held.ships[1].source_position.z = -40.0;
+        held.ships[1].attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        for _ in 0..12 {
+            held.step();
+        }
+        assert_eq!(held.ships[0].source_waypoint, None);
+
+        let mut surround = duelists(40.0, 30.0);
+        surround.task_force_formations[1][0] = TacticalTactic::Surround;
+        for _ in 0..12 {
+            surround.step();
+        }
+        // The goal is set 5 ahead before the step's move (slot +0x14 before
+        // +0x8), so the moved ship is just under 5 short of it.
+        let waypoint = surround.ships[0].source_waypoint.expect("closing");
+        let position = surround.ships[0].source_position;
+        let ahead = waypoint.z - position.z;
+        assert!(ahead > 4.0 && ahead <= 5.0, "{waypoint:?} {position:?}");
+    }
+
+    // FUN_005b49e0: each family of the strongest arc, if it has weapons,
+    // is a band to its range worth count x slot +0x60 x strength; the
+    // target's count against the force.
+    #[test]
+    fn a_unit_s_weapons_are_bands_worth_their_firepower() {
+        use crate::tactical::TacticalWeaponRanges;
+        let ranges = TacticalWeaponRanges {
+            laser_cannon: 30.0,
+            ion_cannon: 10.0,
+            turbolaser: 20.0,
+        };
+        let arcs = [
+            TacticalWeaponArc::new(2, 3, 4),
+            TacticalWeaponArc::default(),
+        ];
+        let mut bands = Vec::new();
+        BattleSession::weapon_bands(&arcs, ranges, 2.0, false, -1.0, &mut bands);
+        let s = family_strengths(false);
+        let expected = [
+            (10.0, -(3.0 * 2.0 * s[1])),
+            (20.0, -(4.0 * 2.0 * s[2])),
+            (30.0, -(2.0 * 2.0 * s[0])),
+        ];
+        assert_eq!(bands.len(), 3);
+        for ((range, worth), (want_range, want_worth)) in bands.iter().zip(expected) {
+            assert_eq!(*range, want_range);
+            assert!((worth - want_worth).abs() < 1e-6, "{worth} {want_worth}");
+        }
+        // A family without weapons adds no band; nor does an empty unit.
+        let mut lean = Vec::new();
+        BattleSession::weapon_bands(
+            &[TacticalWeaponArc::new(2, 0, 0)],
+            ranges,
+            2.0,
+            true,
+            1.0,
+            &mut lean,
+        );
+        assert_eq!(lean.len(), 1);
+        assert!((lean[0].1 - 2.0 * 2.0 * family_strengths(true)[0]).abs() < 1e-6);
+        let mut none = Vec::new();
+        BattleSession::weapon_bands(
+            &[TacticalWeaponArc::default()],
+            ranges,
+            2.0,
+            false,
+            1.0,
+            &mut none,
+        );
+        assert!(none.is_empty());
+    }
+
+    // FUN_005edf80's choice among split bands: the worthiest band within
+    // the force's reach, the later of equals (fcomp >=), a zero-range
+    // weapon adding no band (FUN_005b7e50 drops [0, 0)).
+    #[test]
+    fn stand_off_takes_the_worthiest_band_within_reach() {
+        use crate::tactical::TacticalAttackTarget;
+        // Turbolasers to 20 outweigh lasers to 40; the target's lasers
+        // reach 30. [0, 20) has both families less the target's.
+        let mut tactical = duelists(40.0, 30.0);
+        tactical.ships[0].weapon_arcs[0] = TacticalWeaponArc::new(2, 0, 40);
+        tactical.ships[0].weapon_ranges.turbolaser = 20.0;
+        let target = TacticalAttackTarget::CapitalShip(1);
+        assert_eq!(tactical.stand_off_band(&[0], target), (5.0, 20.0));
+        // Beyond the force's own reach a band is not taken: the target's
+        // turbolasers to 60 make [40, 60) its least bad band.
+        let mut outranged = duelists(40.0, 30.0);
+        outranged.ships[1].weapon_arcs[0] = TacticalWeaponArc::new(2, 0, 1);
+        outranged.ships[1].weapon_ranges.turbolaser = 60.0;
+        assert_eq!(outranged.stand_off_band(&[0], target), (30.0, 40.0));
+        // Equal bands: a second ship's ions to 20 with no recharge split
+        // [0, 40) into two of equal worth; the later wins.
+        let mut even = duelists(40.0, 30.0);
+        even.ships[1].weapon_arcs[0] = TacticalWeaponArc::default();
+        let mut quiet = ship(true, TacticalWeaponArc::new(0, 1, 0), 0.0);
+        quiet.weapon_ranges.ion_cannon = 20.0;
+        even.ships.push(quiet);
+        assert_eq!(even.stand_off_band(&[0, 2], target), (20.0, 40.0));
+        // A zero-range weapon adds no band: [0, 20) of the turbolasers stays.
+        let mut zero = duelists(0.0, 30.0);
+        zero.ships[1].weapon_arcs[0] = TacticalWeaponArc::default();
+        zero.ships[0].weapon_arcs[0] = TacticalWeaponArc::new(5, 0, 1);
+        zero.ships[0].weapon_ranges.turbolaser = 20.0;
+        assert_eq!(zero.stand_off_band(&[0], target), (5.0, 20.0));
+    }
+
+    // The forces in the fight: each slot's ships of a side, and each ship
+    // of a force of its own alone; destroyed, jumping and withdrawing ships
+    // are not in one. A target is a place only while it is in the fight.
+    #[test]
+    fn the_forces_and_their_targets_are_those_in_the_fight() {
+        use crate::tactical::{TacticalAttackTarget, TACTICAL_UNGROUPED_TASK_FORCE as OWN};
+        let unit = |alliance: bool, task_force: u8| {
+            let mut unit = ship(alliance, TacticalWeaponArc::default(), 0.0);
+            unit.task_force = task_force;
+            unit
+        };
+        let mut ships = vec![
+            unit(true, 0),
+            unit(true, 0),
+            unit(false, 0),
+            unit(true, OWN),
+            unit(true, OWN),
+            unit(true, 1),
+            unit(true, 2),
+            unit(true, 3),
+        ];
+        ships[5].alive = false;
+        ships[6].retreat_progress = 1.0;
+        ships[7].retreating = true;
+        let mut wing = fighter(false, TacticalWeaponArc::default());
+        wing.squad_count = 0;
+        let mut jumping = fighter(false, TacticalWeaponArc::default());
+        jumping.retreat_progress = 1.0;
+        let live = fighter(false, TacticalWeaponArc::default());
+        let tactical = session(ships, vec![wing, jumping, live]);
+        let mut forces = tactical.capital_forces();
+        for force in &mut forces {
+            force.sort_unstable();
+        }
+        assert_eq!(forces, [vec![0, 1], vec![2], vec![3], vec![4]]);
+        let place = |target| tactical.attack_target_position(target);
+        assert!(place(TacticalAttackTarget::CapitalShip(0)).is_some());
+        assert!(place(TacticalAttackTarget::CapitalShip(5)).is_none());
+        assert!(place(TacticalAttackTarget::CapitalShip(6)).is_none());
+        assert!(place(TacticalAttackTarget::FighterGroup(0)).is_none());
+        assert!(place(TacticalAttackTarget::FighterGroup(1)).is_none());
+        assert!(place(TacticalAttackTarget::FighterGroup(2)).is_some());
+    }
+
+    // FUN_005cc300's step, exactly: the goal is the anchor plus the unit
+    // direction times the step (Stand Off: min + k (max - min), k = 0.5,
+    // 0.75, 0.9 by size); r + 2 inside the band stops it; a zero direction
+    // takes the side's vector times -5; a Stand Off force at exactly its
+    // min, outside a narrow band, still closes.
+    #[test]
+    fn the_approach_step_aims_exactly() {
+        use crate::tactical::{TacticalEngagementBand, TacticalWorldPosition};
+        let at = |x: f32, y: f32, z: f32| TacticalWorldPosition { x, y, z };
+        let prepared = |members: usize, band: (f32, f32), target: TacticalWorldPosition| {
+            let mut tactical = duelists(40.0, 30.0);
+            tactical.ships[0].source_position = at(0.0, 0.0, 0.0);
+            tactical.ships[1].source_position = target;
+            for _ in 1..members {
+                let mut extra = ship(true, TacticalWeaponArc::default(), 0.0);
+                extra.sublight_engine_power = 0.0;
+                tactical.ships.push(extra);
+            }
+            tactical.engagement_bands = vec![TacticalEngagementBand {
+                leader: 0,
+                min: band.0,
+                max: band.1,
+            }];
+            tactical.advance_engagement_approach();
+            tactical.ships[0].source_waypoint
+        };
+        let close = |goal: Option<TacticalWorldPosition>, want: TacticalWorldPosition| {
+            let goal = goal.expect("a goal");
+            assert!(
+                (goal.x - want.x).abs() < 1e-4
+                    && (goal.y - want.y).abs() < 1e-4
+                    && (goal.z - want.z).abs() < 1e-4,
+                "{goal:?} {want:?}"
+            );
+        };
+        // 3-4-0 direction (0.6, 0.8, 0), band (30, 40): steps 35, 37.5, 39.
+        close(
+            prepared(1, (30.0, 40.0), at(60.0, 80.0, 0.0)),
+            at(21.0, 28.0, 0.0),
+        );
+        close(
+            prepared(3, (30.0, 40.0), at(60.0, 80.0, 0.0)),
+            at(22.5, 30.0, 0.0),
+        );
+        close(
+            prepared(6, (30.0, 40.0), at(60.0, 80.0, 0.0)),
+            at(23.4, 31.2, 0.0),
+        );
+        // A step is at least 2.
+        close(
+            prepared(1, (0.0, 1.0), at(0.0, 0.0, 50.0)),
+            at(0.0, 0.0, 2.0),
+        );
+        // r = 29, r + 2 = 31 inside (30, 40): it stops.
+        assert_eq!(prepared(1, (30.0, 40.0), at(0.0, 0.0, 29.0)), None);
+        // r = 2.5, r + 2 = 4.5 below (5, 40): still out, so it backs off.
+        let goal = prepared(1, (5.0, 40.0), at(0.0, 0.0, 2.5)).expect("backing off");
+        assert!(goal.z < 0.0, "{goal:?}");
+        // On the target: the side's vector times -5, so back toward z < 0.
+        close(
+            prepared(1, (0.0, 1.0), at(0.0, 0.0, 0.0)),
+            at(0.0, 0.0, -2.0),
+        );
+        // r = 5 = min of the band (5, 4): out of it, and not closer than
+        // min, so it closes.
+        close(
+            prepared(1, (5.0, 4.0), at(0.0, 0.0, 5.0)),
+            at(0.0, 0.0, 4.5),
+        );
+    }
+
+    // The Empire's force backs off toward its own side (+z): the side's
+    // vector times min x -1.1.
+    #[test]
+    fn an_imperial_stand_off_force_backs_off_toward_its_side() {
+        use crate::tactical::{TacticalAttackTarget, TacticalEngagementBand};
+        let mut tactical = duelists(40.0, 30.0);
+        tactical.ships.swap(0, 1);
+        tactical.ships[0].attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        tactical.ships[0].order = TacticalOrder::AttackCapitalShips;
+        tactical.ships[1].attack_target = None;
+        tactical.ships[0].source_position.z = 0.0;
+        tactical.ships[1].source_position.z = -10.0;
+        tactical.engagement_bands = vec![TacticalEngagementBand {
+            leader: 0,
+            min: 30.0,
+            max: 40.0,
+        }];
+        tactical.advance_engagement_approach();
+        let goal = tactical.ships[0].source_waypoint.expect("backing off");
+        assert!(goal.z > 0.0, "{goal:?}");
+    }
+
+    // FUN_005a8f70 ends a maneuver at its last point; an attack order
+    // outlives its navigation route.
+    #[test]
+    fn an_attack_order_outlives_its_route() {
+        use crate::tactical::TacticalWorldPosition;
+        let mut tactical = duelists(40.0, 30.0);
+        let point = TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: -49.0,
+        };
+        tactical.ships[0].navigation_route = vec![point];
+        tactical.ships[0].source_waypoint = Some(point);
+        step_until(&mut tactical, |t| t.ships[0].navigation_route.is_empty());
+        assert_eq!(tactical.ships[0].order, TacticalOrder::AttackCapitalShips);
     }
 
     // SetOrder (0x005ca530) sets the order at once and posts event 0xa at
