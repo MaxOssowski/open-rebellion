@@ -73,7 +73,7 @@ is the lead unit's position when the mover was built.
 | Provenance scan | 0 uncited items |
 | Browser tactical matrix | 148 of 148 passed |
 | Replay equivalence | passed |
-| `cargo mutants` | 77 tested: 47 caught at first. The missed table signs and the slot-reset branch were then closed; on the rerun 11 remained, explained below |
+| `cargo mutants` | 77 tested: 47 caught at first. The table signs and the vertical slot were then covered; a rerun missed 11, the blank-slot reset among them, which a further test closed; 10 remain, explained below |
 | Release WASM SHA-256 | `f6e99bafafcecd5d98c78218e9da938dc4f7e6c92e011c2b7a33f7046c610f3a` |
 
 The remaining mutants:
