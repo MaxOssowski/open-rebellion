@@ -227,10 +227,16 @@ pub const ORIGINAL_TRENCH_RUN_FAILURE_CHATTER: [u16; 9] = [
 /// port: 2D fallback placement spacing.
 pub const SHIP_SPACING: f32 = 60.0;
 
-/// hyp: `FUN_005ec400` layout base extent; the constant's source read is not recorded.
-
+/// `FUN_005ab650` starts the battle extent `+0x8cc` at 100.0
+/// (`0x005ab683`, `0x42c80000`).
 pub const ORIGINAL_BATTLE_BASE_EXTENT: f32 = 100.0;
-/// hyp: `FUN_005ec400` per-object extent increment; read not recorded.
+/// `FUN_005ab650` counts each side's units as it places them, leaving out
+/// those in state 1 (`0x005b69f0`), and subtracts `DAT_0066c2a0` (-3.0)
+/// from the extent each time a side's count passes the other's
+/// (`0x005abb11`..`0x005abb4b`): 3.0 a unit of the larger side.
+///
+/// port: what puts a unit in state 1 at placement is not traced; every
+/// living ship and fighter group with craft counts.
 pub const ORIGINAL_BATTLE_OBJECT_INCREMENT: f32 = 3.0;
 /// hyp: `FUN_005ec400` outer lane scale; read not recorded.
 pub const ORIGINAL_BATTLE_OUTER_LANE_SCALE: f32 = 0.5;

@@ -5690,6 +5690,16 @@ mod tests {
         assert!(tactical.ships[1].subsystem_condition.shields < 100);
     }
 
+    // FUN_005ab650: the extent starts at 100.0 (0x005ab683) and grows by
+    // 3.0 (-DAT_0066c2a0) for each unit of the larger side.
+    #[test]
+    fn the_battle_extent_grows_by_three_a_unit_of_the_larger_side() {
+        use crate::tactical::OriginalTacticalLayout;
+        assert_eq!(OriginalTacticalLayout::from_active_counts(0, 0).battle_extent, 100.0);
+        assert_eq!(OriginalTacticalLayout::from_active_counts(4, 7).battle_extent, 121.0);
+        assert_eq!(OriginalTacticalLayout::from_active_counts(9, 2).battle_extent, 127.0);
+    }
+
     // FUN_005a96b0 runs at a turn's start (every fourth step) the events
     // stamped +0x878 - 1, only once +0x878 has reached +0x8ac (3), and
     // drops older ones (0x005bec3c, 0x005bec7e).
