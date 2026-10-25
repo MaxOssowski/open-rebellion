@@ -1350,6 +1350,11 @@ pub enum TacticalTurnEvent {
         capitals: Vec<usize>,
         fighters: Vec<usize>,
     },
+    /// `0xa` with order 3 from the withdrawal (`FUN_005ad530`,
+    /// `0x005ad60f` and `0x005ad6b8`): `FUN_005ca6d0` installs the
+    /// withdrawal executor (`FUN_005cc300` for a capital ship's force,
+    /// `FUN_005c6610` for a fighter group).
+    WithdrawalExecutor(Vec<TacticalUnitRef>),
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
@@ -1424,6 +1429,10 @@ pub struct BattleSession {
     /// The manager's turn queue (`+0x908` per side, `FUN_005a96b0`).
     /// port: one queue in posting order for both sides.
     pub turn_events: Vec<TacticalQueuedEvent>,
+    /// The withdrawing units whose order-3 executor is installed
+    /// (`+0x64` = 3, `FUN_005ca6d0` on event `0xa`); until then a unit given
+    /// the order (`retreating`, `+0x68`) does not yet head for its exit.
+    pub withdrawal_executors: Vec<TacticalUnitRef>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -3569,6 +3578,7 @@ impl BattleSession {
             death_star,
             death_star_beam: None,
             turn_events: Vec::new(),
+            withdrawal_executors: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -3707,7 +3717,9 @@ impl BattleSession {
                 self.ships[index].source_velocity = TacticalWorldVector::ZERO;
                 continue;
             }
-            if self.ships[index].retreating {
+            if self.ships[index].retreating
+                && self.withdrawal_executor_installed(TacticalUnitRef::Ship(index))
+            {
                 // FUN_005cc300, order 3: the force heads for its side's exit
                 // line each step.
                 let exit = self.withdrawal_exit_z(self.ships[index].identity.is_alliance);
@@ -4621,6 +4633,9 @@ impl BattleSession {
             TacticalTurnEvent::JumpStart(unit) => self.start_jump(unit),
             TacticalTurnEvent::JumpEnd(unit) => self.end_jump(unit),
             TacticalTurnEvent::TrenchRunState(5) => self.commit_original_trench_run(),
+            // `FUN_005cfec0` state 8, posted by the withdrawal
+            // (`0x005ad5e7`).
+            TacticalTurnEvent::TrenchRunState(8) => self.abort_original_trench_run(),
             // State 2 only sets the approach (`FUN_005cfec0`'s default).
             TacticalTurnEvent::TrenchRunState(_) => {}
             TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
@@ -4631,7 +4646,27 @@ impl BattleSession {
                 capitals,
                 fighters,
             } => self.run_order_executor(order, &capitals, &fighters),
+            TacticalTurnEvent::WithdrawalExecutor(units) => {
+                for unit in units {
+                    let in_battle = match unit {
+                        TacticalUnitRef::Ship(index) => {
+                            self.ships.get(index).is_some_and(|ship| ship.alive)
+                        }
+                        TacticalUnitRef::Fighter(index) => self
+                            .fighters
+                            .get(index)
+                            .is_some_and(|fighter| fighter.alive),
+                    };
+                    if in_battle && !self.withdrawal_executors.contains(&unit) {
+                        self.withdrawal_executors.push(unit);
+                    }
+                }
+            }
         }
+    }
+
+    fn withdrawal_executor_installed(&self, unit: TacticalUnitRef) -> bool {
+        self.withdrawal_executors.contains(&unit)
     }
 
     /// `SetOrder` (`0x005ca530`): the order itself (`+0x68`) is already set;
@@ -4653,9 +4688,10 @@ impl BattleSession {
         );
     }
 
-    /// Run the queued order executors (event `0xa`) now instead of on
-    /// their turn. Test fixtures use it to present an order's result
-    /// without running the battle for the three turns between.
+    /// Run the queued order executors (event `0xa`, the withdrawal's too)
+    /// now instead of on their turn. Test fixtures use it to present an
+    /// order's result without running the battle for the three turns
+    /// between.
     pub fn run_posted_order_executors(&mut self) {
         for queued in std::mem::take(&mut self.turn_events) {
             match queued.event {
@@ -4664,6 +4700,7 @@ impl BattleSession {
                     capitals,
                     fighters,
                 } => self.run_order_executor(order, &capitals, &fighters),
+                event @ TacticalTurnEvent::WithdrawalExecutor(_) => self.run_turn_event(event),
                 event => self.turn_events.push(TacticalQueuedEvent {
                     stamp: queued.stamp,
                     event,
@@ -6242,14 +6279,28 @@ impl BattleSession {
     /// (`FUN_005cc300`). The side's time becomes at least 30 s, or 150 s
     /// for the Empire while its Death Star is operational.
     pub fn begin_withdrawal(&mut self, side_is_attacker: bool) {
-        for ship in &mut self.ships {
+        let stamp = self.command_event_stamp();
+        self.begin_withdrawal_stamped(side_is_attacker, stamp);
+    }
+
+    /// `begin_withdrawal` with its events' stamp: the command stamp from
+    /// the interface, the step's from the commander (`FUN_005c8780`).
+    fn begin_withdrawal_stamped(&mut self, side_is_attacker: bool, stamp: u32) {
+        let mut units = Vec::new();
+        for (index, ship) in self.ships.iter_mut().enumerate() {
             if ship.alive && !ship.retreating && ship.is_attacker == side_is_attacker {
                 ship.retreating = true;
                 ship.selected = false;
                 ship.order = TacticalOrder::None;
                 ship.attack_target = None;
                 ship.manual_targets.clear();
+                units.push(TacticalUnitRef::Ship(index));
             }
+        }
+        // `SetOrder(3)` (`0x005ad6b8`): the executor follows on the
+        // command stamp (event `0xa`).
+        if !units.is_empty() {
+            self.post_turn_event(stamp, TacticalTurnEvent::WithdrawalExecutor(units));
         }
         self.start_side_withdrawal_time(side_is_attacker);
     }
@@ -6261,6 +6312,11 @@ impl BattleSession {
     /// the side's time ends; meanwhile it heads for its side's exit
     /// (`FUN_005c6610`). Either order ends the group's attack.
     pub fn withdraw_fighters(&mut self, side_is_attacker: bool) {
+        let stamp = self.command_event_stamp();
+        self.withdraw_fighters_stamped(side_is_attacker, stamp);
+    }
+
+    fn withdraw_fighters_stamped(&mut self, side_is_attacker: bool, stamp: u32) {
         // A group of the side on the trench run (order 6) has it aborted
         // first (event `0x3c` with state 8, `FUN_005caf20` -> `FUN_005cfec0`).
         let on_the_run = self.trench_run_participants.iter().any(|&index| {
@@ -6273,24 +6329,50 @@ impl BattleSession {
                 && fighter.order == TacticalOrder::AttackDeathStar
         });
         if on_the_run {
-            self.abort_original_trench_run();
+            self.post_turn_event(stamp, TacticalTurnEvent::TrenchRunState(8));
         }
+        // port: a group on the run whose craft its draws have taken (the
+        // hull `FUN_005d08d0` kept comes back with state 8) is still a
+        // task force the withdrawal orders.
+        let on_run = if on_the_run {
+            self.trench_run_participants.clone()
+        } else {
+            Vec::new()
+        };
         let mut groups = Vec::new();
+        let mut withdrawing = Vec::new();
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
-            if fighter.alive && fighter.squad_count > 0 && fighter.is_attacker == side_is_attacker {
+            if fighter.is_attacker == side_is_attacker
+                && ((fighter.alive && fighter.squad_count > 0) || on_run.contains(&index))
+            {
                 fighter.attack_target = None;
                 fighter.escort_target = None;
                 fighter.selected = false;
                 if fighter.has_hyperdrive {
                     fighter.order = TacticalOrder::None;
                     fighter.retreating = true;
+                    withdrawing.push(TacticalUnitRef::Fighter(index));
                 } else {
                     fighter.order = TacticalOrder::Recover;
                     groups.push(index);
                 }
             }
         }
-        self.begin_original_fighter_recovery(&groups);
+        // `SetOrder(2)` and `SetOrder(3)` (`0x005ad604`, `0x005ad60f`): the
+        // executors follow on the command stamp (event `0xa`).
+        if !groups.is_empty() {
+            self.post_turn_event(
+                stamp,
+                TacticalTurnEvent::OrderExecutor {
+                    order: TacticalOrder::Recover,
+                    capitals: Vec::new(),
+                    fighters: groups,
+                },
+            );
+        }
+        if !withdrawing.is_empty() {
+            self.post_turn_event(stamp, TacticalTurnEvent::WithdrawalExecutor(withdrawing));
+        }
     }
 
     /// `FUN_005cf940` resets each selected group's recovery and
@@ -6441,10 +6523,15 @@ impl BattleSession {
                 self.turn_event_pending(&TacticalTurnEvent::JumpStart(TacticalUnitRef::Ship(index)))
             })
             .collect::<Vec<_>>();
+        let installed = self.withdrawal_executors.clone();
         let stamp = self.step_event_stamp();
         let mut posts = Vec::new();
         for (index, ship) in self.ships.iter_mut().enumerate() {
-            if !ship.alive || !ship.retreating || ship.is_attacker != side {
+            if !ship.alive
+                || !ship.retreating
+                || ship.is_attacker != side
+                || !installed.contains(&TacticalUnitRef::Ship(index))
+            {
                 continue;
             }
             let ordinal = ship
@@ -6570,10 +6657,15 @@ impl BattleSession {
                 )))
             })
             .collect::<Vec<_>>();
+        let installed = self.withdrawal_executors.clone();
         let stamp = self.step_event_stamp();
         let mut posts = Vec::new();
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
-            if !fighter.alive || !fighter.retreating || fighter.is_attacker != side {
+            if !fighter.alive
+                || !fighter.retreating
+                || fighter.is_attacker != side
+                || !installed.contains(&TacticalUnitRef::Fighter(index))
+            {
                 continue;
             }
             let ordinal = fighter
@@ -6645,8 +6737,9 @@ impl BattleSession {
             return;
         }
         let ai = !self.player_is_attacker;
-        self.begin_withdrawal(ai);
-        self.withdraw_fighters(ai);
+        let stamp = self.step_event_stamp();
+        self.begin_withdrawal_stamped(ai, stamp);
+        self.withdraw_fighters_stamped(ai, stamp);
         // `+0x84` = 2: the side cannot order it again (`FUN_005c7e80`).
         self.retreat_done[side] = true;
     }

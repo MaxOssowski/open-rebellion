@@ -95,7 +95,7 @@ The dispatcher is `0x005a9780`, table `0x5a9bc4`, index type − 3.
 | Type | Handler | Posted by | Meaning | Port |
 |---|---|---|---|---|
 | `0x03` | `0x005b2b60` | `0x005ba720` (+1), `FUN_005b50b0`, `FUN_005b54d0`, `FUN_005b5ad0` | destroy target (source id) | Death Star: queued (s83/s84); weapon kills: immediate |
-| `0x0a` | `0x005caba0` -> task force slot `+0x48` (`FUN_005ca6d0`) | `SetOrder` `0x005ca530` (`0x005ca684`; task-force slot `+0x64` in vtables `0x66bee0` and `0x66bf70`) | installs the given order's executor (`+0x64`, `+0x60`); `+0x68` is set at once | player orders queued (s94); withdrawal (`FUN_005ad530`) immediate |
+| `0x0a` | `0x005caba0` -> task force slot `+0x48` (`FUN_005ca6d0`) | `SetOrder` `0x005ca530` (`0x005ca684`; task-force slot `+0x64` in vtables `0x66bee0` and `0x66bf70`) | installs the given order's executor (`+0x64`, `+0x60`); `+0x68` is set at once | player orders queued (s94); withdrawal (`FUN_005ad530`) queued (s95) |
 | `0x0b` | `0x005cac00` (`0x005cb1a0` rebuilds the mover `+0x54`) | `0x005cb160` (sets `+0x5c` at once; UI `0x005a2920`, `0x005a3850`, `0x005a4a30`) | formation / tactic | tactic stored only; the formation mover is not ported |
 | `0x0e`, `0x0f`, `0x10`, `0x12`, `0x13` | ? | `FUN_005b3f10` (+1; visual `0x005a6ac0` at +2) | weapon fire / hit | immediate |
 | `0x16` | ? | `FUN_005b5ad0` | ? | not read |
@@ -132,5 +132,7 @@ force id (`+0x18`), the order and a local-side flag. The handler calls slot
 `FUN_005ad530` (withdrawal) also calls slot `+0x64`: with 2 for a fighter
 group without hyperdrives, 3 for the others (`0x005ad60f`) and 3 for each
 capital ship's task force (`0x005ad6b8`). A group on the trench run first
-posts `0x3c` with state 8 (`0x005ad5e7`). The port still applies these at
-once.
+posts `0x3c` with state 8 (`0x005ad5e7`). Queued in the port since s95
+(`withdrawal_executors`, `TrenchRunState(8)`). Not ported: the ship's own
+task force (`FUN_005aded0`, event `0x30`) and `SetOrder`'s refusal for a
+side whose `+0x8` is 1 and is not the local one.

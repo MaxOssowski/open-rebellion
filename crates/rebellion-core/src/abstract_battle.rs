@@ -1848,6 +1848,7 @@ mod tests {
             death_star: None,
             death_star_beam: None,
             turn_events: Vec::new(),
+            withdrawal_executors: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -2929,6 +2930,26 @@ mod tests {
         panic!("the condition never held");
     }
 
+    /// Installs the order-3 executor (event 0xa, FUN_005ca6d0) of each
+    /// unit already given the order, as in a withdrawal under way.
+    fn install_withdrawal_executors(tactical: &mut BattleSession) {
+        use crate::tactical::TacticalUnitRef;
+        for (index, ship) in tactical.ships.iter().enumerate() {
+            if ship.retreating {
+                tactical
+                    .withdrawal_executors
+                    .push(TacticalUnitRef::Ship(index));
+            }
+        }
+        for (index, fighter) in tactical.fighters.iter().enumerate() {
+            if fighter.retreating {
+                tactical
+                    .withdrawal_executors
+                    .push(TacticalUnitRef::Fighter(index));
+            }
+        }
+    }
+
     fn jumper(alliance: bool, fore: TacticalWeaponArc, recharge: f32) -> TacticalShip {
         let mut ship = ship(alliance, fore, recharge);
         ship.subsystem_capacity.hyperdrive = 1;
@@ -2994,15 +3015,24 @@ mod tests {
         assert!(tactical.ships[1].retreating);
         // At its edge when the time ends, it jumps for 4000 ms and leaves;
         // then the ship without a hyperdrive is destroyed (event 0x2f,
-        // FUN_005b2720 -> FUN_005b2d20). The time ends at turn 2, step 8;
-        // the frame's order step decides the jump at step 12, stamped 5
-        // (0x005ad4a0); it runs at turn 6, step 24 (FUN_005a96b0); the
-        // flight ends on step 39, and its event 0x2e, stamped 12, runs at
-        // turn 13, step 52.
-        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false);
+        // FUN_005b2720 -> FUN_005b2d20). The review's SetOrder(3)
+        // (0x005ad6b8) posts the executor (event 0xa) with the step's stamp
+        // 3; it is installed at turn 4, step 16 (FUN_005ca6d0). The time
+        // has ended at step 8; at its edge from then, the frame's order
+        // step (FUN_005cc300) decides the jump at step 17, stamped 7
+        // (0x005ad4a0); it runs at turn 8, step 32 (FUN_005a96b0); the
+        // flight ends on step 47, and its event 0x2e, stamped 14, runs at
+        // turn 15, step 60.
         tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        assert_eq!(step_until(&mut tactical, |t| t.ships[0].jumping()), 24);
-        assert_eq!(step_until(&mut tactical, |t| !t.ships[0].alive), 52);
+        assert_eq!(
+            step_until(&mut tactical, |t| t
+                .withdrawal_executors
+                .contains(&crate::tactical::TacticalUnitRef::Ship(0))),
+            16
+        );
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false);
+        assert_eq!(step_until(&mut tactical, |t| t.ships[0].jumping()), 32);
+        assert_eq!(step_until(&mut tactical, |t| !t.ships[0].alive), 60);
         assert!(tactical.ships[0].retreated && !tactical.ships[0].alive);
         assert!(!tactical.ships[1].retreated && !tactical.ships[1].alive);
         assert_eq!(tactical.ai_withdrawal_ms, None);
@@ -3171,6 +3201,7 @@ mod tests {
         tactical.ships[1].source_position.z = 200.0;
         tactical.fighters[0].sublight_engine_power = 0.0;
         tactical.fighters[1].sublight_engine_power = 0.0;
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // The time ends at turn 1 (step 4); the carrier's jump is decided
         // at step 12, runs at turn 6 (step 24), flies 4000 ms and leaves at
@@ -4188,6 +4219,7 @@ mod tests {
             value
         };
         tactical.fighters = vec![group(true, 10.0), group(true, 0.0), group(false, 10.0)];
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // Decided at step 12, the first frame step (state 6, stamped 5),
         // the jump runs at turn 6, step 24 (0x005ad4a0, FUN_005a96b0); its
@@ -4221,6 +4253,7 @@ mod tests {
         let mut tactical = session(vec![enemy], vec![wing]);
         let exit = tactical.withdrawal_exit_z(true);
         tactical.fighters[0].source_position.z = exit + 9.0;
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(2.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // The task force's order step runs in the frame (slot +0x14,
         // 0x005a9ff8), from turn 3: 4.0 a second, one unit a 250 ms step
@@ -4271,6 +4304,7 @@ mod tests {
             let mut tactical = session(vec![enemy.clone()], vec![wing]);
             let exit = tactical.withdrawal_exit_z(true);
             tactical.fighters[0].source_position.z = exit + 2.0;
+            install_withdrawal_executors(&mut tactical);
             tactical.withdrawal_ms = Some(100_000.0);
             // One move a frame step from step 12 (0x005a9ff8).
             for _ in 0..11 {
@@ -4301,7 +4335,9 @@ mod tests {
     }
 
     // FUN_005ad530 drops a withdrawing ship's attack (FUN_005a8d30) and
-    // gives it order 3; FUN_005cc300 heads it for its exit line each step.
+    // gives it order 3 (SetOrder, 0x005ad6b8); FUN_005cc300, installed on
+    // the order's event 0xa (FUN_005ca6d0), heads it for its exit line each
+    // step.
     #[test]
     fn a_withdrawing_ship_drops_its_attack_and_heads_for_its_exit() {
         let mut own = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
@@ -4316,8 +4352,10 @@ mod tests {
         let ship = &tactical.ships[0];
         assert_eq!(ship.order, TacticalOrder::None);
         assert_eq!(ship.attack_target, None);
-        // The frame's moves start at turn 3, step 12 (0x005bef1d).
-        for _ in 0..11 {
+        // The order, given on turn 0, is stamped 3; its executor is
+        // installed at turn 4, step 16, after the frame's moves have begun
+        // (turn 3, step 12, 0x005bef1d).
+        for _ in 0..15 {
             tactical.step();
         }
         assert_eq!(tactical.ships[0].source_waypoint, None);
@@ -4347,6 +4385,7 @@ mod tests {
             let mut tactical = session(vec![own, enemy], Vec::new());
             tactical.ships[0].retreating = true;
             tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true) + offset;
+            install_withdrawal_executors(&mut tactical);
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             // The commander ends the time at turn 1; the frame's order step
             // decides from turn 3, step 12.
@@ -4382,6 +4421,7 @@ mod tests {
         tactical.player_is_attacker = false;
         tactical.ships[0].retreating = true;
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 0.5;
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         let decided = |t: &BattleSession| {
             t.turn_event_pending(&crate::tactical::TacticalTurnEvent::JumpStart(
@@ -4418,6 +4458,7 @@ mod tests {
                 tactical.ships[index].retreating = true;
                 tactical.ships[index].source_position.z = exit;
             }
+            install_withdrawal_executors(&mut tactical);
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             // Decided in the first frame step, step 12, stamped 5.
             for _ in 0..12 {
@@ -4480,6 +4521,7 @@ mod tests {
         tactical.ships[0].source_position.z = exit;
         tactical.ships[1].source_position.z = exit;
         tactical.ships[1].retreating = true;
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         tactical.step();
         assert!(!tactical.ships[0].retreating);
@@ -4537,15 +4579,26 @@ mod tests {
         assert_eq!(tactical.fighters[0].order, TacticalOrder::None);
         assert_eq!(tactical.fighters[0].attack_target, None);
         assert_eq!(tactical.fighters[1].order, TacticalOrder::Recover);
-        assert_eq!(tactical.fighters[1].recovery_target, Some(0));
-        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Returning);
         assert_eq!(tactical.fighters[2].order, TacticalOrder::None);
         assert!(tactical.fighters[0].retreating && !tactical.fighters[2].retreating);
+        // The orders' executors (event 0xa, stamped 3 on turn 0) come at
+        // turn 4, step 16 (FUN_005ca6d0): the recovery reserves its carrier
+        // then (FUN_005cf980).
+        assert_eq!(tactical.fighters[1].recovery_target, None);
+        assert_eq!(
+            step_until(&mut tactical, |t| t.fighters[1].recovery_target.is_some()),
+            16
+        );
+        assert_eq!(tactical.fighters[1].recovery_target, Some(0));
+        // The inbound leg (Returning) has already reached the carrier, which
+        // stands where it does, within that step's recovery.
+        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Docking);
         tactical.fighters[0].source_position.z = tactical.withdrawal_exit_z(false);
         tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        // Decided at step 12, it jumps at turn 6 and leaves at turn 13, step
-        // 52 (events 0x2d and 0x2e, FUN_005a96b0).
-        assert_eq!(step_until(&mut tactical, |t| !t.fighters[0].alive), 52);
+        // From its executor, it jumps at turn 8, step 32, and leaves at
+        // turn 15, step 60 (events 0x2d and 0x2e, FUN_005a96b0).
+        assert_eq!(step_until(&mut tactical, |t| t.fighters[0].jumping()), 32);
+        assert_eq!(step_until(&mut tactical, |t| !t.fighters[0].alive), 60);
         assert!(!tactical.fighters[0].alive && tactical.fighters[0].squad_count > 0);
         assert!(tactical.fighters[2].alive);
     }
@@ -4694,6 +4747,7 @@ mod tests {
             // The Empire's group well short of its +z edge: no jump.
             group(false, 20.0, 0.4),
         ];
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(0.0);
         tactical.ai_withdrawal_ms = Some(0.0);
         // The task forces' order steps run in the frame, from turn 3, step
@@ -4874,7 +4928,12 @@ mod tests {
         runner.has_hyperdrive = true;
         // Maneuverability 0: the run's maneuver draw always hits it.
         runner.maneuverability = 0;
-        let mut tactical = session(vec![ds_ship], vec![runner]);
+        // An Alliance ship keeps its side in the battle until the abort's
+        // turn: the run's draws have taken the runner's craft.
+        let mut escort = ship(true, TacticalWeaponArc::default(), 0.0);
+        escort.hull_current = 1_000_000;
+        escort.hull_max = 1_000_000;
+        let mut tactical = session(vec![ds_ship, escort], vec![runner]);
         tactical.death_star = Some(crate::tactical::TacticalDeathStar {
             resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
             is_attacker: false,
@@ -4902,14 +4961,21 @@ mod tests {
         flying.trench_run_participants.clear();
         flying.fighters[0].alive = true;
         flying.fighters[0].squad_count = 1;
+        let abort = crate::tactical::TacticalTurnEvent::TrenchRunState(8);
         flying.withdraw_fighters(false);
-        assert!(flying.trench_run_remaining_ms.is_some());
+        assert!(!flying.turn_event_pending(&abort));
         // With no list, a live runner of the side still marks its run.
         flying.withdraw_fighters(true);
-        assert_eq!(flying.trench_run_remaining_ms, None);
+        assert!(flying.turn_event_pending(&abort));
         tactical.begin_player_withdrawal();
         tactical.withdraw_fighters(true);
-        assert_eq!(tactical.trench_run_remaining_ms, None);
+        // The state 8, posted on turn 0 with the command stamp 3
+        // (0x005ad5e7), ends the run at turn 4, step 16.
+        assert!(tactical.trench_run_remaining_ms.is_some());
+        assert_eq!(
+            step_until(&mut tactical, |t| t.trench_run_remaining_ms.is_none()),
+            16
+        );
         assert_eq!(tactical.trench_run_pending_outcome, None);
         assert!(tactical.trench_run_participants.is_empty());
         let runner = &tactical.fighters[0];
@@ -4944,6 +5010,7 @@ mod tests {
         let exit = tactical.withdrawal_exit_z(true);
         tactical.ships[0].source_position.z = exit;
         tactical.fighters[0].source_position.z = exit;
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // The time ends at turn 1; the jumps are decided in the first frame
         // step, step 12 (state 6, no sound yet, stamped 5); their events 0x2d
@@ -5033,6 +5100,7 @@ mod tests {
             let exit = tactical.withdrawal_exit_z(true);
             tactical.ships[0].source_position.z = exit;
             tactical.ships[1].source_position.z = exit;
+            install_withdrawal_executors(&mut tactical);
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             // Decided at step 12 (stamped 5), it jumps at turn 6, step 24.
             for _ in 0..12 {
@@ -5068,6 +5136,7 @@ mod tests {
         let mut tactical = session(vec![enemy, lost, far], Vec::new());
         tactical.ships[1].source_position.z = tactical.withdrawal_exit_z(true);
         tactical.ships[2].source_position.z = tactical.withdrawal_exit_z(true) + 300.0;
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         for _ in 0..12 {
             tactical.step();
@@ -5290,10 +5359,17 @@ mod tests {
         foreign.death_star = Some(owned);
         assert!(!foreign.begin_original_trench_run(0, true));
 
-        // A withdrawal during the approach ends it and its queued state.
+        // A withdrawal during the approach posts state 8 (0x005ad5e7) with
+        // the command stamp 3, after the run's state 2 of the same stamp;
+        // at turn 4, step 16, it ends the run.
         tactical.withdraw_fighters(tactical.player_is_attacker);
-        assert!(!tactical.trench_run_under_way());
-        assert!(!tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(2)));
+        assert!(tactical.trench_run_under_way());
+        assert!(tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(8)));
+        assert_eq!(step_until(&mut tactical, |t| !t.trench_run_under_way()), 16);
+        assert!(tactical
+            .turn_events
+            .iter()
+            .all(|queued| !matches!(queued.event, TacticalTurnEvent::TrenchRunState(_))));
     }
 
     // FUN_005c6610's order 6: once the run's state 2 has run (posted at
@@ -5891,6 +5967,87 @@ mod tests {
         assert_eq!(tactical.trench_run_group, Some(3));
     }
 
+    // FUN_005cc300 and FUN_005c6610 run for a force whose order-3 executor
+    // is installed (FUN_005ca6d0 on event 0xa): a unit of the withdrawing
+    // side, given the order and still in the battle, decides its jump; a
+    // destroyed one, one not given the order, or one of the other side does
+    // not, nor one whose executor's event has not yet run. The event
+    // installs no executor for a unit already gone.
+    #[test]
+    fn only_a_withdrawing_unit_with_its_executor_decides_its_jump() {
+        use crate::tactical::{TacticalTurnEvent, TacticalUnitRef};
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let forces = (0..4)
+            .map(|force| {
+                let mut unit = jumper(true, TacticalWeaponArc::default(), 0.0);
+                unit.subsystem_condition.hyperdrive = 100;
+                unit.task_force = force;
+                unit.retreating = true;
+                unit
+            })
+            .collect::<Vec<_>>();
+        let mut other = jumper(false, TacticalWeaponArc::default(), 0.0);
+        other.subsystem_condition.hyperdrive = 100;
+        other.retreating = true;
+        let mut ships = forces;
+        ships.push(other);
+        ships.push(enemy);
+        let mut gone = fighter(true, TacticalWeaponArc::default());
+        gone.has_hyperdrive = true;
+        gone.retreating = true;
+        let mut wing = gone.clone();
+        wing.fighter_group = 1;
+        let mut tactical = session(ships, vec![gone, wing]);
+        let exit = tactical.withdrawal_exit_z(true);
+        for ship in &mut tactical.ships[..4] {
+            ship.source_position.z = exit;
+        }
+        tactical.ships[4].source_position.z = tactical.withdrawal_exit_z(false);
+        for fighter in &mut tactical.fighters {
+            fighter.source_position.z = exit;
+        }
+        install_withdrawal_executors(&mut tactical);
+        tactical.ships[1].alive = false;
+        tactical.ships[2].retreating = false;
+        tactical.fighters[0].alive = false;
+        // Given the order, but its executor's event has not yet run.
+        tactical
+            .withdrawal_executors
+            .retain(|unit| *unit != TacticalUnitRef::Ship(3));
+        tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        for _ in 0..12 {
+            tactical.step();
+        }
+        let decided =
+            |t: &BattleSession, unit| t.turn_event_pending(&TacticalTurnEvent::JumpStart(unit));
+        assert!(decided(&tactical, TacticalUnitRef::Ship(0)));
+        assert!(decided(&tactical, TacticalUnitRef::Fighter(1)));
+        for unit in [
+            TacticalUnitRef::Ship(1),
+            TacticalUnitRef::Ship(2),
+            TacticalUnitRef::Ship(3),
+            TacticalUnitRef::Ship(4),
+            TacticalUnitRef::Fighter(0),
+        ] {
+            assert!(!decided(&tactical, unit), "{unit:?}");
+        }
+
+        // The event skips a destroyed unit and installs each once.
+        let mut posted = session(
+            vec![jumper(true, TacticalWeaponArc::default(), 0.0)],
+            Vec::new(),
+        );
+        posted.ships.push(posted.ships[0].clone());
+        posted.ships[1].alive = false;
+        let units = vec![TacticalUnitRef::Ship(0), TacticalUnitRef::Ship(1)];
+        posted.post_turn_event(0, TacticalTurnEvent::WithdrawalExecutor(units.clone()));
+        posted.post_turn_event(0, TacticalTurnEvent::WithdrawalExecutor(units));
+        posted.run_posted_order_executors();
+        assert_eq!(posted.withdrawal_executors, [TacticalUnitRef::Ship(0)]);
+    }
+
     // SetOrder (0x005ca530) sets the order at once and posts event 0xa at
     // the command stamp (+0x87c, three turns ahead); its handler
     // (0x005caba0) installs the executor (FUN_005ca6d0) only then.
@@ -5977,6 +6134,7 @@ mod tests {
             value
         };
         tactical.fighters = vec![group(true), group(false)];
+        install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(1_500.0);
         let queued = |t: &BattleSession, index: usize| {
             t.turn_events

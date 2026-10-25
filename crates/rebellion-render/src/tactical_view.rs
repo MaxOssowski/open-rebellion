@@ -9120,6 +9120,7 @@ mod tests {
             death_star: None,
             death_star_beam: None,
             turn_events: Vec::new(),
+            withdrawal_executors: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -11409,8 +11410,10 @@ mod tests {
         let wing = &session.fighters[0];
         assert_eq!(wing.order, TacticalOrder::Recover);
         assert_eq!(wing.attack_target, None);
-        assert_eq!(wing.recovery_target, Some(0));
-        assert_eq!(wing.recovery_state, TacticalFighterRecoveryState::Returning);
+        // SetOrder(2) (0x005ad604) posts the recovery's executor (event 0xa)
+        // with the command stamp 3; FUN_005cf980 reserves the carrier at
+        // turn 4, step 16.
+        assert_eq!(wing.recovery_target, None);
         assert_eq!(session.fighters[1].order, TacticalOrder::None);
         // An empty group takes no order.
         assert_eq!(session.fighters[2].order, TacticalOrder::None);
@@ -11425,23 +11428,31 @@ mod tests {
         session.fighters.push(bound);
         session.fighters.push(waiting);
 
-        // The side's time ends on the next step; the carrier, at its exit
-        // line, then jumps for 4000 ms (FUN_005cc300, FUN_005a6b40).
-        session.paused = false;
-        session.ships[0].source_position.z = session.withdrawal_exit_z(true);
         // Without engine power the first group is still on its way to the
         // escaping carrier when it leaves.
+        session.paused = false;
         session.fighters[0].sublight_engine_power = 0.0;
+        for _ in 0..16 {
+            session.step();
+        }
+        let wing = &session.fighters[0];
+        assert_eq!(wing.recovery_target, Some(0));
+        assert_eq!(wing.recovery_state, TacticalFighterRecoveryState::Returning);
+
+        // The side's time ends on the next turn; the carrier, at its exit
+        // line, then jumps for 4000 ms (FUN_005cc300, FUN_005a6b40).
+        session.ships[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        // Decided at step 12, the first frame step (0x005bef1d), the jump's
-        // event 0x2d runs at turn 6 (step 24) and its 0x2e at turn 13, step
-        // 52 (0x005ad4a0, FUN_005a96b0).
-        for _ in 0..51 {
+        // The time ends at turn 5, step 20, where the frame's order step
+        // decides the jump, stamped 7 (0x005ad4a0); its event 0x2d runs at
+        // turn 8 (step 32), and its 0x2e, stamped 14 on step 47, at turn
+        // 15, step 60 (FUN_005a96b0).
+        for _ in 16..59 {
             session.step();
         }
         assert!(!session.ships[0].retreated);
         session.step();
-        assert_eq!(session.combat_tick, 52);
+        assert_eq!(session.combat_tick, 60);
         assert!(session.ships[0].retreated);
         // At the side's end the groups left in the fight without a
         // hyperdrive are destroyed (event 0x2f, FUN_005b2720): the one still
@@ -11501,17 +11512,24 @@ mod tests {
 
         assert!(wing.retreating);
 
-        // At its edge when the time ends, it jumps for 4000 ms.
+        // At its edge when the time ends, it jumps for 4000 ms. Its
+        // executor (event 0xa, stamped 3) comes at turn 4, step 16
+        // (FUN_005ca6d0); until then it keeps its course.
         session.paused = false;
+        for _ in 0..16 {
+            session.step();
+        }
         session.fighters[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        // Decided at step 12, it jumps at turn 6 and leaves at turn 13, step
-        // 52 (events 0x2d and 0x2e, FUN_005a96b0).
-        for _ in 0..51 {
+        // The time ends at turn 5, step 20; the jump, stamped 7, runs at
+        // turn 8 and it leaves at turn 15, step 60 (events 0x2d and 0x2e,
+        // FUN_005a96b0).
+        for _ in 16..59 {
             session.step();
         }
         assert!(session.fighters[0].alive);
         session.step();
+        assert_eq!(session.combat_tick, 60);
         let wing = &session.fighters[0];
         assert!(!wing.alive && wing.squad_count > 0);
         // No engine power, no jump: destroyed at the side's end
