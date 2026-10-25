@@ -9256,6 +9256,7 @@ mod tests {
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
+            engagement_bands: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
