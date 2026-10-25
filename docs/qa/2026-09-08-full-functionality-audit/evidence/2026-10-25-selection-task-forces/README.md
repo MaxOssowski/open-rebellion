@@ -37,7 +37,7 @@ The ship's two force fields are one force:
 - `+0x174` is set on the force's event `0x30` (`0x005cc2a3`).
 
 The manual agrees: orders go "to your capital ships individually or by
-task force" (p. 147).
+task force" (p. 142).
 
 ## The port
 
