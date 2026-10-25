@@ -125,10 +125,11 @@ pub const ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE: f32 = 0.5;
 /// `_DAT_0066cff0` in `FUN_005cc300`: after the side's time a unit within
 /// 8.0 of its exit line (along the side vector) starts its jump.
 pub const ORIGINAL_JUMP_EXIT_DISTANCE: f32 = 8.0;
-/// `FUN_005c6610` passes 1.0 (`0x005c66b7`) as the arrival radius of its
-/// fighter force's move (`0x005ec0d0`, the mover's slot `+0xc`): within it
-/// the move ends (returns 0) and only then are the members' jumps tried.
-pub const ORIGINAL_FIGHTER_WITHDRAWAL_ARRIVAL_RADIUS: f32 = 1.0;
+/// `FUN_005c6610` (`0x005c66b7`) and `FUN_005cc300` (`0x005cc3ba`) pass 1.0
+/// as the arrival radius of the force's move (the mover's slot `+0xc`:
+/// `0x005ec0d0`, or a formation's `0x005eb1a0` / `0x005eb540`): within it the
+/// move ends (returns 0), and only then are the members' jumps tried.
+pub const ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS: f32 = 1.0;
 /// `_DAT_0066c24c`: `FUN_005a6b40` ends the jump (state 7 -> 8) when its
 /// clock `+0x50` reaches 4000 ms; event `0x2e` then removes the unit.
 pub const ORIGINAL_JUMP_MILLISECONDS: f32 = 4_000.0;
@@ -2735,6 +2736,22 @@ pub fn original_formation_lateral_offset(member_ordinal: usize, spacing: f32) ->
     } else {
         -magnitude
     }
+}
+
+/// `0x005c6070`: a capital-ship task force's first member, the first node of
+/// its mover's member list. A member leaves the list only when it is gone
+/// (`FUN_005a90c0` -> `FUN_005aa760`), so a ship in its jump stays first.
+/// port: members are in the port's list order.
+pub fn original_task_force_first_members(ships: &[TacticalShip], side: bool) -> Vec<usize> {
+    let mut seen = Vec::new();
+    let mut first = Vec::new();
+    for (index, ship) in ships.iter().enumerate() {
+        if ship.alive && ship.is_attacker == side && !seen.contains(&ship.task_force) {
+            seen.push(ship.task_force);
+            first.push(index);
+        }
+    }
+    first
 }
 
 /// `FUN_005b9c60` installs pi / 12 for the slowest hulls. Faster hulls use
@@ -5878,6 +5895,7 @@ impl BattleSession {
         let works = (0..self.ships.len())
             .map(|index| original_ship_hyperdrive_works(&self.ships, &self.field_effects, index))
             .collect::<Vec<_>>();
+        let first_members = original_task_force_first_members(&self.ships, side);
         for (index, ship) in self.ships.iter_mut().enumerate() {
             if !ship.alive || !ship.retreating || ship.is_attacker != side {
                 continue;
@@ -5908,6 +5926,14 @@ impl BattleSession {
             } else {
                 exits[1]
             };
+            // `FUN_005cc300` tries the jump of its first member only
+            // (`0x005c6070`), and only once the force's move has arrived
+            // (`0x005cc3ef`). port: the force's position is that member's.
+            if !first_members.contains(&index)
+                || (exit - ship.source_position.z).abs() > ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS
+            {
+                continue;
+            }
             if -((exit - ship.source_position.z) * side_z) <= ORIGINAL_JUMP_EXIT_DISTANCE {
                 ship.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
                 ship.source_waypoint = None;
@@ -6002,7 +6028,7 @@ impl BattleSession {
                 continue;
             }
             let along = exit - fighter.source_position.z;
-            if along.abs() > ORIGINAL_FIGHTER_WITHDRAWAL_ARRIVAL_RADIUS {
+            if along.abs() > ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS {
                 let step = fighter.sublight_engine_power.max(0.0) * seconds;
                 fighter.source_position.z += along.signum() * step;
                 continue;

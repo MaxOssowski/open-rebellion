@@ -4277,9 +4277,13 @@ mod tests {
                 tactical.withdrawal_ms,
             )
         };
-        assert_eq!(run(7.5, 100), (true, true, Some(0.0)));
-        // Beyond its line counts too: the test is one-sided.
-        assert_eq!(run(-30.0, 100), (true, true, Some(0.0)));
+        assert_eq!(run(0.5, 100), (true, true, Some(0.0)));
+        // 0x005ec0d0 / 0x005eb1a0: arrived when |d| is not above the radius.
+        assert_eq!(run(1.0, 100), (true, true, Some(0.0)));
+        // Within 8.0 but beyond the move's 1.0 radius the force is still
+        // moving (0x005cc3ef), on either side of its line.
+        assert_eq!(run(7.5, 100), (true, false, Some(0.0)));
+        assert_eq!(run(-30.0, 100), (true, false, Some(0.0)));
         assert_eq!(run(8.5, 100), (true, false, Some(0.0)));
         assert_eq!(run(0.0, 0), (false, false, None));
         // The Empire's line is on the other edge.
@@ -4291,7 +4295,7 @@ mod tests {
         let mut tactical = session(vec![own, enemy], Vec::new());
         tactical.player_is_attacker = false;
         tactical.ships[0].retreating = true;
-        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 7.5;
+        tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 0.5;
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         tactical.step();
         assert!(tactical.ships[0].retreat_progress > 0.0);
@@ -4300,6 +4304,50 @@ mod tests {
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 30.0;
         tactical.step();
         assert_eq!(tactical.ships[0].retreat_progress, 0.0);
+    }
+
+    // FUN_005cc300 tries only its force's first member (0x005c6070), which
+    // stays first through its jump until it is gone (FUN_005a90c0 ->
+    // FUN_005aa760); a first member that cannot jump holds the others.
+    #[test]
+    fn a_task_force_jumps_its_ships_one_after_another() {
+        let run = |first_hyperdrive: u8| {
+            let mut first = jumper(true, TacticalWeaponArc::default(), 0.0);
+            first.subsystem_condition.hyperdrive = first_hyperdrive;
+            let mut second = jumper(true, TacticalWeaponArc::default(), 0.0);
+            second.subsystem_condition.hyperdrive = 100;
+            let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+            enemy.hull_current = 1_000_000;
+            enemy.hull_max = 1_000_000;
+            let mut tactical = session(vec![first, second, enemy], Vec::new());
+            let exit = tactical.withdrawal_exit_z(true);
+            for index in [0, 1] {
+                tactical.ships[index].retreating = true;
+                tactical.ships[index].source_position.z = exit;
+            }
+            tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            tactical.step();
+            tactical
+        };
+        let mut tactical = run(100);
+        assert!(tactical.ships[0].jumping());
+        assert!(!tactical.ships[1].jumping());
+        let steps = (crate::tactical::ORIGINAL_JUMP_MILLISECONDS
+            / crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS) as usize;
+        for _ in 1..steps {
+            tactical.step();
+            assert!(!tactical.ships[1].jumping());
+        }
+        assert!(tactical.ships[0].retreated);
+        tactical.ships[1].source_position.z = tactical.withdrawal_exit_z(true);
+        tactical.step();
+        assert!(tactical.ships[1].jumping());
+
+        let mut held = run(0);
+        for _ in 0..steps {
+            held.step();
+        }
+        assert!(!held.ships[0].jumping() && !held.ships[1].jumping());
     }
 
     // FUN_005c8780 and FUN_005cc300 act on the withdrawing side's order-3
@@ -4313,6 +4361,8 @@ mod tests {
         staying.subsystem_condition.hyperdrive = 100;
         let mut jumping = jumper(true, TacticalWeaponArc::default(), 0.0);
         jumping.subsystem_condition.hyperdrive = 100;
+        // Its own task force: 0x005c6070 tries a force's first member only.
+        jumping.task_force = 1;
         let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
         enemy.hull_current = 1_000_000;
         enemy.hull_max = 1_000_000;
@@ -4820,6 +4870,8 @@ mod tests {
             let mut mover = jumper(true, TacticalWeaponArc::default(), 0.0);
             mover.subsystem_condition.hyperdrive = 100;
             mover.retreating = true;
+            // Its own task force: 0x005c6070 tries a force's first member only.
+            mover.task_force = 1;
             let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
             enemy.hull_current = 1_000_000;
             enemy.hull_max = 1_000_000;
