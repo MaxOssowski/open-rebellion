@@ -258,6 +258,45 @@ pub const ORIGINAL_FORMATION_RANGE_PRIORITY: f32 = 10_000.0;
 /// largest value for `FUN_005ec400`'s alternating follower slots.
 pub const ORIGINAL_FORMATION_FOOTPRINT_SCALE: f32 = 1.2;
 
+/// port: a ship's `task_force` when its force holds none of the eight group
+/// slots (`+0x164`). `FUN_005aded0` gives a ship such a force, and every
+/// such force holds that one ship: a single selected unit's order
+/// (`0x005a1a60`, `0x005a1ac0`), a selection with no free slot
+/// (`0x005a2c70`, `0x005a2a40`), and each withdrawing ship
+/// (`FUN_005ad530`).
+pub const TACTICAL_UNGROUPED_TASK_FORCE: u8 = u8::MAX;
+
+/// A completion array's index for a task force: the eight group slots,
+/// then one for the forces without a slot. hyp: their completion lines
+/// take the generic variant, as the destruction lines do.
+pub(crate) fn task_force_slot(task_force: u8) -> usize {
+    if task_force == TACTICAL_UNGROUPED_TASK_FORCE {
+        8
+    } else {
+        usize::from(task_force.min(7))
+    }
+}
+
+/// port: the slot index back to a `task_force`, `TACTICAL_UNGROUPED_TASK_FORCE`
+/// for the ninth.
+pub(crate) fn task_force_of_slot(slot: usize) -> u8 {
+    u8::try_from(slot)
+        .ok()
+        .filter(|slot| *slot < 8)
+        .unwrap_or(TACTICAL_UNGROUPED_TASK_FORCE)
+}
+
+/// A capital family's event offset: its generic line for a force without a
+/// group slot, as `FUN_005a5cf0` uses `0x55`/`0x62` when `0x005a0300` finds
+/// none, else the slot's line after it.
+pub(crate) const fn capital_group_offset(task_force_one: u16, group: u8) -> u16 {
+    if group == TACTICAL_UNGROUPED_TASK_FORCE {
+        task_force_one - 1
+    } else {
+        task_force_one + if group < 7 { group as u16 } else { 7 }
+    }
+}
+
 /// Source-coordinate tactical envelope recovered from `FUN_005ab650`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OriginalTacticalLayout {
@@ -633,7 +672,8 @@ pub struct TacticalShip {
     pub order: TacticalOrder,
     /// Source Surround or Stand Off behavior assigned with a maneuver.
     pub tactic: TacticalTactic,
-    /// Zero-based task-force assignment shown in the eight source HUD slots.
+    /// Zero-based task-force assignment shown in the eight source HUD slots,
+    /// or `TACTICAL_UNGROUPED_TASK_FORCE` for a force of its own.
     pub task_force: u8,
     /// The strategic fleet the hull came from: a battle takes every fleet
     /// of both sides at the system (`FUN_0040c780`).
@@ -1433,6 +1473,10 @@ pub struct BattleSession {
     /// (`+0x64` = 3, `FUN_005ca6d0` on event `0xa`); until then a unit given
     /// the order (`retreating`, `+0x68`) does not yet head for its exit.
     pub withdrawal_executors: Vec<TacticalUnitRef>,
+    /// The task force chosen whole (its group button or key): the input
+    /// state `0x66bc48`, whose orders go to the force (`0x005a3630`,
+    /// `0x005a3740`). `None` when single units are selected.
+    pub task_force_selection: Option<u8>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -2003,7 +2047,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::CapitalManeuver,
-            2 + group.min(7) as u16,
+            capital_group_offset(2, group),
         )
     }
 
@@ -2024,7 +2068,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::ManeuverComplete,
-            15 + group.min(7) as u16,
+            capital_group_offset(15, group),
         )
     }
 
@@ -2044,7 +2088,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::CapitalAttack,
-            28 + group.min(7) as u16,
+            capital_group_offset(28, group),
         )
     }
 
@@ -2064,7 +2108,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::OrdersComplete,
-            41 + group.min(7) as u16,
+            capital_group_offset(41, group),
         )
     }
 
@@ -2085,7 +2129,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::TargetDestroyed,
-            54 + group.min(7) as u16,
+            capital_group_offset(54, group),
         )
     }
 
@@ -2105,7 +2149,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::CapitalDestroyed,
-            67 + group.min(7) as u16,
+            capital_group_offset(67, group),
         )
     }
 
@@ -2143,7 +2187,7 @@ impl TacticalVoiceCue {
         Self::from_offset(
             faction,
             TacticalVoiceEvent::CapitalMission,
-            base + group.min(7) as u16,
+            capital_group_offset(base, group),
         )
     }
 
@@ -3563,6 +3607,7 @@ impl BattleSession {
             death_star_beam: None,
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
+            task_force_selection: None,
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -3695,7 +3740,7 @@ impl BattleSession {
             })
             .collect::<Vec<_>>();
         let seconds = delta_milliseconds * 0.001;
-        let mut completed_player_task_forces = [false; 8];
+        let mut completed_player_task_forces = [false; 9];
         for (index, effective_engine_power) in engine_power.into_iter().enumerate() {
             if !self.ships[index].alive || self.ships[index].retreat_progress > 0.0 {
                 self.ships[index].source_velocity = TacticalWorldVector::ZERO;
@@ -3760,7 +3805,7 @@ impl BattleSession {
                                         | TacticalOrder::Anvil
                                 )
                             {
-                                completed_player_task_forces[usize::from(ship.task_force.min(7))] =
+                                completed_player_task_forces[task_force_slot(ship.task_force)] =
                                     true;
                             }
                         }
@@ -3801,7 +3846,7 @@ impl BattleSession {
             let group_still_maneuvering = self.ships.iter().any(|ship| {
                 ship.alive
                     && ship.is_attacker == self.player_is_attacker
-                    && usize::from(ship.task_force) == group
+                    && task_force_slot(ship.task_force) == group
                     && matches!(
                         ship.order,
                         TacticalOrder::LeftHook
@@ -3814,7 +3859,7 @@ impl BattleSession {
                 self.pending_voice_cues
                     .push(TacticalVoiceCue::capital_maneuver_complete(
                         faction,
-                        group as u8,
+                        task_force_of_slot(group),
                     ));
             }
         }
@@ -6278,6 +6323,8 @@ impl BattleSession {
                 ship.order = TacticalOrder::None;
                 ship.attack_target = None;
                 ship.manual_targets.clear();
+                // `FUN_005aded0`: a force of its own, outside the slots.
+                ship.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
                 units.push(TacticalUnitRef::Ship(index));
             }
         }
@@ -7177,7 +7224,7 @@ pub fn first_original_attack_target(
 /// hostile object of the same requested class, and an exhausted class clears
 /// the target instead of falling through to another class.
 pub fn refresh_original_attack_targets(session: &mut BattleSession) {
-    let mut completed_player_task_forces = [false; 8];
+    let mut completed_player_task_forces = [false; 9];
     let mut completed_player_fighter_groups = [false; 4];
     for index in 0..session.ships.len() {
         let source_is_attacker = session.ships[index].is_attacker;
@@ -7219,7 +7266,7 @@ pub fn refresh_original_attack_targets(session: &mut BattleSession) {
         if had_attack_target && session.ships[index].attack_target.is_none() {
             let ship = &session.ships[index];
             if ship.is_attacker == session.player_is_attacker {
-                completed_player_task_forces[usize::from(ship.task_force.min(7))] = true;
+                completed_player_task_forces[task_force_slot(ship.task_force)] = true;
             }
         }
     }
@@ -7263,7 +7310,7 @@ pub fn refresh_original_attack_targets(session: &mut BattleSession) {
             && !session.ships.iter().any(|ship| {
                 ship.alive
                     && ship.is_attacker == session.player_is_attacker
-                    && usize::from(ship.task_force) == group
+                    && task_force_slot(ship.task_force) == group
                     && ship.attack_target.is_some()
             })
         {
@@ -7271,7 +7318,7 @@ pub fn refresh_original_attack_targets(session: &mut BattleSession) {
                 .pending_voice_cues
                 .push(TacticalVoiceCue::capital_orders_complete(
                     faction,
-                    group as u8,
+                    task_force_of_slot(group),
                 ));
         }
     }

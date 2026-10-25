@@ -114,6 +114,9 @@ pub struct AbstractGroup {
     pub side: u8,
     pub fighters: bool,
     pub id: u8,
+    /// A ship outside the group slots is a force of its own
+    /// (`FUN_005aded0`): its index plus one here, else 0.
+    pub own_force: u16,
 }
 
 /// The result of a finished abstract battle.
@@ -484,15 +487,24 @@ impl AbstractBattle {
         let mut groups: Vec<(AbstractGroup, Vec<AbstractUnit>)> = Vec::new();
         for unit in units_of(&self.session, alliance) {
             let group = match unit {
-                AbstractUnit::Capital(index) => AbstractGroup {
-                    side,
-                    fighters: false,
-                    id: self.session.ships[index].task_force,
-                },
+                AbstractUnit::Capital(index) => {
+                    let id = self.session.ships[index].task_force;
+                    AbstractGroup {
+                        side,
+                        fighters: false,
+                        id,
+                        own_force: if id == crate::tactical::TACTICAL_UNGROUPED_TASK_FORCE {
+                            u16::try_from(index + 1).unwrap_or(u16::MAX)
+                        } else {
+                            0
+                        },
+                    }
+                }
                 AbstractUnit::Fighter(index) => AbstractGroup {
                     side,
                     fighters: true,
                     id: self.session.fighters[index].fighter_group,
+                    own_force: 0,
                 },
             };
             match groups.iter_mut().find(|(key, _)| *key == group) {
@@ -1849,6 +1861,7 @@ mod tests {
             death_star_beam: None,
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
+            task_force_selection: None,
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -2309,6 +2322,7 @@ mod tests {
             side,
             fighters: false,
             id,
+            own_force: 0,
         }
     }
 
@@ -6033,6 +6047,53 @@ mod tests {
         posted.post_turn_event(0, TacticalTurnEvent::WithdrawalExecutor(units));
         posted.run_posted_order_executors();
         assert_eq!(posted.withdrawal_executors, [TacticalUnitRef::Ship(0)]);
+    }
+
+    // FUN_005aded0 gives a ship a force of its own outside the eight group
+    // slots: the commander counts it as its own task force, and its voices
+    // take the generic line before task force one (FUN_005a5cf0: 0x55,
+    // 0x62 when 0x005a0300 finds no slot).
+    #[test]
+    fn a_ship_outside_the_group_slots_is_a_force_of_its_own() {
+        use crate::tactical::{
+            capital_group_offset, task_force_of_slot, task_force_slot,
+            TACTICAL_UNGROUPED_TASK_FORCE as OWN,
+        };
+        assert_eq!(task_force_slot(OWN), 8);
+        assert_eq!(task_force_slot(3), 3);
+        assert_eq!(task_force_slot(9), 7);
+        assert_eq!(task_force_of_slot(8), OWN);
+        assert_eq!(task_force_of_slot(7), 7);
+        assert_eq!(task_force_of_slot(0), 0);
+        assert_eq!(capital_group_offset(2, OWN), 1);
+        assert_eq!(capital_group_offset(2, 0), 2);
+        assert_eq!(capital_group_offset(2, 6), 8);
+        assert_eq!(capital_group_offset(2, 9), 9);
+
+        let mut own = |index: usize| {
+            let mut unit = ship(true, TacticalWeaponArc::default(), 0.0);
+            unit.task_force = if index < 2 { OWN } else { 0 };
+            unit
+        };
+        let ships = (0..4).map(&mut own).collect::<Vec<_>>();
+        let battle = AbstractBattle::new(session(ships, Vec::new()));
+        let groups = battle.groups(true);
+        assert_eq!(groups.len(), 3);
+        let own_forces = groups
+            .iter()
+            .filter(|(key, _)| key.id == OWN)
+            .map(|(key, members)| (key.own_force, members.clone()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            own_forces,
+            [
+                (1, vec![AbstractUnit::Capital(0)]),
+                (2, vec![AbstractUnit::Capital(1)])
+            ]
+        );
+        assert!(groups.iter().any(|(key, members)| key.id == 0
+            && key.own_force == 0
+            && members == &[AbstractUnit::Capital(2), AbstractUnit::Capital(3)]));
     }
 
     // SetOrder (0x005ca530) sets the order at once and posts event 0xa at

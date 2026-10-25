@@ -2832,8 +2832,8 @@ impl<'a> TacticalGroupHud<'a> {
         let mut task_forces = [false; 8];
         let mut fighter_groups = [false; 4];
         for ship in &session.ships {
-            if ship.alive && ship.is_attacker == session.player_is_attacker {
-                task_forces[usize::from(ship.task_force.min(7))] = true;
+            if ship.alive && ship.is_attacker == session.player_is_attacker && ship.task_force < 8 {
+                task_forces[usize::from(ship.task_force)] = true;
             }
         }
         for fighter in &session.fighters {
@@ -2954,12 +2954,14 @@ fn selected_player_task_force(session: &BattleSession) -> Option<u8> {
     if session.selected_fighter_group.is_some() {
         return None;
     }
+    if session.task_force_selection.is_some() {
+        return session.task_force_selection;
+    }
     let mut selected = session.ships.iter().filter(|ship| {
         ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker
     });
     let group = selected.next()?.task_force;
-    selected
-        .all(|ship| ship.task_force == group)
+    (group != TACTICAL_UNGROUPED_TASK_FORCE && selected.all(|ship| ship.task_force == group))
         .then_some(group)
 }
 
@@ -3071,14 +3073,16 @@ fn select_task_force(session: &mut BattleSession, group: u8) -> usize {
     }
     session.selected_ship = Some(first);
     session.selected_fighter_group = None;
+    // The task-force state (`0x66bc48`): orders go to the whole force.
+    session.task_force_selection = Some(group);
     session.ships.iter().filter(|ship| ship.selected).count()
 }
 
 fn assign_selected_to_task_force(session: &mut BattleSession, group: u8) -> usize {
     let mut assigned_groups = [false; 8];
     for ship in &session.ships {
-        if ship.alive && ship.is_attacker == session.player_is_attacker {
-            assigned_groups[usize::from(ship.task_force.min(7))] = true;
+        if ship.alive && ship.is_attacker == session.player_is_attacker && ship.task_force < 8 {
+            assigned_groups[usize::from(ship.task_force)] = true;
         }
     }
     let next_blank = assigned_groups
@@ -3128,6 +3132,7 @@ fn select_fighter_group(session: &mut BattleSession, group: u8) -> bool {
     }
     session.selected_ship = None;
     session.selected_fighter_group = Some(group);
+    session.task_force_selection = None;
     true
 }
 
@@ -3243,6 +3248,37 @@ pub fn withdraw_player_fighters(session: &mut BattleSession) {
     session.withdraw_fighters(session.player_is_attacker);
 }
 
+/// The units' states before an order or tactic:
+/// - one unit (`0x005a1a60`, `0x005a1ac0`) takes a force of its own
+///   (`FUN_005aded0`) outside the group slots;
+/// - several (`0x005a2c70`, `0x005a2a40`) form one new force
+///   (`0x005ade70`) in the first free group slot (`0x0059f610`), found before
+///   they leave their old ones, and the task-force state follows
+///   (`0x005a33d0`);
+/// - with no free slot, each takes a force of its own.
+fn form_selected_task_force(session: &mut BattleSession, members: &[usize]) {
+    let force = match members {
+        [] => return,
+        [_] => TACTICAL_UNGROUPED_TASK_FORCE,
+        _ => (0_u8..8)
+            .find(|slot| {
+                !session.ships.iter().any(|ship| {
+                    ship.alive
+                        && ship.is_attacker == session.player_is_attacker
+                        && ship.task_force == *slot
+                })
+            })
+            .unwrap_or(TACTICAL_UNGROUPED_TASK_FORCE),
+    };
+    for &index in members {
+        session.ships[index].task_force = force;
+    }
+    if force != TACTICAL_UNGROUPED_TASK_FORCE {
+        session.task_force_selection = Some(force);
+        BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+    }
+}
+
 fn assign_selected_command(
     session: &mut BattleSession,
     order: TacticalOrder,
@@ -3272,16 +3308,36 @@ fn assign_selected_command(
             }
         }
     } else {
-        for (index, ship) in session.ships.iter_mut().enumerate() {
-            if ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker {
-                ship.order = order;
-                ship.escort_target = None;
-                if let Some(tactic) = tactic {
-                    ship.tactic = tactic;
-                }
-                selected_capitals.push(index);
-                capital_members += 1;
+        // The input state's order and tactic slots (`+0x20`, `+0x28`): a
+        // chosen task force takes them itself (`0x005a3630`, `0x005a3740`);
+        // selected units first become forces (`form_selected_task_force`).
+        let player_is_attacker = session.player_is_attacker;
+        let members = session
+            .ships
+            .iter()
+            .enumerate()
+            .filter(|(_, ship)| {
+                ship.alive
+                    && !ship.retreating
+                    && ship.is_attacker == player_is_attacker
+                    && session
+                        .task_force_selection
+                        .map_or(ship.selected, |group| ship.task_force == group)
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        if session.task_force_selection.is_none() {
+            form_selected_task_force(session, &members);
+        }
+        for &index in &members {
+            let ship = &mut session.ships[index];
+            ship.order = order;
+            ship.escort_target = None;
+            if let Some(tactic) = tactic {
+                ship.tactic = tactic;
             }
+            selected_capitals.push(index);
+            capital_members += 1;
         }
     }
     // `SetOrder` (`0x005ca530`) sets the order at once and posts its
@@ -3327,8 +3383,44 @@ fn queue_selected_command_voice(
             (TacticalCommandPanel::Display, _) => return,
         }
     } else {
-        let Some(group) = selected_player_task_force(session) else {
-            return;
+        let group = match session.task_force_selection {
+            Some(group) => group,
+            None => {
+                let groups = session
+                    .ships
+                    .iter()
+                    .filter(|ship| {
+                        ship.alive
+                            && ship.selected
+                            && ship.is_attacker == session.player_is_attacker
+                    })
+                    .map(|ship| ship.task_force)
+                    .collect::<Vec<_>>();
+                match groups.as_slice() {
+                    [] => return,
+                    // `0x005a1a60`: one unit's order, the generic
+                    // assignment line (`0x77`, `0xf5`).
+                    [TACTICAL_UNGROUPED_TASK_FORCE] => {
+                        if panel != TacticalCommandPanel::Display {
+                            session
+                                .pending_voice_cues
+                                .push(TacticalVoiceCue::capital_mission(
+                                    faction,
+                                    TACTICAL_UNGROUPED_TASK_FORCE,
+                                ));
+                        }
+                        return;
+                    }
+                    // `0x005a2c70` with no free slot (`0x84`, `0x102`).
+                    [TACTICAL_UNGROUPED_TASK_FORCE, ..] => {
+                        session
+                            .pending_voice_cues
+                            .push(TacticalVoiceCue::target_task_force_rejected(faction));
+                        return;
+                    }
+                    [group, ..] => *group,
+                }
+            }
         };
         match panel {
             TacticalCommandPanel::Maneuvers { .. } if formation_changed => {
@@ -8697,6 +8789,8 @@ fn handle_combat_input(
             }
             session.selected_ship = Some(idx);
             session.selected_fighter_group = None;
+            // A unit selection (`0x66bce8`, or `0x66bc98` with Ctrl).
+            session.task_force_selection = None;
             for fighter in &mut session.fighters {
                 fighter.selected = false;
             }
@@ -8712,6 +8806,7 @@ fn handle_combat_input(
             }
             session.selected_ship = None;
             session.selected_fighter_group = None;
+            session.task_force_selection = None;
             for fighter in &mut session.fighters {
                 fighter.selected = false;
             }
@@ -8926,12 +9021,14 @@ fn handle_placement_input(
             }
             session.ships[idx].selected = true;
             session.selected_ship = Some(idx);
+            session.task_force_selection = None;
         } else {
             // Deselect.
             for s in &mut session.ships {
                 s.selected = false;
             }
             session.selected_ship = None;
+            session.task_force_selection = None;
         }
     }
 
@@ -9121,6 +9218,7 @@ mod tests {
             death_star_beam: None,
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
+            task_force_selection: None,
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -15531,11 +15629,264 @@ mod tests {
         assert_eq!(ship.order, TacticalOrder::Hammer);
         assert_eq!(ship.tactic, TacticalTactic::Surround);
         assert_eq!(state.command_panel, TacticalCommandPanel::Display);
+        // One selected unit takes a force of its own and the generic
+        // assignment line (0x005a1a60: FUN_005aded0, then event 0x77).
+        assert_eq!(ship.task_force, TACTICAL_UNGROUPED_TASK_FORCE);
         assert_eq!(
             state.session.as_ref().unwrap().pending_voice_cues,
-            vec![TacticalVoiceCue::capital_formation(
+            vec![TacticalVoiceCue::capital_mission(
+                TacticalVoiceFaction::Alliance,
+                TACTICAL_UNGROUPED_TASK_FORCE
+            )]
+        );
+        assert_eq!(
+            state.session.as_ref().unwrap().pending_voice_cues[0].source_event,
+            0x77
+        );
+    }
+
+    // The group bar shows the eight slots only (0x5a0300 finds no slot
+    // for a force of its own), the selection names a slot only when all its
+    // ships share one, and a force of its own does not use up a blank slot.
+    #[test]
+    fn a_force_of_its_own_holds_no_group_slot() {
+        let mut grouped = test_ship(64, 0, true, true);
+        grouped.task_force = 2;
+        let mut own = test_ship(65, 1, true, true);
+        own.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+        let mut lost = test_ship(66, 2, true, false);
+        lost.task_force = 3;
+        let mut enemy = test_ship(128, 0, false, true);
+        enemy.task_force = 4;
+        let mut session = test_session(vec![grouped, own, lost, enemy], Vec::new(), true);
+        let hud = TacticalGroupHud::from_session(&session);
+        assert_eq!(
+            hud.task_forces,
+            [false, false, true, false, false, false, false, false]
+        );
+
+        session.ships[1].selected = true;
+        assert_eq!(selected_player_task_force(&session), None);
+        session.ships[1].selected = false;
+        session.ships[0].selected = true;
+        assert_eq!(selected_player_task_force(&session), Some(2));
+        session.ships[1].selected = true;
+        assert_eq!(selected_player_task_force(&session), None);
+        session.task_force_selection = Some(2);
+        assert_eq!(selected_player_task_force(&session), Some(2));
+        session.task_force_selection = None;
+
+        // Slots 0 and 1 are blank; the own force takes neither.
+        session.ships[0].selected = false;
+        assert_eq!(assign_selected_to_task_force(&mut session, 0), 1);
+        assert_eq!(session.ships[1].task_force, 0);
+    }
+
+    // With nothing selected an order forms no force, and a chosen task force
+    // gives it only to its members still in the fight.
+    #[test]
+    fn a_chosen_task_force_orders_only_its_members_in_the_fight() {
+        let ships = (0..4)
+            .map(|index| {
+                let mut ship = test_ship(64, index, true, index != 2);
+                ship.task_force = 1;
+                ship
+            })
+            .collect::<Vec<_>>();
+        let mut session = test_session(ships, Vec::new(), true);
+        session.ships[3].retreating = true;
+        assert_eq!(
+            assign_selected_command(&mut session, TacticalOrder::HoldPosition, None),
+            (0, 0)
+        );
+        assert_eq!(session.task_force_selection, None);
+
+        session.task_force_selection = Some(1);
+        assert_eq!(
+            assign_selected_command(&mut session, TacticalOrder::HoldPosition, None),
+            (2, 0)
+        );
+        assert_eq!(session.ships[2].order, TacticalOrder::None);
+        assert_eq!(session.ships[3].order, TacticalOrder::None);
+        assert!(session.ships.iter().all(|ship| ship.task_force == 1));
+    }
+
+    // The voice follows the selected ships only: one selected unit plays
+    // the generic line even beside an unselected force of its own.
+    #[test]
+    fn a_single_unit_s_order_voice_ignores_unselected_ships() {
+        let mut first = test_ship(64, 0, true, true);
+        first.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+        first.selected = true;
+        let mut other = test_ship(65, 1, true, true);
+        other.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+        let mut session = test_session(vec![first, other], Vec::new(), true);
+        let panel = TacticalCommandPanel::Maneuvers {
+            pending_order: TacticalOrder::HoldPosition,
+            pending_tactic: TacticalTactic::StandOff,
+        };
+        queue_selected_command_voice(&mut session, panel, TacticalOrder::HoldPosition, false);
+        assert_eq!(
+            session.pending_voice_cues,
+            vec![TacticalVoiceCue::capital_mission(
+                TacticalVoiceFaction::Alliance,
+                TACTICAL_UNGROUPED_TASK_FORCE
+            )]
+        );
+    }
+
+    // FUN_005a8f70's arrival voices a force's completion once no member of
+    // that force is still on a maneuver; members of other forces and the
+    // enemy do not hold it (FUN_005a9530), nor do they for exhausted
+    // attack lists (FUN_005a8fc0).
+    #[test]
+    fn a_force_s_completion_waits_only_for_its_own_members() {
+        let arriving = || {
+            let mut ship = test_ship(64, 0, true, true);
+            ship.subsystem_capacity.engines = true;
+            ship.source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+            ship.source_waypoint = Some(TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            });
+            ship.order = TacticalOrder::Anvil;
+            ship
+        };
+        let busy = |alliance: bool, task_force: u8, x: f32| {
+            let mut ship = test_ship(65, 1, alliance, true);
+            ship.task_force = task_force;
+            ship.order = TacticalOrder::LeftHook;
+            ship.source_position.x = x;
+            ship
+        };
+        let mut session = test_session(
+            vec![arriving(), busy(false, 0, 200.0), busy(true, 1, -200.0)],
+            Vec::new(),
+            true,
+        );
+        session.advance_original_tactical_movement(250.0);
+        assert_eq!(
+            session.take_pending_voice_cues(),
+            vec![TacticalVoiceCue::capital_maneuver_complete(
                 TacticalVoiceFaction::Alliance,
                 0
+            )]
+        );
+        let mut held = test_session(vec![arriving(), busy(true, 0, 200.0)], Vec::new(), true);
+        held.advance_original_tactical_movement(250.0);
+        assert!(held.take_pending_voice_cues().is_empty());
+
+        // Player ship 0 (force 0) runs out of fighters to attack; the
+        // player's force 1 and the enemy's force 0 keep capital targets.
+        let mut hunter = test_ship(64, 0, true, true);
+        hunter.task_force = 0;
+        hunter.order = TacticalOrder::AttackFighters;
+        hunter.attack_target = Some(TacticalAttackTarget::FighterGroup(0));
+        let mut other_force = test_ship(65, 1, true, true);
+        other_force.task_force = 1;
+        other_force.order = TacticalOrder::AttackCapitalShips;
+        other_force.attack_target = Some(TacticalAttackTarget::CapitalShip(2));
+        let mut enemy = test_ship(128, 2, false, true);
+        enemy.task_force = 0;
+        enemy.order = TacticalOrder::AttackCapitalShips;
+        enemy.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        let mut gone = test_fighter(5, false);
+        gone.alive = false;
+        gone.squad_count = 0;
+        let mut done = test_session(vec![hunter, other_force, enemy], vec![gone], true);
+        refresh_original_attack_targets(&mut done);
+        assert_eq!(done.ships[0].attack_target, None);
+        assert_eq!(
+            done.take_pending_voice_cues(),
+            vec![TacticalVoiceCue::capital_orders_complete(
+                TacticalVoiceFaction::Alliance,
+                0
+            )]
+        );
+    }
+
+    // A task force chosen whole (0x66bc48) keeps its force and slot, and a
+    // new tactic plays its formation line (0x005a3850: 0x6f + slot).
+    #[test]
+    fn a_chosen_task_force_takes_the_maneuver_as_a_force() {
+        let mut first = test_ship(64, 0, true, true);
+        first.task_force = 2;
+        let mut second = test_ship(65, 1, true, true);
+        second.task_force = 2;
+        let mut enemy = test_ship(128, 0, false, true);
+        enemy.source_position.z = 50.0;
+        let mut session = test_session(vec![first, second, enemy], Vec::new(), true);
+        assert_eq!(select_task_force(&mut session, 2), 2);
+        let mut state = TacticalState {
+            session: Some(session),
+            ..TacticalState::default()
+        };
+        activate_tactical_command(&mut state, TacticalCommandControl::OpenManeuvers);
+        activate_tactical_command(&mut state, TacticalCommandControl::Hammer);
+        activate_tactical_command(&mut state, TacticalCommandControl::ToggleTactic);
+        activate_tactical_command(&mut state, TacticalCommandControl::Confirm);
+        let session = state.session.as_ref().unwrap();
+        for ship in &session.ships[..2] {
+            assert_eq!(ship.task_force, 2);
+            assert_eq!(ship.order, TacticalOrder::Hammer);
+            assert_eq!(ship.tactic, TacticalTactic::Surround);
+        }
+        assert_eq!(
+            session.pending_voice_cues,
+            vec![TacticalVoiceCue::capital_formation(
+                TacticalVoiceFaction::Alliance,
+                2
+            )]
+        );
+    }
+
+    // 0x005a2c70: several selected units form one new force in the first
+    // free group slot (0x0059f610), found before they leave their own; with
+    // none free each takes a force of its own and the 0x84 line plays.
+    #[test]
+    fn selected_units_form_a_task_force_in_the_first_free_slot() {
+        let ships = (0..4)
+            .map(|index| {
+                let mut ship = test_ship(64 + index, index as usize, true, true);
+                ship.task_force = index as u8;
+                ship
+            })
+            .collect::<Vec<_>>();
+        let mut session = test_session(ships, Vec::new(), true);
+        session.ships[0].selected = true;
+        session.ships[1].selected = true;
+        assign_selected_command(&mut session, TacticalOrder::HoldPosition, None);
+        assert_eq!(session.ships[0].task_force, 4);
+        assert_eq!(session.ships[1].task_force, 4);
+        assert_eq!(session.task_force_selection, Some(4));
+
+        let mut full = test_session(
+            (0..8)
+                .map(|index| {
+                    let mut ship = test_ship(64, index, true, true);
+                    ship.task_force = index as u8;
+                    ship
+                })
+                .collect(),
+            Vec::new(),
+            true,
+        );
+        full.ships[0].selected = true;
+        full.ships[1].selected = true;
+        assign_selected_command(&mut full, TacticalOrder::HoldPosition, None);
+        assert_eq!(full.ships[0].task_force, TACTICAL_UNGROUPED_TASK_FORCE);
+        assert_eq!(full.ships[1].task_force, TACTICAL_UNGROUPED_TASK_FORCE);
+        assert_eq!(full.task_force_selection, None);
+        let panel = TacticalCommandPanel::Maneuvers {
+            pending_order: TacticalOrder::HoldPosition,
+            pending_tactic: TacticalTactic::StandOff,
+        };
+        queue_selected_command_voice(&mut full, panel, TacticalOrder::HoldPosition, false);
+        assert_eq!(
+            full.pending_voice_cues,
+            vec![TacticalVoiceCue::target_task_force_rejected(
+                TacticalVoiceFaction::Alliance
             )]
         );
     }
