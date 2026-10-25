@@ -10263,6 +10263,7 @@ mod tactical_ground_tests {
                 action_committed: false,
             }),
             death_star_beam: None,
+            turn_events: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,

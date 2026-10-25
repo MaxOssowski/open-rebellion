@@ -1252,14 +1252,41 @@ pub struct TacticalDeathStarBeam {
     pub target: usize,
     pub source_position: TacticalWorldPosition,
     pub target_position: TacticalWorldPosition,
-    /// The combat step whose turn runs event `0x44`.
-    pub fire_tick: u32,
-    /// The combat step whose turn runs the type-3 event.
-    pub resolve_tick: u32,
     /// Set once the beam has started.
     pub fired: bool,
     /// Seconds since the beam started.
     pub elapsed: f32,
+}
+
+/// A unit that a queued event names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TacticalUnitRef {
+    Ship(usize),
+    Fighter(usize),
+}
+
+/// An event of the battle manager's turn queue, by its dispatcher type
+/// (`0x005a9780`, table `0x5a9bc4`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TacticalTurnEvent {
+    /// `0x44`, `0x005ba520`: the superlaser's beam starts (`0x005c12d0`).
+    DeathStarBeam { target: usize },
+    /// Type 3 from the Death Star, `0x005b2b60`: the target dies.
+    DeathStarKill { target: usize },
+    /// `0x2d`, `FUN_005b1e40`: a unit still in the fight starts its jump
+    /// flight (state 7), or is destroyed if its hyperdrive no longer works
+    /// (`FUN_005b2720`).
+    JumpStart(TacticalUnitRef),
+    /// `0x2e`, `FUN_005b26d0` -> `FUN_005a90c0`: the jumped unit is gone
+    /// (state 9).
+    JumpEnd(TacticalUnitRef),
+}
+
+/// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TacticalQueuedEvent {
+    pub stamp: u32,
+    pub event: TacticalTurnEvent,
 }
 
 impl TacticalDeathStar {
@@ -1324,6 +1351,9 @@ pub struct BattleSession {
     pub death_star: Option<TacticalDeathStar>,
     /// Active superlaser beam and delayed target resolution.
     pub death_star_beam: Option<TacticalDeathStarBeam>,
+    /// The manager's turn queue (`+0x908` per side, `FUN_005a96b0`).
+    /// port: one queue in posting order for both sides.
+    pub turn_events: Vec<TacticalQueuedEvent>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -3427,6 +3457,7 @@ impl BattleSession {
             fighters,
             death_star,
             death_star_beam: None,
+            turn_events: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -4420,42 +4451,102 @@ impl BattleSession {
         }
     }
 
-    /// Runs the superlaser shot's two queued events at their turns.
-    fn advance_death_star_shot(&mut self) {
-        let Some(mut beam) = self.death_star_beam else {
+    /// `+0x878`: the event turns begun so far.
+    #[must_use]
+    pub fn event_turn(&self) -> u32 {
+        self.combat_tick / ORIGINAL_TACTICAL_TURN_STEPS
+    }
+
+    /// `+0x87c` between turns, as an order from the interface sees it.
+    #[must_use]
+    pub fn command_event_stamp(&self) -> u32 {
+        self.event_turn() + ORIGINAL_TACTICAL_EVENT_LEAD_TURNS
+    }
+
+    /// `+0x87c` within a step. A turn's updates run before `+0x87c`
+    /// advances (`0x005bedb9`, `0x005bedf6`), so on a turn's first step it
+    /// is one less.
+    fn step_event_stamp(&self) -> u32 {
+        let stamp = self.command_event_stamp();
+        if self.combat_tick % ORIGINAL_TACTICAL_TURN_STEPS == 0 {
+            stamp - 1
+        } else {
+            stamp
+        }
+    }
+
+    pub fn post_turn_event(&mut self, stamp: u32, event: TacticalTurnEvent) {
+        self.turn_events.push(TacticalQueuedEvent { stamp, event });
+    }
+
+    pub(crate) fn turn_event_pending(&self, event: TacticalTurnEvent) -> bool {
+        self.turn_events.iter().any(|queued| queued.event == event)
+    }
+
+    /// `FUN_005a96b0` at a turn's start (`0x005bec3c`): once `+0x878` has
+    /// reached `+0x8ac`, the events stamped `+0x878 - 1` run in order,
+    /// older ones are dropped and newer ones kept.
+    fn run_turn_events(&mut self) {
+        if self.combat_tick % ORIGINAL_TACTICAL_TURN_STEPS != 0
+            || self.event_turn() < ORIGINAL_TACTICAL_EVENT_LEAD_TURNS
+        {
+            return;
+        }
+        let due = self.event_turn() - 1;
+        let (now, later): (Vec<_>, Vec<_>) = std::mem::take(&mut self.turn_events)
+            .into_iter()
+            .filter(|queued| queued.stamp >= due)
+            .partition(|queued| queued.stamp == due);
+        self.turn_events = later;
+        for queued in now {
+            self.run_turn_event(queued.event);
+        }
+    }
+
+    fn run_turn_event(&mut self, event: TacticalTurnEvent) {
+        match event {
+            TacticalTurnEvent::DeathStarBeam { target } => self.start_death_star_beam(target),
+            TacticalTurnEvent::DeathStarKill { target } => self.resolve_death_star_shot(target),
+            TacticalTurnEvent::JumpStart(unit) => self.start_jump(unit),
+            TacticalTurnEvent::JumpEnd(unit) => self.end_jump(unit),
+        }
+    }
+
+    /// `0x005ba520` starts the beam (`0x005c12d0`), aimed at the target
+    /// where it is now.
+    fn start_death_star_beam(&mut self, target: usize) {
+        let position = self.ships.get(target).map(|ship| ship.source_position);
+        let Some(beam) = self.death_star_beam.as_mut().filter(|beam| beam.target == target) else {
             return;
         };
-        if !beam.fired && self.combat_tick >= beam.fire_tick {
-            beam.fired = true;
-            // `0x005c12d0` aims the beam at the target where it is now.
-            if let Some(target) = self.ships.get(beam.target) {
-                beam.target_position = target.source_position;
-            }
-            self.death_star_beam = Some(beam);
-            self.diagnostic_log.push(format!(
-                "[tactical_death_star] superlaser_fired target_object_id={}",
-                beam.target + 1
-            ));
+        beam.fired = true;
+        if let Some(position) = position {
+            beam.target_position = position;
         }
-        if self.combat_tick < beam.resolve_tick {
-            return;
-        }
+        self.diagnostic_log.push(format!(
+            "[tactical_death_star] superlaser_fired target_object_id={}",
+            target + 1
+        ));
+    }
+
+    /// `0x005b2b60` with the Death Star as its source.
+    fn resolve_death_star_shot(&mut self, target: usize) {
         self.death_star_beam = None;
-        // `0x005b2b60`: the Death Star must still be there, and the target
-        // still in the fight (`FUN_005ad870`).
+        // The Death Star must still be there, and the target still in the
+        // fight (`FUN_005ad870`).
         let death_star_present = self.death_star.is_some_and(|death_star| !death_star.destroyed);
-        if let Some(target) = self
+        if let Some(ship) = self
             .ships
-            .get_mut(beam.target)
+            .get_mut(target)
             .filter(|ship| death_star_present && ship.alive && !ship.jumping())
         {
-            target.hull_current = 0;
-            target.alive = false;
-            target.selected = false;
-            target.attack_target = None;
+            ship.hull_current = 0;
+            ship.alive = false;
+            ship.selected = false;
+            ship.attack_target = None;
             queue_original_tactical_impact(
                 &mut self.impact_effects,
-                beam.target,
+                target,
                 WeaponKind::Turbolaser,
                 OriginalTacticalImpactStage::Destroyed,
             );
@@ -4465,8 +4556,82 @@ impl BattleSession {
         }
         self.diagnostic_log.push(format!(
             "[tactical_death_star] superlaser_resolved target_object_id={}",
-            beam.target + 1
+            target + 1
         ));
+    }
+
+    /// `FUN_005b1e40`: a unit still in the fight (`FUN_005ad870`) with a
+    /// working hyperdrive (`FUN_005b1b70`) enters state 7, and
+    /// `FUN_005a6b40` starts its flight with the jump sound (`0x1d` /
+    /// `0x1f`). One whose hyperdrive no longer works is destroyed
+    /// (`FUN_005b2720`, slot `+0x1c`, `FUN_005b2d20`).
+    fn start_jump(&mut self, unit: TacticalUnitRef) {
+        match unit {
+            TacticalUnitRef::Ship(index) => {
+                let works = original_ship_hyperdrive_works(&self.ships, &self.field_effects, index);
+                let Some(ship) = self
+                    .ships
+                    .get_mut(index)
+                    .filter(|ship| ship.alive && !ship.jumping())
+                else {
+                    return;
+                };
+                if !works {
+                    ship.hull_current = 0;
+                    ship.shield = 0;
+                    ship.alive = false;
+                    ship.retreating = false;
+                    return;
+                }
+                // The step's flight then starts from 0 (`FUN_005a6b40`).
+                ship.retreat_progress = f32::MIN_POSITIVE;
+                ship.source_waypoint = None;
+                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
+                    TacticalAudioEvent::CapitalJump,
+                    0,
+                ));
+            }
+            TacticalUnitRef::Fighter(index) => {
+                let Some(fighter) = self
+                    .fighters
+                    .get_mut(index)
+                    .filter(|fighter| fighter.alive && !fighter.jumping())
+                else {
+                    return;
+                };
+                if !original_fighter_hyperdrive_works(fighter) {
+                    fighter.hull_current = 0.0;
+                    fighter.refresh_craft_count();
+                    fighter.alive = false;
+                    fighter.retreating = false;
+                    return;
+                }
+                // The step's flight then starts from 0 (`FUN_005a6b40`).
+                fighter.retreat_progress = f32::MIN_POSITIVE;
+                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
+                    TacticalAudioEvent::FighterJump,
+                    0,
+                ));
+            }
+        }
+    }
+
+    /// Event `0x2e` (`FUN_005a90c0`): state 9, the unit has left.
+    fn end_jump(&mut self, unit: TacticalUnitRef) {
+        match unit {
+            TacticalUnitRef::Ship(index) => {
+                if let Some(ship) = self.ships.get_mut(index).filter(|ship| ship.alive) {
+                    ship.alive = false;
+                    ship.retreated = true;
+                }
+            }
+            TacticalUnitRef::Fighter(index) => {
+                if let Some(fighter) = self.fighters.get_mut(index).filter(|fighter| fighter.alive)
+                {
+                    fighter.alive = false;
+                }
+            }
+        }
     }
 
     pub fn commit_death_star_shot(&mut self, target: usize) -> bool {
@@ -4488,19 +4653,17 @@ impl BattleSession {
         let target_position = self.ships[target].source_position;
         death_star.action_committed = true;
         death_star.laser_charge = 0.0;
-        // Event 0x44 is stamped `+0x87c` = the current turn plus the lead,
-        // and runs at the turn after its stamp.
-        let turn = self.combat_tick / ORIGINAL_TACTICAL_TURN_STEPS;
-        let fire_tick = (turn + ORIGINAL_TACTICAL_EVENT_LEAD_TURNS + 1) * ORIGINAL_TACTICAL_TURN_STEPS;
         self.death_star_beam = Some(TacticalDeathStarBeam {
             target,
             source_position: death_star.source_position,
             target_position,
-            fire_tick,
-            resolve_tick: fire_tick + ORIGINAL_TACTICAL_TURN_STEPS,
             fired: false,
             elapsed: 0.0,
         });
+        // Event 0x44 at `+0x87c`, the kill at `+0x87c + 1.0`.
+        let stamp = self.command_event_stamp();
+        self.post_turn_event(stamp, TacticalTurnEvent::DeathStarBeam { target });
+        self.post_turn_event(stamp + 1, TacticalTurnEvent::DeathStarKill { target });
         self.pending_voice_cues
             .push(TacticalVoiceCue::death_star_firing());
         self.diagnostic_log.push(format!(
@@ -4521,7 +4684,7 @@ impl BattleSession {
 
         self.combat_tick += 1;
         self.subsystem_repairs.clear();
-        self.advance_death_star_shot();
+        self.run_turn_events();
 
         self.advance_withdrawal();
         refresh_original_escort_targets(self);
@@ -5952,6 +6115,13 @@ impl BattleSession {
             .map(|index| original_ship_hyperdrive_works(&self.ships, &self.field_effects, index))
             .collect::<Vec<_>>();
         let first_members = original_task_force_first_members(&self.ships, side);
+        let requested = (0..self.ships.len())
+            .map(|index| {
+                self.turn_event_pending(TacticalTurnEvent::JumpStart(TacticalUnitRef::Ship(index)))
+            })
+            .collect::<Vec<_>>();
+        let stamp = self.step_event_stamp();
+        let mut posts = Vec::new();
         for (index, ship) in self.ships.iter_mut().enumerate() {
             if !ship.alive || !ship.retreating || ship.is_attacker != side {
                 continue;
@@ -5962,13 +6132,16 @@ impl BattleSession {
             let factor = ORIGINAL_JUMP_ACCELERATIONS[original_jump_factor_index(ordinal, index)];
             let side_z = if ship.identity.is_alliance { 1.0 } else { -1.0 };
             if ship.retreat_progress > 0.0 {
+                // State 8 waits for its event `0x2e`.
+                if ship.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
+                    continue;
+                }
                 let from = ship.retreat_progress;
                 ship.retreat_progress += ORIGINAL_TACTICAL_STEP_MILLISECONDS;
                 ship.source_position.z -=
                     side_z * original_jump_travel(factor, from, ship.retreat_progress);
                 if ship.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
-                    ship.alive = false;
-                    ship.retreated = true;
+                    posts.push(TacticalTurnEvent::JumpEnd(TacticalUnitRef::Ship(index)));
                 }
                 continue;
             }
@@ -5985,21 +6158,19 @@ impl BattleSession {
             // `FUN_005cc300` tries the jump of its first member only
             // (`0x005c6070`), and only once the force's move has arrived
             // (`0x005cc3ef`). port: the force's position is that member's.
+            // A member already in state 6 waits for its event `0x2d`.
             if !first_members.contains(&index)
+                || requested[index]
                 || (exit - ship.source_position.z).abs() > ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS
             {
                 continue;
             }
             if -((exit - ship.source_position.z) * side_z) <= ORIGINAL_JUMP_EXIT_DISTANCE {
-                ship.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
-                ship.source_waypoint = None;
-                ship.source_position.z -=
-                    side_z * original_jump_travel(factor, 0.0, ship.retreat_progress);
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    TacticalAudioEvent::CapitalJump,
-                    0,
-                ));
+                posts.push(TacticalTurnEvent::JumpStart(TacticalUnitRef::Ship(index)));
             }
+        }
+        for event in posts {
+            self.post_turn_event(stamp, event);
         }
         // A unit in its jump is waited on (port: one whose engines died
         // mid-jump still finishes it).
@@ -6060,6 +6231,13 @@ impl BattleSession {
     /// member's, and its engine power is its sublight rating.
     fn advance_withdrawing_fighters(&mut self, side: bool, time_left: f32, exits: [f32; 2]) {
         let seconds = ORIGINAL_TACTICAL_STEP_MILLISECONDS * 0.001;
+        let requested = (0..self.fighters.len())
+            .map(|index| {
+                self.turn_event_pending(TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(index)))
+            })
+            .collect::<Vec<_>>();
+        let stamp = self.step_event_stamp();
+        let mut posts = Vec::new();
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
             if !fighter.alive || !fighter.retreating || fighter.is_attacker != side {
                 continue;
@@ -6074,12 +6252,16 @@ impl BattleSession {
                 (exits[1], -1.0)
             };
             if fighter.retreat_progress > 0.0 {
+                // State 8 waits for its event `0x2e`.
+                if fighter.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
+                    continue;
+                }
                 let from = fighter.retreat_progress;
                 fighter.retreat_progress += ORIGINAL_TACTICAL_STEP_MILLISECONDS;
                 fighter.source_position.z -=
                     side_z * original_jump_travel(factor, from, fighter.retreat_progress);
                 if fighter.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {
-                    fighter.alive = false;
+                    posts.push(TacticalTurnEvent::JumpEnd(TacticalUnitRef::Fighter(index)));
                 }
                 continue;
             }
@@ -6089,18 +6271,16 @@ impl BattleSession {
                 fighter.source_position.z += along.signum() * step;
                 continue;
             }
-            if time_left > 0.0 || !original_fighter_hyperdrive_works(fighter) {
+            // A member already in state 6 waits for its event `0x2d`.
+            if time_left > 0.0 || requested[index] || !original_fighter_hyperdrive_works(fighter) {
                 continue;
             }
             if -((exit - fighter.source_position.z) * side_z) <= ORIGINAL_JUMP_EXIT_DISTANCE {
-                fighter.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
-                fighter.source_position.z -=
-                    side_z * original_jump_travel(factor, 0.0, fighter.retreat_progress);
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    TacticalAudioEvent::FighterJump,
-                    0,
-                ));
+                posts.push(TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(index)));
             }
+        }
+        for event in posts {
+            self.post_turn_event(stamp, event);
         }
     }
 

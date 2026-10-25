@@ -9360,6 +9360,7 @@ mod tests {
             fighters,
             death_star: None,
             death_star_beam: None,
+            turn_events: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -11641,9 +11642,14 @@ mod tests {
         session.paused = false;
         session.ships[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        for _ in 0..16 {
+        // Decided on step 1, the jump's event 0x2d runs at turn 4 (step
+        // 16) and its 0x2e at turn 11, step 44 (0x005ad4a0, FUN_005a96b0).
+        for _ in 0..43 {
             session.step();
         }
+        assert!(!session.ships[0].retreated);
+        session.step();
+        assert_eq!(session.combat_tick, 44);
         assert!(session.ships[0].retreated);
         // At the side's end the groups left in the fight without a
         // hyperdrive are destroyed (event 0x2f, FUN_005b2720): the one still
@@ -11707,9 +11713,13 @@ mod tests {
         session.paused = false;
         session.fighters[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        for _ in 0..16 {
+        // Decided on step 1, it jumps at turn 4 and leaves at turn 11, step
+        // 44 (events 0x2d and 0x2e, FUN_005a96b0).
+        for _ in 0..43 {
             session.step();
         }
+        assert!(session.fighters[0].alive);
+        session.step();
         let wing = &session.fighters[0];
         assert!(!wing.alive && wing.squad_count > 0);
         // No engine power, no jump: destroyed at the side's end
@@ -15092,8 +15102,6 @@ mod tests {
             target: 0,
             source_position: TacticalWorldPosition::ORIGIN,
             target_position: TacticalWorldPosition::ORIGIN,
-            fire_tick: 16,
-            resolve_tick: 20,
             fired: false,
             elapsed: 0.5,
         };
@@ -15125,9 +15133,21 @@ mod tests {
             });
             session.combat_tick = 6;
             assert!(session.commit_death_star_shot(0));
-            // Turn 1: fired at turn 5 (step 20), resolved at turn 6 (step 24).
-            assert_eq!(session.death_star_beam.unwrap().fire_tick, 20);
-            assert_eq!(session.death_star_beam.unwrap().resolve_tick, 24);
+            // Turn 1: event 0x44 stamped 4 (runs at turn 5, step 20), the
+            // kill stamped 5 (turn 6, step 24).
+            assert_eq!(
+                session.turn_events,
+                vec![
+                    rebellion_core::tactical::TacticalQueuedEvent {
+                        stamp: 4,
+                        event: rebellion_core::tactical::TacticalTurnEvent::DeathStarBeam { target: 0 },
+                    },
+                    rebellion_core::tactical::TacticalQueuedEvent {
+                        stamp: 5,
+                        event: rebellion_core::tactical::TacticalTurnEvent::DeathStarKill { target: 0 },
+                    },
+                ]
+            );
             if case == 0 {
                 session.ships[0].retreat_progress = 0.5;
             } else {
