@@ -53,8 +53,8 @@ A hull draw above 100 (`DAT_0066c51c`) sets the hull to 0 and posts a
 type-3 event with the attacker as its source (`0x005b6235`..
 `0x005b624e`). But `0x005b2b60`'s unit-source branch destroys only a
 target whose hull is below 0 (`0x005b2c08`..`0x005b2c19`), and the
-port's `original_hull_subsystem_kind` returns no hit above 100. What
-removes such a ship has not been traced.
+port's `original_hull_subsystem_kind` returns no hit above 100. Closed
+in `../2026-10-25-hull-score-above-100/`: the score never exceeds 100.
 
 ## Tests
 
