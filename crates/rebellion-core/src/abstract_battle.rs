@@ -3159,9 +3159,12 @@ mod tests {
         );
         tactical.ships[0].retreating = true;
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true);
+        // The carrier that stays is far off, so the group bound for it is
+        // still on its way at the side's end.
+        tactical.ships[1].source_position.z = 200.0;
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        // The time ends on step 1; the carrier's jump runs at turn 4 (step
-        // 16), flies 4000 ms and leaves at turn 11 (step 44).
+        // The time ends at turn 1 (step 4); the carrier's jump runs at turn
+        // 4 (step 16), flies 4000 ms and leaves at turn 11 (step 44).
         assert_eq!(step_until(&mut tactical, |t| t.ships[0].retreated), 44);
         for index in 0..3 {
             assert_eq!(tactical.fighters[index].squad_count, 0);
@@ -4301,6 +4304,11 @@ mod tests {
         let ship = &tactical.ships[0];
         assert_eq!(ship.order, TacticalOrder::None);
         assert_eq!(ship.attack_target, None);
+        // The frame's moves start at turn 3, step 12 (0x005bef1d).
+        for _ in 0..11 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[0].source_waypoint, None);
         tactical.step();
         let ship = &tactical.ships[0];
         let exit = tactical.withdrawal_exit_z(true);
@@ -5135,6 +5143,74 @@ mod tests {
         assert!(!tactical
             .take_pending_voice_cues()
             .contains(&crate::tactical::TacticalVoiceCue::death_star_ready()));
+    }
+
+    // The frame's slot +0x98 (0x005a9ec0) runs only once +0x878 has
+    // reached +0x8ac (0x005bef1d): a ship given a place to go holds still
+    // for the first three turns and moves from step 12.
+    #[test]
+    fn nothing_moves_for_the_first_three_turns() {
+        let mut mover = jumper(true, TacticalWeaponArc::default(), 0.0);
+        mover.sublight_engine_power = 10.0;
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![mover, enemy], Vec::new());
+        tactical.ships[0].source_waypoint = Some(crate::tactical::TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: 40.0,
+        });
+        let start = tactical.ships[0].source_position;
+        for _ in 0..11 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[0].source_position, start);
+        tactical.step();
+        assert_eq!(tactical.event_turn(), 3);
+        assert_ne!(tactical.ships[0].source_position, start);
+    }
+
+    // 0x005a9ec0 (0x005aa089..0x005aa17a) holds each unit in the fight
+    // within +-2/3 of the battle extent on each axis (_DAT_0066c290,
+    // _DAT_0066c294); a unit in its jump flight (state 7) is not held.
+    #[test]
+    fn a_unit_in_the_fight_is_held_within_the_field() {
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let outside = ship(true, TacticalWeaponArc::default(), 0.0);
+        let mut flying = jumper(true, TacticalWeaponArc::default(), 0.0);
+        flying.retreat_progress = 1_000.0;
+        let wing = fighter(true, TacticalWeaponArc::default());
+        let mut tactical = session(vec![enemy, outside, flying], vec![wing]);
+        // The float at 0x66c294.
+        assert_eq!(
+            crate::tactical::ORIGINAL_FIELD_LIMIT_EXTENT_SCALE.to_bits(),
+            0x3f2a_aaab
+        );
+        let limit =
+            tactical.source_layout.battle_extent * crate::tactical::ORIGINAL_FIELD_LIMIT_EXTENT_SCALE;
+        let far = crate::tactical::TacticalWorldPosition {
+            x: 3.0 * limit,
+            y: -3.0 * limit,
+            z: 3.0 * limit,
+        };
+        tactical.ships[1].source_position = far;
+        tactical.ships[2].source_position = far;
+        tactical.fighters[0].source_position = far;
+        for _ in 0..12 {
+            tactical.step();
+        }
+        let held = crate::tactical::TacticalWorldPosition {
+            x: limit,
+            y: -limit,
+            z: limit,
+        };
+        assert_eq!(tactical.ships[1].source_position, held);
+        assert_eq!(tactical.fighters[0].source_position, held);
+        let flown = tactical.ships[2].source_position;
+        assert!(flown.x > limit && flown.y < -limit && flown.z > limit);
     }
 
     // FUN_005a96b0 runs at a turn's start (every fourth step) the events

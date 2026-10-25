@@ -106,6 +106,10 @@ pub const ORIGINAL_TACTICAL_EVENT_LEAD_TURNS: u32 = 3;
 /// the units (`0x005a9de0`, which scales it by `DAT_0066c26c` = 0.001 for
 /// the recharge `FUN_005b6320`).
 pub const ORIGINAL_TACTICAL_TURN_MILLISECONDS: f32 = 1000.0;
+/// `DAT_0066c294` (and `DAT_0066c290` = -2/3), read by `0x005a9ec0`: the
+/// field's half-width on each axis, as a share of the battle extent
+/// `+0x8cc`.
+pub const ORIGINAL_FIELD_LIMIT_EXTENT_SCALE: f32 = 2.0 / 3.0;
 /// port: ORIGINAL_TACTICAL_TURN_MILLISECONDS in seconds.
 pub const ORIGINAL_TACTICAL_TURN_SECONDS: f32 = ORIGINAL_TACTICAL_TURN_MILLISECONDS / 1000.0;
 
@@ -4700,8 +4704,16 @@ impl BattleSession {
 
         self.advance_withdrawal(turn_step);
         refresh_original_escort_targets(self);
-        advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        // The frame's slot `+0x98` (`0x005a9ec0`) moves the units only once
+        // `+0x878` has reached `+0x8ac` (`0x005bef1d`): nothing moves for
+        // the first three turns.
+        if self.event_turn() >= ORIGINAL_TACTICAL_EVENT_LEAD_TURNS {
+            advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            self.keep_units_in_the_field();
+        }
+        // port: the recovery's states (FUN_005cf980, a task-force order
+        // step) and its flight are not yet split between turn and frame.
         self.advance_original_fighter_recovery(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         refresh_original_attack_targets(self);
         if turn_step {
@@ -4740,6 +4752,28 @@ impl BattleSession {
         }
 
         false
+    }
+
+    /// `0x005a9ec0` (`0x005aa089`..`0x005aa17a`): after its move, each unit
+    /// in the fight (state 2) is held within `+-2/3` of the battle extent
+    /// (`_DAT_0066c290`, `_DAT_0066c294`) on each axis.
+    fn keep_units_in_the_field(&mut self) {
+        let limit = self.source_layout.battle_extent * ORIGINAL_FIELD_LIMIT_EXTENT_SCALE;
+        let keep = |position: &mut TacticalWorldPosition| {
+            position.x = position.x.clamp(-limit, limit);
+            position.y = position.y.clamp(-limit, limit);
+            position.z = position.z.clamp(-limit, limit);
+        };
+        for ship in self.ships.iter_mut().filter(|ship| ship.alive && !ship.jumping()) {
+            keep(&mut ship.source_position);
+        }
+        for fighter in self
+            .fighters
+            .iter_mut()
+            .filter(|fighter| fighter.alive && !fighter.jumping())
+        {
+            keep(&mut fighter.source_position);
+        }
     }
 
     /// A turn's updates, each given the turn's 1000 ms:
