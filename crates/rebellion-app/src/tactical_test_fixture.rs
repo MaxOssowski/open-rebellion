@@ -457,10 +457,23 @@ pub(crate) fn apply(
         .collect();
     empty.sort_unstable();
     let ordinal = usize::from(request.faction != CockpitFaction::Alliance);
-    let system = empty
-        .get(ordinal)
-        .map(|&(_, key)| key)
-        .ok_or("fixture system is not empty and intact")?;
+    let system = if request.hull_scale_presentation {
+        // A0 TAC-01-C003 was taken at Mon Calamari: the same system gives
+        // the same planet and battle palette. Its own fleets stay out.
+        let key = world
+            .systems
+            .iter()
+            .find(|(_, system)| !system.is_destroyed && system.name == "Mon Calamari")
+            .map(|(key, _)| key)
+            .ok_or("fixture system Mon Calamari is missing")?;
+        world.systems[key].fleets.clear();
+        key
+    } else {
+        empty
+            .get(ordinal)
+            .map(|&(_, key)| key)
+            .ok_or("fixture system is not empty and intact")?
+    };
     let alliance_ship = world
         .capital_ship_classes
         .iter()

@@ -19,10 +19,10 @@ projected point.
 
 - **Placement.** Both hulls stand where A0 shows them. The Victory
   projects to (370, 133) on the 640 × 480 canvas, in A0 about (371, 132).
-- **Palette.** The fixture's system is the first empty one the galaxy
-  loads (palette 5538), not Mon Calamari. The hull textures are indexed
-  through the battle's palette, so their exact colours are compared only
-  approximately here.
+- **Palette.** At first the fixture's system was the first empty one the
+  galaxy loads (palette 5538), not Mon Calamari. Since
+  `../2026-10-25-battle-palette-output/` it fights at Mon Calamari
+  (palette 5537), as A0 does.
 - **Look.** The port drew both hulls dark, flat and shapeless. On average
   the Victory was (76, 83, 90) and the transport (104, 92, 64); in A0 they
   are (181, 188, 196) and (187, 173, 170).

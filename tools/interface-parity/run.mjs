@@ -3265,9 +3265,33 @@ async function probeTacticalDeathStarLaserJourney(
     "Death Star beam event did not run at its turn");
   // 0x005da830 grows the beam for 1 s (DAT_0066d4bc), then it ends. From
   // the Death Star at -2e x it enters the first Imperial view after ~0.85 s.
-  await page.waitForTimeout(900);
-  const beam = await dynamicInteractionFrame(page, folder, "death-star-superlaser-beam");
-  const beamVisibility = verifyTacticalGreenBeam(viewport, committed, beam);
+  // Its timer only advances in unpaused frames, so the probe pauses near
+  // that time and inspects still frames, resuming a frame or two at a time
+  // until the beam shows, instead of racing a moving frame.
+  const drawnLine = `[tactical_3d] death_star_beam target_object_id=${targetObjectId}`;
+  const drawnDeadline = Date.now() + 4000;
+  while (!consoleLines.some(({ text }) => text.includes(drawnLine)) && Date.now() < drawnDeadline) {
+    await page.waitForTimeout(10);
+  }
+  await page.waitForTimeout(700);
+  await page.mouse.click(pause.x, pause.y);
+  await page.waitForTimeout(80);
+  let beam;
+  let beamVisibility;
+  for (let attempt = 0; attempt < 16 && !beamVisibility; attempt += 1) {
+    beam = await stableInteractionFrame(page, folder, "death-star-superlaser-beam");
+    try {
+      beamVisibility = verifyTacticalGreenBeam(viewport, committed, beam);
+    } catch (error) {
+      if (!(error instanceof assert.AssertionError)) throw error;
+      await page.mouse.click(pause.x, pause.y);
+      await page.waitForTimeout(16);
+      await page.mouse.click(pause.x, pause.y);
+      await page.waitForTimeout(80);
+    }
+  }
+  assert.ok(beamVisibility, "Death Star beam produced no visible green aperture pixels");
+  await page.mouse.click(pause.x, pause.y);
   assert.ok(consoleLines.some(({ text }) =>
     text.includes(`[tactical_3d] death_star_beam target_object_id=${targetObjectId} grow_seconds=1 visible=true`)
       && text.includes("source=FUN_005da150,0x005da830")),
