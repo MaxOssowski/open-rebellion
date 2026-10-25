@@ -10266,6 +10266,7 @@ mod tactical_ground_tests {
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
+            task_force_formations: Default::default(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,

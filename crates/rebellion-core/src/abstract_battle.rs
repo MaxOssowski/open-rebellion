@@ -1862,6 +1862,7 @@ mod tests {
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
+            task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -6094,6 +6095,90 @@ mod tests {
         assert!(groups.iter().any(|(key, members)| key.id == 0
             && key.own_force == 0
             && members == &[AbstractUnit::Capital(2), AbstractUnit::Capital(3)]));
+    }
+
+    // 0x005eb8d0 (run in an emulator for indices 0..45): world-axis
+    // directions by index % 22, normalized, of length 12.5 (DAT_006bd88c)
+    // growing by a quarter every 22 (DAT_0066d8a8); cases 15 and 19 match.
+    #[test]
+    fn the_surround_slots_follow_the_original_table() {
+        use crate::tactical::original_surround_slot as slot;
+        let close = |v: crate::tactical::TacticalWorldVector, x: f32, y: f32, z: f32| {
+            assert!(
+                (v.x - x).abs() < 1e-4 && (v.y - y).abs() < 1e-4 && (v.z - z).abs() < 1e-4,
+                "{v:?}"
+            );
+        };
+        close(slot(0), 8.838_835, -8.838_835, 0.0);
+        close(slot(1), 0.0, 0.0, 12.5);
+        close(slot(2), 0.0, 0.0, -12.5);
+        close(slot(3), 12.5, 0.0, 0.0);
+        close(slot(7), 7.216_878, 7.216_878, 7.216_878);
+        close(slot(21), -8.838_835, -8.838_835, 0.0);
+        close(slot(23), 0.0, 0.0, 15.625);
+        close(slot(45), 0.0, 0.0, 18.75);
+        assert_eq!(slot(15), slot(19));
+        // Every entry at length 1, as the emulator printed it for 0..21
+        // (r = 0.707107, t = 0.57735).
+        let (r, t) = (std::f32::consts::FRAC_1_SQRT_2, 0.577_350_3);
+        let table = [
+            (r, -r, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.0, 0.0, -1.0),
+            (1.0, 0.0, 0.0),
+            (-1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, -1.0, 0.0),
+            (t, t, t),
+            (-t, -t, -t),
+            (-t, t, t),
+            (t, -t, -t),
+            (t, -t, t),
+            (-t, t, -t),
+            (-t, -t, t),
+            (t, t, -t),
+            (0.0, -r, -r),
+            (0.0, -r, r),
+            (-r, r, 0.0),
+            (r, r, 0.0),
+            (0.0, -r, -r),
+            (0.0, r, r),
+            (-r, -r, 0.0),
+        ];
+        for (index, (x, y, z)) in table.into_iter().enumerate() {
+            close(slot(index), x * 12.5, y * 12.5, z * 12.5);
+        }
+    }
+
+    // 0x005cb1a0 builds a Surround force's mover (0x005eb860): each member
+    // stands at the anchor less its slot (0x005eb040), the lead unit being
+    // index 1. port: anchored on the lead unit.
+    #[test]
+    fn a_surround_force_places_its_members_by_their_slots() {
+        use crate::tactical::{TacticalTactic, TacticalWorldPosition};
+        let mut ships = (0..5)
+            .map(|_| ship(true, TacticalWeaponArc::default(), 0.0))
+            .collect::<Vec<_>>();
+        ships[0].source_position = TacticalWorldPosition {
+            x: 10.0,
+            y: 2.0,
+            z: -40.0,
+        };
+        let mut formations = [[TacticalTactic::StandOff; 8]; 2];
+        formations[1][0] = TacticalTactic::Surround;
+        BattleSession::refresh_original_task_force_geometry(&mut ships, &formations);
+        let at = |x: f32, y: f32, z: f32| TacticalWorldPosition { x, y, z };
+        assert_eq!(ships[0].source_position, at(10.0, 2.0, -40.0));
+        assert_eq!(ships[1].source_position, at(10.0, 2.0, -15.0));
+        assert_eq!(ships[2].source_position, at(-2.5, 2.0, -27.5));
+        // Index 5 points up (0, 12.5, 0): the fifth member stands below.
+        assert_eq!(ships[4].source_position, at(10.0, -10.5, -27.5));
+        // The other side's slot 0 is unaffected.
+        formations[1][0] = TacticalTactic::StandOff;
+        formations[0][0] = TacticalTactic::Surround;
+        BattleSession::refresh_original_task_force_geometry(&mut ships, &formations);
+        assert_eq!(ships[1].source_position.y, 2.0);
+        assert_ne!(ships[1].source_position, at(10.0, 2.0, -15.0));
     }
 
     // SetOrder (0x005ca530) sets the order at once and posts event 0xa at

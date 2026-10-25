@@ -3092,6 +3092,11 @@ fn assign_selected_to_task_force(session: &mut BattleSession, group: u8) -> usiz
     if !assigned_groups[usize::from(group.min(7))] && next_blank != Some(group.min(7)) {
         return 0;
     }
+    if !assigned_groups[usize::from(group.min(7))] {
+        // A new force starts Stand Off (`0x005cbf50`).
+        session.task_force_formations[usize::from(session.player_is_attacker)]
+            [usize::from(group.min(7))] = TacticalTactic::StandOff;
+    }
     let mut assigned = 0;
     for ship in &mut session.ships {
         if ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker {
@@ -3100,7 +3105,10 @@ fn assign_selected_to_task_force(session: &mut BattleSession, group: u8) -> usiz
         }
     }
     if assigned > 0 {
-        BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+        BattleSession::refresh_original_task_force_geometry(
+            &mut session.ships,
+            &session.task_force_formations,
+        );
     }
     assigned
 }
@@ -3274,8 +3282,14 @@ fn form_selected_task_force(session: &mut BattleSession, members: &[usize]) {
         session.ships[index].task_force = force;
     }
     if force != TACTICAL_UNGROUPED_TASK_FORCE {
+        // A new force starts Stand Off (`0x005cbf50` builds `0x005ec310`).
+        session.task_force_formations[usize::from(session.player_is_attacker)]
+            [usize::from(force)] = TacticalTactic::StandOff;
         session.task_force_selection = Some(force);
-        BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+        BattleSession::refresh_original_task_force_geometry(
+            &mut session.ships,
+            &session.task_force_formations,
+        );
     }
 }
 
@@ -3338,6 +3352,22 @@ fn assign_selected_command(
             }
             selected_capitals.push(index);
             capital_members += 1;
+        }
+        // SetTactic (`0x005c9be0`) stores `+0x38` at once and posts `0x3d`;
+        // its turn rebuilds the force's formation. A force of its own holds
+        // one ship, whose formation has no other member.
+        if let (Some(tactic), Some(group)) = (tactic, session.task_force_selection) {
+            if !members.is_empty() {
+                let stamp = session.command_event_stamp();
+                session.post_turn_event(
+                    stamp,
+                    TacticalTurnEvent::TaskForceTactic {
+                        attacker: player_is_attacker,
+                        task_force: group,
+                        tactic,
+                    },
+                );
+            }
         }
     }
     // `SetOrder` (`0x005ca530`) sets the order at once and posts its
@@ -7637,7 +7667,10 @@ pub fn draw_tactical_view(
             }
         }
         if formation_footprint_changed && session.combat_tick == 0 && session.paused {
-            BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+            BattleSession::refresh_original_task_force_geometry(
+                &mut session.ships,
+                &session.task_force_formations,
+            );
         }
     }
     let rendered_ship_indexes = ship_report
@@ -8415,7 +8448,10 @@ fn apply_original_collision_envelopes(state: &mut TacticalState) {
         }
     }
     if changed && session.combat_tick == 0 && session.paused {
-        BattleSession::refresh_original_task_force_geometry(&mut session.ships);
+        BattleSession::refresh_original_task_force_geometry(
+            &mut session.ships,
+            &session.task_force_formations,
+        );
     }
 }
 
@@ -9219,6 +9255,7 @@ mod tests {
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
+            task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -15838,6 +15875,98 @@ mod tests {
                 TacticalVoiceFaction::Alliance,
                 2
             )]
+        );
+    }
+
+    // A ship added to a task force takes its formation place at once
+    // (FUN_005ec400's first follower, one spacing to the side).
+    #[test]
+    fn a_ship_assigned_to_a_task_force_takes_its_formation_place() {
+        let leader = test_ship(64, 0, true, true);
+        let mut joining = test_ship(64, 1, true, true);
+        joining.task_force = 1;
+        joining.source_position.x = 100.0;
+        joining.selected = true;
+        let mut session = test_session(vec![leader, joining], Vec::new(), true);
+        session.ships[0].task_force = 0;
+        assert_eq!(assign_selected_to_task_force(&mut session, 0), 1);
+        let offset = session.ships[1].source_position.x - session.ships[0].source_position.x;
+        assert_eq!(offset.abs(), ORIGINAL_BATTLE_SLOT_SPACING);
+
+        // Joining a force keeps its formation; a blank slot is a new force,
+        // which starts Stand Off (0x005cbf50).
+        session.task_force_formations[1][0] = TacticalTactic::Surround;
+        session.task_force_formations[1][1] = TacticalTactic::Surround;
+        session.ships[0].selected = false;
+        assert_eq!(assign_selected_to_task_force(&mut session, 0), 1);
+        assert_eq!(
+            session.task_force_formations[1][0],
+            TacticalTactic::Surround
+        );
+        assert_eq!(assign_selected_to_task_force(&mut session, 1), 1);
+        assert_eq!(
+            session.task_force_formations[1][1],
+            TacticalTactic::StandOff
+        );
+    }
+
+    // SetTactic (0x005c9be0) posts event 0x3d at the command stamp; only its
+    // turn rebuilds the force's mover with the tactic's formation
+    // (0x005c9c50 -> 0x005cb1a0).
+    #[test]
+    fn a_force_s_formation_changes_on_its_tactic_turn() {
+        let mut first = test_ship(64, 0, true, true);
+        first.task_force = 2;
+        let mut second = test_ship(65, 1, true, true);
+        second.task_force = 2;
+        // An enemy that outlasts the steps keeps the battle going.
+        let mut enemy = test_ship(128, 0, false, true);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        enemy.source_position.z = 400.0;
+        let mut session = test_session(vec![first, second, enemy], Vec::new(), true);
+        session.paused = false;
+        assert_eq!(select_task_force(&mut session, 2), 2);
+        assign_selected_command(
+            &mut session,
+            TacticalOrder::HoldPosition,
+            Some(TacticalTactic::Surround),
+        );
+        assert_eq!(session.ships[0].tactic, TacticalTactic::Surround);
+        assert_eq!(
+            session.task_force_formations[1][2],
+            TacticalTactic::StandOff
+        );
+        assert!(session.turn_events.iter().any(|queued| queued.stamp == 3
+            && queued.event
+                == TacticalTurnEvent::TaskForceTactic {
+                    attacker: true,
+                    task_force: 2,
+                    tactic: TacticalTactic::Surround,
+                }));
+        for _ in 0..15 {
+            session.step();
+        }
+        assert_eq!(
+            session.task_force_formations[1][2],
+            TacticalTactic::StandOff
+        );
+        session.step();
+        assert_eq!(
+            session.task_force_formations[1][2],
+            TacticalTactic::Surround
+        );
+
+        // A force formed from a selection starts Stand Off.
+        session.task_force_selection = None;
+        session.ships[0].selected = true;
+        session.ships[1].selected = true;
+        session.task_force_formations[1][0] = TacticalTactic::Surround;
+        assign_selected_command(&mut session, TacticalOrder::HoldPosition, None);
+        assert_eq!(session.ships[0].task_force, 0);
+        assert_eq!(
+            session.task_force_formations[1][0],
+            TacticalTactic::StandOff
         );
     }
 

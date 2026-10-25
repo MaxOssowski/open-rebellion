@@ -1395,6 +1395,14 @@ pub enum TacticalTurnEvent {
     /// withdrawal executor (`FUN_005cc300` for a capital ship's force,
     /// `FUN_005c6610` for a fighter group).
     WithdrawalExecutor(Vec<TacticalUnitRef>),
+    /// `0x3d`, posted by SetTactic (`0x005c9be0`): its handler
+    /// (`0x005c9c50`) rebuilds a capital force's mover with the tactic's
+    /// formation (`0x005cb1a0`).
+    TaskForceTactic {
+        attacker: bool,
+        task_force: u8,
+        tactic: TacticalTactic,
+    },
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
@@ -1477,6 +1485,11 @@ pub struct BattleSession {
     /// state `0x66bc48`, whose orders go to the force (`0x005a3630`,
     /// `0x005a3740`). `None` when single units are selected.
     pub task_force_selection: Option<u8>,
+    /// Each side's group slots' formation (the mover `+0x54`, built from
+    /// the tactic by `0x005cb1a0` when event `0x3d` runs, `0x005c9c50`).
+    /// Index: `[attacker as usize][slot]`. A new force starts Stand Off
+    /// (`0x005cbf50` builds `0x005ec310`).
+    pub task_force_formations: [[TacticalTactic; 8]; 2],
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -2905,6 +2918,55 @@ pub fn original_formation_capability_score(ship: &TacticalShip) -> f32 {
     maximum_weapon_range.mul_add(ORIGINAL_FORMATION_RANGE_PRIORITY, available_sublight)
 }
 
+/// `DAT_006bd88c`: 5.0 (`DAT_0066d840`) times 2.5 (`DAT_0066d85c`), set by
+/// the initializer `0x005e9db0`.
+pub const ORIGINAL_SURROUND_SPACING: f32 = 12.5;
+
+/// `0x005eb8d0`'s 22 directions by `index % 22` (table `0x5ebc30`; cases 15
+/// and 19 share `0x005ebb04`), before `0x005b50b0` normalizes them.
+const ORIGINAL_SURROUND_DIRECTIONS: [[f32; 3]; 22] = [
+    [1.0, -1.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [0.0, 0.0, -1.0],
+    [1.0, 0.0, 0.0],
+    [-1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, -1.0, 0.0],
+    [1.0, 1.0, 1.0],
+    [-1.0, -1.0, -1.0],
+    [-1.0, 1.0, 1.0],
+    [1.0, -1.0, -1.0],
+    [1.0, -1.0, 1.0],
+    [-1.0, 1.0, -1.0],
+    [-1.0, -1.0, 1.0],
+    [1.0, 1.0, -1.0],
+    [0.0, -1.0, -1.0],
+    [0.0, -1.0, 1.0],
+    [-1.0, 1.0, 0.0],
+    [1.0, 1.0, 0.0],
+    [0.0, -1.0, -1.0],
+    [0.0, 1.0, 1.0],
+    [-1.0, -1.0, 0.0],
+];
+
+/// The Surround formation's slot for member `index` (1 for the lead unit,
+/// `0x005ea250`), from `0x005eb8d0` (run in an emulator): its direction,
+/// normalized, times `(floor(index / 22) * 0.25 + 1) * DAT_006bd88c`
+/// (`DAT_0066d8a8` = 0.25, `DAT_0066d878` = -1.0). World axes: it reads no
+/// orientation.
+#[must_use]
+pub fn original_surround_slot(index: usize) -> TacticalWorldVector {
+    let [x, y, z] = ORIGINAL_SURROUND_DIRECTIONS[index % 22];
+    let direction = TacticalWorldVector { x, y, z }.normalized();
+    let rings = (index / 22) as f32;
+    let length = rings.mul_add(0.25, 1.0) * ORIGINAL_SURROUND_SPACING;
+    TacticalWorldVector {
+        x: direction.x * length,
+        y: direction.y * length,
+        z: direction.z * length,
+    }
+}
+
 /// Exact alternating slot sequence from `FUN_005ec400`: leader center, first
 /// follower right one spacing, second follower left one spacing, then right
 /// and left at each increasing multiple.
@@ -3608,6 +3670,7 @@ impl BattleSession {
             turn_events: Vec::new(),
             withdrawal_executors: Vec::new(),
             task_force_selection: None,
+            task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -3837,7 +3900,7 @@ impl BattleSession {
         // The original retained formation visual keeps member offsets attached
         // to its moving anchor. Reapply those offsets only after every member
         // has completed its stable-order movement and collision query.
-        Self::refresh_original_task_force_geometry(&mut self.ships);
+        Self::refresh_original_task_force_geometry(&mut self.ships, &self.task_force_formations);
         let faction = self.player_voice_faction();
         for (group, transitioned) in completed_player_task_forces.into_iter().enumerate() {
             if !transitioned {
@@ -4377,7 +4440,7 @@ impl BattleSession {
                 }
             }
         }
-        Self::refresh_original_task_force_geometry(ships);
+        Self::refresh_original_task_force_geometry(ships, &[[TacticalTactic::StandOff; 8]; 2]);
     }
 
     /// Apply `FUN_005ea250`, `FUN_005ec400`, and `FUN_005cbbc0`'s retained
@@ -4387,7 +4450,10 @@ impl BattleSession {
     /// close-mesh footprint without changing its source-selected leader. The
     /// lateral axis follows the leader's current retained-mode forward vector,
     /// so the formation remains attached while the leader turns and moves.
-    pub fn refresh_original_task_force_geometry(ships: &mut [TacticalShip]) {
+    pub fn refresh_original_task_force_geometry(
+        ships: &mut [TacticalShip],
+        formations: &[[TacticalTactic; 8]; 2],
+    ) {
         for is_alliance in [true, false] {
             for task_force in 0_u8..8 {
                 let mut members = ships
@@ -4409,6 +4475,24 @@ impl BattleSession {
                 });
                 let leader = members[0];
                 let anchor = ships[leader].source_position;
+                if formations[usize::from(ships[leader].is_attacker)][usize::from(task_force)]
+                    == TacticalTactic::Surround
+                {
+                    // `0x005eb860`'s slots: each member stands at the
+                    // anchor less its slot (`0x005eb040`), the lead unit at
+                    // index 1 (`0x005ea250`). port: anchored on the lead
+                    // unit, a member is its slot 1 less its own.
+                    let lead_slot = original_surround_slot(1);
+                    for (member_ordinal, index) in members.into_iter().enumerate().skip(1) {
+                        let slot = original_surround_slot(member_ordinal + 1);
+                        ships[index].source_position = TacticalWorldPosition {
+                            x: anchor.x + lead_slot.x - slot.x,
+                            y: anchor.y + lead_slot.y - slot.y,
+                            z: anchor.z + lead_slot.z - slot.z,
+                        };
+                    }
+                    continue;
+                }
                 let forward = ships[leader].source_forward.normalized();
                 let lateral = if forward == TacticalWorldVector::ZERO {
                     TacticalWorldVector {
@@ -4675,6 +4759,17 @@ impl BattleSession {
                 capitals,
                 fighters,
             } => self.run_order_executor(order, &capitals, &fighters),
+            TacticalTurnEvent::TaskForceTactic {
+                attacker,
+                task_force,
+                tactic,
+            } => {
+                if let Some(formation) = self.task_force_formations[usize::from(attacker)]
+                    .get_mut(usize::from(task_force))
+                {
+                    *formation = tactic;
+                }
+            }
             TacticalTurnEvent::WithdrawalExecutor(units) => {
                 for unit in units {
                     let in_battle = match unit {
