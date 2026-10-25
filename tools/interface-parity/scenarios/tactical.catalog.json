@@ -500,6 +500,18 @@
       "acceptance": "A1 source-identity, runtime-pack, context-switch, event-dispatch, and muted browser routing proof for MDATA.307, all 22 TACTICAL.DLL WAVE 13033–13054 weapon variants, and all 285 VOICEFXA/VOICEFXE command, result, withdrawal, Death Star, and trench-run recordings. Exact production dispatch for remaining completion, destruction, recovery, and warning families, shared-RNG sequence, mixing and interruption, audible native comparison, and lossless owned A0 acceptance remain open."
     },
     {
+      "slug": "production-hull-scale-a0",
+      "description": "A0 TAC-01-C003's battle, one Medium Transport against one Victory Destroyer with no fighters (extent 103), for a like-for-like hull pixel size",
+      "fixture_codes": { "alliance": 65829, "empire": 66085 },
+      "execution_kind": "snapshot",
+      "tactical_proof": false,
+      "production_participants": true,
+      "hull_scale_presentation": true,
+      "expected_status": "battle-ready",
+      "audit_cells": ["TAC-01-C003"],
+      "acceptance": "Measures each hull's lit-pixel box in the first paused frame for comparison with A0 TAC-01-C003 (Victory Destroyer 17 x 15 px)."
+    },
+    {
       "slug": "production-participants-3d-off",
       "description": "Framebuffer negative control with source participant submission and mapped capital/fighter fallbacks suppressed",
       "fixture_codes": { "alliance": 65801, "empire": 66057 },

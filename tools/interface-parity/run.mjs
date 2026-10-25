@@ -1569,6 +1569,55 @@ function parseTacticalScenePositions(line, label) {
   }));
 }
 
+// A0 TAC-01-C003's battle (one Medium Transport against one Victory
+// Destroyer, extent 103, FUN_005ab650): the bounding box, in 640 x 480
+// canvas pixels, of each hull's lit pixels around its projected point.
+function probeTacticalHullScale(viewport, folder, stable, consoleLines, ready) {
+  const participantLine = consoleLines.find(({ text }) =>
+    text.includes("[tactical_3d] participant_scene"));
+  const positions = parseTacticalScenePositions(participantLine, "hull-scale scene");
+  const image = PNG.sync.read(stable.bytes);
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const boxes = [];
+  for (const [objectId, point] of positions) {
+    let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+    const radius = Math.round(40 * scale);
+    for (let y = Math.max(0, Math.round(point.y) - radius);
+      y < Math.min(image.height, Math.round(point.y) + radius); y += 1) {
+      for (let x = Math.max(0, Math.round(point.x) - radius);
+        x < Math.min(image.width, Math.round(point.x) + radius); x += 1) {
+        const offset = (y * image.width + x) * 4;
+        const [red, green, blue] = [image.data[offset], image.data[offset + 1], image.data[offset + 2]];
+        // Hull pixels are lit grey; stars are single points and the cube
+        // edges pure blue.
+        const grey = red > 60 && green > 60 && blue > 60
+          && Math.abs(red - green) < 60 && Math.abs(green - blue) < 80;
+        if (!grey) continue;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      }
+    }
+    assert.ok(Number.isFinite(minX), `hull ${objectId} drew no lit pixels`);
+    boxes.push({
+      object_id: objectId,
+      canvas_x: (point.x - offsetX) / scale,
+      canvas_y: (point.y - offsetY) / scale,
+      width_px: (maxX - minX + 1) / scale,
+      height_px: (maxY - minY + 1) / scale,
+    });
+  }
+  console.log(`[hull_scale] ${JSON.stringify(boxes)}`);
+  fs.writeFileSync(path.join(folder, "hull-scale.json"), JSON.stringify(boxes, null, 2));
+  return [{
+    type: "hull-scale-a0-c003",
+    extent: ready.battle_extent ?? null,
+    boxes,
+    screenshot_sha256: sha256(stable.bytes),
+  }];
+}
+
 async function probeTacticalProductionParticipants(
   page, viewport, folder, stable, consoleLines, faction, ready,
 ) {
@@ -4545,6 +4594,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             planet_submitted: false,
             screenshot_sha256: sha256(stable.bytes),
           }]
+        : scenario.hull_scale_presentation
+        ? probeTacticalHullScale(viewport, folder, stable, consoleLines, ready)
         : scenario.production_participants
         ? await probeTacticalProductionParticipants(
           page, viewport, folder, stable, consoleLines, faction, ready,
@@ -4581,6 +4632,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         Boolean(scenario.battle_alert_presentation));
       assert.equal(ready.tactical_audio_presentation,
         Boolean(scenario.tactical_audio_presentation));
+      assert.equal(ready.hull_scale_presentation,
+        Boolean(scenario.hull_scale_presentation));
       assert.equal(ready.subsystem_field_command_presentation,
         Boolean(scenario.subsystem_field_command_presentation));
       assert.equal(ready.live_subsystem_damage_presentation,
@@ -4617,7 +4670,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       assert.equal(ready.planet_resource_id, ready.system_picture_id + 5500);
       assert.equal(ready.palette_resource_id, ready.system_picture_id + 5530);
       assert.ok(ready.attacker_ships > 0 && ready.defender_ships > 0);
-      assert.ok(ready.fighters > 0);
+      // A0 TAC-01-C003's battle has no fighters.
+      assert.equal(ready.fighters > 0, !scenario.hull_scale_presentation);
       const groupLayout = faction === "alliance"
         ? { first_active_objects: 12, second_active_objects: 2 }
         : { first_active_objects: 2, second_active_objects: 12 };
@@ -4625,7 +4679,16 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? { first_active_objects: 7, second_active_objects: 2 }
         : { first_active_objects: 2, second_active_objects: 7 };
       const projectileFieldLayout = { first_active_objects: 4, second_active_objects: 4 };
-      assert.deepEqual(ready.source_layout, scenario.group_presentation ? {
+      assert.deepEqual(ready.source_layout, scenario.hull_scale_presentation ? {
+        // One unit a side (A0 TAC-01-C003): 100 + 3 (FUN_005ab650).
+        first_active_objects: 1,
+        second_active_objects: 1,
+        battle_extent: 103,
+        outer_positive_z: 51.5,
+        outer_negative_z: -51.5,
+        inner_negative_z: -31.5,
+        inner_positive_z: 31.5,
+      } : scenario.group_presentation ? {
         ...groupLayout,
         battle_extent: 136,
         outer_positive_z: 68,
@@ -4719,7 +4782,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
               : scenario.command_assignment_presentation
                 || scenario.battle_options_withdrawal ? 6
                 : scenario.battle_results_presentation ? 12
-                  : scenario.death_star_presentation ? 3 : 4);
+                  : scenario.death_star_presentation ? 3
+                    : scenario.hull_scale_presentation ? 2 : 4);
       const expectedParticipantLanes = new Map([
         ["capital-ship:alliance", -53],
         ["capital-ship:empire", 53],
@@ -4896,6 +4960,14 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           position[2] === ready.source_layout.inner_negative_z));
         assert.ok(empireFighters.every(({ source_position: position }) =>
           position[2] === ready.source_layout.inner_positive_z));
+      } else if (scenario.hull_scale_presentation) {
+        // A0 TAC-01-C003: the Medium Transport (2070) and the Victory
+        // Destroyer (2550), each alone on its side's capital lane.
+        assert.deepEqual(ready.participants.map(({ kind, faction, resource_base, source_position }) =>
+          [kind, faction, resource_base, source_position]), [
+          ["capital-ship", "alliance", 2070, [-0, 0, -51.5]],
+          ["capital-ship", "empire", 2550, [-0, 0, 51.5]],
+        ]);
       } else {
         for (const participant of ready.participants) {
           const key = `${participant.kind}:${participant.faction}`;
@@ -4999,7 +5071,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           /light_directional_rgb=0\.8 light_ambient_rgb=0\.5 light_frame_source=5,5,-1 surface_to_light_rh=0\.70014006,0\.70014006,0\.14002801 light_constraint=z/,
           "source-traced tactical light rig did not preserve its retained-mode contract");
         assert.match(familyLogs[0]?.text || "",
-          /render_quality=gouraud device_dither=false texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_cw depth_test=less_equal depth_write=true specular=false material=diffuse_plus_emissive/,
+          /render_quality=gouraud device_dither=false texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular=false material=diffuse_plus_emissive/,
           "source-traced tactical renderer did not preserve its retained-mode device state");
         const expectedResources = scenario.expected_lod_sequence
           || [scenario.expected_lod_resource];
@@ -5138,13 +5210,15 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.equal(lodLogs.length, 0, "negative control submitted a tactical LOD mesh");
         if (scenario.production_participants) {
           if (!scenario.battle_results_presentation && !scenario.tactical_audio_presentation) {
+          // A0 TAC-01-C003's battle has a Medium Transport and a Victory.
+          const participantFamilies = scenario.hull_scale_presentation ? [2070, 2550] : [2010, 2510];
           assert.equal(participantFamilyLogs.length, 2,
             "production participants did not load exactly two source families");
           assert.deepEqual(participantFamilyLogs.map(({ text }) => {
             const match = text.match(/base=(\d+)/);
             assert.ok(match, "participant family log omitted its base");
             return Number(match[1]);
-          }).sort((a, b) => a - b), [2010, 2510]);
+          }).sort((a, b) => a - b), participantFamilies);
           assert.equal(participantSceneLogs.length, 1,
             "production participants did not emit one scene submission");
           const expectedShipCount = scenario.detail_escort_presentation
@@ -5153,7 +5227,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             : ready.attacker_ships + ready.defender_ships;
           assert.match(participantSceneLogs[0].text,
             new RegExp(`requested=${expectedShipCount} rendered=${expectedShipCount} `
-              + "families=2010,2510 .*source_positions=true"),
+              + `families=${participantFamilies.join(",")} .*source_positions=true`),
           "production participant scene used the wrong resource families or positions");
           assert.equal(participantBoundsLogs.length, 1,
             "production participants did not emit projected mesh bounds");
@@ -5203,10 +5277,14 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           }
           assert.equal(layoutLogs.length, 1,
             "production participants did not use the source tactical layout");
+          // FUN_005d3770 picks each hull's model by its depth along the view
+          // against 15 / field and 40 / field.
+          const selectedResources = [...(participantSceneLogs[0].text
+            .match(/resources=([^ ]+)/)?.[1] || "").matchAll(/:(\d+)/g)].map((match) => Number(match[1]));
           probes.push({
             type: "production-tactical-resource-families",
-            families: [2010, 2510],
-            selected_resources: [2012, 2512],
+            families: participantFamilies,
+            selected_resources: selectedResources,
             source_positions: true,
           });
           probes.push({
@@ -5388,19 +5466,20 @@ async function main() {
         "production-detail-escort-presentation",
         "production-battle-alert-entry",
         "production-tactical-audio-routing",
+        "production-hull-scale-a0",
         "production-participants-3d-off"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(29).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(30).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined]);
+        undefined, undefined, undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 36 }, (_, index) => index === 5));
+      Array.from({ length: 37 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 36 }, (_, index) => index === 6));
+      Array.from({ length: 37 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });

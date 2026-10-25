@@ -70,11 +70,14 @@ fn original_tactical_texture_filter() -> FilterMode {
 
 fn original_tactical_pipeline_params() -> PipelineParams {
     PipelineParams {
-        // Direct3D's default D3DCULL_CCW treats clockwise facets as front
-        // faces. The handedness reflection and index reversal in
-        // `decode_mesh_object` preserve that source winding.
+        // Direct3D's default D3DCULL_CCW keeps the clockwise facets. After
+        // the handedness reflection and index reversal in
+        // `decode_mesh_object` those facets reach GL counter-clockwise: with
+        // `Clockwise` here the port drew each hull's far, inward faces (every
+        // visible normal faced away, so the directional light never lit
+        // them), where A0 TAC-01-C003 shows the lit outer faces.
         cull_face: CullFace::Back,
-        front_face_order: FrontFaceOrder::Clockwise,
+        front_face_order: FrontFaceOrder::CounterClockwise,
         depth_write: true,
         depth_test: Comparison::LessOrEqual,
         ..Default::default()
@@ -96,7 +99,7 @@ fn original_tactical_light_factor(normal: Vec3) -> f32 {
         .normalize()
         .dot(original_surface_to_light_direction())
         .max(0.0);
-    (ORIGINAL_AMBIENT_LIGHT_RGB + ORIGINAL_DIRECTIONAL_LIGHT_RGB * diffuse).min(1.0)
+    ORIGINAL_AMBIENT_LIGHT_RGB + ORIGINAL_DIRECTIONAL_LIGHT_RGB * diffuse
 }
 
 /// Source-traced tactical camera state from `FUN_005d9490`, `FUN_005d9620`,
@@ -333,6 +336,25 @@ impl TacticalLodView {
 impl Default for TacticalLodView {
     fn default() -> Self {
         Self::CLOSE_FIXTURE
+    }
+}
+
+/// `FUN_005d3770`'s inputs for a hull: the depth is the object's offset from
+/// the camera along the camera's direction, made positive (`0x005d37b3`..
+/// `0x005d37e9`), and the scale the thresholds are divided by is the active
+/// camera's slot `+0x14` (`0x005d98f0`), its `+0x48`: the field of view,
+/// 0.2 at the battle's start (`0x005c1e42`, `0x005d9620`), times 0.9 or 1.1
+/// for each zoom step (`0x005d9830`, `0x005d9860`).
+fn original_participant_lod_view(
+    pose: &OriginalCameraPose,
+    position: Vec3,
+    high_detail: bool,
+) -> TacticalLodView {
+    let forward = (pose.target - pose.position).normalize_or_zero();
+    TacticalLodView {
+        view_depth: (position - pose.position).dot(forward).abs(),
+        projection_scale: pose.field,
+        high_detail,
     }
 }
 
@@ -1702,11 +1724,7 @@ impl TacticalAssetRenderer {
                 .unwrap_or(OriginalTacticalLod::Medium);
             let lod = select_original_tactical_lod(
                 prior_lod,
-                TacticalLodView {
-                    view_depth: pose.position.distance(object.position),
-                    projection_scale: 1.0,
-                    high_detail: self.high_detail_models,
-                },
+                original_participant_lod_view(&pose, object.position, self.high_detail_models),
             );
             let asset = &family[lod as usize];
             if !asset.has_drawable_geometry() {
@@ -2402,7 +2420,7 @@ impl TacticalAssetRenderer {
         self.assets = assets;
         self.family_loads = self.family_loads.saturating_add(1);
         macroquad::logging::info!(
-            "[tactical_3d] family_loaded base=2560 resources=2560,2561,2562 textures=SDESTI52.BMP,SDESTI_M.BMP palette_selector={} palette_resource_id={} palette_flags=68 transform=authored_xyz_z_reflection light_directional_rgb={} light_ambient_rgb={} light_frame_source=5,5,-1 surface_to_light_rh={},{},{} light_constraint=z render_quality=gouraud device_dither={} texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_cw depth_test=less_equal depth_write=true specular={} material=diffuse_plus_emissive diagnostics={} family_loads={}",
+            "[tactical_3d] family_loaded base=2560 resources=2560,2561,2562 textures=SDESTI52.BMP,SDESTI_M.BMP palette_selector={} palette_resource_id={} palette_flags=68 transform=authored_xyz_z_reflection light_directional_rgb={} light_ambient_rgb={} light_frame_source=5,5,-1 surface_to_light_rh={},{},{} light_constraint=z render_quality=gouraud device_dither={} texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular={} material=diffuse_plus_emissive diagnostics={} family_loads={}",
             self.palette_selector,
             palette_resource_id,
             ORIGINAL_DIRECTIONAL_LIGHT_RGB,
@@ -3353,7 +3371,7 @@ void main() {
     uv = texcoord;
     tint = color0 / 255.0;
     lowp float diffuse = max(dot(normalize(turned), normalize(SourceLightDirectionAmbient.xyz)), 0.0);
-    light = min(vec3(1.0), vec3(SourceLightDirectionAmbient.w) + SourceLightColorDirectional.rgb * SourceLightColorDirectional.w * diffuse);
+    light = vec3(SourceLightDirectionAmbient.w) + SourceLightColorDirectional.rgb * SourceLightColorDirectional.w * diffuse;
 }"#;
 
 const TACTICAL_FRAGMENT_GLSL: &str = r#"#version 100
@@ -3365,8 +3383,8 @@ uniform sampler2D Texture;
 uniform lowp vec4 MaterialEmissive;
 void main() {
     lowp vec4 texel = texture2D(Texture, uv);
-    lowp vec3 material = min(vec3(1.0), tint.rgb * light + MaterialEmissive.rgb);
-    gl_FragColor = vec4(texel.rgb * material, texel.a * tint.a);
+    lowp vec3 material = tint.rgb * light + MaterialEmissive.rgb;
+    gl_FragColor = vec4(min(vec3(1.0), texel.rgb * material), texel.a * tint.a);
 }"#;
 
 const TACTICAL_METAL: &str = r#"
@@ -3404,13 +3422,13 @@ vertex RasterizerData vertexShader(Vertex v [[stage_in]], constant Uniforms& u [
     out.uv = v.texcoord;
     out.tint = v.color0 / 255.0;
     float diffuse = max(dot(normalize(turned), normalize(u.SourceLightDirectionAmbient.xyz)), 0.0);
-    out.light = min(float3(1.0), float3(u.SourceLightDirectionAmbient.w) + u.SourceLightColorDirectional.rgb * u.SourceLightColorDirectional.w * diffuse);
+    out.light = float3(u.SourceLightDirectionAmbient.w) + u.SourceLightColorDirectional.rgb * u.SourceLightColorDirectional.w * diffuse;
     return out;
 }
 fragment float4 fragmentShader(RasterizerData in [[stage_in]], constant Uniforms& u [[buffer(0)]], texture2d<float> Texture [[texture(0)]], sampler TextureSmplr [[sampler(0)]]) {
     float4 texel = Texture.sample(TextureSmplr, in.uv);
-    float3 material = min(float3(1.0), in.tint.rgb * in.light + u.MaterialEmissive.rgb);
-    return float4(texel.rgb * material, texel.a * in.tint.a);
+    float3 material = in.tint.rgb * in.light + u.MaterialEmissive.rgb;
+    return float4(min(float3(1.0), texel.rgb * material), texel.a * in.tint.a);
 }"#;
 
 #[cfg(test)]
@@ -3496,6 +3514,8 @@ mod tests {
     // Source: FUN_005d4d10 creates the directional light frame at (5,5,-1)
     // and the ambient light. Intensity values sit behind COM calls, so the
     // intensity assertions pin the port's reading, not a recovered value.
+    // The light is not clamped before the texture: A0 TAC-01-C003's hulls
+    // reach 255 where a clamped light stops at the brightest texel.
     #[test]
     fn source_light_rig_preserves_retained_mode_direction_and_intensity() {
         let direction = original_surface_to_light_direction();
@@ -3507,10 +3527,55 @@ mod tests {
             original_tactical_light_factor(-direction),
             ORIGINAL_AMBIENT_LIGHT_RGB,
         );
-        assert_near(original_tactical_light_factor(direction), 1.0);
+        assert_near(original_tactical_light_factor(direction), 1.3);
         assert_near(
             original_tactical_light_factor(vec3(-1.0, 1.0, 0.0)),
             ORIGINAL_AMBIENT_LIGHT_RGB,
+        );
+    }
+
+    // Source: FUN_005d3770 takes a hull's offset from the camera along the
+    // camera's direction, made positive, and divides its thresholds by the
+    // camera's +0x48 (0x005d98f0), the field: 0.2 at the battle's start.
+    #[test]
+    fn a_hull_s_detail_follows_its_depth_along_the_view_and_the_field() {
+        let pose = OriginalCameraPose {
+            position: vec3(0.0, 0.0, -10.0),
+            up: Vec3::Y,
+            field: 0.2,
+            fovy_radians: 0.4,
+            near: 1.0,
+            far: 100.0,
+            pitch_degrees: 0,
+            yaw_degrees: 0,
+            zoom_step: 5,
+            orbit_step: 5,
+            target_object_id: None,
+            target: Vec3::ZERO,
+        };
+        let view = original_participant_lod_view(&pose, vec3(3.0, 4.0, 5.0), true);
+        assert_near(view.view_depth, 15.0);
+        assert_near(view.projection_scale, 0.2);
+        // Behind the camera the depth is made positive.
+        assert_near(original_participant_lod_view(&pose, vec3(0.0, 0.0, -30.0), true).view_depth, 20.0);
+        // 15 / 0.2 = 75 and 40 / 0.2 = 200: close, medium and far.
+        let at = |depth: f32| {
+            select_original_tactical_lod(
+                OriginalTacticalLod::Medium,
+                original_participant_lod_view(&pose, vec3(0.0, 0.0, depth - 10.0), true),
+            )
+        };
+        assert_eq!(at(74.0), OriginalTacticalLod::Close);
+        assert_eq!(at(150.0), OriginalTacticalLod::Medium);
+        assert_eq!(at(213.0), OriginalTacticalLod::Far);
+        // The direction runs from the camera to its target.
+        let aside = OriginalCameraPose {
+            target: vec3(10.0, 0.0, 0.0),
+            ..pose
+        };
+        assert_near(
+            original_participant_lod_view(&aside, vec3(10.0, 0.0, 0.0), true).view_depth,
+            200.0_f32.sqrt(),
         );
     }
 
@@ -3522,7 +3587,7 @@ mod tests {
         assert_eq!(original_tactical_texture_filter(), FilterMode::Nearest);
         let pipeline = original_tactical_pipeline_params();
         assert_eq!(pipeline.cull_face, CullFace::Back);
-        assert_eq!(pipeline.front_face_order, FrontFaceOrder::Clockwise);
+        assert_eq!(pipeline.front_face_order, FrontFaceOrder::CounterClockwise);
         assert_eq!(pipeline.depth_test, Comparison::LessOrEqual);
         assert!(pipeline.depth_write);
         assert!(pipeline.color_blend.is_none());
