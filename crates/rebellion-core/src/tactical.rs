@@ -125,6 +125,10 @@ pub const ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE: f32 = 0.5;
 /// `_DAT_0066cff0` in `FUN_005cc300`: after the side's time a unit within
 /// 8.0 of its exit line (along the side vector) starts its jump.
 pub const ORIGINAL_JUMP_EXIT_DISTANCE: f32 = 8.0;
+/// `FUN_005c6610` passes 1.0 (`0x005c66b7`) as the arrival radius of its
+/// fighter force's move (`0x005ec0d0`, the mover's slot `+0xc`): within it
+/// the move ends (returns 0) and only then are the members' jumps tried.
+pub const ORIGINAL_FIGHTER_WITHDRAWAL_ARRIVAL_RADIUS: f32 = 1.0;
 /// `_DAT_0066c24c`: `FUN_005a6b40` ends the jump (state 7 -> 8) when its
 /// clock `+0x50` reaches 4000 ms; event `0x2e` then removes the unit.
 pub const ORIGINAL_JUMP_MILLISECONDS: f32 = 4_000.0;
@@ -5964,9 +5968,14 @@ impl BattleSession {
     /// (`FUN_005b1b70`) within 8.0 (`_DAT_0066cb0c`) of that line starts its
     /// jump (state 6, event `0x2d`), and leaves when the jump's 4000 ms end
     /// (`FUN_005a6b40`, event `0x2e`) with its craft. One that cannot jump
-    /// is destroyed at the side's end (`FUN_005b2720`). port: the group flies straight
-    /// at its sublight rating, as on its way to a carrier; a group's engine
-    /// power is its sublight rating.
+    /// is destroyed at the side's end (`FUN_005b2720`).
+    ///
+    /// The move (`0x005ec0d0`) aims at the force's own x and y and the
+    /// line's z. Beyond the arrival radius it flies straight there at the
+    /// slowest member's engine power (slot `+0x90`, `0x005ea740`) for the
+    /// step's time, unclamped, and returns 1, which skips the jumps; within
+    /// it the force stops and returns 0. port: a group's position is its
+    /// member's, and its engine power is its sublight rating.
     fn advance_withdrawing_fighters(&mut self, side: bool, time_left: f32, exits: [f32; 2]) {
         let seconds = ORIGINAL_TACTICAL_STEP_MILLISECONDS * 0.001;
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
@@ -5993,8 +6002,11 @@ impl BattleSession {
                 continue;
             }
             let along = exit - fighter.source_position.z;
-            let step = fighter.sublight_engine_power.max(0.0) * seconds;
-            fighter.source_position.z += along.clamp(-step, step);
+            if along.abs() > ORIGINAL_FIGHTER_WITHDRAWAL_ARRIVAL_RADIUS {
+                let step = fighter.sublight_engine_power.max(0.0) * seconds;
+                fighter.source_position.z += along.signum() * step;
+                continue;
+            }
             if time_left > 0.0 || !original_fighter_hyperdrive_works(fighter) {
                 continue;
             }

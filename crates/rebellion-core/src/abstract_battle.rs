@@ -4176,17 +4176,44 @@ mod tests {
         tactical.fighters[0].source_position.z = exit + 9.0;
         tactical.withdrawal_ms = Some(2.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         tactical.step();
-        // 4.0 a second for 250 ms: one unit nearer, still beyond 8.0.
+        // 4.0 a second for 250 ms: one unit nearer.
         assert_eq!(tactical.fighters[0].source_position.z, exit + 8.0);
         assert_eq!(tactical.fighters[0].retreat_progress, 0.0);
+        // Within 8.0 of the line but still moving (0x005ec0d0 returns 1
+        // beyond its 1.0 radius), so FUN_005c6610 tries no jump yet.
+        for _ in 0..7 {
+            tactical.step();
+        }
+        assert_eq!(tactical.fighters[0].source_position.z, exit + 1.0);
+        assert_eq!(tactical.fighters[0].retreat_progress, 0.0);
         tactical.step();
-        // Its jump starts and moves it on at once: k = 25 (DAT_006bc47c)
-        // for 250 ms (FUN_005a6b40).
+        // Arrived: its jump starts and moves it on at once: k = 25
+        // (DAT_006bc47c) for 250 ms (FUN_005a6b40).
         assert_eq!(
             tactical.fighters[0].source_position.z,
-            exit + 7.0 - 25.0 * 0.25 * 0.25
+            exit + 1.0 - 25.0 * 0.25 * 0.25
         );
         assert!(tactical.fighters[0].retreat_progress > 0.0);
+    }
+
+    // 0x005ec0d0 moves a full step at the force's speed, not clamped to
+    // the distance left, and stops only within its 1.0 radius.
+    #[test]
+    fn a_withdrawing_fighter_group_overshoots_its_line_by_a_full_step() {
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.retreating = true;
+        wing.sublight_engine_power = 10.0;
+        let mut tactical = session(vec![enemy], vec![wing]);
+        let exit = tactical.withdrawal_exit_z(true);
+        tactical.fighters[0].source_position.z = exit + 2.0;
+        tactical.withdrawal_ms = Some(100.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.step();
+        assert_eq!(tactical.fighters[0].source_position.z, exit - 0.5);
+        tactical.step();
+        assert_eq!(tactical.fighters[0].source_position.z, exit - 0.5);
     }
 
     // FUN_005be160 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
