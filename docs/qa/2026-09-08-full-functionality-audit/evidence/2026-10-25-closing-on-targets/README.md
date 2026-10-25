@@ -53,14 +53,15 @@ slot `+0xc` -> object slot `+4`):
 - On arrival a waypoint now ends only a maneuver (`FUN_005a8f70`). An
   attack order outlives its route. Before, every order but Escort was
   cleared at a route's end.
-- `port:` the object's `+0xc` (the reach beyond the target's) is not kept,
-  since Stand Off's step does not use it. Escort keeps its own movement.
+- `port:` the object's `+0xc` (the reach beyond the target's) was not kept
+  at first, since Stand Off's capital step does not use it; fighters use it
+  (`../2026-10-25-fighters-closing/`). Escort keeps its own movement.
 
 ## Not ported
 
 - The AI's switch to Surround for a force of more than 7
   (`0x005c9be0(1)`, under a `+0x34` condition not read).
-- Fighter groups closing on targets (`FUN_005c6610`).
+- Fighter groups closing on targets: since `../2026-10-25-fighters-closing/`.
 
 ## Tests
 

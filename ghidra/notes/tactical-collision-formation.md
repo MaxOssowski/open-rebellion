@@ -302,4 +302,4 @@ its band (its slot `+4`) once a turn. The objects are:
 
 Ported in s101 (`update_engagement_bands`, `advance_engagement_approach`;
 `docs/qa/.../2026-10-25-closing-on-targets/`). Not ported: the AI's switch
-to Surround above 7 members, and fighter groups closing (`FUN_005c6610`).
+to Surround above 7 members. Fighter groups (`FUN_005c6610`) since s102.

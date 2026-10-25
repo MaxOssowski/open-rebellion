@@ -1494,6 +1494,8 @@ pub struct BattleSession {
     /// tactic object's `+0x30` and `+0x34` (slot `+0x10`), recomputed once
     /// a turn through the force's slot `+0xc` (`0x005c9bd0`).
     pub engagement_bands: Vec<TacticalEngagementBand>,
+    /// Each fighter force's circling angle (`+0xc0`, `FUN_005c6610`).
+    pub fighter_orbit_angles: Vec<f32>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -2926,9 +2928,13 @@ pub fn original_formation_capability_score(ship: &TacticalShip) -> f32 {
 /// tactic object), kept by its lead unit.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TacticalEngagementBand {
-    pub leader: usize,
+    pub leader: TacticalUnitRef,
     pub min: f32,
     pub max: f32,
+    /// The object's `+0xc`: Surround's 5.0, Stand Off's reach beyond the
+    /// target's or a third into its band. A fighter force steps by it
+    /// (`FUN_005c6610`).
+    pub step: f32,
 }
 
 /// Surround's band (`0x005edf00`): 0 to 5.0 × 0.5 (`DAT_0066daa8`,
@@ -3702,6 +3708,7 @@ impl BattleSession {
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             engagement_bands: Vec::new(),
+            fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -5090,6 +5097,7 @@ impl BattleSession {
             // The forces' order steps (slot `+0x14`) come before the units'
             // moves (slot `+0x8`) in the frame (`0x005a9ec0`).
             self.advance_engagement_approach();
+            self.advance_fighter_approach();
             self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.advance_trench_run_approach(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.keep_units_in_the_field();
@@ -6752,11 +6760,17 @@ impl BattleSession {
     /// - an unarmed force keeps max(target range × 1.2, 10) to 1e6.
     pub(crate) fn stand_off_band(
         &self,
-        members: &[usize],
+        members: &[TacticalUnitRef],
         target: TacticalAttackTarget,
-    ) -> (f32, f32) {
-        let (target_arcs, target_ranges, target_recharge) = match target {
-            TacticalAttackTarget::CapitalShip(index) => {
+    ) -> (f32, f32, f32) {
+        let max_range = |ranges: TacticalWeaponRanges| {
+            ranges
+                .ion_cannon
+                .max(ranges.laser_cannon)
+                .max(ranges.turbolaser)
+        };
+        let unit_weapons = |unit: TacticalUnitRef| match unit {
+            TacticalUnitRef::Ship(index) => {
                 let ship = &self.ships[index];
                 (
                     ship.weapon_arcs.to_vec(),
@@ -6764,7 +6778,7 @@ impl BattleSession {
                     ship.effective_weapon_recharge(),
                 )
             }
-            TacticalAttackTarget::FighterGroup(index) => {
+            TacticalUnitRef::Fighter(index) => {
                 let fighter = &self.fighters[index];
                 (
                     vec![fighter.weapon_arc],
@@ -6773,33 +6787,26 @@ impl BattleSession {
                 )
             }
         };
-        let vs_fighter = matches!(target, TacticalAttackTarget::FighterGroup(_));
-        let max_range = |ranges: TacticalWeaponRanges| {
-            ranges
-                .ion_cannon
-                .max(ranges.laser_cannon)
-                .max(ranges.turbolaser)
+        let target_unit = match target {
+            TacticalAttackTarget::CapitalShip(index) => TacticalUnitRef::Ship(index),
+            TacticalAttackTarget::FighterGroup(index) => TacticalUnitRef::Fighter(index),
         };
+        let (target_arcs, target_ranges, target_recharge) = unit_weapons(target_unit);
+        let vs_fighter = matches!(target, TacticalAttackTarget::FighterGroup(_));
+        let leader_is_fighter = matches!(members[0], TacticalUnitRef::Fighter(_));
         let target_reach = max_range(target_ranges);
         let mut weapons = Vec::new();
         let mut own_reach = 0.0_f32;
-        for &index in members {
-            let ship = &self.ships[index];
-            Self::weapon_bands(
-                &ship.weapon_arcs,
-                ship.weapon_ranges,
-                ship.effective_weapon_recharge(),
-                vs_fighter,
-                1.0,
-                &mut weapons,
-            );
-            own_reach = own_reach.max(max_range(ship.weapon_ranges));
+        for &member in members {
+            let (arcs, ranges, recharge) = unit_weapons(member);
+            Self::weapon_bands(&arcs, ranges, recharge, vs_fighter, 1.0, &mut weapons);
+            own_reach = own_reach.max(max_range(ranges));
         }
         Self::weapon_bands(
             &target_arcs,
             target_ranges,
             target_recharge,
-            false,
+            leader_is_fighter,
             -1.0,
             &mut weapons,
         );
@@ -6812,6 +6819,7 @@ impl BattleSession {
             .collect::<Vec<_>>();
         edges.sort_by(f32::total_cmp);
         edges.dedup();
+        let mut reach = 0.0_f32;
         let mut best: Option<(f32, f32)> = None;
         let mut best_worth = f32::MIN;
         let mut lo = 0.0;
@@ -6821,18 +6829,27 @@ impl BattleSession {
                 .filter(|(range, _)| *range >= hi)
                 .map(|(_, worth)| *worth)
                 .sum::<f32>();
+            if reach <= hi && target_reach < hi {
+                reach = hi - target_reach;
+            }
             if best_worth <= worth && hi <= own_reach {
                 best_worth = worth;
                 best = Some((lo, hi));
             }
             lo = hi;
         }
-        // port: the object's `+0xc` (the reach beyond the target's, or a
-        // third into the band) is not kept: Stand Off's step does not use
-        // it. The band is the best one either way.
+        // `+0xc`: 5.0 from the constructor (`DAT_0066cc94`), then the reach
+        // beyond the target's, or a third (`DAT_0066dab8`) into the band.
+        let mut step = ORIGINAL_SURROUND_APPROACH_STEP;
+        if reach > 0.0 {
+            step = reach;
+        } else if let Some((lo, hi)) = best {
+            step = (hi - lo).mul_add(1.0 / 3.0, lo);
+        }
         let (mut min, mut max) = best.unwrap_or((0.0, 0.0));
         if own_reach == 0.0 {
             let keep = (target_reach * 1.2).max(10.0);
+            step = keep;
             min = keep;
             max = 1_000_000.0;
         }
@@ -6840,29 +6857,169 @@ impl BattleSession {
             max = ORIGINAL_STAND_OFF_EMPTY_MAX;
         }
         min = min.max(ORIGINAL_STAND_OFF_BAND_FLOOR);
-        (min, max)
+        (min, max, step)
     }
 
     /// Once a turn (`0x005a9d40` -> force slot `+0xc`, `0x005c9bd0`): each
     /// force's tactic object recomputes its band against its first target.
     pub(crate) fn update_engagement_bands(&mut self) {
+        let mut forces = self
+            .capital_forces()
+            .into_iter()
+            .map(|members| {
+                members
+                    .into_iter()
+                    .map(TacticalUnitRef::Ship)
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        forces.extend(
+            self.fighter_forces()
+                .into_iter()
+                .map(|index| vec![TacticalUnitRef::Fighter(index)]),
+        );
         let mut bands = Vec::new();
-        for members in self.capital_forces() {
+        for members in forces {
             let leader = members[0];
-            let Some(target) = self.ships[leader].attack_target else {
+            let (target, tactic) = match leader {
+                TacticalUnitRef::Ship(index) => {
+                    (self.ships[index].attack_target, self.force_tactic(index))
+                }
+                TacticalUnitRef::Fighter(index) => (
+                    self.fighters[index].attack_target,
+                    self.fighters[index].tactic,
+                ),
+            };
+            let Some(target) = target else {
                 continue;
             };
             if self.attack_target_position(target).is_none() {
                 continue;
             }
-            let (min, max) = if self.force_tactic(leader) == TacticalTactic::Surround {
-                (0.0, ORIGINAL_SURROUND_BAND_MAX)
+            let (min, max, step) = if tactic == TacticalTactic::Surround {
+                (
+                    0.0,
+                    ORIGINAL_SURROUND_BAND_MAX,
+                    ORIGINAL_SURROUND_APPROACH_STEP,
+                )
             } else {
                 self.stand_off_band(&members, target)
             };
-            bands.push(TacticalEngagementBand { leader, min, max });
+            bands.push(TacticalEngagementBand {
+                leader,
+                min,
+                max,
+                step,
+            });
         }
         self.engagement_bands = bands;
+    }
+
+    /// The fighter groups that close on targets: in the fight, not
+    /// withdrawing, recovering, escorting, holding or on the trench run.
+    /// port: each group entry is a force, as in the withdrawal.
+    pub(crate) fn fighter_forces(&self) -> Vec<usize> {
+        (0..self.fighters.len())
+            .filter(|&index| {
+                let fighter = &self.fighters[index];
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && !fighter.jumping()
+                    && !fighter.retreating
+                    && fighter.recovery_state == TacticalFighterRecoveryState::AwaitingCarrier
+                    && !self.trench_run_participants.contains(&index)
+                    && !matches!(
+                        fighter.order,
+                        TacticalOrder::Recover
+                            | TacticalOrder::AttackDeathStar
+                            | TacticalOrder::Escort
+                            | TacticalOrder::HoldPosition
+                    )
+            })
+            .collect()
+    }
+
+    /// `FUN_005c6610` for a fighter force with a live target, each step from
+    /// turn 3: it heads for a point one `+0xc` step toward the target (the
+    /// move `0x005ec0d0`, radius 2.0, a full step at its speed beyond it).
+    /// Within the radius it circles the target: the angle `+0xc0` grows by
+    /// the step's milliseconds × pi × 0.0002 (`DAT_0066cafc`, `DAT_0066cb20`)
+    /// and wraps at 2 pi, the Empire's (side 1) negated each time; the
+    /// radius is the target's size × 2.4 (`DAT_0066cb28`), at least 1.5
+    /// (`DAT_0066cb08`), with half of it above the target (`DAT_0066cb14`).
+    pub(crate) fn advance_fighter_approach(&mut self) {
+        if self.fighter_orbit_angles.len() < self.fighters.len() {
+            self.fighter_orbit_angles.resize(self.fighters.len(), 0.0);
+        }
+        for index in self.fighter_forces() {
+            let Some(target) = self.fighters[index].attack_target else {
+                continue;
+            };
+            let Some(target_position) = self.attack_target_position(target) else {
+                continue;
+            };
+            let step = self
+                .engagement_bands
+                .iter()
+                .find(|band| band.leader == TacticalUnitRef::Fighter(index))
+                .map_or(ORIGINAL_SURROUND_APPROACH_STEP, |band| band.step);
+            let fighter = &self.fighters[index];
+            let anchor = fighter.source_position;
+            let side_z = if fighter.identity.is_alliance {
+                1.0
+            } else {
+                -1.0
+            };
+            let mut delta = source_delta(target_position, anchor);
+            if delta == TacticalWorldVector::ZERO {
+                delta = TacticalWorldVector {
+                    x: 0.0,
+                    y: 0.0,
+                    z: side_z,
+                };
+            }
+            let unit = delta.normalized();
+            let goal = TacticalWorldPosition {
+                x: anchor.x + unit.x * step,
+                y: anchor.y + unit.y * step,
+                z: anchor.z + unit.z * step,
+            };
+            let to_goal = source_delta(goal, anchor);
+            let goal_distance = to_goal.x.hypot(to_goal.y).hypot(to_goal.z);
+            if goal_distance > ORIGINAL_STAND_OFF_MIN_STEP {
+                let travel =
+                    fighter.sublight_engine_power.max(0.0) * ORIGINAL_TACTICAL_STEP_SECONDS;
+                let heading = to_goal.normalized();
+                let fighter = &mut self.fighters[index];
+                fighter.source_position.x += heading.x * travel;
+                fighter.source_position.y += heading.y * travel;
+                fighter.source_position.z += heading.z * travel;
+                continue;
+            }
+            let size = match target {
+                TacticalAttackTarget::CapitalShip(ship) => self.ships[ship]
+                    .source_collision_envelope
+                    .map_or(0.0, |envelope| envelope.planar_diameter),
+                TacticalAttackTarget::FighterGroup(_) => 0.0,
+            };
+            let full_turn = 2.0 * std::f32::consts::PI;
+            let mut angle = self.fighter_orbit_angles[index]
+                + ORIGINAL_TACTICAL_STEP_MILLISECONDS * std::f32::consts::PI * 0.000_2;
+            if full_turn <= angle {
+                angle -= full_turn;
+            }
+            if !self.fighters[index].identity.is_alliance {
+                angle = -angle;
+            }
+            self.fighter_orbit_angles[index] = angle;
+            let radius = (size * 2.4).max(1.5);
+            let (sin, cos) = angle.sin_cos();
+            self.fighters[index].source_position = TacticalWorldPosition {
+                x: target_position.x + (cos * radius - sin * radius),
+                y: target_position.y + radius * 0.5,
+                z: target_position.z + cos * radius + sin * radius,
+            };
+        }
     }
 
     /// `FUN_005cc300`'s step for a force with a target, every frame from
@@ -6895,12 +7052,13 @@ impl BattleSession {
             let band = self
                 .engagement_bands
                 .iter()
-                .find(|band| band.leader == leader)
+                .find(|band| band.leader == TacticalUnitRef::Ship(leader))
                 .copied()
                 .unwrap_or(TacticalEngagementBand {
-                    leader,
+                    leader: TacticalUnitRef::Ship(leader),
                     min: 0.0,
                     max: 0.0,
+                    step: ORIGINAL_SURROUND_APPROACH_STEP,
                 });
             let anchor = ship.source_position;
             let side_z = if ship.identity.is_alliance { 1.0 } else { -1.0 };
