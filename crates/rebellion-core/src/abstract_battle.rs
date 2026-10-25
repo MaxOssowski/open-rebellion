@@ -6712,6 +6712,27 @@ mod tests {
         assert!((imperial.z + 2.75).abs() < 1e-5, "{imperial:?}");
     }
 
+    // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,
+    // FUN_005be160 +0x48) into its forward: the Alliance faces +z, the
+    // Empire -z, each toward the other's lane.
+    #[test]
+    fn each_side_starts_facing_the_other() {
+        let mut ships = vec![
+            ship(true, TacticalWeaponArc::default(), 0.0),
+            ship(false, TacticalWeaponArc::default(), 0.0),
+        ];
+        let layout = crate::tactical::BattleSession::assign_original_world_positions(
+            &mut ships,
+            &mut Vec::new(),
+        );
+        let alliance = ships[0].source_forward;
+        let empire = ships[1].source_forward;
+        assert_eq!((alliance.x, alliance.y, alliance.z), (0.0, 0.0, 1.0));
+        assert_eq!((empire.x, empire.y, empire.z), (0.0, 0.0, -1.0));
+        assert!(ships[0].source_position.z < 0.0 && layout.outer_negative_z < 0.0);
+        assert!(ships[1].source_position.z > 0.0);
+    }
+
     // 0x005ccdda: a computer side's Stand Off force of more than 7 members,
     // out of its band, takes Surround (0x005c9be0(1), event 0x3d); one of
     // 7, or the player's, keeps Stand Off.

@@ -3003,6 +3003,16 @@ pub fn original_surround_slot(index: usize) -> TacticalWorldVector {
     }
 }
 
+/// A side's vector (`+0x48`, `FUN_005be160`): the Alliance (side 0, class
+/// `0x66c7a0`) looks along +z, the Empire (side 1, `0x66c778`) along -z.
+pub fn original_side_vector(is_alliance: bool) -> TacticalWorldVector {
+    TacticalWorldVector {
+        x: 0.0,
+        y: 0.0,
+        z: if is_alliance { 1.0 } else { -1.0 },
+    }
+}
+
 /// Exact alternating slot sequence from `FUN_005ec400`: leader center, first
 /// follower right one spacing, second follower left one spacing, then right
 /// and left at each increasing multiple.
@@ -4319,6 +4329,11 @@ impl BattleSession {
                     y: 0.0,
                     z,
                 };
+                // `0x005ab921`: each unit's forward `+0x10` becomes its
+                // side's vector (`FUN_005b5ad0`, `FUN_005a7490`), set in
+                // `FUN_005be160` at `+0x48`: the Alliance's (0, 0, 1), the
+                // Empire's (0, 0, -1). Each side faces the other's lane.
+                ship.source_forward = original_side_vector(is_alliance);
             }
         }
 
