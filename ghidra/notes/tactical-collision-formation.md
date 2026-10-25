@@ -241,3 +241,64 @@ clearing its group slot when local) and then calls `FUN_005aded0`.
 Not settled: which of `+0x174` and `+0x178` is the numbered group the
 interface shows, and so whether a single unit's order takes it out of its
 numbered group. This needs a run of the original.
+
+## Closing on a target (2026-10-25)
+
+Source: `~/Games/rebexe-decompile/decompiled-typed/FUN_005cc300.c`,
+`FUN_005edf80.c`, `FUN_005b49e0.c`, `FUN_005b7e50.c` (corpus outside the
+repository).
+
+A capital force's order step (`FUN_005cc300`, slot `+0x14`, every frame
+from turn 3) handles a force with targets in its list `+0x8c`, unless:
+
+- the order is 3 (withdrawal, earlier branch);
+- the navigation route `+0x74` is still under way;
+- the order is 11 (Hold Position, `0x005cc339`).
+
+It then works as follows:
+
+1. `d` is the first target's position less the formation anchor (mover
+   `+0x3c`), and `r = |d|`. When `d` is zero, it is replaced by the
+   side's vector times -5.0 (`DAT_0066cfec`).
+2. The tactic object (`+0x40`, slot `+0x10`) gives a band (min, max).
+3. When `r + 2.0` (`DAT_0066d008` = -2.0) lies within [min, max], the
+   mover stops (`+0x78`..`+0x84` cleared).
+4. Otherwise, for Stand Off (`+0x3c` = 2) closer than min:
+   - unless the target force's own first target passes
+     `Class_0066c390_vt14`, the force backs off along the side's vector
+     times `min * -1.1` (`DAT_0066d00c`);
+   - an AI side with more than 7 members switches to Surround
+     (`0x005c9be0(1)`).
+5. The direction is made unit, then scaled:
+   - Surround: by the object's slot `+0xc`, 5.0 (`DAT_0066cc94`);
+   - Stand Off: by `min + k * (max - min)`, with k = 0.5 for fewer than
+     3 members, 0.75 (`DAT_0066d014`) for fewer than 6, else 0.9
+     (`DAT_0066d010`); at least 2.0 (`DAT_0066d018`).
+6. The mover heads for `anchor + step` with radius 2.0 (slot `+0xc`).
+
+The force's slot `+0xc` (`0x005c9bd0`) has the tactic object recompute
+its band (its slot `+4`) once a turn. The objects are:
+
+- Surround (`0x66ccb0`, `0x005edf00`): min 0, max 5.0 × 0.5 = 2.5
+  (`DAT_0066daa8`, `DAT_0066daac`).
+- Stand Off (`0x66ccd0`, `0x005edf80`):
+  1. The band list is a piecewise sum over distance. Each force member's
+     weapons against the first target add `+value` on [0, range)
+     (`FUN_005b49e0` with 0). The target's weapons against the force's
+     first member add `-value` (with 1). Overlaps are split and summed
+     (`FUN_005b7e50`).
+  2. A weapon's value is its arc's count × the slot `+0x60` factor ×
+     damage × the target class modifier. The arc is chosen by slot
+     `+0x84`; the ranges come from slots `+0x50`, `+0x54` and `+0x58`.
+  3. `reach` is the largest `hi - target max range` over the bands
+     beyond the target's reach.
+  4. The best band is the one of highest value whose `hi` is within the
+     force's own greatest range.
+  5. The band (min, max) is that band, with `+0xc` = `reach` when reach is
+     above 0, else `lo + (hi - lo) / 3` (`DAT_0066dab8`).
+  6. An unarmed force uses min = `+0xc` = max(target range × 1.2, 10)
+     and max 1e6.
+  7. A max of 0 becomes 10, and min is at least 5.0.
+
+The port moves capital ships only along waypoints (maneuvers, navigation
+routes, the withdrawal). It does not close on attack targets yet.
