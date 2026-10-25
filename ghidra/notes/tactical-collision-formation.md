@@ -107,3 +107,86 @@ refreshes geometry while the initial battle remains paused. Movement now
 reapplies the retained, forward-relative offsets after every stable-order
 integration and collision pass. Lossless original-runtime comparison remains
 open, so this functional contract is not an A0 visual claim.
+
+## Tactic movers (2026-10-25)
+
+`0x005cb160` (a task force's tactic) stores `+0x5c` at once and posts
+event `0xb`. Its handler `0x005cb1a0` deletes the old mover `+0x54` and
+builds a new one from the tactic and the lead unit `+0x6c`:
+
+| Tactic | Class (constructor, size) | `+0x58` | Slot function (vtable `+0x30`) |
+|---|---|---|---|
+| 1 | `0x005eb860`, `0x140` (vtable `0x66d9a0`) | 1 | `0x005eb8d0` (`0x66d9d0`) |
+| 3, lead unit of type 1 | `0x005c72b0`, `0x144` | 3 | not read |
+| any other (2) | `0x005ec310`, `0x140` (vtable `0x66da08`) | 2 | `0x005ec400` (`0x66da38`) |
+
+It then adds the lead unit and every other member of the force's list
+`+0x1c` through slot `+0x1c` (`0x005ea250`).
+
+`0x005ea250` (add a member):
+
+- increments the count `+0x12c` before asking for the member's slot, so
+  the lead unit is index 1;
+- keeps the largest member footprint times 1.2 in `+0x13c`;
+- for index 1, stores the lead unit's position (`+0x30`..`+0x3c` of a
+  unit is its position, w = -1) as the formation anchor
+  `+0x3c`..`+0x48` and its id in `+0x100`;
+- stores the slot vector in the member record's `+0x50`..`+0x5c` and
+  adds the record to the list `+0xe0`.
+
+`0x005eb040` (slot `+0x24`) returns, for a member of `+0xe0`, the move
+`anchor - slot - position` (zero within `DAT_0066d850`). Only
+`FUN_005cbbc0` uses it, once, from the setup at `0x005c85fd`: each
+member's position becomes `anchor - slot`.
+
+`0x005eb8d0`, the tactic-1 slot, was run in an emulator (unicorn, mapped
+image, `this+0x14` = 1, `DAT_006bd88c` = 1) for indices 0..45. Index `k`
+gives a world-axis direction (it reads no orientation):
+
+| `k mod 22` | direction |
+|---|---|
+| 0 | (√½, -√½, 0) |
+| 1 | (0, 0, 1) |
+| 2 | (0, 0, -1) |
+| 3 | (1, 0, 0) |
+| 4 | (-1, 0, 0) |
+| 5 | (0, 1, 0) |
+| 6 | (0, -1, 0) |
+| 7 | (1, 1, 1)/√3 |
+| 8 | (-1, -1, -1)/√3 |
+| 9 | (-1, 1, 1)/√3 |
+| 10 | (1, -1, -1)/√3 |
+| 11 | (1, -1, 1)/√3 |
+| 12 | (-1, 1, -1)/√3 |
+| 13 | (-1, -1, 1)/√3 |
+| 14 | (1, 1, -1)/√3 |
+| 15 | (0, -√½, -√½) |
+| 16 | (0, -√½, √½) |
+| 17 | (-√½, √½, 0) |
+| 18 | (√½, √½, 0) |
+| 19 | (0, -√½, -√½): the same as 15; table `0x5ebc30` sends both to `0x005ebb04` |
+| 20 | (0, √½, √½) |
+| 21 | (-√½, -√½, 0) |
+
+The direction is normalized (`0x005b50b0`). Its length is
+`(floor(k / 22) * 0.25 + 1) * DAT_006bd88c` (`DAT_0066d8a8` = 0.25,
+`DAT_0066d878` = -1.0). `DAT_006bd88c` is 12.5: the initializer
+`0x005e9db0` (from `0x6a7754`) multiplies 5.0 (`DAT_0066d840`) by 2.5
+(`DAT_0066d85c`).
+
+The tactic's callers:
+
+- `0x005a2920` gives each selected unit its own task force
+  (`FUN_005aded0`) before setting the tactic.
+- `0x005a3850` sets the tactic of a whole force and plays the formation
+  voice (`0x6f` or `0xed` plus the group).
+- `0x005a4a30` finds the force by id (`+0x58`).
+
+Still open:
+
+- which caller the Maneuvers panel's commit reaches;
+- the formation's own step (`0x005eb1a0`, slot `+0x28` and the others);
+- the tactic-3 fighter class `0x005c72b0`.
+
+The port still places every force by the Stand Off slots, whatever its
+tactic.
