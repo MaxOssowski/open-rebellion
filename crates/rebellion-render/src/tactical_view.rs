@@ -8572,6 +8572,13 @@ fn apply_original_collision_envelopes(state: &mut TacticalState) {
 /// to `DAT_0066d4bc` (1.0 s), and the beam ends when the timer passes it.
 const DEATH_STAR_BEAM_GROW_SECONDS: f32 = 1.0;
 
+/// The drawn share of the beam's length: none before event `0x44` starts
+/// it, and none once `0x005da830` has grown it for its second.
+fn death_star_beam_progress(beam: &rebellion_core::tactical::TacticalDeathStarBeam) -> Option<f32> {
+    (beam.fired && beam.elapsed <= DEATH_STAR_BEAM_GROW_SECONDS)
+        .then(|| beam.elapsed / DEATH_STAR_BEAM_GROW_SECONDS)
+}
+
 fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32, f32, f32)) {
     let Some(session) = state.session.as_ref() else {
         return;
@@ -8579,12 +8586,11 @@ fn draw_tactical_death_star_beam(state: &mut TacticalState, aperture: (f32, f32,
     let Some(beam) = session.death_star_beam else {
         return;
     };
-    if beam.elapsed > DEATH_STAR_BEAM_GROW_SECONDS {
+    let Some(progress) = death_star_beam_progress(&beam) else {
         return;
-    }
+    };
     let extent = session.source_layout.battle_extent;
     let (origin, _) = death_star_backdrop_source(extent);
-    let progress = beam.elapsed / DEATH_STAR_BEAM_GROW_SECONDS;
     let drawn = state.asset_renderer.draw_death_star_beam(
         aperture,
         origin.rendered(),
@@ -15013,9 +15019,11 @@ mod tests {
         assert!(!session.commit_death_star_shot(0));
     }
 
-    // Source: FUN_005ba7f0 Death Star superlaser resolution timing.
+    // Source: 0x005ba720 posts event 0x44 at +0x87c (3 turns ahead,
+    // +0x8ac) and the type-3 kill at +0x87c + 1; FUN_005a96b0 runs a stamp
+    // at the next 1000 ms turn (+0x8a8), and 0x005b2b60 kills the target.
     #[test]
-    fn death_star_superlaser_resolves_after_the_source_long_projectile_duration() {
+    fn a_superlaser_shot_fires_after_the_event_lead_and_kills_a_turn_later() {
         let mut target = test_ship(64, 0, true, true);
         target.source_position.z = -24.0;
         let mut session = test_session(vec![target], Vec::new(), false);
@@ -15043,14 +15051,95 @@ mod tests {
         assert_eq!(session.death_star.unwrap().laser_charge, 0.0);
         assert!(session.death_star.unwrap().action_committed);
         assert!(session.death_star_beam.is_some());
-        session.advance_presentational_effects(1.999);
+        // Presentation time alone neither fires nor resolves the shot.
+        session.advance_presentational_effects(10.0);
         assert!(session.ships[0].alive);
-        session.advance_presentational_effects(0.002);
+        assert!(!session.death_star_beam.unwrap().fired);
+
+        // Committed in turn 0: event 0x44 is stamped 3 and runs at turn 4.
+        session.paused = false;
+        for _ in 0..15 {
+            session.step();
+        }
+        assert!(!session.death_star_beam.unwrap().fired);
+        session.ships[0].source_position.z = -20.0;
+        session.step();
+        assert_eq!(session.combat_tick, 16);
+        let beam = session.death_star_beam.unwrap();
+        assert!(beam.fired);
+        assert_eq!(beam.target_position.z, -20.0);
+        session.advance_presentational_effects(0.5);
+        assert_eq!(session.death_star_beam.unwrap().elapsed, 0.5);
+
+        // The type-3 event is stamped 4 and runs at turn 5.
+        for _ in 0..3 {
+            session.step();
+        }
+        assert!(session.ships[0].alive);
+        session.step();
+        assert_eq!(session.combat_tick, 20);
         assert!(!session.ships[0].alive);
         assert_eq!(session.ships[0].hull_current, 0);
         assert!(session.death_star_beam.is_none());
         assert!(!session.death_star.unwrap().action_committed);
         assert_eq!(session.impact_effects.len(), 1);
+    }
+
+    // Source: 0x005ba520 starts the beam; 0x005da830 grows it for 1 s.
+    #[test]
+    fn the_beam_is_drawn_only_from_its_start_through_its_second() {
+        let mut beam = rebellion_core::tactical::TacticalDeathStarBeam {
+            target: 0,
+            source_position: TacticalWorldPosition::ORIGIN,
+            target_position: TacticalWorldPosition::ORIGIN,
+            fire_tick: 16,
+            resolve_tick: 20,
+            fired: false,
+            elapsed: 0.5,
+        };
+        assert_eq!(death_star_beam_progress(&beam), None);
+        beam.fired = true;
+        assert_eq!(death_star_beam_progress(&beam), Some(0.5));
+        beam.elapsed = 1.0;
+        assert_eq!(death_star_beam_progress(&beam), Some(1.0));
+        beam.elapsed = 1.001;
+        assert_eq!(death_star_beam_progress(&beam), None);
+    }
+
+    // Source: 0x005b2b60 kills only a target still in the fight
+    // (FUN_005ad870) while the Death Star is there (FUN_005a9330).
+    #[test]
+    fn a_superlaser_shot_spares_a_target_that_has_jumped_or_a_lost_death_star() {
+        for case in 0..2 {
+            let mut session = test_session(vec![test_ship(64, 0, true, true)], Vec::new(), false);
+            session.death_star = Some(TacticalDeathStar {
+                resource: DEATH_STAR_TACTICAL_RESOURCE,
+                is_attacker: false,
+                is_alliance: false,
+                source_position: TacticalWorldPosition::ORIGIN,
+                hull: 100.0,
+                laser_charge: 100.0,
+                shielded: false,
+                destroyed: false,
+                action_committed: false,
+            });
+            session.combat_tick = 6;
+            assert!(session.commit_death_star_shot(0));
+            // Turn 1: fired at turn 5 (step 20), resolved at turn 6 (step 24).
+            assert_eq!(session.death_star_beam.unwrap().fire_tick, 20);
+            assert_eq!(session.death_star_beam.unwrap().resolve_tick, 24);
+            if case == 0 {
+                session.ships[0].retreat_progress = 0.5;
+            } else {
+                session.death_star.as_mut().unwrap().destroyed = true;
+            }
+            session.combat_tick = 23;
+            session.paused = false;
+            session.step();
+            assert!(session.death_star_beam.is_none());
+            assert!(session.ships[0].alive);
+            assert!(session.impact_effects.is_empty());
+        }
     }
 
     // Source: FUN_005cfec0 / FUN_005d04e0 timed trench-run producer.

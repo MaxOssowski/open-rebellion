@@ -88,6 +88,18 @@ pub const ORIGINAL_LASER_VS_FIGHTER: f32 = 1.0;
 pub const ORIGINAL_TURBOLASER_VS_FIGHTER: f32 = 0.5;
 /// port: ORIGINAL_TACTICAL_STEP_MILLISECONDS in seconds.
 pub const ORIGINAL_TACTICAL_STEP_SECONDS: f32 = ORIGINAL_TACTICAL_STEP_MILLISECONDS / 1000.0;
+/// The battle manager's event turn, `+0x8a8 = 0x3e8` ms (`0x005bea9c`,
+/// `0x005c0545`). At each turn the manager advances `+0x878` and runs the
+/// events stamped `+0x878 - 1` (`0x005bec3c`, `FUN_005a96b0`).
+///
+/// port: the turn boundary falls on every fourth 250 ms step, counted from
+/// the first combat step.
+pub const ORIGINAL_TACTICAL_TURN_STEPS: u32 = 4;
+/// `+0x8ac = 3` (`0x005be233`, `0x005bf929`): a new event is stamped
+/// `+0x87c`, which runs this many turns ahead of `+0x878` (`0x005a877b`,
+/// slot `+0x28` = `0x005ad4a0`) in both managers, `FUN_005be160` and
+/// `FUN_005bf830`.
+pub const ORIGINAL_TACTICAL_EVENT_LEAD_TURNS: u32 = 3;
 
 /// `FUN_005ad530` sets the withdrawing side's time (`+0x7c`) to at least
 /// `DAT_0066c240`, 30000 ms; `FUN_005c8780` counts it down by the step and
@@ -1229,15 +1241,25 @@ pub struct TacticalDeathStar {
     pub action_committed: bool,
 }
 
-/// One committed superlaser shot. The original keeps the Death Star action
-/// committed until its retained beam presentation reaches the target.
+/// One committed superlaser shot. `0x005ba720` posts two events through the
+/// manager's turn queue:
+/// - event `0x44`, stamped `+0x87c`, whose handler `0x005ba520` starts the
+///   beam (`0x005c12d0`);
+/// - a type-3 event, stamped `+0x87c + 1.0` (`DAT_0066c70c`), whose handler
+///   `0x005b2b60` destroys the target if it is still in the fight.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TacticalDeathStarBeam {
     pub target: usize,
     pub source_position: TacticalWorldPosition,
     pub target_position: TacticalWorldPosition,
+    /// The combat step whose turn runs event `0x44`.
+    pub fire_tick: u32,
+    /// The combat step whose turn runs the type-3 event.
+    pub resolve_tick: u32,
+    /// Set once the beam has started.
+    pub fired: bool,
+    /// Seconds since the beam started.
     pub elapsed: f32,
-    pub duration: f32,
 }
 
 impl TacticalDeathStar {
@@ -4393,31 +4415,58 @@ impl BattleSession {
                 effect.frame = (effect.frame + 1) % 8;
             }
         }
-        if let Some(beam) = self.death_star_beam.as_mut() {
+        if let Some(beam) = self.death_star_beam.as_mut().filter(|beam| beam.fired) {
             beam.elapsed += elapsed;
-            if beam.elapsed >= beam.duration {
-                let beam = self.death_star_beam.take().unwrap();
-                if let Some(target) = self.ships.get_mut(beam.target) {
-                    target.hull_current = 0;
-                    target.alive = false;
-                    target.selected = false;
-                    target.attack_target = None;
-                    queue_original_tactical_impact(
-                        &mut self.impact_effects,
-                        beam.target,
-                        WeaponKind::Turbolaser,
-                        OriginalTacticalImpactStage::Destroyed,
-                    );
-                }
-                if let Some(death_star) = self.death_star.as_mut() {
-                    death_star.action_committed = false;
-                }
-                self.diagnostic_log.push(format!(
-                    "[tactical_death_star] superlaser_resolved target_object_id={}",
-                    beam.target + 1
-                ));
-            }
         }
+    }
+
+    /// Runs the superlaser shot's two queued events at their turns.
+    fn advance_death_star_shot(&mut self) {
+        let Some(mut beam) = self.death_star_beam else {
+            return;
+        };
+        if !beam.fired && self.combat_tick >= beam.fire_tick {
+            beam.fired = true;
+            // `0x005c12d0` aims the beam at the target where it is now.
+            if let Some(target) = self.ships.get(beam.target) {
+                beam.target_position = target.source_position;
+            }
+            self.death_star_beam = Some(beam);
+            self.diagnostic_log.push(format!(
+                "[tactical_death_star] superlaser_fired target_object_id={}",
+                beam.target + 1
+            ));
+        }
+        if self.combat_tick < beam.resolve_tick {
+            return;
+        }
+        self.death_star_beam = None;
+        // `0x005b2b60`: the Death Star must still be there, and the target
+        // still in the fight (`FUN_005ad870`).
+        let death_star_present = self.death_star.is_some_and(|death_star| !death_star.destroyed);
+        if let Some(target) = self
+            .ships
+            .get_mut(beam.target)
+            .filter(|ship| death_star_present && ship.alive && !ship.jumping())
+        {
+            target.hull_current = 0;
+            target.alive = false;
+            target.selected = false;
+            target.attack_target = None;
+            queue_original_tactical_impact(
+                &mut self.impact_effects,
+                beam.target,
+                WeaponKind::Turbolaser,
+                OriginalTacticalImpactStage::Destroyed,
+            );
+        }
+        if let Some(death_star) = self.death_star.as_mut() {
+            death_star.action_committed = false;
+        }
+        self.diagnostic_log.push(format!(
+            "[tactical_death_star] superlaser_resolved target_object_id={}",
+            beam.target + 1
+        ));
     }
 
     pub fn commit_death_star_shot(&mut self, target: usize) -> bool {
@@ -4439,12 +4488,18 @@ impl BattleSession {
         let target_position = self.ships[target].source_position;
         death_star.action_committed = true;
         death_star.laser_charge = 0.0;
+        // Event 0x44 is stamped `+0x87c` = the current turn plus the lead,
+        // and runs at the turn after its stamp.
+        let turn = self.combat_tick / ORIGINAL_TACTICAL_TURN_STEPS;
+        let fire_tick = (turn + ORIGINAL_TACTICAL_EVENT_LEAD_TURNS + 1) * ORIGINAL_TACTICAL_TURN_STEPS;
         self.death_star_beam = Some(TacticalDeathStarBeam {
             target,
             source_position: death_star.source_position,
             target_position,
+            fire_tick,
+            resolve_tick: fire_tick + ORIGINAL_TACTICAL_TURN_STEPS,
+            fired: false,
             elapsed: 0.0,
-            duration: ORIGINAL_PROJECTILE_DURATION_LONG,
         });
         self.pending_voice_cues
             .push(TacticalVoiceCue::death_star_firing());
@@ -4466,6 +4521,7 @@ impl BattleSession {
 
         self.combat_tick += 1;
         self.subsystem_repairs.clear();
+        self.advance_death_star_shot();
 
         self.advance_withdrawal();
         refresh_original_escort_targets(self);

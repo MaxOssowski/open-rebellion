@@ -48,8 +48,11 @@ Date: 2026-10-25.
 
 - The target's destruction is still applied 2 s after the shot
   (`ORIGINAL_PROJECTILE_DURATION_LONG`). The event that destroys the target
-  in the original was not traced here. A0 TAC-05-C020's 2 s frames show the
-  target gone between 2 s and 4 s after the shot.
+  in the original was not traced here. Settled later the same day in
+  `../2026-10-25-death-star-shot-timing/`: the beam starts four event
+  turns after the shot and the target dies one turn later. A0 TAC-05-C020's
+  2 s frames show the target gone between 4 s and 6 s after the unpause,
+  not between 2 s and 4 s as first written here.
 - The cone's roll about its axis follows `LookAt`'s constraint, which has
   not been compared. The `cargo mutants` survivors in the ring's basis are
   equivalent: they give the same cone, turned.

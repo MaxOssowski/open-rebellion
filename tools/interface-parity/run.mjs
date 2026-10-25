@@ -3171,6 +3171,15 @@ async function probeTacticalDeathStarLaserJourney(
 
   const pause = point(575, 319);
   await page.mouse.click(pause.x, pause.y);
+  // 0x005ba720 stamps the beam event 0x44 three 1000 ms turns ahead
+  // (+0x8ac, +0x8a8); committed in turn 0, it runs at turn 4.
+  const firedLine = `[tactical_death_star] superlaser_fired target_object_id=${targetObjectId}`;
+  const firedDeadline = Date.now() + 8000;
+  while (!consoleLines.some(({ text }) => text.includes(firedLine)) && Date.now() < firedDeadline) {
+    await page.waitForTimeout(10);
+  }
+  assert.ok(consoleLines.some(({ text }) => text.includes(firedLine)),
+    "Death Star beam event did not run at its turn");
   // 0x005da830 grows the beam for 1 s (DAT_0066d4bc), then it ends. From
   // the Death Star at -2e x it enters the first Imperial view after ~0.85 s.
   await page.waitForTimeout(900);
