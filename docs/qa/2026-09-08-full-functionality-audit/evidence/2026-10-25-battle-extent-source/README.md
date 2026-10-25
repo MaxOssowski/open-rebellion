@@ -25,14 +25,27 @@ and the formula are unchanged.
 
 - `port:` what puts a unit in state 1 at placement is not traced; the port
   counts every living ship and fighter group with craft.
-- Still `hyp:`: the lane constants (0.5, 20, 5). The 0.5 that
-  `FUN_005ab650` reads (`DAT_0066c29c`, `0x005aba21`) halves a unit's
-  bounding box, not a lane.
+- The lanes and slots, then also `hyp:`, are read in the same function:
+  - **capital ships** (list `+0x58`) are placed at z = extent × 0.5
+    (`DAT_0066c29c`) for the Empire and × −0.5 (`DAT_0066c2a8`) for the
+    Alliance (`0x005abb66`..`0x005abc5d`);
+  - **fighter groups** (list `+0x64`) are placed 20.0 (`DAT_0066c2ac`)
+    inside that lane (`0x005abcc6`..`0x005abd71`);
+  - **x slots:** an even unit turns the last x round (× `DAT_0066c27c`,
+    −1.0), and an odd one widens the slot by 5.0 (−`DAT_0066c2a4`) on the
+    last x's side, giving 0, 5, −5, −10, 10, 15, −15, …;
+  - each placement goes through `0x005a9030` (x, 0, z).
+
+  The port's `OriginalTacticalSlots` and lanes already gave exactly these
+  values; only their citations change.
 
 ## Tests
 
-`the_battle_extent_grows_by_three_a_unit_of_the_larger_side` (new): 100,
-121 and 127 for 0/0, 4/7 and 9/2 units.
+- `the_battle_extent_grows_by_three_a_unit_of_the_larger_side` (new): 100,
+  121 and 127 for 0/0, 4/7 and 9/2 units.
+- `units_take_the_original_slots_and_lanes` (new): the slot sequence, and
+  for one unit a side (A0 TAC-01-C003's battle) extent 103 with lanes
+  ±51.5 and ±31.5.
 
 ## Gates
 
@@ -41,5 +54,5 @@ replay equivalence were not rerun.
 
 | Gate | Result |
 |---|---|
-| Workspace tests | 2786 passed, 0 failed |
+| Workspace tests | 2787 passed, 0 failed |
 | Provenance scan | 0 uncited items |

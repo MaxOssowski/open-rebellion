@@ -5690,6 +5690,24 @@ mod tests {
         assert!(tactical.ships[1].subsystem_condition.shields < 100);
     }
 
+    // FUN_005ab650 places a side's units at x 0, 5, -5, -10, 10, 15, ...
+    // (DAT_0066c27c, DAT_0066c2a4), capital ships at -+0.5 extent and fighter
+    // groups 20 inside (DAT_0066c29c, DAT_0066c2a8, DAT_0066c2ac).
+    #[test]
+    fn units_take_the_original_slots_and_lanes() {
+        use crate::tactical::OriginalTacticalSlots;
+        assert_eq!(
+            OriginalTacticalSlots::default().take(9).collect::<Vec<_>>(),
+            [0.0, 5.0, -5.0, -10.0, 10.0, 15.0, -15.0, -20.0, 20.0]
+        );
+        let layout = crate::tactical::OriginalTacticalLayout::from_active_counts(1, 1);
+        assert_eq!(layout.battle_extent, 103.0);
+        assert_eq!(layout.outer_negative_z, -51.5);
+        assert_eq!(layout.outer_positive_z, 51.5);
+        assert_eq!(layout.inner_negative_z, -31.5);
+        assert_eq!(layout.inner_positive_z, 31.5);
+    }
+
     // FUN_005ab650: the extent starts at 100.0 (0x005ab683) and grows by
     // 3.0 (-DAT_0066c2a0) for each unit of the larger side.
     #[test]

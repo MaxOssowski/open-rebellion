@@ -238,11 +238,18 @@ pub const ORIGINAL_BATTLE_BASE_EXTENT: f32 = 100.0;
 /// port: what puts a unit in state 1 at placement is not traced; every
 /// living ship and fighter group with craft counts.
 pub const ORIGINAL_BATTLE_OBJECT_INCREMENT: f32 = 3.0;
-/// hyp: `FUN_005ec400` outer lane scale; read not recorded.
+/// `FUN_005ab650` places each side's capital ships (list `+0x58`) at
+/// `z = extent * 0.5` (`DAT_0066c29c`) for the Empire and `* -0.5`
+/// (`DAT_0066c2a8`) for the Alliance (`0x005abb66`..`0x005abc5d`).
 pub const ORIGINAL_BATTLE_OUTER_LANE_SCALE: f32 = 0.5;
-/// hyp: `FUN_005ec400` inner lane offset; read not recorded.
+/// `FUN_005ab650` places the fighter groups (list `+0x64`) 20.0
+/// (`DAT_0066c2ac`) inside their side's capital lane: `20 - 0.5 extent`
+/// for the Alliance, `0.5 extent - 20` for the Empire
+/// (`0x005abcc6`..`0x005abd71`).
 pub const ORIGINAL_BATTLE_INNER_LANE_OFFSET: f32 = 20.0;
-/// hyp: `FUN_005ec400` slot spacing; read not recorded.
+/// `FUN_005ab650`'s x slots: an even unit turns the last x round (times
+/// `DAT_0066c27c`, -1.0); an odd one widens the slot by 5.0
+/// (`-DAT_0066c2a4`) on the last x's side: 0, 5, -5, -10, 10, 15, ...
 pub const ORIGINAL_BATTLE_SLOT_SPACING: f32 = 5.0;
 /// `FUN_005c81d0` multiplies maximum weapon range by 10,000 before adding
 /// available sublight power and negating the ordered-list key.
