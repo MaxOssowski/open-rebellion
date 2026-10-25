@@ -12129,7 +12129,8 @@ mod tests {
     }
 
     /// Runs the shots' fire events, then their hit events, as the queue does
-    /// one turn apart (`FUN_005b3f10`: `+0x87c + 1.0` and `+ 2.0`).
+    /// one turn apart (`FUN_005b3f10`: `+0x87c + 1.0` and `+ 2.0`), then the
+    /// subsystem hits the hits posted (`FUN_005b5f50`, events `0x1e`..`0x22`).
     fn resolve_test_shots(
         ships: Vec<TacticalShip>,
         shots: &[rebellion_core::tactical::TacticalShot],
@@ -12141,6 +12142,13 @@ mod tests {
         }
         for &shot in shots {
             session.hit_weapon_shot(shot);
+        }
+        for queued in std::mem::take(&mut session.turn_events) {
+            if let rebellion_core::tactical::TacticalTurnEvent::SubsystemHit { ship, kind } =
+                queued.event
+            {
+                session.hit_subsystem(ship, kind);
+            }
         }
         session
     }

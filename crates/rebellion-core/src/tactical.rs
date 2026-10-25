@@ -1323,6 +1323,10 @@ pub enum TacticalTurnEvent {
     /// `0x005b2b10`): with the target in the fight, its damage (slot
     /// `+0xe0`).
     WeaponHit(TacticalShot),
+    /// `0x1e`..`0x22` (`0x005b28d0`, `0x005b28a0`, `0x005b2870`,
+    /// `0x005b2840`, `0x005b2900`): the ship's slot `+0xa0` with the
+    /// subsystem 0..4 (shields, weapons, tractor, engines, hyperdrive).
+    SubsystemHit { ship: usize, kind: TacticalSubsystemKind },
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
@@ -3105,6 +3109,40 @@ pub fn apply_original_capital_damage(
     damage: i32,
     rolls: OriginalTacticalDamageRolls,
 ) -> OriginalTacticalImpactStage {
+    original_capital_damage(ships, field_effects, target, damage, rolls, None)
+}
+
+/// A tactical hit, the capital ship's slot `+0xe0` (`FUN_005b5f50`): the
+/// shield and hull take the damage at once, but each subsystem hit is posted
+/// through slot `+0x28` as event `0x1e`..`0x22` (`0x005b6151`..
+/// `0x005b6228`), so it is returned here to be queued.
+pub fn apply_original_tactical_capital_hit(
+    ships: &mut [TacticalShip],
+    field_effects: &mut Vec<TacticalFieldEffect>,
+    target: usize,
+    damage: i32,
+    rolls: OriginalTacticalDamageRolls,
+) -> (OriginalTacticalImpactStage, Vec<TacticalSubsystemKind>) {
+    let mut hits = Vec::new();
+    let stage = original_capital_damage(ships, field_effects, target, damage, rolls, Some(&mut hits));
+    (stage, hits)
+}
+
+fn original_capital_damage(
+    ships: &mut [TacticalShip],
+    field_effects: &mut Vec<TacticalFieldEffect>,
+    target: usize,
+    damage: i32,
+    rolls: OriginalTacticalDamageRolls,
+    mut deferred: Option<&mut Vec<TacticalSubsystemKind>>,
+) -> OriginalTacticalImpactStage {
+    let mut hit = |ship: &mut TacticalShip, kind: TacticalSubsystemKind| match deferred.as_mut() {
+        Some(hits) => {
+            hits.push(kind);
+            false
+        }
+        None => ship.add_subsystem_hit(kind),
+    };
     let (hull_before, hull_after, tractor_disabled) = {
         let Some(ship) = ships.get_mut(target) else {
             return OriginalTacticalImpactStage::Hit;
@@ -3123,7 +3161,7 @@ pub fn apply_original_capital_damage(
             let shield_loss_percent =
                 (100.0 / shield_before as f32) * (shield_before - shield_after) as f32;
             if f32::from(rolls.shield) <= shield_loss_percent.max(1.0) {
-                tractor_disabled |= ship.add_subsystem_hit(TacticalSubsystemKind::Shields);
+                tractor_disabled |= hit(ship, TacticalSubsystemKind::Shields);
             }
         }
 
@@ -3136,7 +3174,7 @@ pub fn apply_original_capital_damage(
             let score = f32::from(rolls.hull)
                 + (ship.hull_current - hull_before) as f32 * 100.0 / hull_before as f32;
             if let Some(kind) = original_hull_subsystem_kind(score) {
-                tractor_disabled |= ship.add_subsystem_hit(kind);
+                tractor_disabled |= hit(ship, kind);
             }
         }
 
@@ -4564,6 +4602,7 @@ impl BattleSession {
             TacticalTurnEvent::TrenchRunState(_) => {}
             TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
             TacticalTurnEvent::WeaponHit(shot) => self.hit_weapon_shot(shot),
+            TacticalTurnEvent::SubsystemHit { ship, kind } => self.hit_subsystem(ship, kind),
         }
     }
 
@@ -4910,6 +4949,19 @@ impl BattleSession {
         }
     }
 
+    /// A subsystem hit event (`0x005b28d0` and its siblings): the ship's
+    /// slot `+0xa0`. The handler only finds the ship; it does not ask
+    /// whether it is still in the fight.
+    pub fn hit_subsystem(&mut self, index: usize, kind: TacticalSubsystemKind) {
+        let Some(ship) = self.ships.get_mut(index) else {
+            return;
+        };
+        if ship.add_subsystem_hit(kind) {
+            remove_tractor_source(&mut self.field_effects, index);
+        }
+        refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
+    }
+
     fn unit_in_the_fight(&self, unit: OriginalFighterTarget) -> bool {
         match unit {
             OriginalFighterTarget::Capital(index) => self
@@ -5041,13 +5093,17 @@ impl BattleSession {
                 let damage = original_tactical_integer_damage(shot.strength);
                 let rolls =
                     original_tactical_damage_rolls(&self.ships, index, damage, &mut self.tactical_rng);
-                let stage = apply_original_capital_damage(
+                let (stage, subsystem_hits) = apply_original_tactical_capital_hit(
                     &mut self.ships,
                     &mut self.field_effects,
                     index,
                     damage,
                     rolls,
                 );
+                let stamp = self.step_event_stamp();
+                for kind in subsystem_hits {
+                    self.post_turn_event(stamp, TacticalTurnEvent::SubsystemHit { ship: index, kind });
+                }
                 queue_original_destruction_voice(
                     &mut self.pending_voice_cues,
                     player_faction,

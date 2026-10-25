@@ -5647,6 +5647,49 @@ mod tests {
         );
     }
 
+    // FUN_005b5f50 (the hit's slot +0xe0) takes the shield and hull at once
+    // and posts each subsystem hit as event 0x1e..0x22 through slot +0x28;
+    // its handler (0x005b28d0 and siblings) calls slot +0xa0.
+    #[test]
+    fn a_hit_posts_its_subsystem_damage_through_the_queue() {
+        use crate::tactical::{
+            OriginalFighterTarget, TacticalShot, TacticalSubsystemKind, TacticalTurnEvent,
+            TacticalUnitRef, WeaponKind,
+        };
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.shield = 10;
+        target.shield_max = 10;
+        target.hull_current = 1_000;
+        target.hull_max = 1_000;
+        target.subsystem_capacity.shields = true;
+        target.refresh_subsystem_condition();
+        let mut tactical = session(vec![ship(true, TacticalWeaponArc::default(), 0.0), target], Vec::new());
+        tactical.combat_tick = 20;
+        tactical.hit_weapon_shot(TacticalShot {
+            source: TacticalUnitRef::Ship(0),
+            target: OriginalFighterTarget::Capital(1),
+            kind: WeaponKind::LaserCannon,
+            strength: 10.0,
+        });
+        // The shield is gone at once; its subsystem hit waits in the queue,
+        // stamped +0x87c within the turn's events (turn 5 + 2).
+        assert_eq!(tactical.ships[1].shield, 0);
+        assert_eq!(tactical.ships[1].subsystem_damage.shields, 0);
+        assert_eq!(
+            tactical.turn_events,
+            vec![crate::tactical::TacticalQueuedEvent {
+                stamp: 7,
+                event: TacticalTurnEvent::SubsystemHit {
+                    ship: 1,
+                    kind: TacticalSubsystemKind::Shields,
+                },
+            }]
+        );
+        tactical.hit_subsystem(1, TacticalSubsystemKind::Shields);
+        assert_eq!(tactical.ships[1].subsystem_damage.shields, 1);
+        assert!(tactical.ships[1].subsystem_condition.shields < 100);
+    }
+
     // FUN_005a96b0 runs at a turn's start (every fourth step) the events
     // stamped +0x878 - 1, only once +0x878 has reached +0x8ac (3), and
     // drops older ones (0x005bec3c, 0x005bec7e).
