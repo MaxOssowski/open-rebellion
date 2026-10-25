@@ -2733,28 +2733,11 @@ fn tactical_withdraw_confirmation_control_at(
 ///
 /// port: the run is under way from state 5's timer to its result.
 fn attack_death_star_enabled(session: &BattleSession) -> bool {
-    let (alliance, empire) = session
-        .fighters
-        .iter()
-        .filter(|fighter| fighter.alive)
-        .fold((0_usize, 0_usize), |(alliance, empire), fighter| {
-            if fighter.identity.is_alliance {
-                (alliance + 1, empire)
-            } else {
-                (alliance, empire + 1)
-            }
-        });
     session.selected_fighter_group.is_some()
-        && session.death_star.is_some_and(|death_star| {
-            death_star.attackable() && death_star.is_attacker != session.player_is_attacker
-        })
-        && session.trench_run_remaining_ms.is_none()
-        && empire < alliance
-        && !session.fighters.iter().any(|fighter| {
-            fighter.alive
-                && fighter.is_attacker == session.player_is_attacker
-                && fighter.order == TacticalOrder::AttackDeathStar
-        })
+        && session
+            .death_star
+            .is_some_and(|death_star| death_star.is_attacker != session.player_is_attacker)
+        && session.attack_death_star_open()
 }
 
 fn player_death_star(session: &BattleSession) -> Option<TacticalDeathStar> {
@@ -7583,6 +7566,10 @@ pub fn draw_tactical_view(
     // 0. Advance combat if in Combat phase (mutable borrow).
     {
         let session = state.session.as_mut().unwrap();
+        if session.phase == BattlePhase::Combat {
+            // FUN_005ada10 runs on every manager update, paused or not.
+            session.advance_voice_announcer(get_frame_time() * 1000.0);
+        }
         if session.phase == BattlePhase::Combat && !session.paused {
             // Step at ~4 ticks per second (at 60fps), scaled by combat_speed.
             let dt = get_frame_time();
@@ -9389,6 +9376,7 @@ mod tests {
             impact_effects: Vec::new(),
             pending_audio_cues: Vec::new(),
             pending_voice_cues: Vec::new(),
+            voice_announcer: TacticalVoiceAnnouncer::default(),
             field_effects: Vec::new(),
             subsystem_repairs: Vec::new(),
             paused: true,
@@ -14515,6 +14503,199 @@ mod tests {
         own.selected_fighter_group = Some(0);
         own.death_star.as_mut().unwrap().shielded = false;
         assert!(!attack_death_star_enabled(&own));
+    }
+
+    fn imperial_death_star_for_test(shielded: bool) -> TacticalDeathStar {
+        TacticalDeathStar {
+            resource: DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded,
+            destroyed: false,
+            action_committed: false,
+        }
+    }
+
+    fn voice_resources(session: &mut BattleSession) -> Vec<u32> {
+        session
+            .take_pending_voice_cues()
+            .into_iter()
+            .map(|cue| cue.resource_id)
+            .collect()
+    }
+
+    // Source: FUN_005ada10 (state 0 then 1000, DAT_0066c238 = 6000 ms, then
+    // state 4: 0x11c for the Empire when FUN_005ad930 opens). A0 TAC-01-C012
+    // (Empire, Death Star, more Alliance fighter groups): 15001 at 14.08 s,
+    // 15131 at 20.09 s, the battle still paused.
+    #[test]
+    fn the_empire_hears_its_fighter_screen_is_thin_six_seconds_after_battle_ready() {
+        let mut session = test_session(
+            Vec::new(),
+            vec![test_fighter(1, true), test_fighter(2, true), test_fighter(5, false)],
+            false,
+        );
+        session.paused = true;
+        session.death_star = Some(imperial_death_star_for_test(false));
+        session.queue_battle_ready_voice();
+        assert_eq!(voice_resources(&mut session), vec![15_001]);
+        session.advance_voice_announcer(5_999.0);
+        assert!(voice_resources(&mut session).is_empty());
+        session.advance_voice_announcer(1.0);
+        assert_eq!(voice_resources(&mut session), vec![15_131]);
+        session.advance_voice_announcer(10_000.0);
+        assert!(voice_resources(&mut session).is_empty());
+    }
+
+    // Source: FUN_005ada10's Alliance table 0x20, 0x90, 0x93, 0x94 (+0xe74)
+    // and state 1: shield (+0x70) -> 0x93, else no more Alliance than
+    // Imperial groups -> 0x94; then state 4: 0x92 when FUN_005ad930 opens,
+    // 0x94 when it closes.
+    #[test]
+    fn the_alliance_hears_the_death_star_warnings_in_order() {
+        let mut session = test_session(
+            Vec::new(),
+            vec![test_fighter(1, true), test_fighter(5, false)],
+            true,
+        );
+        session.death_star = Some(imperial_death_star_for_test(false));
+        session.queue_battle_ready_voice();
+        assert_eq!(voice_resources(&mut session), vec![14_001]);
+        session.advance_voice_announcer(6_000.0);
+        assert_eq!(voice_resources(&mut session), vec![14_113]);
+        session.advance_voice_announcer(6_000.0);
+        assert_eq!(voice_resources(&mut session), vec![14_117]);
+        session.advance_voice_announcer(6_000.0);
+        assert!(voice_resources(&mut session).is_empty());
+        session.fighters.push(test_fighter(2, true));
+        session.advance_voice_announcer(16.0);
+        assert_eq!(voice_resources(&mut session), vec![14_115]);
+        session.fighters[2].alive = false;
+        session.advance_voice_announcer(16.0);
+        assert_eq!(voice_resources(&mut session), vec![14_117]);
+
+        let mut shielded = test_session(Vec::new(), vec![test_fighter(1, true)], true);
+        shielded.death_star = Some(imperial_death_star_for_test(true));
+        shielded.queue_battle_ready_voice();
+        shielded.advance_voice_announcer(6_000.0);
+        shielded.advance_voice_announcer(6_000.0);
+        assert_eq!(voice_resources(&mut shielded), vec![14_001, 14_113, 14_116]);
+
+        // Without a Death Star the Alliance goes straight to waiting.
+        let mut plain = test_session(Vec::new(), vec![test_fighter(1, true)], true);
+        plain.queue_battle_ready_voice();
+        plain.advance_voice_announcer(12_000.0);
+        assert_eq!(voice_resources(&mut plain), vec![14_001]);
+    }
+
+    // Source: FUN_005ada10's guards: state 0x11c needs the Empire's own
+    // groups; state 1 gives 0x94 only with no more Alliance than Imperial
+    // groups, the window shut and no run; closing gives 0x94 only with
+    // groups on both sides, no run and no player group on order 6.
+    #[test]
+    fn the_death_star_announcer_keeps_quiet_when_its_conditions_fail() {
+        // The Empire without groups of its own hears nothing at 6 s.
+        let mut empire = test_session(
+            Vec::new(),
+            vec![test_fighter(1, true), test_fighter(2, true)],
+            false,
+        );
+        empire.death_star = Some(imperial_death_star_for_test(false));
+        empire.queue_battle_ready_voice();
+        empire.advance_voice_announcer(6_000.0);
+        assert_eq!(voice_resources(&mut empire), vec![15_001]);
+
+        // The Alliance with more groups: 0x90, then straight to waiting.
+        let mut ahead = test_session(
+            Vec::new(),
+            vec![test_fighter(1, true), test_fighter(2, true), test_fighter(5, false)],
+            true,
+        );
+        ahead.death_star = Some(imperial_death_star_for_test(false));
+        ahead.queue_battle_ready_voice();
+        ahead.advance_voice_announcer(5_999.0);
+        assert_eq!(voice_resources(&mut ahead), vec![14_001]);
+        ahead.advance_voice_announcer(1.0);
+        assert_eq!(voice_resources(&mut ahead), vec![14_113]);
+        ahead.advance_voice_announcer(6_000.0);
+        // Watching from the start of the window: it is already open.
+        assert_eq!(voice_resources(&mut ahead), vec![14_115]);
+
+        // State 1 with more Alliance groups, the window shut only by a group
+        // already on order 6: the counts still forbid 0x94.
+        let mut busy = test_session(
+            Vec::new(),
+            vec![test_fighter(1, true), test_fighter(2, true), test_fighter(5, false)],
+            true,
+        );
+        busy.death_star = Some(imperial_death_star_for_test(false));
+        busy.fighters[0].order = TacticalOrder::AttackDeathStar;
+        busy.queue_battle_ready_voice();
+        busy.advance_voice_announcer(6_000.0);
+        busy.advance_voice_announcer(6_000.0);
+        assert_eq!(voice_resources(&mut busy), vec![14_001, 14_113]);
+
+        // Two groups a side: no more Alliance than Imperial, so 0x94.
+        let mut even = test_session(
+            Vec::new(),
+            vec![
+                test_fighter(1, true),
+                test_fighter(2, true),
+                test_fighter(5, false),
+                test_fighter(6, false),
+            ],
+            true,
+        );
+        even.death_star = Some(imperial_death_star_for_test(false));
+        even.queue_battle_ready_voice();
+        even.advance_voice_announcer(6_000.0);
+        even.advance_voice_announcer(6_000.0);
+        assert_eq!(voice_resources(&mut even), vec![14_001, 14_113, 14_117]);
+
+        // State 1 with a run under way or no player groups: no 0x94.
+        for setup in 0..2 {
+            let mut session = test_session(
+                Vec::new(),
+                vec![test_fighter(1, true), test_fighter(5, false)],
+                true,
+            );
+            session.death_star = Some(imperial_death_star_for_test(false));
+            if setup == 0 {
+                session.trench_run_remaining_ms = Some(1_000.0);
+            } else {
+                session.fighters[0].alive = false;
+            }
+            session.queue_battle_ready_voice();
+            session.advance_voice_announcer(6_000.0);
+            session.advance_voice_announcer(6_000.0);
+            assert_eq!(voice_resources(&mut session), vec![14_001, 14_113], "setup {setup}");
+        }
+
+        // Closing without enemy groups, or with a player group on order 6:
+        // no 0x94.
+        for setup in 0..2 {
+            let mut session = test_session(
+                Vec::new(),
+                vec![test_fighter(1, true), test_fighter(2, true), test_fighter(5, false)],
+                true,
+            );
+            session.death_star = Some(imperial_death_star_for_test(false));
+            session.voice_announcer.state = TacticalVoiceAnnouncerState::Watching;
+            session.advance_voice_announcer(16.0);
+            assert_eq!(voice_resources(&mut session), vec![14_115]);
+            if setup == 0 {
+                session.fighters[2].alive = false;
+                session.fighters[1].alive = false;
+                session.fighters[0].alive = false;
+            } else {
+                session.fighters[0].order = TacticalOrder::AttackDeathStar;
+            }
+            session.advance_voice_announcer(16.0);
+            assert!(voice_resources(&mut session).is_empty(), "setup {setup}");
+        }
     }
 
     // Source: FUN_005ad930. The manual (p. 151): more Alliance than

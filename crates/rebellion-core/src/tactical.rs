@@ -1348,6 +1348,8 @@ pub struct BattleSession {
     /// Source-identified VOICEFXA/VOICEFXE tactical lines waiting for the
     /// application audio backend.
     pub pending_voice_cues: Vec<TacticalVoiceCue>,
+    /// `FUN_005ada10`'s opening and Death Star announcer.
+    pub voice_announcer: TacticalVoiceAnnouncer,
     /// Target-attached tractor/gravity field selected through one shared slot.
     pub field_effects: Vec<TacticalFieldEffect>,
     /// Source-selected subsystem repairs emitted by the latest combat step.
@@ -1725,6 +1727,10 @@ impl TacticalVoiceFaction {
 pub enum TacticalVoiceEvent {
     SourceMapped,
     BattleReady,
+    /// Alliance events 0x90-0x94 (`FUN_005ada10`).
+    DeathStarWarning,
+    /// Empire events 0x11c-0x11d (`FUN_005ada10`, `FUN_005cfec0`).
+    DeathStarFighterScreen,
     TargetTaskForceRejected,
     CapitalManeuver,
     FighterManeuver,
@@ -1766,6 +1772,34 @@ pub struct TacticalVoiceCue {
     pub source_event: u16,
     pub resource_id: u32,
 }
+
+/// `FUN_005ada10`'s state (`+0xe94`): 0 to 3 walk the opening lines
+/// (`+0xe74..+0xe80`), 1000 waits, 4 watches the Attack Death Star window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TacticalVoiceAnnouncerState {
+    /// Not armed yet: the player has not taken command.
+    #[default]
+    Idle,
+    Opening(u8),
+    Waiting,
+    Watching,
+}
+
+/// `FUN_005ada10`'s fields: state `+0xe94`, countdown `+0xe6c` (ms) and the
+/// last Attack Death Star result `+0xe68`.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct TacticalVoiceAnnouncer {
+    pub state: TacticalVoiceAnnouncerState,
+    pub countdown_ms: f32,
+    pub attack_death_star_open: bool,
+}
+
+/// `DAT_0066c238`: the announcer's gap between lines.
+pub const ORIGINAL_VOICE_ANNOUNCER_GAP_MS: f32 = 6000.0;
+
+/// `FUN_005ada10`'s Alliance opening (`+0xe74..+0xe80`): battle ready, then
+/// the Death Star warnings approach, shield and fighter screen.
+const ALLIANCE_OPENING_EVENTS: [u16; 4] = [0x20, 0x90, 0x93, 0x94];
 
 impl TacticalVoiceCue {
     /// `FUN_005bae60` builds the three banks and `FUN_005bad50` resolves an event to its WAVE.
@@ -3355,6 +3389,7 @@ impl BattleSession {
             impact_effects: Vec::new(),
             pending_audio_cues: Vec::new(),
             pending_voice_cues: Vec::new(),
+            voice_announcer: TacticalVoiceAnnouncer::default(),
             field_effects: Vec::new(),
             subsystem_repairs: Vec::new(),
             paused: true,
@@ -5441,6 +5476,156 @@ impl BattleSession {
         let faction = self.player_voice_faction();
         self.pending_voice_cues
             .push(TacticalVoiceCue::battle_ready(faction));
+        // `FUN_005ada10` state 0 plays that line on its first update (the
+        // countdown starts at 0) and moves on: to state 1 when the player
+        // is the Alliance facing an operational Death Star, else to 1000.
+        let facing_death_star = faction == TacticalVoiceFaction::Alliance
+            && self.death_star.is_some_and(TacticalDeathStar::operational);
+        self.voice_announcer = TacticalVoiceAnnouncer {
+            state: if facing_death_star {
+                TacticalVoiceAnnouncerState::Opening(1)
+            } else {
+                TacticalVoiceAnnouncerState::Waiting
+            },
+            countdown_ms: ORIGINAL_VOICE_ANNOUNCER_GAP_MS,
+            attack_death_star_open: false,
+        };
+    }
+
+    /// `FUN_005ad930` without the mission control's selection: an
+    /// attackable Death Star (`FUN_005ba450`), no trench run
+    /// (`FUN_005d0ae0`; port: state 5's timer to its result), fewer Imperial
+    /// than Alliance fighter groups on the field (`+0x988`, `+0x168`), and
+    /// no player group already on order 6 (`+0x64`/`+0x68`).
+    #[must_use]
+    pub fn attack_death_star_open(&self) -> bool {
+        let (alliance, empire) = self
+            .fighters
+            .iter()
+            .filter(|fighter| fighter.alive)
+            .fold((0_usize, 0_usize), |(alliance, empire), fighter| {
+                if fighter.identity.is_alliance {
+                    (alliance + 1, empire)
+                } else {
+                    (alliance, empire + 1)
+                }
+            });
+        self.death_star.is_some_and(TacticalDeathStar::attackable)
+            && self.trench_run_remaining_ms.is_none()
+            && empire < alliance
+            && !self.fighters.iter().any(|fighter| {
+                fighter.alive
+                    && fighter.is_attacker == self.player_is_attacker
+                    && fighter.order == TacticalOrder::AttackDeathStar
+            })
+    }
+
+    /// Whether a side still has a live fighter group. hyp: the side lists
+    /// `+0x64` that `FUN_005ada10` asks to be non-empty hold its groups.
+    fn side_has_fighter_groups(&self, player_side: bool) -> bool {
+        self.fighters.iter().any(|fighter| {
+            fighter.alive && (fighter.is_attacker == self.player_is_attacker) == player_side
+        })
+    }
+
+    /// `FUN_005ada10(elapsed)`, every manager update, paused or not (A0
+    /// TAC-01-C012's recording has 0x11c 6.0 s after the opening line, while
+    /// the battle is still paused).
+    pub fn advance_voice_announcer(&mut self, elapsed_ms: f32) {
+        use TacticalVoiceAnnouncerState as State;
+        let alliance_player = self.player_voice_faction() == TacticalVoiceFaction::Alliance;
+        match self.voice_announcer.state {
+            State::Idle => {}
+            State::Waiting => {
+                self.voice_announcer.countdown_ms -= elapsed_ms;
+                if self.voice_announcer.countdown_ms <= 0.0 {
+                    self.voice_announcer.state = State::Watching;
+                    self.watch_attack_death_star_window(alliance_player);
+                }
+            }
+            State::Watching => self.watch_attack_death_star_window(alliance_player),
+            State::Opening(step) => {
+                self.voice_announcer.countdown_ms -= elapsed_ms;
+                if self.voice_announcer.countdown_ms > 0.0 {
+                    return;
+                }
+                self.voice_announcer.countdown_ms = ORIGINAL_VOICE_ANNOUNCER_GAP_MS;
+                let event = ALLIANCE_OPENING_EVENTS[usize::from(step.min(3))];
+                self.pending_voice_cues.push(TacticalVoiceCue::from_source_event(
+                    TacticalVoiceEvent::DeathStarWarning,
+                    event,
+                ));
+                let next = match (step, self.death_star) {
+                    (1, Some(death_star)) if death_star.operational() && death_star.shielded => {
+                        State::Opening(2)
+                    }
+                    (1, _)
+                        if self.side_has_fighter_groups(true)
+                            && !self.attack_death_star_open()
+                            && self.trench_run_remaining_ms.is_none()
+                            && self.alliance_fighter_groups() <= self.empire_fighter_groups() =>
+                    {
+                        State::Opening(3)
+                    }
+                    _ => State::Waiting,
+                };
+                self.voice_announcer.state = next;
+            }
+        }
+    }
+
+    fn alliance_fighter_groups(&self) -> usize {
+        self.fighters
+            .iter()
+            .filter(|fighter| fighter.alive && fighter.identity.is_alliance)
+            .count()
+    }
+
+    fn empire_fighter_groups(&self) -> usize {
+        self.fighters
+            .iter()
+            .filter(|fighter| fighter.alive && !fighter.identity.is_alliance)
+            .count()
+    }
+
+    /// `FUN_005ada10` state 4: a change in `FUN_005ad930` speaks. Opening for
+    /// the Alliance: 0x92 (attack open); for the Empire with its groups:
+    /// 0x11c (fighter screen too thin). Closing for the Alliance, with groups
+    /// on both sides, no trench run and none of its groups on order 6: 0x94
+    /// (fighter screen).
+    fn watch_attack_death_star_window(&mut self, alliance_player: bool) {
+        let open = self.attack_death_star_open();
+        let was_open = self.voice_announcer.attack_death_star_open;
+        if was_open && !open {
+            if alliance_player
+                && self.side_has_fighter_groups(true)
+                && self.side_has_fighter_groups(false)
+                && self.trench_run_remaining_ms.is_none()
+                && !self.fighters.iter().any(|fighter| {
+                    fighter.alive
+                        && fighter.is_attacker == self.player_is_attacker
+                        && fighter.order == TacticalOrder::AttackDeathStar
+                })
+            {
+                self.pending_voice_cues.push(TacticalVoiceCue::from_source_event(
+                    TacticalVoiceEvent::DeathStarWarning,
+                    0x94,
+                ));
+            }
+        } else if !was_open && open {
+            if alliance_player {
+                self.pending_voice_cues.push(TacticalVoiceCue::from_source_event(
+                    TacticalVoiceEvent::DeathStarWarning,
+                    0x92,
+                ));
+            } else if self.side_has_fighter_groups(true) {
+                self.pending_voice_cues.push(TacticalVoiceCue::from_source_event(
+                    TacticalVoiceEvent::DeathStarFighterScreen,
+                    0x11c,
+                ));
+            }
+        }
+        self.voice_announcer.attack_death_star_open = open;
     }
 
     /// Queue the original player-faction withdrawal acknowledgement.

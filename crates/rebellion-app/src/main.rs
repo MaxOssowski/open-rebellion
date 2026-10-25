@@ -10285,6 +10285,7 @@ mod tactical_ground_tests {
             impact_effects: vec![],
             pending_audio_cues: vec![],
             pending_voice_cues: vec![],
+            voice_announcer: rebellion_render::tactical_view::TacticalVoiceAnnouncer::default(),
             field_effects: vec![],
             subsystem_repairs: vec![],
             paused: false,

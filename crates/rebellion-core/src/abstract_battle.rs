@@ -1701,7 +1701,7 @@ mod tests {
         original_navigation_point_sets, OriginalTacticalLayout, OriginalTacticalRng,
         TacticalFighter, TacticalFighterRecoveryState, TacticalObjectIdentity, TacticalOrder,
         TacticalShip, TacticalSubsystemCapacity, TacticalSubsystemCondition,
-        TacticalSubsystemDamage, TacticalTactic, TacticalWeaponRanges, TacticalWorldPosition,
+        TacticalSubsystemDamage, TacticalTactic, TacticalVoiceAnnouncer, TacticalWeaponRanges, TacticalWorldPosition,
         TacticalWorldVector, ORIGINAL_TRENCH_RUN_SILENT_EVENT,
     };
 
@@ -1859,6 +1859,7 @@ mod tests {
             impact_effects: Vec::new(),
             pending_audio_cues: Vec::new(),
             pending_voice_cues: Vec::new(),
+            voice_announcer: TacticalVoiceAnnouncer::default(),
             field_effects: Vec::new(),
             subsystem_repairs: Vec::new(),
             paused: false,
