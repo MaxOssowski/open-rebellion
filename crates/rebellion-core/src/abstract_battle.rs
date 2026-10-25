@@ -6712,6 +6712,47 @@ mod tests {
         assert!((imperial.z + 2.75).abs() < 1e-5, "{imperial:?}");
     }
 
+    // 0x005ccdda: a computer side's Stand Off force of more than 7 members,
+    // out of its band, takes Surround (0x005c9be0(1), event 0x3d); one of
+    // 7, or the player's, keeps Stand Off.
+    #[test]
+    fn a_large_computer_force_switches_to_surround() {
+        use crate::tactical::{TacticalAttackTarget, TacticalTactic, TacticalTurnEvent};
+        let run = |count: usize, player_side: bool| {
+            let mut ships = (0..count)
+                .map(|_| {
+                    let mut unit = ship(player_side, TacticalWeaponArc::default(), 0.0);
+                    unit.task_force = 3;
+                    unit.order = TacticalOrder::AttackCapitalShips;
+                    unit.source_desired_forward = crate::tactical::TacticalWorldVector::ZERO;
+                    unit
+                })
+                .collect::<Vec<_>>();
+            let mut target = ship(!player_side, TacticalWeaponArc::default(), 0.0);
+            target.source_position.z = 80.0;
+            target.task_force = 6;
+            ships.push(target);
+            for unit in &mut ships[..count] {
+                unit.attack_target = Some(TacticalAttackTarget::CapitalShip(count));
+            }
+            let mut tactical = session(ships, Vec::new());
+            tactical.advance_engagement_approach();
+            let switched = tactical.ships[0].tactic == TacticalTactic::Surround;
+            let posted = tactical.turn_events.iter().any(|queued| {
+                queued.event
+                    == TacticalTurnEvent::TaskForceTactic {
+                        attacker: player_side,
+                        task_force: 3,
+                        tactic: TacticalTactic::Surround,
+                    }
+            });
+            (switched, posted)
+        };
+        assert_eq!(run(8, false), (true, true));
+        assert_eq!(run(7, false), (false, false));
+        assert_eq!(run(8, true), (false, false));
+    }
+
     // The fighter forces that close: not recovering, escorting, holding,
     // withdrawing, on the trench run, emptied or gone.
     #[test]

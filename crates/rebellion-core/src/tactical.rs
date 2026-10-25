@@ -7106,6 +7106,31 @@ impl BattleSession {
                     z: side_z * band.min * ORIGINAL_STAND_OFF_BACK_OFF,
                 };
             }
+            // `0x005ccdda`: a computer side's local Stand Off force (`+0x38`
+            // 2, `+0x34` 0, its side's `+0x8` 1) of more than 7 members takes
+            // Surround (SetTactic `0x005c9be0(1)`, event `0x3d`). port: the
+            // computer's side is the one the player does not command.
+            if tactic == TacticalTactic::StandOff
+                && self.ships[leader].tactic == TacticalTactic::StandOff
+                && self.ships[leader].is_attacker != self.player_is_attacker
+                && members.len() > 7
+            {
+                for &member in &members {
+                    self.ships[member].tactic = TacticalTactic::Surround;
+                }
+                let task_force = self.ships[leader].task_force;
+                if task_force < 8 {
+                    let stamp = self.step_event_stamp();
+                    self.post_turn_event(
+                        stamp,
+                        TacticalTurnEvent::TaskForceTactic {
+                            attacker: self.ships[leader].is_attacker,
+                            task_force,
+                            tactic: TacticalTactic::Surround,
+                        },
+                    );
+                }
+            }
             let step = if tactic == TacticalTactic::Surround {
                 ORIGINAL_SURROUND_APPROACH_STEP
             } else {
