@@ -2876,22 +2876,6 @@ pub fn original_formation_lateral_offset(member_ordinal: usize, spacing: f32) ->
     }
 }
 
-/// `0x005c6070`: a capital-ship task force's first member, the first node of
-/// its mover's member list. A member leaves the list only when it is gone
-/// (`FUN_005a90c0` -> `FUN_005aa760`), so a ship in its jump stays first.
-/// port: members are in the port's list order.
-pub fn original_task_force_first_members(ships: &[TacticalShip], side: bool) -> Vec<usize> {
-    let mut seen = Vec::new();
-    let mut first = Vec::new();
-    for (index, ship) in ships.iter().enumerate() {
-        if ship.alive && ship.is_attacker == side && !seen.contains(&ship.task_force) {
-            seen.push(ship.task_force);
-            first.push(index);
-        }
-    }
-    first
-}
-
 /// `FUN_005b9c60` installs pi / 12 for the slowest hulls. Faster hulls use
 /// pi * 0.5 * clamp(raw + 1, 9) / 9 radians per second.
 pub fn original_capital_turn_rate(maneuverability: u32) -> f32 {
@@ -6517,7 +6501,6 @@ impl BattleSession {
         let works = (0..self.ships.len())
             .map(|index| original_ship_hyperdrive_works(&self.ships, &self.field_effects, index))
             .collect::<Vec<_>>();
-        let first_members = original_task_force_first_members(&self.ships, side);
         let requested = (0..self.ships.len())
             .map(|index| {
                 self.turn_event_pending(&TacticalTurnEvent::JumpStart(TacticalUnitRef::Ship(index)))
@@ -6564,12 +6547,12 @@ impl BattleSession {
             } else {
                 exits[1]
             };
-            // `FUN_005cc300` tries the jump of its first member only
-            // (`0x005c6070`), and only once the force's move has arrived
-            // (`0x005cc3ef`). port: the force's position is that member's.
-            // A member already in state 6 waits for its event `0x2d`.
-            if !first_members.contains(&index)
-                || requested[index]
+            // `FUN_005cc300` tries the jump of its force's first member
+            // (`0x005c6070`) once the force's move has arrived
+            // (`0x005cc3ef`). `FUN_005ad530` has given each ship a force of
+            // its own (`FUN_005aded0` -> `0x005cbf50`), so that member is the
+            // ship. A ship already in state 6 waits for its event `0x2d`.
+            if requested[index]
                 || (exit - ship.source_position.z).abs() > ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS
             {
                 continue;

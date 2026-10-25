@@ -4439,11 +4439,12 @@ mod tests {
         assert!(!decided(&tactical));
     }
 
-    // FUN_005cc300 tries only its force's first member (0x005c6070), which
-    // stays first through its jump until it is gone (FUN_005a90c0 ->
-    // FUN_005aa760); a first member that cannot jump holds the others.
+    // FUN_005cc300 tries its force's first member (0x005c6070), but
+    // FUN_005ad530 gives each capital ship a force of its own
+    // (FUN_005aded0 -> 0x005cbf50): ships of one group decide their jumps
+    // together, and one that cannot jump holds no other.
     #[test]
-    fn a_task_force_jumps_its_ships_one_after_another() {
+    fn each_withdrawing_ship_decides_its_own_jump() {
         let run = |first_hyperdrive: u8| {
             let mut first = jumper(true, TacticalWeaponArc::default(), 0.0);
             first.subsystem_condition.hyperdrive = first_hyperdrive;
@@ -4453,6 +4454,7 @@ mod tests {
             enemy.hull_current = 1_000_000;
             enemy.hull_max = 1_000_000;
             let mut tactical = session(vec![first, second, enemy], Vec::new());
+            assert_eq!(tactical.ships[0].task_force, tactical.ships[1].task_force);
             let exit = tactical.withdrawal_exit_z(true);
             for index in [0, 1] {
                 tactical.ships[index].retreating = true;
@@ -4472,32 +4474,17 @@ mod tests {
             ))
         };
         let mut tactical = run(100);
-        assert!(decided(&tactical, 0));
-        assert!(!decided(&tactical, 1));
-        // The first jumps at turn 6 (step 24) and leaves at turn 13 (step
-        // 52, event 0x2e); until then the second is not tried.
-        let gone = step_until(&mut tactical, |t| {
-            if !t.ships[0].alive {
-                return true;
-            }
-            assert!(!decided(t, 1) && !t.ships[1].jumping());
-            false
-        });
-        assert_eq!(gone, 52);
-        assert!(tactical.ships[0].retreated);
-        // Now the second is first. Back at its line (port: it followed
-        // the first's flight in formation), it is decided on the next step,
-        // 53, stamped 16, and jumps at turn 17, step 68.
-        tactical.ships[1].source_position.z = tactical.withdrawal_exit_z(true);
-        assert_eq!(step_until(&mut tactical, |t| decided(t, 1)), 53);
-        assert_eq!(step_until(&mut tactical, |t| t.ships[1].jumping()), 68);
+        assert!(decided(&tactical, 0) && decided(&tactical, 1));
+        // Both jump at turn 6 (step 24).
+        assert_eq!(
+            step_until(&mut tactical, |t| t.ships[0].jumping()
+                && t.ships[1].jumping()),
+            24
+        );
 
-        let mut held = run(0);
-        for _ in 0..60 {
-            held.step();
-        }
-        assert!(!held.ships[0].jumping() && !held.ships[1].jumping());
-        assert!(!decided(&held, 0) && !decided(&held, 1));
+        let held = run(0);
+        assert!(!decided(&held, 0));
+        assert!(decided(&held, 1));
     }
 
     // FUN_005c8780 and FUN_005cc300 act on the withdrawing side's order-3
