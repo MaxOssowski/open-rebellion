@@ -1621,14 +1621,27 @@ pub fn leave(session: &mut BattleSession, alliance: bool) {
     }
 }
 
+/// `FUN_005d2190`: a task force's target is its first member's current
+/// attack target, even when a later member has one and the first has none.
+fn task_force_target(
+    session: &BattleSession,
+    members: &[AbstractUnit],
+) -> Option<crate::tactical::TacticalAttackTarget> {
+    members.first().and_then(|&member| match member {
+        AbstractUnit::Capital(index) => session.ships[index].attack_target,
+        AbstractUnit::Fighter(index) => session.fighters[index].attack_target,
+    })
+}
+
 /// The tactical commander's test in `FUN_005c8780`: with its retreat order
 /// and a way out (`FUN_005c7e80`), a side withdraws when the enemy's
 /// strength is above 0 (`_DAT_0066cbb4`) and its own is under 0.33 (`+0x24`)
 /// of it, or 0. The strengths are `FUN_005c7f70`: `FUN_005d0ce0`'s sum (the
 /// same per-unit terms and Death Star bonus) over the tactical task forces,
-/// whose targets are the units' current attack targets (`FUN_005d2190`).
-/// hyp: a port task force's target is its first member's; port: no
-/// arrivals are pending (`FUN_005ae1d0`).
+/// whose target is its first member's current attack target:
+/// `FUN_005d2190` returns the first node of the group's member list
+/// (`+0x10`, then the node's `+0x10`). port: members are in the port's
+/// list order, and no arrivals are pending (`FUN_005ae1d0`).
 #[must_use]
 pub fn tactical_side_withdraws(session: &BattleSession, alliance: bool) -> bool {
     let mut probe = AbstractBattle::new(session.clone());
@@ -1636,10 +1649,7 @@ pub fn tactical_side_withdraws(session: &BattleSession, alliance: bool) -> bool 
     probe.retreat_done = session.retreat_done;
     for side in [true, false] {
         for (group, members) in probe.groups(side) {
-            let target = members.iter().find_map(|&member| match member {
-                AbstractUnit::Capital(index) => session.ships[index].attack_target,
-                AbstractUnit::Fighter(index) => session.fighters[index].attack_target,
-            });
+            let target = task_force_target(session, &members);
             let target = match target {
                 Some(crate::tactical::TacticalAttackTarget::CapitalShip(index)) => {
                     AbstractUnit::Capital(index)
@@ -1701,7 +1711,7 @@ mod tests {
         original_navigation_point_sets, OriginalTacticalLayout, OriginalTacticalRng,
         TacticalFighter, TacticalFighterRecoveryState, TacticalObjectIdentity, TacticalOrder,
         TacticalShip, TacticalSubsystemCapacity, TacticalSubsystemCondition,
-        TacticalSubsystemDamage, TacticalTactic, TacticalVoiceAnnouncer, TacticalWeaponRanges, TacticalWorldPosition,
+        TacticalAttackTarget, TacticalSubsystemDamage, TacticalTactic, TacticalVoiceAnnouncer, TacticalWeaponRanges, TacticalWorldPosition,
         TacticalWorldVector, ORIGINAL_TRENCH_RUN_SILENT_EVENT,
     };
 
@@ -1875,6 +1885,26 @@ mod tests {
     }
 
     // FUN_005b4c60: the arc with the greatest total, the first on a tie.
+    // Source: FUN_005d2190 returns the first node of the task force's
+    // member list; FUN_005c7f70 takes that unit's target.
+    #[test]
+    fn a_task_force_takes_its_first_member_s_target_only() {
+        let arc = TacticalWeaponArc::default();
+        let mut session = session(
+            vec![ship(true, arc, 1.0), ship(true, arc, 1.0), ship(false, arc, 1.0)],
+            Vec::new(),
+        );
+        session.ships[1].attack_target = Some(TacticalAttackTarget::CapitalShip(2));
+        let members = [AbstractUnit::Capital(0), AbstractUnit::Capital(1)];
+        assert_eq!(task_force_target(&session, &members), None);
+        session.ships[0].attack_target = Some(TacticalAttackTarget::CapitalShip(2));
+        assert_eq!(
+            task_force_target(&session, &members),
+            Some(TacticalAttackTarget::CapitalShip(2))
+        );
+        assert_eq!(task_force_target(&session, &[]), None);
+    }
+
     #[test]
     fn the_strongest_arc_wins_and_a_tie_keeps_the_first() {
         let arcs = [

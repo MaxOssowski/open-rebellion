@@ -128,6 +128,15 @@ pub const ORIGINAL_JUMP_EXIT_DISTANCE: f32 = 8.0;
 /// `_DAT_0066c24c`: `FUN_005a6b40` ends the jump (state 7 -> 8) when its
 /// clock `+0x50` reaches 4000 ms; event `0x2e` then removes the unit.
 pub const ORIGINAL_JUMP_MILLISECONDS: f32 = 4_000.0;
+/// `FUN_005a6b40` picks the jump factor by `(type + id) & 3`: the unit's
+/// vtable `+0x24` (its tactical ordinal, the index `FUN_005ab0e0` uses for
+/// the `+0xa50` resource table) plus its object id `+0x3b`. hyp: the port's
+/// list index stands for the object id.
+#[must_use]
+pub const fn original_jump_factor_index(tactical_ordinal: u8, object_index: usize) -> usize {
+    (tactical_ordinal as usize + object_index) & 3
+}
+
 /// `FUN_005a6b40` draws a jumping unit at `z - side_z * k * (0.001 t)^2`.
 /// The four factors `k` are set at start-up (`0x5a69b0`..`0x5a6a7c`) as a
 /// distance over the squared seconds left of the 4000 ms jump:
@@ -1658,15 +1667,12 @@ impl TacticalAudioEvent {
         }
     }
 
-    /// `FUN_005bae60` per-event variant counts (`+0x50` table).
+    /// `FUN_005bae60` per-event variant counts (`+0x50` + 4 * event): 1 by
+    /// default, then 4 for events 0..2, 2 for 3..5, 1 for 6..8, 3 for
+    /// 9..0x13 and 1 for 0x14..0x1f.
     #[must_use]
     pub const fn variant_count(self) -> u8 {
-        match self {
-            Self::TorpedoImpact => 1,
-            // hyp: one each; their count words are not read.
-            Self::FighterJump | Self::CapitalJump => 1,
-            _ => 3,
-        }
+        original_audio_variant_count(self.event_id())
     }
 
     pub const fn fire_for(kind: WeaponKind) -> Self {
@@ -1685,6 +1691,17 @@ impl TacticalAudioEvent {
             WeaponKind::IonCannon => Self::IonImpact,
             WeaponKind::FighterAttack => Self::TorpedoImpact,
         }
+    }
+}
+
+/// `FUN_005bae60`'s `+0x50` table: how many WAVE variants an event has.
+#[must_use]
+pub const fn original_audio_variant_count(event: u8) -> u8 {
+    match event {
+        0x00..=0x02 => 4,
+        0x03..=0x05 => 2,
+        0x09..=0x13 => 3,
+        _ => 1,
     }
 }
 
@@ -5861,8 +5878,10 @@ impl BattleSession {
             if !ship.alive || !ship.retreating || ship.is_attacker != side {
                 continue;
             }
-            // hyp: the port's list index stands for `id + slot +0x24`.
-            let factor = ORIGINAL_JUMP_ACCELERATIONS[index & 3];
+            let ordinal = ship
+                .tactical_resource
+                .map_or(0, |resource| resource.tactical_ordinal);
+            let factor = ORIGINAL_JUMP_ACCELERATIONS[original_jump_factor_index(ordinal, index)];
             let side_z = if ship.identity.is_alliance { 1.0 } else { -1.0 };
             if ship.retreat_progress > 0.0 {
                 let from = ship.retreat_progress;
@@ -5954,8 +5973,10 @@ impl BattleSession {
             if !fighter.alive || !fighter.retreating || fighter.is_attacker != side {
                 continue;
             }
-            // hyp: the port's list index stands for `id + slot +0x24`.
-            let factor = ORIGINAL_JUMP_ACCELERATIONS[index & 3];
+            let ordinal = fighter
+                .tactical_resource
+                .map_or(0, |resource| resource.tactical_ordinal);
+            let factor = ORIGINAL_JUMP_ACCELERATIONS[original_jump_factor_index(ordinal, index)];
             let (exit, side_z) = if fighter.identity.is_alliance {
                 (exits[0], 1.0)
             } else {

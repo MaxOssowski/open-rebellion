@@ -14698,6 +14698,38 @@ mod tests {
         }
     }
 
+    // Source: FUN_005bae60's +0x50 table (4, 4, 4, 2, 2, 2, 1, 1, 1, then 3
+    // for events 9..0x13 and 1 for 0x14..0x1f). A0 TAC-01-C012's recording
+    // has turbolaser event 0x0e in variants 0, 1 and 2.
+    #[test]
+    fn every_tactical_sound_event_has_its_original_number_of_variants() {
+        assert_eq!(original_audio_variant_count(0x00), 4);
+        assert_eq!(original_audio_variant_count(0x02), 4);
+        assert_eq!(original_audio_variant_count(0x03), 2);
+        assert_eq!(original_audio_variant_count(0x05), 2);
+        assert_eq!(original_audio_variant_count(0x06), 1);
+        assert_eq!(original_audio_variant_count(0x08), 1);
+        assert_eq!(original_audio_variant_count(0x09), 3);
+        assert_eq!(original_audio_variant_count(0x13), 3);
+        assert_eq!(original_audio_variant_count(0x14), 1);
+        assert_eq!(original_audio_variant_count(0x1f), 1);
+        assert_eq!(TacticalAudioEvent::TurbolaserFire.variant_count(), 3);
+        assert_eq!(TacticalAudioEvent::TorpedoImpact.variant_count(), 1);
+        assert_eq!(TacticalAudioEvent::FighterJump.variant_count(), 1);
+        assert_eq!(TacticalAudioEvent::CapitalJump.variant_count(), 1);
+    }
+
+    // Source: FUN_005a6b40: (vtable +0x24 + id +0x3b) & 3 picks
+    // DAT_006bc47c, DAT_006bc488, DAT_006bc484 or DAT_006bc494.
+    #[test]
+    fn a_jump_factor_follows_the_unit_type_and_its_number() {
+        assert_eq!(original_jump_factor_index(0, 0), 0);
+        assert_eq!(original_jump_factor_index(15, 0), 3);
+        assert_eq!(original_jump_factor_index(15, 2), 1);
+        assert_eq!(original_jump_factor_index(29, 3), 0);
+        assert_eq!(original_jump_factor_index(255, 1), 0);
+    }
+
     // Source: FUN_005ad930. The manual (p. 151): more Alliance than
     // Imperial fighters launched, and one group at a time.
     #[test]
