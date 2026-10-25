@@ -1284,9 +1284,20 @@ pub enum TacticalUnitRef {
     Fighter(usize),
 }
 
+/// One weapon family's shot, decided by `FUN_005b3f10` in the turn's unit
+/// update: its fire event (`0x0d`..`0x10`) is stamped `+0x87c + 1.0`, its
+/// hit event (`0x11`..`0x14`) `+0x87c + 2.0` (`0x005b40c3`..`0x005b41ae`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalShot {
+    pub source: TacticalUnitRef,
+    pub target: OriginalFighterTarget,
+    pub kind: WeaponKind,
+    pub strength: f32,
+}
+
 /// An event of the battle manager's turn queue, by its dispatcher type
 /// (`0x005a9780`, table `0x5a9bc4`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TacticalTurnEvent {
     /// `0x44`, `0x005ba520`: the superlaser's beam starts (`0x005c12d0`).
     DeathStarBeam { target: usize },
@@ -1304,10 +1315,18 @@ pub enum TacticalTurnEvent {
     /// approach) from the run's creation (`0x005d0884`), 5 (the run) on
     /// the approach's arrival (`0x005c6928`).
     TrenchRunState(u8),
+    /// `0x0d`..`0x10` (`FUN_005b1ea0`, `FUN_005b1f60`, `FUN_005b2080`,
+    /// `FUN_005b2c70`): with both units in the fight, the projectile
+    /// (`0x005c12d0`).
+    WeaponFire(TacticalShot),
+    /// `0x11`..`0x14` (`0x005b2a20`, `0x005b2a70`, `0x005b2ac0`,
+    /// `0x005b2b10`): with the target in the fight, its damage (slot
+    /// `+0xe0`).
+    WeaponHit(TacticalShot),
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TacticalQueuedEvent {
     pub stamp: u32,
     pub event: TacticalTurnEvent,
@@ -4543,6 +4562,8 @@ impl BattleSession {
             TacticalTurnEvent::TrenchRunState(5) => self.commit_original_trench_run(),
             // State 2 only sets the approach (`FUN_005cfec0`'s default).
             TacticalTurnEvent::TrenchRunState(_) => {}
+            TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
+            TacticalTurnEvent::WeaponHit(shot) => self.hit_weapon_shot(shot),
         }
     }
 
@@ -4875,56 +4896,221 @@ impl BattleSession {
             .filter(|(_, s)| !s.is_attacker && s.alive && !s.jumping())
             .map(|(i, _)| i)
             .collect();
-        let mut new_effects = Vec::new();
-        let player_is_attacker = self.player_is_attacker;
-        let player_faction = self.player_voice_faction();
-        Self::fire_side(
-            &mut self.ships,
-            &mut self.field_effects,
-            &atk_alive,
-            &def_alive,
-            &mut new_effects,
-            &mut self.impact_effects,
-            &mut self.pending_audio_cues,
-            &mut self.pending_voice_cues,
-            player_is_attacker,
-            player_faction,
-            &mut self.tactical_rng,
-        );
-        Self::fire_side(
-            &mut self.ships,
-            &mut self.field_effects,
-            &def_alive,
-            &atk_alive,
-            &mut new_effects,
-            &mut self.impact_effects,
-            &mut self.pending_audio_cues,
-            &mut self.pending_voice_cues,
-            player_is_attacker,
-            player_faction,
-            &mut self.tactical_rng,
-        );
-        self.fire_capitals_at_fighters(&mut new_effects);
-        self.weapon_effects.extend(new_effects);
+        let mut shots = Vec::new();
+        Self::fire_side(&mut self.ships, &atk_alive, &def_alive, &mut shots);
+        Self::fire_side(&mut self.ships, &def_alive, &atk_alive, &mut shots);
+        self.fire_capitals_at_fighters(&mut shots);
         // Fighter groups use the same slot (`0x66c560 + 0x88`,
         // `FUN_005b3a40`); their own readiness and recharge gate each shot.
-        self.fighter_step();
+        self.fighter_step(&mut shots);
+        let stamp = self.step_event_stamp();
+        for shot in shots {
+            self.post_turn_event(stamp + 1, TacticalTurnEvent::WeaponFire(shot));
+            self.post_turn_event(stamp + 2, TacticalTurnEvent::WeaponHit(shot));
+        }
+    }
+
+    fn unit_in_the_fight(&self, unit: OriginalFighterTarget) -> bool {
+        match unit {
+            OriginalFighterTarget::Capital(index) => self
+                .ships
+                .get(index)
+                .is_some_and(|ship| ship.alive && !ship.jumping()),
+            OriginalFighterTarget::Fighter(index) => self.fighters.get(index).is_some_and(|fighter| {
+                fighter.alive && fighter.squad_count > 0 && !fighter.jumping()
+            }),
+            OriginalFighterTarget::DeathStar => self
+                .death_star
+                .is_some_and(|death_star| !death_star.destroyed && death_star.hull > 0.0),
+        }
+    }
+
+    /// A weapon fire event (`FUN_005b1ea0` and its siblings): with both
+    /// units still in the fight (`FUN_005ad870`), the projectile and its
+    /// fire sound. hyp: the sound's variant is drawn here.
+    pub fn fire_weapon_shot(&mut self, shot: TacticalShot) {
+        let source = match shot.source {
+            TacticalUnitRef::Ship(index) => OriginalFighterTarget::Capital(index),
+            TacticalUnitRef::Fighter(index) => OriginalFighterTarget::Fighter(index),
+        };
+        if !self.unit_in_the_fight(source) || !self.unit_in_the_fight(shot.target) {
+            return;
+        }
+        let mut effects = Vec::new();
+        match (shot.source, shot.target) {
+            (TacticalUnitRef::Ship(from), OriginalFighterTarget::Capital(to)) => {
+                queue_original_tactical_projectile(
+                    &mut effects,
+                    &self.ships,
+                    from,
+                    to,
+                    shot.kind,
+                    shot.strength,
+                );
+            }
+            (TacticalUnitRef::Ship(from), OriginalFighterTarget::Fighter(to)) => {
+                queue_original_capital_to_fighter_projectile(
+                    &mut effects,
+                    &self.ships,
+                    &self.fighters,
+                    from,
+                    to,
+                    shot.kind,
+                    shot.strength,
+                );
+            }
+            (TacticalUnitRef::Fighter(from), OriginalFighterTarget::Capital(to)) => {
+                queue_original_fighter_projectile(
+                    &mut effects,
+                    &self.fighters,
+                    from,
+                    Some((to, &self.ships[to])),
+                    None,
+                    shot.kind,
+                    shot.strength,
+                );
+            }
+            (TacticalUnitRef::Fighter(from), OriginalFighterTarget::Fighter(to)) => {
+                queue_original_fighter_projectile(
+                    &mut effects,
+                    &self.fighters,
+                    from,
+                    None,
+                    Some((to, &self.fighters[to])),
+                    shot.kind,
+                    shot.strength,
+                );
+            }
+            (TacticalUnitRef::Fighter(from), OriginalFighterTarget::DeathStar) => {
+                if let Some(death_star) = self.death_star {
+                    queue_original_fighter_to_death_star_projectile(
+                        &mut effects,
+                        &self.fighters,
+                        from,
+                        death_star,
+                        shot.kind,
+                        shot.strength,
+                    );
+                }
+            }
+            (TacticalUnitRef::Ship(_), OriginalFighterTarget::DeathStar) => {}
+        }
+        self.weapon_effects.extend(effects);
+        let fire_event = TacticalAudioEvent::fire_for(shot.kind);
+        let variant = u8::try_from(
+            self.tactical_rng
+                .inclusive(0, u32::from(fire_event.variant_count() - 1)),
+        )
+        .unwrap_or(0);
+        self.pending_audio_cues
+            .push(TacticalAudioCue::from_variant(fire_event, variant));
+    }
+
+    /// A weapon hit event (`0x005b2a20` and its siblings): with the target
+    /// still in the fight (`FUN_005ad870`), its damage (slot `+0xe0`), the
+    /// impact and the impact sound. hyp: the sound's variant is drawn here.
+    pub fn hit_weapon_shot(&mut self, shot: TacticalShot) {
+        if !self.unit_in_the_fight(shot.target) {
+            return;
+        }
+        let player_is_attacker = self.player_is_attacker;
+        let player_faction = self.player_voice_faction();
+        let (source_is_attacker, source_group, source_maneuverability) = match shot.source {
+            TacticalUnitRef::Ship(index) => {
+                let ship = &self.ships[index];
+                (
+                    ship.is_attacker,
+                    TacticalVoiceGroup::Capital(ship.task_force),
+                    (ship.maneuverability as f32 + 1.0)
+                        .clamp(1.0, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX),
+                )
+            }
+            TacticalUnitRef::Fighter(index) => {
+                let fighter = &self.fighters[index];
+                (
+                    fighter.is_attacker,
+                    TacticalVoiceGroup::Fighter(fighter.fighter_group),
+                    fighter.effective_maneuverability(),
+                )
+            }
+        };
+        match shot.target {
+            OriginalFighterTarget::Capital(index) => {
+                let target_is_attacker = self.ships[index].is_attacker;
+                let target_group = self.ships[index].task_force;
+                let damage = original_tactical_integer_damage(shot.strength);
+                let rolls =
+                    original_tactical_damage_rolls(&self.ships, index, damage, &mut self.tactical_rng);
+                let stage = apply_original_capital_damage(
+                    &mut self.ships,
+                    &mut self.field_effects,
+                    index,
+                    damage,
+                    rolls,
+                );
+                queue_original_destruction_voice(
+                    &mut self.pending_voice_cues,
+                    player_faction,
+                    player_is_attacker,
+                    source_is_attacker,
+                    source_group,
+                    target_is_attacker,
+                    TacticalVoiceGroup::Capital(target_group),
+                    stage,
+                );
+                queue_original_tactical_impact(&mut self.impact_effects, index, shot.kind, stage);
+            }
+            OriginalFighterTarget::Fighter(index) => {
+                let target_is_attacker = self.fighters[index].is_attacker;
+                let target_group = self.fighters[index].fighter_group;
+                let stage = apply_original_fighter_damage(
+                    &mut self.fighters,
+                    index,
+                    shot.strength,
+                    source_maneuverability,
+                );
+                queue_original_destruction_voice(
+                    &mut self.pending_voice_cues,
+                    player_faction,
+                    player_is_attacker,
+                    source_is_attacker,
+                    source_group,
+                    target_is_attacker,
+                    TacticalVoiceGroup::Fighter(target_group),
+                    stage,
+                );
+            }
+            OriginalFighterTarget::DeathStar => {
+                if let Some(death_star) = self.death_star.as_mut() {
+                    death_star.hull = (death_star.hull - shot.strength).max(0.0);
+                    if death_star.hull == 0.0 {
+                        death_star.destroyed = true;
+                        death_star.action_committed = false;
+                    }
+                }
+            }
+        }
+        let impact_event = TacticalAudioEvent::impact_for(shot.kind);
+        let variant = if shot.kind == WeaponKind::FighterAttack {
+            0
+        } else {
+            u8::try_from(
+                self.tactical_rng
+                    .inclusive(0, u32::from(impact_event.variant_count() - 1)),
+            )
+            .unwrap_or(0)
+        };
+        self.pending_audio_cues
+            .push(TacticalAudioCue::from_variant(impact_event, variant));
     }
 
     /// One side's ships fire through the four source battery records recovered
     /// from `FUN_005b3a40`, `FUN_005b3f10`, and `FUN_005b6530`.
     pub fn fire_side(
         ships: &mut [TacticalShip],
-        field_effects: &mut Vec<TacticalFieldEffect>,
         firing: &[usize],
         targets: &[usize],
-        effects: &mut Vec<WeaponEffect>,
-        impact_effects: &mut Vec<TacticalImpactEffect>,
-        audio_cues: &mut Vec<TacticalAudioCue>,
-        voice_cues: &mut Vec<TacticalVoiceCue>,
-        player_is_attacker: bool,
-        player_faction: TacticalVoiceFaction,
-        rng: &mut OriginalTacticalRng,
+        shots: &mut Vec<TacticalShot>,
     ) {
         if targets.is_empty() {
             return;
@@ -5002,50 +5188,12 @@ impl BattleSession {
                     let Some(target_idx) = candidate.target else {
                         continue;
                     };
-                    let source_is_attacker = ships[fire_idx].is_attacker;
-                    let source_group = ships[fire_idx].task_force;
-                    let target_is_attacker = ships[target_idx].is_attacker;
-                    let target_group = ships[target_idx].task_force;
-                    let damage = original_tactical_integer_damage(candidate.strength);
-                    let rolls = original_tactical_damage_rolls(ships, target_idx, damage, rng);
-                    let impact_stage = apply_original_capital_damage(
-                        ships,
-                        field_effects,
-                        target_idx,
-                        damage,
-                        rolls,
-                    );
-                    queue_original_destruction_voice(
-                        voice_cues,
-                        player_faction,
-                        player_is_attacker,
-                        source_is_attacker,
-                        TacticalVoiceGroup::Capital(source_group),
-                        target_is_attacker,
-                        TacticalVoiceGroup::Capital(target_group),
-                        impact_stage,
-                    );
-                    queue_original_tactical_impact(impact_effects, target_idx, kind, impact_stage);
-                    queue_original_tactical_projectile(
-                        effects,
-                        ships,
-                        fire_idx,
-                        target_idx,
+                    shots.push(TacticalShot {
+                        source: TacticalUnitRef::Ship(fire_idx),
+                        target: OriginalFighterTarget::Capital(target_idx),
                         kind,
-                        candidate.strength,
-                    );
-                    let fire_event = TacticalAudioEvent::fire_for(kind);
-                    let impact_event = TacticalAudioEvent::impact_for(kind);
-                    audio_cues.push(TacticalAudioCue::from_variant(
-                        fire_event,
-                        u8::try_from(rng.inclusive(0, u32::from(fire_event.variant_count() - 1)))
-                            .unwrap_or(0),
-                    ));
-                    audio_cues.push(TacticalAudioCue::from_variant(
-                        impact_event,
-                        u8::try_from(rng.inclusive(0, u32::from(impact_event.variant_count() - 1)))
-                            .unwrap_or(0),
-                    ));
+                        strength: candidate.strength,
+                    });
                     energy_spent += original_weapon_count(arc, kind) as f32;
                 }
 
@@ -5066,9 +5214,7 @@ impl BattleSession {
 
     /// `FUN_005b3f10` capital batteries against fighters; index 3 bounds the four batteries of `FUN_005b0e50`.
 
-    pub fn fire_capitals_at_fighters(&mut self, effects: &mut Vec<WeaponEffect>) {
-        let player_is_attacker = self.player_is_attacker;
-        let player_faction = self.player_voice_faction();
+    pub fn fire_capitals_at_fighters(&mut self, shots: &mut Vec<TacticalShot>) {
         for source in 0..self.ships.len() {
             let Some(TacticalAttackTarget::FighterGroup(target)) = self.ships[source].attack_target
             else {
@@ -5097,8 +5243,6 @@ impl BattleSession {
             if !arc.ready {
                 continue;
             }
-            let source_maneuverability = (self.ships[source].maneuverability as f32 + 1.0)
-                .clamp(1.0, ORIGINAL_CAPITAL_MANEUVERABILITY_MAX);
             let mut fired = false;
             for kind in [WeaponKind::LaserCannon, WeaponKind::Turbolaser] {
                 let count = original_weapon_count(arc, kind);
@@ -5112,53 +5256,12 @@ impl BattleSession {
                         } else {
                             ORIGINAL_LASER_VS_FIGHTER / ORIGINAL_LASER_VS_CAPITAL
                         };
-                let source_is_attacker = self.ships[source].is_attacker;
-                let source_group = self.ships[source].task_force;
-                let target_is_attacker = self.fighters[target].is_attacker;
-                let target_group = self.fighters[target].fighter_group;
-                let stage = apply_original_fighter_damage(
-                    &mut self.fighters,
-                    target,
-                    strength,
-                    source_maneuverability,
-                );
-                queue_original_destruction_voice(
-                    &mut self.pending_voice_cues,
-                    player_faction,
-                    player_is_attacker,
-                    source_is_attacker,
-                    TacticalVoiceGroup::Capital(source_group),
-                    target_is_attacker,
-                    TacticalVoiceGroup::Fighter(target_group),
-                    stage,
-                );
-                queue_original_capital_to_fighter_projectile(
-                    effects,
-                    &self.ships,
-                    &self.fighters,
-                    source,
-                    target,
+                shots.push(TacticalShot {
+                    source: TacticalUnitRef::Ship(source),
+                    target: OriginalFighterTarget::Fighter(target),
                     kind,
                     strength,
-                );
-                let fire_event = TacticalAudioEvent::fire_for(kind);
-                let impact_event = TacticalAudioEvent::impact_for(kind);
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    fire_event,
-                    u8::try_from(
-                        self.tactical_rng
-                            .inclusive(0, u32::from(fire_event.variant_count() - 1)),
-                    )
-                    .unwrap_or(0),
-                ));
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    impact_event,
-                    u8::try_from(
-                        self.tactical_rng
-                            .inclusive(0, u32::from(impact_event.variant_count() - 1)),
-                    )
-                    .unwrap_or(0),
-                ));
+                });
                 fired = true;
             }
             if fired {
@@ -5314,10 +5417,7 @@ impl BattleSession {
     }
 
     /// Fire each live fighter group through the source fore battery record.
-    pub fn fighter_step(&mut self) {
-        let mut effects = Vec::new();
-        let player_is_attacker = self.player_is_attacker;
-        let player_faction = self.player_voice_faction();
+    pub fn fighter_step(&mut self, shots: &mut Vec<TacticalShot>) {
         for source in 0..self.fighters.len() {
             let Some(target) = self.fighter_target(source) else {
                 continue;
@@ -5362,116 +5462,12 @@ impl BattleSession {
                 if strength <= 0.0 {
                     continue;
                 }
-                match target {
-                    OriginalFighterTarget::Capital(index) => {
-                        let target_is_attacker = self.ships[index].is_attacker;
-                        let target_group = self.ships[index].task_force;
-                        let rolls = original_tactical_damage_rolls(
-                            &self.ships,
-                            index,
-                            original_tactical_integer_damage(strength),
-                            &mut self.tactical_rng,
-                        );
-                        let stage = apply_original_capital_damage(
-                            &mut self.ships,
-                            &mut self.field_effects,
-                            index,
-                            original_tactical_integer_damage(strength),
-                            rolls,
-                        );
-                        queue_original_destruction_voice(
-                            &mut self.pending_voice_cues,
-                            player_faction,
-                            player_is_attacker,
-                            source_snapshot.is_attacker,
-                            TacticalVoiceGroup::Fighter(source_snapshot.fighter_group),
-                            target_is_attacker,
-                            TacticalVoiceGroup::Capital(target_group),
-                            stage,
-                        );
-                        queue_original_tactical_impact(
-                            &mut self.impact_effects,
-                            index,
-                            kind,
-                            stage,
-                        );
-                        queue_original_fighter_projectile(
-                            &mut effects,
-                            &self.fighters,
-                            source,
-                            Some((index, &self.ships[index])),
-                            None,
-                            kind,
-                            strength,
-                        );
-                    }
-                    OriginalFighterTarget::Fighter(index) => {
-                        let target_is_attacker = self.fighters[index].is_attacker;
-                        let target_group = self.fighters[index].fighter_group;
-                        let stage = apply_original_fighter_damage(
-                            &mut self.fighters,
-                            index,
-                            strength,
-                            source_snapshot.effective_maneuverability(),
-                        );
-                        queue_original_destruction_voice(
-                            &mut self.pending_voice_cues,
-                            player_faction,
-                            player_is_attacker,
-                            source_snapshot.is_attacker,
-                            TacticalVoiceGroup::Fighter(source_snapshot.fighter_group),
-                            target_is_attacker,
-                            TacticalVoiceGroup::Fighter(target_group),
-                            stage,
-                        );
-                        queue_original_fighter_projectile(
-                            &mut effects,
-                            &self.fighters,
-                            source,
-                            None,
-                            Some((index, &self.fighters[index])),
-                            kind,
-                            strength,
-                        );
-                    }
-                    OriginalFighterTarget::DeathStar => {
-                        let Some(death_star) = self.death_star.as_mut() else {
-                            continue;
-                        };
-                        death_star.hull = (death_star.hull - strength).max(0.0);
-                        if death_star.hull == 0.0 {
-                            death_star.destroyed = true;
-                            death_star.action_committed = false;
-                        }
-                        let snapshot = *death_star;
-                        queue_original_fighter_to_death_star_projectile(
-                            &mut effects,
-                            &self.fighters,
-                            source,
-                            snapshot,
-                            kind,
-                            strength,
-                        );
-                    }
-                }
-                let fire_event = TacticalAudioEvent::fire_for(kind);
-                let impact_event = TacticalAudioEvent::impact_for(kind);
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    fire_event,
-                    u8::try_from(
-                        self.tactical_rng
-                            .inclusive(0, u32::from(fire_event.variant_count() - 1)),
-                    )
-                    .unwrap_or(0),
-                ));
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    impact_event,
-                    u8::try_from(
-                        self.tactical_rng
-                            .inclusive(0, u32::from(impact_event.variant_count() - 1)),
-                    )
-                    .unwrap_or(0),
-                ));
+                shots.push(TacticalShot {
+                    source: TacticalUnitRef::Fighter(source),
+                    target,
+                    kind,
+                    strength,
+                });
                 fired = true;
             }
 
@@ -5484,82 +5480,18 @@ impl BattleSession {
             {
                 let strength =
                     source_snapshot.torpedo_strength as f32 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH;
-                if let OriginalFighterTarget::Capital(index) = target {
-                    let target_is_attacker = self.ships[index].is_attacker;
-                    let target_group = self.ships[index].task_force;
-                    let rolls = original_tactical_damage_rolls(
-                        &self.ships,
-                        index,
-                        original_tactical_integer_damage(strength),
-                        &mut self.tactical_rng,
-                    );
-                    let stage = apply_original_capital_damage(
-                        &mut self.ships,
-                        &mut self.field_effects,
-                        index,
-                        original_tactical_integer_damage(strength),
-                        rolls,
-                    );
-                    queue_original_destruction_voice(
-                        &mut self.pending_voice_cues,
-                        player_faction,
-                        player_is_attacker,
-                        source_snapshot.is_attacker,
-                        TacticalVoiceGroup::Fighter(source_snapshot.fighter_group),
-                        target_is_attacker,
-                        TacticalVoiceGroup::Capital(target_group),
-                        stage,
-                    );
-                    queue_original_tactical_impact(
-                        &mut self.impact_effects,
-                        index,
-                        WeaponKind::FighterAttack,
-                        stage,
-                    );
-                    queue_original_fighter_projectile(
-                        &mut effects,
-                        &self.fighters,
-                        source,
-                        Some((index, &self.ships[index])),
-                        None,
-                        WeaponKind::FighterAttack,
-                        strength,
-                    );
-                    fired = true;
-                } else if target == OriginalFighterTarget::DeathStar {
-                    let Some(death_star) = self.death_star.as_mut() else {
-                        continue;
-                    };
-                    death_star.hull = (death_star.hull - strength).max(0.0);
-                    if death_star.hull == 0.0 {
-                        death_star.destroyed = true;
-                        death_star.action_committed = false;
-                    }
-                    let snapshot = *death_star;
-                    queue_original_fighter_to_death_star_projectile(
-                        &mut effects,
-                        &self.fighters,
-                        source,
-                        snapshot,
-                        WeaponKind::FighterAttack,
-                        strength,
-                    );
-                    fired = true;
-                }
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    TacticalAudioEvent::TorpedoFire,
-                    u8::try_from(self.tactical_rng.inclusive(0, 2)).unwrap_or(0),
-                ));
-                self.pending_audio_cues.push(TacticalAudioCue::from_variant(
-                    TacticalAudioEvent::TorpedoImpact,
-                    0,
-                ));
+                shots.push(TacticalShot {
+                    source: TacticalUnitRef::Fighter(source),
+                    target,
+                    kind: WeaponKind::FighterAttack,
+                    strength,
+                });
+                fired = true;
             }
             if fired {
                 self.fighters[source].consume_weapon_arc();
             }
         }
-        self.weapon_effects.extend(effects);
     }
 
     pub fn has_active_trench_run(&self) -> bool {

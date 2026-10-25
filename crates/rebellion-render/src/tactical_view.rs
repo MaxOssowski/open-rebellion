@@ -12076,9 +12076,9 @@ mod tests {
         let mut ordered = session_with_source_order(TacticalOrder::AttackFighters);
         let ordered_capital_before = (ordered.ships[1].hull_current, ordered.ships[1].shield);
 
-        // Through a whole turn, whose updates fire the weapons at step 4
-        // (0x005a9de0, FUN_005b3a40).
-        for _ in 0..4 {
+        // Through the turn that would fire at step 4 (0x005a9de0,
+        // FUN_005b3a40) and its hit at step 24.
+        for _ in 0..24 {
             ordered.step();
         }
 
@@ -12101,6 +12101,20 @@ mod tests {
         let autonomous_capital_before =
             (autonomous.ships[1].hull_current, autonomous.ships[1].shield);
 
+        // Decided at turn 1 (step 4), the fire event runs at turn 5 (step
+        // 20) and the hit at turn 6 (step 24) (FUN_005b3f10: +0x87c + 1.0
+        // and + 2.0).
+        for _ in 0..19 {
+            autonomous.step();
+        }
+        assert!(autonomous.weapon_effects.is_empty());
+        autonomous.step();
+        assert_eq!(autonomous.weapon_effects.len(), 1);
+        assert!(autonomous.impact_effects.is_empty());
+        assert_eq!(
+            (autonomous.ships[1].hull_current, autonomous.ships[1].shield),
+            autonomous_capital_before
+        );
         for _ in 0..4 {
             autonomous.step();
         }
@@ -12112,6 +12126,36 @@ mod tests {
         assert_eq!(autonomous.weapon_effects.len(), 1);
         assert_eq!(autonomous.impact_effects.len(), 1);
         assert!(!autonomous.pending_audio_cues.is_empty());
+    }
+
+    /// Runs the shots' fire events, then their hit events, as the queue does
+    /// one turn apart (`FUN_005b3f10`: `+0x87c + 1.0` and `+ 2.0`).
+    fn resolve_test_shots(
+        ships: Vec<TacticalShip>,
+        shots: &[rebellion_core::tactical::TacticalShot],
+    ) -> BattleSession {
+        let mut session = test_session(ships, Vec::new(), true);
+        session.tactical_rng = OriginalTacticalRng::new(1);
+        for &shot in shots {
+            session.fire_weapon_shot(shot);
+        }
+        for &shot in shots {
+            session.hit_weapon_shot(shot);
+        }
+        session
+    }
+
+    /// The same for shots a session's own fire step decided.
+    fn resolve_session_shots(
+        session: &mut BattleSession,
+        shots: &[rebellion_core::tactical::TacticalShot],
+    ) {
+        for &shot in shots {
+            session.fire_weapon_shot(shot);
+        }
+        for &shot in shots {
+            session.hit_weapon_shot(shot);
+        }
     }
 
     // Source: FUN_005d0bb0 / FUN_005a8fc0 explicit attack targeting.
@@ -12126,25 +12170,14 @@ mod tests {
         let live_target = test_ship(129, 1, false, true);
         let mut ships = vec![source, dead_target, live_target];
         let original_hull = ships[2].hull_current;
-        let mut fields = Vec::new();
-        let mut projectiles = Vec::new();
-        let mut impacts = Vec::new();
-        let mut audio_cues = Vec::new();
-        let mut voice_cues = Vec::new();
 
-        BattleSession::fire_side(
-            &mut ships,
-            &mut fields,
-            &[0],
-            &[2],
-            &mut projectiles,
-            &mut impacts,
-            &mut audio_cues,
-            &mut voice_cues,
-            true,
-            TacticalVoiceFaction::Alliance,
-            &mut OriginalTacticalRng::new(1),
-        );
+        let mut shots = Vec::new();
+        BattleSession::fire_side(&mut ships, &[0], &[2], &mut shots);
+        let resolved = resolve_test_shots(ships, &shots);
+        let ships = &resolved.ships;
+        let projectiles = &resolved.weapon_effects;
+        let impacts = &resolved.impact_effects;
+        let audio_cues = &resolved.pending_audio_cues;
 
         assert_eq!(ships[2].hull_current, original_hull);
         assert!(projectiles.is_empty());
@@ -12391,25 +12424,14 @@ mod tests {
         target.shield = 1000;
         target.shield_max = 1000;
         let mut ships = vec![source, target];
-        let mut fields = Vec::new();
-        let mut projectiles = Vec::new();
-        let mut impacts = Vec::new();
-        let mut audio_cues = Vec::new();
-        let mut voice_cues = Vec::new();
 
-        BattleSession::fire_side(
-            &mut ships,
-            &mut fields,
-            &[0],
-            &[1],
-            &mut projectiles,
-            &mut impacts,
-            &mut audio_cues,
-            &mut voice_cues,
-            true,
-            TacticalVoiceFaction::Alliance,
-            &mut OriginalTacticalRng::new(1),
-        );
+        let mut shots = Vec::new();
+        BattleSession::fire_side(&mut ships, &[0], &[1], &mut shots);
+        let resolved = resolve_test_shots(ships, &shots);
+        let ships = &resolved.ships;
+        let projectiles = &resolved.weapon_effects;
+        let impacts = &resolved.impact_effects;
+        let audio_cues = &resolved.pending_audio_cues;
 
         assert_eq!(
             projectiles
@@ -12428,12 +12450,14 @@ mod tests {
         assert_eq!(ships[1].shield, 965);
         assert_eq!(
             audio_cues.iter().map(|cue| cue.event).collect::<Vec<_>>(),
+            // The fire events run one turn before the hit events
+            // (FUN_005b3f10: +0x87c + 1.0 and + 2.0).
             vec![
                 TacticalAudioEvent::IonFire,
-                TacticalAudioEvent::IonImpact,
                 TacticalAudioEvent::LaserFire,
-                TacticalAudioEvent::LaserImpact,
                 TacticalAudioEvent::TurbolaserFire,
+                TacticalAudioEvent::IonImpact,
+                TacticalAudioEvent::LaserImpact,
                 TacticalAudioEvent::TurbolaserImpact,
             ]
         );
@@ -12466,23 +12490,14 @@ mod tests {
             z: 0.0,
         };
         let mut ships = vec![source, fore, starboard];
-        let mut projectiles = Vec::new();
-        let mut audio_cues = Vec::new();
-        let mut voice_cues = Vec::new();
 
-        BattleSession::fire_side(
-            &mut ships,
-            &mut Vec::new(),
-            &[0],
-            &[1, 2],
-            &mut projectiles,
-            &mut Vec::new(),
-            &mut audio_cues,
-            &mut voice_cues,
-            true,
-            TacticalVoiceFaction::Alliance,
-            &mut OriginalTacticalRng::new(1),
-        );
+        let mut shots = Vec::new();
+        BattleSession::fire_side(&mut ships, &[0], &[1, 2], &mut shots);
+        let resolved = resolve_test_shots(ships, &shots);
+        let ships = &resolved.ships;
+        let projectiles = &resolved.weapon_effects;
+        let impacts = &resolved.impact_effects;
+        let audio_cues = &resolved.pending_audio_cues;
 
         assert_eq!(
             projectiles
@@ -12610,25 +12625,14 @@ mod tests {
         target.subsystem_capacity.shields = true;
         target.refresh_subsystem_condition();
         let mut ships = vec![source, target];
-        let mut fields = Vec::new();
-        let mut projectiles = Vec::new();
-        let mut impacts = Vec::new();
-        let mut audio_cues = Vec::new();
-        let mut voice_cues = Vec::new();
 
-        BattleSession::fire_side(
-            &mut ships,
-            &mut fields,
-            &[0],
-            &[1],
-            &mut projectiles,
-            &mut impacts,
-            &mut audio_cues,
-            &mut voice_cues,
-            true,
-            TacticalVoiceFaction::Alliance,
-            &mut OriginalTacticalRng::new(1),
-        );
+        let mut shots = Vec::new();
+        BattleSession::fire_side(&mut ships, &[0], &[1], &mut shots);
+        let resolved = resolve_test_shots(ships, &shots);
+        let ships = &resolved.ships;
+        let projectiles = &resolved.weapon_effects;
+        let impacts = &resolved.impact_effects;
+        let audio_cues = &resolved.pending_audio_cues;
 
         assert!(ships[1].hull_current < 1000);
         assert_eq!(ships[1].subsystem_damage.shields, 1);
@@ -13504,7 +13508,9 @@ mod tests {
         target.shield_max = 0;
         let mut session = test_session(vec![target], vec![fighter], true);
 
-        session.fighter_step();
+        let mut shots = Vec::new();
+        session.fighter_step(&mut shots);
+        resolve_session_shots(&mut session, &shots);
 
         assert!(session.ships[0].hull_current < 1000);
         assert!(!session.fighters[0].weapon_arc.ready);
@@ -13523,12 +13529,14 @@ mod tests {
                 .iter()
                 .map(|cue| cue.event)
                 .collect::<Vec<_>>(),
+            // The fire events run one turn before the hit events
+            // (FUN_005b3f10: +0x87c + 1.0 and + 2.0).
             vec![
                 TacticalAudioEvent::IonFire,
-                TacticalAudioEvent::IonImpact,
                 TacticalAudioEvent::LaserFire,
-                TacticalAudioEvent::LaserImpact,
                 TacticalAudioEvent::TorpedoFire,
+                TacticalAudioEvent::IonImpact,
+                TacticalAudioEvent::LaserImpact,
                 TacticalAudioEvent::TorpedoImpact,
             ]
         );
@@ -13555,7 +13563,9 @@ mod tests {
         target.source_position.z = 10.0;
         let mut session = test_session(Vec::new(), vec![source, target], true);
 
-        session.fighter_step();
+        let mut shots = Vec::new();
+        session.fighter_step(&mut shots);
+        resolve_session_shots(&mut session, &shots);
 
         assert!(session.fighters[1].hull_current < 96.0);
         assert!(session.fighters[1].hull_current > 60.0);
@@ -13579,13 +13589,14 @@ mod tests {
         target.shield_max = 0.0;
         target.source_position.z = 10.0;
         let mut session = test_session(vec![source], vec![target], true);
-        let mut effects = Vec::new();
+        let mut shots = Vec::new();
 
-        session.fire_capitals_at_fighters(&mut effects);
+        session.fire_capitals_at_fighters(&mut shots);
+        resolve_session_shots(&mut session, &shots);
 
         assert!(!session.fighters[0].alive);
-        assert_eq!(effects.len(), 1);
-        assert_eq!(effects[0].kind, WeaponKind::LaserCannon);
+        assert_eq!(session.weapon_effects.len(), 1);
+        assert_eq!(session.weapon_effects[0].kind, WeaponKind::LaserCannon);
         assert!(!session.ships[0].weapon_arcs[0].ready);
         assert_eq!(
             session
@@ -15397,12 +15408,13 @@ mod tests {
         // The approach ends: state 5 (FUN_005cfec0), the run committed.
         session.commit_original_trench_run();
 
-        // The weapons fire at the turn's updates, step 4 (0x005a9de0).
-        for _ in 0..3 {
+        // The weapons fire at the turn's updates, step 4 (0x005a9de0); the
+        // hit event runs at turn 6, step 24 (FUN_005b3f10: +0x87c + 2.0).
+        for _ in 0..23 {
             assert!(!session.step());
         }
         assert!(session.step());
-        assert_eq!(session.combat_tick, 4);
+        assert_eq!(session.combat_tick, 24);
         assert!(!session.fighters[0].alive);
         assert!(!session.death_star.unwrap().destroyed);
         assert_eq!(

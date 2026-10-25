@@ -4736,11 +4736,14 @@ mod tests {
             enemy.weapon_arcs = [TacticalWeaponArc::new(0, 0, 4); 4];
             let mut tactical = session(vec![own, enemy], Vec::new());
             tactical.withdrawal_ms = Some(if jumping { 0.0 } else { 30_000.0 });
-            for _ in 0..8 {
+            // Fire decided at turn 1 hits at turn 6, step 24 (FUN_005b3f10's
+            // hit event at +0x87c + 2.0). The turn's recharge after the
+            // events may refill a small hit on the shield, so the hit is read
+            // from its impact.
+            for _ in 0..24 {
                 tactical.step();
             }
-            let ship = &tactical.ships[0];
-            ship.hull_current < 100 || ship.shield < 50
+            tactical.impact_effects.iter().any(|impact| impact.target == 0)
         };
         assert!(run(false));
         assert!(!run(true));
@@ -4792,7 +4795,9 @@ mod tests {
         let jumping_before = before(&tactical, 1);
         let dead_before = before(&tactical, 2);
         let live_before = before(&tactical, 3);
-        for _ in 0..8 {
+        // Fire decided at turn 1 hits at turn 6, step 24 (FUN_005b3f10's
+        // hit event at +0x87c + 2.0).
+        for _ in 0..24 {
             tactical.step();
         }
         assert_eq!(before(&tactical, 1), jumping_before);
@@ -5426,6 +5431,220 @@ mod tests {
         assert_eq!(tactical.fighters[0].source_position, held);
         let flown = tactical.ships[2].source_position;
         assert!(flown.x > limit && flown.y < -limit && flown.z > limit);
+    }
+
+    // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit
+    // at + 2.0; the fire event (FUN_005b1f60) needs both units in the fight
+    // (FUN_005ad870), the hit (0x005b2ac0) the target.
+    #[test]
+    fn a_shot_fires_and_hits_on_its_turns_while_its_units_fight() {
+        use crate::tactical::{
+            OriginalFighterTarget, TacticalShot, TacticalTurnEvent, TacticalUnitRef, WeaponKind,
+        };
+        let mut shooter = ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0);
+        shooter.weapon_arcs = [TacticalWeaponArc::new(0, 0, 4); 4];
+        shooter.weapon_ranges = TacticalWeaponRanges {
+            laser_cannon: 100.0,
+            ion_cannon: 100.0,
+            turbolaser: 100.0,
+        };
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.source_position.z = 10.0;
+        target.hull_current = 1_000_000;
+        target.hull_max = 1_000_000;
+        let mut tactical = session(vec![shooter, target], Vec::new());
+        for _ in 0..4 {
+            tactical.step();
+        }
+        // Decided in turn 1's updates: +0x87c is 3 there.
+        let stamps = tactical
+            .turn_events
+            .iter()
+            .map(|queued| match queued.event {
+                TacticalTurnEvent::WeaponFire(_) => ("fire", queued.stamp),
+                TacticalTurnEvent::WeaponHit(_) => ("hit", queued.stamp),
+                _ => ("other", queued.stamp),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(stamps, [("fire", 4), ("hit", 5)]);
+
+        let shot = TacticalShot {
+            source: TacticalUnitRef::Ship(0),
+            target: OriginalFighterTarget::Capital(1),
+            kind: WeaponKind::Turbolaser,
+            strength: 50.0,
+        };
+        // A source out of the fight shows no projectile.
+        let mut gone = session(vec![ship(true, TacticalWeaponArc::default(), 0.0), ship(false, TacticalWeaponArc::default(), 0.0)], Vec::new());
+        gone.ships[0].alive = false;
+        gone.fire_weapon_shot(shot);
+        assert!(gone.weapon_effects.is_empty());
+        assert!(gone.pending_audio_cues.is_empty());
+        // A target out of the fight takes no hit.
+        let mut jumped = session(vec![ship(true, TacticalWeaponArc::default(), 0.0), ship(false, TacticalWeaponArc::default(), 0.0)], Vec::new());
+        jumped.ships[1].retreat_progress = 1_000.0;
+        let before = (jumped.ships[1].hull_current, jumped.ships[1].shield);
+        jumped.hit_weapon_shot(shot);
+        assert_eq!((jumped.ships[1].hull_current, jumped.ships[1].shield), before);
+        assert!(jumped.impact_effects.is_empty());
+        // In the fight, both apply.
+        let mut fighting = session(vec![ship(true, TacticalWeaponArc::default(), 0.0), ship(false, TacticalWeaponArc::default(), 0.0)], Vec::new());
+        fighting.ships[1].source_position.z = 10.0;
+        fighting.fire_weapon_shot(shot);
+        assert_eq!(fighting.weapon_effects.len(), 1);
+        fighting.hit_weapon_shot(shot);
+        assert_eq!(fighting.impact_effects.len(), 1);
+    }
+
+    // The hit event (0x005b2a20 and its siblings) calls the target's slot
+    // +0xe0 only while it is in the fight (FUN_005ad870): a fighter group
+    // alive with craft and not jumping, a Death Star not destroyed with
+    // hull. A capital source hits a fighter group with its maneuverability
+    // + 1 (FUN_005b3f10); a torpedo is 8.5/16 a point (FUN_005b2c70) and its
+    // impact plays variant 0 without a draw; every sound is one of its
+    // event's variants (FUN_005bae60).
+    #[test]
+    fn shot_events_reach_each_kind_of_target_while_it_fights() {
+        use crate::tactical::{
+            apply_original_fighter_damage, OriginalFighterTarget, TacticalShot, TacticalUnitRef,
+            WeaponKind, ORIGINAL_FIGHTER_TORPEDO_STRENGTH,
+        };
+        let shot = |source, target, kind, strength| TacticalShot {
+            source,
+            target,
+            kind,
+            strength,
+        };
+        // Fighter targets.
+        let mut capital = ship(true, TacticalWeaponArc::default(), 0.0);
+        capital.maneuverability = 3;
+        let wing = || {
+            let mut value = fighter(false, TacticalWeaponArc::default());
+            value.shield = 0.0;
+            value.shield_max = 0.0;
+            value
+        };
+        let mut empty = wing();
+        empty.squad_count = 0;
+        let mut jumping = wing();
+        jumping.retreat_progress = 1_000.0;
+        let mut tactical = session(vec![capital], vec![wing(), empty, jumping]);
+        let mut expected = tactical.fighters.clone();
+        apply_original_fighter_damage(&mut expected, 0, 30.0, 4.0);
+        for index in 0..3 {
+            tactical.hit_weapon_shot(shot(
+                TacticalUnitRef::Ship(0),
+                OriginalFighterTarget::Fighter(index),
+                WeaponKind::LaserCannon,
+                30.0,
+            ));
+        }
+        assert_eq!(tactical.fighters[0].hull_current, expected[0].hull_current);
+        assert!(tactical.fighters[0].hull_current < 96.0);
+        assert_eq!(tactical.fighters[1].hull_current, 96.0);
+        assert_eq!(tactical.fighters[2].hull_current, 96.0);
+        // Each sound draws its variant from 0 through its count - 1, fire
+        // then impact (FUN_005bae60's counts).
+        tactical.pending_audio_cues.clear();
+        let mut draws = tactical.tactical_rng;
+        let expected = (0..3)
+            .flat_map(|_| {
+                [
+                    crate::tactical::TacticalAudioEvent::LaserFire,
+                    crate::tactical::TacticalAudioEvent::LaserImpact,
+                ]
+            })
+            .map(|event| {
+                let variant = draws.inclusive(0, u32::from(event.variant_count() - 1));
+                event.resource_base() + variant
+            })
+            .collect::<Vec<_>>();
+        for _ in 0..3 {
+            tactical.fire_weapon_shot(shot(
+                TacticalUnitRef::Ship(0),
+                OriginalFighterTarget::Fighter(0),
+                WeaponKind::LaserCannon,
+                0.0,
+            ));
+            tactical.hit_weapon_shot(shot(
+                TacticalUnitRef::Ship(0),
+                OriginalFighterTarget::Fighter(0),
+                WeaponKind::LaserCannon,
+                0.0,
+            ));
+        }
+        assert_eq!(
+            tactical.pending_audio_cues.iter().map(|cue| cue.resource_id).collect::<Vec<_>>(),
+            expected
+        );
+        // Every sound is one of its event's variants.
+        for _ in 0..40 {
+            tactical.fire_weapon_shot(shot(
+                TacticalUnitRef::Ship(0),
+                OriginalFighterTarget::Fighter(0),
+                WeaponKind::LaserCannon,
+                0.001,
+            ));
+            tactical.hit_weapon_shot(shot(
+                TacticalUnitRef::Ship(0),
+                OriginalFighterTarget::Fighter(0),
+                WeaponKind::LaserCannon,
+                0.001,
+            ));
+        }
+        assert!(tactical.pending_audio_cues.iter().all(|cue| {
+            let base = cue.event.resource_base();
+            cue.resource_id >= base && cue.resource_id < base + u32::from(cue.event.variant_count())
+        }));
+
+        // The Death Star.
+        let mut star = session(vec![ship(false, TacticalWeaponArc::default(), 0.0)], vec![fighter(true, TacticalWeaponArc::default())]);
+        star.death_star = Some(trench_death_star(false));
+        let torpedo = shot(
+            TacticalUnitRef::Fighter(0),
+            OriginalFighterTarget::DeathStar,
+            WeaponKind::FighterAttack,
+            30.0,
+        );
+        let rng = star.tactical_rng;
+        star.hit_weapon_shot(torpedo);
+        assert_eq!(star.death_star.unwrap().hull, 70.0);
+        assert_eq!(star.tactical_rng, rng);
+        assert_eq!(star.pending_audio_cues.last().unwrap().resource_id, crate::tactical::TacticalAudioEvent::TorpedoImpact.resource_base());
+        star.hit_weapon_shot(TacticalShot { strength: 70.0, ..torpedo });
+        assert!(star.death_star.unwrap().destroyed);
+        assert_eq!(star.death_star.unwrap().hull, 0.0);
+        // Out of the fight: destroyed, or without hull.
+        star.hit_weapon_shot(torpedo);
+        assert_eq!(star.death_star.unwrap().hull, 0.0);
+        let mut empty_star = session(Vec::new(), vec![fighter(true, TacticalWeaponArc::default())]);
+        let mut hulk = trench_death_star(false);
+        hulk.hull = 0.0;
+        empty_star.death_star = Some(hulk);
+        empty_star.hit_weapon_shot(torpedo);
+        assert!(!empty_star.death_star.unwrap().destroyed);
+
+        // A torpedo's strength is its rating times 8.5 / 16.
+        let mut bomber = fighter(true, TacticalWeaponArc::new(8, 6, 0));
+        bomber.weapon_ranges = TacticalWeaponRanges {
+            laser_cannon: 100.0,
+            ion_cannon: 100.0,
+            turbolaser: 0.0,
+        };
+        bomber.torpedo_strength = 16;
+        bomber.torpedo_range = 100.0;
+        bomber.order = TacticalOrder::AttackCapitalShips;
+        bomber.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(0));
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.shield = 0;
+        target.source_position.z = 5.0;
+        let mut run = session(vec![target], vec![bomber]);
+        let mut shots = Vec::new();
+        run.fighter_step(&mut shots);
+        assert_eq!(
+            shots.iter().find(|shot| shot.kind == WeaponKind::FighterAttack).map(|shot| shot.strength),
+            Some(16.0 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH)
+        );
     }
 
     // FUN_005a96b0 runs at a turn's start (every fourth step) the events
