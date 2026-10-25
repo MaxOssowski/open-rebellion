@@ -1310,7 +1310,7 @@ pub struct TacticalShot {
 
 /// An event of the battle manager's turn queue, by its dispatcher type
 /// (`0x005a9780`, table `0x5a9bc4`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TacticalTurnEvent {
     /// `0x44`, `0x005ba520`: the superlaser's beam starts (`0x005c12d0`).
     DeathStarBeam { target: usize },
@@ -1340,10 +1340,20 @@ pub enum TacticalTurnEvent {
     /// `0x005b2840`, `0x005b2900`): the ship's slot `+0xa0` with the
     /// subsystem 0..4 (shields, weapons, tractor, engines, hyperdrive).
     SubsystemHit { ship: usize, kind: TacticalSubsystemKind },
+    /// `0xa`, posted by the task force's `SetOrder` (`0x005ca530`, at
+    /// `0x005ca688`) with the order it was given; its handler
+    /// (`0x005caba0`) calls slot `+0x48`, `FUN_005ca6d0`, which installs
+    /// that order's executor. One event carries the units given the order
+    /// together.
+    OrderExecutor {
+        order: TacticalOrder,
+        capitals: Vec<usize>,
+        fighters: Vec<usize>,
+    },
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TacticalQueuedEvent {
     pub stamp: u32,
     pub event: TacticalTurnEvent,
@@ -4580,8 +4590,8 @@ impl BattleSession {
         self.turn_events.push(TacticalQueuedEvent { stamp, event });
     }
 
-    pub(crate) fn turn_event_pending(&self, event: TacticalTurnEvent) -> bool {
-        self.turn_events.iter().any(|queued| queued.event == event)
+    pub(crate) fn turn_event_pending(&self, event: &TacticalTurnEvent) -> bool {
+        self.turn_events.iter().any(|queued| queued.event == *event)
     }
 
     /// `FUN_005a96b0` at a turn's start (`0x005bec3c`): once `+0x878` has
@@ -4616,6 +4626,78 @@ impl BattleSession {
             TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
             TacticalTurnEvent::WeaponHit(shot) => self.hit_weapon_shot(shot),
             TacticalTurnEvent::SubsystemHit { ship, kind } => self.hit_subsystem(ship, kind),
+            TacticalTurnEvent::OrderExecutor {
+                order,
+                capitals,
+                fighters,
+            } => self.run_order_executor(order, &capitals, &fighters),
+        }
+    }
+
+    /// `SetOrder` (`0x005ca530`): the order itself (`+0x68`) is already set;
+    /// its executor follows on the command stamp (`+0x87c`, event `0xa`).
+    pub fn post_order_executor(
+        &mut self,
+        order: TacticalOrder,
+        capitals: Vec<usize>,
+        fighters: Vec<usize>,
+    ) {
+        let stamp = self.command_event_stamp();
+        self.post_turn_event(
+            stamp,
+            TacticalTurnEvent::OrderExecutor {
+                order,
+                capitals,
+                fighters,
+            },
+        );
+    }
+
+    /// Run the queued order executors (event `0xa`) now instead of on
+    /// their turn. Test fixtures use it to present an order's result
+    /// without running the battle for the three turns between.
+    pub fn run_posted_order_executors(&mut self) {
+        for queued in std::mem::take(&mut self.turn_events) {
+            match queued.event {
+                TacticalTurnEvent::OrderExecutor {
+                    order,
+                    capitals,
+                    fighters,
+                } => self.run_order_executor(order, &capitals, &fighters),
+                event => self.turn_events.push(TacticalQueuedEvent {
+                    stamp: queued.stamp,
+                    event,
+                }),
+            }
+        }
+    }
+
+    /// `FUN_005ca6d0` for each unit given `order`. `port:` a unit gone from
+    /// the battle by its turn has no task force for the event to reach.
+    pub fn run_order_executor(
+        &mut self,
+        order: TacticalOrder,
+        capitals: &[usize],
+        fighters: &[usize],
+    ) {
+        let capitals = capitals
+            .iter()
+            .copied()
+            .filter(|&index| self.ships.get(index).is_some_and(|ship| ship.alive))
+            .collect::<Vec<_>>();
+        let fighters = fighters
+            .iter()
+            .copied()
+            .filter(|&index| {
+                self.fighters
+                    .get(index)
+                    .is_some_and(|fighter| fighter.alive && fighter.squad_count > 0)
+            })
+            .collect::<Vec<_>>();
+        begin_original_capital_order(self, &capitals, order);
+        begin_original_attack_order(self, &capitals, &fighters, order);
+        if order == TacticalOrder::Recover {
+            self.begin_original_fighter_recovery(&fighters);
         }
     }
 
@@ -5616,8 +5698,8 @@ impl BattleSession {
         self.trench_run_group.is_some()
             && self.trench_run_remaining_ms.is_none()
             && self.trench_run_outcome.is_none()
-            && !self.turn_event_pending(TacticalTurnEvent::TrenchRunState(2))
-            && !self.turn_event_pending(TacticalTurnEvent::TrenchRunState(5))
+            && !self.turn_event_pending(&TacticalTurnEvent::TrenchRunState(2))
+            && !self.turn_event_pending(&TacticalTurnEvent::TrenchRunState(5))
     }
 
     /// The Attack Death Star order (6) for a fighter group: the result
@@ -6356,7 +6438,7 @@ impl BattleSession {
         let first_members = original_task_force_first_members(&self.ships, side);
         let requested = (0..self.ships.len())
             .map(|index| {
-                self.turn_event_pending(TacticalTurnEvent::JumpStart(TacticalUnitRef::Ship(index)))
+                self.turn_event_pending(&TacticalTurnEvent::JumpStart(TacticalUnitRef::Ship(index)))
             })
             .collect::<Vec<_>>();
         let stamp = self.step_event_stamp();
@@ -6483,7 +6565,9 @@ impl BattleSession {
         let seconds = ORIGINAL_TACTICAL_STEP_SECONDS;
         let requested = (0..self.fighters.len())
             .map(|index| {
-                self.turn_event_pending(TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(index)))
+                self.turn_event_pending(&TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(
+                    index,
+                )))
             })
             .collect::<Vec<_>>();
         let stamp = self.step_event_stamp();
@@ -6707,6 +6791,228 @@ pub fn advance_original_escort_movement(session: &mut BattleSession, delta_milli
             fighter.source_position.y += direction.y * travel;
             fighter.source_position.z += direction.z * travel;
         }
+    }
+}
+
+/// `DAT_0066d07c`, applied after each source maneuver rotation.
+pub const ORIGINAL_MANEUVER_WAYPOINT_SCALE: f32 = 0.75;
+/// `DAT_0066d094` and `DAT_0066d098` multiply pi by +/- one eighth.
+pub const ORIGINAL_MANEUVER_ANGLE: f32 = std::f32::consts::PI / 8.0;
+
+pub fn original_maneuver_waypoint(
+    order: TacticalOrder,
+    current: TacticalWorldPosition,
+    target: TacticalWorldPosition,
+) -> Option<TacticalWorldPosition> {
+    let delta = source_delta(target, current);
+    let (sin, cos) = match order {
+        TacticalOrder::LeftHook | TacticalOrder::Anvil => ORIGINAL_MANEUVER_ANGLE.sin_cos(),
+        TacticalOrder::RightHook | TacticalOrder::Hammer => (-ORIGINAL_MANEUVER_ANGLE).sin_cos(),
+        _ => return None,
+    };
+    let rotated = match order {
+        TacticalOrder::LeftHook | TacticalOrder::RightHook => TacticalWorldVector {
+            x: cos.mul_add(delta.x, -sin * delta.z),
+            y: delta.y,
+            z: cos.mul_add(delta.z, sin * delta.x),
+        },
+        TacticalOrder::Hammer | TacticalOrder::Anvil => TacticalWorldVector {
+            x: delta.x,
+            y: cos.mul_add(delta.y, sin * delta.z),
+            z: cos.mul_add(delta.z, -sin * delta.y),
+        },
+        _ => return None,
+    };
+    Some(TacticalWorldPosition {
+        x: current.x + rotated.x * ORIGINAL_MANEUVER_WAYPOINT_SCALE,
+        y: current.y + rotated.y * ORIGINAL_MANEUVER_WAYPOINT_SCALE,
+        z: current.z + rotated.z * ORIGINAL_MANEUVER_WAYPOINT_SCALE,
+    })
+}
+
+pub fn original_maneuver_target(
+    ships: &[TacticalShip],
+    source: usize,
+    order: TacticalOrder,
+) -> Option<TacticalWorldPosition> {
+    let source_ship = ships.get(source)?;
+    let opponents = ships
+        .iter()
+        .filter(|ship| ship.alive && ship.is_attacker != source_ship.is_attacker)
+        .collect::<Vec<_>>();
+    let count = opponents.len() as f32;
+    if count == 0.0 {
+        return None;
+    }
+    let anchor = opponents
+        .iter()
+        .fold(TacticalWorldPosition::ORIGIN, |sum, ship| {
+            TacticalWorldPosition {
+                x: sum.x + ship.source_position.x / count,
+                y: sum.y + ship.source_position.y / count,
+                z: sum.z + ship.source_position.z / count,
+            }
+        });
+    let delta = source_delta(anchor, source_ship.source_position);
+    let selector = match order {
+        TacticalOrder::LeftHook => TacticalWorldVector {
+            x: -delta.z,
+            y: delta.y,
+            z: delta.x,
+        },
+        TacticalOrder::RightHook => TacticalWorldVector {
+            x: delta.z,
+            y: delta.y,
+            z: -delta.x,
+        },
+        TacticalOrder::Hammer => TacticalWorldVector {
+            x: delta.x,
+            y: -delta.y,
+            z: delta.z,
+        },
+        TacticalOrder::Anvil => delta,
+        _ => return None,
+    }
+    .normalized();
+    let mut selected = None;
+    let mut selected_score = f32::NEG_INFINITY;
+    for opponent in opponents {
+        let position = opponent.source_position;
+        let score = selector.dot(TacticalWorldVector {
+            x: position.x,
+            y: position.y,
+            z: position.z,
+        });
+        if score > selected_score {
+            selected = Some(position);
+            selected_score = score;
+        }
+    }
+    selected
+}
+
+pub fn begin_original_capital_order(
+    session: &mut BattleSession,
+    selected: &[usize],
+    order: TacticalOrder,
+) {
+    for &index in selected {
+        if order == TacticalOrder::HoldPosition {
+            let ship = &mut session.ships[index];
+            ship.source_waypoint = None;
+            ship.navigation_route.clear();
+            ship.source_desired_forward = TacticalWorldVector::ZERO;
+            ship.source_velocity = TacticalWorldVector::ZERO;
+            continue;
+        }
+        if !matches!(
+            order,
+            TacticalOrder::LeftHook
+                | TacticalOrder::RightHook
+                | TacticalOrder::Hammer
+                | TacticalOrder::Anvil
+        ) {
+            continue;
+        }
+        let current = session.ships[index].source_position;
+        let waypoint = original_maneuver_target(&session.ships, index, order)
+            .and_then(|target| original_maneuver_waypoint(order, current, target));
+        let ship = &mut session.ships[index];
+        ship.navigation_route.clear();
+        if let Some(waypoint) = waypoint {
+            ship.source_waypoint = Some(waypoint);
+            ship.source_desired_forward = source_delta(waypoint, current).normalized();
+        } else {
+            // `FUN_005ca6d0` returns the object to no-orders when no executor
+            // target can be created.
+            ship.order = TacticalOrder::None;
+            ship.source_waypoint = None;
+            ship.source_desired_forward = TacticalWorldVector::ZERO;
+            ship.source_velocity = TacticalWorldVector::ZERO;
+        }
+    }
+}
+
+/// Run the target-acquisition half of `FUN_005d0b10` and `FUN_005d0bb0`.
+/// Both source executors traverse one stable tactical-object list, filter it
+/// by the vtable type code (capital 0, fighter 1), accept the first eligible
+/// hostile object, mark the executor active, and dispatch event `0x36`.
+pub fn begin_original_attack_order(
+    session: &mut BattleSession,
+    selected_capitals: &[usize],
+    selected_fighters: &[usize],
+    order: TacticalOrder,
+) {
+    if order == TacticalOrder::AttackDeathStar {
+        let Some(death_star) = session
+            .death_star
+            .filter(|death_star| death_star.hull > 0.0 && !death_star.destroyed)
+        else {
+            return;
+        };
+        let Some((fighter_group, fighter_is_attacker)) =
+            selected_fighters.iter().find_map(|&index| {
+                session
+                    .fighters
+                    .get(index)
+                    .filter(|fighter| {
+                        fighter.alive
+                            && fighter.squad_count > 0
+                            && fighter.is_attacker != death_star.is_attacker
+                    })
+                    .map(|fighter| (fighter.fighter_group, fighter.is_attacker))
+            })
+        else {
+            return;
+        };
+        if session.trench_run_under_way() || session.trench_run_outcome.is_some() {
+            return;
+        }
+        // FUN_005caae9 creates the result object; the run then goes
+        // through its approach (FUN_005c6610) and state 5 (FUN_005cfec0).
+        let _ = death_star;
+        let status = if session.begin_original_trench_run(fighter_group, fighter_is_attacker) {
+            "approach"
+        } else {
+            "rejected"
+        };
+        session.diagnostic_log.push(format!(
+            "[tactical_death_star] trench_run_launch status={status} fighter_members={} group={fighter_group} remaining_ms={} rng_state={}",
+            selected_fighters.len(),
+            session.trench_run_remaining_ms.unwrap_or(0.0),
+            session.tactical_rng.state(),
+        ));
+        return;
+    }
+
+    if !matches!(
+        order,
+        TacticalOrder::AttackCapitalShips | TacticalOrder::AttackFighters
+    ) {
+        return;
+    }
+
+    for &index in selected_capitals {
+        let source_is_attacker = session.ships[index].is_attacker;
+        let current = session.ships[index].attack_target;
+        if current.is_some_and(|target| {
+            tactical_attack_target_is_eligible(session, source_is_attacker, target, order)
+        }) {
+            continue;
+        }
+        let target = first_original_attack_target(session, source_is_attacker, order);
+        session.ships[index].attack_target = target;
+    }
+    for &index in selected_fighters {
+        let source_is_attacker = session.fighters[index].is_attacker;
+        let current = session.fighters[index].attack_target;
+        if current.is_some_and(|target| {
+            tactical_attack_target_is_eligible(session, source_is_attacker, target, order)
+        }) {
+            continue;
+        }
+        let target = first_original_attack_target(session, source_is_attacker, order);
+        session.fighters[index].attack_target = target;
     }
 }
 

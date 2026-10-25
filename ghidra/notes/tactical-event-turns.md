@@ -95,8 +95,8 @@ The dispatcher is `0x005a9780`, table `0x5a9bc4`, index type − 3.
 | Type | Handler | Posted by | Meaning | Port |
 |---|---|---|---|---|
 | `0x03` | `0x005b2b60` | `0x005ba720` (+1), `FUN_005b50b0`, `FUN_005b54d0`, `FUN_005b5ad0` | destroy target (source id) | Death Star: queued (s83/s84); weapon kills: immediate |
-| `0x0a` | `0x005caba0` | `0x005ca4c0` | ? | not read |
-| `0x0b` | `0x005cac00` | `0x005cb160` | ? | not read |
+| `0x0a` | `0x005caba0` -> task force slot `+0x48` (`FUN_005ca6d0`) | `SetOrder` `0x005ca530` (`0x005ca684`; task-force slot `+0x64` in vtables `0x66bee0` and `0x66bf70`) | installs the given order's executor (`+0x64`, `+0x60`); `+0x68` is set at once | player orders queued (s94); withdrawal (`FUN_005ad530`) immediate |
+| `0x0b` | `0x005cac00` (`0x005cb1a0` rebuilds the mover `+0x54`) | `0x005cb160` (sets `+0x5c` at once; UI `0x005a2920`, `0x005a3850`, `0x005a4a30`) | formation / tactic | tactic stored only; the formation mover is not ported |
 | `0x0e`, `0x0f`, `0x10`, `0x12`, `0x13` | ? | `FUN_005b3f10` (+1; visual `0x005a6ac0` at +2) | weapon fire / hit | immediate |
 | `0x16` | ? | `FUN_005b5ad0` | ? | not read |
 | `0x19` | ? | `FUN_005b8800` | Death Star | not read |
@@ -118,3 +118,19 @@ The dispatcher is `0x005a9780`, table `0x5a9bc4`, index type − 3.
 | `0x45` | `0x005ba5e0` | `FUN_005c8780` (`0x005c8827`) | Death Star committed (`+0x78`) | AI path not ported |
 
 "?" means not yet read. `0x2b` falls to the table's default (`0x005a9b0d`).
+
+## Orders (s94)
+
+`SetOrder` (`0x005ca530`, slot `+0x64`) keeps the old order when the task
+force is on the trench run (`+0x68` or `+0x64` is 2 or 6) for a remote side,
+otherwise stores the new order in `+0x68` and releases the per-order objects
+(jump table `0x5ca694`). It then posts `0xa` through `+0x28` with the task
+force id (`+0x18`), the order and a local-side flag. The handler calls slot
+`+0x48`, `FUN_005ca6d0`, which takes the order from the event, stores it in
+`+0x64` and creates its executor (jump table `0x5cab6c`).
+
+`FUN_005ad530` (withdrawal) also calls slot `+0x64`: with 2 for a fighter
+group without hyperdrives, 3 for the others (`0x005ad60f`) and 3 for each
+capital ship's task force (`0x005ad6b8`). A group on the trench run first
+posts `0x3c` with state 8 (`0x005ad5e7`). The port still applies these at
+once.

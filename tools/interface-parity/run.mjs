@@ -2589,6 +2589,10 @@ async function probeTacticalCommandAssignmentPresentation(
   ) });
   await click(560, 241);
   await capture("fighter-recover-committed");
+  // SetOrder (0x005ca530) posts the executor (event 0xa) three turns
+  // ahead; the no-room voice comes from that executor (FUN_005cf980), so
+  // the battle runs until it.
+  await click(575, 319);
 
   const orderLogs = consoleLines
     .filter(({ text }) => text.includes("[tactical_orders]"))
@@ -2610,9 +2614,16 @@ async function probeTacticalCommandAssignmentPresentation(
   const expectedCapacityVoice = ready.faction === "alliance"
     ? { event: "0x8b", wave: 14108, owner: "Alliance" }
     : { event: "0x109", wave: 15112, owner: "Empire" };
-  const capacityVoice = consoleLines.find(({ text }) =>
+  const findCapacityVoice = () => consoleLines.find(({ text }) =>
     text.includes("voice_event=FighterRecoveryCapacity")
       && text.includes(`source_event=${expectedCapacityVoice.event}`));
+  let capacityVoice = findCapacityVoice();
+  const capacityDeadline = Date.now() + 30000;
+  while (!capacityVoice && Date.now() < capacityDeadline) {
+    await page.waitForTimeout(100);
+    capacityVoice = findCapacityVoice();
+  }
+  await click(575, 319);
   assert.match(capacityVoice?.text || "",
     new RegExp(`wave=${expectedCapacityVoice.wave} faction=${expectedCapacityVoice.owner} routed=true loaded=true muted=true`),
     "fighter Recover did not route the exact muted no-capacity warning");
@@ -3037,13 +3048,21 @@ async function probeTacticalDeathStarPresentation(
     assert.ok(orderLogs.some((line) =>
       /panel=missions event=commit order=6 tactic=0 capital_members=0 fighter_members=1/.test(line)),
     "Alliance fighter group did not commit Attack Death Star");
-    // The order creates the run object (0x005d0820) and starts the
+    // The order's executor (event 0xa, FUN_005ca6d0) runs three turns
+    // later: it creates the run object (0x005d0820) and starts the
     // approach (state 2); the timer and FUN_005d04e0's draws wait for
     // state 5 (FUN_005cfec0).
-    const launchLog = consoleLines.find(({ text }) =>
+    await click(575, 319);
+    const findLaunchLog = () => consoleLines.find(({ text }) =>
       text.includes("[tactical_death_star] trench_run_launch status=approach fighter_members=1")
         && text.includes("group=0")
         && text.includes("remaining_ms=0"));
+    let launchLog = findLaunchLog();
+    const launchDeadline = Date.now() + 30000;
+    while (!launchLog && Date.now() < launchDeadline) {
+      await page.waitForTimeout(100);
+      launchLog = findLaunchLog();
+    }
     assert.ok(launchLog,
     "Alliance fighter group did not enter the production trench-run lifecycle");
     const launchRngState = Number(launchLog.text.match(/rng_state=(\d+)/)?.[1]);
@@ -3085,9 +3104,9 @@ async function probeTacticalDeathStarPresentation(
     muted: true,
   });
   if (enabled) {
-    // FUN_005c6610 flies the approach once a turn; its arrival posts state
-    // 5, whose turn starts the 120 s run and its follow-up line.
-    await click(575, 319);
+    // FUN_005c6610 flies the approach (the battle is still running from
+    // the order's executor); its arrival posts state 5, whose turn starts
+    // the 120 s run and its follow-up line.
     const stateFive = "[tactical_death_star] trench_run_state=5 group=0 remaining_ms=120000";
     const stateFiveDeadline = Date.now() + 120000;
     while (!consoleLines.some(({ text }) => text.includes(stateFive))

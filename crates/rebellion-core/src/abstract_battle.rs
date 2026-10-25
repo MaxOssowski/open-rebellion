@@ -4357,7 +4357,7 @@ mod tests {
             // The jump is decided (state 6): event 0x2d is queued.
             (
                 ship.retreating,
-                tactical.turn_event_pending(crate::tactical::TacticalTurnEvent::JumpStart(
+                tactical.turn_event_pending(&crate::tactical::TacticalTurnEvent::JumpStart(
                     crate::tactical::TacticalUnitRef::Ship(0),
                 )),
                 tactical.withdrawal_ms,
@@ -4384,7 +4384,7 @@ mod tests {
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 0.5;
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         let decided = |t: &BattleSession| {
-            t.turn_event_pending(crate::tactical::TacticalTurnEvent::JumpStart(
+            t.turn_event_pending(&crate::tactical::TacticalTurnEvent::JumpStart(
                 crate::tactical::TacticalUnitRef::Ship(0),
             ))
         };
@@ -4426,7 +4426,7 @@ mod tests {
             tactical
         };
         let decided = |t: &BattleSession, index: usize| {
-            t.turn_event_pending(crate::tactical::TacticalTurnEvent::JumpStart(
+            t.turn_event_pending(&crate::tactical::TacticalTurnEvent::JumpStart(
                 crate::tactical::TacticalUnitRef::Ship(index),
             ))
         };
@@ -5012,7 +5012,7 @@ mod tests {
     #[test]
     fn a_ship_needs_engine_power_to_jump() {
         let decided = |t: &BattleSession| {
-            t.turn_event_pending(crate::tactical::TacticalTurnEvent::JumpStart(
+            t.turn_event_pending(&crate::tactical::TacticalTurnEvent::JumpStart(
                 crate::tactical::TacticalUnitRef::Ship(1),
             ))
         };
@@ -5293,7 +5293,7 @@ mod tests {
         // A withdrawal during the approach ends it and its queued state.
         tactical.withdraw_fighters(tactical.player_is_attacker);
         assert!(!tactical.trench_run_under_way());
-        assert!(!tactical.turn_event_pending(TacticalTurnEvent::TrenchRunState(2)));
+        assert!(!tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(2)));
     }
 
     // FUN_005c6610's order 6: once the run's state 2 has run (posted at
@@ -5348,10 +5348,10 @@ mod tests {
         for _ in 0..6 {
             tactical.step();
         }
-        assert!(!tactical.turn_event_pending(TacticalTurnEvent::TrenchRunState(5)));
+        assert!(!tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(5)));
         tactical.step();
         assert_eq!(tactical.combat_tick, 23);
-        assert!(tactical.turn_event_pending(TacticalTurnEvent::TrenchRunState(5)));
+        assert!(tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(5)));
         assert_eq!(tactical.turn_events[0].stamp, 8);
         assert_eq!(tactical.trench_run_remaining_ms, None);
         tactical.take_pending_voice_cues();
@@ -5748,6 +5748,171 @@ mod tests {
         assert!(tactical.ships[4].alive);
         tactical.step();
         assert!(!tactical.ships[4].alive);
+        assert!(tactical.turn_events.is_empty());
+    }
+
+    // The manoeuvre executors (FUN_005ca6d0 -> FUN_005a8f70) aim at the
+    // opponent furthest along the side vector of the opponents' centre:
+    // turned left (Left Hook), right (Right Hook), mirrored in y (Hammer) or
+    // straight (Anvil); the first of equal scores wins.
+    #[test]
+    fn each_manoeuvre_aims_at_the_opponent_furthest_along_its_side() {
+        use crate::tactical::{original_maneuver_target, TacticalOrder};
+        let at = |x: f32, y: f32, z: f32| TacticalWorldPosition { x, y, z };
+        let mut own = ship(true, TacticalWeaponArc::default(), 0.0);
+        own.source_position = at(-4.0, -4.0, -50.0);
+        let mut ships = vec![own];
+        for position in [
+            at(17.0, 22.0, 67.0),
+            at(16.0, -10.0, 64.0),
+            at(20.0, -24.0, 43.0),
+            at(-26.0, 28.0, 37.0),
+            at(17.0, 22.0, 67.0),
+        ] {
+            let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+            enemy.source_position = position;
+            ships.push(enemy);
+        }
+        let target = |order| original_maneuver_target(&ships, 0, order);
+        assert_eq!(target(TacticalOrder::LeftHook), Some(at(-26.0, 28.0, 37.0)));
+        assert_eq!(
+            target(TacticalOrder::RightHook),
+            Some(at(20.0, -24.0, 43.0))
+        );
+        assert_eq!(target(TacticalOrder::Hammer), Some(at(16.0, -10.0, 64.0)));
+        assert_eq!(target(TacticalOrder::Anvil), Some(at(17.0, 22.0, 67.0)));
+        assert_eq!(target(TacticalOrder::HoldPosition), None);
+
+        // Two opponents at the same score: the first is kept.
+        let mut level = vec![ships[0].clone()];
+        for position in [
+            at(-10.0, 5.0, 10.0),
+            at(-10.0, -5.0, 10.0),
+            at(10.0, 5.0, 10.0),
+            at(10.0, -5.0, 10.0),
+        ] {
+            let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+            enemy.source_position = position;
+            level.push(enemy);
+        }
+        level[0].source_position = at(0.0, 0.0, 0.0);
+        assert_eq!(
+            original_maneuver_target(&level, 0, TacticalOrder::LeftHook),
+            Some(at(-10.0, 5.0, 10.0))
+        );
+    }
+
+    // DAT_0066d094 turns a hook's leg by pi/8 and DAT_0066d07c scales it by
+    // 0.75 (FUN_005a8f70).
+    #[test]
+    fn a_left_hook_turns_its_leg_an_eighth_of_pi() {
+        use crate::tactical::{original_maneuver_waypoint, TacticalOrder};
+        let at = |x: f32, y: f32, z: f32| TacticalWorldPosition { x, y, z };
+        let waypoint = original_maneuver_waypoint(
+            TacticalOrder::LeftHook,
+            at(0.0, 0.0, 0.0),
+            at(0.0, 0.0, 10.0),
+        )
+        .unwrap();
+        assert!((waypoint.x + 2.870_126).abs() < 1e-4, "{waypoint:?}");
+        assert!((waypoint.z - 6.929_096).abs() < 1e-4, "{waypoint:?}");
+    }
+
+    // port: an order's executor (event 0xa) reaches only the units still in
+    // the battle on its turn.
+    #[test]
+    fn an_order_s_executor_skips_units_gone_from_the_battle() {
+        use crate::tactical::{TacticalAttackTarget, TacticalOrder};
+        let enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        let mut gone = fighter(true, TacticalWeaponArc::default());
+        gone.alive = false;
+        let mut empty = fighter(true, TacticalWeaponArc::default());
+        empty.squad_count = 0;
+        let flying = fighter(true, TacticalWeaponArc::default());
+        let mut dead = ship(true, TacticalWeaponArc::default(), 0.0);
+        dead.alive = false;
+        let mut tactical = session(vec![enemy, dead], vec![gone, empty, flying]);
+        tactical.post_order_executor(TacticalOrder::AttackCapitalShips, vec![1], vec![0, 1, 2]);
+        tactical.run_posted_order_executors();
+        assert_eq!(tactical.ships[1].attack_target, None);
+        assert_eq!(tactical.fighters[0].attack_target, None);
+        assert_eq!(tactical.fighters[1].attack_target, None);
+        assert_eq!(
+            tactical.fighters[2].attack_target,
+            Some(TacticalAttackTarget::CapitalShip(0))
+        );
+    }
+
+    // FUN_005d0820 (order 6's executor) starts the run for the first given
+    // group still flying against a Death Star that still stands.
+    #[test]
+    fn the_death_star_attack_takes_the_first_flying_group_against_a_standing_station() {
+        use crate::tactical::{begin_original_attack_order, TacticalOrder};
+        let enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        let group = |number: u8| {
+            let mut wing = fighter(true, TacticalWeaponArc::default());
+            wing.fighter_group = number;
+            wing
+        };
+        let mut gone = group(0);
+        gone.alive = false;
+        let mut empty = group(1);
+        empty.squad_count = 0;
+        let mut friendly = group(2);
+        friendly.is_attacker = false;
+        let mut tactical = session(vec![enemy], vec![gone, empty, friendly, group(3)]);
+        let mut wrecked = trench_death_star(false);
+        wrecked.hull = 0.0;
+        tactical.death_star = Some(wrecked);
+        begin_original_attack_order(
+            &mut tactical,
+            &[],
+            &[0, 1, 2, 3],
+            TacticalOrder::AttackDeathStar,
+        );
+        assert_eq!(tactical.trench_run_group, None);
+        let mut destroyed = trench_death_star(false);
+        destroyed.destroyed = true;
+        tactical.death_star = Some(destroyed);
+        begin_original_attack_order(
+            &mut tactical,
+            &[],
+            &[0, 1, 2, 3],
+            TacticalOrder::AttackDeathStar,
+        );
+        assert_eq!(tactical.trench_run_group, None);
+        tactical.death_star = Some(trench_death_star(false));
+        begin_original_attack_order(
+            &mut tactical,
+            &[],
+            &[0, 1, 2, 3],
+            TacticalOrder::AttackDeathStar,
+        );
+        assert_eq!(tactical.trench_run_group, Some(3));
+    }
+
+    // SetOrder (0x005ca530) sets the order at once and posts event 0xa at
+    // the command stamp (+0x87c, three turns ahead); its handler
+    // (0x005caba0) installs the executor (FUN_005ca6d0) only then.
+    #[test]
+    fn an_order_s_executor_waits_for_its_command_turn() {
+        use crate::tactical::TacticalOrder;
+        let mut own = ship(true, TacticalWeaponArc::default(), 0.0);
+        own.source_position.z = -50.0;
+        own.order = TacticalOrder::LeftHook;
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        enemy.source_position.z = 50.0;
+        let mut tactical = session(vec![own, enemy], Vec::new());
+        tactical.post_order_executor(TacticalOrder::LeftHook, vec![0], Vec::new());
+        // Posted on turn 0 for stamp 3, which runs at turn 4's start.
+        for _ in 0..15 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[0].source_waypoint, None);
+        tactical.step();
+        assert!(tactical.ships[0].source_waypoint.is_some());
         assert!(tactical.turn_events.is_empty());
     }
 
