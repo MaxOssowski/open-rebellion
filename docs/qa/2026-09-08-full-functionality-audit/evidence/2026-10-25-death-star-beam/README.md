@@ -55,7 +55,9 @@ Date: 2026-10-25.
   not between 2 s and 4 s as first written here.
 - The cone's roll about its axis follows `LookAt`'s constraint, which has
   not been compared. The `cargo mutants` survivors in the ring's basis are
-  equivalent: they give the same cone, turned.
+  equivalent: they give the same cone, turned. Settled in `../2026-10-26-beam-cone-roll/`: below
+  `|y|` 0.99 the roll was already `LookAt`'s; above it the port now
+  follows `d3drm.dll`'s constraint-Z up vector.
 - The beam has no A0 capture: frames 2 s apart missed it.
 
 ## Gates

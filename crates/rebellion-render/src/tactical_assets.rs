@@ -2797,10 +2797,13 @@ const DEATH_STAR_BEAM_COLOR: Color = Color::new(0.0, 1.0, 0.0, 1.0);
 /// `(cos k45, sin k45, 0)` and an apex at `(0, 0, 1)`, eight faces round the
 /// apex, scaled `(0.06e, 0.06e, 0.15e)` (`DAT_0066d4e0`, `DAT_0066d4e8`) and
 /// translated `(0, 0, -10)`, on a frame at `origin` looking along `axis`.
+/// The frame's roll is `LookAt`'s with constraint 0 (`0x005da6d8`,
+/// `0x005da8ca`): `d3drm.dll` `FUN_6d81f86b` takes the reference frame's +Y
+/// made perpendicular to the axis as up, with `s = sqrt(1 - y²)`, and
+/// `(-y, s, 0)` once `s` is below 1e-4.
 fn death_star_beam_cone_mesh(origin: Vec3, axis: Vec3, extent: f32) -> Mesh {
-    let reference = if axis.y.abs() < 0.99 { Vec3::Y } else { Vec3::X };
-    let side = reference.cross(axis).normalize();
-    let up = axis.cross(side);
+    let up = death_star_beam_up(axis);
+    let side = up.cross(axis);
     let radius = 0.06 * extent;
     let length = 0.15 * extent;
     let color: [u8; 4] = DEATH_STAR_BEAM_COLOR.into();
@@ -2825,6 +2828,17 @@ fn death_star_beam_cone_mesh(origin: Vec3, axis: Vec3, extent: f32) -> Mesh {
         vertices,
         indices,
         texture: None,
+    }
+}
+
+/// `FUN_6d81f86b`'s up vector for a unit axis `d` (the reference frame is
+/// the scene's, so its +Y is world +Y).
+fn death_star_beam_up(axis: Vec3) -> Vec3 {
+    let s = (1.0 - axis.y * axis.y).max(0.0).sqrt();
+    if s >= 1e-4 {
+        vec3(-axis.y * axis.x / s, s, -axis.y * axis.z / s)
+    } else {
+        vec3(-axis.y, s, 0.0)
     }
 }
 
@@ -3913,6 +3927,37 @@ mod tests {
             assert!((offset.length() - 6.0).abs() < 1e-4);
             assert!(offset.y.abs() < 1e-4);
         }
+    }
+
+    // Source: REBEXE 0x005da6d8 / 0x005da8ca LookAt(target, decal frame, 0);
+    // d3drm.dll FUN_6d81fa3a -> FUN_6d81f86b (constraint Z) takes the
+    // reference +Y made perpendicular to the axis as up, falling back to
+    // (-y, s, 0) only when s = sqrt(1 - y^2) < 1e-4.
+    #[test]
+    fn the_superlaser_cone_rolls_as_look_at_with_the_z_constraint() {
+        let axis = vec3(0.1, 0.995, 0.0).normalize();
+        let s = (1.0 - axis.y * axis.y).sqrt();
+        let expected_up = vec3(-axis.y * axis.x / s, s, 0.0);
+        let mesh = death_star_beam_cone_mesh(Vec3::ZERO, axis, 100.0);
+        let base = -axis * 10.0;
+        // Ring vertex 2 (90 degrees) lies along up.
+        let offset = (mesh.vertices[2].position - base) / 6.0;
+        assert!((offset - expected_up).length() < 1e-4, "{offset:?}");
+        // An axis off both level axes keeps the full Gram-Schmidt up.
+        let axis = vec3(0.05, 0.99, 0.08).normalize();
+        let s = (1.0 - axis.y * axis.y).sqrt();
+        let expected_up = vec3(-axis.y * axis.x / s, s, -axis.y * axis.z / s);
+        let mesh = death_star_beam_cone_mesh(Vec3::ZERO, axis, 100.0);
+        let offset = (mesh.vertices[2].position + axis * 10.0) / 6.0;
+        assert!((offset - expected_up).length() < 1e-4, "{offset:?}");
+        // Exactly vertical: up is (-1, 0, 0).
+        let vertical = death_star_beam_cone_mesh(Vec3::ZERO, Vec3::Y, 100.0);
+        let offset = (vertical.vertices[2].position + Vec3::Y * 10.0) / 6.0;
+        assert!((offset - vec3(-1.0, 0.0, 0.0)).length() < 1e-4, "{offset:?}");
+        // A level axis keeps world +Y as up.
+        let level = death_star_beam_cone_mesh(Vec3::ZERO, Vec3::Z, 100.0);
+        let offset = (level.vertices[2].position + Vec3::Z * 10.0) / 6.0;
+        assert!((offset - Vec3::Y).length() < 1e-4, "{offset:?}");
     }
 
     // Source: FUN_005ab650 tactical layout and lane derivation.
