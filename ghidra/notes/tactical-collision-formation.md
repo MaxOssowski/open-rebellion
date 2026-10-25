@@ -190,3 +190,54 @@ Still open:
 
 The port still places every force by the Stand Off slots, whatever its
 tactic.
+
+## Orders and tactics from the selection (2026-10-25)
+
+The Maneuvers commit (`FUN_005dd3a0`) calls `FUN_00595c00(order)` and
+`FUN_00595c20(tactic)`: 1 when button `0xdd20` is down, else 2. Both go to
+the current input state `DAT_006bc464` (`0x0059eec0`, `0x0059eef0`):
+order to slot `+0x20`, tactic to slot `+0x28`. The returned state
+replaces it (`0x0059f350`).
+
+| State (vtable) | Order `+0x20` | `+0x24` | Tactic `+0x28` |
+|---|---|---|---|
+| one unit (`0x66bce8`, ctor in `0x005a1550`) | `0x005a1a60` | none (`0x0048b440`) | `0x005a1ac0` |
+| several units (`0x66bc98`, ctor `0x005a2280`) | `0x005a2c70` | `0x005a2920` | `0x005a2a40` |
+| a task force (`0x66bc48`) | `0x005a3630` | `0x005a3850` | `0x005a3740` |
+
+- One unit: `FUN_005aded0` (a force of its own), then `SetOrder` (slot
+  `+0x64`, voice `0x77`/`0xf5`) or `0x005c9be0`.
+- Several units:
+  - `0x0059f610` finds the first free group slot of 8 (`+0x164`).
+  - With one, `0x005ade70` gathers the selection into one new force
+    (`FUN_005aded0` for the first, `0x005ade50` for the others), and
+    `0x005a03f0` stores the force in that slot.
+  - Without one, voice `0x84`/`0x102`, and each unit gets a force of its
+    own.
+- `0x005c9be0` (SetTactic) stores `+0x38` and posts `0x3d`. Its handler
+  (`0x005c9c50`):
+  - stores `+0x3c`;
+  - builds the tactic object `+0x40`: class `0x66ccb0` (type 1) for
+    tactic 1, `0x66ccd0` (type 2) otherwise;
+  - for a capital force (type 3, `0x005a6730`), rebuilds the mover
+    `0x005cb1a0` with formation 1 or 2.
+- A fighter group is type 4 (`0x005a6700`).
+
+The destruction voice (`0x005a5cf0`) names the group slot of the
+source's force (`0x56`/`0xd0` + slot), or uses `0x55`/`0xcf` when the
+force has none.
+
+A capital force (`0x66bf70`) keeps two member lists:
+
+- `+0x1c`, through `0x005cb3e0`: also the lead unit `+0x6c` and the
+  mover. It sets the ship's `+0x174`.
+- `+0x44`, through slot `+0x4c` (`0x005cb770`) and `+0x54`
+  (`0x005cb870`). It sets `+0x178`; `FUN_005aded0` and `0x005ade20` use
+  this one.
+
+The withdrawal leaves the `+0x174` force first (`0x005ad652`..`0x005ad6a1`,
+clearing its group slot when local) and then calls `FUN_005aded0`.
+
+Not settled: which of `+0x174` and `+0x178` is the numbered group the
+interface shows, and so whether a single unit's order takes it out of its
+numbered group. This needs a run of the original.
