@@ -1098,6 +1098,8 @@ impl TacticalState {
         };
         if session.trench_run_remaining_ms.is_none() {
             begin_original_attack_order(session, &[], &[index], TacticalOrder::AttackDeathStar);
+            // The fixture skips the approach to state 5 (FUN_005cfec0).
+            session.commit_original_trench_run();
         }
         session.advance_original_trench_run(ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS);
     }
@@ -3400,32 +3402,13 @@ fn begin_original_attack_order(
         else {
             return;
         };
-        if session.trench_run_remaining_ms.is_some() || session.trench_run_outcome.is_some() {
+        if session.trench_run_under_way() || session.trench_run_outcome.is_some() {
             return;
         }
-        session.trench_run_remaining_ms = Some(ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS);
-        session.trench_run_group = Some(fighter_group);
-        if session.player_voice_faction() == TacticalVoiceFaction::Alliance
-            && fighter_is_attacker == session.player_is_attacker
-        {
-            session
-                .pending_voice_cues
-                .push(TacticalVoiceCue::trench_run_started(fighter_group));
-            session
-                .pending_voice_cues
-                .push(TacticalVoiceCue::trench_run_committed(fighter_group));
-        } else if session.player_voice_faction() == TacticalVoiceFaction::Empire
-            && death_star.is_attacker == session.player_is_attacker
-        {
-            session
-                .pending_voice_cues
-                .push(TacticalVoiceCue::death_star_under_attack());
-        } else {
-            session.trench_run_remaining_ms = None;
-            session.trench_run_group = None;
-            return;
-        }
-        session.prepare_original_trench_run();
+        // FUN_005caae9 creates the result object; the run then goes
+        // through its approach (FUN_005c6610) and state 5 (FUN_005cfec0).
+        let _ = death_star;
+        session.begin_original_trench_run(fighter_group, fighter_is_attacker);
         return;
     }
 
@@ -4702,6 +4685,8 @@ fn activate_tactical_command(state: &mut TacticalState, control: TacticalCommand
                         "[tactical_death_star] trench_run_launch status={} fighter_members={} group={} remaining_ms={} rng_state={}",
                         if session.trench_run_pending_outcome.is_some() {
                             "launched"
+                        } else if session.trench_run_under_way() {
+                            "approach"
                         } else {
                             "rejected"
                         },
@@ -11670,15 +11655,19 @@ mod tests {
         // line, then jumps for 4000 ms (FUN_005cc300, FUN_005a6b40).
         session.paused = false;
         session.ships[0].source_position.z = session.withdrawal_exit_z(true);
+        // Without engine power the first group is still on its way to the
+        // escaping carrier when it leaves.
+        session.fighters[0].sublight_engine_power = 0.0;
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        // Decided on step 1, the jump's event 0x2d runs at turn 4 (step
-        // 16) and its 0x2e at turn 11, step 44 (0x005ad4a0, FUN_005a96b0).
-        for _ in 0..43 {
+        // Decided at step 12, the first frame step (0x005bef1d), the jump's
+        // event 0x2d runs at turn 6 (step 24) and its 0x2e at turn 13, step
+        // 52 (0x005ad4a0, FUN_005a96b0).
+        for _ in 0..51 {
             session.step();
         }
         assert!(!session.ships[0].retreated);
         session.step();
-        assert_eq!(session.combat_tick, 44);
+        assert_eq!(session.combat_tick, 52);
         assert!(session.ships[0].retreated);
         // At the side's end the groups left in the fight without a
         // hyperdrive are destroyed (event 0x2f, FUN_005b2720): the one still
@@ -11742,9 +11731,9 @@ mod tests {
         session.paused = false;
         session.fighters[0].source_position.z = session.withdrawal_exit_z(true);
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        // Decided on step 1, it jumps at turn 4 and leaves at turn 11, step
-        // 44 (events 0x2d and 0x2e, FUN_005a96b0).
-        for _ in 0..43 {
+        // Decided at step 12, it jumps at turn 6 and leaves at turn 13, step
+        // 52 (events 0x2d and 0x2e, FUN_005a96b0).
+        for _ in 0..51 {
             session.step();
         }
         assert!(session.fighters[0].alive);
@@ -12968,10 +12957,36 @@ mod tests {
         }
     }
 
+    // FUN_005d0ae0: a run under way, its approach included, takes no
+    // second Attack Death Star order.
+    #[test]
+    fn a_second_attack_death_star_order_waits_for_the_run_in_its_approach() {
+        let mut fighter = test_fighter(3, true);
+        fighter.order = TacticalOrder::AttackDeathStar;
+        let mut session = test_session(Vec::new(), vec![fighter], true);
+        session.death_star = Some(TacticalDeathStar {
+            resource: DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        assert_eq!(session.take_pending_voice_cues().len(), 1);
+        begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        assert!(session.take_pending_voice_cues().is_empty());
+        assert_eq!(session.turn_events.len(), 1);
+    }
+
     #[test]
     fn death_star_attack_entry_routes_each_local_perspective_once() {
         // FUN_005d0340 selects the active Alliance RGBG call for the attacking
-        // player and source event 0x115 for the Imperial station owner.
+        // player and source event 0x115 for the Imperial station owner at the
+        // order; FUN_005cfec0 state 5 then plays the follow-up, or 0x11d.
         let mut attacking_fighter = test_fighter(3, true);
         attacking_fighter.fighter_group = 2;
         attacking_fighter.order = TacticalOrder::AttackDeathStar;
@@ -12990,8 +13005,22 @@ mod tests {
         begin_original_attack_order(&mut alliance, &[], &[0], TacticalOrder::AttackDeathStar);
         assert_eq!(
             alliance.take_pending_voice_cues(),
+            vec![TacticalVoiceCue::trench_run_started(2)]
+        );
+        assert_eq!(alliance.trench_run_remaining_ms, None);
+        assert_eq!(alliance.trench_run_group, Some(2));
+        // The result object posts its state 2 (0x005d0884) at +0x87c.
+        assert_eq!(
+            alliance.turn_events,
+            vec![rebellion_core::tactical::TacticalQueuedEvent {
+                stamp: 3,
+                event: rebellion_core::tactical::TacticalTurnEvent::TrenchRunState(2),
+            }]
+        );
+        alliance.commit_original_trench_run();
+        assert_eq!(
+            alliance.take_pending_voice_cues(),
             vec![
-                TacticalVoiceCue::trench_run_started(2),
                 TacticalVoiceCue::trench_run_committed(2),
                 TacticalVoiceCue::trench_run_chatter(0x11e),
             ]
@@ -13000,7 +13029,6 @@ mod tests {
             alliance.trench_run_remaining_ms,
             Some(ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS)
         );
-        assert_eq!(alliance.trench_run_group, Some(2));
 
         let mut attacking_fighter = test_fighter(3, true);
         attacking_fighter.fighter_group = 2;
@@ -13020,8 +13048,13 @@ mod tests {
         begin_original_attack_order(&mut empire, &[], &[0], TacticalOrder::AttackDeathStar);
         assert_eq!(
             empire.take_pending_voice_cues(),
+            vec![TacticalVoiceCue::death_star_under_attack()]
+        );
+        empire.commit_original_trench_run();
+        assert_eq!(
+            empire.take_pending_voice_cues(),
             vec![
-                TacticalVoiceCue::death_star_under_attack(),
+                TacticalVoiceCue::death_star_attack_continuing(),
                 TacticalVoiceCue::trench_run_chatter(0x11e),
             ]
         );
@@ -15235,6 +15268,12 @@ mod tests {
         });
 
         begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        // The order starts the approach (state 2, 0x005d0820); the timer
+        // waits for state 5.
+        assert_eq!(session.trench_run_remaining_ms, None);
+        assert!(session.trench_run_under_way());
+        // The approach ends: state 5 (FUN_005cfec0).
+        session.commit_original_trench_run();
         assert_eq!(
             session.trench_run_remaining_ms,
             Some(ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS)
@@ -15304,6 +15343,8 @@ mod tests {
         });
 
         begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        // The approach ends: state 5 (FUN_005cfec0, FUN_005d04e0).
+        session.commit_original_trench_run();
         assert_eq!(session.trench_run_participants, vec![0, 1, 2, 3]);
         assert_eq!(
             session.trench_run_pending_outcome,
@@ -15353,6 +15394,8 @@ mod tests {
             action_committed: false,
         });
         begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
+        // The approach ends: state 5 (FUN_005cfec0), the run committed.
+        session.commit_original_trench_run();
 
         // The weapons fire at the turn's updates, step 4 (0x005a9de0).
         for _ in 0..3 {

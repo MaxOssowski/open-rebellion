@@ -103,3 +103,18 @@ New tests:
 
 The browser run, the WASM and the equivalence check were made before the
 three new tests, which change no production code.
+
+## Correction (2026-10-25, stage of `../2026-10-25-trench-run-approach/`)
+
+This stage misread the task forces' slots. The vtables start at `0x66bee0`
+and `0x66bf70`, so `0x005a9d40`'s slot `+0xc` is `0x005c9bd0` and its slot
+`+0x10` is `0x005c65e0`. The order step, `FUN_005c6610` / `FUN_005cc300`,
+is slot `+0x14`. The frame function calls it with the frame's milliseconds
+(`0x005a9ff8`).
+
+The withdrawal's moves and jump decisions therefore run every frame
+again, from turn 3, at the step's 250 ms. The swing past the line that
+`a_withdrawing_fighter_group_overshoots_its_line_by_a_full_step` showed
+came from the per-turn step, not from the original, and that test was
+changed back. The commander's countdown and the side's end stay once a
+turn.

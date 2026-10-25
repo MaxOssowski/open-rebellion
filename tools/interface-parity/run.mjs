@@ -2952,13 +2952,10 @@ async function probeTacticalDeathStarPresentation(
     type: enabled ? "attack-death-star-enabled" : "attack-death-star-disabled",
     ...verifyTacticalBitmap(viewport, missions, enabled ? 1176 : 1178, 568, 187),
   }];
-  if (ready.faction === "alliance") {
-    assert.equal(ready.tactical_rng_state, 0x5eedba77,
-      "idle Alliance Death Star journey changed its tactical RNG seed");
-  } else {
-    assert.notEqual(ready.tactical_rng_state, 0x5eedba77,
-      "Imperial station-under-attack entry did not consume the tactical RNG");
-  }
+  // The run's draws (FUN_005d04e0) wait for its state 5 (FUN_005cfec0),
+  // after the approach; entering the run consumes nothing.
+  assert.equal(ready.tactical_rng_state, 0x5eedba77,
+    `${ready.faction} Death Star journey changed its tactical RNG seed before state 5`);
   probes.push({
     type: "source-tactical-rng-entry",
     source: ["FUN_0061a310", "FUN_005a8a70"],
@@ -2991,16 +2988,18 @@ async function probeTacticalDeathStarPresentation(
     assert.ok(orderLogs.some((line) =>
       /panel=missions event=commit order=6 tactic=0 capital_members=0 fighter_members=1/.test(line)),
     "Alliance fighter group did not commit Attack Death Star");
+    // The order creates the run object (0x005d0820) and starts the
+    // approach (state 2); the timer and FUN_005d04e0's draws wait for
+    // state 5 (FUN_005cfec0).
     const launchLog = consoleLines.find(({ text }) =>
-      text.includes("[tactical_death_star] trench_run_launch status=launched fighter_members=1")
+      text.includes("[tactical_death_star] trench_run_launch status=approach fighter_members=1")
         && text.includes("group=0")
-        && text.includes("remaining_ms=120000"));
+        && text.includes("remaining_ms=0"));
     assert.ok(launchLog,
     "Alliance fighter group did not enter the production trench-run lifecycle");
     const launchRngState = Number(launchLog.text.match(/rng_state=(\d+)/)?.[1]);
-    assert.ok(Number.isInteger(launchRngState));
-    assert.notEqual(launchRngState, ready.tactical_rng_state,
-      "trench-run state entry did not consume the shared tactical RNG");
+    assert.equal(launchRngState, ready.tactical_rng_state,
+      "the trench-run order drew from the shared tactical RNG before state 5");
   } else {
     assert.ok(!orderLogs.some((line) => /order=6/.test(line)),
       "Imperial fighter group committed an attack against its friendly Death Star");
@@ -3037,14 +3036,30 @@ async function probeTacticalDeathStarPresentation(
     muted: true,
   });
   if (enabled) {
-    const committedVoice = consoleLines.find(({ text }) =>
-      text.includes("voice_event=TrenchRunCommitted")
-        && text.includes("source_event=0x13a")
-        && text.includes("wave=15161")
-        && text.includes("faction=Alliance")
-        && text.includes("routed=true")
-        && text.includes("loaded=true")
-        && text.includes("muted=true"));
+    // FUN_005c6610 flies the approach once a turn; its arrival posts state
+    // 5, whose turn starts the 120 s run and its follow-up line.
+    await click(575, 319);
+    const stateFive = "[tactical_death_star] trench_run_state=5 group=0 remaining_ms=120000";
+    const stateFiveDeadline = Date.now() + 120000;
+    while (!consoleLines.some(({ text }) => text.includes(stateFive))
+      && Date.now() < stateFiveDeadline) {
+      await page.waitForTimeout(100);
+    }
+    assert.ok(consoleLines.some(({ text }) => text.includes(stateFive)),
+      "the trench run's approach did not reach state 5");
+    await click(575, 319);
+    let committedVoice;
+    for (let attempt = 0; attempt < 30 && !committedVoice; attempt += 1) {
+      committedVoice = consoleLines.find(({ text }) =>
+        text.includes("voice_event=TrenchRunCommitted")
+          && text.includes("source_event=0x13a")
+          && text.includes("wave=15161")
+          && text.includes("faction=Alliance")
+          && text.includes("routed=true")
+          && text.includes("loaded=true")
+          && text.includes("muted=true"));
+      if (!committedVoice) await page.waitForTimeout(100);
+    }
     assert.ok(committedVoice, "timed trench-run follow-up voice did not route");
     probes.push({
       type: "trench-run-timed-state-entry",

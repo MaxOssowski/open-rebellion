@@ -39,9 +39,13 @@ Both run the same turn machine (see `0x005bea6a` and `0x005c0521`).
    - slot `+0x80` = `0x005a9d10` → `FUN_005c8780`, each side's commander,
      with `+0x87c`;
    - slot `+0x80` again for the other side;
-   - slot `+0x84` = `0x005a9d40` (1000.0 ms): for each task force, slot
-     `+0xc` (its order step, for example `FUN_005c6610` / `FUN_005cc300`),
-     its mover's `+0x40` (`0x005ea740`), then slot `+0x10`;
+   - slot `+0x84` = `0x005a9d40` (1000.0 ms): for each task force (vtable
+     `0x66bee0` fighters, `0x66bf70` capital ships), slot `+0xc`
+     (`0x005c9bd0`), its mover's `+0x40` (`0x005ea740`), then slot `+0x10`
+     (`0x005c65e0`, the trench-run result's update `0x005d0430`).
+     Correction (2026-10-25, s87): the order step, slot `+0x14`
+     (`FUN_005c6610` / `FUN_005cc300`), is not here. The frame function
+     calls it with the frame's milliseconds (`0x005a9ff8`), see below;
    - slot `+0x88` = `0x005a9de0` (1000.0 ms): the Death Star's
      `FUN_005b8800`, then for each unit in the fight:
      - `FUN_005b6320` recharge;
@@ -56,9 +60,15 @@ at turn k + 3. One posted between turns (from the interface) is stamped
 k + 3 and runs at turn k + 4.
 
 Per frame, slot `+0x98` = `0x005a9ec0` runs with the frame's
-milliseconds, but only once `+0x878 >= +0x8ac` (`0x005bef1d`). It animates
-the visual objects (`0x0059f4d0`, `0x005a6150`); state-7 jump flights
-(`FUN_005a6b40`) run there.
+milliseconds, but only once `+0x878 >= +0x8ac` (`0x005bef1d`). It:
+- runs each task force's order step, slot `+0x14` (`0x005a9fec`..
+  `0x005aa034`);
+- moves each unit in the fight (slot `+0x8`, `FUN_005b2f30`) and holds it
+  within +-2/3 of the extent;
+- runs the state-7 jump flights (`FUN_005a6b40`).
+
+The visual objects (`0x0059f4d0`, `0x005a6150`) are animated only in the
+`+0xa08` = 1 branch.
 
 ## Posting
 

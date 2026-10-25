@@ -199,6 +199,12 @@ pub const ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE: f32 = 100.0;
 pub const DEATH_STAR_SHIELD_FAMILY: u8 = 0x25;
 /// `FUN_005cfec0` arms the Death Star attack state with a 120,000 ms window.
 pub const ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS: f32 = 120_000.0;
+/// port: the frame in which the trench run's approach is flown, a 60 Hz
+/// frame. The original flies it each rendered frame (`0x005a9ff8`).
+pub const PORT_MOVER_FRAME_MILLISECONDS: f32 = 1000.0 / 60.0;
+/// The approach move's arrival radius, 0.2 (`FUN_005c6610` pushes
+/// `0x3e4ccccd` at `0x005c68f0` for the mover's slot `+0xc`).
+pub const ORIGINAL_TRENCH_RUN_APPROACH_RADIUS: f32 = 0.2;
 /// `_DAT_0066d078` scales the maneuver-failure damage draw in `FUN_005d04e0`.
 pub const ORIGINAL_TRENCH_RUN_DAMAGE_SCALE: f32 = 8.0;
 /// `FUN_005d04e0` silent chatter slot.
@@ -1293,6 +1299,11 @@ pub enum TacticalTurnEvent {
     /// `0x2e`, `FUN_005b26d0` -> `FUN_005a90c0`: the jumped unit is gone
     /// (state 9).
     JumpEnd(TacticalUnitRef),
+    /// `0x3c`, `FUN_005caf20` -> `FUN_005caf50` -> `FUN_005cfec0`: the
+    /// trench run's result state, posted by `FUN_005cfe80`: 2 (the
+    /// approach) from the run's creation (`0x005d0884`), 5 (the run) on
+    /// the approach's arrival (`0x005c6928`).
+    TrenchRunState(u8),
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
@@ -2202,6 +2213,13 @@ impl TacticalVoiceCue {
     #[must_use]
     pub const fn death_star_under_attack() -> Self {
         Self::from_source_event(TacticalVoiceEvent::DeathStarUnderAttack, 0x115)
+    }
+
+    /// `FUN_005cfec0` state 5 for the Empire's player: event 0x11d, the
+    /// attack goes on (TACTICAL.DLL 15132, A0 TAC-01-C012 at 53.72 s).
+    #[must_use]
+    pub const fn death_star_attack_continuing() -> Self {
+        Self::from_source_event(TacticalVoiceEvent::DeathStarFighterScreen, 0x11d)
     }
 
     /// `FUN_005d0340` event 0x115.
@@ -4522,6 +4540,9 @@ impl BattleSession {
             TacticalTurnEvent::DeathStarKill { target } => self.resolve_death_star_shot(target),
             TacticalTurnEvent::JumpStart(unit) => self.start_jump(unit),
             TacticalTurnEvent::JumpEnd(unit) => self.end_jump(unit),
+            TacticalTurnEvent::TrenchRunState(5) => self.commit_original_trench_run(),
+            // State 2 only sets the approach (`FUN_005cfec0`'s default).
+            TacticalTurnEvent::TrenchRunState(_) => {}
         }
     }
 
@@ -4710,6 +4731,7 @@ impl BattleSession {
         if self.event_turn() >= ORIGINAL_TACTICAL_EVENT_LEAD_TURNS {
             advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            self.advance_trench_run_approach(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.keep_units_in_the_field();
         }
         // port: the recovery's states (FUN_005cf980, a task-force order
@@ -5578,6 +5600,151 @@ impl BattleSession {
         }
     }
 
+    /// `FUN_005d0ae0` (`DAT_006bc978`): a run is under way from its
+    /// creation (`0x005d0863`) until it ends or is aborted.
+    #[must_use]
+    pub fn trench_run_under_way(&self) -> bool {
+        self.trench_run_remaining_ms.is_some()
+            || (self.trench_run_group.is_some() && self.trench_run_outcome.is_none())
+    }
+
+    /// The approach (result state 2, which `FUN_005c6610` waits on at
+    /// `0x005c6887`): after its event 0x3c with state 2 has run and before
+    /// the run (state 5) begins.
+    fn trench_run_approaching(&self) -> bool {
+        self.trench_run_group.is_some()
+            && self.trench_run_remaining_ms.is_none()
+            && self.trench_run_outcome.is_none()
+            && !self.turn_event_pending(TacticalTurnEvent::TrenchRunState(2))
+            && !self.turn_event_pending(TacticalTurnEvent::TrenchRunState(5))
+    }
+
+    /// The Attack Death Star order (6) for a fighter group: the result
+    /// object (`0x005d0820`) is created, which marks the run under way and
+    /// posts its state 2. Its first update (`0x005d0430` -> `0x005d0340`)
+    /// plays the group's start line for the Alliance's player, or 0x115
+    /// for the Empire's. Returns false when neither player hears it (port:
+    /// the run is then not started).
+    pub fn begin_original_trench_run(&mut self, fighter_group: u8, fighter_is_attacker: bool) -> bool {
+        let Some(death_star) = self.death_star else {
+            return false;
+        };
+        if self.player_voice_faction() == TacticalVoiceFaction::Alliance
+            && fighter_is_attacker == self.player_is_attacker
+        {
+            self.pending_voice_cues
+                .push(TacticalVoiceCue::trench_run_started(fighter_group));
+        } else if self.player_voice_faction() == TacticalVoiceFaction::Empire
+            && death_star.is_attacker == self.player_is_attacker
+        {
+            self.pending_voice_cues
+                .push(TacticalVoiceCue::death_star_under_attack());
+        } else {
+            return false;
+        }
+        self.trench_run_group = Some(fighter_group);
+        let stamp = self.command_event_stamp();
+        self.post_turn_event(stamp, TacticalTurnEvent::TrenchRunState(2));
+        true
+    }
+
+    /// The approach, in `FUN_005c6610`'s order 6 step (the task force's
+    /// slot `+0x14`, run each frame by `0x005a9ff8`): the force flies toward
+    /// the side vector turned a quarter about y, `(-side.z, 0, side.x)`,
+    /// times half the extent (`0x005c6848`..`0x005c68f5`), with the move's
+    /// radius 0.2 (`0x005c68f0`). On arrival it posts state 5
+    /// (`0x005c6924`).
+    ///
+    /// port: the force's position is its first member's, and it moves at
+    /// the slowest member's engine power. The step's time is flown in
+    /// frames of `PORT_MOVER_FRAME_MILLISECONDS`: in one 250 ms step a
+    /// fighter group would pass the point by more than the radius and swing
+    /// back and forth without arriving.
+    fn advance_trench_run_approach(&mut self, milliseconds: f32) {
+        let mut left = milliseconds;
+        while left > 0.0 {
+            let frame = left.min(PORT_MOVER_FRAME_MILLISECONDS);
+            left -= frame;
+            if !self.advance_trench_run_approach_frame(frame) {
+                return;
+            }
+        }
+    }
+
+    /// One frame of `FUN_005c6610`'s approach. Returns false once it has
+    /// arrived or there is no approach.
+    fn advance_trench_run_approach_frame(&mut self, milliseconds: f32) -> bool {
+        if !self.trench_run_approaching() {
+            return false;
+        }
+        let Some(group) = self.trench_run_group else {
+            return false;
+        };
+        let members = self
+            .fighters
+            .iter()
+            .enumerate()
+            .filter(|(_, fighter)| {
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && fighter.fighter_group == group
+                    && fighter.order == TacticalOrder::AttackDeathStar
+            })
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let Some(&first) = members.first() else {
+            return false;
+        };
+        let side_z = if self.fighters[first].identity.is_alliance { 1.0 } else { -1.0 };
+        let half = self.source_layout.battle_extent * ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE;
+        let point = TacticalWorldPosition {
+            x: -side_z * half,
+            y: 0.0,
+            z: 0.0,
+        };
+        let delta = source_delta(point, self.fighters[first].source_position);
+        let distance = delta.x.hypot(delta.y).hypot(delta.z);
+        if distance <= ORIGINAL_TRENCH_RUN_APPROACH_RADIUS {
+            let stamp = self.step_event_stamp();
+            self.post_turn_event(stamp, TacticalTurnEvent::TrenchRunState(5));
+            return false;
+        }
+        let speed = members
+            .iter()
+            .map(|&index| self.fighters[index].sublight_engine_power.max(0.0))
+            .fold(f32::INFINITY, f32::min);
+        let step = speed * milliseconds * 0.001 / distance;
+        for index in members {
+            let fighter = &mut self.fighters[index];
+            fighter.source_position.x += delta.x * step;
+            fighter.source_position.y += delta.y * step;
+            fighter.source_position.z += delta.z * step;
+        }
+        true
+    }
+
+    /// `FUN_005cfec0` state 5: the run's 120 000 ms timer
+    /// (`DAT_0066d080`), the group's follow-up line for the Alliance's
+    /// player or 0x11d for the Empire's, and the outcome's draws
+    /// (`FUN_005d04e0`).
+    pub fn commit_original_trench_run(&mut self) {
+        let Some(group) = self.trench_run_group.filter(|_| self.trench_run_outcome.is_none()) else {
+            return;
+        };
+        self.trench_run_remaining_ms = Some(ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS);
+        self.diagnostic_log.push(format!(
+            "[tactical_death_star] trench_run_state=5 group={group} remaining_ms={ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS} source=FUN_005cfec0"
+        ));
+        if self.player_voice_faction() == TacticalVoiceFaction::Alliance {
+            self.pending_voice_cues
+                .push(TacticalVoiceCue::trench_run_committed(group));
+        } else {
+            self.pending_voice_cues
+                .push(TacticalVoiceCue::death_star_attack_continuing());
+        }
+        self.prepare_original_trench_run();
+    }
+
     /// Run `FUN_005d04e0` when state 5 begins. The source consumes maneuver
     /// and success draws immediately, then retains the selected result while
     /// `FUN_005d03f0` advances the presentation chatter.
@@ -5717,9 +5884,11 @@ impl BattleSession {
     /// executor goes with the group's new order (`FUN_005d0950` clears
     /// `DAT_006bc978`).
     pub fn abort_original_trench_run(&mut self) {
-        if self.trench_run_remaining_ms.is_none() || self.trench_run_outcome.is_some() {
+        if !self.trench_run_under_way() || self.trench_run_outcome.is_some() {
             return;
         }
+        self.turn_events
+            .retain(|queued| !matches!(queued.event, TacticalTurnEvent::TrenchRunState(_)));
         for (index, hull, shield) in std::mem::take(&mut self.trench_run_saved) {
             if let Some(fighter) = self.fighters.get_mut(index) {
                 fighter.hull_current = hull;
@@ -5827,7 +5996,7 @@ impl BattleSession {
                 }
             });
         self.death_star.is_some_and(TacticalDeathStar::attackable)
-            && self.trench_run_remaining_ms.is_none()
+            && !self.trench_run_under_way()
             && empire < alliance
             && !self.fighters.iter().any(|fighter| {
                 fighter.alive
@@ -5878,7 +6047,7 @@ impl BattleSession {
                     (1, _)
                         if self.side_has_fighter_groups(true)
                             && !self.attack_death_star_open()
-                            && self.trench_run_remaining_ms.is_none()
+                            && !self.trench_run_under_way()
                             && self.alliance_fighter_groups() <= self.empire_fighter_groups() =>
                     {
                         State::Opening(3)
@@ -5916,7 +6085,7 @@ impl BattleSession {
             if alliance_player
                 && self.side_has_fighter_groups(true)
                 && self.side_has_fighter_groups(false)
-                && self.trench_run_remaining_ms.is_none()
+                && !self.trench_run_under_way()
                 && !self.fighters.iter().any(|fighter| {
                     fighter.alive
                         && fighter.is_attacker == self.player_is_attacker
@@ -6143,8 +6312,10 @@ impl BattleSession {
     }
 
     /// Both sides' withdrawals, the player's first.
-    /// On a turn's first step `turn` is set: the commanders and task
-    /// forces run then, and the jump flights every step (`0x005a9ec0`).
+    /// On a turn's first step `turn` is set: the commanders run then. The
+    /// task forces' order steps (slot `+0x14`, `FUN_005c6610` /
+    /// `FUN_005cc300`) and the jump flights run in the frame
+    /// (`0x005a9ff8`, `0x005aa2a3`), from turn 3.
     fn advance_withdrawal(&mut self, turn: bool) {
         self.advance_side_withdrawal(self.player_is_attacker, turn);
         self.advance_side_withdrawal(!self.player_is_attacker, turn);
@@ -6173,7 +6344,8 @@ impl BattleSession {
         };
         *self.withdrawal_slot(side) = Some(now);
         let exits = [self.withdrawal_exit_z(true), self.withdrawal_exit_z(false)];
-        self.advance_withdrawing_fighters(side, now, exits, turn);
+        let frames = self.event_turn() >= ORIGINAL_TACTICAL_EVENT_LEAD_TURNS;
+        self.advance_withdrawing_fighters(side, now, exits, frames);
         if now > 0.0 {
             return;
         }
@@ -6211,8 +6383,8 @@ impl BattleSession {
                 }
                 continue;
             }
-            // The task forces' steps (`FUN_005cc300`) run once a turn.
-            if !turn || !works[index] {
+            // The task forces' steps (`FUN_005cc300`) run in the frame.
+            if !frames || !works[index] {
                 // One that cannot jump waits at its exit for the side's end
                 // (`FUN_005cc300` keeps steering it).
                 continue;
@@ -6305,9 +6477,9 @@ impl BattleSession {
         side: bool,
         time_left: f32,
         exits: [f32; 2],
-        turn: bool,
+        frames: bool,
     ) {
-        let seconds = ORIGINAL_TACTICAL_TURN_SECONDS;
+        let seconds = ORIGINAL_TACTICAL_STEP_SECONDS;
         let requested = (0..self.fighters.len())
             .map(|index| {
                 self.turn_event_pending(TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(index)))
@@ -6342,8 +6514,8 @@ impl BattleSession {
                 }
                 continue;
             }
-            // The task force's step (`FUN_005c6610`) runs once a turn.
-            if !turn {
+            // The task force's step (`FUN_005c6610`) runs in the frame.
+            if !frames {
                 continue;
             }
             let along = exit - fighter.source_position.z;
@@ -6382,7 +6554,7 @@ impl BattleSession {
         let side = usize::from(!alliance);
         if !self.retreat_allowed[side]
             || self.retreat_done[side]
-            || self.trench_run_remaining_ms.is_some()
+            || self.trench_run_under_way()
             || !crate::abstract_battle::tactical_side_withdraws(self, alliance)
         {
             return;
