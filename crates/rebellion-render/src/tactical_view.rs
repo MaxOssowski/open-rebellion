@@ -11314,7 +11314,36 @@ mod tests {
         assert_eq!((repair.hits_before, repair.hits_after), (2, 1));
         assert_eq!(ship.subsystem_damage.engines, 1);
         assert_eq!(ship.subsystem_condition.engines, 75);
-        assert_eq!(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TICKS, 50 * 4);
+        assert_eq!(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS, 50);
+    }
+
+    // Source: FUN_005b0330 runs once a turn (0x005a9de0, slot +0x9c) and
+    // tries FUN_005b1490 every 50 000 ms, so at turn 50, step 200, for a
+    // ship with hits only.
+    #[test]
+    fn a_damaged_ship_tries_its_repair_at_the_fiftieth_turn() {
+        let mut damaged = test_ship(64, 0, true, true);
+        damaged.subsystem_capacity.engines = true;
+        damaged.subsystem_damage.engines = 1;
+        damaged.damage_control = 100;
+        damaged.refresh_subsystem_condition();
+        let mut enemy = test_ship(128, 0, false, true);
+        for ship in [&mut damaged, &mut enemy] {
+            ship.hull_current = 1_000_000;
+            ship.hull_max = 1_000_000;
+            ship.weapon_arcs = [TacticalWeaponArc::default(); 4];
+        }
+        let mut session = test_session(vec![damaged, enemy], Vec::new(), true);
+        session.paused = false;
+        for _ in 0..199 {
+            session.step();
+        }
+        assert_eq!(session.ships[0].subsystem_damage.engines, 1);
+        session.step();
+        assert_eq!(session.combat_tick, 200);
+        assert_eq!(session.subsystem_repairs.len(), 1);
+        assert_eq!(session.subsystem_repairs[0].ship, 0);
+        assert_eq!(session.ships[0].subsystem_damage.engines, 0);
     }
 
     // Source: FUN_005b05c0 sublight conversion; FUN_005ad750 engine mode.
@@ -12058,7 +12087,11 @@ mod tests {
         let mut ordered = session_with_source_order(TacticalOrder::AttackFighters);
         let ordered_capital_before = (ordered.ships[1].hull_current, ordered.ships[1].shield);
 
-        ordered.step();
+        // Through a whole turn, whose updates fire the weapons at step 4
+        // (0x005a9de0, FUN_005b3a40).
+        for _ in 0..4 {
+            ordered.step();
+        }
 
         assert_eq!(
             ordered.fighters[0].recovery_state,
@@ -12079,7 +12112,9 @@ mod tests {
         let autonomous_capital_before =
             (autonomous.ships[1].hull_current, autonomous.ships[1].shield);
 
-        autonomous.step();
+        for _ in 0..4 {
+            autonomous.step();
+        }
 
         assert_ne!(
             (autonomous.ships[1].hull_current, autonomous.ships[1].shield),
@@ -14904,14 +14939,22 @@ mod tests {
             action_committed: false,
         });
 
+        // The commander charges the laser once a turn (FUN_005ba7f0 from
+        // FUN_005c8780, slot +0x80): the edge comes at turn 1, step 4.
+        for _ in 0..3 {
+            assert!(!session.step());
+        }
+        assert!(session.take_pending_voice_cues().is_empty());
         assert!(!session.step());
-        assert_eq!(session.combat_tick, 1);
+        assert_eq!(session.combat_tick, 4);
         assert_eq!(
             session.take_pending_voice_cues(),
             vec![TacticalVoiceCue::death_star_ready()]
         );
-        assert!(!session.step());
-        assert_eq!(session.combat_tick, 2);
+        for _ in 0..4 {
+            assert!(!session.step());
+        }
+        assert_eq!(session.combat_tick, 8);
         assert!(session.take_pending_voice_cues().is_empty());
 
         let attacker = test_ship(64, 0, true, true);
@@ -14930,8 +14973,10 @@ mod tests {
             action_committed: false,
         });
 
-        assert!(!opponent_owned.step());
-        assert_eq!(opponent_owned.combat_tick, 1);
+        for _ in 0..4 {
+            assert!(!opponent_owned.step());
+        }
+        assert_eq!(opponent_owned.combat_tick, 4);
         assert!(opponent_owned.take_pending_voice_cues().is_empty());
     }
 
@@ -15309,7 +15354,12 @@ mod tests {
         });
         begin_original_attack_order(&mut session, &[], &[0], TacticalOrder::AttackDeathStar);
 
+        // The weapons fire at the turn's updates, step 4 (0x005a9de0).
+        for _ in 0..3 {
+            assert!(!session.step());
+        }
         assert!(session.step());
+        assert_eq!(session.combat_tick, 4);
         assert!(!session.fighters[0].alive);
         assert!(!session.death_star.unwrap().destroyed);
         assert_eq!(

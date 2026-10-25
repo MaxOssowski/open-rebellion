@@ -42,8 +42,9 @@ pub const ORIGINAL_TORPEDO_PROJECTILE_THRESHOLD: f32 = 12.8;
 pub const ORIGINAL_PROJECTILE_DURATION_SHORT: f32 = 1.0;
 /// `FUN_005ee590` variant three lives two seconds.
 pub const ORIGINAL_PROJECTILE_DURATION_LONG: f32 = 2.0;
-/// `FUN_005b0330` resets the subsystem-repair timer to 50 * 1000 ms.
-pub const ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TICKS: u32 = 200;
+/// `FUN_005b0330` resets the subsystem-repair timer to 50 * 1000 ms; it
+/// runs once a turn (`0x005a9de0`, slot `+0x9c`), so every 50 turns.
+pub const ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS: u32 = 50;
 /// `FUN_005b05c0` converts the CAPSHPSD sublight rating by 0.4 * 0.6.
 pub const ORIGINAL_SUBLIGHT_ENGINE_SCALE: f32 = 0.24;
 /// `FUN_005b9c60` converts the FIGHTSD sublight rating by 0.4 without the
@@ -100,6 +101,13 @@ pub const ORIGINAL_TACTICAL_TURN_STEPS: u32 = 4;
 /// slot `+0x28` = `0x005ad4a0`) in both managers, `FUN_005be160` and
 /// `FUN_005bf830`.
 pub const ORIGINAL_TACTICAL_EVENT_LEAD_TURNS: u32 = 3;
+/// The time a turn's updates are given: the turn length `+0x8a8` (1000 ms)
+/// for the commanders (`0x005bed3e`), the task forces (`0x005a9d40`) and
+/// the units (`0x005a9de0`, which scales it by `DAT_0066c26c` = 0.001 for
+/// the recharge `FUN_005b6320`).
+pub const ORIGINAL_TACTICAL_TURN_MILLISECONDS: f32 = 1000.0;
+/// port: ORIGINAL_TACTICAL_TURN_MILLISECONDS in seconds.
+pub const ORIGINAL_TACTICAL_TURN_SECONDS: f32 = ORIGINAL_TACTICAL_TURN_MILLISECONDS / 1000.0;
 
 /// `FUN_005ad530` sets the withdrawing side's time (`+0x7c`) to at least
 /// `DAT_0066c240`, 30000 ms; `FUN_005c8780` counts it down by the step and
@@ -174,9 +182,10 @@ fn original_jump_travel(factor: f32, from: f32, to: f32) -> f32 {
     factor * (to * to - from * from)
 }
 /// `FUN_005c8780`: a tactical commander reviews the battle when its count
-/// `+0x40`, falling by 1.0 a step (`_DAT_0066cbd4`), reaches 0, then sets
-/// it to 6.0 (`DAT_0066cba4`): every sixth step.
-pub const ORIGINAL_COMMANDER_REVIEW_STEPS: u32 = 6;
+/// `+0x40`, falling by 1.0 a call (`_DAT_0066cbd4`), reaches 0, then sets
+/// it to 6.0 (`DAT_0066cba4`). It is called once a turn (slot `+0x80`,
+/// `0x005a9d10`), so it reviews every sixth turn.
+pub const ORIGINAL_COMMANDER_REVIEW_TURNS: u32 = 6;
 /// `FUN_005ba7f0` advances the tactical Death Star laser by elapsed
 /// milliseconds times one third times 0.001, capped at 100.
 pub const ORIGINAL_DEATH_STAR_LASER_CHARGE_PER_SECOND: f32 = 1.0 / 3.0;
@@ -4684,118 +4693,21 @@ impl BattleSession {
 
         self.combat_tick += 1;
         self.subsystem_repairs.clear();
+        // A turn's first step runs its events, then its updates
+        // (`0x005bec3c`, `0x005bed12`).
+        let turn_step = self.combat_tick.is_multiple_of(ORIGINAL_TACTICAL_TURN_STEPS);
         self.run_turn_events();
 
-        self.advance_withdrawal();
+        self.advance_withdrawal(turn_step);
         refresh_original_escort_targets(self);
         advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         self.advance_original_fighter_recovery(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         refresh_original_attack_targets(self);
-        for ship in &mut self.ships {
-            ship.advance_original_recharge(ORIGINAL_TACTICAL_STEP_SECONDS);
+        if turn_step {
+            self.run_turn_updates();
         }
-        for fighter in &mut self.fighters {
-            fighter.advance_original_recharge(ORIGINAL_TACTICAL_STEP_SECONDS);
-        }
-        let death_star_was_ready = self.death_star.is_some_and(|death_star| {
-            death_star.is_attacker == self.player_is_attacker
-                && death_star.laser_charge >= ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
-        });
-        if let Some(death_star) = self.death_star.as_mut() {
-            death_star.advance_laser_charge(ORIGINAL_TACTICAL_STEP_SECONDS);
-        }
-        if !death_star_was_ready
-            && self.death_star.is_some_and(|death_star| {
-                death_star.is_attacker == self.player_is_attacker
-                    && death_star.laser_charge >= ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
-            })
-        {
-            self.pending_voice_cues
-                .push(TacticalVoiceCue::death_star_ready());
-        }
-
-        // Collect the ship indices per side still in the fight: a withdrawing
-        // ship fights and can be hit until its jump starts (`FUN_005cdf50`
-        // and `FUN_005b3a40` take states 2 and 4, not 6, `FUN_005ad870`).
-        let atk_alive: Vec<usize> = self
-            .ships
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.is_attacker && s.alive && !s.jumping())
-            .map(|(i, _)| i)
-            .collect();
-        let def_alive: Vec<usize> = self
-            .ships
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| !s.is_attacker && s.alive && !s.jumping())
-            .map(|(i, _)| i)
-            .collect();
-
-        // Phase: Weapon fire (each ship fires at one random enemy).
-        let mut new_effects = Vec::new();
-        let player_is_attacker = self.player_is_attacker;
-        let player_faction = self.player_voice_faction();
-        Self::fire_side(
-            &mut self.ships,
-            &mut self.field_effects,
-            &atk_alive,
-            &def_alive,
-            &mut new_effects,
-            &mut self.impact_effects,
-            &mut self.pending_audio_cues,
-            &mut self.pending_voice_cues,
-            player_is_attacker,
-            player_faction,
-            &mut self.tactical_rng,
-        );
-        Self::fire_side(
-            &mut self.ships,
-            &mut self.field_effects,
-            &def_alive,
-            &atk_alive,
-            &mut new_effects,
-            &mut self.impact_effects,
-            &mut self.pending_audio_cues,
-            &mut self.pending_voice_cues,
-            player_is_attacker,
-            player_faction,
-            &mut self.tactical_rng,
-        );
-        self.fire_capitals_at_fighters(&mut new_effects);
-        self.weapon_effects.extend(new_effects);
-
-        // FUN_005b0330 invokes FUN_005b1490 every 50,000 ms. Four combat
-        // steps represent one source second, so one repair attempt occurs per
-        // ship every 200 steps. Both draws advance the one recovered tactical
-        // manager stream in source call order.
-        if self
-            .combat_tick
-            .is_multiple_of(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TICKS)
-        {
-            for (ship_index, ship) in self.ships.iter_mut().enumerate() {
-                let hits = ship.subsystem_damage.total_hits();
-                if hits == 0 {
-                    continue;
-                }
-                let chance_roll = u8::try_from(self.tactical_rng.inclusive(1, 100)).unwrap_or(100);
-                let selection_roll =
-                    u16::try_from(self.tactical_rng.inclusive(1, u32::from(hits))).unwrap_or(hits);
-                if let Some(repair) =
-                    attempt_original_subsystem_repair(ship, ship_index, chance_roll, selection_roll)
-                {
-                    self.subsystem_repairs.push(repair);
-                }
-            }
-            refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
-        }
-
-        // Fighter batteries use the same 250 ms source cadence as capital
-        // batteries. Their own readiness and recharge record gates each shot.
-        self.fighter_step();
         self.advance_original_trench_run(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        self.ai_side_leaves();
 
         // Check for battle end.
         let atk_remaining = self.ships.iter().any(|s| s.is_attacker && s.alive)
@@ -4828,6 +4740,119 @@ impl BattleSession {
         }
 
         false
+    }
+
+    /// A turn's updates, each given the turn's 1000 ms:
+    /// - the commanders (slot `+0x80`, `FUN_005c8780`): the Death Star's
+    ///   laser (`FUN_005ba7f0` at `0x005c88ec`) and the AI side's review;
+    /// - the units (slot `+0x88`, `0x005a9de0`): the recharge
+    ///   (`FUN_005b6320`), the subsystem repair (slot `+0x9c`,
+    ///   `FUN_005b0330`) and the weapons (slot `+0x88`, `FUN_005b3a40`).
+    ///
+    /// The withdrawal's commander and task-force parts run in
+    /// `advance_withdrawal`. port: each part runs for all units in turn,
+    /// not unit by unit.
+    fn run_turn_updates(&mut self) {
+        let death_star_was_ready = self.death_star.is_some_and(|death_star| {
+            death_star.is_attacker == self.player_is_attacker
+                && death_star.laser_charge >= ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
+        });
+        if let Some(death_star) = self.death_star.as_mut() {
+            death_star.advance_laser_charge(ORIGINAL_TACTICAL_TURN_SECONDS);
+        }
+        if !death_star_was_ready
+            && self.death_star.is_some_and(|death_star| {
+                death_star.is_attacker == self.player_is_attacker
+                    && death_star.laser_charge >= ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
+            })
+        {
+            self.pending_voice_cues
+                .push(TacticalVoiceCue::death_star_ready());
+        }
+        self.ai_side_leaves();
+
+        for ship in &mut self.ships {
+            ship.advance_original_recharge(ORIGINAL_TACTICAL_TURN_SECONDS);
+        }
+        for fighter in &mut self.fighters {
+            fighter.advance_original_recharge(ORIGINAL_TACTICAL_TURN_SECONDS);
+        }
+
+        // FUN_005b0330 invokes FUN_005b1490 every 50 turns. Both draws
+        // advance the one recovered tactical manager stream in source call
+        // order.
+        if self
+            .event_turn()
+            .is_multiple_of(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS)
+        {
+            for (ship_index, ship) in self.ships.iter_mut().enumerate() {
+                let hits = ship.subsystem_damage.total_hits();
+                if hits == 0 {
+                    continue;
+                }
+                let chance_roll = u8::try_from(self.tactical_rng.inclusive(1, 100)).unwrap_or(100);
+                let selection_roll =
+                    u16::try_from(self.tactical_rng.inclusive(1, u32::from(hits))).unwrap_or(hits);
+                if let Some(repair) =
+                    attempt_original_subsystem_repair(ship, ship_index, chance_roll, selection_roll)
+                {
+                    self.subsystem_repairs.push(repair);
+                }
+            }
+            refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
+        }
+
+        // Collect the ship indices per side still in the fight: a withdrawing
+        // ship fights and can be hit until its jump starts (`FUN_005cdf50`
+        // and `FUN_005b3a40` take states 2 and 4, not 6, `FUN_005ad870`).
+        let atk_alive: Vec<usize> = self
+            .ships
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.is_attacker && s.alive && !s.jumping())
+            .map(|(i, _)| i)
+            .collect();
+        let def_alive: Vec<usize> = self
+            .ships
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.is_attacker && s.alive && !s.jumping())
+            .map(|(i, _)| i)
+            .collect();
+        let mut new_effects = Vec::new();
+        let player_is_attacker = self.player_is_attacker;
+        let player_faction = self.player_voice_faction();
+        Self::fire_side(
+            &mut self.ships,
+            &mut self.field_effects,
+            &atk_alive,
+            &def_alive,
+            &mut new_effects,
+            &mut self.impact_effects,
+            &mut self.pending_audio_cues,
+            &mut self.pending_voice_cues,
+            player_is_attacker,
+            player_faction,
+            &mut self.tactical_rng,
+        );
+        Self::fire_side(
+            &mut self.ships,
+            &mut self.field_effects,
+            &def_alive,
+            &atk_alive,
+            &mut new_effects,
+            &mut self.impact_effects,
+            &mut self.pending_audio_cues,
+            &mut self.pending_voice_cues,
+            player_is_attacker,
+            player_faction,
+            &mut self.tactical_rng,
+        );
+        self.fire_capitals_at_fighters(&mut new_effects);
+        self.weapon_effects.extend(new_effects);
+        // Fighter groups use the same slot (`0x66c560 + 0x88`,
+        // `FUN_005b3a40`); their own readiness and recharge gate each shot.
+        self.fighter_step();
     }
 
     /// One side's ships fire through the four source battery records recovered
@@ -6084,9 +6109,11 @@ impl BattleSession {
     }
 
     /// Both sides' withdrawals, the player's first.
-    fn advance_withdrawal(&mut self) {
-        self.advance_side_withdrawal(self.player_is_attacker);
-        self.advance_side_withdrawal(!self.player_is_attacker);
+    /// On a turn's first step `turn` is set: the commanders and task
+    /// forces run then, and the jump flights every step (`0x005a9ec0`).
+    fn advance_withdrawal(&mut self, turn: bool) {
+        self.advance_side_withdrawal(self.player_is_attacker, turn);
+        self.advance_side_withdrawal(!self.player_is_attacker, turn);
     }
 
     /// `FUN_005c8780`: the withdrawing side's time runs down by the step.
@@ -6100,14 +6127,19 @@ impl BattleSession {
     /// event `0x2f` and is destroyed (`FUN_005b2720` -> slot `+0x1c`,
     /// `FUN_005b2d20`: hull 0, state `0xb`). port: the jump's flight is not
     /// drawn.
-    fn advance_side_withdrawal(&mut self, side: bool) {
+    fn advance_side_withdrawal(&mut self, side: bool, turn: bool) {
         let Some(left) = *self.withdrawal_slot(side) else {
             return;
         };
-        let now = (left - ORIGINAL_TACTICAL_STEP_MILLISECONDS).max(0.0);
+        // The commander counts the time down by its turn's 1000 ms.
+        let now = if turn {
+            (left - ORIGINAL_TACTICAL_TURN_MILLISECONDS).max(0.0)
+        } else {
+            left
+        };
         *self.withdrawal_slot(side) = Some(now);
         let exits = [self.withdrawal_exit_z(true), self.withdrawal_exit_z(false)];
-        self.advance_withdrawing_fighters(side, now, exits);
+        self.advance_withdrawing_fighters(side, now, exits, turn);
         if now > 0.0 {
             return;
         }
@@ -6145,9 +6177,10 @@ impl BattleSession {
                 }
                 continue;
             }
-            if !works[index] {
-                // It waits at its exit for the side's end (`FUN_005cc300`
-                // keeps steering it; it cannot jump).
+            // The task forces' steps (`FUN_005cc300`) run once a turn.
+            if !turn || !works[index] {
+                // One that cannot jump waits at its exit for the side's end
+                // (`FUN_005cc300` keeps steering it).
                 continue;
             }
             let exit = if ship.identity.is_alliance {
@@ -6171,6 +6204,10 @@ impl BattleSession {
         }
         for event in posts {
             self.post_turn_event(stamp, event);
+        }
+        // The commander's state 3 and 4 run once a turn.
+        if !turn {
+            return;
         }
         // A unit in its jump is waited on (port: one whose engines died
         // mid-jump still finishes it).
@@ -6229,8 +6266,14 @@ impl BattleSession {
     /// step's time, unclamped, and returns 1, which skips the jumps; within
     /// it the force stops and returns 0. port: a group's position is its
     /// member's, and its engine power is its sublight rating.
-    fn advance_withdrawing_fighters(&mut self, side: bool, time_left: f32, exits: [f32; 2]) {
-        let seconds = ORIGINAL_TACTICAL_STEP_MILLISECONDS * 0.001;
+    fn advance_withdrawing_fighters(
+        &mut self,
+        side: bool,
+        time_left: f32,
+        exits: [f32; 2],
+        turn: bool,
+    ) {
+        let seconds = ORIGINAL_TACTICAL_TURN_SECONDS;
         let requested = (0..self.fighters.len())
             .map(|index| {
                 self.turn_event_pending(TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(index)))
@@ -6265,6 +6308,10 @@ impl BattleSession {
                 }
                 continue;
             }
+            // The task force's step (`FUN_005c6610`) runs once a turn.
+            if !turn {
+                continue;
+            }
             let along = exit - fighter.source_position.z;
             if along.abs() > ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS {
                 let step = fighter.sublight_engine_power.max(0.0) * seconds;
@@ -6285,16 +6332,16 @@ impl BattleSession {
     }
 
     /// The AI side's tactical commander, `FUN_005c8780`: its count `+0x40`
-    /// starts at 0 (`FUN_005c7cb0`) and falls by 1.0 a step
+    /// starts at 0 (`FUN_005c7cb0`) and falls by 1.0 a turn
     /// (`_DAT_0066cbd4`); at 0 or under it is set to 6.0 (`DAT_0066cba4`) and
-    /// the commander reviews the battle, so on the first step and every
+    /// the commander reviews the battle, so on the first turn and every
     /// sixth after. With its retreat order it withdraws through
     /// `FUN_005ad530` like the player's side when
     /// `abstract_battle::tactical_side_withdraws` says so, unless a trench
     /// run is under way (`FUN_005d0ae0`; port: from state 5's timer to its
     /// result).
     fn ai_side_leaves(&mut self) {
-        if (self.combat_tick - 1) % ORIGINAL_COMMANDER_REVIEW_STEPS != 0 {
+        if (self.event_turn() - 1) % ORIGINAL_COMMANDER_REVIEW_TURNS != 0 {
             return;
         }
         let alliance = self.attacker_is_alliance != self.player_is_attacker;

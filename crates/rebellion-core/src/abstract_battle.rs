@@ -2982,7 +2982,10 @@ mod tests {
         // The player has the Alliance (the attacker); the AI the Empire.
         let mut tactical = session(weak(false), Vec::new());
         tactical.retreat_allowed = [true, true];
-        assert!(!tactical.step());
+        // The commander's first review is at turn 1, step 4.
+        for _ in 0..4 {
+            assert!(!tactical.step());
+        }
         assert_eq!(tactical.retreat_done, [false, true]);
         assert_eq!(tactical.ai_withdrawal_ms, Some(30_000.0));
         assert_eq!(tactical.withdrawal_ms, None);
@@ -2991,14 +2994,15 @@ mod tests {
         assert!(tactical.ships[1].retreating);
         // At its edge when the time ends, it jumps for 4000 ms and leaves;
         // then the ship without a hyperdrive is destroyed (event 0x2f,
-        // FUN_005b2720 -> FUN_005b2d20). The jump decided on step 2 is
-        // stamped 3 (0x005ad4a0) and runs at turn 4, step 16
-        // (FUN_005a96b0); the flight ends on step 31, and its event 0x2e,
-        // stamped 10, runs at turn 11, step 44.
+        // FUN_005b2720 -> FUN_005b2d20). The time ends at turn 2, step 8,
+        // where the jump is decided within the turn's updates, stamped 4
+        // (0x005ad4a0), and runs at turn 5, step 20 (FUN_005a96b0); the
+        // flight ends on step 35, and its event 0x2e, stamped 11, runs at
+        // turn 12, step 48.
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false);
         tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        assert_eq!(step_until(&mut tactical, |t| t.ships[0].jumping()), 16);
-        assert_eq!(step_until(&mut tactical, |t| !t.ships[0].alive), 44);
+        assert_eq!(step_until(&mut tactical, |t| t.ships[0].jumping()), 20);
+        assert_eq!(step_until(&mut tactical, |t| !t.ships[0].alive), 48);
         assert!(tactical.ships[0].retreated && !tactical.ships[0].alive);
         assert!(!tactical.ships[1].retreated && !tactical.ships[1].alive);
         assert_eq!(tactical.ai_withdrawal_ms, None);
@@ -4203,22 +4207,32 @@ mod tests {
         let exit = tactical.withdrawal_exit_z(true);
         tactical.fighters[0].source_position.z = exit + 9.0;
         tactical.withdrawal_ms = Some(2.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        // The task force moves once a turn, 4.0 a second for the turn's
+        // 1000 ms (0x005a9d40): four units nearer at step 4.
+        for _ in 0..3 {
+            tactical.step();
+        }
+        assert_eq!(tactical.fighters[0].source_position.z, exit + 9.0);
         tactical.step();
-        // 4.0 a second for 250 ms: one unit nearer.
-        assert_eq!(tactical.fighters[0].source_position.z, exit + 8.0);
-        assert_eq!(tactical.fighters[0].retreat_progress, 0.0);
+        assert_eq!(tactical.fighters[0].source_position.z, exit + 5.0);
         // Within 8.0 of the line but still moving (0x005ec0d0 returns 1
         // beyond its 1.0 radius), so FUN_005c6610 tries no jump yet.
-        for _ in 0..7 {
+        assert!(tactical.turn_events.is_empty());
+        for _ in 0..4 {
             tactical.step();
         }
         assert_eq!(tactical.fighters[0].source_position.z, exit + 1.0);
-        assert_eq!(tactical.fighters[0].retreat_progress, 0.0);
-        tactical.step();
-        // Arrived on step 9: its jump is decided (state 6, event 0x2d
-        // stamped 5, 0x005ad4a0) and it holds there until the event runs
-        // at turn 6, step 24 (FUN_005a96b0).
+        assert!(tactical.turn_events.is_empty());
+        // At step 12 the move finds it arrived (|d| = 1.0): its jump is
+        // decided (state 6, event 0x2d stamped 5 within the turn's
+        // updates, 0x005ad4a0) and it holds there until the event runs at
+        // turn 6, step 24 (FUN_005a96b0).
+        for _ in 0..4 {
+            tactical.step();
+        }
         assert_eq!(tactical.fighters[0].source_position.z, exit + 1.0);
+        assert_eq!(tactical.turn_events.len(), 1);
+        assert_eq!(tactical.turn_events[0].stamp, 5);
         assert!(!tactical.fighters[0].jumping());
         assert_eq!(step_until(&mut tactical, |t| t.fighters[0].jumping()), 24);
         // Then the flight moves it on in that step: k = 25 (DAT_006bc47c)
@@ -4236,17 +4250,29 @@ mod tests {
         let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
         enemy.hull_current = 1_000_000;
         enemy.hull_max = 1_000_000;
-        let mut wing = fighter(true, TacticalWeaponArc::default());
-        wing.retreating = true;
-        wing.sublight_engine_power = 10.0;
-        let mut tactical = session(vec![enemy], vec![wing]);
-        let exit = tactical.withdrawal_exit_z(true);
-        tactical.fighters[0].source_position.z = exit + 2.0;
-        tactical.withdrawal_ms = Some(100.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        tactical.step();
-        assert_eq!(tactical.fighters[0].source_position.z, exit - 0.5);
-        tactical.step();
-        assert_eq!(tactical.fighters[0].source_position.z, exit - 0.5);
+        let run = |power: f32| {
+            let mut wing = fighter(true, TacticalWeaponArc::default());
+            wing.retreating = true;
+            wing.sublight_engine_power = power;
+            let mut tactical = session(vec![enemy.clone()], vec![wing]);
+            let exit = tactical.withdrawal_exit_z(true);
+            tactical.fighters[0].source_position.z = exit + 2.0;
+            tactical.withdrawal_ms = Some(100_000.0);
+            // One move a turn, with the turn's 1000 ms (0x005a9d40).
+            let mut at = Vec::new();
+            for _ in 0..3 {
+                for _ in 0..4 {
+                    tactical.step();
+                }
+                at.push(tactical.fighters[0].source_position.z - exit);
+            }
+            at
+        };
+        // 2.5 a second: past the line by 0.5, within the radius, so it stays.
+        assert_eq!(run(2.5), [-0.5, -0.5, -0.5]);
+        // 10 a second: past it by 8, then back past it, as the move is never
+        // clamped to the distance left.
+        assert_eq!(run(10.0), [-8.0, 2.0, -8.0]);
     }
 
     // FUN_005be160 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
@@ -4302,7 +4328,10 @@ mod tests {
             tactical.ships[0].retreating = true;
             tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(true) + offset;
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-            tactical.step();
+            // The commander and the task forces run at the turn, step 4.
+            for _ in 0..4 {
+                tactical.step();
+            }
             let ship = &tactical.ships[0];
             // The jump is decided (state 6): event 0x2d is queued.
             (
@@ -4338,12 +4367,16 @@ mod tests {
                 crate::tactical::TacticalUnitRef::Ship(0),
             ))
         };
-        tactical.step();
+        for _ in 0..4 {
+            tactical.step();
+        }
         assert!(decided(&tactical));
         // Away from it, toward the field's middle, it does not.
         tactical.turn_events.clear();
         tactical.ships[0].source_position.z = tactical.withdrawal_exit_z(false) - 30.0;
-        tactical.step();
+        for _ in 0..4 {
+            tactical.step();
+        }
         assert!(!decided(&tactical));
     }
 
@@ -4367,7 +4400,10 @@ mod tests {
                 tactical.ships[index].source_position.z = exit;
             }
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-            tactical.step();
+            // Decided at turn 1, step 4, stamped 3.
+            for _ in 0..4 {
+                tactical.step();
+            }
             tactical
         };
         let decided = |t: &BattleSession, index: usize| {
@@ -4390,11 +4426,10 @@ mod tests {
         assert_eq!(gone, 44);
         assert!(tactical.ships[0].retreated);
         // Now the second is first. Back at its line (port: it followed
-        // the first's flight in formation), it is decided on step 45,
-        // stamped 14, and jumps at turn 15, step 60.
+        // the first's flight in formation), it is decided at turn 12, step
+        // 48, stamped 14, and jumps at turn 15, step 60.
         tactical.ships[1].source_position.z = tactical.withdrawal_exit_z(true);
-        tactical.step();
-        assert!(decided(&tactical, 1));
+        assert_eq!(step_until(&mut tactical, |t| decided(t, 1)), 48);
         assert_eq!(step_until(&mut tactical, |t| t.ships[1].jumping()), 60);
 
         let mut held = run(0);
@@ -4560,11 +4595,12 @@ mod tests {
         assert!(!tactical_side_withdraws(&tactical, false));
     }
 
-    // FUN_005c8780: the AI commander reviews the battle on the first step
-    // and every sixth after (+0x40 from 0, -1.0 a step, reset to 6.0), and
-    // not while a trench run is under way (FUN_005d0ae0).
+    // FUN_005c8780: the AI commander reviews the battle on the first turn
+    // and every sixth after (+0x40 from 0, -1.0 a call, reset to 6.0; one
+    // call a turn through slot +0x80, 0x005a9d10), and not while a trench
+    // run is under way (FUN_005d0ae0).
     #[test]
-    fn the_ai_commander_reviews_every_sixth_step() {
+    fn the_ai_commander_reviews_every_sixth_turn() {
         let weak = || {
             let mut fast = jumper(false, TacticalWeaponArc::new(0, 0, 1), 1.0);
             fast.subsystem_condition.hyperdrive = 100;
@@ -4574,17 +4610,22 @@ mod tests {
             vec![fast, strong]
         };
         let mut tactical = session(weak(), Vec::new());
-        tactical.step();
+        // Turn 1 (step 4) reviews without the retreat order.
+        for _ in 0..4 {
+            tactical.step();
+        }
         tactical.retreat_allowed = [false, true];
-        for _ in 0..5 {
+        // The next review is at turn 7, step 28.
+        for _ in 0..23 {
             tactical.step();
             assert!(!tactical.retreat_done[1]);
         }
         tactical.step();
+        assert_eq!(tactical.combat_tick, 28);
         assert!(tactical.retreat_done[1]);
         // A side already withdrawing (+0x84 = 2) is not ordered again: the
         // next review leaves its time running down.
-        for _ in 0..6 {
+        for _ in 0..24 {
             tactical.step();
         }
         assert!(tactical.ai_withdrawal_ms.is_some_and(|left| left < 30_000.0));
@@ -4594,7 +4635,9 @@ mod tests {
         running.trench_run_remaining_ms = Some(60_000.0);
         running.trench_run_pending_outcome =
             Some(crate::tactical::TacticalTrenchRunOutcome::Failure);
-        running.step();
+        for _ in 0..4 {
+            running.step();
+        }
         assert!(!running.retreat_done[1]);
     }
 
@@ -4626,15 +4669,20 @@ mod tests {
         ];
         tactical.withdrawal_ms = Some(0.0);
         tactical.ai_withdrawal_ms = Some(0.0);
+        // The task forces step once a turn with its 1000 ms (0x005a9d40):
+        // nothing moves until step 4.
+        for _ in 0..3 {
+            tactical.step();
+        }
+        assert_eq!(tactical.fighters[0].source_position.z, 60.0);
         tactical.step();
         let fighters = &tactical.fighters;
-        assert_eq!(fighters[0].source_position.z, 59.0);
-        assert!((fighters[1].source_position.z - (alliance_exit + 8.4)).abs() < 1e-4);
-        assert_eq!(fighters[1].retreat_progress, 0.0);
-        assert_eq!(fighters[2].retreat_progress, 0.0);
-        assert!((fighters[3].source_position.z - 20.1).abs() < 1e-4);
-        assert_eq!(fighters[3].retreat_progress, 0.0);
-        assert!(empire_exit > 20.1);
+        assert_eq!(fighters[0].source_position.z, 56.0);
+        assert!((fighters[1].source_position.z - (alliance_exit + 8.1)).abs() < 1e-4);
+        assert!((fighters[3].source_position.z - 20.4).abs() < 1e-4);
+        assert!(empire_exit > 20.4);
+        // No jump is decided (event 0x2d).
+        assert!(tactical.turn_events.is_empty());
     }
 
     // FUN_005cdf50 takes a unit in state 2 or 4, not 6 (FUN_005ad870): a
@@ -4951,7 +4999,10 @@ mod tests {
             tactical.ships[0].source_position.z = exit;
             tactical.ships[1].source_position.z = exit;
             tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-            tactical.step();
+            // Decided at turn 1, step 4 (stamped 3), it jumps at turn 4.
+            for _ in 0..4 {
+                tactical.step();
+            }
             assert_eq!(tactical.ships[0].retreat_progress, 0.0);
             assert!(decided(&tactical));
             assert_eq!(step_until(&mut tactical, |t| t.ships[1].jumping()), 16);
@@ -4983,12 +5034,107 @@ mod tests {
         tactical.ships[1].source_position.z = tactical.withdrawal_exit_z(true);
         tactical.ships[2].source_position.z = tactical.withdrawal_exit_z(true) + 300.0;
         tactical.withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-        tactical.step();
+        for _ in 0..4 {
+            tactical.step();
+        }
         assert!(decided(&tactical));
         tactical.ships[1].sublight_engine_power = 0.0;
         assert_eq!(step_until(&mut tactical, |t| !t.ships[1].alive), 16);
         assert!(!tactical.ships[1].retreated && tactical.ships[1].hull_current == 0);
         assert!(!tactical.ships[1].jumping());
+    }
+
+    // port: a side stays in the battle while it has a ship, a fighter group
+    // with craft, or a Death Star not destroyed; the side left with them
+    // wins, and with none on either side it is a draw.
+    #[test]
+    fn the_battle_ends_when_a_side_has_nothing_left_in_it() {
+        use crate::tactical::CombatWinner;
+        let death_star = |is_attacker: bool, destroyed: bool| crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker,
+            is_alliance: false,
+            source_position: crate::tactical::TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed,
+            action_committed: false,
+        };
+        let wing = |alliance: bool, craft: u32| {
+            let mut value = fighter(alliance, TacticalWeaponArc::default());
+            value.is_attacker = alliance;
+            value.squad_count = craft;
+            value
+        };
+        let defender = || {
+            let mut value = ship(false, TacticalWeaponArc::default(), 0.0);
+            value.is_attacker = false;
+            value
+        };
+        let attacker = || {
+            let mut value = ship(true, TacticalWeaponArc::default(), 0.0);
+            value.is_attacker = true;
+            value
+        };
+        let outcome = |mut tactical: BattleSession| {
+            tactical.step();
+            tactical.winner
+        };
+        // The attacker's fighter group with craft keeps it in.
+        assert_eq!(outcome(session(vec![defender()], vec![wing(true, 3)])), None);
+        // One without craft does not: the defender wins.
+        assert_eq!(
+            outcome(session(vec![defender()], vec![wing(true, 0)])),
+            Some(CombatWinner::Defender)
+        );
+        assert_eq!(outcome(session(vec![attacker()], vec![wing(false, 3)])), None);
+        assert_eq!(
+            outcome(session(vec![attacker()], vec![wing(false, 0)])),
+            Some(CombatWinner::Attacker)
+        );
+        // A Death Star keeps its side in until it is destroyed.
+        for is_attacker in [true, false] {
+            let other = if is_attacker { defender() } else { attacker() };
+            let mut kept = session(vec![other.clone()], Vec::new());
+            kept.death_star = Some(death_star(is_attacker, false));
+            assert_eq!(outcome(kept), None);
+            let mut lost = session(vec![other], Vec::new());
+            lost.death_star = Some(death_star(is_attacker, true));
+            let winner = if is_attacker {
+                CombatWinner::Defender
+            } else {
+                CombatWinner::Attacker
+            };
+            assert_eq!(outcome(lost), Some(winner));
+        }
+    }
+
+    // The ready voice (0x113) sounds on the player's not-ready to ready
+    // edge only: not each turn while the laser stays full.
+    #[test]
+    fn a_full_laser_does_not_repeat_its_ready_voice() {
+        let mut tactical = session(
+            vec![ship(true, TacticalWeaponArc::default(), 0.0), ship(false, TacticalWeaponArc::default(), 0.0)],
+            Vec::new(),
+        );
+        tactical.death_star = Some(crate::tactical::TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: tactical.player_is_attacker,
+            is_alliance: false,
+            source_position: crate::tactical::TacticalWorldPosition::ORIGIN,
+            hull: 100.0,
+            laser_charge: 100.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        });
+        for _ in 0..8 {
+            tactical.step();
+        }
+        assert!(!tactical
+            .take_pending_voice_cues()
+            .contains(&crate::tactical::TacticalVoiceCue::death_star_ready()));
     }
 
     // FUN_005a96b0 runs at a turn's start (every fourth step) the events
@@ -5085,7 +5231,7 @@ mod tests {
             value
         };
         tactical.fighters = vec![group(true), group(false)];
-        tactical.withdrawal_ms = Some(2.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        tactical.withdrawal_ms = Some(1_500.0);
         let queued = |t: &BattleSession, index: usize| {
             t.turn_events
                 .iter()
@@ -5094,12 +5240,16 @@ mod tests {
                 })
                 .count()
         };
-        tactical.step();
-        assert_eq!(queued(&tactical, 0), 0);
-        tactical.step();
-        assert_eq!(queued(&tactical, 0), 1);
-        tactical.step();
-        assert_eq!(queued(&tactical, 0), 1);
+        // Turn 1 (step 4) leaves 500 ms; turn 2 (step 8) ends the time and
+        // decides the jump; turn 3 does not decide it again.
+        let mut counts = Vec::new();
+        for _ in 0..3 {
+            for _ in 0..4 {
+                tactical.step();
+            }
+            counts.push(queued(&tactical, 0));
+        }
+        assert_eq!(counts, [0, 1, 1]);
         assert_eq!(queued(&tactical, 1), 0);
     }
 
