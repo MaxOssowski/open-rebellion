@@ -339,20 +339,36 @@ impl Default for TacticalLodView {
     }
 }
 
-/// `FUN_005d3770`'s inputs for a hull: the depth is the object's offset from
-/// the camera along the camera's direction, made positive (`0x005d37b3`..
-/// `0x005d37e9`), and the scale the thresholds are divided by is the active
-/// camera's slot `+0x14` (`0x005d98f0`), its `+0x48`: the field of view,
-/// 0.2 at the battle's start (`0x005c1e42`, `0x005d9620`), times 0.9 or 1.1
-/// for each zoom step (`0x005d9830`, `0x005d9860`).
+/// `FUN_005d3770`'s inputs for a hull.
+///
+/// - The position is the hull's frame read relative to the camera frame
+///   (`GetPosition` against the camera's `+0x8`), so in camera coordinates.
+/// - It is dotted with the camera's `+0x14` vector: the frame's direction
+///   read relative to the scene (`GetOrientation(scene, &dir, &up)`, slot
+///   `+0x7c`, `0x005d977f`), a world vector. The original mixes the two
+///   spaces; the absolute value is the depth (`0x005d37b3`..`0x005d37e9`).
+/// - The thresholds are divided by the active camera's slot `+0x14`
+///   (`0x005d98f0`), its `+0x48`: the field of view, 0.2 at the battle's
+///   start (`0x005c1e42`, `0x005d9620`), times 0.9 or 1.1 for each zoom step
+///   (`0x005d9830`, `0x005d9860`).
+///
+/// The port's render coordinates reflect the source's z
+/// (`authored_position`), so both vectors are taken back to source
+/// coordinates, where the camera's local axes are right = up x direction,
+/// up, direction (Direct3D's left-handed frame).
 fn original_participant_lod_view(
     pose: &OriginalCameraPose,
     position: Vec3,
     high_detail: bool,
 ) -> TacticalLodView {
-    let forward = (pose.target - pose.position).normalize_or_zero();
+    let direction = authored_position((pose.target - pose.position).normalize_or_zero());
+    let up = authored_position(pose.up).normalize_or_zero();
+    let right = up.cross(direction).normalize_or_zero();
+    let up = direction.cross(right);
+    let offset = authored_position(position - pose.position);
+    let local = vec3(offset.dot(right), offset.dot(up), offset.dot(direction));
     TacticalLodView {
-        view_depth: (position - pose.position).dot(forward).abs(),
+        view_depth: local.dot(direction).abs(),
         projection_scale: pose.field,
         high_detail,
     }
@@ -3534,9 +3550,11 @@ mod tests {
         );
     }
 
-    // Source: FUN_005d3770 takes a hull's offset from the camera along the
-    // camera's direction, made positive, and divides its thresholds by the
-    // camera's +0x48 (0x005d98f0), the field: 0.2 at the battle's start.
+    // Source: FUN_005d3770 dots the hull's position in camera coordinates
+    // (GetPosition against the camera frame) with the camera's world
+    // direction (+0x14, GetOrientation against the scene, 0x005d977f), made
+    // positive, and divides its thresholds by the camera's +0x48
+    // (0x005d98f0), the field: 0.2 at the battle's start.
     #[test]
     fn a_hull_s_detail_follows_its_depth_along_the_view_and_the_field() {
         let pose = OriginalCameraPose {
@@ -3568,14 +3586,27 @@ mod tests {
         assert_eq!(at(74.0), OriginalTacticalLod::Close);
         assert_eq!(at(150.0), OriginalTacticalLod::Medium);
         assert_eq!(at(213.0), OriginalTacticalLod::Far);
-        // The direction runs from the camera to its target.
+        // Turned 45 degrees, the target lies 200^0.5 straight ahead in camera
+        // coordinates, (0, 0, 14.14), and its dot with the world direction
+        // (0.71, 0, -0.71 in source coordinates) is 10, not 14.14.
         let aside = OriginalCameraPose {
             target: vec3(10.0, 0.0, 0.0),
             ..pose
         };
         assert_near(
             original_participant_lod_view(&aside, vec3(10.0, 0.0, 0.0), true).view_depth,
-            200.0_f32.sqrt(),
+            10.0,
+        );
+        // Off every axis: the camera at (0, 0, -10) looks at (10, 5, 0).
+        let raised = OriginalCameraPose {
+            target: vec3(10.0, 5.0, 0.0),
+            ..pose
+        };
+        assert!(
+            (original_participant_lod_view(&raised, vec3(0.0, 0.0, 5.0), true).view_depth
+                - 0.774_110_2)
+                .abs()
+                < 1e-4
         );
     }
 
