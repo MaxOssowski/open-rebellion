@@ -83,8 +83,10 @@ the selection corners are left out.
 - The Victory's mean now matches A0's within 1.2 per channel.
 - Enlarged side by side, the transport now shows A0's white band along its
   lower edge, thinner than in A0.
-- Its mean is darker. The port's transport also covers more pixels than
-  A0's at this camera, a geometry difference outside this stage.
+- Its mean is darker than A0's by about 11 to 15 per channel, over a
+  similar area (239 hull pixels against 232). The cause is not settled.
+  One candidate is the viewer model above: with a local viewer each face's
+  half vector would differ, which moves where the band falls.
 - The Victory keeps 11 colours, all from the cube.
 
 ## Tests
