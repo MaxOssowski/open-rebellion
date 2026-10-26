@@ -8469,12 +8469,13 @@ impl BattleSession {
     /// (`FUN_005a6b40`, event `0x2e`) with its craft. One that cannot jump
     /// is destroyed at the side's end (`FUN_005b2720`).
     ///
-    /// The move (`0x005ec0d0`) aims at the force's own x and y and the
-    /// line's z. Beyond the arrival radius it flies straight there at the
-    /// slowest member's engine power (slot `+0x90`, `0x005ea740`) for the
+    /// The move (`0x005ec0d0`) aims the group's anchor at its own x and y
+    /// and the line's z. Beyond the arrival radius it flies straight there
+    /// at the slowest member's speed (slot `+0x90`, `0x005ea740`) for the
     /// step's time, unclamped, and returns 1, which skips the jumps; within
-    /// it the force stops and returns 0. port: a group's position is its
-    /// member's, and its engine power is its sublight rating.
+    /// it the force stops and returns 0. port: a squadron's speed is its
+    /// sublight rating, and each member stands at its place until its own
+    /// frame (`0x5b8f70`) is ported.
     fn advance_withdrawing_fighters(
         &mut self,
         side: bool,
@@ -8482,7 +8483,6 @@ impl BattleSession {
         exits: [f32; 2],
         frames: bool,
     ) {
-        let seconds = ORIGINAL_TACTICAL_STEP_SECONDS;
         let requested = (0..self.fighters.len())
             .map(|index| {
                 self.turn_event_pending(&TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(
@@ -8493,6 +8493,10 @@ impl BattleSession {
         let installed = self.withdrawal_executors.clone();
         let stamp = self.step_event_stamp();
         let mut posts = Vec::new();
+        self.sync_fighter_movers();
+        let mut movers = std::mem::take(&mut self.fighter_movers);
+        let mut stepped = vec![false; movers.len()];
+        let mut arrived = vec![false; movers.len()];
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
             if !fighter.alive
                 || !fighter.retreating
@@ -8524,14 +8528,41 @@ impl BattleSession {
                 }
                 continue;
             }
-            // The task force's step (`FUN_005c6610`) runs in the frame.
+            // The task force's step (`FUN_005c6610`) runs in the frame, on
+            // the group's anchor; its members stand at their places.
             if !frames {
                 continue;
             }
-            let along = exit - fighter.source_position.z;
-            if along.abs() > ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS {
-                let step = fighter.sublight_engine_power.max(0.0) * seconds;
-                fighter.source_position.z += along.signum() * step;
+            let Some(at) = movers
+                .iter()
+                .position(|mover| mover.slots.iter().any(|(member, _)| *member == index))
+            else {
+                continue;
+            };
+            if !stepped[at] {
+                stepped[at] = true;
+                let mover = &mut movers[at];
+                let point = TacticalWorldPosition {
+                    z: exit,
+                    ..mover.anchor
+                };
+                arrived[at] = !step_fighter_anchor(
+                    mover,
+                    point,
+                    ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS,
+                    ORIGINAL_TACTICAL_STEP_MILLISECONDS,
+                );
+            }
+            let mover = &movers[at];
+            if let Some((_, offset)) = mover.slots.iter().find(|(member, _)| *member == index) {
+                fighter.source_position = TacticalWorldPosition {
+                    x: mover.anchor.x - offset.x,
+                    y: mover.anchor.y - offset.y,
+                    z: mover.anchor.z - offset.z,
+                };
+            }
+            // The jumps are tried only once the move has arrived (0).
+            if !arrived[at] {
                 continue;
             }
             // A member already in state 6 waits for its event `0x2d`.
@@ -8542,6 +8573,7 @@ impl BattleSession {
                 posts.push(TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(index)));
             }
         }
+        self.fighter_movers = movers;
         for event in posts {
             self.post_turn_event(stamp, event);
         }

@@ -4691,6 +4691,13 @@ mod tests {
         // stands where it does, within that step's recovery.
         assert_eq!(tactical.fighters[1].recovery_state, Recovery::Docking);
         tactical.fighters[0].source_position.z = tactical.withdrawal_exit_z(false);
+        // Its group's anchor goes with it (FUN_005c72b0's +0x3c).
+        let exit_z = tactical.withdrawal_exit_z(false);
+        for mover in &mut tactical.fighter_movers {
+            if mover.slots.iter().any(|(member, _)| *member == 0) {
+                mover.anchor.z = exit_z;
+            }
+        }
         tactical.ai_withdrawal_ms = Some(crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // From its executor, it jumps at turn 8, step 32, and leaves at
         // turn 15, step 60 (events 0x2d and 0x2e, FUN_005a96b0).
@@ -4844,6 +4851,11 @@ mod tests {
             // The Empire's group well short of its +z edge: no jump.
             group(false, 20.0, 0.4),
         ];
+        // Each in a group of its own: a group is one force on one anchor
+        // (FUN_005adfa0).
+        for (group, fighter) in tactical.fighters.iter_mut().enumerate() {
+            fighter.fighter_group = u8::try_from(group).unwrap_or(0);
+        }
         install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(0.0);
         tactical.ai_withdrawal_ms = Some(0.0);
@@ -8271,6 +8283,49 @@ mod tests {
         pair.sync_fighter_movers();
         assert_eq!(pair.fighter_movers.len(), 1);
         assert!(!pair.fighter_movers[0].alliance);
+    }
+
+    // FUN_005c6610, order 3, on the group's mover: the anchor heads for its
+    // own x and y at the exit line's z (0x005ec0d0, the arrival radius), its
+    // members stand at their places, and the jumps are tried only once the
+    // move has arrived (it returns 0).
+    #[test]
+    fn a_withdrawing_fighter_group_flies_on_its_anchor() {
+        use crate::tactical::{original_fighter_slot_offset, TacticalTurnEvent, TacticalUnitRef};
+        let wing = |z: f32| {
+            let mut wing = fighter(true, TacticalWeaponArc::default());
+            wing.has_hyperdrive = true;
+            wing.retreating = true;
+            wing.sublight_engine_power = 4.0;
+            wing.source_position.z = z;
+            wing
+        };
+        // An enemy far off keeps the battle going.
+        let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        enemy.source_position.z = 60.0;
+        enemy.hull_current = 1_000_000;
+        enemy.hull_max = 1_000_000;
+        let mut tactical = session(vec![enemy], Vec::new());
+        let exit = tactical.withdrawal_exit_z(true);
+        // The lead far from the line, the second member already at it.
+        tactical.fighters = vec![wing(exit + 30.0), wing(exit)];
+        install_withdrawal_executors(&mut tactical);
+        tactical.withdrawal_ms = Some(0.0);
+        for _ in 0..12 {
+            tactical.step();
+        }
+        let mover = tactical.fighter_mover_of(0).expect("a mover").clone();
+        // One step of 4 x 0.25 from the lead's start toward the line.
+        assert!((mover.anchor.z - (exit + 29.0)).abs() < 1e-4, "{mover:?}");
+        let second = original_fighter_slot_offset(2, 1.0);
+        assert!((tactical.fighters[1].source_position.z - (mover.anchor.z - second.z)).abs() < 1e-4);
+        assert!((tactical.fighters[1].source_position.x - (mover.anchor.x - second.x)).abs() < 1e-4);
+        assert!((tactical.fighters[1].source_position.y - (mover.anchor.y - second.y)).abs() < 1e-4);
+        // The anchor has not arrived, so no member jumps yet.
+        assert!(!tactical.turn_events.iter().any(|queued| matches!(
+            queued.event,
+            TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(_))
+        )));
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

@@ -11869,6 +11869,13 @@ mod tests {
             session.step();
         }
         session.fighters[0].source_position.z = session.withdrawal_exit_z(true);
+        // Its group's anchor goes with it (FUN_005c72b0's +0x3c).
+        let exit_z = session.withdrawal_exit_z(true);
+        for mover in &mut session.fighter_movers {
+            if mover.slots.iter().any(|(member, _)| *member == 0) {
+                mover.anchor.z = exit_z;
+            }
+        }
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // The time ends at turn 5, step 20; the jump, stamped 7, runs at
         // turn 8 and it leaves at turn 15, step 60 (events 0x2d and 0x2e,
