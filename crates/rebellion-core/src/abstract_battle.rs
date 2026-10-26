@@ -1645,6 +1645,47 @@ fn task_force_target(
     })
 }
 
+/// `FUN_005c9200` in the live battle, each review of `FUN_005c8780`: the
+/// side's commander pairs its task forces that do not keep their target
+/// (`FUN_005ed5f0`) with the enemy's units in priority order
+/// (`FUN_005c8e10`, `FUN_005ec740`), exactly as the abstract battle does.
+/// A task force's current target is its first member's (`FUN_005d2190`).
+/// Returns every member's target after the review. port: the port keeps a
+/// target per unit, so each member takes its force's.
+#[must_use]
+pub fn commander_targets(
+    session: &BattleSession,
+    alliance: bool,
+) -> Vec<(AbstractUnit, crate::tactical::TacticalAttackTarget)> {
+    use crate::tactical::TacticalAttackTarget;
+    let mut battle = AbstractBattle::new(session.clone());
+    let groups = battle.groups(alliance);
+    for (group, members) in &groups {
+        if let Some(target) = task_force_target(session, members) {
+            battle.targets.insert(
+                *group,
+                match target {
+                    TacticalAttackTarget::CapitalShip(index) => AbstractUnit::Capital(index),
+                    TacticalAttackTarget::FighterGroup(index) => AbstractUnit::Fighter(index),
+                },
+            );
+        }
+    }
+    battle.assign_targets(alliance);
+    let mut targets = Vec::new();
+    for (group, members) in &groups {
+        let Some(&target) = battle.targets.get(group) else {
+            continue;
+        };
+        let target = match target {
+            AbstractUnit::Capital(index) => TacticalAttackTarget::CapitalShip(index),
+            AbstractUnit::Fighter(index) => TacticalAttackTarget::FighterGroup(index),
+        };
+        targets.extend(members.iter().map(|&member| (member, target)));
+    }
+    targets
+}
+
 /// The tactical commander's test in `FUN_005c8780`: with its retreat order
 /// and a way out (`FUN_005c7e80`), a side withdraws when the enemy's
 /// strength is above 0 (`_DAT_0066cbb4`) and its own is under 0.33 (`+0x24`)
@@ -4285,8 +4326,9 @@ mod tests {
         tactical.step();
         assert_eq!(tactical.fighters[0].source_position.z, exit + 8.0);
         // Within 8.0 of the line but still moving (0x005ec0d0 returns 1
-        // beyond its 1.0 radius), so FUN_005c6610 tries no jump yet.
-        assert!(tactical.turn_events.is_empty());
+        // beyond its 1.0 radius), so FUN_005c6610 tries no jump yet. (The
+        // computer commander's target links, 0x36, may be queued.)
+        assert!(events_besides_target_links(&tactical) == 0);
         for _ in 0..7 {
             tactical.step();
         }
@@ -4770,7 +4812,17 @@ mod tests {
         assert!((fighters[3].source_position.z - 20.1).abs() < 1e-4);
         assert!(empire_exit > 20.1);
         // No jump is decided (event 0x2d).
-        assert!(tactical.turn_events.is_empty());
+        assert_eq!(events_besides_target_links(&tactical), 0);
+    }
+
+    /// The queued events other than the computer commander's target links
+    /// (event 0x36, FUN_005a8fc0).
+    fn events_besides_target_links(tactical: &BattleSession) -> usize {
+        tactical
+            .turn_events
+            .iter()
+            .filter(|queued| !matches!(queued.event, crate::tactical::TacticalTurnEvent::TaskForceTarget { .. }))
+            .count()
     }
 
     // FUN_005cdf50 takes a unit in state 2 or 4, not 6 (FUN_005ad870): a
@@ -5543,6 +5595,7 @@ mod tests {
         let stamps = tactical
             .turn_events
             .iter()
+            .filter(|queued| !matches!(queued.event, TacticalTurnEvent::TaskForceTarget { .. }))
             .map(|queued| match queued.event {
                 TacticalTurnEvent::WeaponFire(_) => ("fire", queued.stamp),
                 TacticalTurnEvent::WeaponHit(_) => ("hit", queued.stamp),
@@ -5823,7 +5876,7 @@ mod tests {
         // Turn 3, step 12: stamp 2 runs; stamps 0 and 1 are dropped.
         tactical.step();
         assert_eq!(alive(&tactical), [true, true, false, true]);
-        assert_eq!(tactical.turn_events.len(), 1);
+        assert_eq!(events_besides_target_links(&tactical), 1);
         // Stamp 3 waits for turn 4, step 16.
         for _ in 0..3 {
             tactical.step();
@@ -6267,6 +6320,10 @@ mod tests {
             (b.z - a.z).hypot(b.x - a.x).hypot(b.y - a.y)
         };
         let mut tactical = duelists(40.0, 30.0);
+        // The computer's ship, given its own target, would close too; held
+        // without engines it leaves the distances to the player's force.
+        tactical.ships[1].subsystem_capacity.engines = false;
+        tactical.ships[1].sublight_engine_power = 0.0;
         for _ in 0..12 {
             tactical.step();
         }
@@ -7634,6 +7691,74 @@ mod tests {
         tactical.task_force_formations[1][0] = TacticalTactic::Surround;
         tactical.advance_original_tactical_movement(250.0);
         assert!(tactical.force_detours.is_empty());
+    }
+
+    // FUN_005c8780's review (turn 1 and every sixth after) runs FUN_005c9200:
+    // the computer's task forces are paired with the enemy's units, and each
+    // link (FUN_005a8fc0) is event 0x36 at the command stamp, taking effect
+    // three turns later (FUN_005cae10). A laser-armed leader (FUN_005b7ce0)
+    // takes the fighter list first; the player's side gets nothing.
+    #[test]
+    fn the_computer_commander_links_its_forces_to_targets_on_its_command_turn() {
+        use crate::tactical::{TacticalAttackTarget, TacticalTurnEvent, TacticalUnitRef};
+        let mut player_ship = ship(true, TacticalWeaponArc::new(0, 0, 2), 1.0);
+        player_ship.source_position.z = -50.0;
+        player_ship.weapon_ranges.turbolaser = 20.0;
+        let player_wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        // The computer's cruiser carries only turbolasers, its TIE group lasers.
+        let mut cruiser = ship(false, TacticalWeaponArc::new(0, 0, 2), 1.0);
+        cruiser.source_position.z = 50.0;
+        cruiser.weapon_ranges.turbolaser = 30.0;
+        cruiser.task_force = 1;
+        let mut ties = fighter(false, TacticalWeaponArc::new(2, 0, 0));
+        ties.source_position.z = 30.0;
+        let mut tactical = session(vec![player_ship, cruiser], vec![player_wing, ties]);
+        for _ in 0..4 {
+            tactical.step();
+        }
+        // Turn 1's review queued the links, none in effect yet.
+        let links = tactical
+            .turn_events
+            .iter()
+            .filter_map(|queued| match &queued.event {
+                TacticalTurnEvent::TaskForceTarget { units, target } => {
+                    Some((queued.stamp, units.clone(), *target))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(links.len(), 2, "{links:?}");
+        assert!(links.iter().all(|(stamp, _, _)| *stamp == 3));
+        assert!(tactical.ships[1].attack_target.is_none());
+        assert!(tactical.fighters[1].attack_target.is_none());
+        // The player's units get none.
+        assert!(links.iter().all(|(_, units, _)| !units.iter().any(|unit| matches!(
+            unit,
+            TacticalUnitRef::Ship(0) | TacticalUnitRef::Fighter(0)
+        ))));
+        // Turn 4: the cruiser takes the player's ship, the TIEs the
+        // player's fighters.
+        for _ in 0..12 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[1].attack_target, Some(TacticalAttackTarget::CapitalShip(0)));
+        assert_eq!(tactical.fighters[1].attack_target, Some(TacticalAttackTarget::FighterGroup(0)));
+        assert!(tactical.ships[0].attack_target.is_none());
+        // A kept target posts no new link at the next review (turn 7).
+        for _ in 0..12 {
+            tactical.step();
+        }
+        assert!(!tactical
+            .turn_events
+            .iter()
+            .any(|queued| matches!(queued.event, TacticalTurnEvent::TaskForceTarget { .. })));
+        // And the computer's ship closes on its target.
+        let gap = |t: &BattleSession| t.ships[1].source_position.z - t.ships[0].source_position.z;
+        let before = gap(&tactical);
+        for _ in 0..8 {
+            tactical.step();
+        }
+        assert!(gap(&tactical) < before, "{before} {}", gap(&tactical));
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

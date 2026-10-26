@@ -1403,6 +1403,13 @@ pub enum TacticalTurnEvent {
         task_force: u8,
         tactic: TacticalTactic,
     },
+    /// `0x36`, posted by `FUN_005a8fc0` when a commander links a task force
+    /// to a target: its handler (`FUN_005cae10`, slot `+0x1c` =
+    /// `FUN_005cb600`) replaces the force's live target list `+0x8c`.
+    TaskForceTarget {
+        units: Vec<TacticalUnitRef>,
+        target: TacticalAttackTarget,
+    },
 }
 
 /// One queued event and its turn stamp (`+0x20`, `0x005ce500`).
@@ -5683,6 +5690,24 @@ impl BattleSession {
                     *formation = tactic;
                 }
             }
+            TacticalTurnEvent::TaskForceTarget { units, target } => {
+                for unit in units {
+                    match unit {
+                        TacticalUnitRef::Ship(index) => {
+                            if let Some(ship) = self.ships.get_mut(index).filter(|ship| ship.alive) {
+                                ship.attack_target = Some(target);
+                            }
+                        }
+                        TacticalUnitRef::Fighter(index) => {
+                            if let Some(fighter) =
+                                self.fighters.get_mut(index).filter(|fighter| fighter.alive)
+                            {
+                                fighter.attack_target = Some(target);
+                            }
+                        }
+                    }
+                }
+            }
             TacticalTurnEvent::WithdrawalExecutor(units) => {
                 for unit in units {
                     let in_battle = match unit {
@@ -8274,6 +8299,31 @@ impl BattleSession {
             return;
         }
         let alliance = self.attacker_is_alliance != self.player_is_attacker;
+        // `FUN_005c9200` comes before the withdrawal test: the commander
+        // links its task forces to targets (`FUN_005a8fc0`). Each new link
+        // is event `0x36` at the command stamp; a kept target posts none.
+        let stamp = self.step_event_stamp();
+        let mut links: Vec<(TacticalAttackTarget, Vec<TacticalUnitRef>)> = Vec::new();
+        for (unit, target) in crate::abstract_battle::commander_targets(self, alliance) {
+            let (unit, current) = match unit {
+                crate::abstract_battle::AbstractUnit::Capital(index) => {
+                    (TacticalUnitRef::Ship(index), self.ships[index].attack_target)
+                }
+                crate::abstract_battle::AbstractUnit::Fighter(index) => {
+                    (TacticalUnitRef::Fighter(index), self.fighters[index].attack_target)
+                }
+            };
+            if current == Some(target) {
+                continue;
+            }
+            match links.iter_mut().find(|(linked, _)| *linked == target) {
+                Some((_, units)) => units.push(unit),
+                None => links.push((target, vec![unit])),
+            }
+        }
+        for (target, units) in links {
+            self.post_turn_event(stamp, TacticalTurnEvent::TaskForceTarget { units, target });
+        }
         let side = usize::from(!alliance);
         if !self.retreat_allowed[side]
             || self.retreat_done[side]
