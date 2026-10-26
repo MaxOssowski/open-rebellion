@@ -10276,6 +10276,7 @@ mod tactical_ground_tests {
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
+            fighter_frames: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,

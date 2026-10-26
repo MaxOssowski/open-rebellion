@@ -1957,6 +1957,7 @@ mod tests {
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
+            fighter_frames: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -4363,6 +4364,7 @@ mod tests {
         let exit = tactical.withdrawal_exit_z(true);
         tactical.fighters[0].source_position.z = exit + 9.0;
         install_withdrawal_executors(&mut tactical);
+        face_exits(&mut tactical);
         tactical.withdrawal_ms = Some(2.0 * crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // The task force's order step runs in the frame (slot +0x14,
         // 0x005a9ff8), from turn 3: 4.0 a second, one unit a 250 ms step
@@ -4382,21 +4384,24 @@ mod tests {
         }
         assert_eq!(tactical.fighters[0].source_position.z, exit + 1.0);
         assert!(tactical.turn_events.is_empty());
-        // At step 20, a turn's first, the move finds it arrived (|d| = 1.0):
-        // its jump is decided (state 6, event 0x2d stamped 7, 0x005ad4a0)
-        // and it holds there until the event runs at turn 8, step 32.
+        // At step 20, a turn's first, the move finds its anchor arrived
+        // (|d| = 1.0): the jump is decided (state 6, event 0x2d stamped 7,
+        // 0x005ad4a0). The squadron's own frame flies on along z to the
+        // line itself (force slot +0x18 on order 3) and holds there until
+        // the event runs at turn 8, step 32.
         tactical.step();
         assert_eq!(tactical.combat_tick, 20);
-        assert_eq!(tactical.fighters[0].source_position.z, exit + 1.0);
+        assert_eq!(tactical.fighters[0].source_position.z, exit);
         assert_eq!(tactical.turn_events.len(), 1);
         assert_eq!(tactical.turn_events[0].stamp, 7);
         assert!(!tactical.fighters[0].jumping());
         assert_eq!(step_until(&mut tactical, |t| t.fighters[0].jumping()), 32);
         // Then the flight moves it on in that step: k = 25 (DAT_006bc47c)
         // for 250 ms (FUN_005a6b40).
+        // It jumps from the line, where it held.
         assert_eq!(
             tactical.fighters[0].source_position.z,
-            exit + 1.0 - 25.0 * 0.25 * 0.25
+            exit - 25.0 * 0.25 * 0.25
         );
     }
 
@@ -4423,7 +4428,8 @@ mod tests {
             let mut at = Vec::new();
             for _ in 0..3 {
                 tactical.step();
-                at.push(tactical.fighters[0].source_position.z - exit);
+                // The step moves the group's anchor.
+                at.push(tactical.fighter_mover_of(0).expect("a mover").anchor.z - exit);
             }
             at
         };
@@ -4859,6 +4865,7 @@ mod tests {
         install_withdrawal_executors(&mut tactical);
         tactical.withdrawal_ms = Some(0.0);
         tactical.ai_withdrawal_ms = Some(0.0);
+        face_exits(&mut tactical);
         // The task forces' order steps run in the frame, from turn 3, step
         // 12 (0x005a9ff8, 0x005bef1d), with its 250 ms.
         for _ in 0..11 {
@@ -4873,6 +4880,23 @@ mod tests {
         assert!(empire_exit > 20.1);
         // No jump is decided (event 0x2d).
         assert_eq!(events_besides_target_links(&tactical), 0);
+    }
+
+    /// Turns every squadron to face its side's exit, so that its flight
+    /// (0x5b8f70) needs no turn and moves at its full speed.
+    fn face_exits(tactical: &mut BattleSession) {
+        tactical.fighter_frames = tactical
+            .fighters
+            .iter()
+            .map(|fighter| crate::tactical::TacticalFighterFrame {
+                forward: TacticalWorldVector {
+                    x: 0.0,
+                    y: 0.0,
+                    z: if fighter.identity.is_alliance { -1.0 } else { 1.0 },
+                },
+                velocity: TacticalWorldVector::ZERO,
+            })
+            .collect();
     }
 
     /// The queued events other than the computer commander's target links
@@ -6742,9 +6766,10 @@ mod tests {
             for _ in 0..steps {
                 tactical.advance_fighter_approach();
             }
+            // The circling point is the force's anchor.
             (
                 tactical.fighter_orbit_angles[0],
-                tactical.fighters[0].source_position,
+                tactical.fighter_mover_of(0).expect("a mover").anchor,
             )
         };
         let delta = 250.0 * std::f32::consts::PI * 0.0002;
@@ -6776,7 +6801,7 @@ mod tests {
             step: 1.0,
         }];
         tactical.advance_fighter_approach();
-        assert!((tactical.fighters[0].source_position.y - 2.4).abs() < 1e-5);
+        assert!((tactical.fighter_mover_of(0).expect("a mover").anchor.y - 2.4).abs() < 1e-5);
     }
 
     // FUN_005edf80's +0xc a third into a band that starts above 0: the
@@ -6816,7 +6841,8 @@ mod tests {
                 step,
             }];
             tactical.advance_fighter_approach();
-            tactical.fighters[0].source_position
+            // The order step moves the force's anchor (FUN_005c72b0's +0x3c).
+            tactical.fighter_mover_of(0).expect("a mover").anchor
         };
         // Toward (12, 9, 20) / 25: a 2.75 step (11 per second for 250 ms).
         let moved = fly(at(12.0, 9.0, 20.0), 4.0, true);
@@ -8240,9 +8266,22 @@ mod tests {
         // From the first member's position, 8 x 0.25 toward the target.
         assert!((mover.anchor.z - 2.0).abs() < 1e-5, "{mover:?}");
         let second = original_fighter_slot_offset(2, 1.0);
-        assert_eq!(tactical.fighters[0].source_position, mover.anchor);
-        assert!((tactical.fighters[1].source_position.x - (mover.anchor.x - second.x)).abs() < 1e-5);
-        assert!((tactical.fighters[1].source_position.y - (mover.anchor.y - second.y)).abs() < 1e-5);
+        // The lead, within 2.0 of its place, heads along the mover's
+        // velocity (0x5ebe30) and flies at its own speed, 12 x 0.25, not
+        // the force's (0x5b8f70).
+        assert!((tactical.fighters[0].source_position.z - 3.0).abs() < 1e-5);
+        // The second flies toward its place, the anchor less its slot.
+        let place = |t: &BattleSession| {
+            let anchor = t.fighter_mover_of(0).expect("a mover").anchor;
+            (anchor.x - second.x, anchor.y - second.y, anchor.z - second.z)
+        };
+        let gap = |t: &BattleSession| {
+            let (x, y, z) = place(t);
+            let at = t.fighters[1].source_position;
+            (x - at.x).hypot(y - at.y).hypot(z - at.z)
+        };
+        let start = (place(&tactical).0 - 3.0).hypot(place(&tactical).1).hypot(place(&tactical).2);
+        assert!(gap(&tactical) < start, "{:?}", tactical.fighters[1].source_position);
         // The mover of a squadron in another group is that group's.
         assert_eq!(tactical.fighter_mover_of(2).map(|mover| mover.group), Some(2));
         assert_eq!(tactical.fighter_mover_of(3).map(|mover| mover.alliance), Some(false));
@@ -8291,7 +8330,7 @@ mod tests {
     // move has arrived (it returns 0).
     #[test]
     fn a_withdrawing_fighter_group_flies_on_its_anchor() {
-        use crate::tactical::{original_fighter_slot_offset, TacticalTurnEvent, TacticalUnitRef};
+        use crate::tactical::{TacticalTurnEvent, TacticalUnitRef};
         let wing = |z: f32| {
             let mut wing = fighter(true, TacticalWeaponArc::default());
             wing.has_hyperdrive = true;
@@ -8317,15 +8356,190 @@ mod tests {
         let mover = tactical.fighter_mover_of(0).expect("a mover").clone();
         // One step of 4 x 0.25 from the lead's start toward the line.
         assert!((mover.anchor.z - (exit + 29.0)).abs() < 1e-4, "{mover:?}");
-        let second = original_fighter_slot_offset(2, 1.0);
-        assert!((tactical.fighters[1].source_position.z - (mover.anchor.z - second.z)).abs() < 1e-4);
-        assert!((tactical.fighters[1].source_position.x - (mover.anchor.x - second.x)).abs() < 1e-4);
-        assert!((tactical.fighters[1].source_position.y - (mover.anchor.y - second.y)).abs() < 1e-4);
+        // The member already at the line has no distance along z to fly
+        // (force slot +0x18 on order 3), so it holds.
+        assert_eq!(tactical.fighters[1].source_position.z, exit);
+        assert_eq!(tactical.fighters[1].source_position.x, 0.0);
         // The anchor has not arrived, so no member jumps yet.
         assert!(!tactical.turn_events.iter().any(|queued| matches!(
             queued.event,
             TacticalTurnEvent::JumpStart(TacticalUnitRef::Fighter(_))
         )));
+    }
+
+    // 0x5b97a0: q = rate x ms / (angle x 1000); at 1 or more it snaps;
+    // below, the level part turns by acos(level dot) x q, signed by
+    // h.z f.x - h.x f.z, and the height moves q of the way. No dead band.
+    #[test]
+    fn a_squadron_turns_by_its_share_of_the_angle() {
+        use crate::tactical::turn_original_fighter;
+        let north = TacticalWorldVector::SOURCE_FORWARD;
+        let east = vector(1.0, 0.0, 0.0);
+        // pi/2 away at pi/2 a second for 1 s: q = 1, a snap.
+        let snapped = turn_original_fighter(north, east, std::f32::consts::FRAC_PI_2, 1000.0);
+        assert!(near(snapped, east), "{snapped:?}");
+        // For 250 ms: q = 0.25, a level turn of pi/8, signed by
+        // h.z f.x - h.x f.z = -1 < 0.
+        let quarter = turn_original_fighter(north, east, std::f32::consts::FRAC_PI_2, 250.0);
+        let (sin, cos) = (-std::f32::consts::FRAC_PI_8).sin_cos();
+        assert!(near(quarter, vector(-sin, 0.0, cos)), "{quarter:?}");
+        // The other way, toward -x, turns the other sign.
+        let west = turn_original_fighter(north, vector(-1.0, 0.0, 0.0), std::f32::consts::FRAC_PI_2, 250.0);
+        assert!(near(west, vector(sin, 0.0, cos)), "{west:?}");
+        // Straight up: the height moves q of the way; the level part still
+        // turns by acos(0) x q = pi/8 (the routine takes the level dot as
+        // it stands), positive as the sign term is 0; then it renormalizes.
+        let up = turn_original_fighter(north, vector(0.0, 1.0, 0.0), std::f32::consts::FRAC_PI_2, 250.0);
+        let (sin, cos) = std::f32::consts::FRAC_PI_8.sin_cos();
+        assert!(near(up, vector(-sin, 0.25, cos).normalized()), "{up:?}");
+        // A tiny angle still turns (no dead band), and nothing turns at
+        // rate 0.
+        let slight = vector(0.01, 0.0, 1.0).normalized();
+        let turned = turn_original_fighter(north, slight, 0.1, 10.0);
+        assert!(turned.x > 0.0 && turned.x < slight.x, "{turned:?}");
+        assert_eq!(turn_original_fighter(north, east, 0.0, 250.0), north);
+    }
+
+    // 0x5b8f70: a squadron moves along its own forward at its speed times
+    // its alignment, never under 0.25 (DAT_0066c6c4), even facing away;
+    // within 2.0 of its place (DAT_0066d864) its heading is its mover's
+    // velocity (0x5ebe30).
+    #[test]
+    fn a_squadron_flies_its_forward_at_no_less_than_a_quarter_speed() {
+        use crate::tactical::{TacticalAttackTarget, TacticalFighterFrame};
+        let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        wing.sublight_engine_power = 8.0;
+        wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        // Behind it, at -z, while it faces +z.
+        target.source_position.z = -100.0;
+        let mut tactical = session(vec![target], vec![wing]);
+        tactical.advance_fighter_approach();
+        // Facing away, it still moves forward: 8 x 0.25 x 0.25 along +z, and
+        // starts its slow turn (pi/12 a second).
+        let at = tactical.fighters[0].source_position;
+        assert!(at.z > 0.0 && (at.z - 0.5).abs() < 0.05, "{at:?}");
+        // Within 2.0 of its place, it heads along the mover's velocity.
+        let mut close = session(
+            vec![{
+                let mut far = ship(false, TacticalWeaponArc::default(), 0.0);
+                far.source_position.z = 100.0;
+                far
+            }],
+            vec![{
+                let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+                wing.sublight_engine_power = 8.0;
+                wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+                wing
+            }],
+        );
+        close.fighter_frames = vec![TacticalFighterFrame {
+            forward: TacticalWorldVector::SOURCE_FORWARD,
+            velocity: TacticalWorldVector::ZERO,
+        }];
+        close.advance_fighter_approach();
+        // The anchor moved 2 along +z (8 x 0.25): within 2.0, so the heading
+        // is the mover's velocity (+z), and it flies a full 2.
+        let at = close.fighters[0].source_position;
+        assert!((at.z - 2.0).abs() < 1e-5, "{at:?}");
+        assert!((close.fighter_frames[0].velocity.z - 8.0).abs() < 1e-5);
+    }
+
+    // 0x5b97a0 and 0x5b8f70 off the axes, against values worked by hand
+    // (outside the port's code) from the same routine: a turn from
+    // (0.6, 0, 0.8), and a member flying a diagonal to its slot place.
+    #[test]
+    fn a_squadron_turns_and_flies_off_the_axes() {
+        use crate::tactical::{
+            turn_original_fighter, TacticalAttackTarget, TacticalFighterFrame, TacticalWorldPosition,
+        };
+        let from = vector(0.6, 0.0, 0.8);
+        let up = turn_original_fighter(from, vector(0.0, 0.6, 0.8), 1.0, 250.0);
+        assert!(near(up, vector(0.377_927_5, 0.168_720_66, 0.910_331_9)), "{up:?}");
+        let left = turn_original_fighter(from, vector(-0.8, 0.0, 0.6), 0.5, 250.0);
+        assert!(near(left, vector(0.495_578_8, 0.0, 0.868_563)), "{left:?}");
+        // A turn whose sign the h.x f.z term decides, and turns with height.
+        let right = turn_original_fighter(vector(0.8, 0.0, 0.6), vector(0.6, 0.0, 0.8), 0.1, 250.0);
+        assert!(near(right, vector(0.784_751_6, 0.0, 0.619_810_4)), "{right:?}");
+        let level = turn_original_fighter(vector(0.48, 0.6, 0.64), vector(0.0, 0.6, 0.8), 1.0, 250.0);
+        assert!(near(level, vector(0.110_443_75, 0.6, 0.792_339_7)), "{level:?}");
+        let dive = turn_original_fighter(vector(0.48, 0.6, 0.64), vector(0.0, -0.6, 0.8), 1.0, 250.0);
+        assert!(near(dive, vector(0.400_447_25, 0.436_807_1, 0.805_507)), "{dive:?}");
+        // A turn of nothing, or for no time, keeps the forward.
+        assert_eq!(turn_original_fighter(from, from, 1.0, 250.0), from);
+        assert_eq!(turn_original_fighter(from, vector(-0.8, 0.0, 0.6), 1.0, 0.0), from);
+
+        let mut lead = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        lead.sublight_engine_power = 8.0;
+        lead.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        let mut member = lead.clone();
+        member.sublight_engine_power = 10.0;
+        member.maneuverability = 4;
+        member.source_position = TacticalWorldPosition {
+            x: -6.0,
+            y: 3.0,
+            z: -4.0,
+        };
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.source_position = TacticalWorldPosition {
+            x: 40.0,
+            y: 10.0,
+            z: 60.0,
+        };
+        let mut tactical = session(vec![target], vec![lead, member]);
+        tactical.fighter_frames = vec![
+            TacticalFighterFrame {
+                forward: TacticalWorldVector::SOURCE_FORWARD,
+                velocity: TacticalWorldVector::ZERO,
+            },
+            TacticalFighterFrame {
+                forward: from,
+                velocity: TacticalWorldVector::ZERO,
+            },
+        ];
+        tactical.advance_fighter_approach();
+        let anchor = tactical.fighter_mover_of(0).expect("a mover").anchor;
+        assert!((anchor.x - 1.098_884_5).abs() < 1e-4 && (anchor.z - 1.648_326_8).abs() < 1e-4);
+        let velocity = tactical.fighter_frames[1].velocity;
+        assert!(near_within(velocity, vector(7.469_824_6, -1.234_270_3, 6.409_224_7), 1e-3), "{velocity:?}");
+        let at = tactical.fighters[1].source_position;
+        assert!((at.x + 4.132_543_9).abs() < 1e-3, "{at:?}");
+        assert!((at.y - 2.691_432_4).abs() < 1e-3, "{at:?}");
+        assert!((at.z + 2.397_693_8).abs() < 1e-3, "{at:?}");
+
+        // 0x5ebe30 at its edge: exactly 2.0 from its place it takes the
+        // mover's velocity; just beyond, its distance.
+        let mut mover = tactical.fighter_mover_of(0).expect("a mover").clone();
+        mover.anchor = TacticalWorldPosition::ORIGIN;
+        mover.velocity = vector(0.0, 0.0, 8.0);
+        tactical.fighters[0].source_position = TacticalWorldPosition {
+            x: 2.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        assert_eq!(tactical.fighter_place_delta(&mover, 0), vector(0.0, 0.0, 8.0));
+        tactical.fighters[0].source_position.x = 2.5;
+        assert_eq!(tactical.fighter_place_delta(&mover, 0), vector(-2.5, 0.0, 0.0));
+        // A member's place is the anchor less its slot, on every axis.
+        mover.anchor = TacticalWorldPosition {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        };
+        tactical.fighters[1].source_position = TacticalWorldPosition {
+            x: 10.0,
+            y: 10.0,
+            z: 10.0,
+        };
+        let (_, offset) = mover.slots[1];
+        let delta = tactical.fighter_place_delta(&mover, 1);
+        assert!(near(delta, vector(1.0 - offset.x - 10.0, 2.0 - offset.y - 10.0, 3.0 - offset.z - 10.0)));
+    }
+
+    fn near_within(left: TacticalWorldVector, right: TacticalWorldVector, tolerance: f32) -> bool {
+        (left.x - right.x).abs() < tolerance
+            && (left.y - right.y).abs() < tolerance
+            && (left.z - right.z).abs() < tolerance
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

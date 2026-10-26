@@ -1505,6 +1505,9 @@ pub struct BattleSession {
     pub fighter_orbit_angles: Vec<f32>,
     /// The fighter forces' movers, one per side and group.
     pub fighter_movers: Vec<TacticalFighterMover>,
+    /// Each squadron's forward (`+0x10`) and velocity (`+0x6c`), by
+    /// fighter index.
+    pub fighter_frames: Vec<TacticalFighterFrame>,
     /// Each capital force's mover (`+0x54`): its anchor, facing and rates.
     pub force_movers: Vec<TacticalForceMover>,
     /// Each ship's own movement state, by ship index.
@@ -3250,6 +3253,53 @@ pub struct TacticalFighterMover {
     pub slots: Vec<(usize, TacticalWorldVector)>,
 }
 
+/// A squadron's forward and velocity (class `0x66c028`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalFighterFrame {
+    pub forward: TacticalWorldVector,
+    pub velocity: TacticalWorldVector,
+}
+
+/// `DAT_0066c6c4`: a squadron moves at least a quarter of its speed, however
+/// far it faces from its heading.
+pub const ORIGINAL_FIGHTER_ALIGNMENT_FLOOR: f32 = 0.25;
+/// `DAT_0066d864`: within 2.0 of its place (squared 4.0) a squadron takes
+/// its mover's velocity as its heading (`0x5ebe30`).
+pub const ORIGINAL_FIGHTER_PLACE_RADIUS_SQUARED: f32 = 4.0;
+
+/// `0x5b97a0`, the turn (slot `+4`) of the fighter class `0x66c028`
+/// (`FUN_005b9c60`): with `q = rate × ms / (angle × 1000)`,
+/// at least 1 snaps onto the heading; otherwise the level part turns by
+/// `acos(f.x·h.x + f.z·h.z) × q`, its sign that of `h.z·f.x − h.x·f.z`, the
+/// height moves `q` of the way, and the forward is renormalized. It has no
+/// dead band.
+pub fn turn_original_fighter(
+    forward: TacticalWorldVector,
+    heading: TacticalWorldVector,
+    rate: f32,
+    delta_milliseconds: f32,
+) -> TacticalWorldVector {
+    let angle = source_direction_angle(forward, heading);
+    if angle == 0.0 || rate == 0.0 || delta_milliseconds == 0.0 {
+        return forward;
+    }
+    let q = rate * delta_milliseconds / (angle * 1000.0);
+    if q >= 1.0 {
+        return heading.normalized();
+    }
+    let f = forward.normalized();
+    let h = heading.normalized();
+    let level = (f.x * h.x + f.z * h.z).clamp(-1.0, 1.0).acos() * q;
+    let level = if h.z * f.x - h.x * f.z < 0.0 { -level } else { level };
+    let (sin, cos) = level.sin_cos();
+    TacticalWorldVector {
+        x: f.x * cos - sin * f.z,
+        y: f.y + (h.y - f.y) * q,
+        z: f.x * sin + cos * f.z,
+    }
+    .normalized()
+}
+
 /// `0x005ec0d0`, the fighter mover's step: beyond `radius` of the point the
 /// anchor moves by the unit delta × speed × ms × 0.001 (`DAT_0066d894`), in
 /// three dimensions, unclamped; within it the velocity is cleared. Returns
@@ -4103,6 +4153,7 @@ impl BattleSession {
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
+            fighter_frames: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -8074,6 +8125,87 @@ impl BattleSession {
             .find(|mover| mover.slots.iter().any(|(member, _)| *member == index))
     }
 
+    /// A squadron's frame (slot `+0x8`, `0x5b8f70`): its heading
+    /// (`0x5b9a20`) is its distance `d` in three dimensions, else the
+    /// bearing to its force's target, else its mover's forward; it turns
+    /// (`0x5b97a0`, the capital turn rate formula of `FUN_005b9c60`), and
+    /// moves along its forward at its speed times its alignment, at least
+    /// 0.25 (`DAT_0066c6c4`). port: its speed is its sublight rating, and
+    /// the height bands are not yet applied.
+    fn fly_fighter_squadron(
+        &mut self,
+        index: usize,
+        delta: TacticalWorldVector,
+        bearing_to: Option<TacticalWorldPosition>,
+        mover_forward: TacticalWorldVector,
+        delta_milliseconds: f32,
+    ) {
+        if self.fighter_frames.len() < self.fighters.len() {
+            let from = self.fighter_frames.len();
+            for fighter in &self.fighters[from..] {
+                self.fighter_frames.push(TacticalFighterFrame {
+                    forward: original_side_vector(fighter.identity.is_alliance),
+                    velocity: TacticalWorldVector::ZERO,
+                });
+            }
+        }
+        let fighter = &self.fighters[index];
+        let speed = fighter.sublight_engine_power.max(0.0);
+        if speed == 0.0 {
+            self.fighter_frames[index].velocity = TacticalWorldVector::ZERO;
+            return;
+        }
+        let position = fighter.source_position;
+        let heading = if delta != TacticalWorldVector::ZERO {
+            delta
+        } else if let Some(target) = bearing_to {
+            source_delta(target, position)
+        } else {
+            mover_forward
+        }
+        .normalized();
+        let rate = original_capital_turn_rate(fighter.maneuverability);
+        let frame = &mut self.fighter_frames[index];
+        if heading != TacticalWorldVector::ZERO {
+            frame.forward =
+                turn_original_fighter(frame.forward, heading, rate, delta_milliseconds);
+        }
+        let alignment = frame
+            .forward
+            .dot(heading)
+            .max(ORIGINAL_FIGHTER_ALIGNMENT_FLOOR);
+        frame.velocity = TacticalWorldVector {
+            x: frame.forward.x * speed * alignment,
+            y: frame.forward.y * speed * alignment,
+            z: frame.forward.z * speed * alignment,
+        };
+        let seconds = delta_milliseconds * 0.001;
+        let velocity = frame.velocity;
+        let fighter = &mut self.fighters[index];
+        fighter.source_position.x += velocity.x * seconds;
+        fighter.source_position.y += velocity.y * seconds;
+        fighter.source_position.z += velocity.z * seconds;
+    }
+
+    /// `0x5ebe30`, the mover's slot `+0x24`: a squadron's distance to its
+    /// place, or, within 2.0 of it, its mover's velocity.
+    pub(crate) fn fighter_place_delta(&self, mover: &TacticalFighterMover, index: usize) -> TacticalWorldVector {
+        let Some((_, offset)) = mover.slots.iter().find(|(member, _)| *member == index) else {
+            return TacticalWorldVector::ZERO;
+        };
+        let place = TacticalWorldPosition {
+            x: mover.anchor.x - offset.x,
+            y: mover.anchor.y - offset.y,
+            z: mover.anchor.z - offset.z,
+        };
+        let delta = source_delta(place, self.fighters[index].source_position);
+        if delta.dot(delta) <= ORIGINAL_FIGHTER_PLACE_RADIUS_SQUARED {
+            mover.velocity
+        } else {
+            delta
+        }
+    }
+
     /// `FUN_005c6610` for a fighter force with a live target, each step from
     /// turn 3: it heads for a point one `+0xc` step toward the target (the
     /// move `0x005ec0d0`, radius 2.0, a full step at its speed beyond it).
@@ -8161,16 +8293,18 @@ impl BattleSession {
                     z: target_position.z + cos * radius + sin * radius,
                 };
             }
-            // port: until the squadrons' own frame (`0x5b8f70`) is ported,
-            // each free member stands at its place, the anchor less its slot.
+            // Then each free member flies its frame toward its place.
             let mover = self.fighter_movers[at].clone();
-            for (member, offset) in mover.slots {
-                if free.contains(&member) {
-                    self.fighters[member].source_position = TacticalWorldPosition {
-                        x: mover.anchor.x - offset.x,
-                        y: mover.anchor.y - offset.y,
-                        z: mover.anchor.z - offset.z,
-                    };
+            for (member, _) in &mover.slots {
+                if free.contains(member) {
+                    let delta = self.fighter_place_delta(&mover, *member);
+                    self.fly_fighter_squadron(
+                        *member,
+                        delta,
+                        Some(target_position),
+                        mover.forward,
+                        ORIGINAL_TACTICAL_STEP_MILLISECONDS,
+                    );
                 }
             }
         }
@@ -8497,6 +8631,7 @@ impl BattleSession {
         let mut movers = std::mem::take(&mut self.fighter_movers);
         let mut stepped = vec![false; movers.len()];
         let mut arrived = vec![false; movers.len()];
+        let mut flights = Vec::new();
         for (index, fighter) in self.fighters.iter_mut().enumerate() {
             if !fighter.alive
                 || !fighter.retreating
@@ -8553,14 +8688,9 @@ impl BattleSession {
                     ORIGINAL_TACTICAL_STEP_MILLISECONDS,
                 );
             }
-            let mover = &movers[at];
-            if let Some((_, offset)) = mover.slots.iter().find(|(member, _)| *member == index) {
-                fighter.source_position = TacticalWorldPosition {
-                    x: mover.anchor.x - offset.x,
-                    y: mover.anchor.y - offset.y,
-                    z: mover.anchor.z - offset.z,
-                };
-            }
+            // Force slot `+0x18` (`0x5cb050`) on order 3: the member's
+            // distance is along z to the exit; at it, it stays put.
+            flights.push((index, exit - fighter.source_position.z, movers[at].forward));
             // The jumps are tried only once the move has arrived (0).
             if !arrived[at] {
                 continue;
@@ -8574,6 +8704,18 @@ impl BattleSession {
             }
         }
         self.fighter_movers = movers;
+        // The members' frames follow the forces' steps (`0x5a9ec0`).
+        for (index, along, forward) in flights {
+            if along == 0.0 {
+                continue;
+            }
+            let delta = TacticalWorldVector {
+                x: 0.0,
+                y: 0.0,
+                z: along,
+            };
+            self.fly_fighter_squadron(index, delta, None, forward, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        }
         for event in posts {
             self.post_turn_event(stamp, event);
         }
