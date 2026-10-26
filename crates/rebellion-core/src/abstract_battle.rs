@@ -567,14 +567,42 @@ impl AbstractBattle {
         self.pair(laser_groups, &fighter_list);
     }
 
-    /// Policy slot `+0x0c` (`FUN_005ed5f0`): a task force keeps an eligible
-    /// target while it and the side's other task forces on it score under
-    /// 300 (`DAT_0066da84`) and not -1.
+    /// Policy slot `+0x0c` (`FUN_005ed5f0`): a task force on Recover (order
+    /// 2), withdrawing (3) or on the Death Star run (6) is left alone (its
+    /// live order `+0x64`, the port's first member's). Otherwise it keeps an
+    /// eligible target while it and the side's other task forces on it score
+    /// under 300 (`DAT_0066da84`) and not -1. port: a fighter force's members
+    /// in states 1 or 3 are not mapped.
     fn keeps_target(
         &self,
         group: AbstractGroup,
         groups: &[(AbstractGroup, Vec<AbstractUnit>)],
     ) -> bool {
+        let busy = groups
+            .iter()
+            .find(|(other, _)| *other == group)
+            .and_then(|(_, members)| members.first())
+            .is_some_and(|&lead| {
+                let (order, retreating) = match lead {
+                    AbstractUnit::Capital(index) => {
+                        let ship = &self.session.ships[index];
+                        (ship.order, ship.retreating)
+                    }
+                    AbstractUnit::Fighter(index) => {
+                        let fighter = &self.session.fighters[index];
+                        (fighter.order, fighter.retreating)
+                    }
+                };
+                retreating
+                    || matches!(
+                        order,
+                        crate::tactical::TacticalOrder::Recover
+                            | crate::tactical::TacticalOrder::AttackDeathStar
+                    )
+            });
+        if busy {
+            return true;
+        }
         let Some(&target) = self.targets.get(&group) else {
             return false;
         };
@@ -7759,6 +7787,38 @@ mod tests {
             tactical.step();
         }
         assert!(gap(&tactical) < before, "{before} {}", gap(&tactical));
+    }
+
+    // FUN_005ed5f0: a force on Recover (2), withdrawing (3) or on the Death
+    // Star run (6) is left out of the commander's pairing; an idle one is
+    // paired.
+    #[test]
+    fn busy_computer_forces_keep_out_of_the_pairing() {
+        let mut player = ship(true, TacticalWeaponArc::new(0, 0, 2), 1.0);
+        player.source_position.z = -50.0;
+        let idle = |task_force: u8| {
+            let mut unit = ship(false, TacticalWeaponArc::new(0, 0, 2), 1.0);
+            unit.source_position.z = 50.0;
+            unit.task_force = task_force;
+            unit
+        };
+        let mut leaving = idle(2);
+        leaving.retreating = true;
+        let mut recovering = fighter(false, TacticalWeaponArc::new(2, 0, 0));
+        recovering.order = TacticalOrder::Recover;
+        recovering.fighter_group = 1;
+        let mut raiding = fighter(false, TacticalWeaponArc::new(2, 0, 0));
+        raiding.order = TacticalOrder::AttackDeathStar;
+        raiding.fighter_group = 2;
+        let tactical = session(
+            vec![player, idle(1), leaving],
+            vec![recovering, raiding],
+        );
+        let units = commander_targets(&tactical, false)
+            .into_iter()
+            .map(|(unit, _)| unit)
+            .collect::<Vec<_>>();
+        assert_eq!(units, vec![AbstractUnit::Capital(1)]);
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,
