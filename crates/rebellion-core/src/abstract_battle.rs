@@ -8571,6 +8571,226 @@ mod tests {
         assert_eq!(tactical.original_fighter_speed(2), 0.0);
     }
 
+    // 0x5b8f70's band block: a squadron leaves a band it is inside, at the
+    // step (speed x 0.4, DAT_0066c6b4), and otherwise keeps its y (no d.y
+    // tracking, no limit, no blocked flag).
+    #[test]
+    fn a_squadron_only_steps_out_of_a_height_band() {
+        use crate::tactical::original_fighter_band_step as band;
+        let own = neighbour(10.0, 0.0, 9);
+        assert_eq!(band(own, &[], 2.0), 10.0);
+        // A ship above at 11 (half-height 2): ceiling 9; inside it, it steps
+        // down by at most the step.
+        assert_eq!(band(own, &[neighbour(11.0, 2.0, 1)], 0.5), 9.5);
+        assert_eq!(band(own, &[neighbour(11.0, 2.0, 1)], 3.0), 9.0);
+        // A ship below at 9 (half-height 2): floor 11; it steps up.
+        assert_eq!(band(own, &[neighbour(9.0, 2.0, 1)], 0.5), 10.5);
+        assert_eq!(band(own, &[neighbour(9.0, 2.0, 1)], 3.0), 11.0);
+        // Outside both limits it keeps its y, even near them.
+        assert_eq!(band(own, &[neighbour(13.0, 2.0, 1), neighbour(7.0, 2.0, 2)], 1.0), 10.0);
+        // Pinned inside both: held.
+        assert_eq!(band(own, &[neighbour(11.0, 2.0, 1), neighbour(9.0, 2.0, 2)], 1.0), 10.0);
+    }
+
+    // FUN_005cdbf0 for a squadron (0x5b9102): only the capital tree, the
+    // squadron entered at its x; its reach is half its last velocity.
+    #[test]
+    fn a_squadron_s_neighbours_are_the_ships_near_it() {
+        use crate::tactical::{OriginalTacticalCollisionEnvelope, TacticalFighterFrame, TacticalWorldPosition};
+        let envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 9.0,
+        });
+        let at = |x: f32, y: f32, z: f32| {
+            let mut unit = ship(true, TacticalWeaponArc::default(), 0.0);
+            unit.source_collision_envelope = envelope;
+            unit.source_position = TacticalWorldPosition { x, y, z };
+            unit
+        };
+        // Each ship reaches 5; the squadron 0 at rest.
+        let ships = vec![
+            at(-4.0, 0.0, 0.0),
+            at(4.5, 0.5, 0.0),
+            at(6.0, 0.0, 0.0),
+            at(3.0, 5.0, 0.0),
+            // Exactly at the reach: within.
+            at(-5.0, 0.0, 0.0),
+            // Beyond a reach of 7.
+            at(7.5, 0.0, 0.0),
+        ];
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.source_position = TacticalWorldPosition::ORIGIN;
+        let other_wing = fighter(true, TacticalWeaponArc::default());
+        let mut tactical = session(ships, vec![wing, other_wing]);
+        let mut nearby = tactical.nearby_capitals_of_squadron(0, 1.0);
+        nearby.sort_unstable();
+        // 6 is beyond 5 in x and stops the walk; 3 at 5 high is beyond 1 +
+        // 0.4; -5 lies exactly at the reach.
+        assert_eq!(nearby, vec![0, 1, 4]);
+        // Moving at 4 a second, its reach grows by half that, 2: 6 is within
+        // 7, 7.5 beyond.
+        tactical.fighter_frames = vec![
+            TacticalFighterFrame {
+                forward: TacticalWorldVector::SOURCE_FORWARD,
+                velocity: vector(0.0, 0.0, 4.0),
+            },
+            TacticalFighterFrame {
+                forward: TacticalWorldVector::SOURCE_FORWARD,
+                velocity: TacticalWorldVector::ZERO,
+            },
+        ];
+        let mut nearby = tactical.nearby_capitals_of_squadron(0, 1.0);
+        nearby.sort_unstable();
+        assert_eq!(nearby, vec![0, 1, 2, 4]);
+    }
+
+    // FUN_005cdbf0 for a squadron off the origin: the ships' reach takes
+    // their velocity; destroyed, jumping and envelope-less ships are not in
+    // the tree; the walk goes on past ships within reach on both sides.
+    #[test]
+    fn a_squadron_s_neighbour_walk_off_the_origin() {
+        use crate::tactical::{OriginalTacticalCollisionEnvelope, TacticalWorldPosition};
+        let envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 9.0,
+        });
+        let (ox, oy, oz) = (10.0, 20.0, -5.0);
+        let at = |x: f32, y: f32, z: f32| {
+            let mut unit = ship(true, TacticalWeaponArc::default(), 0.0);
+            unit.source_collision_envelope = envelope;
+            unit.source_position = TacticalWorldPosition {
+                x: ox + x,
+                y: oy + y,
+                z: oz + z,
+            };
+            unit
+        };
+        let mut moving = at(7.0, 0.0, 0.0);
+        // Reach 5 + 0.5 x 6: 8 beyond 7.
+        moving.source_velocity = vector(6.0, 0.0, 0.0);
+        let mut dead = at(1.0, 0.0, 0.0);
+        dead.alive = false;
+        let mut jumping = at(-1.0, 0.0, 0.0);
+        jumping.retreat_progress = 0.5;
+        let mut bare = at(2.0, 0.0, 0.0);
+        bare.source_collision_envelope = None;
+        let ships = vec![
+            at(-3.0, 1.2, 4.0),  // 0: within on the left
+            at(-4.9, -1.3, 0.0), // 1: within on the left, past 0
+            at(3.0, 0.0, -4.9),  // 2: within on the right
+            at(4.0, 0.0, 0.0),   // 3: within on the right, past 2
+            moving,              // 4: within by its speed
+            at(-6.0, 0.0, 0.0),  // 5: beyond on the left
+            at(3.5, 1.5, 0.0),   // 6: too high for 1 + 0.4 x 1
+            at(3.6, 0.0, 5.5),   // 7: too far in z
+            dead,
+            jumping,
+            bare,
+        ];
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.source_position = TacticalWorldPosition { x: ox, y: oy, z: oz };
+        let tactical = session(ships, vec![wing]);
+        let mut nearby = tactical.nearby_capitals_of_squadron(0, 1.0);
+        nearby.sort_unstable();
+        assert_eq!(nearby, vec![0, 1, 2, 3, 4]);
+        // A longer travel raises the vertical slack: 6 at 1.5 joins at 2.
+        let mut nearby = tactical.nearby_capitals_of_squadron(0, 2.0);
+        nearby.sort_unstable();
+        assert_eq!(nearby, vec![0, 1, 2, 3, 4, 6]);
+    }
+
+    // 0x5b8f70's band at the same height: the squadron's id (after every
+    // ship's, port) puts a level ship below it, so it steps up; the step
+    // search travels speed x alignment, which here keeps a ship 1.15 below
+    // in the band.
+    #[test]
+    fn a_squadron_level_with_a_ship_steps_up() {
+        use crate::tactical::{OriginalTacticalCollisionEnvelope, TacticalAttackTarget, TacticalWorldPosition};
+        let envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 9.0,
+        });
+        let at = |x: f32, y: f32, z: f32| {
+            let mut unit = ship(false, TacticalWeaponArc::default(), 0.0);
+            unit.source_collision_envelope = envelope;
+            unit.source_position = TacticalWorldPosition { x, y, z };
+            unit
+        };
+        let mut far = ship(false, TacticalWeaponArc::default(), 0.0);
+        far.source_position.z = 300.0;
+        let level_run = |wing_index: usize| {
+            let mut wings = (0..=wing_index)
+                .map(|offset| {
+                    let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+                    wing.sublight_engine_power = 7.0;
+                    wing.fighter_group = u8::try_from(offset).unwrap_or(0);
+                    wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+                    wing.source_position = TacticalWorldPosition {
+                        x: 100.0 * offset as f32,
+                        y: 0.0,
+                        z: 0.0,
+                    };
+                    wing
+                })
+                .collect::<Vec<_>>();
+            wings[wing_index].source_position.x = 200.0;
+            let mut tactical = session(
+                vec![far.clone(), at(-500.0, 0.0, 0.0), at(200.0, 0.0, 0.0)],
+                wings,
+            );
+            tactical.advance_fighter_approach();
+            tactical.fighters[wing_index].source_position.y
+        };
+        // Floor 0 + 1 + 0 = 1: up by 8 x 0.4 x 0.25 = 0.8.
+        assert!((level_run(0) - 0.8).abs() < 1e-4);
+        assert!((level_run(2) - 0.8).abs() < 1e-4);
+        // A ship 1.15 below is a neighbour for a travel of 2 (1 + 0.4 x 2
+        // = 1.8) but not for 0.3 (1.12).
+        let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        wing.sublight_engine_power = 7.0;
+        wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        let mut close = session(vec![far.clone(), at(0.0, -1.15, 0.0)], vec![wing]);
+        close.fighter_frames = vec![crate::tactical::TacticalFighterFrame {
+            forward: TacticalWorldVector::SOURCE_FORWARD,
+            velocity: TacticalWorldVector::ZERO,
+        }];
+        close.advance_fighter_approach();
+        // Floor -1.15 + 1 = -0.15, below its 0: not inside, y kept by the
+        // band; its move along +z leaves y at 0.
+        assert!(close.fighters[0].source_position.y.abs() < 1e-5);
+        assert!(close.nearby_capitals_of_squadron(0, 2.0).contains(&1));
+        assert!(!close.nearby_capitals_of_squadron(0, 0.3).contains(&1));
+    }
+
+    // 0x5b8f70: under a ship, inside its ceiling, a squadron steps down
+    // while it flies; its 3D move follows.
+    #[test]
+    fn a_squadron_under_a_ship_steps_down_as_it_flies() {
+        use crate::tactical::{OriginalTacticalCollisionEnvelope, TacticalAttackTarget, TacticalWorldPosition};
+        let mut roof = ship(false, TacticalWeaponArc::default(), 0.0);
+        roof.source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 2.0,
+            planar_diameter: 9.0,
+        });
+        roof.source_position = TacticalWorldPosition {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let mut far = ship(false, TacticalWeaponArc::default(), 0.0);
+        far.source_position.z = 200.0;
+        let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        // 7 plus the commander term 1: 8.
+        wing.sublight_engine_power = 7.0;
+        wing.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        let mut tactical = session(vec![roof, far], vec![wing]);
+        tactical.advance_fighter_approach();
+        // Ceiling 1 - 2 - 0 = -1 below its 0: down by 8 x 0.4 x 0.25 = 0.8.
+        let at = tactical.fighters[0].source_position;
+        assert!((at.y + 0.8).abs() < 1e-4, "{at:?}");
+        assert!(at.z > 0.0);
+    }
+
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,
     // FUN_005be160 +0x48) into its forward: the Alliance faces +z, the
     // Empire -z, each toward the other's lane.

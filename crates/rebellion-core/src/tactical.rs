@@ -3094,66 +3094,7 @@ pub fn original_height_band_step(
     dy: f32,
     step: f32,
 ) -> (f32, bool) {
-    struct Band {
-        floor: f32,
-        ceiling: f32,
-        above: bool,
-        below: bool,
-        inside_ceiling: bool,
-        inside_floor: bool,
-    }
-    impl Band {
-        fn put(&mut self, own: TacticalHeightNeighbour, neighbour: TacticalHeightNeighbour, up: bool) {
-            if up {
-                self.above = true;
-                self.ceiling = self
-                    .ceiling
-                    .min(neighbour.y - neighbour.half_height - own.half_height);
-                if own.y > self.ceiling {
-                    self.inside_ceiling = true;
-                }
-            } else {
-                self.below = true;
-                self.floor = self
-                    .floor
-                    .max(neighbour.y + neighbour.half_height + own.half_height);
-                if own.y < self.floor {
-                    self.inside_floor = true;
-                }
-            }
-        }
-    }
-    let mut band = Band {
-        floor: -f32::MAX,
-        ceiling: f32::MAX,
-        above: false,
-        below: false,
-        inside_ceiling: false,
-        inside_floor: false,
-    };
-    let mut level = Vec::new();
-    for &neighbour in neighbours {
-        let rise = neighbour.y - own.y;
-        if rise > 0.0 {
-            band.put(own, neighbour, true);
-        } else if rise < 0.0 {
-            band.put(own, neighbour, false);
-        } else {
-            level.push(neighbour);
-        }
-    }
-    for neighbour in level {
-        let up = if neighbour.id > own.id && !band.below {
-            true
-        } else if neighbour.id <= own.id && !band.above {
-            false
-        } else if band.above && band.below {
-            own.y - band.floor > band.ceiling - own.y
-        } else {
-            band.above
-        };
-        band.put(own, neighbour, up);
-    }
+    let band = original_height_band(own, neighbours);
     let y = own.y;
     if band.inside_ceiling && band.inside_floor {
         if 2.0 * own.half_height > band.ceiling - band.floor {
@@ -3177,6 +3118,105 @@ pub fn original_height_band_step(
         travel = travel.min(y - band.floor);
     }
     (y + travel.copysign(dy), travel == 0.0)
+}
+
+/// The nearby ships' floor (`+0x404`) and ceiling (`+0x408`) of a unit, and
+/// which of them it is inside (`FUN_005b2f30`, `0x5b8f70`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalHeightBand {
+    pub floor: f32,
+    pub ceiling: f32,
+    pub above: bool,
+    pub below: bool,
+    pub inside_ceiling: bool,
+    pub inside_floor: bool,
+}
+
+/// The band both frames build: ships above lower the ceiling to their y
+/// less both half-heights, ships below raise the floor; one at the same
+/// height goes above or below by id and by the room on each side.
+pub fn original_height_band(
+    own: TacticalHeightNeighbour,
+    neighbours: &[TacticalHeightNeighbour],
+) -> TacticalHeightBand {
+    let mut band = TacticalHeightBand {
+        floor: -f32::MAX,
+        ceiling: f32::MAX,
+        above: false,
+        below: false,
+        inside_ceiling: false,
+        inside_floor: false,
+    };
+    let put = |band: &mut TacticalHeightBand, neighbour: TacticalHeightNeighbour, up: bool| {
+        if up {
+            band.above = true;
+            band.ceiling = band
+                .ceiling
+                .min(neighbour.y - neighbour.half_height - own.half_height);
+            if own.y > band.ceiling {
+                band.inside_ceiling = true;
+            }
+        } else {
+            band.below = true;
+            band.floor = band
+                .floor
+                .max(neighbour.y + neighbour.half_height + own.half_height);
+            if own.y < band.floor {
+                band.inside_floor = true;
+            }
+        }
+    };
+    let mut level = Vec::new();
+    for &neighbour in neighbours {
+        let rise = neighbour.y - own.y;
+        if rise > 0.0 {
+            put(&mut band, neighbour, true);
+        } else if rise < 0.0 {
+            put(&mut band, neighbour, false);
+        } else {
+            level.push(neighbour);
+        }
+    }
+    for neighbour in level {
+        let up = if neighbour.id > own.id && !band.below {
+            true
+        } else if neighbour.id <= own.id && !band.above {
+            false
+        } else if band.above && band.below {
+            own.y - band.floor > band.ceiling - own.y
+        } else {
+            band.above
+        };
+        put(&mut band, neighbour, up);
+    }
+    band
+}
+
+/// `0x5b8f70`'s y step (`0x5b949c`..`0x5b969d`, the frame of the
+/// `FUN_005b9c60` class): a squadron only leaves a
+/// band it is inside, at `step`: pinned inside both it holds (the fit path
+/// is dead, as in the capital code); inside the ceiling it steps down,
+/// inside the floor up; otherwise its y is left to its move.
+pub fn original_fighter_band_step(
+    own: TacticalHeightNeighbour,
+    neighbours: &[TacticalHeightNeighbour],
+    step: f32,
+) -> f32 {
+    let band = original_height_band(own, neighbours);
+    let y = own.y;
+    if band.inside_ceiling && band.inside_floor {
+        if 2.0 * own.half_height > band.ceiling - band.floor {
+            return y;
+        }
+        return y + ((band.ceiling - band.floor) * 0.5 - y).clamp(-step, step);
+    }
+    if band.inside_ceiling {
+        return y - (y - band.ceiling).min(step);
+    }
+    if band.inside_floor {
+        return y + (band.floor - y).min(step);
+    }
+    y
 }
 
 /// The fighter mover's slot offsets (`0x5ebee0`, slot `+0x30`) for the
@@ -8195,17 +8235,109 @@ impl BattleSession {
             .forward
             .dot(heading)
             .max(ORIGINAL_FIGHTER_ALIGNMENT_FLOOR);
+        let seconds = delta_milliseconds * 0.001;
+        // The height bands (`0x5b9102`..`0x5b969d`), before the move: the
+        // search travel is speed × alignment, the step speed × 0.4
+        // (`DAT_0066c6b4`); it sets no blocked flag.
+        let nearby = self.nearby_capitals_of_squadron(index, speed * alignment * seconds);
+        if !nearby.is_empty() {
+            let height = |other: usize| TacticalHeightNeighbour {
+                y: self.ships[other].source_position.y,
+                half_height: self.ships[other]
+                    .source_collision_envelope
+                    .map_or(0.0, |envelope| envelope.vertical_radius),
+                id: other,
+            };
+            let neighbours = nearby.iter().map(|&other| height(other)).collect::<Vec<_>>();
+            // port: a squadron's id sorts after every ship's.
+            let own = TacticalHeightNeighbour {
+                y: self.fighters[index].source_position.y,
+                half_height: 0.0,
+                id: self.ships.len() + index,
+            };
+            self.fighters[index].source_position.y = original_fighter_band_step(
+                own,
+                &neighbours,
+                speed * ORIGINAL_FORMATION_VERTICAL_SHARE * seconds,
+            );
+        }
+        let frame = &mut self.fighter_frames[index];
         frame.velocity = TacticalWorldVector {
             x: frame.forward.x * speed * alignment,
             y: frame.forward.y * speed * alignment,
             z: frame.forward.z * speed * alignment,
         };
-        let seconds = delta_milliseconds * 0.001;
         let velocity = frame.velocity;
         let fighter = &mut self.fighters[index];
         fighter.source_position.x += velocity.x * seconds;
         fighter.source_position.y += velocity.y * seconds;
         fighter.source_position.z += velocity.z * seconds;
+    }
+
+    /// `FUN_005cdbf0` for a squadron (`0x5b9102`): it searches the capital
+    /// tree only (`+0x8f8`, never the fighters' `+0x900`), entered for the
+    /// search at its x (`FUN_005ce950`, `FUN_005ee370`), its own reach half
+    /// its last velocity. port: a squadron has no envelope, so its
+    /// half-height and diameter are 0, and it sorts after ships of equal x.
+    pub fn nearby_capitals_of_squadron(&self, index: usize, travel: f32) -> Vec<usize> {
+        let reach = |ship: &TacticalShip| {
+            let velocity = ship.source_velocity;
+            let speed = velocity.x.hypot(velocity.y).hypot(velocity.z);
+            0.5 * speed
+                + ORIGINAL_NEIGHBOUR_DIAMETER_SHARE
+                    * ship
+                        .source_collision_envelope
+                        .map_or(0.0, |envelope| envelope.planar_diameter)
+        };
+        let own = self.fighters[index].source_position;
+        let own_reach = self.fighter_frames.get(index).map_or(0.0, |frame| {
+            let velocity = frame.velocity;
+            0.5 * velocity.x.hypot(velocity.y).hypot(velocity.z)
+        });
+        let mut sorted = (0..self.ships.len())
+            .filter(|&other| {
+                let ship = &self.ships[other];
+                ship.alive && !ship.jumping() && ship.source_collision_envelope.is_some()
+            })
+            .collect::<Vec<_>>();
+        sorted.sort_by(|left, right| {
+            self.ships[*left]
+                .source_position
+                .x
+                .total_cmp(&self.ships[*right].source_position.x)
+                .then(left.cmp(right))
+        });
+        let at = sorted
+            .iter()
+            .position(|&other| self.ships[other].source_position.x > own.x)
+            .unwrap_or(sorted.len());
+        let mut nearby = Vec::new();
+        let mut visit = |other: usize| {
+            let ship = &self.ships[other];
+            let both = own_reach + reach(ship);
+            if (ship.source_position.x - own.x).abs() > both {
+                return false;
+            }
+            let half = ship.source_collision_envelope.map_or(0.0, |e| e.vertical_radius);
+            if (ship.source_position.y - own.y).abs()
+                <= half + ORIGINAL_NEIGHBOUR_VERTICAL_SLACK * travel
+                && (ship.source_position.z - own.z).abs() <= both
+            {
+                nearby.push(other);
+            }
+            true
+        };
+        for &other in sorted[..at].iter().rev() {
+            if !visit(other) {
+                break;
+            }
+        }
+        for &other in &sorted[at..] {
+            if !visit(other) {
+                break;
+            }
+        }
+        nearby
     }
 
     /// `0x5ebe30`, the mover's slot `+0x24`: a squadron's distance to its
