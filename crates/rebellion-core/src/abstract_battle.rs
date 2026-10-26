@@ -1864,6 +1864,7 @@ mod tests {
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             engagement_bands: Vec::new(),
+            force_movers: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -6710,6 +6711,570 @@ mod tests {
         // On its target an Imperial force heads -z, away by 2.75.
         let imperial = fly(at(0.0, 0.0, 0.0), 4.0, false);
         assert!((imperial.z + 2.75).abs() < 1e-5, "{imperial:?}");
+    }
+
+    fn mobility(tactical: &BattleSession, index: usize) -> f32 {
+        crate::tactical::original_tactical_mobility(&tactical.ships, &tactical.field_effects, index)
+            .map_or(0.0, |mobility| mobility.effective_engine_power)
+    }
+
+    // FUN_005ea740: the mover's speed +0x124 is the slowest positive member
+    // speed; 0x005eb1a0 moves the anchor at 0.95 of it (DAT_0066d84c), and
+    // FUN_005b2f30 caps each member at it.
+    #[test]
+    fn a_formation_moves_at_its_slowest_member_less_five_percent() {
+        let mut fast = ship(true, TacticalWeaponArc::default(), 0.0);
+        fast.sublight_engine_power = 4.0;
+        let mut slow = ship(true, TacticalWeaponArc::default(), 0.0);
+        slow.sublight_engine_power = 2.0;
+        slow.source_position.x = 30.0;
+        let goal = crate::tactical::TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: 100.0,
+        };
+        fast.source_waypoint = Some(goal);
+        slow.source_waypoint = Some(goal);
+        let mut tactical = session(vec![fast, slow], Vec::new());
+        let slowest = mobility(&tactical, 1);
+        assert!(slowest > 0.0 && slowest < mobility(&tactical, 0));
+        // A frame of 1 s: within 1.0 of its place (DAT_0066d850) a member
+        // counts as there, so a shorter step would leave the lead standing.
+        tactical.advance_original_tactical_movement(1000.0);
+        let mover = tactical.force_movers[0];
+        assert_eq!(mover.speed, slowest);
+        assert!((mover.anchor.z - 0.95 * slowest).abs() < 1e-5, "{mover:?}");
+        // The lead (whichever started on the anchor) snaps onto it: it
+        // moved no faster than the force.
+        let lead = (0..2)
+            .find(|&index| tactical.ships[index].source_position.x == mover.anchor.x)
+            .expect("a lead on the anchor");
+        assert!((tactical.ships[lead].source_position.z - mover.anchor.z).abs() < 1e-5);
+    }
+
+    // 0x005eb1a0 (Stand Off): a heading behind flips the forward at once
+    // and leaves the slots; within pi / 12 (DAT_006bd884) it does not turn,
+    // and a still formation that did not turn takes the velocity (0, 1, 0).
+    #[test]
+    fn a_stand_off_formation_flips_without_turning_its_slots() {
+        use crate::tactical::{TacticalForceKey, TacticalForceMover, TacticalWorldPosition};
+        let mut mover = TacticalForceMover {
+            force: TacticalForceKey::Ship(0),
+            tactic: TacticalTactic::StandOff,
+            anchor: TacticalWorldPosition::ORIGIN,
+            forward: TacticalWorldVector::SOURCE_FORWARD,
+            heading: TacticalWorldVector {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            },
+            lateral: TacticalWorldVector {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            velocity: TacticalWorldVector::ZERO,
+            last_delta: TacticalWorldVector::ZERO,
+            speed: 4.0,
+            turn_rate: std::f32::consts::PI,
+            still_turns: 0,
+            last_turn_anchor: TacticalWorldPosition::ORIGIN,
+        };
+        let behind = TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: -50.0,
+        };
+        assert!(!BattleSession::step_force_anchor(&mut mover, behind, 1.0, 250.0));
+        assert_eq!(mover.forward.z, -1.0);
+        assert_eq!((mover.lateral.x, mover.lateral.z), (1.0, 0.0));
+        assert!((mover.anchor.z + 0.95).abs() < 1e-6);
+        // 10 degrees off, within reach: no turn, velocity (0, 1, 0).
+        let angle = 10_f32.to_radians();
+        mover.heading = TacticalWorldVector {
+            x: angle.sin(),
+            y: 0.0,
+            z: -angle.cos(),
+        };
+        let near = mover.anchor;
+        assert!(BattleSession::step_force_anchor(&mut mover, near, 1.0, 250.0));
+        assert_eq!(mover.forward.z, -1.0);
+        assert_eq!(
+            (mover.velocity.x, mover.velocity.y, mover.velocity.z),
+            (0.0, 1.0, 0.0)
+        );
+        // Beyond pi / 12 it turns at its rate, and the slots turn with it.
+        let point = TacticalWorldPosition {
+            x: 50.0,
+            y: 0.0,
+            z: mover.anchor.z,
+        };
+        mover.heading = TacticalWorldVector {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        BattleSession::step_force_anchor(&mut mover, point, 1.0, 250.0);
+        let turned = std::f32::consts::PI * 0.25;
+        assert!((source_angle(mover.forward) - (std::f32::consts::PI - turned)).abs() < 1e-4);
+        assert!((mover.lateral.x.hypot(mover.lateral.z) - 1.0).abs() < 1e-5);
+        assert!(mover.lateral.z.abs() > 0.5, "{mover:?}");
+    }
+
+    fn source_angle(vector: TacticalWorldVector) -> f32 {
+        vector.x.atan2(vector.z).abs()
+    }
+
+    // 0x005eb540 (Surround): it turns toward its own level movement with no
+    // dead band (FUN_005eae90), and its slots stay on the world axes
+    // (0x005ead70 turns only the forward); its members stand at the anchor
+    // less their slot, the lead at slot 1 (0x005eb040, 0x005eb8d0).
+    #[test]
+    fn a_surround_formation_keeps_its_slots_on_the_world_axes() {
+        use crate::tactical::{
+            original_surround_slot, TacticalForceKey, TacticalForceMover, TacticalWorldPosition,
+        };
+        let tactical = session(vec![ship(true, TacticalWeaponArc::default(), 0.0)], Vec::new());
+        let mut mover = TacticalForceMover {
+            force: TacticalForceKey::Ship(0),
+            tactic: TacticalTactic::Surround,
+            anchor: TacticalWorldPosition::ORIGIN,
+            forward: TacticalWorldVector::SOURCE_FORWARD,
+            heading: TacticalWorldVector::SOURCE_FORWARD,
+            lateral: TacticalWorldVector {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            velocity: TacticalWorldVector::ZERO,
+            last_delta: TacticalWorldVector::ZERO,
+            speed: 4.0,
+            turn_rate: 0.4,
+            still_turns: 0,
+            last_turn_anchor: TacticalWorldPosition::ORIGIN,
+        };
+        let before = tactical.force_member_place(&mover, &[0], 0);
+        let point = TacticalWorldPosition {
+            x: 50.0,
+            y: 5.0,
+            z: 0.0,
+        };
+        BattleSession::step_force_anchor(&mut mover, point, 2.0, 250.0);
+        // 0.1 rad, below Stand Off's pi / 12; a heading square to the
+        // forward does not flip it.
+        assert!((mover.forward.x - 0.1_f32.sin()).abs() < 1e-5, "{mover:?}");
+        assert!((mover.forward.z - 0.1_f32.cos()).abs() < 1e-5, "{mover:?}");
+        assert_eq!((mover.heading.x, mover.heading.y), (1.0, 0.0));
+        let after = tactical.force_member_place(&mover, &[0], 0);
+        let slot = original_surround_slot(1);
+        assert_eq!(after.x - mover.anchor.x, -slot.x);
+        assert_eq!(after.z - mover.anchor.z, -slot.z);
+        assert_eq!(before.z, -slot.z);
+    }
+
+    // FUN_005b4d40: a member at its place in a still formation (velocity
+    // zero, +0x134 at least 5) turns its strongest arc against capital
+    // ships (slot +0x84) to its target: the bearing turned by arc x pi / 2.
+    #[test]
+    fn a_still_formation_turns_its_strongest_arc_to_the_target() {
+        let mut gunner = ship(true, TacticalWeaponArc::default(), 0.0);
+        gunner.weapon_arcs[1] = TacticalWeaponArc::new(0, 4, 0);
+        gunner.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(1));
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.source_position.x = 50.0;
+        target.task_force = 1;
+        let mut tactical = session(vec![gunner, target], Vec::new());
+        tactical.advance_original_tactical_movement(250.0);
+        // Not yet still for 5 turns: it keeps its forward.
+        assert_eq!(tactical.ships[0].source_desired_forward.z, 1.0);
+        tactical.force_movers[0].still_turns = 5;
+        tactical.advance_original_tactical_movement(250.0);
+        let wanted = tactical.ships[0].source_desired_forward;
+        // Bearing (1, 0, 0) turned by pi / 2: (0, 0, 1).
+        assert!(wanted.x.abs() < 1e-5 && (wanted.z - 1.0).abs() < 1e-5, "{wanted:?}");
+        tactical.ships[0].weapon_arcs[1] = TacticalWeaponArc::default();
+        tactical.ships[0].weapon_arcs[0] = TacticalWeaponArc::new(0, 4, 0);
+        tactical.advance_original_tactical_movement(250.0);
+        let wanted = tactical.ships[0].source_desired_forward;
+        assert!((wanted.x - 1.0).abs() < 1e-5, "{wanted:?}");
+    }
+
+    // FUN_005cb1a0 rebuilds a force's mover on its tactic's event 0x3d: the
+    // new Surround mover starts on the lead unit, whose place is the anchor
+    // less slot 1, so the lead moves to it.
+    #[test]
+    fn a_new_tactic_rebuilds_the_mover_on_the_lead_unit() {
+        let lead = ship(true, TacticalWeaponArc::default(), 0.0);
+        let mut tactical = session(vec![lead], Vec::new());
+        tactical.advance_original_tactical_movement(250.0);
+        assert_eq!(tactical.force_movers[0].tactic, TacticalTactic::StandOff);
+        tactical.ships[0].source_position.x = 7.0;
+        tactical.task_force_formations[1][0] = TacticalTactic::Surround;
+        tactical.advance_original_tactical_movement(250.0);
+        let mover = tactical.force_movers[0];
+        assert_eq!(mover.tactic, TacticalTactic::Surround);
+        assert_eq!(mover.anchor.x, 7.0);
+        let slot = crate::tactical::original_surround_slot(1);
+        let place_z = mover.anchor.z - slot.z;
+        let start = (0.0 - place_z).abs();
+        for _ in 0..40 {
+            tactical.advance_original_tactical_movement(250.0);
+        }
+        let moved = (tactical.ships[0].source_position.z - place_z).abs();
+        assert!(moved < start, "{:?} {place_z}", tactical.ships[0].source_position);
+    }
+
+    fn test_mover(tactic: TacticalTactic) -> crate::tactical::TacticalForceMover {
+        use crate::tactical::{TacticalForceKey, TacticalForceMover, TacticalWorldPosition};
+        TacticalForceMover {
+            force: TacticalForceKey::Ship(0),
+            tactic,
+            anchor: TacticalWorldPosition::ORIGIN,
+            forward: TacticalWorldVector::SOURCE_FORWARD,
+            heading: TacticalWorldVector::SOURCE_FORWARD,
+            lateral: TacticalWorldVector {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            velocity: TacticalWorldVector::ZERO,
+            last_delta: TacticalWorldVector::ZERO,
+            speed: 4.0,
+            turn_rate: 0.0,
+            still_turns: 0,
+            last_turn_anchor: TacticalWorldPosition::ORIGIN,
+        }
+    }
+
+    fn vector(x: f32, y: f32, z: f32) -> TacticalWorldVector {
+        TacticalWorldVector { x, y, z }
+    }
+
+    fn near(left: TacticalWorldVector, right: TacticalWorldVector) -> bool {
+        (left.x - right.x).abs() < 1e-5
+            && (left.y - right.y).abs() < 1e-5
+            && (left.z - right.z).abs() < 1e-5
+    }
+
+    // FUN_005cd460 is one turn for the mover's forward and a unit's: the
+    // vector turn gives the ship turn's result, and returns the signed angle.
+    #[test]
+    fn the_formation_turn_is_the_unit_turn() {
+        use crate::tactical::{
+            original_capital_turn_rate, turn_original_tactical_ship, turn_original_vector,
+        };
+        let cases = [
+            (vector(0.6, 0.2, 0.77), vector(-0.3, 0.1, 0.9)),
+            (vector(0.6, 0.2, 0.77), vector(0.9, -0.4, -0.1)),
+            (vector(-0.5, 0.5, -0.7), vector(0.2, 0.6, -0.8)),
+            (vector(0.0, 0.0, 1.0), vector(1.0, 0.0, 0.0)),
+            // Cases whose turn direction hangs on the y term.
+            (vector(0.1, 0.9, 0.42), vector(0.3, 0.9, -0.3)),
+            (vector(0.1, -0.2, 0.42), vector(0.3, 0.9, -0.3)),
+        ];
+        for (from, to) in cases {
+            for (maneuverability, milliseconds) in [(0, 250.0), (4, 250.0), (9, 40.0), (20, 5000.0)] {
+                let mut unit = ship(true, TacticalWeaponArc::default(), 0.0);
+                unit.maneuverability = maneuverability;
+                unit.source_forward = from.normalized();
+                unit.source_desired_forward = to;
+                turn_original_tactical_ship(&mut unit, milliseconds);
+                let mut forward = from.normalized();
+                let applied = turn_original_vector(
+                    &mut forward,
+                    to,
+                    original_capital_turn_rate(maneuverability),
+                    milliseconds,
+                );
+                assert!(near(forward, unit.source_forward), "{from:?} {to:?} {forward:?}");
+                let angle = crate::tactical::source_direction_angle(from, to);
+                let step = original_capital_turn_rate(maneuverability) * milliseconds * 0.001;
+                assert!((applied.abs() - step.min(angle)).abs() < 1e-5, "{applied}");
+            }
+        }
+        let mut forward = TacticalWorldVector::SOURCE_FORWARD;
+        assert!(turn_original_vector(&mut forward, vector(1.0, 0.0, 0.0), 1.0, 250.0) < 0.0);
+        assert!(turn_original_vector(&mut forward, vector(-1.0, 0.0, 0.0), 1.0, 250.0) > 0.0);
+    }
+
+    // Group slots 0..7 (+0x164) are forces of a side; any other task force
+    // is a force of its own (FUN_005aded0).
+    #[test]
+    fn group_slots_and_lone_ships_key_their_forces() {
+        use crate::tactical::TacticalForceKey;
+        let mut ships = (0..4)
+            .map(|_| ship(true, TacticalWeaponArc::default(), 0.0))
+            .collect::<Vec<_>>();
+        ships[0].task_force = 3;
+        ships[1].task_force = 7;
+        ships[2].task_force = 8;
+        ships[3].task_force = 255;
+        let tactical = session(ships, Vec::new());
+        assert_eq!(
+            tactical.force_key(0),
+            TacticalForceKey::Slot {
+                attacker: true,
+                slot: 3
+            }
+        );
+        assert_eq!(
+            tactical.force_key(1),
+            TacticalForceKey::Slot {
+                attacker: true,
+                slot: 7
+            }
+        );
+        assert_eq!(tactical.force_key(2), TacticalForceKey::Ship(2));
+        assert_eq!(tactical.force_key(3), TacticalForceKey::Ship(3));
+    }
+
+    // FUN_005ea740: the speed skips members that cannot move; +0x134 counts
+    // the turns the anchor stood still (against +0xc8) and resets when it
+    // moved.
+    #[test]
+    fn the_formation_speed_skips_stopped_members_and_counts_still_turns() {
+        let moving = ship(true, TacticalWeaponArc::default(), 0.0);
+        let mut stopped = ship(true, TacticalWeaponArc::default(), 0.0);
+        stopped.subsystem_capacity.engines = false;
+        stopped.sublight_engine_power = 0.0;
+        stopped.source_position.x = 30.0;
+        let mut tactical = session(vec![moving, stopped], Vec::new());
+        assert_eq!(mobility(&tactical, 1), 0.0);
+        tactical.update_force_movers();
+        let speed = mobility(&tactical, 0);
+        assert!(speed > 0.0);
+        assert_eq!(tactical.force_movers[0].speed, speed);
+        assert_eq!(tactical.force_movers[0].still_turns, 1);
+        tactical.update_force_movers();
+        assert_eq!(tactical.force_movers[0].still_turns, 2);
+        tactical.force_movers[0].anchor.z = 5.0;
+        tactical.update_force_movers();
+        assert_eq!(tactical.force_movers[0].still_turns, 0);
+        assert_eq!(tactical.force_movers[0].last_turn_anchor.z, 5.0);
+        // A turn rate change reaches the mover once a turn.
+        tactical.ships[0].maneuverability = 20;
+        tactical.ships[1].maneuverability = 20;
+        tactical.update_force_movers();
+        assert_eq!(
+            tactical.force_movers[0].turn_rate,
+            crate::tactical::original_capital_turn_rate(20)
+        );
+    }
+
+    // FUN_005ec400: Stand Off's places alternate along the slot axis,
+    // spaced by the largest footprint x 1.2 (at least 5); 0x005eb040 and
+    // 0x005eb8d0: Surround's stand at the anchor less slot k + 1.
+    #[test]
+    fn formation_places_follow_their_slots() {
+        use crate::tactical::{original_surround_slot, OriginalTacticalCollisionEnvelope};
+        let mut ships = (0..12)
+            .map(|_| ship(true, TacticalWeaponArc::default(), 0.0))
+            .collect::<Vec<_>>();
+        ships[1].source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 10.0,
+        });
+        let tactical = session(ships, Vec::new());
+        let members = (0..12).collect::<Vec<_>>();
+        let mut mover = test_mover(TacticalTactic::StandOff);
+        mover.anchor = crate::tactical::TacticalWorldPosition {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        };
+        mover.lateral = vector(0.6, 0.0, 0.8);
+        let place = |ordinal| tactical.force_member_place(&mover, &members, ordinal);
+        assert_eq!(place(0), mover.anchor);
+        let first = place(1);
+        assert!((first.x - (1.0 + 0.6 * 12.0)).abs() < 1e-5, "{first:?}");
+        assert!((first.z - (3.0 + 0.8 * 12.0)).abs() < 1e-5, "{first:?}");
+        assert_eq!(first.y, 2.0);
+        let second = place(2);
+        assert!((second.x - (1.0 - 0.6 * 12.0)).abs() < 1e-5, "{second:?}");
+        assert!((second.z - (3.0 - 0.8 * 12.0)).abs() < 1e-5, "{second:?}");
+        mover.tactic = TacticalTactic::Surround;
+        for ordinal in [0, 1, 11] {
+            let slot = original_surround_slot(ordinal + 1);
+            let at = tactical.force_member_place(&mover, &members, ordinal);
+            assert!((at.x - (1.0 - slot.x)).abs() < 1e-5, "{ordinal} {at:?}");
+            assert!((at.y - (2.0 - slot.y)).abs() < 1e-5, "{ordinal} {at:?}");
+            assert!((at.z - (3.0 - slot.z)).abs() < 1e-5, "{ordinal} {at:?}");
+        }
+        let slot = original_surround_slot(12);
+        assert!(slot.x != 0.0 && slot.y != 0.0 && slot.z != 0.0);
+    }
+
+    // 0x005eb1a0 / 0x005eb540: the anchor climbs at 0.4 of its speed
+    // (DAT_0066d844); Stand Off's flip negates all three axes, Surround's
+    // x and z; Stand Off's turn turns its slot axis by the same angle
+    // (FUN_005ead90).
+    #[test]
+    fn the_anchor_climbs_flips_and_turns_its_slots() {
+        use crate::tactical::TacticalWorldPosition;
+        let mut mover = test_mover(TacticalTactic::StandOff);
+        let point = TacticalWorldPosition {
+            x: 0.0,
+            y: 30.0,
+            z: 40.0,
+        };
+        mover.heading = vector(0.0, 0.6, 0.8);
+        BattleSession::step_force_anchor(&mut mover, point, 1.0, 250.0);
+        assert!(near(mover.velocity, vector(0.0, 0.6 * 3.8 * 0.4, 0.8 * 3.8)), "{mover:?}");
+        assert!((mover.anchor.y - 0.6 * 3.8 * 0.4 * 0.25).abs() < 1e-6);
+        assert!((mover.anchor.z - 0.8 * 3.8 * 0.25).abs() < 1e-6);
+
+        let mut flip = test_mover(TacticalTactic::StandOff);
+        flip.forward = vector(0.48, 0.6, 0.64);
+        flip.heading = vector(-1.0, 0.0, 0.0);
+        let behind = TacticalWorldPosition {
+            x: -50.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        BattleSession::step_force_anchor(&mut flip, behind, 1.0, 250.0);
+        assert!(near(flip.forward, vector(-0.48, -0.6, -0.64)), "{flip:?}");
+
+        let mut surround = test_mover(TacticalTactic::Surround);
+        surround.forward = vector(0.6, 0.0, 0.8);
+        BattleSession::step_force_anchor(&mut surround, behind, 1.0, 250.0);
+        assert!(near(surround.forward, vector(-0.6, 0.0, -0.8)), "{surround:?}");
+        assert!(near(surround.heading, vector(-1.0, 0.0, 0.0)), "{surround:?}");
+
+        let mut turning = test_mover(TacticalTactic::StandOff);
+        turning.lateral = vector(0.6, 0.0, 0.8);
+        turning.turn_rate = std::f32::consts::FRAC_PI_2;
+        turning.heading = vector(1.0, 0.0, 0.0);
+        let aside = TacticalWorldPosition {
+            x: 50.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        BattleSession::step_force_anchor(&mut turning, aside, 1.0, 250.0);
+        let (sin, cos) = (-std::f32::consts::FRAC_PI_8).sin_cos();
+        assert!(
+            near(turning.lateral, vector(0.6 * cos - sin * 0.8, 0.0, 0.6 * sin + cos * 0.8)),
+            "{turning:?}"
+        );
+    }
+
+    // FUN_005b2f30: a member below the mover's speed keeps its own; off its
+    // heading it moves along its turned level forward by speed x alignment.
+    #[test]
+    fn a_member_moves_by_its_alignment_at_no_more_than_its_own_speed() {
+        use crate::tactical::turn_original_tactical_ship;
+        let mut member = ship(true, TacticalWeaponArc::default(), 0.0);
+        member.source_forward = vector(0.6, 0.0, 0.8);
+        member.source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+        let mut tactical = session(vec![member], Vec::new());
+        tactical.advance_original_tactical_movement(250.0);
+        let own = mobility(&tactical, 0);
+        tactical.force_movers[0].speed = own * 10.0;
+        tactical.ships[0].source_position.z = -40.0;
+        tactical.ships[0].source_forward = vector(0.6, 0.0, 0.8);
+        tactical.ships[0].source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+        let mut expected = tactical.ships[0].clone();
+        expected.source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+        turn_original_tactical_ship(&mut expected, 250.0);
+        tactical.advance_original_tactical_movement(250.0);
+        let forward = expected.source_forward;
+        let velocity = vector(forward.x * own * 0.8, 0.0, forward.z * own * 0.8);
+        assert!(near(tactical.ships[0].source_velocity, velocity), "{:?}", tactical.ships[0]);
+        assert!((tactical.ships[0].source_position.x - velocity.x * 0.25).abs() < 1e-5);
+        assert!((tactical.ships[0].source_position.z - (-40.0 + velocity.z * 0.25)).abs() < 1e-5);
+    }
+
+    // FUN_005b4d40: the bearing turns by the arc (here from (30, 0, 40));
+    // a formation that is not still (velocity (0, 1, 0) after an arrival
+    // without a turn, 0x005eb1a0) keeps its forward.
+    #[test]
+    fn only_a_still_formation_turns_an_arc_to_the_target() {
+        let mut gunner = ship(true, TacticalWeaponArc::default(), 0.0);
+        gunner.weapon_arcs[1] = TacticalWeaponArc::new(0, 4, 0);
+        gunner.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(1));
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.source_position.x = 30.0;
+        target.source_position.z = 40.0;
+        target.task_force = 1;
+        let mut tactical = session(vec![gunner, target], Vec::new());
+        tactical.advance_original_tactical_movement(250.0);
+        tactical.force_movers[0].still_turns = 5;
+        tactical.advance_original_tactical_movement(250.0);
+        let wanted = tactical.ships[0].source_desired_forward;
+        assert!(near(wanted, vector(-0.8, 0.0, 0.6)), "{wanted:?}");
+        // Arc 2 turns the bearing by pi.
+        tactical.ships[0].weapon_arcs[1] = TacticalWeaponArc::default();
+        tactical.ships[0].weapon_arcs[2] = TacticalWeaponArc::new(0, 4, 0);
+        tactical.advance_original_tactical_movement(250.0);
+        let wanted = tactical.ships[0].source_desired_forward;
+        assert!(near(wanted, vector(-0.6, 0.0, -0.8)), "{wanted:?}");
+        // An arrival within reach, straight ahead: no turn, velocity (0, 1, 0).
+        let mut fresh = session(tactical.ships.clone(), Vec::new());
+        fresh.ships[0].source_forward = TacticalWorldVector::SOURCE_FORWARD;
+        fresh.ships[0].source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+        fresh.advance_original_tactical_movement(250.0);
+        fresh.force_movers[0].still_turns = 5;
+        fresh.ships[0].source_waypoint = Some(crate::tactical::TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: 0.5,
+        });
+        fresh.advance_original_tactical_movement(250.0);
+        assert_eq!(fresh.force_movers[0].velocity.y, 1.0);
+        assert!(near(fresh.ships[0].source_desired_forward, TacticalWorldVector::SOURCE_FORWARD));
+    }
+
+    // FUN_005cc300: closing on a target arrives within 2.0, a route, a
+    // maneuver or an order without a target within 1.0.
+    #[test]
+    fn closing_on_a_target_arrives_within_two() {
+        let goal = crate::tactical::TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: 1.5,
+        };
+        let arrives = |route: bool, target: bool, order: TacticalOrder| {
+            let mut lead = ship(true, TacticalWeaponArc::default(), 0.0);
+            lead.order = order;
+            lead.source_waypoint = Some(goal);
+            if route {
+                lead.navigation_route = vec![goal];
+            }
+            if target {
+                lead.attack_target = Some(crate::tactical::TacticalAttackTarget::CapitalShip(1));
+            }
+            let mut enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+            enemy.source_position.z = 80.0;
+            let mut tactical = session(vec![lead, enemy], Vec::new());
+            tactical.advance_original_tactical_movement(10.0);
+            tactical.ships[0].source_waypoint.is_none()
+        };
+        assert!(arrives(false, true, TacticalOrder::AttackCapitalShips));
+        assert!(!arrives(true, true, TacticalOrder::AttackCapitalShips));
+        assert!(!arrives(false, false, TacticalOrder::AttackCapitalShips));
+        assert!(!arrives(false, true, TacticalOrder::LeftHook));
+        assert!(!arrives(false, true, TacticalOrder::Escort));
+    }
+
+    // FUN_005b4d40, order 3: a withdrawing member heads away from its side,
+    // toward its exit line.
+    #[test]
+    fn a_withdrawing_member_heads_for_its_exit() {
+        let mut leaving = ship(true, TacticalWeaponArc::default(), 0.0);
+        leaving.retreating = true;
+        leaving.task_force = 255;
+        let mut tactical = session(vec![leaving], Vec::new());
+        let exit = tactical.withdrawal_exit_z(true);
+        assert!(exit < 0.0);
+        // Beyond the field's middle, on the far side.
+        tactical.ships[0].source_position.z = -exit + 10.0;
+        tactical.advance_original_tactical_movement(250.0);
+        assert!(near(tactical.ships[0].source_desired_forward, vector(0.0, 0.0, -1.0)));
+        // Between the middle and its own exit.
+        let mut nearer = session(tactical.ships.clone(), Vec::new());
+        nearer.ships[0].source_position.z = exit * 0.5;
+        nearer.ships[0].source_desired_forward = vector(0.0, 0.0, -1.0);
+        nearer.advance_original_tactical_movement(250.0);
+        assert!(near(nearer.ships[0].source_desired_forward, vector(0.0, 0.0, -1.0)));
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

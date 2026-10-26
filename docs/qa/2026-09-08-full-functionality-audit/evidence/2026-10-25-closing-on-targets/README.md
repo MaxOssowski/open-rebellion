@@ -49,6 +49,8 @@ slot `+0xc` -> object slot `+4`):
   its own.
 - The lead unit is the formation's (capability order). It takes the goal
   as its waypoint, and the rigid formation carries the members.
+  (Superseded in `../2026-10-26-formation-movers/`: the force's mover
+  anchor takes the goal and the members steer to their places.)
 - Inside the band, or holding, the goal and heading are cleared.
 - On arrival a waypoint now ends only a maneuver (`FUN_005a8f70`). An
   attack order outlives its route. Before, every order but Escort was

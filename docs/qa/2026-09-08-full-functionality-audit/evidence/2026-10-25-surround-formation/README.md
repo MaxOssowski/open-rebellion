@@ -46,7 +46,9 @@ is the lead unit's position when the mover was built.
   at `lead + slot(1) - slot(k)`, with k = 2, 3, ... in the capability
   order.
 - `port:` as with Stand Off, the formation stays rigid on the lead unit.
-  The original's formation step (`0x005eb1a0`) moves its anchor and
+  (Superseded in `../2026-10-26-formation-movers/`: the anchor now moves
+  and the members steer to their places.) The original's formation step
+  (`0x005eb1a0`) moves its anchor and
   members over time; that step is not ported.
 
 ## Tests

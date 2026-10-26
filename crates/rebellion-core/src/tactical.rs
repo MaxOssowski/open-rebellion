@@ -1496,6 +1496,8 @@ pub struct BattleSession {
     pub engagement_bands: Vec<TacticalEngagementBand>,
     /// Each fighter force's circling angle (`+0xc0`, `FUN_005c6610`).
     pub fighter_orbit_angles: Vec<f32>,
+    /// Each capital force's mover (`+0x54`): its anchor, facing and rates.
+    pub force_movers: Vec<TacticalForceMover>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -2937,6 +2939,104 @@ pub struct TacticalEngagementBand {
     pub step: f32,
 }
 
+/// Which capital force a mover belongs to: a group slot (`+0x164`) of a
+/// side, or a ship's force of its own (`FUN_005aded0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TacticalForceKey {
+    Slot { attacker: bool, slot: u8 },
+    Ship(usize),
+}
+
+/// A capital force's mover (`+0x54`, built by `FUN_005cb1a0`): Stand Off's
+/// `FUN_005ec310` (class `0x66da08`) or Surround's `FUN_005eb860` (class
+/// `0x66d9a0`), both on the base `FUN_005ea030`. Its anchor moves; the
+/// members steer to their places round it (`FUN_005b2f30`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalForceMover {
+    pub force: TacticalForceKey,
+    pub tactic: TacticalTactic,
+    /// `+0x3c`: set to the lead unit's position when the mover is built.
+    pub anchor: TacticalWorldPosition,
+    /// `+0x1c`.
+    pub forward: TacticalWorldVector,
+    /// `+0x2c`: the heading the step turns toward.
+    pub heading: TacticalWorldVector,
+    /// Stand Off's slot axis: the slots' offsets turn with each applied turn
+    /// (`FUN_005ead90`); flips leave them (`0x005eb1a0`).
+    pub lateral: TacticalWorldVector,
+    /// `+0x78`: zero when the goal is cleared or reached.
+    pub velocity: TacticalWorldVector,
+    /// `+0x68`: the last step's raw delta to its point.
+    pub last_delta: TacticalWorldVector,
+    /// `+0x124`: the slowest positive member speed, once a turn.
+    pub speed: f32,
+    /// `+0xa8`: the shortest member turn rate, once a turn.
+    pub turn_rate: f32,
+    /// `+0x134`: turns in a row with the anchor unchanged (`+0xc8`).
+    pub still_turns: u32,
+    pub last_turn_anchor: TacticalWorldPosition,
+}
+
+/// `DAT_0066d84c`: the anchor moves at 0.95 of the force's speed, so the
+/// members catch up.
+pub const ORIGINAL_FORMATION_SPEED_SHARE: f32 = 0.95;
+/// `DAT_0066d844`: the anchor's and a member's vertical share of speed.
+pub const ORIGINAL_FORMATION_VERTICAL_SHARE: f32 = 0.4;
+/// `DAT_006bd884` (`0x5e9de0`): Stand Off turns its formation only beyond
+/// pi / 12.
+pub const ORIGINAL_STAND_OFF_TURN_DEAD_BAND: f32 = std::f32::consts::PI / 12.0;
+/// `DAT_006bc4b0` (`0x5b0c70`): a member turns only beyond pi / 48.
+pub const ORIGINAL_MEMBER_TURN_DEAD_BAND: f32 = std::f32::consts::PI / 48.0;
+/// `DAT_0066c508`: a member snaps to its place only when it faces its
+/// heading this well.
+pub const ORIGINAL_MEMBER_SNAP_ALIGNMENT: f32 = 0.707;
+/// `DAT_0066d850`: a member within 1.0 (squared) of its place is there.
+pub const ORIGINAL_MEMBER_PLACE_RADIUS_SQUARED: f32 = 1.0;
+/// `FUN_005cc300`'s step radius for a route or the withdrawal.
+pub const ORIGINAL_ROUTE_ARRIVAL_RADIUS: f32 = 1.0;
+/// `FUN_005cc300`'s step radius when closing on a target.
+pub const ORIGINAL_CLOSING_ARRIVAL_RADIUS: f32 = 2.0;
+/// `FUN_005ea740`'s starting turn rate, above any member's.
+pub const ORIGINAL_FORMATION_TURN_RATE_START: f32 = 99.0;
+/// `+0x134` at which a still formation's members face their target with
+/// their strongest arc (`FUN_005b4d40`).
+pub const ORIGINAL_STILL_TURNS_TO_FACE: u32 = 5;
+
+/// `FUN_005cd460` on any vector: the signed level turn toward `desired` at
+/// `rate` radians per second, or a snap onto it once the step reaches the
+/// angle. Returns the signed angle applied.
+pub fn turn_original_vector(
+    current: &mut TacticalWorldVector,
+    desired: TacticalWorldVector,
+    rate: f32,
+    delta_milliseconds: f32,
+) -> f32 {
+    if desired == TacticalWorldVector::ZERO {
+        return 0.0;
+    }
+    let from = current.normalized();
+    let to = desired.normalized();
+    let angle = source_direction_angle(from, to);
+    let sign = if -from.z * to.x + to.z * from.x + to.y * from.y < 0.0 {
+        -1.0
+    } else {
+        1.0
+    };
+    let step = rate * delta_milliseconds * 0.001;
+    if step >= angle {
+        *current = to;
+        return sign * angle;
+    }
+    let (sin, cos) = (sign * step).sin_cos();
+    *current = TacticalWorldVector {
+        x: from.x * cos - sin * from.z,
+        y: from.y,
+        z: from.x * sin + cos * from.z,
+    }
+    .normalized();
+    sign * step
+}
+
 /// Surround's band (`0x005edf00`): 0 to 5.0 × 0.5 (`DAT_0066daa8`,
 /// `DAT_0066daac`).
 pub const ORIGINAL_SURROUND_BAND_MAX: f32 = 2.5;
@@ -3718,6 +3818,7 @@ impl BattleSession {
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             engagement_bands: Vec::new(),
+            force_movers: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -3834,6 +3935,454 @@ impl BattleSession {
         refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
         true
     }
+    /// A ship's force key: its group slot of 8 (`+0x164`, `0x0059f610`), or
+    /// a force of its own (`FUN_005aded0`).
+    pub fn force_key(&self, index: usize) -> TacticalForceKey {
+        let ship = &self.ships[index];
+        if ship.task_force < 8 {
+            TacticalForceKey::Slot {
+                attacker: ship.is_attacker,
+                slot: ship.task_force,
+            }
+        } else {
+            TacticalForceKey::Ship(index)
+        }
+    }
+
+    /// The capital forces that move, each lead unit first (`0x005c6070`,
+    /// `FUN_005c81d0`): as `capital_forces`, with the withdrawing ships'
+    /// forces of their own (`FUN_005aded0`).
+    fn moving_forces(&self) -> Vec<Vec<usize>> {
+        let in_force = |ship: &TacticalShip| ship.alive && !ship.jumping();
+        let mut forces = Vec::new();
+        for attacker in [true, false] {
+            for slot in 0_u8..8 {
+                let mut members = (0..self.ships.len())
+                    .filter(|&index| {
+                        let ship = &self.ships[index];
+                        in_force(ship) && ship.is_attacker == attacker && ship.task_force == slot
+                    })
+                    .collect::<Vec<_>>();
+                if members.is_empty() {
+                    continue;
+                }
+                members.sort_by(|left, right| {
+                    original_formation_capability_score(&self.ships[*right])
+                        .total_cmp(&original_formation_capability_score(&self.ships[*left]))
+                });
+                forces.push(members);
+            }
+        }
+        for (index, ship) in self.ships.iter().enumerate() {
+            if in_force(ship) && ship.task_force >= 8 {
+                forces.push(vec![index]);
+            }
+        }
+        forces
+    }
+
+    pub fn force_mover(&self, key: TacticalForceKey) -> Option<&TacticalForceMover> {
+        self.force_movers.iter().find(|mover| mover.force == key)
+    }
+
+    /// `FUN_005ea740` (the mover's slot `+0x40`, once a turn): the slowest
+    /// positive member speed (`0x5b17f0`, 0 with none), the shortest member
+    /// turn rate (from 99), and the turns the anchor has stood still.
+    fn force_mover_rates(&self, members: &[usize]) -> (f32, f32) {
+        let speed = members
+            .iter()
+            .map(|&index| {
+                original_tactical_mobility(&self.ships, &self.field_effects, index)
+                    .map_or(0.0, |mobility| mobility.effective_engine_power)
+            })
+            .filter(|speed| *speed > 0.0)
+            .fold(f32::INFINITY, f32::min);
+        let turn_rate = members
+            .iter()
+            .map(|&index| original_capital_turn_rate(self.ships[index].maneuverability))
+            .fold(ORIGINAL_FORMATION_TURN_RATE_START, f32::min);
+        (if speed.is_finite() { speed } else { 0.0 }, turn_rate)
+    }
+
+    pub(crate) fn update_force_movers(&mut self) {
+        self.sync_force_movers();
+        for members in self.moving_forces() {
+            let key = self.force_key(members[0]);
+            let (speed, turn_rate) = self.force_mover_rates(&members);
+            let Some(mover) = self.force_movers.iter_mut().find(|mover| mover.force == key) else {
+                continue;
+            };
+            mover.speed = speed;
+            mover.turn_rate = turn_rate;
+            if mover.anchor == mover.last_turn_anchor {
+                mover.still_turns = mover.still_turns.saturating_add(1);
+            } else {
+                mover.still_turns = 0;
+            }
+            mover.last_turn_anchor = mover.anchor;
+        }
+    }
+
+    /// Keep one mover per moving force: a force that is new, or whose tactic
+    /// changed (`FUN_005cb1a0` on event `0x3d`), gets a new one at its lead
+    /// unit; a force that is gone loses its own.
+    fn sync_force_movers(&mut self) {
+        let forces = self.moving_forces();
+        let keys = forces
+            .iter()
+            .map(|members| self.force_key(members[0]))
+            .collect::<Vec<_>>();
+        self.force_movers.retain(|mover| keys.contains(&mover.force));
+        for (members, key) in forces.iter().zip(keys) {
+            let leader = members[0];
+            let tactic = self.force_tactic(leader);
+            if self
+                .force_mover(key)
+                .is_some_and(|mover| mover.tactic == tactic)
+            {
+                continue;
+            }
+            let (speed, turn_rate) = self.force_mover_rates(members);
+            let lead = &self.ships[leader];
+            // `FUN_005ea030`: forward (0, 0, 1) for a lead id below
+            // 1,000,000, else (0, 0, -1). hyp: the Empire's units carry the
+            // high ids, so the forward is the lead's side vector, as each
+            // unit's at placement (`FUN_005ab650`).
+            let forward = original_side_vector(lead.identity.is_alliance);
+            let mover = TacticalForceMover {
+                force: key,
+                tactic,
+                anchor: lead.source_position,
+                forward,
+                heading: forward,
+                lateral: TacticalWorldVector {
+                    x: forward.z,
+                    y: 0.0,
+                    z: -forward.x,
+                },
+                velocity: TacticalWorldVector::ZERO,
+                last_delta: TacticalWorldVector::ZERO,
+                // port: the speed and turn rate are set at once, not at
+                // the next turn's `FUN_005ea740`.
+                speed,
+                turn_rate,
+                still_turns: 0,
+                last_turn_anchor: lead.source_position,
+            };
+            self.force_movers.retain(|existing| existing.force != key);
+            self.force_movers.push(mover);
+        }
+    }
+
+    /// A member's place: the anchor less its slot (`0x005eb040`). Surround's
+    /// slots stand on the world axes from index 1 (`0x005eb8d0`); Stand Off's
+    /// alternate along its slot axis (`FUN_005ec400`).
+    pub(crate) fn force_member_place(
+        &self,
+        mover: &TacticalForceMover,
+        members: &[usize],
+        ordinal: usize,
+    ) -> TacticalWorldPosition {
+        let anchor = mover.anchor;
+        if mover.tactic == TacticalTactic::Surround {
+            let slot = original_surround_slot(ordinal + 1);
+            return TacticalWorldPosition {
+                x: anchor.x - slot.x,
+                y: anchor.y - slot.y,
+                z: anchor.z - slot.z,
+            };
+        }
+        let spacing = members
+            .iter()
+            .filter_map(|index| self.ships[*index].source_collision_envelope)
+            .map(|envelope| (envelope.planar_diameter * ORIGINAL_FORMATION_FOOTPRINT_SCALE).trunc())
+            .fold(ORIGINAL_BATTLE_SLOT_SPACING, f32::max);
+        let offset = original_formation_lateral_offset(ordinal, spacing);
+        if offset == 0.0 {
+            return anchor;
+        }
+        TacticalWorldPosition {
+            x: anchor.x + mover.lateral.x * offset,
+            y: anchor.y,
+            z: anchor.z + mover.lateral.z * offset,
+        }
+    }
+
+    /// The anchor reached its point: the route moves on for every member
+    /// bound for it, and a maneuver's executor ends with its route
+    /// (`FUN_005a8f70`); an attack order outlives its route. port: the
+    /// members keep their own orders and routes, so a member bound
+    /// elsewhere keeps its own.
+    fn complete_force_waypoint(
+        &mut self,
+        members: &[usize],
+        point: TacticalWorldPosition,
+        completed_player_task_forces: &mut [bool; 9],
+    ) {
+        for &index in members {
+            let player = self.player_is_attacker;
+            let ship = &mut self.ships[index];
+            if ship.source_waypoint != Some(point) {
+                continue;
+            }
+            if ship.navigation_route.first() == Some(&point) {
+                ship.navigation_route.remove(0);
+            }
+            ship.source_waypoint = ship.navigation_route.first().copied();
+            if ship.source_waypoint.is_none()
+                && matches!(
+                    ship.order,
+                    TacticalOrder::LeftHook
+                        | TacticalOrder::RightHook
+                        | TacticalOrder::Hammer
+                        | TacticalOrder::Anvil
+                )
+            {
+                ship.order = TacticalOrder::None;
+                if ship.is_attacker == player {
+                    completed_player_task_forces[task_force_slot(ship.task_force)] = true;
+                }
+            }
+        }
+    }
+
+    /// The anchor's step (the mover's slot `+0xc`: Stand Off `0x005eb1a0`,
+    /// Surround `0x005eb540`) toward `point`, then its turn. Returns whether
+    /// the anchor is within `radius` of the point (the step's 0).
+    pub(crate) fn step_force_anchor(
+        mover: &mut TacticalForceMover,
+        point: TacticalWorldPosition,
+        radius: f32,
+        delta_milliseconds: f32,
+    ) -> bool {
+        let speed = mover.speed * ORIGINAL_FORMATION_SPEED_SHARE;
+        let delta = source_delta(point, mover.anchor);
+        let length = delta.x.hypot(delta.y).hypot(delta.z);
+        let arrived = if delta == TacticalWorldVector::ZERO || length <= radius {
+            mover.velocity = TacticalWorldVector::ZERO;
+            true
+        } else {
+            mover.last_delta = delta;
+            let unit = delta.normalized();
+            mover.velocity = TacticalWorldVector {
+                x: unit.x * speed,
+                y: unit.y * speed * ORIGINAL_FORMATION_VERTICAL_SHARE,
+                z: unit.z * speed,
+            };
+            let seconds = delta_milliseconds * 0.001;
+            mover.anchor.x += mover.velocity.x * seconds;
+            mover.anchor.y += mover.velocity.y * seconds;
+            mover.anchor.z += mover.velocity.z * seconds;
+            false
+        };
+        if mover.tactic == TacticalTactic::Surround {
+            // `FUN_005eae90`: Surround turns toward its own level movement,
+            // else its forward, else (0, 0, 1); a heading behind flips x
+            // and z. Its slots stay on the world axes (`0x005ead70`).
+            let level = |vector: TacticalWorldVector| {
+                TacticalWorldVector {
+                    x: vector.x,
+                    y: 0.0,
+                    z: vector.z,
+                }
+                .normalized()
+            };
+            let heading = |mover: &TacticalForceMover| {
+                [level(mover.last_delta), level(mover.forward)]
+                    .into_iter()
+                    .find(|vector| *vector != TacticalWorldVector::ZERO)
+                    .unwrap_or(TacticalWorldVector::SOURCE_FORWARD)
+            };
+            mover.heading = heading(mover);
+            if mover.forward.dot(mover.heading) < 0.0 {
+                mover.forward.x = -mover.forward.x;
+                mover.forward.z = -mover.forward.z;
+                mover.heading = heading(mover);
+            }
+            turn_original_vector(
+                &mut mover.forward,
+                mover.heading,
+                mover.turn_rate,
+                delta_milliseconds,
+            );
+            return arrived;
+        }
+        // Stand Off: the caller's heading; none level keeps the forward.
+        if mover.heading.x == 0.0 && mover.heading.z == 0.0 {
+            mover.heading = mover.forward;
+            return arrived;
+        }
+        if mover.forward.dot(mover.heading) < 0.0 {
+            mover.forward = TacticalWorldVector {
+                x: -mover.forward.x,
+                y: -mover.forward.y,
+                z: -mover.forward.z,
+            };
+        }
+        let angle = source_direction_angle(mover.forward, mover.heading);
+        if angle != 0.0 && angle >= ORIGINAL_STAND_OFF_TURN_DEAD_BAND {
+            let applied = turn_original_vector(
+                &mut mover.forward,
+                mover.heading,
+                mover.turn_rate,
+                delta_milliseconds,
+            );
+            // `0x005eae40` → `FUN_005ead90`: the slots turn with it.
+            let (sin, cos) = applied.sin_cos();
+            let lateral = mover.lateral;
+            mover.lateral = TacticalWorldVector {
+                x: lateral.x * cos - sin * lateral.z,
+                y: 0.0,
+                z: lateral.x * sin + cos * lateral.z,
+            };
+            return arrived;
+        }
+        // `0x005eb1a0`'s tail: a still formation that did not turn takes
+        // the velocity (0, 1, 0).
+        if mover.velocity == TacticalWorldVector::ZERO {
+            mover.velocity = TacticalWorldVector {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            };
+        }
+        arrived
+    }
+
+    /// A member's frame (its slot `+0x8`, `FUN_005b2f30`): it steers to its
+    /// place at no more than the force's speed, moves up or down apart,
+    /// snaps the last stretch, turns past pi / 48 (`0x5b1410`), and moves
+    /// along its level forward by how well it faces its heading.
+    fn move_force_member(
+        &mut self,
+        index: usize,
+        mover: TacticalForceMover,
+        place: TacticalWorldPosition,
+        own_speed: f32,
+        delta_milliseconds: f32,
+    ) {
+        if own_speed <= 0.0 {
+            self.ships[index].source_velocity = TacticalWorldVector::ZERO;
+            return;
+        }
+        let speed = if mover.speed <= own_speed {
+            mover.speed
+        } else {
+            own_speed
+        };
+        let seconds = delta_milliseconds * 0.001;
+        let reach = speed * seconds;
+        let to_place = |ship: &TacticalShip| {
+            let delta = source_delta(place, ship.source_position);
+            if delta.dot(delta) <= ORIGINAL_MEMBER_PLACE_RADIUS_SQUARED {
+                TacticalWorldVector::ZERO
+            } else {
+                delta
+            }
+        };
+        let overlaps = |session: &Self| {
+            session.ships.iter().enumerate().any(|(other_index, other)| {
+                other_index != index
+                    && other.alive
+                    && !other.jumping()
+                    && original_tactical_objects_overlap(&session.ships[index], other)
+            })
+        };
+        // The vertical move (`DAT_0066c4c4`, `DAT_0066c4fc`), undone on an
+        // overlap. port: the nearby objects' height bands (`+0x404`,
+        // `+0x408`, `FUN_005cdbf0`) are not ported.
+        let mut delta = to_place(&self.ships[index]);
+        let before_vertical = self.ships[index].source_position;
+        let climb = speed * ORIGINAL_FORMATION_VERTICAL_SHARE * seconds;
+        self.ships[index].source_position.y += delta.y.clamp(-climb, climb);
+        if overlaps(self) {
+            self.ships[index].source_position = before_vertical;
+        }
+        let settled = self.ships[index].source_position;
+        let ship = &self.ships[index];
+        let forward = ship.source_forward;
+        let heading = ship.source_desired_forward;
+        let alignment = (forward.x * heading.x + forward.z * heading.z).max(0.0);
+        delta = to_place(ship);
+        let level_distance = delta.x.hypot(delta.z);
+        if level_distance != 0.0
+            && level_distance <= reach
+            && alignment >= ORIGINAL_MEMBER_SNAP_ALIGNMENT
+        {
+            let ship = &mut self.ships[index];
+            ship.source_position.x += delta.x;
+            ship.source_position.z += delta.z;
+            delta = to_place(ship);
+        }
+        // The heading (slot `+0x80`, `0x005b4d40`), made level.
+        let ship = &self.ships[index];
+        let mut wanted = if ship.retreating {
+            let exit = self.withdrawal_exit_z(ship.identity.is_alliance);
+            TacticalWorldVector {
+                x: 0.0,
+                y: 0.0,
+                z: exit - ship.source_position.z,
+            }
+        } else if delta != TacticalWorldVector::ZERO {
+            delta
+        } else if let Some(target) = ship
+            .attack_target
+            .filter(|_| {
+                mover.velocity == TacticalWorldVector::ZERO
+                    && mover.still_turns >= ORIGINAL_STILL_TURNS_TO_FACE
+            })
+            .and_then(|target| match target {
+                // port: only a capital target; a fighter group's slot
+                // `+0x20` is the pure-virtual stub.
+                TacticalAttackTarget::CapitalShip(_) => self.attack_target_position(target),
+                TacticalAttackTarget::FighterGroup(_) => None,
+            })
+        {
+            // Its strongest arc against capital ships (slot `+0x84`, 4 as 0)
+            // faces the target: the bearing turned by arc × pi / 2.
+            let arc = crate::abstract_battle::strongest_arc(&ship.weapon_arcs, false).unwrap_or(0);
+            let bearing = source_delta(target, ship.source_position);
+            let turn = arc as f32 * std::f32::consts::FRAC_PI_2;
+            let (sin, cos) = turn.sin_cos();
+            TacticalWorldVector {
+                x: bearing.x * cos - sin * bearing.z,
+                y: bearing.y,
+                z: bearing.x * sin + cos * bearing.z,
+            }
+        } else {
+            forward
+        };
+        if wanted.x == 0.0 && wanted.z == 0.0 {
+            wanted = forward;
+        }
+        wanted = TacticalWorldVector {
+            x: wanted.x,
+            y: 0.0,
+            z: wanted.z,
+        }
+        .normalized();
+        let ship = &mut self.ships[index];
+        ship.source_desired_forward = wanted;
+        if source_direction_angle(ship.source_forward, wanted) > ORIGINAL_MEMBER_TURN_DEAD_BAND {
+            turn_original_tactical_ship(ship, delta_milliseconds);
+        }
+        if alignment != 0.0 && (delta.x != 0.0 || delta.z != 0.0) {
+            let forward = ship.source_forward;
+            ship.source_velocity = TacticalWorldVector {
+                x: forward.x * speed * alignment,
+                y: 0.0,
+                z: forward.z * speed * alignment,
+            };
+            ship.source_position.x += ship.source_velocity.x * seconds;
+            ship.source_position.z += ship.source_velocity.z * seconds;
+        } else {
+            ship.source_velocity = TacticalWorldVector::ZERO;
+        }
+        if self.ships[index].source_position != settled && overlaps(self) {
+            self.ships[index].source_position = settled;
+        }
+    }
+
 
     /// Apply `FUN_005cd460`'s current-to-desired turn, `FUN_005b2f30`'s
     /// velocity contract, and `FUN_005cd640`'s millisecond position integrator.
@@ -3850,115 +4399,94 @@ impl BattleSession {
                     .map_or(0.0, |mobility| mobility.effective_engine_power)
             })
             .collect::<Vec<_>>();
-        let seconds = delta_milliseconds * 0.001;
         let mut completed_player_task_forces = [false; 9];
-        for (index, effective_engine_power) in engine_power.into_iter().enumerate() {
-            if !self.ships[index].alive || self.ships[index].retreat_progress > 0.0 {
-                self.ships[index].source_velocity = TacticalWorldVector::ZERO;
+        self.sync_force_movers();
+        let forces = self.moving_forces();
+        let mut places = vec![None; self.ships.len()];
+        // The forces' steps first, then the members' moves (`0x5a9ec0`).
+        for members in &forces {
+            let leader = members[0];
+            let key = self.force_key(leader);
+            let Some(mover_index) = self.force_movers.iter().position(|mover| mover.force == key)
+            else {
                 continue;
-            }
-            if self.ships[index].retreating
-                && self.withdrawal_executor_installed(TacticalUnitRef::Ship(index))
-            {
+            };
+            let withdrawing = self.ships[leader].retreating
+                && self.withdrawal_executor_installed(TacticalUnitRef::Ship(leader));
+            if withdrawing {
                 // FUN_005cc300, order 3: the force heads for its side's exit
-                // line each step.
-                let exit = self.withdrawal_exit_z(self.ships[index].identity.is_alliance);
-                let ship = &mut self.ships[index];
-                ship.navigation_route.clear();
-                ship.source_waypoint = Some(TacticalWorldPosition {
-                    z: exit,
-                    ..ship.source_position
-                });
-            }
-            let previous_position = self.ships[index].source_position;
-            {
-                let ship = &mut self.ships[index];
-                let waypoint_delta = ship
-                    .source_waypoint
-                    .map(|waypoint| source_delta(waypoint, ship.source_position));
-                let waypoint_distance =
-                    waypoint_delta.map(|delta| delta.x.hypot(delta.y).hypot(delta.z));
-                if let Some(delta) = waypoint_delta {
-                    ship.source_desired_forward = delta.normalized();
-                }
-                turn_original_tactical_ship(ship, delta_milliseconds);
-                let alignment = original_movement_alignment(ship);
-                let forward = ship.source_forward.normalized();
-                let speed = effective_engine_power * alignment;
-                ship.source_velocity = TacticalWorldVector {
-                    x: forward.x * speed,
-                    y: forward.y * speed,
-                    z: forward.z * speed,
+                // line, facing away from its side (`DAT_0066cff8`).
+                let exit = self.withdrawal_exit_z(self.ships[leader].identity.is_alliance);
+                let anchor = self.force_movers[mover_index].anchor;
+                let away = original_side_vector(self.ships[leader].identity.is_alliance);
+                let away = TacticalWorldVector {
+                    x: -away.x,
+                    y: -away.y,
+                    z: -away.z,
                 };
-                if let (Some(waypoint), Some(distance)) = (ship.source_waypoint, waypoint_distance)
-                {
-                    if distance <= speed * seconds {
-                        let completed_order = ship.order;
-                        ship.source_position = waypoint;
-                        ship.source_velocity = TacticalWorldVector::ZERO;
-                        if ship.navigation_route.first() == Some(&waypoint) {
-                            ship.navigation_route.remove(0);
-                        }
-                        ship.source_waypoint = ship.navigation_route.first().copied();
-                        ship.source_desired_forward = ship
-                            .source_waypoint
-                            .map_or(TacticalWorldVector::ZERO, |next| {
-                                source_delta(next, ship.source_position).normalized()
-                            });
-                        // A maneuver's executor ends there (`FUN_005a8f70`);
-                        // an attack order outlives its route.
-                        if ship.source_waypoint.is_none()
-                            && matches!(
-                                ship.order,
-                                TacticalOrder::LeftHook
-                                    | TacticalOrder::RightHook
-                                    | TacticalOrder::Hammer
-                                    | TacticalOrder::Anvil
-                            )
-                        {
-                            ship.order = TacticalOrder::None;
-                            if ship.is_attacker == self.player_is_attacker
-                                && matches!(
-                                    completed_order,
-                                    TacticalOrder::LeftHook
-                                        | TacticalOrder::RightHook
-                                        | TacticalOrder::Hammer
-                                        | TacticalOrder::Anvil
-                                )
-                            {
-                                completed_player_task_forces[task_force_slot(ship.task_force)] =
-                                    true;
-                            }
-                        }
-                    } else {
-                        ship.source_position.x += ship.source_velocity.x * seconds;
-                        ship.source_position.y += ship.source_velocity.y * seconds;
-                        ship.source_position.z += ship.source_velocity.z * seconds;
-                    }
-                } else {
-                    ship.source_position.x += ship.source_velocity.x * seconds;
-                    ship.source_position.y += ship.source_velocity.y * seconds;
-                    ship.source_position.z += ship.source_velocity.z * seconds;
-                }
+                let mover = &mut self.force_movers[mover_index];
+                mover.forward = away;
+                mover.heading = away;
+                let ship = &mut self.ships[leader];
+                ship.navigation_route.clear();
+                ship.source_waypoint = Some(TacticalWorldPosition { z: exit, ..anchor });
             }
-
-            // FUN_005b2f30 performs the spatial query after integration and
-            // restores the prior position when FUN_005b2e60 reports overlap.
-            // Iterating in stable roster order preserves the source's
-            // first-mover rejection behavior.
-            if self.ships.iter().enumerate().any(|(other_index, other)| {
-                other_index != index
-                    && other.alive
-                    && !other.jumping()
-                    && original_tactical_objects_overlap(&self.ships[index], other)
-            }) {
-                self.ships[index].source_position = previous_position;
+            let lead = &self.ships[leader];
+            let Some(point) = lead.source_waypoint else {
+                // The goal is cleared (`+0x78`..`+0x84`).
+                self.force_movers[mover_index].velocity = TacticalWorldVector::ZERO;
+                for (ordinal, &index) in members.iter().enumerate() {
+                    let mover = &self.force_movers[mover_index];
+                    places[index] = Some((mover_index, self.force_member_place(mover, members, ordinal)));
+                }
+                continue;
+            };
+            // `FUN_005cc300`'s radii: a route, a maneuver, an escort or the
+            // withdrawal arrives within 1.0; closing on a target within 2.0.
+            let closing = !withdrawing
+                && lead.navigation_route.is_empty()
+                && lead.attack_target.is_some()
+                && !matches!(
+                    lead.order,
+                    TacticalOrder::LeftHook
+                        | TacticalOrder::RightHook
+                        | TacticalOrder::Hammer
+                        | TacticalOrder::Anvil
+                        | TacticalOrder::Escort
+                );
+            let radius = if closing {
+                ORIGINAL_CLOSING_ARRIVAL_RADIUS
+            } else {
+                ORIGINAL_ROUTE_ARRIVAL_RADIUS
+            };
+            if !withdrawing {
+                let mover = &mut self.force_movers[mover_index];
+                mover.heading = source_delta(point, mover.anchor).normalized();
+            }
+            let arrived = Self::step_force_anchor(
+                &mut self.force_movers[mover_index],
+                point,
+                radius,
+                delta_milliseconds,
+            );
+            if arrived && !withdrawing {
+                self.complete_force_waypoint(members, point, &mut completed_player_task_forces);
+            }
+            for (ordinal, &index) in members.iter().enumerate() {
+                let mover = &self.force_movers[mover_index];
+                places[index] = Some((mover_index, self.force_member_place(mover, members, ordinal)));
             }
         }
-        // The original retained formation visual keeps member offsets attached
-        // to its moving anchor. Reapply those offsets only after every member
-        // has completed its stable-order movement and collision query.
-        Self::refresh_original_task_force_geometry(&mut self.ships, &self.task_force_formations);
+        for (index, own_speed) in engine_power.into_iter().enumerate() {
+            let Some((mover_index, place)) = places[index].filter(|_| {
+                self.ships[index].alive && self.ships[index].retreat_progress <= 0.0
+            }) else {
+                self.ships[index].source_velocity = TacticalWorldVector::ZERO;
+                continue;
+            };
+            let mover = self.force_movers[mover_index];
+            self.move_force_member(index, mover, place, own_speed, delta_milliseconds);
+        }
         let faction = self.player_voice_faction();
         for (group, transitioned) in completed_player_task_forces.into_iter().enumerate() {
             if !transitioned {
@@ -5212,6 +5740,8 @@ impl BattleSession {
         // `+0x84` (`0x005a9d40`): each force's slot `+0xc` recomputes its
         // band.
         self.update_engagement_bands();
+        // `FUN_005ea740` (the movers' slot `+0x40`) follows the bands.
+        self.update_force_movers();
 
         for ship in &mut self.ships {
             ship.advance_original_recharge(ORIGINAL_TACTICAL_TURN_SECONDS);
@@ -7075,7 +7605,10 @@ impl BattleSession {
                     max: 0.0,
                     step: ORIGINAL_SURROUND_APPROACH_STEP,
                 });
-            let anchor = ship.source_position;
+            // `FUN_005cc300` measures from the mover's anchor.
+            let anchor = self
+                .force_mover(self.force_key(leader))
+                .map_or(ship.source_position, |mover| mover.anchor);
             let side_z = if ship.identity.is_alliance { 1.0 } else { -1.0 };
             let mut delta = source_delta(target_position, anchor);
             if delta == TacticalWorldVector::ZERO {

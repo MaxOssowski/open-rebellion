@@ -185,7 +185,9 @@ The tactic's callers:
 Still open:
 
 - which caller the Maneuvers panel's commit reaches;
-- the formation's own step (`0x005eb1a0`, slot `+0x28` and the others);
+- the formation's own step (`0x005eb1a0`, slot `+0x28` and the others):
+  read and ported 2026-10-26, see
+  `docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-formation-movers/`;
 - the tactic-3 fighter class `0x005c72b0`.
 
 The port still places every force by the Stand Off slots, whatever its

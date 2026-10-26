@@ -2413,7 +2413,10 @@ function probeTacticalManeuverMovementPresentation(viewport, folder, stable, rea
   const alliance = ready.faction === "alliance";
   const initialZ = alliance ? -56 : 56;
   const directionZ = alliance ? 1 : -1;
-  const expectedZ = initialZ + directionZ * 78.75 * 0.25;
+  // The anchor moves 0.95 x 78.75 x 0.25 (0x005eb1a0, DAT_0066d84c); the
+  // ship, within one frame's travel and facing its heading, snaps onto it
+  // (FUN_005b2f30, DAT_0066c508), so its velocity stays zero.
+  const expectedZ = initialZ + directionZ * 0.95 * 78.75 * 0.25;
   assert.equal(selected.base_engine_power, 100);
   assert.equal(selected.maneuver_state_value, 4);
   assert.equal(selected.engine_mode_bonus, 5);
@@ -2428,10 +2431,10 @@ function probeTacticalManeuverMovementPresentation(viewport, folder, stable, rea
     && selected.source_desired_forward[2] === directionZ);
   assert.ok(Math.abs(selected.source_velocity[0]) === 0
     && Math.abs(selected.source_velocity[1]) === 0
-    && selected.source_velocity[2] === directionZ * 78.75);
+    && Math.abs(selected.source_velocity[2]) === 0);
   assert.ok(Math.abs(selected.source_position[0]) === 0
     && selected.source_position[1] === 0
-    && selected.source_position[2] === expectedZ);
+    && Math.abs(selected.source_position[2] - expectedZ) < 0.0001);
   const selectedParticipant = ready.participants.find((participant) =>
     participant.kind === "capital-ship"
       && participant.faction === ready.faction
@@ -2749,10 +2752,13 @@ function probeTacticalCommandProgressionPresentation(
   assert.ok(arrived, "command progression fixture omitted its arriving capital");
   assert.equal(arrived.order_code, 0);
   assert.equal(arrived.source_waypoint, null);
-  assert.deepEqual(arrived.source_desired_forward, [0, 0, 0]);
-  const expectedArrivalZ = (ready.faction === "alliance"
+  // At its place the ship's heading is its forward (FUN_005b4d40).
+  assert.deepEqual(arrived.source_desired_forward, [0, 0, forwardSign]);
+  // The point lies within the route's 1.0 of the anchor (0x005eb1a0): the
+  // force arrives where it stands.
+  const expectedArrivalZ = ready.faction === "alliance"
     ? ready.source_layout.outer_negative_z
-    : ready.source_layout.outer_positive_z) + forwardSign;
+    : ready.source_layout.outer_positive_z;
   assert.equal(arrived.source_position[2], expectedArrivalZ);
 
   const playerFighters = ready.participants.filter((participant) =>
@@ -4941,13 +4947,22 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           assert.ok(empireShips.every(({ fleet_roster_index }) =>
             [0, 1, 2].includes(fleet_roster_index)));
         } else {
+          // The maneuver fixture moves its selected ship (roster 0) alone:
+          // its force's anchor steps 0.95 x 78.75 x 0.25 (0x005eb1a0) and the
+          // ship snaps onto it (FUN_005b2f30); every other ship stands.
           const movedFaction = scenario.maneuver_movement_presentation ? faction : null;
-          assert.ok(allianceShips.filter(({ active }) => active).every(({ source_position: position }) =>
-            position[2] === (movedFaction === "alliance" ? -36.3125 : -56)),
-          "Alliance retained formation did not follow its integrated leader");
-          assert.ok(empireShips.filter(({ active }) => active).every(({ source_position: position }) =>
-            position[2] === (movedFaction === "empire" ? 36.3125 : 56)),
-          "Imperial retained formation did not follow its integrated leader");
+          const expectedZ = (shipFaction, rosterIndex, restZ) =>
+            movedFaction === shipFaction && rosterIndex === 0
+              ? restZ - Math.sign(restZ) * 0.95 * 78.75 * 0.25
+              : restZ;
+          assert.ok(allianceShips.filter(({ active }) => active).every(
+            ({ source_position: position, fleet_roster_index }) =>
+              Math.abs(position[2] - expectedZ("alliance", fleet_roster_index, -56)) < 0.0001),
+          "Alliance formation did not follow its anchor");
+          assert.ok(empireShips.filter(({ active }) => active).every(
+            ({ source_position: position, fleet_roster_index }) =>
+              Math.abs(position[2] - expectedZ("empire", fleet_roster_index, 56)) < 0.0001),
+          "Imperial formation did not follow its anchor");
           assert.equal(allianceFighters[0].source_position[2], -36);
           assert.equal(empireFighters[0].source_position[2], 36);
         }

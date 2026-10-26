@@ -1319,6 +1319,9 @@ impl TacticalState {
                 fighter.selected = false;
             }
 
+            // Each ordered alone, in a force of its own (FUN_005aded0).
+            session.ships[turning].task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+            session.ships[arriving].task_force = TACTICAL_UNGROUPED_TASK_FORCE;
             let turning_position = session.ships[turning].source_position;
             session.ships[turning].selected = true;
             session.ships[turning].maneuverability = 4;
@@ -1969,6 +1972,24 @@ impl TacticalState {
             }
         };
         session.ships[target].source_desired_forward = session.ships[target].source_forward;
+        // A point straight ahead: the force's anchor moves toward it and the
+        // ship follows (0x005eb1a0, FUN_005b2f30). The force's other members
+        // take forces of their own (FUN_005aded0), so the ship leads it.
+        let group = session.ships[target].task_force;
+        let side = session.ships[target].is_attacker;
+        for (index, ship) in session.ships.iter_mut().enumerate() {
+            if index != target && ship.is_attacker == side && ship.task_force == group {
+                ship.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+            }
+        }
+        let ahead = session.ships[target].source_forward;
+        let start = session.ships[target].source_position;
+        session.ships[target].navigation_route.clear();
+        session.ships[target].source_waypoint = Some(TacticalWorldPosition {
+            x: start.x,
+            y: start.y,
+            z: start.z + ahead.z * 100.0,
+        });
         session.field_effects.clear();
         session.selected_ship = Some(target);
         session.selected_fighter_group = None;
@@ -9257,6 +9278,7 @@ mod tests {
             task_force_selection: None,
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             engagement_bands: Vec::new(),
+            force_movers: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -11307,31 +11329,53 @@ mod tests {
         empire.maneuver_state_value = Some(4.0);
         empire.subsystem_damage.engines = 1;
 
+        alliance.source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+        alliance.source_waypoint = Some(TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: 56.0,
+        });
+        empire.source_forward = TacticalWorldVector {
+            x: 0.0,
+            y: 0.0,
+            z: -1.0,
+        };
+        empire.source_desired_forward = empire.source_forward;
+        empire.source_waypoint = Some(TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: -56.0,
+        });
+        let close = |left: f32, right: f32| assert!((left - right).abs() < 1e-3, "{left} {right}");
+
+        // The anchor moves 0.95 x 78.75 x 0.25 (0x005eb1a0, DAT_0066d84c);
+        // within one frame's travel and facing its heading, the member
+        // snaps onto it (FUN_005b2f30, DAT_0066c508).
         let mut session = test_session(vec![alliance, empire], Vec::new(), true);
         session.advance_original_tactical_movement(250.0);
-        assert_eq!(session.ships[0].source_velocity.z, 78.75);
-        assert_eq!(session.ships[1].source_velocity.z, -78.75);
-        assert_eq!(session.ships[0].source_position.z, -36.3125);
-        assert_eq!(session.ships[1].source_position.z, 36.3125);
+        close(session.ships[0].source_position.z, -56.0 + 18.703_125);
+        close(session.ships[1].source_position.z, 56.0 - 18.703_125);
+        assert_eq!(session.ships[0].source_velocity, TacticalWorldVector::ZERO);
 
+        // Farther behind, it moves along its level forward at the force's
+        // speed times its alignment.
+        session.ships[0].source_position.z = -80.0;
+        session.advance_original_tactical_movement(250.0);
+        assert_eq!(session.ships[0].source_velocity.z, 78.75);
+        assert_eq!(session.ships[0].source_position.z, -60.3125);
+
+        // Facing away from its last heading it does not move on the level,
+        // but climbs toward its place at 0.4 of the speed.
         session.ships[0].source_desired_forward = TacticalWorldVector {
             x: 0.0,
             y: 0.0,
             z: -1.0,
         };
+        session.ships[0].source_position.y = -20.0;
         session.advance_original_tactical_movement(250.0);
         assert_eq!(session.ships[0].source_velocity, TacticalWorldVector::ZERO);
-        assert_eq!(session.ships[0].source_position.z, -36.3125);
-
-        session.ships[0].source_forward = TacticalWorldVector {
-            x: 0.0,
-            y: 1.0,
-            z: 0.0,
-        };
-        session.ships[0].source_desired_forward = session.ships[0].source_forward;
-        session.advance_original_tactical_movement(250.0);
-        assert_eq!(session.ships[0].source_velocity.y, 78.75);
-        assert_eq!(session.ships[0].source_position.y, 19.6875);
+        assert_eq!(session.ships[0].source_position.z, -60.3125);
+        close(session.ships[0].source_position.y, -20.0 + 7.875);
     }
 
     // Source: FUN_005b2e60 collision volume overlap test.
@@ -11374,10 +11418,23 @@ mod tests {
         fixed.source_collision_envelope = Some(envelope);
         fixed.source_position.z = 2.0;
 
-        let mut session = test_session(vec![moving, fixed], Vec::new(), true);
+        moving.source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+        moving.source_waypoint = Some(TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: 10.0,
+        });
+
+        // The member's snap to its place at z 1.1875 (0.95 x 5 x 0.25)
+        // would overlap the fixed ship, so it stays.
+        let mut session = test_session(vec![moving.clone(), fixed], Vec::new(), true);
         session.advance_original_tactical_movement(250.0);
         assert_eq!(session.ships[0].source_position.z, 0.0);
-        assert_eq!(session.ships[0].source_velocity.z, 5.0);
+        assert!((session.force_movers[0].anchor.z - 1.1875).abs() < 1e-4);
+
+        let mut open = test_session(vec![moving], Vec::new(), true);
+        open.advance_original_tactical_movement(250.0);
+        assert!((open.ships[0].source_position.z - 1.1875).abs() < 1e-4);
     }
 
     // Source: FUN_005ba270 maneuverability; FUN_005cd460 turn rate.
@@ -11429,7 +11486,8 @@ mod tests {
         carrier.order = TacticalOrder::Anvil;
 
         let mut fighter = test_fighter(1, true);
-        fighter.source_position.z = 3.5;
+        // 2.5 from the carrier, which arrives where it stands.
+        fighter.source_position.z = 2.5;
         fighter.sublight_engine_power = 4.0;
         fighter.order = TacticalOrder::Recover;
         fighter.recovery_state = TacticalFighterRecoveryState::Returning;
@@ -11437,20 +11495,15 @@ mod tests {
 
         let mut session = test_session(vec![carrier], vec![fighter], true);
         session.advance_original_tactical_movement(250.0);
-        assert_eq!(
-            session.ships[0].source_position,
-            TacticalWorldPosition {
-                x: 0.0,
-                y: 0.0,
-                z: 1.0,
-            }
-        );
+        // The anchor is already within the route's 1.0 (0x005eb1a0), so it
+        // arrives where it stands.
+        assert_eq!(session.ships[0].source_position, TacticalWorldPosition::ORIGIN);
         assert_eq!(session.ships[0].source_waypoint, None);
         assert_eq!(session.ships[0].source_velocity, TacticalWorldVector::ZERO);
         assert_eq!(session.ships[0].order, TacticalOrder::None);
 
         session.advance_original_fighter_recovery(250.0);
-        assert_eq!(session.fighters[0].source_position.z, 2.5);
+        assert_eq!(session.fighters[0].source_position.z, 1.5);
         assert_eq!(
             session.fighters[0].recovery_state,
             TacticalFighterRecoveryState::Docking
@@ -11565,10 +11618,12 @@ mod tests {
         session.fighters.push(bound);
         session.fighters.push(waiting);
 
-        // Without engine power the first group is still on its way to the
-        // escaping carrier when it leaves.
+        // Without engine power the first group, away from the carrier, is
+        // still on its way to it when it leaves. (The carrier turns at
+        // pi / 12 a second before it moves away: FUN_005b2f30.)
         session.paused = false;
         session.fighters[0].sublight_engine_power = 0.0;
+        session.fighters[0].source_position.z = 30.0;
         for _ in 0..16 {
             session.step();
         }
@@ -11579,6 +11634,13 @@ mod tests {
         // The side's time ends on the next turn; the carrier, at its exit
         // line, then jumps for 4000 ms (FUN_005cc300, FUN_005a6b40).
         session.ships[0].source_position.z = session.withdrawal_exit_z(true);
+        let key = session.force_key(0);
+        let at_exit = session.ships[0].source_position;
+        for mover in &mut session.force_movers {
+            if mover.force == key {
+                mover.anchor = at_exit;
+            }
+        }
         session.withdrawal_ms = Some(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         // The time ends at turn 5, step 20, where the frame's order step
         // decides the jump, stamped 7 (0x005ad4a0); its event 0x2d runs at
@@ -13273,7 +13335,8 @@ mod tests {
         assert!(ships.iter().all(|ship| ship.source_position.y == 0.0));
     }
 
-    // Source: FUN_005ea250 / FUN_005ec400 / FUN_005cbbc0 formation geometry.
+    // Source: FUN_005ea030 / FUN_005ec400 slots; 0x005eb1a0 anchor step and
+    // turn; FUN_005b2f30 members.
     #[test]
     fn task_force_followers_rotate_and_move_with_the_retained_anchor() {
         let mut ships = (0..2)
@@ -13295,18 +13358,38 @@ mod tests {
             });
         }
         BattleSession::assign_original_task_forces(&mut ships);
+        assert_eq!(ships[1].source_position.z, -12.0);
+        let goal = TacticalWorldPosition {
+            x: 50.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        ships[0].source_waypoint = Some(goal);
         let mut session = test_session(ships, Vec::new(), true);
 
         session.advance_original_tactical_movement(250.0);
 
-        assert_eq!(session.ships[0].source_position.x, 1.25);
-        assert_eq!(session.ships[1].source_position.x, 1.25);
-        assert_eq!(session.ships[0].source_position.z, 0.0);
-        assert_eq!(session.ships[1].source_position.z, -12.0);
-        assert_eq!(
-            session.ships[0].source_position.y,
-            session.ships[1].source_position.y
-        );
+        // The mover starts on the lead unit, facing the Alliance's +z with
+        // its slot axis +x (FUN_005ea030), and turns toward its goal at the
+        // shortest member rate, its slots with it (0x005eae40, FUN_005ead90).
+        let mover = session.force_movers[0];
+        let applied = original_capital_turn_rate(session.ships[0].maneuverability) * 0.25;
+        assert!((mover.forward.x - applied.sin()).abs() < 1e-5, "{mover:?}");
+        assert!((mover.lateral.x - applied.cos()).abs() < 1e-5, "{mover:?}");
+        assert!((mover.lateral.z + applied.sin()).abs() < 1e-5, "{mover:?}");
+        assert!((mover.anchor.x - 0.95 * 5.0 * 0.25).abs() < 1e-4);
+        // The lead unit snaps onto the anchor; the follower steers toward
+        // its slot, 12 along the turned axis, at its own pace.
+        assert!((session.ships[0].source_position.x - mover.anchor.x).abs() < 1e-4);
+        let place = TacticalWorldPosition {
+            x: mover.anchor.x + mover.lateral.x * 12.0,
+            y: 0.0,
+            z: mover.anchor.z + mover.lateral.z * 12.0,
+        };
+        let before = (place.x - 0.0).hypot(place.z + 12.0);
+        let follower = session.ships[1].source_position;
+        let after = (place.x - follower.x).hypot(place.z - follower.z);
+        assert!(after < before, "{follower:?} {place:?}");
     }
 
     // Source: FUN_005ae460 fighter group split threshold.
@@ -14174,9 +14257,9 @@ mod tests {
             z: 1.0,
         };
         let second = TacticalWorldPosition {
-            x: 0.0,
+            x: 0.5,
             y: 0.0,
-            z: 2.0,
+            z: 0.5,
         };
         let mut ship = test_ship(64, 0, true, true);
         ship.subsystem_capacity.engines = true;
@@ -14184,13 +14267,15 @@ mod tests {
         ship.navigation_route = vec![first, second];
         let mut session = test_session(vec![ship], Vec::new(), true);
 
+        // Both points lie within the route's arrival radius 1.0 of the
+        // anchor (0x005eb1a0), so each is reached where the force stands.
         session.advance_original_tactical_movement(10.0);
-        assert_eq!(session.ships[0].source_position, first);
+        assert_eq!(session.ships[0].source_position, TacticalWorldPosition::ORIGIN);
         assert_eq!(session.ships[0].source_waypoint, Some(second));
         assert_eq!(session.ships[0].navigation_route, vec![second]);
 
         session.advance_original_tactical_movement(10.0);
-        assert_eq!(session.ships[0].source_position, second);
+        assert_eq!(session.ships[0].source_position, TacticalWorldPosition::ORIGIN);
         assert_eq!(session.ships[0].source_waypoint, None);
         assert!(session.ships[0].navigation_route.is_empty());
     }
