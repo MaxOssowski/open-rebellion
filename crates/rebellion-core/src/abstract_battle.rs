@@ -1954,6 +1954,7 @@ mod tests {
             force_detours: Vec::new(),
             player_observing: false,
             observer_review_countdown: 0,
+            alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -7975,6 +7976,159 @@ mod tests {
             alliance.step();
         }
         assert!(beams(&alliance).is_empty());
+    }
+
+    // 0x5c8c47..0x5c8cb0 of FUN_005c8780: with an operational Death Star in
+    // the battle, the Alliance's commander sends the group of its first
+    // fighter on the Death Star run (order 6, once: +0x18) when FUN_005ad930
+    // holds (attackable, more Alliance fighter groups in the fight than the
+    // Empire's, none already on order 6); with no fighters it withdraws.
+    #[test]
+    fn the_computer_alliance_sends_its_first_group_on_the_death_star_run_once() {
+        use crate::tactical::{TacticalDeathStar, TacticalTurnEvent, TacticalWorldPosition};
+        let death_star = TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: 60.0,
+            },
+            hull: 100.0,
+            laser_charge: 0.0,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        };
+        // The Alliance attacks under the computer; the player is the Empire.
+        let build = |alliance_groups: &[u8], empire_groups: usize| {
+            let mut fighters = alliance_groups
+                .iter()
+                .map(|&group| {
+                    let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+                    wing.fighter_group = group;
+                    wing
+                })
+                .collect::<Vec<_>>();
+            fighters.extend((0..empire_groups).map(|_| fighter(false, TacticalWeaponArc::new(2, 0, 0))));
+            let mut tactical = session(
+                vec![
+                    ship(true, TacticalWeaponArc::new(0, 0, 2), 1.0),
+                    ship(false, TacticalWeaponArc::new(0, 0, 2), 1.0),
+                ],
+                fighters,
+            );
+            tactical.player_is_attacker = false;
+            tactical.death_star = Some(death_star);
+            tactical
+        };
+        let executors = |t: &BattleSession| {
+            t.turn_events
+                .iter()
+                .filter_map(|queued| match &queued.event {
+                    TacticalTurnEvent::OrderExecutor { order, fighters, .. }
+                        if *order == TacticalOrder::AttackDeathStar =>
+                    {
+                        Some((queued.stamp, fighters.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        // Three Alliance wings (groups 1, 1, 2) against one TIE group: the
+        // first wing's group, both its wings, at turn 1's review.
+        let mut tactical = build(&[1, 1, 2], 1);
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(executors(&tactical), vec![(3, vec![0, 1])]);
+        assert_eq!(tactical.fighters[0].order, TacticalOrder::AttackDeathStar);
+        assert_eq!(tactical.fighters[2].order, TacticalOrder::None);
+        assert!(tactical.alliance_raid_sent);
+        // Once only: even with the order taken back, the next review sends
+        // none.
+        tactical.fighters[0].order = TacticalOrder::None;
+        tactical.fighters[1].order = TacticalOrder::None;
+        tactical.turn_events.clear();
+        for _ in 0..24 {
+            tactical.step();
+        }
+        assert!(executors(&tactical).is_empty());
+        // As many TIE groups as Alliance wings: no run.
+        let mut even = build(&[1, 2], 2);
+        for _ in 0..4 {
+            even.step();
+        }
+        assert!(executors(&even).is_empty());
+        assert!(!even.alliance_raid_sent);
+        // A shielded Death Star cannot be attacked.
+        let mut shielded = build(&[1, 1, 2], 1);
+        shielded.death_star.as_mut().unwrap().shielded = true;
+        for _ in 0..4 {
+            shielded.step();
+        }
+        assert!(executors(&shielded).is_empty());
+        // No Alliance fighters: the computer withdraws, where it may leave;
+        // without a Death Star it does not.
+        let mut bare = build(&[], 1);
+        bare.retreat_allowed = [true, true];
+        for _ in 0..4 {
+            bare.step();
+        }
+        assert!(bare.retreat_done[0]);
+        // The Alliance's ship leaves, not the player's.
+        assert!(bare.ships[0].retreating && !bare.ships[1].retreating);
+        let mut no_death_star = build(&[], 1);
+        no_death_star.retreat_allowed = [true, true];
+        no_death_star.death_star = None;
+        for _ in 0..4 {
+            no_death_star.step();
+        }
+        assert!(!no_death_star.retreat_done[0]);
+        // Nor with a destroyed one, nor where it may not leave, nor when it
+        // has already left; nor while it still has fighters.
+        let withdrawals = |t: &BattleSession| {
+            t.turn_events
+                .iter()
+                .filter(|queued| matches!(queued.event, TacticalTurnEvent::WithdrawalExecutor(_)))
+                .count()
+        };
+        let mut wrecked = build(&[], 1);
+        wrecked.retreat_allowed = [true, true];
+        wrecked.death_star.as_mut().unwrap().destroyed = true;
+        let mut barred = build(&[], 1);
+        let mut gone = build(&[], 1);
+        gone.retreat_allowed = [true, true];
+        gone.retreat_done = [true, false];
+        let mut armed = build(&[1, 2], 2);
+        armed.retreat_allowed = [true, true];
+        for case in [&mut wrecked, &mut barred, &mut gone, &mut armed] {
+            for _ in 0..4 {
+                case.step();
+            }
+            assert_eq!(withdrawals(case), 0);
+        }
+        assert!(!wrecked.retreat_done[0] && !barred.retreat_done[0] && !armed.retreat_done[0]);
+        // An emptied wing is not in the fight: one Alliance wing against one
+        // TIE group is no majority.
+        let mut emptied = build(&[1, 2], 1);
+        emptied.fighters[1].squad_count = 0;
+        for _ in 0..4 {
+            emptied.step();
+        }
+        assert!(executors(&emptied).is_empty());
+        // Observing as the Alliance while a run is under way marks it sent;
+        // as the Empire it does not.
+        let mut observer = build(&[1, 1, 2], 1);
+        observer.player_is_attacker = true;
+        observer.trench_run_remaining_ms = Some(1_000.0);
+        observer.set_player_observing(true);
+        assert!(observer.alliance_raid_sent);
+        let mut imperial = build(&[1, 1, 2], 1);
+        imperial.trench_run_remaining_ms = Some(1_000.0);
+        imperial.set_player_observing(true);
+        assert!(!imperial.alliance_raid_sent);
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

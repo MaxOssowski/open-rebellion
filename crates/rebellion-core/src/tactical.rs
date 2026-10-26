@@ -1515,6 +1515,9 @@ pub struct BattleSession {
     pub player_observing: bool,
     /// The player's commander's count `+0x40`, in turns to its next review.
     pub observer_review_countdown: u32,
+    /// The Alliance commander's `+0x18`: it has sent a group on the Death
+    /// Star run (or one was under way when it took command).
+    pub alliance_raid_sent: bool,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -3988,6 +3991,7 @@ impl BattleSession {
             force_detours: Vec::new(),
             player_observing: false,
             observer_review_countdown: 0,
+            alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -5748,6 +5752,16 @@ impl BattleSession {
         fighters: Vec<usize>,
     ) {
         let stamp = self.command_event_stamp();
+        self.post_order_executor_stamped(order, capitals, fighters, stamp);
+    }
+
+    fn post_order_executor_stamped(
+        &mut self,
+        order: TacticalOrder,
+        capitals: Vec<usize>,
+        fighters: Vec<usize>,
+        stamp: u32,
+    ) {
         self.post_turn_event(
             stamp,
             TacticalTurnEvent::OrderExecutor {
@@ -8324,6 +8338,7 @@ impl BattleSession {
                 let player_alliance = self.attacker_is_alliance == self.player_is_attacker;
                 self.link_commander_targets(player_alliance);
                 self.commander_superlaser(player_alliance);
+                self.commander_trench_run(player_alliance, false);
                 self.observer_review_countdown = ORIGINAL_COMMANDER_REVIEW_TURNS;
             }
             self.observer_review_countdown -= 1;
@@ -8347,6 +8362,104 @@ impl BattleSession {
             self.retreat_done[side] = true;
         }
         self.commander_superlaser(alliance);
+        self.commander_trench_run(alliance, true);
+    }
+
+    /// The units in the fight of a side (`+0x988`), fighter groups only.
+    fn fighters_in_fight(&self, alliance: bool) -> Vec<usize> {
+        (0..self.fighters.len())
+            .filter(|&index| {
+                let fighter = &self.fighters[index];
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && !fighter.jumping()
+                    && fighter.identity.is_alliance == alliance
+            })
+            .collect()
+    }
+
+    /// `FUN_005ad930`: a Death Star run is worth sending when the Death Star
+    /// is attackable (`FUN_005ba450`), no run is under way (`FUN_005d0ae0`),
+    /// the Alliance has more fighter groups in the fight than the Empire,
+    /// and no Alliance force is already on order 6 (`+0x64`, `+0x68`).
+    fn death_star_run_wanted(&self) -> bool {
+        let attackable = self
+            .death_star
+            .is_some_and(|death_star| !death_star.is_alliance && death_star.attackable());
+        attackable
+            && !self.trench_run_under_way()
+            && self.fighters_in_fight(false).len() < self.fighters_in_fight(true).len()
+            && !self.fighters.iter().any(|fighter| {
+                fighter.alive
+                    && fighter.identity.is_alliance
+                    && fighter.order == TacticalOrder::AttackDeathStar
+            })
+            && !self.ships.iter().any(|ship| {
+                ship.alive
+                    && ship.identity.is_alliance
+                    && ship.order == TacticalOrder::AttackDeathStar
+            })
+    }
+
+    /// `0x5c8c47`..`0x5c8cb0`, the review's Alliance branch (a Death Star
+    /// in the battle, `+0x18` not yet set, no run under way): with a run
+    /// worth sending, the group of
+    /// its first fighter in the fight takes order 6 (`SetOrder`, the
+    /// executor at the command stamp) and `+0x18` is set; with no fighter
+    /// left, a side that may leave withdraws (`FUN_005ad530`). port: only
+    /// the computer's commander withdraws here.
+    fn commander_trench_run(&mut self, alliance: bool, computer: bool) {
+        // The whole branch needs the Death Star in the battle
+        // (`FUN_005a9330`) and operational (`FUN_005ba420`).
+        let death_star_present = self
+            .death_star
+            .is_some_and(|death_star| !death_star.is_alliance && death_star.operational());
+        if !alliance
+            || !death_star_present
+            || self.alliance_raid_sent
+            || self.trench_run_under_way()
+        {
+            return;
+        }
+        if self.death_star_run_wanted() {
+            let Some(&first) = self.fighters_in_fight(true).first() else {
+                return;
+            };
+            if self.fighters[first].order == TacticalOrder::AttackDeathStar {
+                return;
+            }
+            let group = self.fighters[first].fighter_group;
+            let members = self
+                .fighters_in_fight(true)
+                .into_iter()
+                .filter(|&index| self.fighters[index].fighter_group == group)
+                .collect::<Vec<_>>();
+            for &index in &members {
+                self.fighters[index].order = TacticalOrder::AttackDeathStar;
+                self.fighters[index].escort_target = None;
+            }
+            self.alliance_raid_sent = true;
+            let stamp = self.step_event_stamp();
+            self.post_order_executor_stamped(
+                TacticalOrder::AttackDeathStar,
+                Vec::new(),
+                members,
+                stamp,
+            );
+            return;
+        }
+        let side = usize::from(!alliance);
+        if computer
+            && self.fighters_in_fight(true).is_empty()
+            && self.retreat_allowed[side]
+            && !self.retreat_done[side]
+        {
+            let ai = !self.player_is_attacker;
+            let stamp = self.step_event_stamp();
+            self.begin_withdrawal_stamped(ai, stamp);
+            self.withdraw_fighters_stamped(ai, stamp);
+            self.retreat_done[side] = true;
+        }
     }
 
     /// `0x5c8bbc`..`0x5c8c33`, after the withdrawal test of a review: the
@@ -8379,6 +8492,10 @@ impl BattleSession {
     pub fn set_player_observing(&mut self, observing: bool) {
         if observing && !self.player_observing {
             self.observer_review_countdown = 0;
+            // `+0x18` records a trench run already under way.
+            if self.attacker_is_alliance == self.player_is_attacker {
+                self.alliance_raid_sent = self.trench_run_under_way();
+            }
         }
         self.player_observing = observing;
     }

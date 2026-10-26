@@ -9381,6 +9381,7 @@ mod tests {
             force_detours: Vec::new(),
             player_observing: false,
             observer_review_countdown: 0,
+            alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
