@@ -10397,6 +10397,8 @@ mod tactical_ground_tests {
             sublight_engine_power: 0.0,
             maneuverability: 0,
             tractor_beam_power: 0.0,
+            tractor_beam_range: 0.0,
+            tractor_request_pending: false,
             fighter_capacity: 0,
             maneuver_state_value: None,
             damage_control: 0,

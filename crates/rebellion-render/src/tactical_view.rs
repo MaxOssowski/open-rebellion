@@ -9291,6 +9291,8 @@ mod tests {
             sublight_engine_power: 100.0,
             maneuverability: 0,
             tractor_beam_power: 25.0,
+            tractor_beam_range: 0.0,
+            tractor_request_pending: false,
             fighter_capacity: 1,
             maneuver_state_value: None,
             damage_control: 100,

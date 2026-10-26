@@ -1854,6 +1854,8 @@ mod tests {
             sublight_engine_power: 2.0,
             maneuverability: 2,
             tractor_beam_power: 0.0,
+            tractor_beam_range: 0.0,
+            tractor_request_pending: false,
             fighter_capacity: 0,
             maneuver_state_value: None,
             damage_control: 0,
@@ -6454,6 +6456,201 @@ mod tests {
         assert!(!run(10, 16, 5.0));
         assert!(!run(0, 0, 5.0));
         assert!(!run(0, 16, 7.5));
+    }
+
+    /// A turbolaser ship with a tractor beam of power 10 and range 20, and
+    /// an enemy at `z` as its force's target.
+    fn tractor_pair(z: f32) -> BattleSession {
+        use crate::tactical::TacticalAttackTarget;
+        let mut source = gunship(true, TacticalWeaponArc::new(0, 0, 4));
+        source.tractor_beam_power = 10.0;
+        source.tractor_beam_range = 20.0;
+        source.subsystem_capacity.tractor = true;
+        source.order = TacticalOrder::AttackCapitalShips;
+        source.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        let mut target = gunship(false, TacticalWeaponArc::default());
+        target.source_position.z = z;
+        target.sublight_engine_power = 50.0;
+        session(vec![source, target], Vec::new())
+    }
+
+    /// The tractor events a session has queued.
+    fn tractor_events(tactical: &BattleSession) -> Vec<crate::tactical::TacticalTurnEvent> {
+        use crate::tactical::TacticalTurnEvent;
+        tactical
+            .turn_events
+            .iter()
+            .map(|queued| queued.event.clone())
+            .filter(|event| {
+                matches!(
+                    event,
+                    TacticalTurnEvent::TractorOn { .. } | TacticalTurnEvent::TractorOff { .. }
+                )
+            })
+            .collect()
+    }
+
+    // FUN_005b2140 from the weapon turn: a ship with power and its target
+    // within range posts event 0x28 and waits (+0x3ac); its handler
+    // FUN_005b2630 (slot +0x40, FUN_005b2570) holds the target, whose
+    // engines then lose the beam's power (FUN_005b17f0, FUN_005b1790).
+    #[test]
+    fn a_ship_takes_its_target_into_its_tractor_beam_through_event_0x28() {
+        use crate::tactical::{original_tactical_mobility, TacticalTurnEvent, TacticalUnitRef};
+        let mut tactical = tractor_pair(10.0);
+        let free = original_tactical_mobility(&tactical.ships, &tactical.field_effects, 1)
+            .unwrap()
+            .effective_engine_power;
+        unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        let on = TacticalTurnEvent::TractorOn { source: 0, target: 1 };
+        assert_eq!(tractor_events(&tactical), [on.clone()]);
+        assert!(tactical.ships[0].tractor_request_pending);
+        assert_eq!(tactical.tractor_target_of(0), None);
+        // Waiting, it asks nothing more.
+        unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert_eq!(tractor_events(&tactical).len(), 1);
+
+        tactical.run_turn_event(on);
+        assert_eq!(tactical.tractor_target_of(0), Some(1));
+        assert!(!tactical.ships[0].tractor_request_pending);
+        let held = original_tactical_mobility(&tactical.ships, &tactical.field_effects, 1)
+            .unwrap()
+            .effective_engine_power;
+        assert_eq!(held, free - 10.0);
+        // Held within range, it keeps it and asks nothing.
+        tactical.turn_events.clear();
+        unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert!(tractor_events(&tactical).is_empty());
+    }
+
+    // FUN_005b2140: beyond the beam's range (slot +0x5c, +0x39c) or without
+    // a beam (+0x3b8), a ship asks nothing; FUN_005b2630 holds nothing when
+    // either ship has left the fight, and the request stays on its way.
+    #[test]
+    fn a_tractor_beam_needs_range_power_and_both_ships_in_the_fight() {
+        use crate::tactical::{TacticalTurnEvent, TacticalUnitRef};
+        let mut far = tractor_pair(20.5);
+        unit_shots(&mut far, TacticalUnitRef::Ship(0));
+        assert!(tractor_events(&far).is_empty());
+        let mut edge = tractor_pair(20.0);
+        unit_shots(&mut edge, TacticalUnitRef::Ship(0));
+        assert_eq!(tractor_events(&edge).len(), 1);
+        let mut unpowered = tractor_pair(10.0);
+        unpowered.ships[0].tractor_beam_power = 0.0;
+        unit_shots(&mut unpowered, TacticalUnitRef::Ship(0));
+        assert!(tractor_events(&unpowered).is_empty());
+        let mut broken = tractor_pair(10.0);
+        broken.ships[0].subsystem_damage.tractor = 4;
+        unit_shots(&mut broken, TacticalUnitRef::Ship(0));
+        assert!(tractor_events(&broken).is_empty());
+
+        let mut gone = tractor_pair(10.0);
+        unit_shots(&mut gone, TacticalUnitRef::Ship(0));
+        gone.ships[1].alive = false;
+        gone.run_turn_event(TacticalTurnEvent::TractorOn { source: 0, target: 1 });
+        assert_eq!(gone.tractor_target_of(0), None);
+        assert!(gone.ships[0].tractor_request_pending);
+    }
+
+    // FUN_005b2140: a held ship beyond range, out of the fight, or no
+    // longer the force's target is let go (event 0x29); a ship holding
+    // another lets that one go first. FUN_005b26a0 (slot +0x48,
+    // FUN_005b2440) ends the hold and the wait.
+    #[test]
+    fn a_tractor_beam_lets_go_through_event_0x29() {
+        use crate::tactical::{TacticalTurnEvent, TacticalUnitRef};
+        let held = |z: f32| {
+            let mut tactical = tractor_pair(z);
+            assert!(tactical.set_tractor_field(0, 1, true));
+            tactical
+        };
+        let off = TacticalTurnEvent::TractorOff { source: 0, target: 1 };
+        let mut beyond = held(25.0);
+        unit_shots(&mut beyond, TacticalUnitRef::Ship(0));
+        assert_eq!(tractor_events(&beyond), [off.clone()]);
+        assert!(beyond.ships[0].tractor_request_pending);
+        beyond.run_turn_event(off.clone());
+        assert_eq!(beyond.tractor_target_of(0), None);
+        assert!(!beyond.ships[0].tractor_request_pending);
+
+        let mut untargeted = held(10.0);
+        untargeted.ships[0].attack_target = None;
+        untargeted.ships[0].order = TacticalOrder::None;
+        unit_shots(&mut untargeted, TacticalUnitRef::Ship(0));
+        assert_eq!(tractor_events(&untargeted), [off.clone()]);
+
+        let mut other = held(10.0);
+        let mut second = gunship(false, TacticalWeaponArc::default());
+        second.source_position.z = 12.0;
+        other.ships.push(second);
+        other.ships[0].attack_target =
+            Some(crate::tactical::TacticalAttackTarget::CapitalShip(2));
+        unit_shots(&mut other, TacticalUnitRef::Ship(0));
+        assert_eq!(tractor_events(&other), [off]);
+
+        let mut grouped = held(10.0);
+        grouped.fighters.push(wing_at(false, 5.0));
+        grouped.ships[0].order = TacticalOrder::AttackFighters;
+        grouped.ships[0].attack_target =
+            Some(crate::tactical::TacticalAttackTarget::FighterGroup(0));
+        unit_shots(&mut grouped, TacticalUnitRef::Ship(0));
+        assert_eq!(
+            tractor_events(&grouped),
+            [TacticalTurnEvent::TractorOff { source: 0, target: 1 }]
+        );
+    }
+
+    // FUN_005b3a40 (0x5b3b05): a unit whose arcs cannot hurt its target's
+    // class returns before FUN_005b2140, so an ion ship ordered against a
+    // group keeps the ship it holds.
+    #[test]
+    fn a_turn_ended_by_the_targets_class_keeps_the_tractor_hold() {
+        use crate::tactical::{TacticalAttackTarget, TacticalUnitRef};
+        let mut tactical = tractor_pair(10.0);
+        tactical.ships[0].weapon_arcs = [TacticalWeaponArc::new(0, 4, 0); 4];
+        assert!(tactical.set_tractor_field(0, 1, true));
+        tactical.fighters.push(wing_at(false, 5.0));
+        tactical.ships[0].order = TacticalOrder::AttackFighters;
+        tactical.ships[0].attack_target = Some(TacticalAttackTarget::FighterGroup(0));
+        unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert!(tractor_events(&tactical).is_empty());
+        // With a laser it reaches FUN_005b2140, which lets the ship go.
+        tactical.ships[0].weapon_arcs[0] = TacticalWeaponArc::new(4, 4, 0);
+        unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert_eq!(tractor_events(&tactical).len(), 1);
+    }
+
+    // FUN_005b1970 case 2: a tractor hit that leaves the beam no power
+    // (FUN_005b1790) posts 0x29; slot +0x68 (0x005b0ad0) on a ship's
+    // destruction does the same.
+    #[test]
+    fn a_tractor_beam_without_power_or_ship_lets_go() {
+        use crate::tactical::{TacticalSubsystemKind, TacticalTurnEvent};
+        let off = TacticalTurnEvent::TractorOff { source: 0, target: 1 };
+        let mut hit = tractor_pair(10.0);
+        assert!(hit.set_tractor_field(0, 1, true));
+        hit.ships[0].subsystem_damage.tractor = 3;
+        hit.hit_subsystem(0, TacticalSubsystemKind::Tractor);
+        assert_eq!(tractor_events(&hit), [off.clone()]);
+        assert!(hit.ships[0].tractor_request_pending);
+
+        let mut weakened = tractor_pair(10.0);
+        assert!(weakened.set_tractor_field(0, 1, true));
+        weakened.hit_subsystem(0, TacticalSubsystemKind::Tractor);
+        assert!(tractor_events(&weakened).is_empty());
+
+        let mut destroyed = tractor_pair(10.0);
+        assert!(destroyed.set_tractor_field(0, 1, true));
+        destroyed.ships[0].hull_current = 1;
+        destroyed.ships[0].shield = 0;
+        destroyed.hit_weapon_shot(crate::tactical::TacticalShot {
+            source: crate::tactical::TacticalUnitRef::Ship(1),
+            target: crate::tactical::OriginalFighterTarget::Capital(0),
+            kind: crate::tactical::WeaponKind::Turbolaser,
+            strength: 100.0,
+        });
+        assert!(!destroyed.ships[0].alive);
+        assert_eq!(tractor_events(&destroyed), [off]);
     }
 
     // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit

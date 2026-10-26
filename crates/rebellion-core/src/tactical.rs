@@ -659,6 +659,12 @@ pub struct TacticalShip {
     pub maneuverability: u32,
     /// Maximum tractor power stored at source offset `+0x3b8`.
     pub tractor_beam_power: f32,
+    /// `+0x39c`: the tractor beam's range (slot `+0x5c`, `0x005a66e0`).
+    pub tractor_beam_range: f32,
+    /// `+0x3ac`: a tractor request (event `0x28` or `0x29`) is on its way.
+    /// `FUN_005b2140` sets it; the events' handlers clear it
+    /// (`FUN_005b23e0`, `FUN_005b2440`).
+    pub tractor_request_pending: bool,
     /// Number of fighter squadrons this hull can recover.
     pub fighter_capacity: u32,
     /// Active state-record value at offset `+0x4c`, or no active record.
@@ -1355,6 +1361,13 @@ pub struct TacticalShot {
 /// (`0x005a9780`, table `0x5a9bc4`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum TacticalTurnEvent {
+    /// `0x28`, `FUN_005b2630`: with both ships in the fight, the source
+    /// holds the target in its tractor beam (slot `+0x40`, `FUN_005b23e0`,
+    /// `FUN_005b2570`).
+    TractorOn { source: usize, target: usize },
+    /// `0x29`, `FUN_005b26a0`: the source lets its target go (slot `+0x48`,
+    /// `FUN_005b2440`, `FUN_005b25d0`).
+    TractorOff { source: usize, target: usize },
     /// `0x44`, `0x005ba520`: the superlaser's beam starts (`0x005c12d0`).
     DeathStarBeam { target: usize },
     /// Type 3 from the Death Star, `0x005b2b60`: the target dies.
@@ -5246,6 +5259,8 @@ impl BattleSession {
                     * ORIGINAL_SUBLIGHT_ENGINE_SCALE,
                 maneuverability: class.maneuverability,
                 tractor_beam_power: class.tractor_beam_power as f32,
+                tractor_beam_range: class.tractor_beam_range as f32,
+                tractor_request_pending: false,
                 fighter_capacity: class.fighter_capacity,
                 maneuver_state_value: None,
                 damage_control: u8::try_from(class.damage_control.min(100)).unwrap_or(100),
@@ -5873,7 +5888,7 @@ impl BattleSession {
         }
     }
 
-    fn run_turn_event(&mut self, event: TacticalTurnEvent) {
+    pub(crate) fn run_turn_event(&mut self, event: TacticalTurnEvent) {
         match event {
             TacticalTurnEvent::DeathStarBeam { target } => self.start_death_star_beam(target),
             TacticalTurnEvent::DeathStarKill { target } => self.resolve_death_star_shot(target),
@@ -5888,6 +5903,27 @@ impl BattleSession {
             TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
             TacticalTurnEvent::WeaponHit(shot) => self.hit_weapon_shot(shot),
             TacticalTurnEvent::SubsystemHit { ship, kind } => self.hit_subsystem(ship, kind),
+            TacticalTurnEvent::TractorOn { source, target } => {
+                if self.unit_in_the_fight(OriginalFighterTarget::Capital(source))
+                    && self.unit_in_the_fight(OriginalFighterTarget::Capital(target))
+                {
+                    self.set_tractor_field(source, target, true);
+                    self.ships[source].tractor_request_pending = false;
+                }
+            }
+            TacticalTurnEvent::TractorOff { source, target } => {
+                if let Some(ship) = self.ships.get_mut(source) {
+                    ship.tractor_request_pending = false;
+                    set_original_tactical_field(
+                        &mut self.field_effects,
+                        source,
+                        target,
+                        OriginalTacticalFieldKind::Tractor,
+                        false,
+                    );
+                    refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
+                }
+            }
             TacticalTurnEvent::OrderExecutor {
                 order,
                 capitals,
@@ -6062,6 +6098,7 @@ impl BattleSession {
                 WeaponKind::Turbolaser,
                 OriginalTacticalImpactStage::Destroyed,
             );
+            self.release_tractor_of_destroyed(target);
         }
         if let Some(death_star) = self.death_star.as_mut() {
             death_star.action_committed = false;
@@ -6093,6 +6130,7 @@ impl BattleSession {
                     ship.shield = 0;
                     ship.alive = false;
                     ship.retreating = false;
+                    self.release_tractor_of_destroyed(index);
                     return;
                 }
                 // The step's flight then starts from 0 (`FUN_005a6b40`).
@@ -6452,7 +6490,8 @@ impl BattleSession {
             return;
         }
         let mut outcome = OriginalDirectFire::OutOfRange;
-        if let Some(target) = self.force_target(unit) {
+        let target = self.force_target(unit);
+        if let Some(target) = target {
             if !self.unit_has_weapons_against(unit, matches!(target, OriginalFighterTarget::Fighter(_))) {
                 return;
             }
@@ -6463,10 +6502,82 @@ impl BattleSession {
                 outcome = self.direct_fire(unit, nearest, shots);
             }
         }
+        // A group has no tractor beam (`+0x3b8` is 0), so it never asks.
+        if let TacticalUnitRef::Ship(index) = unit {
+            self.request_tractor(index, target);
+        }
         if order == TacticalOrder::AttackFighters
             || (self.unit_has_lasers(unit) && outcome == OriginalDirectFire::OutOfRange)
         {
             self.fire_at_nearby_fighters(unit, shots);
+        }
+    }
+
+    /// The ship its tractor beam holds (`+0x380`), if any.
+    pub fn tractor_target_of(&self, source: usize) -> Option<usize> {
+        self.field_effects
+            .iter()
+            .find(|effect| effect.tractor_sources.contains(&source))
+            .map(|effect| effect.target)
+    }
+
+    /// `FUN_005b2140`, from the weapon turn with the force's target: a
+    /// ship with a tractor beam (`+0x3b8`) and no request on its way
+    /// (`+0x3ac`) posts at most one request (slot `+0x28`):
+    /// - with no target, it lets its held ship go (`0x29`);
+    /// - holding the target, it keeps it while the target is in the fight,
+    ///   its beam has power (`FUN_005b1790`) and the target is within range
+    ///   (slot `+0x5c`); else it lets it go;
+    /// - holding another ship, it lets that one go first;
+    /// - holding none, it takes the target (`0x28`) with power and range.
+    ///
+    /// port: a fighter group as the target is not yet held; a ship holding
+    /// another one lets it go, as above.
+    fn request_tractor(&mut self, source: usize, target: Option<OriginalFighterTarget>) {
+        let ship = &self.ships[source];
+        if ship.tractor_request_pending || ship.tractor_beam_power == 0.0 {
+            return;
+        }
+        let held = self.tractor_target_of(source);
+        let event = match (target, held) {
+            (None | Some(OriginalFighterTarget::Fighter(_) | OriginalFighterTarget::DeathStar), None) => {
+                return;
+            }
+            (None | Some(OriginalFighterTarget::Fighter(_) | OriginalFighterTarget::DeathStar), Some(held)) => {
+                TacticalTurnEvent::TractorOff { source, target: held }
+            }
+            (Some(OriginalFighterTarget::Capital(target)), held) => {
+                let powered = original_effective_tractor_power(ship) != 0.0;
+                let delta = source_delta(self.ships[target].source_position, ship.source_position);
+                let within = delta.x.hypot(delta.y).hypot(delta.z) <= ship.tractor_beam_range;
+                match held {
+                    Some(held) if held == target => {
+                        if self.unit_in_the_fight(OriginalFighterTarget::Capital(target))
+                            && powered
+                            && within
+                        {
+                            return;
+                        }
+                        TacticalTurnEvent::TractorOff { source, target }
+                    }
+                    Some(held) => TacticalTurnEvent::TractorOff { source, target: held },
+                    None if powered && within => TacticalTurnEvent::TractorOn { source, target },
+                    None => return,
+                }
+            }
+        };
+        self.ships[source].tractor_request_pending = true;
+        let stamp = self.step_event_stamp();
+        self.post_turn_event(stamp, event);
+    }
+
+    /// Slot `+0x68` (`0x005b0ad0`), from a ship's destruction (slot `+0x1c`,
+    /// `FUN_005b2d20`): it lets its held ship go (`0x29`).
+    fn release_tractor_of_destroyed(&mut self, source: usize) {
+        if let Some(held) = self.tractor_target_of(source) {
+            self.ships[source].tractor_request_pending = true;
+            let stamp = self.step_event_stamp();
+            self.post_turn_event(stamp, TacticalTurnEvent::TractorOff { source, target: held });
         }
     }
 
@@ -6935,10 +7046,19 @@ impl BattleSession {
         let Some(ship) = self.ships.get_mut(index) else {
             return;
         };
-        if ship.add_subsystem_hit(kind) {
-            remove_tractor_source(&mut self.field_effects, index);
-        }
+        ship.add_subsystem_hit(kind);
         refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
+        // `FUN_005b1970` case 2: a tractor beam left with no power
+        // (`FUN_005b1790`) lets its held ship go through event `0x29`.
+        if kind == TacticalSubsystemKind::Tractor
+            && original_effective_tractor_power(&self.ships[index]) == 0.0
+        {
+            if let Some(held) = self.tractor_target_of(index) {
+                self.ships[index].tractor_request_pending = true;
+                let stamp = self.step_event_stamp();
+                self.post_turn_event(stamp, TacticalTurnEvent::TractorOff { source: index, target: held });
+            }
+        }
     }
 
     fn unit_in_the_fight(&self, unit: OriginalFighterTarget) -> bool {
@@ -7079,6 +7199,9 @@ impl BattleSession {
                     damage,
                     rolls,
                 );
+                if stage == OriginalTacticalImpactStage::Destroyed {
+                    self.release_tractor_of_destroyed(index);
+                }
                 let stamp = self.step_event_stamp();
                 for kind in subsystem_hits {
                     self.post_turn_event(stamp, TacticalTurnEvent::SubsystemHit { ship: index, kind });
@@ -8877,12 +9000,14 @@ impl BattleSession {
         }
         // State 4: event `0x2f` for each unit of the side without a working
         // hyperdrive still in the fight.
-        for (index, ship) in self.ships.iter_mut().enumerate() {
+        for index in 0..self.ships.len() {
+            let ship = &mut self.ships[index];
             if ship.alive && ship.is_attacker == side && !works[index] && !ship.jumping() {
                 ship.hull_current = 0;
                 ship.shield = 0;
                 ship.alive = false;
                 ship.retreating = false;
+                self.release_tractor_of_destroyed(index);
             }
         }
         for fighter in &mut self.fighters {
