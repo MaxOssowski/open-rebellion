@@ -633,6 +633,8 @@ pub struct TacticalState {
     render_original_starfield: bool,
     render_original_planet: bool,
     render_pyrotechnics: bool,
+    /// The units' poses before the last step, drawn toward the current ones.
+    previous_poses: Option<TacticalPoses>,
     display_holocube: bool,
     asset_renderer: TacticalAssetRenderer,
     #[cfg(feature = "interface-test-fixtures")]
@@ -643,6 +645,74 @@ pub struct TacticalState {
     proof_resource_2560: bool,
     #[cfg(feature = "interface-test-fixtures")]
     proof_lod_follows_zoom: bool,
+}
+
+/// The ships' positions and forwards and the fighter groups' positions at
+/// one step.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct TacticalPoses {
+    /// The step these poses were taken before.
+    tick: u32,
+    ships: Vec<(TacticalWorldPosition, TacticalWorldVector)>,
+    fighters: Vec<TacticalWorldPosition>,
+}
+
+impl TacticalPoses {
+    /// These poses, when they were taken just before the session's latest
+    /// step.
+    fn before_latest_step(&self, session: &BattleSession) -> Option<&Self> {
+        (self.tick + 1 == session.combat_tick).then_some(self)
+    }
+
+    fn of(session: &BattleSession) -> Self {
+        Self {
+            tick: session.combat_tick,
+            ships: session
+                .ships
+                .iter()
+                .map(|ship| (ship.source_position, ship.source_forward))
+                .collect(),
+            fighters: session
+                .fighters
+                .iter()
+                .map(|fighter| fighter.source_position)
+                .collect(),
+        }
+    }
+}
+
+/// port: the original moves its units every frame by the frame's
+/// milliseconds (`0x5a9ec0`); the port steps them every 250 ms so that a
+/// battle replays alike. Between steps a unit is drawn `fraction` of the
+/// way from its last pose to its current one, the forward renormalized.
+fn presented_pose(
+    previous: Option<(TacticalWorldPosition, TacticalWorldVector)>,
+    current: (TacticalWorldPosition, TacticalWorldVector),
+    fraction: f32,
+) -> (TacticalWorldPosition, TacticalWorldVector) {
+    let Some((from, from_forward)) = previous else {
+        return current;
+    };
+    let (to, to_forward) = current;
+    let t = fraction.clamp(0.0, 1.0);
+    let mix = |a: f32, b: f32| a + (b - a) * t;
+    let position = TacticalWorldPosition {
+        x: mix(from.x, to.x),
+        y: mix(from.y, to.y),
+        z: mix(from.z, to.z),
+    };
+    let forward = TacticalWorldVector {
+        x: mix(from_forward.x, to_forward.x),
+        y: mix(from_forward.y, to_forward.y),
+        z: mix(from_forward.z, to_forward.z),
+    }
+    .normalized();
+    let forward = if forward == TacticalWorldVector::ZERO {
+        to_forward
+    } else {
+        forward
+    };
+    (position, forward)
 }
 
 impl Default for TacticalState {
@@ -686,6 +756,7 @@ impl Default for TacticalState {
             render_original_starfield: true,
             render_original_planet: true,
             render_pyrotechnics: true,
+            previous_poses: None,
             display_holocube: true,
             asset_renderer: TacticalAssetRenderer::default(),
             #[cfg(feature = "interface-test-fixtures")]
@@ -7481,6 +7552,7 @@ pub fn draw_tactical_view(
             session.step_accumulator += dt * ticks_per_sec;
             while session.step_accumulator >= 1.0 {
                 session.step_accumulator -= 1.0;
+                state.previous_poses = Some(TacticalPoses::of(session));
                 session.step();
                 print_battle_diagnostics(session);
                 if session.phase == BattlePhase::Results {
@@ -7538,6 +7610,10 @@ pub fn draw_tactical_view(
     if state.render_original_participants {
         apply_original_collision_envelopes(state);
     }
+    let previous_poses = state
+        .session
+        .as_ref()
+        .and_then(|session| state.previous_poses.as_ref()?.before_latest_step(session));
     let (
         production_objects,
         production_fighters,
@@ -7549,20 +7625,39 @@ pub fn draw_tactical_view(
             .session
             .as_ref()
             .map(|session| {
+                let fraction = session.step_accumulator;
+                let ship_pose = |index: usize| {
+                    let ship = &session.ships[index];
+                    presented_pose(
+                        previous_poses.and_then(|poses| poses.ships.get(index).copied()),
+                        (ship.source_position, ship.source_forward),
+                        fraction,
+                    )
+                };
+                let fighter_position = |index: usize| {
+                    let current = session.fighters[index].source_position;
+                    presented_pose(
+                        previous_poses
+                            .and_then(|poses| poses.fighters.get(index).copied())
+                            .map(|position| (position, TacticalWorldVector::SOURCE_FORWARD)),
+                        (current, TacticalWorldVector::SOURCE_FORWARD),
+                        fraction,
+                    )
+                    .0
+                };
                 let ships = session
                     .ships
                     .iter()
                     .enumerate()
                     .filter(|(_, ship)| ship.alive)
                     .filter_map(|(index, ship)| {
+                        let (position, forward) = ship_pose(index);
                         ship.tactical_resource.map(|resource| TacticalRenderObject {
                             object_id: u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
                             resource_base: resource.mesh_resource_base,
-                            position: ship.source_position.rendered(),
+                            position: position.rendered(),
                             axes: original_hull_axes(macroquad::math::vec3(
-                                ship.source_forward.x,
-                                ship.source_forward.y,
-                                ship.source_forward.z,
+                                forward.x, forward.y, forward.z,
                             )),
                         })
                     })
@@ -7585,7 +7680,7 @@ pub fn draw_tactical_view(
                                     .grouped_far_resource(player_side, fighter.fighter_group),
                                 indicator_resource_id: resource
                                     .grouped_indicator_resource(player_side, fighter.fighter_group),
-                                position: fighter.source_position.rendered(),
+                                position: fighter_position(index).rendered(),
                             }
                         })
                     })
@@ -7595,7 +7690,7 @@ pub fn draw_tactical_view(
                         .impact_effects
                         .iter()
                         .filter_map(|effect| {
-                            let ship = session.ships.get(effect.target)?;
+                            session.ships.get(effect.target)?;
                             let (source_width, source_height) = effect.sequence.source_size();
                             Some(TacticalEffectRenderObject {
                                 object_id: u32::try_from(effect.target)
@@ -7605,7 +7700,7 @@ pub fn draw_tactical_view(
                                     + u32::from(effect.frame),
                                 source_width,
                                 source_height,
-                                position: ship.source_position.rendered(),
+                                position: ship_pose(effect.target).0.rendered(),
                             })
                         })
                         .collect::<Vec<_>>()
@@ -7616,7 +7711,7 @@ pub fn draw_tactical_view(
                     .field_effects
                     .iter()
                     .filter_map(|effect| {
-                        let ship = session.ships.get(effect.target)?;
+                        session.ships.get(effect.target)?;
                         Some(TacticalEffectRenderObject {
                             object_id: u32::try_from(effect.target)
                                 .unwrap_or(u32::MAX)
@@ -7624,7 +7719,7 @@ pub fn draw_tactical_view(
                             resource_id: effect.resource_id()?,
                             source_width: 128,
                             source_height: 128,
-                            position: ship.source_position.rendered(),
+                            position: ship_pose(effect.target).0.rendered(),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -11021,6 +11116,52 @@ mod tests {
                 expected
             );
         }
+    }
+
+    // Our own presentation between 250 ms steps; no source claim beyond the
+    // original's per-frame movement (0x5a9ec0).
+    #[test]
+    fn units_are_drawn_between_their_last_two_steps() {
+        let from = TacticalWorldPosition {
+            x: 0.0,
+            y: 2.0,
+            z: -10.0,
+        };
+        let to = TacticalWorldPosition {
+            x: 4.0,
+            y: 2.0,
+            z: -6.0,
+        };
+        let east = TacticalWorldVector {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let north = TacticalWorldVector::SOURCE_FORWARD;
+        let (position, forward) = presented_pose(Some((from, east)), (to, north), 0.25);
+        assert_eq!(position, TacticalWorldPosition { x: 1.0, y: 2.0, z: -9.0 });
+        let expected = TacticalWorldVector { x: 0.75, y: 0.0, z: 0.25 }.normalized();
+        assert!((forward.x - expected.x).abs() < 1e-6 && (forward.z - expected.z).abs() < 1e-6);
+        assert_eq!(presented_pose(Some((from, east)), (to, north), 1.0), (to, north));
+        assert_eq!(presented_pose(Some((from, east)), (to, north), 0.0).0, from);
+        assert_eq!(presented_pose(None, (to, north), 0.5), (to, north));
+        // Poses are kept for the step after the one they were taken at only.
+        let mut session = test_session(vec![test_ship(64, 0, true, true)], vec![test_fighter(1, true)], true);
+        session.ships[0].source_position = from;
+        session.fighters[0].source_position = to;
+        session.combat_tick = 7;
+        let poses = TacticalPoses::of(&session);
+        assert_eq!(poses.tick, 7);
+        assert_eq!(poses.ships, vec![(from, session.ships[0].source_forward)]);
+        assert_eq!(poses.fighters, vec![to]);
+        assert!(poses.before_latest_step(&session).is_none());
+        session.combat_tick = 8;
+        assert!(poses.before_latest_step(&session).is_some());
+        session.combat_tick = 9;
+        assert!(poses.before_latest_step(&session).is_none());
+        // A turn through the opposite direction falls back to the current.
+        let south = TacticalWorldVector { x: 0.0, y: 0.0, z: -1.0 };
+        assert_eq!(presented_pose(Some((to, south)), (to, north), 0.5).1, north);
     }
 
     // Source: FUN_005ee590 / LAB_005eeb90 projectile interpolation.
