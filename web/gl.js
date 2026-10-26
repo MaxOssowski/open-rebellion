@@ -24,9 +24,12 @@ var high_dpi = false;
 // if false, requestAnimationFrame will be called at the end of each frame
 var blocking_event_loop = false;
 
+// Open Rebellion: no multisampling. The original drew its battle into an
+// 8-bit surface through d3dim's RGB emulation (FUN_7403e4f0), which never
+// blends edges; native macroquad renders without multisampling as well.
 function init_webgl(version) {
     if (version == 1) {
-        gl = canvas.getContext("webgl");
+        gl = canvas.getContext("webgl", { antialias: false });
 
         function acquireVertexArrayObjectExtension(ctx) {
             // Extension available in WebGL 1 from Firefox 25 and WebKit 536.28/desktop Safari 6.0.3 onwards. Core feature in WebGL 2.
@@ -88,7 +91,7 @@ function init_webgl(version) {
             alert("Cant initialize WEBGL_depth_texture extension");
         }
     } else {
-        gl = canvas.getContext("webgl2");
+        gl = canvas.getContext("webgl2", { antialias: false });
     }
     if (gl === null) {
         alert("Unable to initialize WebGL. Your browser or machine may not support it.");
