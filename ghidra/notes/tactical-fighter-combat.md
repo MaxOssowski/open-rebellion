@@ -22,10 +22,10 @@ transport.
 | `FUN_005b7a80` | Scores a target class without a concrete object |
 | `FUN_005b23a0` | Produces torpedo event strength |
 | `FUN_005b1650` | Returns target shield ratio |
-| `FUN_005b5100` | Laser hit and overflow damage |
-| `FUN_005b5750` | Ion hit and overflow damage |
-| `FUN_005b5b60` | Turbolaser hit and overflow damage |
-| `FUN_005b5f50` | Torpedo hit and overflow damage |
+| `FUN_005b5100` | Laser hit and overflow damage (event `0x11`, slot `+0xd8`) |
+| `FUN_005b5750` | Torpedo hit and overflow damage (event `0x14`, slot `+0xd4`) |
+| `FUN_005b5b60` | Ion hit: shields only; past them, engine stun and arc knockouts (event `0x12`, slot `+0xdc`; `evidence/2026-10-26-ion-hits/`) |
+| `FUN_005b5f50` | Turbolaser hit and overflow damage (event `0x13`, slot `+0xe0`) |
 | `FUN_005b5700` | Direct floating hull damage path |
 
 ## Object and DAT transport

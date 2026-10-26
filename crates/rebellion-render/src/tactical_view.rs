@@ -9308,6 +9308,7 @@ mod tests {
             tractor_beam_power: 25.0,
             tractor_beam_range: 0.0,
             tractor_request_pending: false,
+            ion_engine_stun: 0.0,
             fighter_capacity: 1,
             maneuver_state_value: None,
             damage_control: 100,

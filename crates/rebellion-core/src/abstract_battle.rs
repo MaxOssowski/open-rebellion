@@ -1856,6 +1856,7 @@ mod tests {
             tractor_beam_power: 0.0,
             tractor_beam_range: 0.0,
             tractor_request_pending: false,
+            ion_engine_stun: 0.0,
             fighter_capacity: 0,
             maneuver_state_value: None,
             damage_control: 0,
@@ -6692,6 +6693,129 @@ mod tests {
         });
         assert!(!destroyed.ships[0].alive);
         assert_eq!(tractor_events(&destroyed), [off]);
+    }
+
+    /// An enemy ship with shields `shield` and 100 hull, hit by an ion
+    /// shot of `strength` from a stream that yields `draws` as (minimum,
+    /// maximum, value) triples.
+    fn ion_hit(shield: i32, strength: f32, draws: &[(u32, u32, u32)]) -> BattleSession {
+        use crate::tactical::{OriginalFighterTarget, TacticalShot, TacticalUnitRef, WeaponKind};
+        let shooter = gunship(true, TacticalWeaponArc::new(0, 4, 0));
+        let mut target = gunship(false, TacticalWeaponArc::new(0, 0, 4));
+        target.shield = shield;
+        target.shield_max = shield.max(1);
+        target.hull_current = 100;
+        target.hull_max = 100;
+        let mut tactical = session(vec![shooter, target], Vec::new());
+        tactical.tactical_rng = (0..)
+            .map(OriginalTacticalRng::new)
+            .find(|rng| {
+                let mut rng = *rng;
+                draws
+                    .iter()
+                    .all(|&(minimum, maximum, value)| rng.inclusive(minimum, maximum) == value)
+            })
+            .expect("a stream gives the draws");
+        tactical.hit_weapon_shot(TacticalShot {
+            source: TacticalUnitRef::Ship(0),
+            target: OriginalFighterTarget::Capital(1),
+            kind: WeaponKind::IonCannon,
+            strength,
+        });
+        tactical
+    }
+
+    // FUN_005b5b60 (event 0x12, slot +0xdc): ions never touch the hull.
+    // While the shields hold they lose the damage, and a draw of 0 to 100
+    // at most the share lost (at least 1) posts a shield hit (0x1e).
+    #[test]
+    fn ions_drain_the_shields_and_never_the_hull() {
+        use crate::tactical::{TacticalSubsystemKind, TacticalTurnEvent};
+        let shield_hit = |tactical: &BattleSession| {
+            tactical.turn_events.iter().any(|queued| {
+                queued.event
+                    == TacticalTurnEvent::SubsystemHit {
+                        ship: 1,
+                        kind: TacticalSubsystemKind::Shields,
+                    }
+            })
+        };
+        let held = ion_hit(20, 5.0, &[(0, 100, 25)]);
+        assert_eq!((held.ships[1].shield, held.ships[1].hull_current), (15, 100));
+        assert!(shield_hit(&held));
+        let missed = ion_hit(20, 5.0, &[(0, 100, 26)]);
+        assert_eq!(missed.ships[1].shield, 15);
+        assert!(!shield_hit(&missed));
+        // Half a percent lost still counts as 1.
+        let small = ion_hit(400, 2.0, &[(0, 100, 1)]);
+        assert!(shield_hit(&small));
+    }
+
+    // FUN_005b5b60's overflow: shields to 0, hull untouched, and per point
+    // beyond them a draw of 1 to 10: 1 a dead timer (+0x3b0, 30 to 50), 2
+    // the engines' stun (+0x3b4, 30 to 50), 3 to 10 arc (draw - 3) / 2;
+    // event 0x16 carries the stun and the arcs.
+    #[test]
+    fn an_ion_overflow_stuns_engines_and_knocks_out_arcs() {
+        use crate::tactical::TacticalTurnEvent;
+        let tactical = ion_hit(
+            2,
+            6.0,
+            &[(1, 10, 2), (30, 50, 41), (1, 10, 1), (30, 50, 33), (1, 10, 4), (1, 10, 10)],
+        );
+        assert_eq!((tactical.ships[1].shield, tactical.ships[1].hull_current), (0, 100));
+        let events = tactical
+            .turn_events
+            .iter()
+            .filter(|queued| matches!(queued.event, TacticalTurnEvent::IonDisable { .. }))
+            .map(|queued| queued.event.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            events,
+            [TacticalTurnEvent::IonDisable {
+                ship: 1,
+                engine_stun: 41.0,
+                arcs: [true, false, false, true],
+            }]
+        );
+    }
+
+    // Event 0x16 (FUN_005b2340): the stun grows and the arcs are emptied
+    // (FUN_005b6980) and queued (FUN_005b64e0); a stunned ship's speed is 0
+    // (FUN_005b17f0); the stun runs down a second a turn (FUN_005b0330);
+    // a queued arc with no guns is ready once recharged (FUN_005b6320).
+    #[test]
+    fn an_ion_stun_stops_the_engines_for_its_seconds() {
+        use crate::tactical::{original_tactical_mobility, TacticalTurnEvent};
+        let mut tactical = ion_hit(10, 1.0, &[(0, 100, 100)]);
+        tactical.ships[1].sublight_engine_power = 50.0;
+        tactical.ships[1].weapon_arcs[1] = TacticalWeaponArc::default();
+        tactical.run_turn_event(TacticalTurnEvent::IonDisable {
+            ship: 1,
+            engine_stun: 2.0,
+            arcs: [true, true, false, false],
+        });
+        let ship = &tactical.ships[1];
+        assert_eq!(ship.ion_engine_stun, 2.0);
+        assert!(!ship.weapon_arcs[0].ready && ship.weapon_arcs[0].energy == 0.0);
+        assert_eq!(ship.weapon_recharge_queue, vec![0, 1]);
+        let speed = |tactical: &BattleSession| {
+            original_tactical_mobility(&tactical.ships, &tactical.field_effects, 1)
+                .unwrap()
+                .effective_engine_power
+        };
+        assert_eq!(speed(&tactical), 0.0);
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[1].ion_engine_stun, 1.0);
+        assert_eq!(speed(&tactical), 0.0);
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[1].ion_engine_stun, 0.0);
+        assert!(speed(&tactical) > 0.0);
+        assert!(tactical.ships[1].weapon_arcs[1].ready);
     }
 
     // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit

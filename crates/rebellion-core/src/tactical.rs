@@ -665,6 +665,11 @@ pub struct TacticalShip {
     /// `FUN_005b2140` sets it; the events' handlers clear it
     /// (`FUN_005b23e0`, `FUN_005b2440`).
     pub tractor_request_pending: bool,
+    /// `+0x3b4`: seconds the engines stay out after ion hits (event `0x16`,
+    /// `FUN_005b2340`); the ship's speed is 0 while it is not 0
+    /// (`FUN_005b17f0`), and it falls by a second each turn (slot `+0x9c`,
+    /// `FUN_005b0330`).
+    pub ion_engine_stun: f32,
     /// Number of fighter squadrons this hull can recover.
     pub fighter_capacity: u32,
     /// Active state-record value at offset `+0x4c`, or no active record.
@@ -1125,7 +1130,9 @@ impl TacticalShip {
             recharge -= restored;
             if arc.energy >= arc.energy_capacity {
                 arc.energy = arc.energy_capacity;
-                arc.ready = arc.energy_capacity > 0.0;
+                // `FUN_005b6320`: a queued arc is ready once full, an arc
+                // with no guns too (an ion knockout queues one).
+                arc.ready = true;
             }
         }
         self.weapon_recharge_queue.retain(|&arc_index| {
@@ -1365,6 +1372,10 @@ pub enum TacticalTurnEvent {
     /// holds the target in its tractor beam (slot `+0x40`, `FUN_005b23e0`,
     /// `FUN_005b2570`).
     TractorOn { source: usize, target: TacticalUnitRef },
+    /// `0x16`, `FUN_005b2340`, posted by an ion hit through the shields
+    /// (`FUN_005b5b60`): the engines' stun grows (`+0x3b4`), and each
+    /// flagged arc is emptied (`FUN_005b6980`) and queued (`FUN_005b64e0`).
+    IonDisable { ship: usize, engine_stun: f32, arcs: [bool; 4] },
     /// `0x29`, `FUN_005b26a0`: the source lets its target go (slot `+0x48`,
     /// `FUN_005b2440`, `FUN_005b25d0`).
     TractorOff { source: usize, target: TacticalUnitRef },
@@ -3559,7 +3570,10 @@ pub fn original_tactical_mobility(
 ) -> Option<TacticalSubsystemMobility> {
     let ship = ships.get(target)?;
     let engine_mode_bonus = original_engine_mode_bonus(ship.maneuver_state_value);
-    if !ship.subsystem_capacity.engines || ship.sublight_engine_power <= 0.0 {
+    if !ship.subsystem_capacity.engines
+        || ship.sublight_engine_power <= 0.0
+        || ship.ion_engine_stun != 0.0
+    {
         return Some(TacticalSubsystemMobility {
             base_engine_power: ship.sublight_engine_power.max(0.0),
             engine_mode_bonus,
@@ -5261,6 +5275,7 @@ impl BattleSession {
                 tractor_beam_power: class.tractor_beam_power as f32,
                 tractor_beam_range: class.tractor_beam_range as f32,
                 tractor_request_pending: false,
+                ion_engine_stun: 0.0,
                 fighter_capacity: class.fighter_capacity,
                 maneuver_state_value: None,
                 damage_control: u8::try_from(class.damage_control.min(100)).unwrap_or(100),
@@ -5903,6 +5918,21 @@ impl BattleSession {
             TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
             TacticalTurnEvent::WeaponHit(shot) => self.hit_weapon_shot(shot),
             TacticalTurnEvent::SubsystemHit { ship, kind } => self.hit_subsystem(ship, kind),
+            TacticalTurnEvent::IonDisable { ship, engine_stun, arcs } => {
+                if let Some(ship) = self.ships.get_mut(ship) {
+                    ship.ion_engine_stun += engine_stun;
+                    for (index, knocked) in arcs.into_iter().enumerate() {
+                        if knocked {
+                            ship.weapon_arcs[index].ready = false;
+                            ship.weapon_arcs[index].energy = 0.0;
+                            let index = u8::try_from(index).unwrap_or(3);
+                            if !ship.weapon_recharge_queue.contains(&index) {
+                                ship.weapon_recharge_queue.push(index);
+                            }
+                        }
+                    }
+                }
+            }
             TacticalTurnEvent::TractorOn { source, target } => {
                 if self.unit_in_the_fight(OriginalFighterTarget::Capital(source))
                     && self.unit_in_the_fight(Self::fire_target_of(target))
@@ -6394,6 +6424,12 @@ impl BattleSession {
             if !self.unit_takes_its_turn(TacticalUnitRef::Ship(ship_index)) {
                 continue;
             }
+            // `FUN_005b0330` first lets the ion stun (`+0x3b4`) run down by
+            // the turn's 1000 ms × 0.001 (`DAT_0066c48c`), not below 0.
+            let ship = &mut self.ships[ship_index];
+            if ship.ion_engine_stun > 0.0 {
+                ship.ion_engine_stun = (ship.ion_engine_stun - ORIGINAL_TACTICAL_TURN_SECONDS).max(0.0);
+            }
             if repair_turn && self.ships[ship_index].subsystem_damage.total_hits() > 0 {
                 let hits = self.ships[ship_index].subsystem_damage.total_hits();
                 let chance_roll = u8::try_from(self.tactical_rng.inclusive(1, 100)).unwrap_or(100);
@@ -6518,6 +6554,73 @@ impl BattleSession {
         {
             self.fire_at_nearby_fighters(unit, shots);
         }
+    }
+
+    /// An ion hit on a capital ship (event `0x12`, slot `+0xdc`,
+    /// `FUN_005b5b60`). Ions never touch the hull:
+    /// - when the shields hold, the shields lose the damage, and a draw of 0
+    ///   to 100 at most the share of shield lost (at least 1) posts a shield
+    ///   hit (`0x1e`);
+    /// - when they fail, they drop to 0, and each point beyond them draws 1
+    ///   to 10: 1 adds 30 to 50 to `+0x3b0` (a timer nothing reads), 2 adds
+    ///   30 to 50 seconds to the engines' stun (`+0x3b4`), and 3 to 10 knock
+    ///   out arc (draw - 3) / 2. Event `0x16` then carries them.
+    fn hit_capital_with_ions(&mut self, index: usize, strength: f32) {
+        let ship = &self.ships[index];
+        if !ship.alive || ship.hull_current <= 0 {
+            return;
+        }
+        let damage = original_tactical_integer_damage(strength).max(1);
+        let before = ship.shield;
+        let after = before - damage;
+        let stamp = self.step_event_stamp();
+        if after >= 0 {
+            self.ships[index].shield = after;
+            let lost = ((100.0 / before as f32) * (before - after) as f32).max(1.0);
+            let roll = self.tactical_rng.inclusive(0, 100);
+            if roll as f32 <= lost {
+                self.post_turn_event(
+                    stamp,
+                    TacticalTurnEvent::SubsystemHit {
+                        ship: index,
+                        kind: TacticalSubsystemKind::Shields,
+                    },
+                );
+            }
+            queue_original_tactical_impact(
+                &mut self.impact_effects,
+                index,
+                WeaponKind::IonCannon,
+                OriginalTacticalImpactStage::Hit,
+            );
+            return;
+        }
+        self.ships[index].shield = 0;
+        let mut engine_stun = 0.0;
+        let mut arcs = [false; 4];
+        for _ in 0..-after {
+            match self.tactical_rng.inclusive(1, 10) {
+                1 => {
+                    self.tactical_rng.inclusive(30, 50);
+                }
+                2 => engine_stun += self.tactical_rng.inclusive(30, 50) as f32,
+                draw => arcs[((draw - 3) >> 1) as usize] = true,
+            }
+        }
+        self.post_turn_event(
+            stamp,
+            TacticalTurnEvent::IonDisable {
+                ship: index,
+                engine_stun,
+                arcs,
+            },
+        );
+        queue_original_tactical_impact(
+            &mut self.impact_effects,
+            index,
+            WeaponKind::IonCannon,
+            OriginalTacticalImpactStage::Hit,
+        );
     }
 
     /// The unit its tractor beam holds (`+0x380`), if any.
@@ -7199,6 +7302,9 @@ impl BattleSession {
             }
         };
         match shot.target {
+            OriginalFighterTarget::Capital(index) if shot.kind == WeaponKind::IonCannon => {
+                self.hit_capital_with_ions(index, shot.strength);
+            }
             OriginalFighterTarget::Capital(index) => {
                 let target_is_attacker = self.ships[index].is_attacker;
                 let target_group = self.ships[index].task_force;
