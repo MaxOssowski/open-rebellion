@@ -10273,6 +10273,7 @@ mod tactical_ground_tests {
             force_detours: Vec::new(),
             player_observing: false,
             observer_review_countdown: 0,
+            commanders_regrouped: [false; 2],
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),

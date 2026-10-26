@@ -45,6 +45,9 @@ pub const ORIGINAL_PROJECTILE_DURATION_LONG: f32 = 2.0;
 /// `FUN_005b0330` resets the subsystem-repair timer to 50 * 1000 ms; it
 /// runs once a turn (`0x005a9de0`, slot `+0x9c`), so every 50 turns.
 pub const ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS: u32 = 50;
+/// `DAT_0066cbb0`: `FUN_005c81d0` weighs a ship's longest range against its
+/// speed by -10000 when it sorts the regroup lists.
+pub const ORIGINAL_REGROUP_RANGE_WEIGHT: f32 = -10_000.0;
 /// `FUN_005b3a40` (`0x5b3a92`): a unit's weapons draw 0 to this each turn
 /// and fire only on 0.
 pub const ORIGINAL_WEAPON_TURN_DRAW_MAX: u32 = 2;
@@ -1547,6 +1550,9 @@ pub struct BattleSession {
     pub player_observing: bool,
     /// The player's commander's count `+0x40`, in turns to its next review.
     pub observer_review_countdown: u32,
+    /// Each side's commander latch `+0x14`, Alliance first: its first
+    /// review regroups its capital ships (slot `+0x18`, `FUN_005c8300`).
+    pub commanders_regrouped: [bool; 2],
     /// The Alliance commander's `+0x18`: it has sent a group on the Death
     /// Star run (or one was under way when it took command).
     pub alliance_raid_sent: bool,
@@ -4160,6 +4166,7 @@ impl BattleSession {
             force_detours: Vec::new(),
             player_observing: false,
             observer_review_countdown: 0,
+            commanders_regrouped: [false; 2],
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
@@ -9309,6 +9316,7 @@ impl BattleSession {
         if self.player_observing {
             if self.observer_review_countdown == 0 {
                 let player_alliance = self.attacker_is_alliance == self.player_is_attacker;
+                self.regroup_on_first_review(player_alliance);
                 self.link_commander_targets(player_alliance);
                 self.commander_superlaser(player_alliance);
                 self.commander_trench_run(player_alliance, false);
@@ -9320,6 +9328,7 @@ impl BattleSession {
             return;
         }
         let alliance = self.attacker_is_alliance != self.player_is_attacker;
+        self.regroup_on_first_review(alliance);
         self.link_commander_targets(alliance);
         let side = usize::from(!alliance);
         if self.retreat_allowed[side]
@@ -9336,6 +9345,86 @@ impl BattleSession {
         }
         self.commander_superlaser(alliance);
         self.commander_trench_run(alliance, true);
+    }
+
+    /// `FUN_005c8780` (`0x005c8a9c`): a commander's first review, before it
+    /// links its targets, runs its slot `+0x18` (`FUN_005c8300`) once
+    /// (`+0x14`). That disbands its capital task forces (event `0x32` for
+    /// each) and rebuilds them from three lists filled at the battle's
+    /// setup (`FUN_005c81d0`):
+    /// - `+0x98`, the armed ships without laser cannons, into slots 0 to 3;
+    /// - `+0xa0`, those with laser cannons (`FUN_005b7ce0`), into the next
+    ///   four slots;
+    /// - `+0xa8`, the unarmed ones (`FUN_005b7d10`), up to slot 7.
+    ///
+    /// Each list is sorted by `-(speed + 10000 × longest range)`
+    /// (`DAT_0066cbb0` = -10000, slot `+0x90`, `FUN_005b18d0`), the first of
+    /// equal keys first (`FUN_005f4f10`). Slot `+0x20` (`FUN_005c8660`) makes
+    /// it `k` forces, the largest `k` with `k² ≤` its count, at most its
+    /// slots: every `count / k`-th ship starts a force (`FUN_005aded0`), the
+    /// others join the last one (`FUN_005ade50`). Fighter groups stay.
+    ///
+    /// port: the lists are made at the first review, when nothing has fought
+    /// yet; a force's slot is its task force. The old forces are empty once
+    /// rebuilt, so their `0x32` events change nothing and are not posted.
+    fn regroup_on_first_review(&mut self, alliance: bool) {
+        let side = usize::from(!alliance);
+        if self.commanders_regrouped[side] {
+            return;
+        }
+        self.commanders_regrouped[side] = true;
+        let mut lists: [Vec<(f32, usize)>; 3] = Default::default();
+        for index in 0..self.ships.len() {
+            let ship = &self.ships[index];
+            if !ship.alive || ship.identity.is_alliance != alliance {
+                continue;
+            }
+            let unit = TacticalUnitRef::Ship(index);
+            let speed = original_tactical_mobility(&self.ships, &self.field_effects, index)
+                .map_or(0.0, |mobility| mobility.effective_engine_power);
+            let key = -(speed - self.unit_max_weapon_range(unit) * ORIGINAL_REGROUP_RANGE_WEIGHT);
+            let list = if !self.unit_has_weapons_against(unit, false) {
+                2
+            } else if self.unit_has_lasers(unit) {
+                1
+            } else {
+                0
+            };
+            lists[list].push((key, index));
+        }
+        let mut first = 0;
+        for (list, members) in lists.iter_mut().enumerate() {
+            members.sort_by(|left, right| left.0.total_cmp(&right.0));
+            let last = if list == 2 { 7 } else { first + 3 };
+            let made = self.rebuild_forces(members, first, last);
+            first += made;
+        }
+    }
+
+    /// `FUN_005c8660`: one list into forces from slot `first` to `last`.
+    /// Returns how many it made.
+    fn rebuild_forces(&mut self, members: &[(f32, usize)], first: u8, last: u8) -> u8 {
+        let count = members.len();
+        if count == 0 {
+            return 0;
+        }
+        let mut forces = 1_usize;
+        while forces * forces <= count && forces <= usize::from(last) {
+            forces += 1;
+        }
+        let forces = if count < 2 { 1 } else { forces - 1 }
+            .min(usize::from(last.saturating_sub(first)) + 1);
+        let every = count / forces;
+        let mut made = 0;
+        let mut slot = first;
+        for (position, &(_, index)) in members.iter().enumerate() {
+            if position % every == 0 && made < forces {
+                slot = first + u8::try_from(made).unwrap_or(7);
+                made += 1;
+            }
+            self.ships[index].task_force = slot;
+        }
+        u8::try_from(made).unwrap_or(7)
     }
 
     /// The units in the fight of a side (`+0x988`), fighter groups only.

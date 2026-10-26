@@ -1977,6 +1977,7 @@ mod tests {
             force_detours: Vec::new(),
             player_observing: false,
             observer_review_countdown: 0,
+            commanders_regrouped: [false; 2],
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
@@ -6816,6 +6817,89 @@ mod tests {
         assert_eq!(tactical.ships[1].ion_engine_stun, 0.0);
         assert!(speed(&tactical) > 0.0);
         assert!(tactical.ships[1].weapon_arcs[1].ready);
+    }
+
+    /// The computer's (Empire's) ships after its first review (turn 1):
+    /// each ship's task force.
+    fn regrouped(ai: Vec<TacticalShip>) -> Vec<u8> {
+        let mut ships = vec![ship(true, TacticalWeaponArc::default(), 0.0)];
+        ships.extend(ai);
+        let mut tactical = session(ships, Vec::new());
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(tactical.commanders_regrouped, [false, true]);
+        tactical.ships[1..].iter().map(|ship| ship.task_force).collect()
+    }
+
+    fn armed(arc: TacticalWeaponArc, range: f32) -> TacticalShip {
+        let mut value = ship(false, arc, 0.0);
+        value.weapon_ranges = TacticalWeaponRanges {
+            laser_cannon: range,
+            ion_cannon: range,
+            turbolaser: range,
+        };
+        value.hull_current = 1_000_000;
+        value.hull_max = 1_000_000;
+        value
+    }
+
+    // FUN_005c8780's first review runs slot +0x18 (FUN_005c8300) once:
+    // FUN_005c8660 makes a list of c ships the largest k forces with
+    // k * k <= c; every (c / k)-th ship starts one (FUN_005aded0), the
+    // others join the last (FUN_005ade50). The laser list (+0xa0) follows
+    // the armed list (+0x98), the unarmed list (+0xa8) comes last.
+    #[test]
+    fn the_first_review_regroups_the_computers_ships() {
+        let lasers = || armed(TacticalWeaponArc::new(4, 0, 0), 10.0);
+        // Five laser ships: two forces, ships 0-1 and 2-4.
+        assert_eq!(regrouped(vec![lasers(), lasers(), lasers(), lasers(), lasers()]), [0, 0, 1, 1, 1]);
+        // Turbolasers (no lasers) first, then lasers, then the unarmed.
+        let turbolasers = || armed(TacticalWeaponArc::new(0, 0, 4), 10.0);
+        let unarmed = armed(TacticalWeaponArc::default(), 0.0);
+        assert_eq!(
+            regrouped(vec![lasers(), unarmed, turbolasers(), lasers()]),
+            [1, 2, 0, 1]
+        );
+        // Six ships make two forces (2 * 2 <= 6 < 3 * 3).
+        assert_eq!(regrouped(vec![turbolasers(); 6]), [0, 0, 0, 1, 1, 1]);
+        // After one armed ship, sixteen laser ships make four forces in
+        // slots 1 to 4: the search may reach k + 3 there, and the cap is
+        // the list's four slots.
+        let mut mixed = vec![turbolasers()];
+        mixed.extend((0..16).map(|_| lasers()));
+        let slots = regrouped(mixed);
+        assert_eq!(slots[0], 0);
+        assert_eq!(*slots.iter().max().unwrap(), 4);
+        // Nine ships make three forces of three.
+        assert_eq!(regrouped(vec![turbolasers(); 9]), [0, 0, 0, 1, 1, 1, 2, 2, 2]);
+        // The search for k stops past the list's last slot (3), so the
+        // first list makes at most three forces: 25 ships, 8 a force.
+        let many = regrouped(vec![turbolasers(); 25]);
+        assert_eq!(*many.iter().max().unwrap(), 2);
+        assert_eq!(many.iter().filter(|&&slot| slot == 0).count(), 8);
+    }
+
+    // FUN_005c81d0 sorts each list by -(speed + 10000 x longest range)
+    // (DAT_0066cbb0, FUN_005b18d0), the first of equal keys first
+    // (FUN_005f4f10): the longest-ranged ships lead the first force.
+    #[test]
+    fn the_regroup_puts_the_longest_ranges_first() {
+        let turbolasers = |range: f32| armed(TacticalWeaponArc::new(0, 0, 4), range);
+        let mut fast = turbolasers(10.0);
+        fast.sublight_engine_power = 50.0;
+        assert_eq!(
+            regrouped(vec![turbolasers(5.0), turbolasers(20.0), fast, turbolasers(10.0)]),
+            [1, 0, 0, 1]
+        );
+        // Range outweighs speed: a fast short-ranged ship comes after slower
+        // longer-ranged ones.
+        let mut quick = turbolasers(5.0);
+        quick.sublight_engine_power = 50.0;
+        assert_eq!(
+            regrouped(vec![turbolasers(20.0), quick, turbolasers(10.0), turbolasers(1.0)]),
+            [0, 1, 0, 1]
+        );
     }
 
     // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit
