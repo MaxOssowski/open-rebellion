@@ -7727,15 +7727,30 @@ pub fn draw_tactical_view(
                     .field_effects
                     .iter()
                     .filter_map(|effect| {
-                        session.ships.get(effect.target)?;
+                        // The cloud sits on its unit (`FUN_005c1360`), a
+                        // ship or a fighter group, with the unit's id.
+                        let (object_id, position) = match effect.target {
+                            TacticalUnitRef::Ship(index) => {
+                                session.ships.get(index)?;
+                                (
+                                    u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
+                                    ship_pose(index).0,
+                                )
+                            }
+                            TacticalUnitRef::Fighter(index) => {
+                                session.fighters.get(index)?;
+                                (
+                                    u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1001),
+                                    fighter_position(index),
+                                )
+                            }
+                        };
                         Some(TacticalEffectRenderObject {
-                            object_id: u32::try_from(effect.target)
-                                .unwrap_or(u32::MAX)
-                                .saturating_add(1),
+                            object_id,
                             resource_id: effect.resource_id()?,
                             source_width: 128,
                             source_height: 128,
-                            position: ship_pose(effect.target).0.rendered(),
+                            position: position.rendered(),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -11218,7 +11233,7 @@ mod tests {
         assert!(set_original_tactical_field(
             &mut session.field_effects,
             1,
-            4,
+            TacticalUnitRef::Ship(4),
             OriginalTacticalFieldKind::Tractor,
             true,
         ));
@@ -11228,7 +11243,7 @@ mod tests {
         assert!(set_original_tactical_field(
             &mut session.field_effects,
             2,
-            4,
+            TacticalUnitRef::Ship(4),
             OriginalTacticalFieldKind::Gravity,
             true,
         ));
@@ -11236,7 +11251,7 @@ mod tests {
         assert!(set_original_tactical_field(
             &mut session.field_effects,
             3,
-            4,
+            TacticalUnitRef::Ship(4),
             OriginalTacticalFieldKind::Tractor,
             true,
         ));
@@ -11244,7 +11259,7 @@ mod tests {
         assert!(set_original_tactical_field(
             &mut session.field_effects,
             2,
-            4,
+            TacticalUnitRef::Ship(4),
             OriginalTacticalFieldKind::Gravity,
             false,
         ));
@@ -11252,14 +11267,14 @@ mod tests {
         assert!(set_original_tactical_field(
             &mut session.field_effects,
             1,
-            4,
+            TacticalUnitRef::Ship(4),
             OriginalTacticalFieldKind::Tractor,
             false,
         ));
         assert!(set_original_tactical_field(
             &mut session.field_effects,
             3,
-            4,
+            TacticalUnitRef::Ship(4),
             OriginalTacticalFieldKind::Tractor,
             false,
         ));
@@ -11293,7 +11308,7 @@ mod tests {
         let target_two = session
             .field_effects
             .iter()
-            .find(|effect| effect.target == 2)
+            .find(|effect| effect.target == TacticalUnitRef::Ship(2))
             .expect("target two should retain both field kinds");
         assert_eq!(target_two.source_ids(), (&[0][..], &[0][..]));
         assert_eq!(target_two.resource_id(), Some(3520));
@@ -12556,7 +12571,7 @@ mod tests {
         assert!(set_original_tactical_field(
             &mut fields,
             0,
-            1,
+            TacticalUnitRef::Ship(1),
             OriginalTacticalFieldKind::Tractor,
             true,
         ));

@@ -4,7 +4,7 @@ use rebellion_core::ids::{CapitalShipKey, FighterKey, SystemKey};
 use rebellion_core::missions::MissionFaction;
 use rebellion_core::world::{FighterEntry, Fleet, GameWorld, ShipInstance};
 use rebellion_render::tactical_view::{
-    tactical_character_content_resource, TacticalAttackTarget, WeaponKind,
+    tactical_character_content_resource, TacticalAttackTarget, TacticalUnitRef, WeaponKind,
 };
 #[cfg(feature = "interface-test-fixtures")]
 use rebellion_render::TacticalLodView;
@@ -947,6 +947,10 @@ struct FixtureProjectile {
 #[derive(Serialize)]
 struct FixtureField {
     target: usize,
+    /// Written only for a fighter group, so a ship's report keeps its
+    /// former shape.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    target_is_fighter: bool,
     resource_id: u32,
     frame: u8,
     tractor_sources: u8,
@@ -1185,7 +1189,10 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
             let (tractor_sources, gravity_sources) = effect.source_counts();
             let (tractor_source_ids, gravity_source_ids) = effect.source_ids();
             Some(FixtureField {
-                target: effect.target,
+                target: match effect.target {
+                    TacticalUnitRef::Ship(index) | TacticalUnitRef::Fighter(index) => index,
+                },
+                target_is_fighter: matches!(effect.target, TacticalUnitRef::Fighter(_)),
                 resource_id: effect.resource_id()?,
                 frame: effect.frame,
                 tractor_sources,

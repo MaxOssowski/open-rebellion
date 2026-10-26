@@ -1364,10 +1364,10 @@ pub enum TacticalTurnEvent {
     /// `0x28`, `FUN_005b2630`: with both ships in the fight, the source
     /// holds the target in its tractor beam (slot `+0x40`, `FUN_005b23e0`,
     /// `FUN_005b2570`).
-    TractorOn { source: usize, target: usize },
+    TractorOn { source: usize, target: TacticalUnitRef },
     /// `0x29`, `FUN_005b26a0`: the source lets its target go (slot `+0x48`,
     /// `FUN_005b2440`, `FUN_005b25d0`).
-    TractorOff { source: usize, target: usize },
+    TractorOff { source: usize, target: TacticalUnitRef },
     /// `0x44`, `0x005ba520`: the superlaser's beam starts (`0x005c12d0`).
     DeathStarBeam { target: usize },
     /// Type 3 from the Death Star, `0x005b2b60`: the target dies.
@@ -1692,7 +1692,7 @@ impl WeaponEffect {
 /// One target's shared tractor/gravity field slot from `FUN_005d3ac0`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TacticalFieldEffect {
-    pub target: usize,
+    pub target: TacticalUnitRef,
     pub tractor_sources: Vec<usize>,
     pub gravity_sources: Vec<usize>,
     pub frame: u8,
@@ -2797,7 +2797,7 @@ pub fn queue_original_fighter_to_death_star_projectile(
 pub fn set_original_tactical_field(
     effects: &mut Vec<TacticalFieldEffect>,
     source: usize,
-    target: usize,
+    target: TacticalUnitRef,
     kind: OriginalTacticalFieldKind,
     active: bool,
 ) -> bool {
@@ -3570,7 +3570,7 @@ pub fn original_tactical_mobility(
     }
     let active_tractor_power = field_effects
         .iter()
-        .filter(|effect| effect.target == target)
+        .filter(|effect| effect.target == TacticalUnitRef::Ship(target))
         .flat_map(|effect| effect.tractor_sources.iter().copied())
         .filter_map(|source| ships.get(source))
         .map(original_effective_tractor_power)
@@ -4209,7 +4209,7 @@ impl BattleSession {
         let changed = set_original_tactical_field(
             &mut self.field_effects,
             source,
-            target,
+            TacticalUnitRef::Ship(target),
             OriginalTacticalFieldKind::Tractor,
             active,
         );
@@ -4235,7 +4235,7 @@ impl BattleSession {
         set_original_tactical_field(
             &mut self.field_effects,
             source,
-            target,
+            TacticalUnitRef::Ship(target),
             OriginalTacticalFieldKind::Gravity,
             active,
         )
@@ -5905,9 +5905,16 @@ impl BattleSession {
             TacticalTurnEvent::SubsystemHit { ship, kind } => self.hit_subsystem(ship, kind),
             TacticalTurnEvent::TractorOn { source, target } => {
                 if self.unit_in_the_fight(OriginalFighterTarget::Capital(source))
-                    && self.unit_in_the_fight(OriginalFighterTarget::Capital(target))
+                    && self.unit_in_the_fight(Self::fire_target_of(target))
                 {
-                    self.set_tractor_field(source, target, true);
+                    set_original_tactical_field(
+                        &mut self.field_effects,
+                        source,
+                        target,
+                        OriginalTacticalFieldKind::Tractor,
+                        true,
+                    );
+                    refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
                     self.ships[source].tractor_request_pending = false;
                 }
             }
@@ -6513,49 +6520,55 @@ impl BattleSession {
         }
     }
 
-    /// The ship its tractor beam holds (`+0x380`), if any.
-    pub fn tractor_target_of(&self, source: usize) -> Option<usize> {
+    /// The unit its tractor beam holds (`+0x380`), if any.
+    pub fn tractor_target_of(&self, source: usize) -> Option<TacticalUnitRef> {
         self.field_effects
             .iter()
             .find(|effect| effect.tractor_sources.contains(&source))
             .map(|effect| effect.target)
     }
 
+    /// A unit as a shot's target.
+    fn fire_target_of(unit: TacticalUnitRef) -> OriginalFighterTarget {
+        match unit {
+            TacticalUnitRef::Ship(index) => OriginalFighterTarget::Capital(index),
+            TacticalUnitRef::Fighter(index) => OriginalFighterTarget::Fighter(index),
+        }
+    }
+
     /// `FUN_005b2140`, from the weapon turn with the force's target: a
     /// ship with a tractor beam (`+0x3b8`) and no request on its way
     /// (`+0x3ac`) posts at most one request (slot `+0x28`):
-    /// - with no target, it lets its held ship go (`0x29`);
+    /// - with no target, it lets its held unit go (`0x29`);
     /// - holding the target, it keeps it while the target is in the fight,
     ///   its beam has power (`FUN_005b1790`) and the target is within range
     ///   (slot `+0x5c`); else it lets it go;
-    /// - holding another ship, it lets that one go first;
+    /// - holding another unit, it lets that one go first;
     /// - holding none, it takes the target (`0x28`) with power and range.
     ///
-    /// port: a fighter group as the target is not yet held; a ship holding
-    /// another one lets it go, as above.
+    /// The target is any unit (`FUN_005a6340`): a capital ship or a fighter
+    /// group alike.
     fn request_tractor(&mut self, source: usize, target: Option<OriginalFighterTarget>) {
         let ship = &self.ships[source];
         if ship.tractor_request_pending || ship.tractor_beam_power == 0.0 {
             return;
         }
         let held = self.tractor_target_of(source);
+        let target = match target {
+            Some(OriginalFighterTarget::Capital(index)) => Some(TacticalUnitRef::Ship(index)),
+            Some(OriginalFighterTarget::Fighter(index)) => Some(TacticalUnitRef::Fighter(index)),
+            Some(OriginalFighterTarget::DeathStar) | None => None,
+        };
         let event = match (target, held) {
-            (None | Some(OriginalFighterTarget::Fighter(_) | OriginalFighterTarget::DeathStar), None) => {
-                return;
-            }
-            (None | Some(OriginalFighterTarget::Fighter(_) | OriginalFighterTarget::DeathStar), Some(held)) => {
-                TacticalTurnEvent::TractorOff { source, target: held }
-            }
-            (Some(OriginalFighterTarget::Capital(target)), held) => {
+            (None, None) => return,
+            (None, Some(held)) => TacticalTurnEvent::TractorOff { source, target: held },
+            (Some(target), held) => {
                 let powered = original_effective_tractor_power(ship) != 0.0;
-                let delta = source_delta(self.ships[target].source_position, ship.source_position);
+                let delta = source_delta(self.unit_position(target), ship.source_position);
                 let within = delta.x.hypot(delta.y).hypot(delta.z) <= ship.tractor_beam_range;
                 match held {
                     Some(held) if held == target => {
-                        if self.unit_in_the_fight(OriginalFighterTarget::Capital(target))
-                            && powered
-                            && within
-                        {
+                        if self.unit_in_the_fight(Self::fire_target_of(target)) && powered && within {
                             return;
                         }
                         TacticalTurnEvent::TractorOff { source, target }
@@ -8450,9 +8463,11 @@ impl BattleSession {
     /// A squadron's speed (slot `+0x90`, `0x5ba190`): its side's commander
     /// term (`FUN_005ad7e0`) plus its sublight rating (`+0x3f8`), less its
     /// hits `+0x36c` × that × 0.25 (`DAT_0066c6c4`) and its tractors' pulls
-    /// (`+0x360`, `FUN_005b1790`), at least 0. port: the port's squadrons
-    /// keep no hit counter or tractor list, and `+0x3b4` (0 speed while
-    /// set) is not mapped.
+    /// (`+0x360`, `FUN_005b1790`), at least 0; 0 while `+0x3b4` is set.
+    /// A squadron never takes subsystem hits (events `0x1e`..`0x22` are
+    /// posted only for slot `+0x20` = 0, `FUN_005b5100`), and `+0x3b4` is
+    /// raised only by an ion hit on a capital ship (`FUN_005b5b60`, event
+    /// `0x16`), so both terms stay 0.
     pub fn original_fighter_speed(&self, index: usize) -> f32 {
         let fighter = &self.fighters[index];
         let term = if fighter.identity.is_alliance {
@@ -8460,7 +8475,15 @@ impl BattleSession {
         } else {
             1.0
         };
-        (term + fighter.sublight_engine_power).max(0.0)
+        let pulls = self
+            .field_effects
+            .iter()
+            .filter(|effect| effect.target == TacticalUnitRef::Fighter(index))
+            .flat_map(|effect| effect.tractor_sources.iter().copied())
+            .filter_map(|source| self.ships.get(source))
+            .map(original_effective_tractor_power)
+            .sum::<f32>();
+        (term + fighter.sublight_engine_power - pulls).max(0.0)
     }
 
     /// A squadron's frame (slot `+0x8`, `0x5b8f70`): its heading
