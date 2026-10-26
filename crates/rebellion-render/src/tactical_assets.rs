@@ -1070,6 +1070,8 @@ pub(crate) struct TacticalAssetRenderer {
     planet: Option<TacticalPlanetAsset>,
     unavailable_planet: Option<u32>,
     material: Option<Material>,
+    /// The material's `CubeLut`, kept alive with it.
+    material_cube: Option<Texture2D>,
     #[cfg(feature = "interface-test-fixtures")]
     current_lod: OriginalTacticalLod,
     #[cfg(feature = "interface-test-fixtures")]
@@ -1112,6 +1114,7 @@ impl Default for TacticalAssetRenderer {
             planet: None,
             unavailable_planet: None,
             material: None,
+            material_cube: None,
             #[cfg(feature = "interface-test-fixtures")]
             current_lod: OriginalTacticalLod::Medium,
             #[cfg(feature = "interface-test-fixtures")]
@@ -1172,6 +1175,7 @@ impl TacticalAssetRenderer {
             self.planet = None;
             self.unavailable_planet = None;
             self.material = None;
+            self.material_cube = None;
             self.logged_participant_scene = false;
             self.logged_fighter_scene = None;
             self.logged_effect_scene = None;
@@ -2432,7 +2436,11 @@ impl TacticalAssetRenderer {
             });
         }
 
-        self.material = Some(load_tactical_material()?);
+        {
+            let (material, cube) = load_tactical_material(&palette)?;
+            self.material = Some(material);
+            self.material_cube = Some(cube);
+        }
         self.assets = assets;
         self.family_loads = self.family_loads.saturating_add(1);
         macroquad::logging::info!(
@@ -2555,7 +2563,11 @@ impl TacticalAssetRenderer {
         }
 
         if self.material.is_none() {
-            self.material = Some(load_tactical_material()?);
+            {
+            let (material, cube) = load_tactical_material(&palette)?;
+            self.material = Some(material);
+            self.material_cube = Some(cube);
+        }
         }
         self.participant_families.insert(resource_base, assets);
         self.family_loads = self.family_loads.saturating_add(1);
@@ -3266,7 +3278,56 @@ fn key_black_transparent(rgba: &mut [u8]) {
     }
 }
 
-fn load_tactical_material() -> Result<Material, String> {
+/// d3dim's RGB emulation writing an 8-bit target (`FUN_7402b5dc` target
+/// type 7 → `FUN_7403e4f0`, the same for the dithered entry): each channel
+/// becomes `(c × 5 + 128) >> 8`, and the cell `r × 36 + g × 6 + b` picks a
+/// palette entry. Through DDrawCompat the game's Ramp request
+/// (`FUN_005d6e10`, `DAT_0066e458`) becomes this RGB device.
+pub(crate) fn original_rgb_cube_cell(rgb: [u8; 3]) -> usize {
+    let level = |channel: u8| (usize::from(channel) * 5 + 128) >> 8;
+    level(rgb[0]) * 36 + level(rgb[1]) * 6 + level(rgb[2])
+}
+
+/// `FUN_74029f67`'s 216 cells: the cube colour `level × 51` of each, mapped
+/// to the palette's nearest entry by squared RGB distance, the lowest index
+/// on ties (`FUN_7402aba0`'s strict `<`). Palette 5537's flags 0x44 make
+/// every entry fixed, so none is rewritten.
+pub(crate) fn original_rgb_cube(palette: &[[u8; 4]; 256]) -> [u8; 216] {
+    let mut cube = [0_u8; 216];
+    for (cell, entry) in cube.iter_mut().enumerate() {
+        let target = [cell / 36, cell / 6 % 6, cell % 6].map(|level| (level * 51) as i32);
+        let mut best = 0;
+        let mut best_distance = i32::MAX;
+        for (index, colour) in palette.iter().enumerate() {
+            let distance = (0..3)
+                .map(|channel| {
+                    let delta = i32::from(colour[channel]) - target[channel];
+                    delta * delta
+                })
+                .sum::<i32>();
+            if distance < best_distance {
+                best = index;
+                best_distance = distance;
+            }
+        }
+        *entry = u8::try_from(best).unwrap_or(0);
+    }
+    cube
+}
+
+/// The cube as a 216 × 1 texture of palette colours, read by the hull
+/// shader's last step.
+fn original_rgb_cube_texture(palette: &[[u8; 4]; 256]) -> Texture2D {
+    let bytes = original_rgb_cube(palette)
+        .iter()
+        .flat_map(|&index| palette[usize::from(index)])
+        .collect::<Vec<_>>();
+    let texture = Texture2D::from_rgba8(216, 1, &bytes);
+    texture.set_filter(FilterMode::Nearest);
+    texture
+}
+
+fn load_tactical_material(palette: &[[u8; 4]; 256]) -> Result<(Material, Texture2D), String> {
     let backend = unsafe { get_internal_gl().quad_context.info().backend };
     let shader = match backend {
         Backend::OpenGl => ShaderSource::Glsl {
@@ -3290,10 +3351,13 @@ fn load_tactical_material() -> Result<Material, String> {
                 UniformDesc::new("ObjectAxisY", UniformType::Float4),
                 UniformDesc::new("ObjectAxisZ", UniformType::Float4),
             ],
+            textures: vec!["CubeLut".to_string()],
             ..Default::default()
         },
     )
     .map_err(|error| format!("compile tactical material: {error}"))?;
+    let cube = original_rgb_cube_texture(palette);
+    material.set_texture("CubeLut", cube.clone());
     let direction = original_surface_to_light_direction();
     material.set_uniform(
         "SourceLightDirectionAmbient",
@@ -3311,7 +3375,7 @@ fn load_tactical_material() -> Result<Material, String> {
     material.set_uniform("MaterialEmissive", [0.0_f32; 4]);
     material.set_uniform("ObjectTranslation", [0.0_f32; 4]);
     set_object_axes(&material, IDENTITY_HULL_AXES);
-    Ok(material)
+    Ok((material, cube))
 }
 
 struct Reader<'a> {
@@ -3410,11 +3474,15 @@ varying lowp vec2 uv;
 varying lowp vec3 light;
 varying lowp vec4 tint;
 uniform sampler2D Texture;
+uniform sampler2D CubeLut;
 uniform lowp vec4 MaterialEmissive;
 void main() {
     lowp vec4 texel = texture2D(Texture, uv);
     lowp vec3 material = tint.rgb * light + MaterialEmissive.rgb;
-    gl_FragColor = vec4(min(vec3(1.0), texel.rgb * material), texel.a * tint.a);
+    mediump vec3 channel = floor(min(vec3(1.0), texel.rgb * material) * 255.0 + 0.001);
+    mediump vec3 level = floor((channel * 5.0 + 128.0) / 256.0);
+    mediump float cell = level.r * 36.0 + level.g * 6.0 + level.b;
+    gl_FragColor = vec4(texture2D(CubeLut, vec2((cell + 0.5) / 216.0, 0.5)).rgb, texel.a * tint.a);
 }"#;
 
 const TACTICAL_METAL: &str = r#"
@@ -3455,10 +3523,13 @@ vertex RasterizerData vertexShader(Vertex v [[stage_in]], constant Uniforms& u [
     out.light = float3(u.SourceLightDirectionAmbient.w) + u.SourceLightColorDirectional.rgb * u.SourceLightColorDirectional.w * diffuse;
     return out;
 }
-fragment float4 fragmentShader(RasterizerData in [[stage_in]], constant Uniforms& u [[buffer(0)]], texture2d<float> Texture [[texture(0)]], sampler TextureSmplr [[sampler(0)]]) {
+fragment float4 fragmentShader(RasterizerData in [[stage_in]], constant Uniforms& u [[buffer(0)]], texture2d<float> Texture [[texture(0)]], sampler TextureSmplr [[sampler(0)]], texture2d<float> CubeLut [[texture(1)]], sampler CubeLutSmplr [[sampler(1)]]) {
     float4 texel = Texture.sample(TextureSmplr, in.uv);
     float3 material = in.tint.rgb * in.light + u.MaterialEmissive.rgb;
-    return float4(min(float3(1.0), texel.rgb * material), texel.a * in.tint.a);
+    float3 channel = floor(min(float3(1.0), texel.rgb * material) * 255.0 + 0.001);
+    float3 level = floor((channel * 5.0 + 128.0) / 256.0);
+    float cell = level.r * 36.0 + level.g * 6.0 + level.b;
+    return float4(CubeLut.sample(CubeLutSmplr, float2((cell + 0.5) / 216.0, 0.5)).rgb, texel.a * in.tint.a);
 }"#;
 
 #[cfg(test)]
@@ -3470,6 +3541,36 @@ mod tests {
             (actual - expected).abs() < 1.0e-5,
             "expected {expected}, got {actual}"
         );
+    }
+
+    // Source: d3dim.dll FUN_7403e4f0 ((c * 5 + 128) >> 8 per channel, cell
+    // r * 36 + g * 6 + b) and FUN_74029f67 / FUN_7402aba0 (cube colours
+    // level * 51 to the nearest palette entry, lowest index on ties).
+    #[test]
+    fn the_rgb_device_maps_colour_through_the_six_level_cube() {
+        assert_eq!(original_rgb_cube_cell([0, 0, 0]), 0);
+        assert_eq!(original_rgb_cube_cell([255, 255, 255]), 215);
+        // 25 -> (125 + 128) >> 8 = 0; 26 -> 1; 77 -> 2.
+        assert_eq!(original_rgb_cube_cell([25, 26, 77]), 6 + 2);
+        assert_eq!(original_rgb_cube_cell([128, 0, 0]), 3 * 36);
+        let mut palette = [[0_u8, 0, 0, 255]; 256];
+        palette[1] = [255, 255, 255, 255];
+        palette[2] = [100, 0, 0, 255];
+        palette[3] = [104, 0, 0, 255];
+        palette[4] = [255, 255, 255, 255];
+        palette[5] = [0, 102, 0, 255];
+        let cube = original_rgb_cube(&palette);
+        // Cell (0, 2, 0) is (0, 102, 0): its green level picks entry 5.
+        assert_eq!(cube[2 * 6], 5);
+        assert_eq!(cube[0], 0);
+        // White's two equal entries: the lower index.
+        assert_eq!(cube[215], 1);
+        // Cell (2, 0, 0) is (102, 0, 0): 100 and 104 tie at 4, so 2.
+        assert_eq!(cube[2 * 36], 2);
+        // Cell (3, 0, 0) is (153, 0, 0): 104 is nearer than 255.
+        assert_eq!(cube[3 * 36], 3);
+        // Cell (0, 0, 5) is (0, 0, 255): black (65025) is nearer than white (130050).
+        assert_eq!(cube[5], 0);
     }
 
     #[test]
