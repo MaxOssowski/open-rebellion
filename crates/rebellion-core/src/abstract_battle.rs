@@ -1978,6 +1978,7 @@ mod tests {
             player_observing: false,
             observer_review_countdown: 0,
             commanders_regrouped: [false; 2],
+            recovery_executors: Vec::new(),
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
@@ -4725,13 +4726,23 @@ mod tests {
             16
         );
         assert_eq!(tactical.fighters[1].recovery_target, Some(0));
-        // Until then it flew round its place (0x5cb050; port: no home
-        // carrier). Now it flies its frame to the carrier's underside
-        // (0x5c7060, 0x5b8f70) and docks within 2.0 of it (FUN_005cf980).
-        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Returning);
+        // Reserved (state 1, FUN_005b84e0) on the turn's update, it flies
+        // its frame to the carrier's underside already (0x5c7060 with
+        // +0x164, 0x5b8f70). Its event 0x2c (FUN_005b1e10) runs at turn 7
+        // (step 28) and gives it state 2; that turn's executor finds it
+        // within 2.0 and docks it (state 3, event 0x1a), whose handler
+        // takes it in at turn 10 (step 40, FUN_005b8bd0).
+        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Reserved);
         let mut docking = tactical.clone();
-        let docked = step_until(&mut docking, |t| t.fighters[1].recovery_state == Recovery::Docking);
-        assert!(docked < 40, "{docked}");
+        assert_eq!(
+            step_until(&mut docking, |t| t.fighters[1].recovery_state != Recovery::Reserved),
+            28
+        );
+        assert_eq!(docking.fighters[1].recovery_state, Recovery::Docking);
+        assert_eq!(
+            step_until(&mut docking, |t| t.fighters[1].recovery_state == Recovery::Recovered),
+            40
+        );
         tactical.fighters[0].source_position.z = tactical.withdrawal_exit_z(false);
         // Its group's anchor goes with it (FUN_005c72b0's +0x3c).
         let exit_z = tactical.withdrawal_exit_z(false);
@@ -4749,10 +4760,12 @@ mod tests {
         assert!(tactical.fighters[2].alive);
     }
 
-    // FUN_005cf980 reserves a living carrier of the group's side with room;
-    // a group already returning holds its place, a stale target outside
-    // the recovery states does not, and one place serves one group. A
-    // player's group with no room and no colour (4) queues no voice.
+    // FUN_005cf980, on the executor's turn, reserves a living carrier of the
+    // group's side with room (FUN_005b84e0: +0xc below +0x10); a squadron
+    // already on its way holds its place, a stale target in state 0 does
+    // not, and one place serves one squadron. A member finding every ship
+    // full sets the group's order to 0 (SetOrder, 0x005ca530) once, for
+    // the whole group. A player's group with no colour (4) queues no voice.
     #[test]
     fn a_recovery_reserves_one_free_place_on_a_living_carrier() {
         use crate::tactical::TacticalFighterRecoveryState as Recovery;
@@ -4769,18 +4782,29 @@ mod tests {
         stale.recovery_target = Some(1);
         let mut first = fighter(true, TacticalWeaponArc::default());
         first.fighter_group = 4;
+        first.order = TacticalOrder::Recover;
         let mut second = fighter(true, TacticalWeaponArc::default());
         second.fighter_group = 4;
+        second.order = TacticalOrder::Recover;
         let mut tactical = session(vec![dead, carrier], vec![returning, stale, first, second]);
         tactical.begin_original_fighter_recovery(&[2, 3]);
+        assert_eq!(tactical.fighters[2].recovery_state, Recovery::AwaitingCarrier);
+        tactical.advance_recovery_executors();
         assert_eq!(tactical.fighters[2].recovery_target, Some(1));
-        assert_eq!(tactical.fighters[2].recovery_state, Recovery::Returning);
+        assert_eq!(tactical.fighters[2].recovery_state, Recovery::Reserved);
         assert_eq!(tactical.fighters[3].recovery_target, None);
         assert_eq!(
             tactical.fighters[3].recovery_state,
             Recovery::AwaitingCarrier
         );
         assert!(tactical.take_pending_voice_cues().is_empty());
+        assert_eq!(tactical.fighters[2].order, TacticalOrder::None);
+        assert_eq!(tactical.fighters[3].order, TacticalOrder::None);
+        assert!(tactical.turn_events.iter().any(|queued| matches!(
+            &queued.event,
+            crate::tactical::TacticalTurnEvent::OrderExecutor { order: TacticalOrder::None, fighters, .. }
+                if fighters == &vec![2, 3]
+        )));
     }
 
     // 0x5c7060: a recovering member's distance is the raw one to its
@@ -4827,8 +4851,9 @@ mod tests {
         );
     }
 
-    // FUN_005cf980's second loop: only in state 2, a member within 2.0
-    // (DAT_0066d088) of its carrier's underside enters state 3.
+    // FUN_005cf980's second loop, on the executor's turn: only in state 2,
+    // a member within 2.0 (DAT_0066d088) of its carrier's underside enters
+    // state 3.
     #[test]
     fn a_squadron_docks_within_two_of_the_carrier_underside() {
         use crate::tactical::{
@@ -4848,7 +4873,10 @@ mod tests {
             wing.recovery_target = Some(0);
             wing.source_position = TacticalWorldPosition { x, y, z: 10.0 };
             let mut tactical = session(vec![carrier], vec![wing]);
-            tactical.advance_original_fighter_recovery(250.0);
+            tactical.begin_original_fighter_recovery(&[0]);
+            tactical.fighters[0].recovery_state = state;
+            tactical.fighters[0].recovery_target = Some(0);
+            tactical.advance_recovery_executors();
             tactical.fighters[0].recovery_state
         };
         // 1.5 below the underside (-3), 4.5 below the centre.
@@ -4864,9 +4892,12 @@ mod tests {
         assert_eq!(dock(Recovery::Reserved, 0.0, -3.0), Recovery::Reserved);
     }
 
-    // The squadrons a recovery flies: in state 2 with a live carrier of its
-    // own side, not already within the docking gate (port), and not
-    // withdrawing.
+    // The squadrons a recovery flies (0x5c7060): on their way with a live
+    // carrier of their own side, and not withdrawing. Within 2.0 a squadron
+    // still flies; its docking comes on the executor's turn (FUN_005cf980,
+    // run from the force's turn slot +0x10, not from the frame). A carrier
+    // of the other side is no carrier: the squadron does not fly, and its
+    // state stays.
     #[test]
     fn a_recovery_flies_only_squadrons_still_on_their_way() {
         use crate::tactical::{TacticalFighterRecoveryState as Recovery, TacticalWorldPosition};
@@ -4885,18 +4916,17 @@ mod tests {
             };
             wing.source_position = start;
             let mut tactical = session(vec![carrier], vec![wing]);
+            tactical.begin_original_fighter_recovery(&[0]);
+            tactical.fighters[0].recovery_state = Recovery::Returning;
+            tactical.fighters[0].recovery_target = Some(0);
             tactical.advance_recovering_fighters(250.0);
             let moved = tactical.fighters[0].source_position != start;
-            tactical.advance_original_fighter_recovery(250.0);
             (moved, tactical.fighters[0].recovery_state)
         };
         assert_eq!(flies(true, 0.0, false), (true, Recovery::Returning));
-        // A carrier of the other side is no carrier: the state resets.
-        assert_eq!(flies(false, 0.0, false), (false, Recovery::AwaitingCarrier));
-        // Exactly 2.0 off, it still flies; within 2.0 it waits for the
-        // docking pass.
+        assert_eq!(flies(false, 0.0, false), (false, Recovery::Returning));
         assert!(flies(true, 8.0, false).0);
-        assert_eq!(flies(true, 8.5, false), (false, Recovery::Docking));
+        assert!(flies(true, 8.5, false).0);
         assert_eq!(flies(true, 0.0, true).0, false);
     }
 
@@ -6900,6 +6930,119 @@ mod tests {
             regrouped(vec![turbolasers(20.0), quick, turbolasers(10.0), turbolasers(1.0)]),
             [0, 1, 0, 1]
         );
+    }
+
+    /// A carrier with room for `capacity` and one recovering group of
+    /// `members`, its executor installed (FUN_005ca6d0 case 2).
+    fn recovery(capacity: u32, members: usize) -> BattleSession {
+        let mut carrier = ship(true, TacticalWeaponArc::default(), 0.0);
+        carrier.fighter_capacity = capacity;
+        let enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        let wings = (0..members)
+            .map(|_| {
+                let mut wing = fighter(true, TacticalWeaponArc::default());
+                wing.order = TacticalOrder::Recover;
+                wing
+            })
+            .collect::<Vec<_>>();
+        let mut tactical = session(vec![carrier, enemy], wings);
+        tactical.begin_original_fighter_recovery(&(0..members).collect::<Vec<_>>());
+        tactical
+    }
+
+    // FUN_005b84e0 reserves (state 1) and posts 0x2c; its handler
+    // FUN_005b1e10 gives state 2 with the carrier (+0x164).
+    #[test]
+    fn a_reserved_squadron_heads_for_its_carrier_through_event_0x2c() {
+        use crate::tactical::{TacticalFighterRecoveryState as Recovery, TacticalTurnEvent};
+        let mut tactical = recovery(1, 1);
+        tactical.advance_recovery_executors();
+        assert_eq!(tactical.fighters[0].recovery_state, Recovery::Reserved);
+        let reserved = TacticalTurnEvent::FighterReserved { fighter: 0, carrier: 0 };
+        assert!(tactical.turn_events.iter().any(|queued| queued.event == reserved));
+        tactical.run_turn_event(reserved);
+        assert_eq!(tactical.fighters[0].recovery_state, Recovery::Returning);
+        assert_eq!(tactical.fighters[0].recovery_target, Some(0));
+    }
+
+    // +0xc counts the squadrons a carrier took in as well as those it
+    // reserved (FUN_005b8630 keeps the reservation); FUN_005b8bd0 takes a
+    // squadron in only while its carrier is in the fight.
+    #[test]
+    fn a_carrier_full_of_recovered_squadrons_takes_no_more() {
+        use crate::tactical::{TacticalFighterRecoveryState as Recovery, TacticalTurnEvent};
+        let mut tactical = recovery(1, 2);
+        tactical.fighters[1].order = TacticalOrder::None;
+        tactical.advance_recovery_executors();
+        tactical.run_turn_event(TacticalTurnEvent::FighterReserved { fighter: 0, carrier: 0 });
+        tactical.fighters[0].recovery_state = Recovery::Docking;
+        let mut lost = tactical.clone();
+        lost.ships[0].alive = false;
+        lost.run_turn_event(TacticalTurnEvent::FighterDocked { fighter: 0, carrier: 0 });
+        assert_eq!(lost.fighters[0].recovery_state, Recovery::Docking);
+        tactical.run_turn_event(TacticalTurnEvent::FighterDocked { fighter: 0, carrier: 0 });
+        assert_eq!(tactical.fighters[0].recovery_state, Recovery::Recovered);
+        assert!(!tactical.fighters[0].alive);
+        // The other group asks now: no room.
+        tactical.fighters[1].order = TacticalOrder::Recover;
+        tactical.begin_original_fighter_recovery(&[1]);
+        tactical.advance_recovery_executors();
+        assert_eq!(tactical.fighters[1].recovery_state, Recovery::AwaitingCarrier);
+    }
+
+    // FUN_005b8630: the player's group's last member docked plays its
+    // "recovered" voice; a group without a colour (4) has none.
+    #[test]
+    fn the_last_docked_member_of_a_player_group_plays_its_voice() {
+        use crate::tactical::{TacticalTurnEvent, TacticalVoiceCue, TacticalVoiceFaction};
+        let voices = |group: u8| {
+            let mut tactical = recovery(2, 2);
+            for fighter in &mut tactical.fighters {
+                fighter.fighter_group = group;
+            }
+            tactical.run_turn_event(TacticalTurnEvent::FighterDocked { fighter: 0, carrier: 0 });
+            let first = tactical.take_pending_voice_cues();
+            tactical.run_turn_event(TacticalTurnEvent::FighterDocked { fighter: 1, carrier: 0 });
+            (first, tactical.take_pending_voice_cues())
+        };
+        assert_eq!(
+            voices(3),
+            (
+                Vec::new(),
+                vec![TacticalVoiceCue::fighter_recovery_complete(TacticalVoiceFaction::Alliance, 3)]
+            )
+        );
+        assert_eq!(voices(4), (Vec::new(), Vec::new()));
+    }
+
+    // FUN_005cf980 with every ship full while the side withdraws (+0x84):
+    // event 0x2f for each member still in state 0, which FUN_005b2720
+    // destroys; once (+4).
+    #[test]
+    fn a_withdrawing_recovery_with_no_room_leaves_its_squadrons_behind() {
+        use crate::tactical::TacticalTurnEvent;
+        let mut tactical = recovery(0, 2);
+        tactical.withdrawal_ms = Some(30_000.0);
+        tactical.advance_recovery_executors();
+        let behind = tactical
+            .turn_events
+            .iter()
+            .filter(|queued| matches!(queued.event, TacticalTurnEvent::FighterLeftBehind(_)))
+            .count();
+        assert_eq!(behind, 2);
+        assert_eq!(tactical.fighters[0].order, TacticalOrder::Recover);
+        tactical.advance_recovery_executors();
+        assert_eq!(
+            tactical
+                .turn_events
+                .iter()
+                .filter(|queued| matches!(queued.event, TacticalTurnEvent::FighterLeftBehind(_)))
+                .count(),
+            2
+        );
+        tactical.run_turn_event(TacticalTurnEvent::FighterLeftBehind(0));
+        assert!(!tactical.fighters[0].alive);
+        assert_eq!(tactical.fighters[0].squad_count, 0);
     }
 
     // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit

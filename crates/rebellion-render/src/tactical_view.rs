@@ -1329,8 +1329,18 @@ impl TacticalState {
         session.selected_fighter_group = Some(0);
         assign_selected_command(session, TacticalOrder::Recover, None);
         // The fixture presents the executors' result without the three
-        // turns the order waits for (event `0xa`).
+        // turns the order waits for (event `0xa`), then the recovery
+        // executor's turn (FUN_005cf980: state 1) and its event `0x2c`
+        // (FUN_005b1e10: state 2) without the three after it.
         session.run_posted_order_executors();
+        session.advance_recovery_executors();
+        for queued in std::mem::take(&mut session.turn_events) {
+            if matches!(queued.event, TacticalTurnEvent::FighterReserved { .. }) {
+                session.run_turn_event(queued.event);
+            } else {
+                session.turn_events.push(queued);
+            }
+        }
 
         for fighter in &mut session.fighters {
             fighter.selected = false;
@@ -1433,7 +1443,12 @@ impl TacticalState {
                 .source_collision_envelope
                 .map_or(0.0, |envelope| envelope.vertical_radius);
             let returning = player_fighters[0];
+            let docking = player_fighters[1];
             session.fighters[returning].fighter_group = 0;
+            session.fighters[docking].fighter_group = 1;
+            // The executors' install (FUN_005cf940), for each group, comes
+            // before the states.
+            session.begin_original_fighter_recovery(&[returning, docking]);
             session.fighters[returning].source_position = TacticalWorldPosition {
                 x: carrier_position.x,
                 y: carrier_position.y - below,
@@ -1444,8 +1459,6 @@ impl TacticalState {
             session.fighters[returning].recovery_state = TacticalFighterRecoveryState::Returning;
             session.fighters[returning].recovery_target = Some(arriving);
 
-            let docking = player_fighters[1];
-            session.fighters[docking].fighter_group = 1;
             session.fighters[docking].source_position = carrier_position;
             session.fighters[docking].order = TacticalOrder::Recover;
             session.fighters[docking].recovery_state = TacticalFighterRecoveryState::Docking;
@@ -1457,8 +1470,17 @@ impl TacticalState {
                     z: forward_z,
                 };
             }
+            // The docking squadron's 0x1a runs now (FUN_005b8bd0: state 4),
+            // as run_posted_order_executors does for the orders, so it is
+            // taken in where it stands. Then the returning one flies, and the
+            // executor's turn docks it within 2.0 (FUN_005cf980: state 3,
+            // event 0x1a).
+            session.run_turn_event(TacticalTurnEvent::FighterDocked {
+                fighter: docking,
+                carrier: arriving,
+            });
             session.advance_recovering_fighters(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
-            session.advance_original_fighter_recovery(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+            session.advance_recovery_executors();
 
             session.selected_ship = Some(turning);
             session.selected_fighter_group = None;
@@ -9413,6 +9435,7 @@ mod tests {
             player_observing: false,
             observer_review_countdown: 0,
             commanders_regrouped: [false; 2],
+            recovery_executors: Vec::new(),
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
@@ -11680,6 +11703,11 @@ mod tests {
         fighter.recovery_target = Some(0);
 
         let mut session = test_session(vec![carrier], vec![fighter], true);
+        // The recovery executor's install (FUN_005ca6d0 case 2), then the
+        // squadron on its way (state 2).
+        session.begin_original_fighter_recovery(&[0]);
+        session.fighters[0].recovery_state = TacticalFighterRecoveryState::Returning;
+        session.fighters[0].recovery_target = Some(0);
         session.advance_original_tactical_movement(250.0);
         // The anchor is already within the route's 1.0 (0x005eb1a0), so it
         // arrives where it stands.
@@ -11689,9 +11717,10 @@ mod tests {
         assert_eq!(session.ships[0].order, TacticalOrder::None);
 
         // 0x5b8f70: it flies its forward at its speed (commander term 1 plus
-        // 4) for 250 ms, then FUN_005cf980 docks it within 2.0.
+        // 4) for 250 ms, then FUN_005cf980's turn docks it within 2.0
+        // (state 3) and posts event 0x1a.
         session.advance_recovering_fighters(250.0);
-        session.advance_original_fighter_recovery(250.0);
+        session.advance_recovery_executors();
         assert_eq!(session.fighters[0].source_position.z, -1.25);
         assert_eq!(
             session.fighters[0].recovery_state,
@@ -11699,7 +11728,15 @@ mod tests {
         );
         assert!(session.fighters[0].alive);
 
-        session.advance_original_fighter_recovery(250.0);
+        // Its handler (FUN_005b8bd0, FUN_005b8630) takes it in.
+        let docked = session
+            .turn_events
+            .iter()
+            .find(|queued| matches!(queued.event, TacticalTurnEvent::FighterDocked { .. }))
+            .expect("the docking event")
+            .event
+            .clone();
+        session.run_turn_event(docked);
         assert_eq!(
             session.fighters[0].recovery_state,
             TacticalFighterRecoveryState::Recovered
@@ -11716,7 +11753,9 @@ mod tests {
         );
     }
 
-    // Source: FUN_005cf980 / FUN_005cf940 fighter recovery state.
+    // Source: FUN_005cf980 / FUN_005cf940 fighter recovery state: the
+    // executor's turn finds no room and plays the group's voice once
+    // (+0x10); the enemy group's plays nothing for the player.
     #[test]
     fn fighter_recovery_warns_each_player_group_once_when_carriers_are_full() {
         let mut carrier = test_ship(64, 0, true, true);
@@ -11733,8 +11772,13 @@ mod tests {
         let mut enemy = test_fighter(5, false);
         enemy.selected = true;
         let mut session = test_session(vec![carrier], vec![reserved, first, second, enemy], true);
+        for index in 1..4 {
+            session.fighters[index].order = TacticalOrder::Recover;
+        }
 
         session.begin_original_fighter_recovery(&[1, 2, 3]);
+        assert!(session.take_pending_voice_cues().is_empty());
+        session.advance_recovery_executors();
 
         assert!(session.fighters[1..].iter().all(|fighter| {
             fighter.recovery_state == TacticalFighterRecoveryState::AwaitingCarrier
@@ -11798,14 +11842,26 @@ mod tests {
         assert_eq!(session.fighters[2].order, TacticalOrder::None);
         // A group bound for the carrier that stays, and one only awaiting
         // the escaping carrier, do not leave.
+        // Both are members of the group's recovery (order 2).
         let mut bound = test_fighter(1, true);
-        bound.recovery_state = TacticalFighterRecoveryState::Returning;
+        bound.order = TacticalOrder::Recover;
+        // Docking on it already (state 3), its event 0x1a queued
+        // (FUN_005cf980, FUN_005b8bd0).
+        bound.recovery_state = TacticalFighterRecoveryState::Docking;
         bound.recovery_target = Some(2);
         let mut waiting = test_fighter(1, true);
+        waiting.order = TacticalOrder::Recover;
         waiting.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
         waiting.recovery_target = Some(0);
         session.fighters.push(bound);
         session.fighters.push(waiting);
+        session.post_turn_event(
+            3,
+            TacticalTurnEvent::FighterDocked {
+                fighter: 3,
+                carrier: 2,
+            },
+        );
 
         // Without engine power the first group, away from the carrier, is
         // still on its way to it when it leaves. (The carrier turns at
@@ -11816,9 +11872,10 @@ mod tests {
         for _ in 0..16 {
             session.step();
         }
+        // Reserved on turn 4's update (state 1); its 0x2c lands at turn 7.
         let wing = &session.fighters[0];
         assert_eq!(wing.recovery_target, Some(0));
-        assert_eq!(wing.recovery_state, TacticalFighterRecoveryState::Returning);
+        assert_eq!(wing.recovery_state, TacticalFighterRecoveryState::Reserved);
 
         // The side's time ends on the next turn; the carrier, at its exit
         // line, then jumps for 4000 ms (FUN_005cc300, FUN_005a6b40).
@@ -11980,14 +12037,21 @@ mod tests {
         still_returning.source_position.z = 8.0;
         let mut session = test_session(vec![carrier], vec![docking, still_returning], true);
 
-        session.advance_original_fighter_recovery(250.0);
+        // Event 0x1a for the docking one (FUN_005b8bd0).
+        session.run_turn_event(TacticalTurnEvent::FighterDocked {
+            fighter: 0,
+            carrier: 0,
+        });
 
         assert!(!session.fighters[0].alive);
         assert!(session.fighters[1].alive);
         assert!(session.take_pending_voice_cues().is_empty());
 
         session.fighters[1].recovery_state = TacticalFighterRecoveryState::Docking;
-        session.advance_original_fighter_recovery(250.0);
+        session.run_turn_event(TacticalTurnEvent::FighterDocked {
+            fighter: 1,
+            carrier: 0,
+        });
 
         assert!(!session.fighters[1].alive);
         assert_eq!(
@@ -12093,9 +12157,12 @@ mod tests {
         );
         assert_eq!(session.fighters[0].order, TacticalOrder::Recover);
         run_posted_orders(&mut session);
+        // The executor's next turn reserves the carrier (state 1); its event
+        // 0x2c gives state 2 three turns later.
+        session.advance_recovery_executors();
         assert_eq!(
             session.fighters[0].recovery_state,
-            TacticalFighterRecoveryState::Returning
+            TacticalFighterRecoveryState::Reserved
         );
         assert_eq!(session.fighters[0].recovery_target, Some(0));
     }
@@ -12265,10 +12332,20 @@ mod tests {
             // resulting empty typed list must not fall through to a capital.
             let mut exhausted_fighter = test_fighter(5, false);
             exhausted_fighter.recovery_state = TacticalFighterRecoveryState::Docking;
+            exhausted_fighter.recovery_target = Some(1);
             exhausted_fighter.squad_count = 12;
 
             let mut session = test_session(vec![source, capital], vec![exhausted_fighter], true);
             session.paused = false;
+            // Its docking event (0x1a, posted with state 3 by FUN_005cf980)
+            // runs at turn 4.
+            session.post_turn_event(
+                3,
+                TacticalTurnEvent::FighterDocked {
+                    fighter: 0,
+                    carrier: 1,
+                },
+            );
             // The source's draw opens its turn 1 (FUN_005b3a40's 0 to 2).
             session.tactical_rng = (0..)
                 .map(OriginalTacticalRng::new)
@@ -16386,7 +16463,8 @@ mod tests {
             .all(|fighter| fighter.order == TacticalOrder::Recover));
         run_posted_orders(state.session.as_mut().unwrap());
         // The mission voice plays on the order; the no-room voice comes from
-        // the recovery executor (FUN_005cf980), which runs on event 0xa.
+        // the recovery executor's turn (FUN_005cf980), installed by event 0xa.
+        state.session.as_mut().unwrap().advance_recovery_executors();
         assert_eq!(
             state.session.as_ref().unwrap().pending_voice_cues,
             vec![

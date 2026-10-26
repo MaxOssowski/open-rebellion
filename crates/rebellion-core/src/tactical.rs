@@ -1349,6 +1349,18 @@ pub struct TacticalDeathStarBeam {
     pub elapsed: f32,
 }
 
+/// One fighter group's recovery executor (class `0x66cdf8`, installed by
+/// `FUN_005ca6d0` case 2) and its two latches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TacticalRecoveryExecutor {
+    pub attacker: bool,
+    pub group: u8,
+    /// `+0x10`: the "no room" or the "all recovered" voice has played.
+    pub voiced: bool,
+    /// `+4`: the group found every carrier full and was dealt with.
+    pub settled: bool,
+}
+
 /// A unit that a queued event names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TacticalUnitRef {
@@ -1375,6 +1387,16 @@ pub enum TacticalTurnEvent {
     /// holds the target in its tractor beam (slot `+0x40`, `FUN_005b23e0`,
     /// `FUN_005b2570`).
     TractorOn { source: usize, target: TacticalUnitRef },
+    /// `0x2c`, `FUN_005b1e10`: a reserved squadron (state 1) heads for its
+    /// carrier (state 2, `+0x164`).
+    FighterReserved { fighter: usize, carrier: usize },
+    /// `0x1a`, `FUN_005b8bd0`: with its carrier in the fight, a docking
+    /// squadron (state 3) is taken in (`FUN_005b8630`: state 4, out of the
+    /// fight).
+    FighterDocked { fighter: usize, carrier: usize },
+    /// `0x2f` from a recovery with nowhere to go during the withdrawal
+    /// (`FUN_005cf980`): `FUN_005b2720` destroys the squadron.
+    FighterLeftBehind(usize),
     /// `0x16`, `FUN_005b2340`, posted by an ion hit through the shields
     /// (`FUN_005b5b60`): the engines' stun grows (`+0x3b4`), and each
     /// flagged arc is emptied (`FUN_005b6980`) and queued (`FUN_005b64e0`).
@@ -1553,6 +1575,9 @@ pub struct BattleSession {
     /// Each side's commander latch `+0x14`, Alliance first: its first
     /// review regroups its capital ships (slot `+0x18`, `FUN_005c8300`).
     pub commanders_regrouped: [bool; 2],
+    /// The recovery executors (`0x66cdf8`) installed on fighter groups, with
+    /// their latches.
+    pub recovery_executors: Vec<TacticalRecoveryExecutor>,
     /// The Alliance commander's `+0x18`: it has sent a group on the Death
     /// Star run (or one was under way when it took command).
     pub alliance_raid_sent: bool,
@@ -4167,6 +4192,7 @@ impl BattleSession {
             player_observing: false,
             observer_review_countdown: 0,
             commanders_regrouped: [false; 2],
+            recovery_executors: Vec::new(),
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
             fighter_movers: Vec::new(),
@@ -5076,7 +5102,7 @@ impl BattleSession {
     /// the place delta (`0x5cb050`). The force's anchor stands: order 2's
     /// install (`FUN_005ca6d0`) clears its route and target.
     /// port: a squadron flies to the carrier that reserved it; the home
-    /// carrier (`FUN_005b84a0`) is not kept.
+    /// carrier (`+0x164` from its launch, `FUN_005b8c70`) is not kept.
     pub fn advance_recovering_fighters(&mut self, delta_milliseconds: f32) {
         self.sync_fighter_movers();
         for index in 0..self.fighters.len() {
@@ -5088,86 +5114,186 @@ impl BattleSession {
             let Some(mover) = self.fighter_mover_of(index).cloned() else {
                 continue;
             };
+            // `0x5c7060`: on order 2 with a carrier (`+0x164`), the raw
+            // delta to its point in any state; it does not stop within 2.0,
+            // since the docking comes on the executor's turn.
             let delta = match fighter.recovery_state {
-                TacticalFighterRecoveryState::Returning => {
+                TacticalFighterRecoveryState::Reserved
+                | TacticalFighterRecoveryState::Returning
+                | TacticalFighterRecoveryState::Docking => {
                     let Some(carrier) = self.recovery_carrier(index) else {
                         continue;
                     };
-                    let delta = source_delta(self.carrier_underside(carrier), fighter.source_position);
-                    // port: `FUN_005cf980`'s docking pass is taken to come
-                    // before the move, so a member already within 2.0 stays.
-                    if delta.x.hypot(delta.y).hypot(delta.z) < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
-                        continue;
-                    }
-                    delta
+                    source_delta(self.carrier_underside(carrier), fighter.source_position)
                 }
-                TacticalFighterRecoveryState::AwaitingCarrier
-                | TacticalFighterRecoveryState::Reserved => self.fighter_place_delta(&mover, index),
-                TacticalFighterRecoveryState::Docking
-                | TacticalFighterRecoveryState::Recovered => continue,
+                TacticalFighterRecoveryState::AwaitingCarrier => self.fighter_place_delta(&mover, index),
+                TacticalFighterRecoveryState::Recovered => continue,
             };
             self.fly_fighter_squadron(index, delta, None, mover.forward, delta_milliseconds);
         }
     }
 
-    /// Advance the recovered `FUN_005cf980` fighter states. In state 2 a
-    /// squadron within 2.0 (`DAT_0066d088`) of its carrier's underside enters
-    /// state 3, and the following docking callback removes the tactical
-    /// object in state 4 without changing its strategic squadron count.
-    pub fn advance_original_fighter_recovery(&mut self, delta_milliseconds: f32) {
-        if !delta_milliseconds.is_finite() || delta_milliseconds <= 0.0 {
-            return;
-        }
-        let undersides = (0..self.fighters.len())
-            .map(|index| self.recovery_carrier(index).map(|carrier| self.carrier_underside(carrier)))
-            .collect::<Vec<_>>();
+    /// A squadron taken in by its carrier (`FUN_005b8630`): state 4, out of
+    /// the fight (`+0x170` = 5) with its strategic count kept. When the
+    /// player's group has no member left, its "recovered" voice plays.
+    fn dock_fighter(&mut self, index: usize) {
         let player_is_attacker = self.player_is_attacker;
         let player_faction = self.player_voice_faction();
-        let mut transitioned_groups = [false; 4];
-        for (fighter, underside) in self.fighters.iter_mut().zip(undersides) {
-            match fighter.recovery_state {
-                TacticalFighterRecoveryState::Returning => {
-                    let Some(underside) = underside else {
-                        fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
-                        fighter.recovery_target = None;
-                        continue;
-                    };
-                    let delta = source_delta(underside, fighter.source_position);
-                    if delta.x.hypot(delta.y).hypot(delta.z) < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
-                        fighter.recovery_state = TacticalFighterRecoveryState::Docking;
-                    }
+        let fighter = &mut self.fighters[index];
+        fighter.recovery_state = TacticalFighterRecoveryState::Recovered;
+        fighter.order = TacticalOrder::None;
+        fighter.selected = false;
+        fighter.alive = false;
+        let (attacker, group) = (fighter.is_attacker, fighter.fighter_group);
+        let group_left = self.fighters.iter().any(|fighter| {
+            fighter.alive && fighter.is_attacker == attacker && fighter.fighter_group == group
+        });
+        if attacker == player_is_attacker && !group_left && usize::from(group) < 4 {
+            self.pending_voice_cues
+                .push(TacticalVoiceCue::fighter_recovery_complete(player_faction, group));
+        }
+    }
+
+    /// The room left on a carrier (`+0x10` less `+0xc`): its capacity less
+    /// the squadrons it has reserved or taken in.
+    fn carrier_room(&self, carrier: usize) -> u32 {
+        let taken = self
+            .fighters
+            .iter()
+            .filter(|fighter| {
+                fighter.recovery_target == Some(carrier)
+                    && fighter.recovery_state != TacticalFighterRecoveryState::AwaitingCarrier
+            })
+            .count();
+        self.ships[carrier]
+            .fighter_capacity
+            .saturating_sub(u32::try_from(taken).unwrap_or(u32::MAX))
+    }
+
+    /// Each turn, `FUN_005cf980` (slot 4 of executor `0x66cdf8`, from the
+    /// force's slot `+0x10`), for each group on Recover:
+    /// - each member in the fight still in state 0 reserves a carrier: the
+    ///   first ship of its side in the fight with room (`FUN_005b84e0`:
+    ///   state 1, event `0x2c`);
+    /// - with no carrier found, the group's voice plays once (`+0x10`); and
+    ///   when every ship of its side is full (`FUN_005b8480`), once
+    ///   (`+4`): with its side's withdrawal under way (`+0x84`), event
+    ///   `0x2f` destroys each member still in state 0, else the group's
+    ///   order becomes 0 (`SetOrder`, `0x005ca530`);
+    /// - each member in state 2 within 2.0 (`DAT_0066d088`) of its carrier's
+    ///   point enters state 3 and posts event `0x1a`;
+    /// - with every member in state 4, the "recovered" voice plays once. A
+    ///   docked member leaves the force (`FUN_005b8630`), whose voice plays
+    ///   when its last member goes, so the port plays it there.
+    ///
+    /// port: the home carrier (`+0x164`) is not kept, so a member looks only
+    /// along its side's ships; the Empire's Death Star takes no squadron.
+    pub fn advance_recovery_executors(&mut self) {
+        let player_is_attacker = self.player_is_attacker;
+        let player_faction = self.player_voice_faction();
+        let stamp = self.step_event_stamp();
+        for at in 0..self.recovery_executors.len() {
+            let executor = self.recovery_executors[at];
+            let members = (0..self.fighters.len())
+                .filter(|&index| {
+                    let fighter = &self.fighters[index];
+                    fighter.order == TacticalOrder::Recover
+                        && fighter.is_attacker == executor.attacker
+                        && fighter.fighter_group == executor.group
+                })
+                .collect::<Vec<_>>();
+            for &member in &members {
+                if !self.unit_in_the_fight(OriginalFighterTarget::Fighter(member))
+                    || self.fighters[member].recovery_state
+                        != TacticalFighterRecoveryState::AwaitingCarrier
+                {
+                    continue;
                 }
-                TacticalFighterRecoveryState::Docking => {
-                    fighter.recovery_state = TacticalFighterRecoveryState::Recovered;
-                    fighter.order = TacticalOrder::None;
-                    fighter.selected = false;
-                    fighter.alive = false;
-                    let group = usize::from(fighter.fighter_group);
-                    if fighter.is_attacker == player_is_attacker
-                        && group < transitioned_groups.len()
-                        && !transitioned_groups[group]
+                let mut reserved = None;
+                for carrier in 0..self.ships.len() {
+                    if self.ships[carrier].is_attacker != executor.attacker
+                        || !self.unit_in_the_fight(OriginalFighterTarget::Capital(carrier))
                     {
-                        transitioned_groups[group] = true;
+                        continue;
+                    }
+                    if self.carrier_room(carrier) > 0 {
+                        reserved = Some(carrier);
+                        break;
                     }
                 }
-                TacticalFighterRecoveryState::AwaitingCarrier
-                | TacticalFighterRecoveryState::Reserved
-                | TacticalFighterRecoveryState::Recovered => {}
+                if let Some(carrier) = reserved {
+                    let fighter = &mut self.fighters[member];
+                    fighter.recovery_state = TacticalFighterRecoveryState::Reserved;
+                    fighter.recovery_target = Some(carrier);
+                    self.post_turn_event(
+                        stamp,
+                        TacticalTurnEvent::FighterReserved {
+                            fighter: member,
+                            carrier,
+                        },
+                    );
+                    continue;
+                }
+                if !self.recovery_executors[at].voiced {
+                    self.recovery_executors[at].voiced = true;
+                    if executor.attacker == player_is_attacker && executor.group < 4 {
+                        self.pending_voice_cues.push(TacticalVoiceCue::fighter_recovery_capacity(
+                            player_faction,
+                            executor.group,
+                        ));
+                    }
+                }
+                // Every ship it tried was full (`FUN_005b8480`; a ship with
+                // room would have taken it).
+                if !self.recovery_executors[at].settled {
+                    self.recovery_executors[at].settled = true;
+                    let withdrawing = if executor.attacker == self.player_is_attacker {
+                        self.withdrawal_ms.is_some()
+                    } else {
+                        self.ai_withdrawal_ms.is_some()
+                    };
+                    if withdrawing {
+                        for &other in &members {
+                            if self.fighters[other].recovery_state
+                                == TacticalFighterRecoveryState::AwaitingCarrier
+                            {
+                                self.post_turn_event(stamp, TacticalTurnEvent::FighterLeftBehind(other));
+                            }
+                        }
+                    } else {
+                        for &other in &members {
+                            self.fighters[other].order = TacticalOrder::None;
+                        }
+                        self.post_order_executor_stamped(
+                            TacticalOrder::None,
+                            Vec::new(),
+                            members.clone(),
+                            stamp,
+                        );
+                    }
+                }
+            }
+            for &member in &members {
+                let fighter = &self.fighters[member];
+                if fighter.recovery_state == TacticalFighterRecoveryState::Returning {
+                    if let Some(carrier) = fighter.recovery_target {
+                        let delta =
+                            source_delta(self.carrier_underside(carrier), fighter.source_position);
+                        if delta.x.hypot(delta.y).hypot(delta.z) < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
+                            self.fighters[member].recovery_state =
+                                TacticalFighterRecoveryState::Docking;
+                            self.post_turn_event(
+                                stamp,
+                                TacticalTurnEvent::FighterDocked {
+                                    fighter: member,
+                                    carrier,
+                                },
+                            );
+                        }
+                    }
+                }
             }
         }
-        let completed_groups = transitioned_groups
-            .into_iter()
-            .enumerate()
-            .filter_map(|(group, transitioned)| {
-                let group_still_active = self.fighters.iter().any(|fighter| {
-                    fighter.alive
-                        && fighter.is_attacker == player_is_attacker
-                        && usize::from(fighter.fighter_group) == group
-                });
-                (transitioned && !group_still_active).then_some(group as u8)
-            })
-            .map(|group| TacticalVoiceCue::fighter_recovery_complete(player_faction, group));
-        self.pending_voice_cues.extend(completed_groups);
     }
 
     /// Expand a fleet's composition into individual TacticalShip/TacticalFighter entries.
@@ -5911,7 +6037,8 @@ impl BattleSession {
         }
     }
 
-    pub(crate) fn run_turn_event(&mut self, event: TacticalTurnEvent) {
+    /// One queued event's handler, run now (fixtures and tests).
+    pub fn run_turn_event(&mut self, event: TacticalTurnEvent) {
         match event {
             TacticalTurnEvent::DeathStarBeam { target } => self.start_death_star_beam(target),
             TacticalTurnEvent::DeathStarKill { target } => self.resolve_death_star_shot(target),
@@ -5926,6 +6053,25 @@ impl BattleSession {
             TacticalTurnEvent::WeaponFire(shot) => self.fire_weapon_shot(shot),
             TacticalTurnEvent::WeaponHit(shot) => self.hit_weapon_shot(shot),
             TacticalTurnEvent::SubsystemHit { ship, kind } => self.hit_subsystem(ship, kind),
+            TacticalTurnEvent::FighterReserved { fighter, carrier } => {
+                if let Some(fighter) = self.fighters.get_mut(fighter) {
+                    fighter.recovery_state = TacticalFighterRecoveryState::Returning;
+                    fighter.recovery_target = Some(carrier);
+                }
+            }
+            TacticalTurnEvent::FighterLeftBehind(index) => {
+                if let Some(fighter) = self.fighters.get_mut(index).filter(|fighter| fighter.alive) {
+                    fighter.hull_current = 0.0;
+                    fighter.refresh_craft_count();
+                    fighter.alive = false;
+                    fighter.retreating = false;
+                }
+            }
+            TacticalTurnEvent::FighterDocked { fighter, carrier } => {
+                if self.unit_in_the_fight(OriginalFighterTarget::Capital(carrier)) {
+                    self.dock_fighter(fighter);
+                }
+            }
             TacticalTurnEvent::IonDisable { ship, engine_stun, arcs } => {
                 if let Some(ship) = self.ships.get_mut(ship) {
                     ship.ion_engine_stun += engine_stun;
@@ -6312,9 +6458,6 @@ impl BattleSession {
             self.advance_trench_run_approach(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.keep_units_in_the_field();
         }
-        // port: the recovery's states (FUN_005cf980, a task-force order
-        // step) and its flight are not yet split between turn and frame.
-        self.advance_original_fighter_recovery(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
         refresh_original_attack_targets(self);
         if turn_step {
             self.run_turn_updates();
@@ -6409,6 +6552,9 @@ impl BattleSession {
         self.update_engagement_bands();
         // `FUN_005ea740` (the movers' slot `+0x40`) follows the bands.
         self.update_force_movers();
+        // Then each force's slot `+0x10` (`FUN_005c65e0`): a recovery
+        // executor's turn (`FUN_005cf980`).
+        self.advance_recovery_executors();
 
         for ship in &mut self.ships {
             ship.advance_original_recharge(ORIGINAL_TACTICAL_TURN_SECONDS);
@@ -8088,69 +8234,25 @@ impl BattleSession {
         }
     }
 
-    /// `FUN_005cf940` resets each selected group's recovery and
-    /// `FUN_005cf980` reserves a compatible carrier with room and begins the
-    /// inbound leg. A player's group with no room queues its voice once.
+    /// The executor's install (`FUN_005ca6d0` case 2) and its slot 8
+    /// (`FUN_005cf940`): each member's state goes back to 0, and the
+    /// group's executor starts with clear latches. The reservations follow
+    /// on its turns ([`Self::advance_recovery_executors`]).
     pub fn begin_original_fighter_recovery(&mut self, selected: &[usize]) {
-        let player_is_attacker = self.player_is_attacker;
-        let player_faction = self.player_voice_faction();
-        let mut warned_groups = [false; 4];
-        let mut capacity_cues = Vec::new();
-        let mut carrier_slots = self
-            .ships
-            .iter()
-            .enumerate()
-            .filter(|(_, ship)| ship.alive && ship.fighter_capacity > 0)
-            .map(|(index, ship)| (index, ship.is_attacker, ship.fighter_capacity))
-            .collect::<Vec<_>>();
-        for (index, fighter) in self.fighters.iter().enumerate() {
-            if selected.contains(&index)
-                || !matches!(
-                    fighter.recovery_state,
-                    TacticalFighterRecoveryState::Reserved
-                        | TacticalFighterRecoveryState::Returning
-                        | TacticalFighterRecoveryState::Docking
-                )
-            {
-                continue;
-            }
-            if let Some((_, _, remaining)) = fighter.recovery_target.and_then(|target| {
-                carrier_slots
-                    .iter_mut()
-                    .find(|(carrier, _, _)| *carrier == target)
-            }) {
-                *remaining = remaining.saturating_sub(1);
-            }
-        }
-        for &fighter_index in selected {
-            let fighter = &mut self.fighters[fighter_index];
-            // `FUN_005cf940` always resets the state before `FUN_005cf980`
-            // reserves a compatible carrier and begins the inbound leg.
+        for &index in selected {
+            let fighter = &mut self.fighters[index];
             fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
             fighter.recovery_target = None;
-            if let Some((carrier, _, remaining)) = carrier_slots
-                .iter_mut()
-                .find(|(_, side, remaining)| *side == fighter.is_attacker && *remaining > 0)
-            {
-                fighter.recovery_state = TacticalFighterRecoveryState::Reserved;
-                fighter.recovery_target = Some(*carrier);
-                *remaining -= 1;
-                fighter.recovery_state = TacticalFighterRecoveryState::Returning;
-            } else {
-                let group = usize::from(fighter.fighter_group);
-                if fighter.is_attacker == player_is_attacker
-                    && group < warned_groups.len()
-                    && !warned_groups[group]
-                {
-                    warned_groups[group] = true;
-                    capacity_cues.push(TacticalVoiceCue::fighter_recovery_capacity(
-                        player_faction,
-                        fighter.fighter_group,
-                    ));
-                }
-            }
+            let (attacker, group) = (fighter.is_attacker, fighter.fighter_group);
+            self.recovery_executors
+                .retain(|executor| (executor.attacker, executor.group) != (attacker, group));
+            self.recovery_executors.push(TacticalRecoveryExecutor {
+                attacker,
+                group,
+                voiced: false,
+                settled: false,
+            });
         }
-        self.pending_voice_cues.extend(capacity_cues);
     }
 
     /// The player's side's withdrawal time.
