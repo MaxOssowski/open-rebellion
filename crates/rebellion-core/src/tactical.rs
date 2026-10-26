@@ -1538,6 +1538,10 @@ pub struct BattleSession {
     /// [`crate::abstract_battle::trench_commander_term`]. The trench run
     /// compares an integer 1..100 draw with it, so the fraction drops.
     pub trench_run_success_rating: u8,
+    /// `FUN_005ad7e0(0)`: the Alliance's commander term, 1 through 9, as a
+    /// fighter's speed adds it (`0x5ba190`). The Empire's side has no
+    /// flagged commander (`FUN_0040c200`), so its term is 1.0.
+    pub alliance_commander_term: f32,
     /// Result selected by `FUN_005d04e0` when state 5 begins. State 6 or 7
     /// applies it only after the two-minute presentation timer completes.
     pub trench_run_pending_outcome: Option<TacticalTrenchRunOutcome>,
@@ -4053,8 +4057,8 @@ impl BattleSession {
             clippy::cast_sign_loss,
             reason = "the term is clamped to 1.0..9.0; the draw it meets is an integer"
         )]
-        let trench_run_success_rating =
-            crate::abstract_battle::trench_commander_term(world, system) as u8;
+        let alliance_commander_term = crate::abstract_battle::trench_commander_term(world, system);
+        let trench_run_success_rating = alliance_commander_term as u8;
 
         let mut ships = Vec::new();
         let mut fighters = Vec::new();
@@ -4158,6 +4162,7 @@ impl BattleSession {
             trench_run_remaining_ms: None,
             trench_run_group: None,
             trench_run_success_rating,
+            alliance_commander_term,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
             trench_run_saved: Vec::new(),
@@ -8051,11 +8056,11 @@ impl BattleSession {
     }
 
     /// `FUN_005ea740` for a fighter mover: the slowest positive member
-    /// speed. port: a squadron's speed is its sublight rating.
+    /// speed (slot `+0x90`, `0x5ba190`).
     fn fighter_mover_speed(&self, members: &[usize]) -> f32 {
         let speed = members
             .iter()
-            .map(|&index| self.fighters[index].sublight_engine_power)
+            .map(|&index| self.original_fighter_speed(index))
             .filter(|speed| *speed > 0.0)
             .fold(f32::INFINITY, f32::min);
         if speed.is_finite() {
@@ -8125,6 +8130,22 @@ impl BattleSession {
             .find(|mover| mover.slots.iter().any(|(member, _)| *member == index))
     }
 
+    /// A squadron's speed (slot `+0x90`, `0x5ba190`): its side's commander
+    /// term (`FUN_005ad7e0`) plus its sublight rating (`+0x3f8`), less its
+    /// hits `+0x36c` × that × 0.25 (`DAT_0066c6c4`) and its tractors' pulls
+    /// (`+0x360`, `FUN_005b1790`), at least 0. port: the port's squadrons
+    /// keep no hit counter or tractor list, and `+0x3b4` (0 speed while
+    /// set) is not mapped.
+    pub fn original_fighter_speed(&self, index: usize) -> f32 {
+        let fighter = &self.fighters[index];
+        let term = if fighter.identity.is_alliance {
+            self.alliance_commander_term
+        } else {
+            1.0
+        };
+        (term + fighter.sublight_engine_power).max(0.0)
+    }
+
     /// A squadron's frame (slot `+0x8`, `0x5b8f70`): its heading
     /// (`0x5b9a20`) is its distance `d` in three dimensions, else the
     /// bearing to its force's target, else its mover's forward; it turns
@@ -8149,8 +8170,8 @@ impl BattleSession {
                 });
             }
         }
+        let speed = self.original_fighter_speed(index);
         let fighter = &self.fighters[index];
-        let speed = fighter.sublight_engine_power.max(0.0);
         if speed == 0.0 {
             self.fighter_frames[index].velocity = TacticalWorldVector::ZERO;
             return;

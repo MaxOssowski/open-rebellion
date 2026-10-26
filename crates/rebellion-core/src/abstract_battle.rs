@@ -1962,6 +1962,7 @@ mod tests {
             trench_run_remaining_ms: None,
             trench_run_group: None,
             trench_run_success_rating: 1,
+            alliance_commander_term: 1.0,
             trench_run_pending_outcome: None,
             trench_run_participants: Vec::new(),
             trench_run_saved: Vec::new(),
@@ -4359,7 +4360,8 @@ mod tests {
         let mut wing = fighter(true, TacticalWeaponArc::default());
         wing.has_hyperdrive = true;
         wing.retreating = true;
-        wing.sublight_engine_power = 4.0;
+        // 3 plus the commander term 1: 4.
+        wing.sublight_engine_power = 3.0;
         let mut tactical = session(vec![enemy], vec![wing]);
         let exit = tactical.withdrawal_exit_z(true);
         tactical.fighters[0].source_position.z = exit + 9.0;
@@ -4435,9 +4437,10 @@ mod tests {
         };
         // 10 a second, 2.5 a step: past the line by 0.5, within the radius,
         // so it stays.
-        assert_eq!(run(10.0), [-0.5, -0.5, -0.5]);
+        // A rating of 9 plus the commander term 1 (0x5ba190): 10 a second.
+        assert_eq!(run(9.0), [-0.5, -0.5, -0.5]);
         // 2.5 a second: 0.625 a step until within the radius.
-        assert_eq!(run(2.5), [1.375, 0.75, 0.75]);
+        assert_eq!(run(1.5), [1.375, 0.75, 0.75]);
     }
 
     // FUN_005be160 gives the Alliance (0, 0, 1) and the Empire (0, 0, -1);
@@ -4849,7 +4852,7 @@ mod tests {
         let empire_exit = tactical.withdrawal_exit_z(false);
         tactical.fighters = vec![
             // Past the field's middle: it turns back toward -z.
-            group(true, 60.0, 4.0),
+            group(true, 60.0, 3.0),
             // Just outside 8.0 after its move: no jump.
             group(true, alliance_exit + 8.5, 0.4),
             // Far inside the field: no jump.
@@ -4875,9 +4878,11 @@ mod tests {
         tactical.step();
         let fighters = &tactical.fighters;
         assert_eq!(fighters[0].source_position.z, 59.0);
-        assert!((fighters[1].source_position.z - (alliance_exit + 8.4)).abs() < 1e-4);
-        assert!((fighters[3].source_position.z - 20.1).abs() < 1e-4);
-        assert!(empire_exit > 20.1);
+        // 0.4 plus the commander term 1 (0x5ba190): 1.4 a second, 0.35 a
+        // step.
+        assert!((fighters[1].source_position.z - (alliance_exit + 8.15)).abs() < 1e-4);
+        assert!((fighters[3].source_position.z - 20.35).abs() < 1e-4);
+        assert!(empire_exit > 20.35);
         // No jump is decided (event 0x2d).
         assert_eq!(events_besides_target_links(&tactical), 0);
     }
@@ -6711,7 +6716,8 @@ mod tests {
         target.source_position.z = 50.0;
         let mut wing = fighter(true, TacticalWeaponArc::new(5, 0, 0));
         wing.weapon_ranges.laser_cannon = 12.0;
-        wing.sublight_engine_power = 11.0;
+        // 10 plus the Alliance's commander term 1 (0x5ba190): 11 a second.
+        wing.sublight_engine_power = 10.0;
         wing.order = TacticalOrder::AttackCapitalShips;
         wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
         wing.source_position = TacticalWorldPosition {
@@ -8246,10 +8252,11 @@ mod tests {
     fn a_fighter_group_moves_as_one_force() {
         use crate::tactical::{original_fighter_slot_offset, TacticalAttackTarget};
         let mut fast = fighter(true, TacticalWeaponArc::new(2, 0, 0));
-        fast.sublight_engine_power = 12.0;
+        // 11 and 7 plus the commander term 1 (0x5ba190): 12 and 8.
+        fast.sublight_engine_power = 11.0;
         fast.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
         let mut slow = fast.clone();
-        slow.sublight_engine_power = 8.0;
+        slow.sublight_engine_power = 7.0;
         slow.source_position.x = 3.0;
         let mut other_group = fast.clone();
         other_group.fighter_group = 2;
@@ -8296,15 +8303,16 @@ mod tests {
         let mover = tactical.fighter_mover_of(0).expect("a mover");
         assert_eq!(mover.slots.len(), 2);
         assert_eq!(mover.slots[1], (4, second));
-        // An emptied squadron leaves; a squadron without speed does not set
-        // the force's.
+        // An emptied squadron leaves; a squadron with no sublight rating
+        // still flies at its side's commander term, 1 (0x5ba190), which
+        // then sets the force's speed.
         tactical.fighters[4].squad_count = 0;
         tactical.fighters[0].sublight_engine_power = 0.0;
         tactical.fighters[2].fighter_group = 0;
         tactical.update_force_movers();
         let mover = tactical.fighter_mover_of(0).expect("a mover");
         assert_eq!(mover.slots.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![0, 2]);
-        assert_eq!(mover.speed, 12.0);
+        assert_eq!(mover.speed, 1.0);
         // The Alliance's group 2, now empty, loses its mover; the Empire's
         // group 0 keeps its own.
         assert!(!tactical.fighter_movers.iter().any(|mover| mover.alliance && mover.group == 2));
@@ -8335,7 +8343,8 @@ mod tests {
             let mut wing = fighter(true, TacticalWeaponArc::default());
             wing.has_hyperdrive = true;
             wing.retreating = true;
-            wing.sublight_engine_power = 4.0;
+            // 3 plus the commander term 1: 4.
+            wing.sublight_engine_power = 3.0;
             wing.source_position.z = z;
             wing
         };
@@ -8408,11 +8417,12 @@ mod tests {
     fn a_squadron_flies_its_forward_at_no_less_than_a_quarter_speed() {
         use crate::tactical::{TacticalAttackTarget, TacticalFighterFrame};
         let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
-        wing.sublight_engine_power = 8.0;
+        wing.sublight_engine_power = 7.0;
         wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
         let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
         // Behind it, at -z, while it faces +z.
         target.source_position.z = -100.0;
+        // 7 plus the commander term 1: 8.
         let mut tactical = session(vec![target], vec![wing]);
         tactical.advance_fighter_approach();
         // Facing away, it still moves forward: 8 x 0.25 x 0.25 along +z, and
@@ -8428,7 +8438,7 @@ mod tests {
             }],
             vec![{
                 let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
-                wing.sublight_engine_power = 8.0;
+                wing.sublight_engine_power = 7.0;
                 wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
                 wing
             }],
@@ -8470,10 +8480,11 @@ mod tests {
         assert_eq!(turn_original_fighter(from, vector(-0.8, 0.0, 0.6), 1.0, 0.0), from);
 
         let mut lead = fighter(true, TacticalWeaponArc::new(2, 0, 0));
-        lead.sublight_engine_power = 8.0;
+        // 7 and 9 plus the commander term 1: 8 and 10.
+        lead.sublight_engine_power = 7.0;
         lead.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
         let mut member = lead.clone();
-        member.sublight_engine_power = 10.0;
+        member.sublight_engine_power = 9.0;
         member.maneuverability = 4;
         member.source_position = TacticalWorldPosition {
             x: -6.0,
@@ -8540,6 +8551,24 @@ mod tests {
         (left.x - right.x).abs() < tolerance
             && (left.y - right.y).abs() < tolerance
             && (left.z - right.z).abs() < tolerance
+    }
+
+    // 0x5ba190 (slot +0x90 of the fighter class 0x66c028): the side's
+    // commander term (FUN_005ad7e0) plus the sublight rating (+0x3f8), at
+    // least 0; the Empire, with no flagged commander (FUN_0040c200), adds 1.
+    #[test]
+    fn a_squadron_s_speed_adds_its_commander_term() {
+        let mut ours = fighter(true, TacticalWeaponArc::default());
+        ours.sublight_engine_power = 6.0;
+        let mut theirs = fighter(false, TacticalWeaponArc::default());
+        theirs.sublight_engine_power = 6.0;
+        let mut broken = fighter(false, TacticalWeaponArc::default());
+        broken.sublight_engine_power = -3.0;
+        let mut tactical = session(Vec::new(), vec![ours, theirs, broken]);
+        tactical.alliance_commander_term = 5.0;
+        assert_eq!(tactical.original_fighter_speed(0), 11.0);
+        assert_eq!(tactical.original_fighter_speed(1), 7.0);
+        assert_eq!(tactical.original_fighter_speed(2), 0.0);
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,
