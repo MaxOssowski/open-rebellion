@@ -10270,6 +10270,7 @@ mod tactical_ground_tests {
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),
+            force_detours: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,

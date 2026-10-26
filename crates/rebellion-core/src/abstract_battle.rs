@@ -1866,6 +1866,7 @@ mod tests {
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),
+            force_detours: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -6779,6 +6780,7 @@ mod tests {
             speed: 4.0,
             turn_rate: std::f32::consts::PI,
             still_turns: 0,
+            slot_turn: 0.0,
             last_turn_anchor: TacticalWorldPosition::ORIGIN,
         };
         let behind = TacticalWorldPosition {
@@ -6852,6 +6854,7 @@ mod tests {
             speed: 4.0,
             turn_rate: 0.4,
             still_turns: 0,
+            slot_turn: 0.0,
             last_turn_anchor: TacticalWorldPosition::ORIGIN,
         };
         let before = tactical.force_member_place(&mover, &[0], 0);
@@ -6943,6 +6946,7 @@ mod tests {
             speed: 4.0,
             turn_rate: 0.0,
             still_turns: 0,
+            slot_turn: 0.0,
             last_turn_anchor: TacticalWorldPosition::ORIGIN,
         }
     }
@@ -7484,6 +7488,152 @@ mod tests {
         tactical.advance_original_tactical_movement(250.0);
         assert!(tactical.ships[0].source_position.y > 0.0);
         assert!(!tactical.member_states[0].blocked);
+    }
+
+    // FUN_005ea740: once a turn, a moving member held in its climb (+0x414)
+    // in a formation that stood still five turns (+0x134), more than 12
+    // turns (DAT_0066d858) after its last detour (+0x410 against +0x87c),
+    // takes detour (id + 1 + last) & 3; unblocked, its record goes after
+    // those 12 turns.
+    #[test]
+    fn a_held_member_of_a_still_formation_takes_a_detour() {
+        use crate::tactical::ORIGINAL_TACTICAL_TURN_STEPS as STEPS;
+        let mut ships = (0..6)
+            .map(|_| ship(true, TacticalWeaponArc::default(), 0.0))
+            .collect::<Vec<_>>();
+        for (index, unit) in ships.iter_mut().enumerate() {
+            unit.source_position.x = 40.0 * index as f32;
+            unit.task_force = 255;
+        }
+        // Ships 0 and 4 share group slot 0.
+        ships[0].task_force = 0;
+        ships[4].task_force = 0;
+        let mut tactical = session(ships, Vec::new());
+        // +0x87c is 13 on turn 11's updates.
+        tactical.combat_tick = 11 * STEPS;
+        assert_eq!(tactical.step_event_stamp(), 13);
+        tactical.update_force_movers();
+        for held in [0, 2, 3, 5] {
+            tactical.member_states[held].blocked = true;
+        }
+        for _ in 0..4 {
+            tactical.update_force_movers();
+        }
+        // The count reaches 5 on this last update, after its loop.
+        assert_eq!(tactical.force_movers[0].still_turns, 5);
+        assert!(tactical.force_detours.is_empty());
+        tactical.update_force_movers();
+        let detour = |tactical: &BattleSession, ship: usize| {
+            tactical
+                .force_detours
+                .iter()
+                .find(|detour| detour.ship == ship)
+                .map(|detour| (detour.offset.x, detour.offset.y, detour.offset.z))
+        };
+        // Ship 0 (id 1): index (1 + 1 + 0) & 3 = 2, (5, 0, 20).
+        assert_eq!(detour(&tactical, 0), Some((5.0, 0.0, 20.0)));
+        assert_eq!(tactical.member_states[0].detour_stamp, 13.0);
+        // Ship 2 (id 3): index (3 + 1 + 0) & 3 = 0, (20, 0, 0).
+        assert_eq!(detour(&tactical, 2), Some((20.0, 0.0, 0.0)));
+        // Ship 3 (id 4): (4 + 1) & 3 = 1, (-20, 10, 5); ship 5 (id 6): 3,
+        // (0, -10, -20).
+        assert_eq!(detour(&tactical, 3), Some((-20.0, 10.0, 5.0)));
+        assert_eq!(detour(&tactical, 5), Some((0.0, -10.0, -20.0)));
+        // Ship 1 is not held.
+        assert_eq!(detour(&tactical, 1), None);
+        // Ship 4, in ship 0's force, is held from turn 23 on.
+        tactical.member_states[4].blocked = true;
+        // 12 turns later nothing changes; 13 turns later the next detour.
+        tactical.combat_tick = 23 * STEPS;
+        tactical.update_force_movers();
+        assert_eq!(detour(&tactical, 0), Some((5.0, 0.0, 20.0)));
+        tactical.combat_tick = 24 * STEPS;
+        tactical.update_force_movers();
+        // Ship 4 took (5 + 1 + 0) & 3 = 2 on turn 23.
+        assert_eq!(detour(&tactical, 4), Some((5.0, 0.0, 20.0)));
+        // Ship 0: (1 + 1 + 2) & 3 = 0; ship 2 (id 3) keeps index 0;
+        // ship 3: (4 + 1 + 1) & 3 = 2.
+        assert_eq!(detour(&tactical, 0), Some((20.0, 0.0, 0.0)));
+        assert_eq!(detour(&tactical, 2), Some((20.0, 0.0, 0.0)));
+        assert_eq!(detour(&tactical, 3), Some((5.0, 0.0, 20.0)));
+        assert_eq!(tactical.force_detours.len(), 5);
+        // Unblocked, the record stays until 12 turns have passed.
+        tactical.member_states[0].blocked = false;
+        tactical.combat_tick = 36 * STEPS;
+        tactical.update_force_movers();
+        assert!(detour(&tactical, 0).is_some());
+        tactical.combat_tick = 37 * STEPS;
+        tactical.update_force_movers();
+        assert_eq!(detour(&tactical, 0), None);
+        // Its force's other member keeps its own.
+        assert!(detour(&tactical, 4).is_some());
+        // A moving formation, or a member that cannot move, takes none.
+        tactical.member_states[0].blocked = true;
+        tactical.combat_tick = 60 * STEPS;
+        let key = tactical.force_key(0);
+        for mover in &mut tactical.force_movers {
+            if mover.force == key {
+                mover.velocity = vector(0.0, 0.0, 1.0);
+            }
+        }
+        tactical.update_force_movers();
+        assert_eq!(detour(&tactical, 0), None);
+        tactical.ships[1].subsystem_capacity.engines = false;
+        tactical.ships[1].sublight_engine_power = 0.0;
+        tactical.member_states[1].blocked = true;
+        tactical.update_force_movers();
+        assert_eq!(detour(&tactical, 1), None);
+    }
+
+    // 0x5eb040: a detour's raw offset replaces the distance to the place;
+    // Stand Off's turn turns it with the slots (FUN_005ead90); a rebuilt
+    // mover drops the force's records.
+    #[test]
+    fn a_detour_steers_the_member_and_turns_with_the_slots() {
+        use crate::tactical::{TacticalForceDetour, TacticalWorldPosition};
+        let mut member = ship(true, TacticalWeaponArc::default(), 0.0);
+        member.source_forward = vector(1.0, 0.0, 0.0);
+        member.source_desired_forward = vector(1.0, 0.0, 0.0);
+        // A second member of the same force, at its place 5 along +x.
+        let mut beside = member.clone();
+        beside.source_position.x = 5.0;
+        let mut tactical = session(vec![member, beside], Vec::new());
+        tactical.advance_original_tactical_movement(250.0);
+        let key = tactical.force_key(0);
+        tactical.force_detours.push(TacticalForceDetour {
+            force: key,
+            ship: 0,
+            offset: vector(20.0, 4.0, 0.0),
+        });
+        tactical.ships[0].source_forward = vector(1.0, 0.0, 0.0);
+        tactical.ships[0].source_desired_forward = vector(1.0, 0.0, 0.0);
+        let speed = mobility(&tactical, 0);
+        tactical.advance_original_tactical_movement(250.0);
+        // At its place, it still moves along +x and climbs; the other
+        // member, with no record, stays at its place.
+        assert!((tactical.ships[0].source_position.x - speed * 0.25).abs() < 1e-5);
+        assert!((tactical.ships[0].source_position.y - speed * 0.4 * 0.25).abs() < 1e-5);
+        assert_eq!(tactical.ships[1].source_position.x, 5.0);
+        // A Stand Off turn turns the offset by the same angle.
+        tactical.force_detours[0].offset = vector(20.0, 4.0, 10.0);
+        tactical.ships[0].source_waypoint = Some(TacticalWorldPosition {
+            x: 50.0,
+            y: 0.0,
+            z: 0.0,
+        });
+        tactical.advance_original_tactical_movement(250.0);
+        let turn = tactical.force_movers[0].slot_turn;
+        assert!(turn != 0.0);
+        let (sin, cos) = turn.sin_cos();
+        let offset = tactical.force_detours[0].offset;
+        assert!(
+            near(offset, vector(20.0 * cos - sin * 10.0, 4.0, 20.0 * sin + cos * 10.0)),
+            "{offset:?}"
+        );
+        // A new tactic rebuilds the mover and drops the record.
+        tactical.task_force_formations[1][0] = TacticalTactic::Surround;
+        tactical.advance_original_tactical_movement(250.0);
+        assert!(tactical.force_detours.is_empty());
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

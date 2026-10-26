@@ -1500,6 +1500,8 @@ pub struct BattleSession {
     pub force_movers: Vec<TacticalForceMover>,
     /// Each ship's own movement state, by ship index.
     pub member_states: Vec<TacticalMemberState>,
+    /// The forces' detour records (`+0xec`).
+    pub force_detours: Vec<TacticalForceDetour>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -2976,6 +2978,9 @@ pub struct TacticalForceMover {
     pub turn_rate: f32,
     /// `+0x134`: turns in a row with the anchor unchanged (`+0xc8`).
     pub still_turns: u32,
+    /// The angle Stand Off's last step turned its slots by (`FUN_005ead90`),
+    /// 0 when it did not turn.
+    pub slot_turn: f32,
     pub last_turn_anchor: TacticalWorldPosition,
 }
 
@@ -3010,7 +3015,30 @@ pub const ORIGINAL_STILL_TURNS_TO_FACE: u32 = 5;
 pub struct TacticalMemberState {
     /// `+0x414`: its last vertical step was held (`FUN_005b2f30`).
     pub blocked: bool,
+    /// `+0x40c`: the last detour's index (`FUN_005ea740`).
+    pub detour_index: u8,
+    /// `+0x410`: the turn of its last detour.
+    pub detour_stamp: f32,
 }
+
+/// A member's detour record (the mover's `+0xec` list, `FUN_005e9cc0`): a
+/// world offset it steers along in place of its slot (`0x5eb040`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalForceDetour {
+    pub force: TacticalForceKey,
+    pub ship: usize,
+    pub offset: TacticalWorldVector,
+}
+
+/// `FUN_005ea740`'s four detour offsets, by index.
+pub const ORIGINAL_DETOUR_OFFSETS: [[f32; 3]; 4] = [
+    [20.0, 0.0, 0.0],
+    [-20.0, 10.0, 5.0],
+    [5.0, 0.0, 20.0],
+    [0.0, -10.0, -20.0],
+];
+/// `DAT_0066d858`: a detour lasts more than 12 turns.
+pub const ORIGINAL_DETOUR_TURNS: f32 = 12.0;
 
 /// A nearby capital ship for the height bands: its height, vertical radius
 /// (`+0x8`) and object id.
@@ -3944,6 +3972,7 @@ impl BattleSession {
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
             member_states: Vec::new(),
+            force_detours: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -4134,6 +4163,7 @@ impl BattleSession {
         for members in self.moving_forces() {
             let key = self.force_key(members[0]);
             let (speed, turn_rate) = self.force_mover_rates(&members);
+            self.update_force_detours(key, &members);
             let Some(mover) = self.force_movers.iter_mut().find(|mover| mover.force == key) else {
                 continue;
             };
@@ -4148,6 +4178,55 @@ impl BattleSession {
         }
     }
 
+    /// `FUN_005ea740`'s member loop, before `+0x134` moves on: a moving
+    /// member held in its climb (`+0x414`), in a still formation (velocity
+    /// zero, `+0x134` at least 5), more than 12 turns after its last detour
+    /// (`+0x410`, `DAT_0066d858`) takes the next one: index
+    /// `(id + 1 + last) & 3`. An unblocked member's record goes once those
+    /// 12 turns have passed. port: a ship's id is its index + 1, as its
+    /// object id elsewhere.
+    fn update_force_detours(&mut self, key: TacticalForceKey, members: &[usize]) {
+        let Some(mover) = self.force_mover(key).copied() else {
+            return;
+        };
+        if self.member_states.len() < self.ships.len() {
+            self.member_states
+                .resize(self.ships.len(), TacticalMemberState::default());
+        }
+        // `+0x87c` as the turn's updates see it.
+        let now = self.step_event_stamp() as f32;
+        for &index in members {
+            let moving = original_tactical_mobility(&self.ships, &self.field_effects, index)
+                .is_some_and(|mobility| mobility.effective_engine_power > 0.0);
+            if !moving {
+                continue;
+            }
+            let state = self.member_states[index];
+            let due = now - state.detour_stamp > ORIGINAL_DETOUR_TURNS;
+            if state.blocked
+                && mover.velocity == TacticalWorldVector::ZERO
+                && mover.still_turns >= ORIGINAL_STILL_TURNS_TO_FACE
+                && due
+            {
+                let id = index + 1;
+                let next = ((id + 1 + usize::from(state.detour_index)) & 3) as u8;
+                let [x, y, z] = ORIGINAL_DETOUR_OFFSETS[usize::from(next)];
+                self.member_states[index].detour_stamp = now;
+                self.member_states[index].detour_index = next;
+                self.force_detours
+                    .retain(|detour| !(detour.force == key && detour.ship == index));
+                self.force_detours.push(TacticalForceDetour {
+                    force: key,
+                    ship: index,
+                    offset: TacticalWorldVector { x, y, z },
+                });
+            } else if !state.blocked && due {
+                self.force_detours
+                    .retain(|detour| !(detour.force == key && detour.ship == index));
+            }
+        }
+    }
+
     /// Keep one mover per moving force: a force that is new, or whose tactic
     /// changed (`FUN_005cb1a0` on event `0x3d`), gets a new one at its lead
     /// unit; a force that is gone loses its own.
@@ -4158,6 +4237,7 @@ impl BattleSession {
             .map(|members| self.force_key(members[0]))
             .collect::<Vec<_>>();
         self.force_movers.retain(|mover| keys.contains(&mover.force));
+        self.force_detours.retain(|detour| keys.contains(&detour.force));
         for (members, key) in forces.iter().zip(keys) {
             let leader = members[0];
             let tactic = self.force_tactic(leader);
@@ -4192,8 +4272,10 @@ impl BattleSession {
                 speed,
                 turn_rate,
                 still_turns: 0,
+                slot_turn: 0.0,
                 last_turn_anchor: lead.source_position,
             };
+            self.force_detours.retain(|detour| detour.force != key);
             self.force_movers.retain(|existing| existing.force != key);
             self.force_movers.push(mover);
         }
@@ -4280,6 +4362,7 @@ impl BattleSession {
         radius: f32,
         delta_milliseconds: f32,
     ) -> bool {
+        mover.slot_turn = 0.0;
         let speed = mover.speed * ORIGINAL_FORMATION_SPEED_SHARE;
         let delta = source_delta(point, mover.anchor);
         let length = delta.x.hypot(delta.y).hypot(delta.z);
@@ -4352,7 +4435,9 @@ impl BattleSession {
                 mover.turn_rate,
                 delta_milliseconds,
             );
-            // `0x005eae40` → `FUN_005ead90`: the slots turn with it.
+            // `0x005eae40` → `FUN_005ead90`: the slots turn with it, and
+            // the detours with them.
+            mover.slot_turn = applied;
             let (sin, cos) = applied.sin_cos();
             let lateral = mover.lateral;
             mover.lateral = TacticalWorldVector {
@@ -4448,6 +4533,7 @@ impl BattleSession {
         index: usize,
         mover: TacticalForceMover,
         place: TacticalWorldPosition,
+        detour: Option<TacticalWorldVector>,
         own_speed: f32,
         delta_milliseconds: f32,
     ) {
@@ -4462,7 +4548,12 @@ impl BattleSession {
         };
         let seconds = delta_milliseconds * 0.001;
         let reach = speed * seconds;
+        // A detour record replaces the distance with its raw offset
+        // (`0x5eb040`).
         let to_place = |ship: &TacticalShip| {
+            if let Some(offset) = detour {
+                return offset;
+            }
             let delta = source_delta(place, ship.source_position);
             if delta.dot(delta) <= ORIGINAL_MEMBER_PLACE_RADIUS_SQUARED {
                 TacticalWorldVector::ZERO
@@ -4682,6 +4773,19 @@ impl BattleSession {
                 radius,
                 delta_milliseconds,
             );
+            let turn = self.force_movers[mover_index].slot_turn;
+            if turn != 0.0 {
+                let force = self.force_movers[mover_index].force;
+                let (sin, cos) = turn.sin_cos();
+                for detour in self.force_detours.iter_mut().filter(|detour| detour.force == force) {
+                    let offset = detour.offset;
+                    detour.offset = TacticalWorldVector {
+                        x: offset.x * cos - sin * offset.z,
+                        y: offset.y,
+                        z: offset.x * sin + cos * offset.z,
+                    };
+                }
+            }
             if arrived && !withdrawing {
                 self.complete_force_waypoint(members, point, &mut completed_player_task_forces);
             }
@@ -4698,7 +4802,12 @@ impl BattleSession {
                 continue;
             };
             let mover = self.force_movers[mover_index];
-            self.move_force_member(index, mover, place, own_speed, delta_milliseconds);
+            let detour = self
+                .force_detours
+                .iter()
+                .find(|detour| detour.force == mover.force && detour.ship == index)
+                .map(|detour| detour.offset);
+            self.move_force_member(index, mover, place, detour, own_speed, delta_milliseconds);
         }
         let faction = self.player_voice_faction();
         for (group, transitioned) in completed_player_task_forces.into_iter().enumerate() {
@@ -5506,7 +5615,7 @@ impl BattleSession {
     /// `+0x87c` within a step. A turn's updates run before `+0x87c`
     /// advances (`0x005bedb9`, `0x005bedf6`), so on a turn's first step it
     /// is one less.
-    fn step_event_stamp(&self) -> u32 {
+    pub(crate) fn step_event_stamp(&self) -> u32 {
         let stamp = self.command_event_stamp();
         if self.combat_tick % ORIGINAL_TACTICAL_TURN_STEPS == 0 {
             stamp - 1
