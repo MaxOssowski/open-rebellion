@@ -9331,6 +9331,8 @@ mod tests {
             tractor_beam_range: 0.0,
             tractor_request_pending: false,
             ion_engine_stun: 0.0,
+            hangar: Vec::new(),
+            hangar_launch_stamp: 0.0,
             fighter_capacity: 1,
             maneuver_state_value: None,
             damage_control: 100,
@@ -9401,6 +9403,8 @@ mod tests {
             escort_target: None,
             recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
             recovery_target: None,
+            home_carrier: None,
+            in_hangar: false,
             retreating: false,
             retreat_progress: 0.0,
         }

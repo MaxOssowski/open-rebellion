@@ -1857,6 +1857,8 @@ mod tests {
             tractor_beam_range: 0.0,
             tractor_request_pending: false,
             ion_engine_stun: 0.0,
+            hangar: Vec::new(),
+            hangar_launch_stamp: 0.0,
             fighter_capacity: 0,
             maneuver_state_value: None,
             damage_control: 0,
@@ -1928,6 +1930,8 @@ mod tests {
             escort_target: None,
             recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
             recovery_target: None,
+            home_carrier: None,
+            in_hangar: false,
             retreating: false,
             retreat_progress: 0.0,
         }
@@ -2819,6 +2823,187 @@ mod tests {
         });
         world.systems[system].fleets = vec![alliance, ships, squadrons];
         (world, system, alliance, ships, squadrons)
+    }
+
+    /// `world_with_battle`'s Alliance carrier (id 5, room 4) with two
+    /// squadrons aboard without a hyperdrive, one aboard with one, and one
+    /// on no ship; the battle from it.
+    fn carrier_battle() -> BattleSession {
+        use crate::world::{FighterClass, FighterEntry};
+        let (mut world, system, alliance, ships, squadrons) = world_with_battle();
+        let jumper = world.fighter_classes.insert(FighterClass {
+            dat_id: DatId::new(0x2000_0003),
+            is_alliance: true,
+            squadron_size: 12,
+            hyperdrive: 1,
+            sub_light_engine: 10,
+            ..FighterClass::default()
+        });
+        let escort = world.fleets[alliance].fighters[0].class;
+        let ship = world.fleets[alliance].capital_ships[0].class;
+        world.capital_ship_classes[ship].fighter_capacity = 4;
+        world.fleets[alliance].capital_ships[0].id = 5;
+        world.fleets[alliance].fighters = vec![
+            FighterEntry { class: escort, count: 2, carrier: Some(5) },
+            FighterEntry { class: jumper, count: 1, carrier: Some(5) },
+            FighterEntry { class: escort, count: 1, carrier: None },
+        ];
+        let FleetBattle { session, .. } = BattleSession::new_for_fleets(
+            &world,
+            system,
+            &[alliance],
+            &[ships, squadrons],
+            true,
+            3,
+            7,
+        );
+        session
+    }
+
+    // 0x40bf0b / FUN_005964c0: a squadron aboard a carrier and without a
+    // working hyperdrive (FUN_005b1b70) starts inside its hangar (state 1,
+    // FUN_005b69d0; FUN_005b8570 sets +0x164 and the list); one with a
+    // hyperdrive starts deployed, its carrier its home; one on no ship
+    // deployed with no home. FUN_005b8570 sets the unset timer to the stamp
+    // 3 plus a draw of 0 to 8 plus 5.0.
+    #[test]
+    fn carried_squadrons_without_a_hyperdrive_start_in_the_hangar() {
+        let session = carrier_battle();
+        let ours = session
+            .fighters
+            .iter()
+            .enumerate()
+            .filter(|(_, fighter)| fighter.identity.is_alliance)
+            .map(|(index, fighter)| (index, fighter.in_hangar, fighter.alive, fighter.home_carrier))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ours.iter().map(|&(_, hangar, alive, home)| (hangar, alive, home)).collect::<Vec<_>>(),
+            [(true, false, Some(0)), (true, false, Some(0)), (false, true, Some(0)), (false, true, None)]
+        );
+        assert_eq!(session.ships[0].hangar, [ours[0].0, ours[1].0]);
+        let stamp = session.ships[0].hangar_launch_stamp;
+        assert!((8.0..=16.0).contains(&stamp) && stamp.fract() == 0.0, "{stamp}");
+        assert_eq!(
+            session.ships.iter().skip(1).map(|ship| ship.hangar_launch_stamp).collect::<Vec<_>>(),
+            vec![0.0; session.ships.len() - 1]
+        );
+    }
+
+    // FUN_005b8800 (a turn of the carrier's, after its repair): at its
+    // timer it posts event 0x19 for the first squadron inside, and sets the
+    // timer again (stamp + draw 0..8 + 5); FUN_005b8b10 / FUN_005b8c70
+    // launch it three turns later at the carrier's underside, its home that
+    // carrier, into the fight.
+    #[test]
+    fn a_hangar_launches_its_squadrons_one_at_a_time() {
+        use crate::tactical::TacticalTurnEvent;
+        let mut session = carrier_battle();
+        session.paused = false;
+        let first = session.ships[0].hangar[0];
+        let second = session.ships[0].hangar[1];
+        let timer = session.ships[0].hangar_launch_stamp;
+        let posted = step_until(&mut session, |t| {
+            t.turn_events.iter().any(|queued| {
+                queued.event == TacticalTurnEvent::FighterLaunch { carrier: 0, fighter: first }
+            })
+        });
+        // Posted in the updates of the turn whose stamp (+0x87c, the turn
+        // plus 2) reaches the timer, on that turn's first step.
+        assert_eq!(posted, (timer as u32 - 2) * 4);
+        let next = session.ships[0].hangar_launch_stamp;
+        assert!(next >= timer + 5.0 && next <= timer + 13.0, "{next}");
+        let launched = step_until(&mut session, |t| t.fighters[first].alive);
+        assert_eq!(launched, posted + 12);
+        let fighter = &session.fighters[first];
+        assert!(!fighter.in_hangar);
+        assert_eq!(fighter.home_carrier, Some(0));
+        assert_eq!(session.ships[0].hangar, [second]);
+        assert!(!session.fighters[second].alive);
+    }
+
+    // FUN_005b8b10: no launch while the squadron's group is recovering
+    // (order 2), nor with its carrier out of the fight.
+    #[test]
+    fn a_squadron_stays_inside_while_recovering_or_its_carrier_is_lost() {
+        use crate::tactical::TacticalTurnEvent;
+        let launch = |recover: bool, lost: bool| {
+            let mut session = carrier_battle();
+            let first = session.ships[0].hangar[0];
+            if recover {
+                session.fighters[first].order = TacticalOrder::Recover;
+            }
+            if lost {
+                session.ships[0].alive = false;
+            }
+            session.run_turn_event(TacticalTurnEvent::FighterLaunch { carrier: 0, fighter: first });
+            session.fighters[first].in_hangar
+        };
+        assert!(!launch(false, false));
+        assert!(launch(true, false));
+        assert!(launch(false, true));
+    }
+
+    // FUN_005b8800 with the timer unset: the stamp (+0x87c) plus a draw of 0
+    // to 8 plus 5.0, and no launch yet.
+    #[test]
+    fn an_unset_hangar_timer_is_the_stamp_plus_a_draw_plus_five() {
+        let mut session = carrier_battle();
+        session.ships[0].hangar_launch_stamp = 0.0;
+        session.tactical_rng = (0..)
+            .map(OriginalTacticalRng::new)
+            .find(|rng| {
+                let mut rng = *rng;
+                rng.inclusive(0, crate::tactical::ORIGINAL_HANGAR_LAUNCH_DRAW_MAX) == 3
+            })
+            .expect("a stream gives the draw");
+        let stamp = session.step_event_stamp() as f32;
+        session.hangar_turn(0);
+        assert_eq!(session.ships[0].hangar_launch_stamp, stamp + 3.0 + 5.0);
+        assert!(session.turn_events.is_empty());
+    }
+
+    // 0x5c7060: a member in state 0 flies to its home carrier only while that
+    // carrier lives on its side; else to its place.
+    #[test]
+    fn a_waiting_member_flies_to_a_live_home_carrier_of_its_side() {
+        use crate::tactical::TacticalWorldPosition;
+        let flown = |alive: bool, alliance: bool| {
+            let mut tactical = recovery(0, 1);
+            let mut home = ship(alliance, TacticalWeaponArc::default(), 0.0);
+            home.source_position.x = 30.0;
+            home.alive = alive;
+            tactical.ships.push(home);
+            tactical.fighters[0].home_carrier = Some(2);
+            tactical.sync_fighter_movers();
+            for mover in &mut tactical.fighter_movers {
+                mover.anchor = TacticalWorldPosition { x: -30.0, y: 0.0, z: 0.0 };
+            }
+            tactical.advance_recovering_fighters(250.0);
+            tactical.fighters[0].source_position.x
+        };
+        assert!(flown(true, true) > 0.0);
+        assert!(flown(false, true) < 0.0);
+        assert!(flown(true, false) < 0.0);
+    }
+
+    // FUN_005cf980 tries a member's home carrier (+0x164) before its side's
+    // ships, and the hangar's squadrons fill its room (+0xc counts them).
+    #[test]
+    fn a_recovery_tries_the_home_carrier_first() {
+        use crate::tactical::TacticalFighterRecoveryState as Recovery;
+        let mut tactical = recovery(1, 1);
+        let mut home = ship(true, TacticalWeaponArc::default(), 0.0);
+        home.fighter_capacity = 1;
+        tactical.ships.push(home);
+        tactical.fighters[0].home_carrier = Some(2);
+        tactical.advance_recovery_executors();
+        assert_eq!(tactical.fighters[0].recovery_state, Recovery::Reserved);
+        assert_eq!(tactical.fighters[0].recovery_target, Some(2));
+
+        let mut full = recovery(1, 1);
+        full.ships[0].hangar.push(5);
+        full.advance_recovery_executors();
+        assert_eq!(full.fighters[0].recovery_state, Recovery::AwaitingCarrier);
     }
 
     // FUN_0040c780: each lost hull and squadron goes back to its own fleet.

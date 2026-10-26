@@ -51,6 +51,11 @@ pub const ORIGINAL_REGROUP_RANGE_WEIGHT: f32 = -10_000.0;
 /// `FUN_005b3a40` (`0x5b3a92`): a unit's weapons draw 0 to this each turn
 /// and fire only on 0.
 pub const ORIGINAL_WEAPON_TURN_DRAW_MAX: u32 = 2;
+/// `FUN_005b8570` / `FUN_005b8800`: a hangar's launch timer draws 0 to this.
+pub const ORIGINAL_HANGAR_LAUNCH_DRAW_MAX: u32 = 8;
+/// `DAT_0066c68c` (the hangar's `+0x18`, `FUN_005b82a0`): turns between
+/// launches.
+pub const ORIGINAL_HANGAR_LAUNCH_INTERVAL: f32 = 5.0;
 /// `FUN_005b05c0` converts the CAPSHPSD sublight rating by 0.4 * 0.6.
 pub const ORIGINAL_SUBLIGHT_ENGINE_SCALE: f32 = 0.24;
 /// `FUN_005b9c60` converts the FIGHTSD sublight rating by 0.4 without the
@@ -673,6 +678,12 @@ pub struct TacticalShip {
     /// (`FUN_005b17f0`), and it falls by a second each turn (slot `+0x9c`,
     /// `FUN_005b0330`).
     pub ion_engine_stun: f32,
+    /// The hangar (`+0x418`, `FUN_005b82a0`): the squadrons inside, in
+    /// order (`+0x1c`).
+    pub hangar: Vec<usize>,
+    /// The hangar's next launch stamp (`+0x14`); 0.0 is unset
+    /// (`DAT_0066c690`).
+    pub hangar_launch_stamp: f32,
     /// Number of fighter squadrons this hull can recover.
     pub fighter_capacity: u32,
     /// Active state-record value at offset `+0x4c`, or no active record.
@@ -1238,6 +1249,12 @@ pub struct TacticalFighter {
     pub recovery_state: TacticalFighterRecoveryState,
     /// Capital-ship index reserved as this squadron's recovery carrier.
     pub recovery_target: Option<usize>,
+    /// `+0x164`: the carrier it launched from, or rides on (`FUN_005b8c70`,
+    /// `FUN_005b8570`); a recovery tries it first (`FUN_005cf980`).
+    pub home_carrier: Option<usize>,
+    /// State 1 (`+0x170`, `FUN_005b69d0`): inside its carrier's hangar,
+    /// out of the fight until it launches.
+    pub in_hangar: bool,
     /// True if the group withdraws with its side (`FUN_005ad530` gives a
     /// group with a hyperdrive order 3).
     pub retreating: bool,
@@ -1397,6 +1414,9 @@ pub enum TacticalTurnEvent {
     /// `0x2f` from a recovery with nowhere to go during the withdrawal
     /// (`FUN_005cf980`): `FUN_005b2720` destroys the squadron.
     FighterLeftBehind(usize),
+    /// `0x19`, `FUN_005b8b10`: a squadron launches from its carrier's
+    /// hangar (`FUN_005b8c70`).
+    FighterLaunch { carrier: usize, fighter: usize },
     /// `0x16`, `FUN_005b2340`, posted by an ion hit through the shields
     /// (`FUN_005b5b60`): the engines' stun grows (`+0x3b4`), and each
     /// flagged arc is emptied (`FUN_005b6980`) and queued (`FUN_005b64e0`).
@@ -4234,6 +4254,8 @@ impl BattleSession {
             ai_withdrawal_ms: None,
             diagnostic_log: Vec::new(),
         };
+        let mut session = session;
+        session.start_hangar_timers();
         FleetBattle {
             session,
             ship_fleets,
@@ -5101,8 +5123,8 @@ impl BattleSession {
     /// force's `0x5c7060`) is the raw one to their carrier's underside, else
     /// the place delta (`0x5cb050`). The force's anchor stands: order 2's
     /// install (`FUN_005ca6d0`) clears its route and target.
-    /// port: a squadron flies to the carrier that reserved it; the home
-    /// carrier (`+0x164` from its launch, `FUN_005b8c70`) is not kept.
+    /// A member in state 0 flies to its home carrier (`+0x164` from its
+    /// launch, `FUN_005b8c70`) when it has one.
     pub fn advance_recovering_fighters(&mut self, delta_milliseconds: f32) {
         self.sync_fighter_movers();
         for index in 0..self.fighters.len() {
@@ -5126,7 +5148,19 @@ impl BattleSession {
                     };
                     source_delta(self.carrier_underside(carrier), fighter.source_position)
                 }
-                TacticalFighterRecoveryState::AwaitingCarrier => self.fighter_place_delta(&mover, index),
+                // In state 0 a member with a home carrier flies to it.
+                TacticalFighterRecoveryState::AwaitingCarrier => match fighter
+                    .home_carrier
+                    .filter(|&carrier| {
+                        self.ships
+                            .get(carrier)
+                            .is_some_and(|ship| ship.alive && ship.is_attacker == fighter.is_attacker)
+                    }) {
+                    Some(carrier) => {
+                        source_delta(self.carrier_underside(carrier), fighter.source_position)
+                    }
+                    None => self.fighter_place_delta(&mover, index),
+                },
                 TacticalFighterRecoveryState::Recovered => continue,
             };
             self.fly_fighter_squadron(index, delta, None, mover.forward, delta_milliseconds);
@@ -5155,7 +5189,7 @@ impl BattleSession {
     }
 
     /// The room left on a carrier (`+0x10` less `+0xc`): its capacity less
-    /// the squadrons it has reserved or taken in.
+    /// the squadrons inside its hangar and those it has reserved or taken in.
     fn carrier_room(&self, carrier: usize) -> u32 {
         let taken = self
             .fighters
@@ -5165,9 +5199,10 @@ impl BattleSession {
                     && fighter.recovery_state != TacticalFighterRecoveryState::AwaitingCarrier
             })
             .count();
+        let inside = self.ships[carrier].hangar.len();
         self.ships[carrier]
             .fighter_capacity
-            .saturating_sub(u32::try_from(taken).unwrap_or(u32::MAX))
+            .saturating_sub(u32::try_from(taken + inside).unwrap_or(u32::MAX))
     }
 
     /// Each turn, `FUN_005cf980` (slot 4 of executor `0x66cdf8`, from the
@@ -5186,8 +5221,7 @@ impl BattleSession {
     ///   docked member leaves the force (`FUN_005b8630`), whose voice plays
     ///   when its last member goes, so the port plays it there.
     ///
-    /// port: the home carrier (`+0x164`) is not kept, so a member looks only
-    /// along its side's ships; the Empire's Death Star takes no squadron.
+    /// port: the Empire's Death Star takes no squadron.
     pub fn advance_recovery_executors(&mut self) {
         let player_is_attacker = self.player_is_attacker;
         let player_faction = self.player_voice_faction();
@@ -5209,8 +5243,10 @@ impl BattleSession {
                 {
                     continue;
                 }
+                // Its home carrier first (`+0x164`), then its side's ships.
+                let home = self.fighters[member].home_carrier;
                 let mut reserved = None;
-                for carrier in 0..self.ships.len() {
+                for carrier in home.into_iter().chain(0..self.ships.len()) {
                     if self.ships[carrier].is_attacker != executor.attacker
                         || !self.unit_in_the_fight(OriginalFighterTarget::Capital(carrier))
                     {
@@ -5306,12 +5342,16 @@ impl BattleSession {
     ) {
         let fleet = &world.fleets[fleet_key];
         let first_fleet_ship = ships.len();
+        // Each strategic ship's id and its tactical index, for the squadrons
+        // aboard it.
+        let mut carried_by = Vec::new();
         for (ship_idx, ship) in fleet
             .capital_ships
             .iter()
             .enumerate()
             .filter(|(_, ship)| ship.alive)
         {
+            carried_by.push((ship.id, ships.len()));
             let class = &world.capital_ship_classes[ship.class];
             let tactical_resource = capital_ship_tactical_resource(class.dat_id);
             let death_star_resource = death_star_tactical_resource(class.dat_id);
@@ -5410,6 +5450,8 @@ impl BattleSession {
                 tractor_beam_range: class.tractor_beam_range as f32,
                 tractor_request_pending: false,
                 ion_engine_stun: 0.0,
+                hangar: Vec::new(),
+                hangar_launch_stamp: 0.0,
                 fighter_capacity: class.fighter_capacity,
                 maneuver_state_value: None,
                 damage_control: u8::try_from(class.damage_control.min(100)).unwrap_or(100),
@@ -5521,11 +5563,110 @@ impl BattleSession {
                     escort_target: None,
                     recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
                     recovery_target: None,
+                    home_carrier: None,
+                    in_hangar: false,
                     retreating: false,
                     retreat_progress: 0.0,
                 });
+                // `0x40bf0b`: a squadron aboard a capital ship passes it to
+                // `FUN_005964c0`. Without a working hyperdrive
+                // (`FUN_005b1b70`) it starts inside that ship's hangar
+                // (`FUN_005b69d0`: state 1, out of the fight; `FUN_005b8570`:
+                // `+0x164`, the hangar's list); with one it starts deployed
+                // (`FUN_005b69b0`). A squadron on a planet starts deployed.
+                let carrier = entry.carrier.and_then(|id| {
+                    carried_by
+                        .iter()
+                        .find(|(ship_id, _)| *ship_id == id)
+                        .map(|(_, index)| *index)
+                });
+                let index = fighters.len() - 1;
+                let fighter = &mut fighters[index];
+                fighter.home_carrier = carrier;
+                if let Some(carrier) = carrier {
+                    if fighter.alive && !original_fighter_hyperdrive_works(fighter) {
+                        fighter.in_hangar = true;
+                        fighter.alive = false;
+                        ships[carrier].hangar.push(index);
+                    }
+                }
             }
         }
+    }
+
+    /// `FUN_005b8570` at the setup: each squadron going into a hangar whose
+    /// timer is unset (`+0x14` = 0.0, `DAT_0066c690`) sets it to the stamp
+    /// (`+0x87c`, 3 then) plus a draw of 0 to 8 plus the interval 5.0
+    /// (`+0x18`, `DAT_0066c68c`).
+    fn start_hangar_timers(&mut self) {
+        for index in 0..self.fighters.len() {
+            let Some(carrier) = self.fighters[index].home_carrier.filter(|_| self.fighters[index].in_hangar) else {
+                continue;
+            };
+            if self.ships[carrier].hangar_launch_stamp == 0.0 {
+                let draw = self.tactical_rng.inclusive(0, ORIGINAL_HANGAR_LAUNCH_DRAW_MAX);
+                self.ships[carrier].hangar_launch_stamp = ORIGINAL_TACTICAL_EVENT_LEAD_TURNS as f32
+                    + draw as f32
+                    + ORIGINAL_HANGAR_LAUNCH_INTERVAL;
+            }
+        }
+    }
+
+    /// `FUN_005b8800`, a hangar's turn (after its ship's repair, before its
+    /// weapons, `0x005a9de0`): with squadrons inside, an unset timer is set
+    /// to the stamp plus a draw of 0 to 8 plus 5.0; a timer reached posts
+    /// event `0x19` for the first squadron inside (`FUN_005c6070`) at the
+    /// stamp, and, with squadrons still counted inside (`+8`), sets the
+    /// timer again the same way.
+    pub(crate) fn hangar_turn(&mut self, carrier: usize) {
+        let Some(&first) = self.ships[carrier].hangar.first() else {
+            return;
+        };
+        let stamp = self.step_event_stamp();
+        let next = |rng: &mut OriginalTacticalRng| {
+            stamp as f32
+                + rng.inclusive(0, ORIGINAL_HANGAR_LAUNCH_DRAW_MAX) as f32
+                + ORIGINAL_HANGAR_LAUNCH_INTERVAL
+        };
+        if self.ships[carrier].hangar_launch_stamp == 0.0 {
+            self.ships[carrier].hangar_launch_stamp = next(&mut self.tactical_rng);
+            return;
+        }
+        if (stamp as f32) < self.ships[carrier].hangar_launch_stamp {
+            return;
+        }
+        self.post_turn_event(
+            stamp,
+            TacticalTurnEvent::FighterLaunch {
+                carrier,
+                fighter: first,
+            },
+        );
+        self.ships[carrier].hangar_launch_stamp = next(&mut self.tactical_rng);
+    }
+
+    /// Event `0x19` (`FUN_005b8b10`): unless its group is recovering
+    /// (order 2), and with its carrier in the fight, the squadron launches
+    /// (`FUN_005b8c70`): out of the hangar's list, at the carrier's underside
+    /// (the hangar's slot `+4`, `0x5b0b80`), with that carrier as its home
+    /// (`+0x164`), into the fight (`FUN_005b69b0`, `FUN_005a9170`).
+    fn launch_fighter(&mut self, carrier: usize, fighter: usize) {
+        let Some(squadron) = self.fighters.get(fighter) else {
+            return;
+        };
+        if !squadron.in_hangar
+            || squadron.order == TacticalOrder::Recover
+            || !self.unit_in_the_fight(OriginalFighterTarget::Capital(carrier))
+        {
+            return;
+        }
+        let underside = self.carrier_underside(carrier);
+        self.ships[carrier].hangar.retain(|&inside| inside != fighter);
+        let squadron = &mut self.fighters[fighter];
+        squadron.in_hangar = false;
+        squadron.alive = true;
+        squadron.home_carrier = Some(carrier);
+        squadron.source_position = underside;
     }
 
     /// Bind every active battle participant to the source X-slot and Z-lane
@@ -6058,6 +6199,9 @@ impl BattleSession {
                     fighter.recovery_state = TacticalFighterRecoveryState::Returning;
                     fighter.recovery_target = Some(carrier);
                 }
+            }
+            TacticalTurnEvent::FighterLaunch { carrier, fighter } => {
+                self.launch_fighter(carrier, fighter);
             }
             TacticalTurnEvent::FighterLeftBehind(index) => {
                 if let Some(fighter) = self.fighters.get_mut(index).filter(|fighter| fighter.alive) {
@@ -6598,6 +6742,7 @@ impl BattleSession {
                 }
                 refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
             }
+            self.hangar_turn(ship_index);
             if self.weapon_turn_opens(TacticalUnitRef::Ship(ship_index)) {
                 self.fire_unit_weapons(TacticalUnitRef::Ship(ship_index), &mut shots);
             }
