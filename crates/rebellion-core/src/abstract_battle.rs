@@ -8853,8 +8853,9 @@ mod tests {
         assert_eq!(run(8, true), (false, false));
     }
 
-    // The fighter forces that close: not recovering, escorting, holding,
-    // withdrawing, on the trench run, emptied or gone.
+    // The fighter forces that close: not recovering, holding, withdrawing,
+    // on the trench run, emptied or gone. An escort closes on its ship
+    // (FUN_005c6610 on +0x8c; order 1's executor, 0x5ae1e0, is empty).
     #[test]
     fn only_free_fighter_forces_close_on_targets() {
         use crate::tactical::TacticalFighterRecoveryState;
@@ -8874,7 +8875,72 @@ mod tests {
         let mut flying = wing();
         flying.retreat_progress = 1.0;
         tactical.fighters.push(flying);
-        assert_eq!(tactical.fighter_forces(), [0]);
+        assert_eq!(tactical.fighter_forces(), [0, 2]);
+    }
+
+    // FUN_005c6610 takes the escorted ship from +0x8c like any target: the
+    // force's anchor steps toward it, and with a step within the move's
+    // radius (2.0) it goes onto the circle round the ship (radius 1.5,
+    // DAT_0066cb08, half of it above; angle 250 x pi x 0.0002).
+    #[test]
+    fn an_escorting_fighter_group_closes_on_and_circles_its_ship() {
+        use crate::tactical::{TacticalAttackTarget, TacticalEngagementBand, TacticalUnitRef};
+        let escort = |z: f32, step: Option<f32>| {
+            let mut guarded = ship(true, TacticalWeaponArc::default(), 0.0);
+            guarded.source_position.z = z;
+            guarded.source_position.x = 3.0;
+            let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+            wing.order = TacticalOrder::Escort;
+            wing.escort_target = Some(0);
+            let mut tactical = session(vec![guarded], vec![wing]);
+            if let Some(step) = step {
+                tactical.engagement_bands = vec![TacticalEngagementBand {
+                    leader: TacticalUnitRef::Fighter(0),
+                    min: 0.0,
+                    max: 0.0,
+                    step,
+                }];
+            }
+            tactical.advance_fighter_approach();
+            tactical
+        };
+        let attack = |z: f32| {
+            let mut other = ship(true, TacticalWeaponArc::default(), 0.0);
+            other.source_position.z = z;
+            other.source_position.x = 3.0;
+            let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+            wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+            let mut tactical = session(vec![other], vec![wing]);
+            tactical.advance_fighter_approach();
+            tactical
+        };
+        // Far off, it moves as an attack on the same ship would.
+        let far = escort(60.0, None);
+        let anchor = far.fighter_movers[0].anchor;
+        assert!(anchor.z > 0.0 && anchor.x > 0.0, "{anchor:?}");
+        assert_eq!(anchor, attack(60.0).fighter_movers[0].anchor);
+        assert_ne!(far.fighters[0].source_position, TacticalWorldPosition::ORIGIN);
+        // Close by, it goes onto the circle.
+        let near_ship = escort(1.0, Some(1.0));
+        let angle = 250.0 * std::f32::consts::PI * 0.000_2;
+        let (sin, cos) = angle.sin_cos();
+        let anchor = near_ship.fighter_movers[0].anchor;
+        assert!((anchor.x - (3.0 + 1.5 * cos - 1.5 * sin)).abs() < 1e-5, "{anchor:?}");
+        assert!((anchor.y - 0.75).abs() < 1e-5, "{anchor:?}");
+        assert!((anchor.z - (1.0 + 1.5 * cos + 1.5 * sin)).abs() < 1e-5, "{anchor:?}");
+        // Its band is measured on the escorted ship.
+        let mut banded = escort(60.0, None);
+        banded.update_engagement_bands();
+        assert!(banded
+            .engagement_bands
+            .iter()
+            .any(|band| band.leader == TacticalUnitRef::Fighter(0)));
+        // Without a ship to escort, it stands.
+        let mut lost = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        lost.order = TacticalOrder::Escort;
+        let mut tactical = session(vec![ship(true, TacticalWeaponArc::default(), 0.0)], vec![lost]);
+        tactical.advance_fighter_approach();
+        assert_eq!(tactical.fighters[0].source_position, TacticalWorldPosition::ORIGIN);
     }
 
     // FUN_005a8f70 ends a maneuver at its last point; an attack order

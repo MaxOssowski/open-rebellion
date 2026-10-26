@@ -8027,10 +8027,9 @@ impl BattleSession {
                 TacticalUnitRef::Ship(index) => {
                     (self.ships[index].attack_target, self.force_tactic(index))
                 }
-                TacticalUnitRef::Fighter(index) => (
-                    self.fighters[index].attack_target,
-                    self.fighters[index].tactic,
-                ),
+                TacticalUnitRef::Fighter(index) => {
+                    (self.fighter_force_target(index), self.fighters[index].tactic)
+                }
             };
             let Some(target) = target else {
                 continue;
@@ -8057,8 +8056,23 @@ impl BattleSession {
         self.engagement_bands = bands;
     }
 
+    /// A fighter force's target (`+0x8c`, set by slot `+0x1c`,
+    /// `FUN_005cb600`): its attack target, or the ship it escorts. Order 1's
+    /// install (`FUN_005ca6d0`) keeps `+0x8c` and clears it only when the
+    /// order is left; its executor (class `0x66ceb8`, `0x5ae1e0`) does
+    /// nothing, so `FUN_005c6610` closes on and circles the escorted ship as
+    /// on any target.
+    pub(crate) fn fighter_force_target(&self, index: usize) -> Option<TacticalAttackTarget> {
+        let fighter = &self.fighters[index];
+        if fighter.order == TacticalOrder::Escort {
+            fighter.escort_target.map(TacticalAttackTarget::CapitalShip)
+        } else {
+            fighter.attack_target
+        }
+    }
+
     /// The fighter groups that close on targets: in the fight, not
-    /// withdrawing, recovering, escorting, holding or on the trench run.
+    /// withdrawing, recovering, holding or on the trench run.
     /// port: each group entry is a force, as in the withdrawal.
     pub(crate) fn fighter_forces(&self) -> Vec<usize> {
         (0..self.fighters.len())
@@ -8074,7 +8088,6 @@ impl BattleSession {
                         fighter.order,
                         TacticalOrder::Recover
                             | TacticalOrder::AttackDeathStar
-                            | TacticalOrder::Escort
                             | TacticalOrder::HoldPosition
                     )
             })
@@ -8383,7 +8396,7 @@ impl BattleSession {
             else {
                 continue;
             };
-            let Some(target) = self.fighters[lead].attack_target else {
+            let Some(target) = self.fighter_force_target(lead) else {
                 continue;
             };
             let Some(target_position) = self.attack_target_position(target) else {
@@ -9169,11 +9182,12 @@ pub fn refresh_original_escort_targets(session: &mut BattleSession) {
     }
 }
 
-/// Keep order-1 units around their protected ship while autonomous weapons
-/// continue to select nearby opportunity targets. Capital ships use the normal
-/// retained movement integrator; fighter groups use their source engine rate.
+/// Keep order-1 capital ships around their protected ship while autonomous
+/// weapons continue to select nearby opportunity targets, through the normal
+/// retained movement integrator. Fighter groups escort through their force's
+/// step (`BattleSession::fighter_force_target`).
 ///
-/// port: escort offsets and the 10-unit stand-off are the port's own; movement integrates per `FUN_005cd640`.
+/// port: the capital escort offsets are the port's own; movement integrates per `FUN_005cd640`.
 pub fn advance_original_escort_movement(session: &mut BattleSession, delta_milliseconds: f32) {
     if !delta_milliseconds.is_finite() || delta_milliseconds <= 0.0 {
         return;
@@ -9200,28 +9214,6 @@ pub fn advance_original_escort_movement(session: &mut BattleSession, delta_milli
         ship.navigation_route.push(waypoint);
         ship.source_waypoint = Some(waypoint);
         ship.source_desired_forward = source_delta(waypoint, ship.source_position).normalized();
-    }
-
-    let seconds = delta_milliseconds * 0.001;
-    for fighter in &mut session.fighters {
-        let Some(target) = fighter
-            .escort_target
-            .filter(|_| fighter.order == TacticalOrder::Escort)
-        else {
-            continue;
-        };
-        let Some(target_position) = target_positions.get(target).copied() else {
-            continue;
-        };
-        let delta = source_delta(target_position, fighter.source_position);
-        let distance = delta.x.hypot(delta.y).hypot(delta.z);
-        if distance > 10.0 {
-            let travel = (fighter.sublight_engine_power.max(0.0) * seconds).min(distance - 10.0);
-            let direction = delta.normalized();
-            fighter.source_position.x += direction.x * travel;
-            fighter.source_position.y += direction.y * travel;
-            fighter.source_position.z += direction.z * travel;
-        }
     }
 }
 
