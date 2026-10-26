@@ -127,3 +127,70 @@ port:
 hyp: a squadron may not land on a planet another side holds (the regiment's
 rule, `FUN_0053d430` `1`/`0x28`); the Galaxy display's squadron count
 includes the fleets' and the planet's squadrons.
+
+## A destroyed object's children (2026-10-26)
+
+Source: `~/Games/rebexe-decompile/decompiled-typed/` (outside the
+repository); vtable slots read from REBEXE.EXE.
+
+- `GameObj_SetDestroyedReason` (`FUN_004f71d0`) stores the reason in the
+  low byte of `+0x40` and calls slot `+0x100` with the old and new reason.
+  For capital ships and squadrons (vtables `0x0065dc10`, `0x0065def0`)
+  that slot is `0x004f2ad0` -> `FUN_004fb200` -> `FUN_004f7560`. That sets
+  `Flags50` bit `0x8` to (reason != 0), syncs both sides (`FUN_004fa580`)
+  and calls slot `+0x11c`.
+- A capital ship's `+0x11c` is `CapShip_vt11c` (`0x00502840`). It first
+  calls the base chain `CombatUnit` -> `Detector` -> `GameObj_0065ce68`
+  -> `GameObj_vt11c` (`FUN_004fb520`).
+- `GameObj_vt11c` walks every child (`FUN_004fcd00(this, 3)`, families
+  1..0xff) and calls the child's slot `+0xb4`, `FUN_004f8710`:
+  - a child that is Completed and not EnrouteActive gets
+    `FUN_004f7ed0`. While its parent's bit `0x8` is set, that calls the
+    child's `+0xac` (SetDestroyedReason) with the parent's reason. So the
+    child is destroyed with the same reason, recursively.
+  - any other child whose own bit `0x8` is clear gets Autorouting on.
+- `CapShip_vt11c` then walks the children of families `0x30..0x3c`
+  (characters) through slot `+0x2e8`, for reasons 1..0x10.
+
+Rule: the squadrons docked on a capital ship that is destroyed are
+destroyed with it, whatever the reason. Squadrons still being built or en
+route reroute.
+
+### The battle's commit, `FUN_0040c780`
+
+The commit walks the system's fleets (`FUN_004ffe70(system, 3)`), their
+ships and their squadrons, then the system's own squadrons, in three
+passes:
+
+1. `FUN_0040d260` sets each squadron's count from its battle record
+   (`FUN_005968e0` -> `FUN_005b8e00`, 12 fighters a squadron).
+2. `FUN_0040d320` gives each squadron a new parent:
+   - The record's carrier flag is set when the squadron's `+0x164`
+     carrier is found among the battle's units as a capital ship
+     (`FUN_005a6360`: the unit's type, slot `+0x20`, is 0; it returns
+     the hangar `+0x418`), and its state `+0x170` is 1 (in the hangar)
+     or 5 (docked).
+   - With the flag, the carrier becomes the parent when it still exists
+     and is on the squadron's side (`+0x24 & 0xc0`).
+   - Otherwise the parent is the battle's system (`[esi+8]` ->
+     `FUN_004025b0`, `0x40d47c`).
+   - The parent changes through slot `+0xa8` (`FUN_004f6fd0`).
+3. `FUN_0040cfc0` applies each ship's hull. `FUN_0040d170` applies the
+   fleets' other units. `FUN_0040d510` then moves each ship's squadrons
+   over its fighter capacity (`+0x26c`) to the system (`[ebx+8]`,
+   `0x40d5f9`).
+
+So after a battle:
+- a squadron in a hangar or docked rides on that carrier;
+- every other squadron, the launched ones included, stays at the system.
+
+If a carrier lost in the fight is still found by `FUN_005f5500`, its
+hangar's squadrons go back aboard and are destroyed with it through the
+cascade above. If it is not found, they stay at the system.
+
+Still open:
+
+- whether a scrap or a capture reaches `SetDestroyedReason`;
+- whether `FUN_005f5500` still finds a destroyed unit;
+- what moves the system's squadrons back onto the fleet afterwards, if
+  anything does.

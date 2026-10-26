@@ -2935,6 +2935,14 @@ fn tactical_withdraw_enabled(session: &BattleSession) -> bool {
     })
 }
 
+/// The enemy ship the player has selected, when the selection is one.
+fn selected_enemy_ship(session: &BattleSession) -> Option<&TacticalShip> {
+    session
+        .selected_ship
+        .and_then(|index| session.ships.get(index))
+        .filter(|ship| ship.alive && ship.selected && ship.is_attacker != session.player_is_attacker)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct TacticalGroupHud<'a> {
     task_forces: [bool; 8],
@@ -2942,6 +2950,8 @@ struct TacticalGroupHud<'a> {
     selected_task_force: Option<u8>,
     selected_fighter_group: Option<u8>,
     selected_ship_name: Option<&'a str>,
+    /// The selection is an enemy ship (`0x66bba8`).
+    selected_enemy: bool,
     selected_ship_hud: Option<u32>,
     selected_ship_hull: Option<(i32, i32)>,
     selected_ship_shield: Option<(i32, i32)>,
@@ -2955,6 +2965,13 @@ struct TacticalGroupHud<'a> {
 }
 
 impl<'a> TacticalGroupHud<'a> {
+    /// The ship the selected-ship panel shows: one of a player's task force,
+    /// or an enemy's (`0x66bba8`).
+    fn panel_ship_name(&self) -> Option<&'a str> {
+        self.selected_ship_name
+            .filter(|_| self.selected_task_force.is_some() || self.selected_enemy)
+    }
+
     fn from_session(session: &'a BattleSession) -> Self {
         let mut task_forces = [false; 8];
         let mut fighter_groups = [false; 4];
@@ -2973,16 +2990,14 @@ impl<'a> TacticalGroupHud<'a> {
             }
         }
         let selected_task_force = selected_player_task_force(session);
-        let selected_ship_name = session
+        // An enemy selection (`0x66bba8`) shows its ship like one of ours.
+        let selected_ship = session
             .ships
             .iter()
             .find(|ship| {
                 ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker
             })
-            .map(|ship| ship.name.as_str());
-        let selected_ship = session.ships.iter().find(|ship| {
-            ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker
-        });
+            .or_else(|| selected_enemy_ship(session));
         let selected_fighter = session.selected_fighter_group.and_then(|group| {
             session.fighters.iter().find(|fighter| {
                 fighter.alive
@@ -3004,7 +3019,8 @@ impl<'a> TacticalGroupHud<'a> {
             selected_task_force,
             selected_fighter_group: session.selected_fighter_group,
             selected_fighter_count,
-            selected_ship_name,
+            selected_ship_name: selected_ship.map(|ship| ship.name.as_str()),
+            selected_enemy: selected_enemy_ship(session).is_some(),
             selected_ship_hud: selected_ship
                 .and_then(|ship| ship.tactical_resource)
                 .map(TacticalCapitalShipResource::hud_resource),
@@ -3203,6 +3219,42 @@ fn select_task_force(session: &mut BattleSession, group: u8) -> usize {
     // The task-force state (`0x66bc48`): orders go to the whole force.
     session.task_force_selection = Some(group);
     session.ships.iter().filter(|ship| ship.selected).count()
+}
+
+/// A left click on a capital ship. The clicked unit's side picks the
+/// selection state (`0x005a0d10`, `0x005a1240`): the player's own ship gets
+/// the one-unit state (`0x66bce8`, `FUN_005a1550`), or with Ctrl joins the
+/// several-unit state (`0x66bc98`); an enemy ship gets the enemy state
+/// (`0x66bba8`, `FUN_005a1110`). That state shows the ship's panel like the
+/// one-unit state, but its order and tactic slots (`+0x20`, `+0x24`,
+/// `+0x28`) are empty, and a Ctrl click from it starts a new one-unit
+/// selection instead of adding to it.
+fn select_clicked_ship(session: &mut BattleSession, index: usize, control: bool) {
+    let Some(ship) = session.ships.get(index) else {
+        return;
+    };
+    let own = ship.is_attacker == session.player_is_attacker;
+    let player_is_attacker = session.player_is_attacker;
+    let joins = control
+        && own
+        && session
+            .ships
+            .iter()
+            .all(|ship| !ship.selected || ship.is_attacker == player_is_attacker);
+    if joins {
+        session.ships[index].selected = !session.ships[index].selected;
+    } else {
+        for ship in &mut session.ships {
+            ship.selected = false;
+        }
+        session.ships[index].selected = true;
+    }
+    session.selected_ship = Some(index);
+    session.selected_fighter_group = None;
+    session.task_force_selection = None;
+    for fighter in &mut session.fighters {
+        fighter.selected = false;
+    }
 }
 
 fn assign_selected_to_task_force(session: &mut BattleSession, group: u8) -> usize {
@@ -4277,7 +4329,7 @@ fn draw_original_tactical_hud(
         && !battle_options_open
         && command_panel == TacticalCommandPanel::Display
     {
-        if let (Some(name), Some(group)) = (groups.selected_ship_name, groups.selected_task_force) {
+        if let Some(name) = groups.panel_ship_name() {
             if let Some(resource) = groups.selected_ship_hud {
                 draw_tactical_bitmap(
                     cache,
@@ -4329,13 +4381,17 @@ fn draw_original_tactical_hud(
             // A0 TAC-03-C016: capitals from row 37 at x 508, the caption
             // from row 82, the orders from rows 212 and 223 at x 497.
             draw_tactical_panel_text(canvas, name, 508.0, 37.0, TACTICAL_FONT_8);
-            draw_tactical_panel_text(
-                canvas,
-                &tactical_task_force_caption(group),
-                508.0,
-                82.0,
-                TACTICAL_FONT_8,
-            );
+            // port: an enemy force fills no group slot, so its ship has
+            // no caption.
+            if let Some(group) = groups.selected_task_force {
+                draw_tactical_panel_text(
+                    canvas,
+                    &tactical_task_force_caption(group),
+                    508.0,
+                    82.0,
+                    TACTICAL_FONT_8,
+                );
+            }
             draw_tactical_panel_text(
                 canvas,
                 groups.selected_order.label(),
@@ -8958,14 +9014,11 @@ fn handle_combat_input(
         }
     }
 
-    // Left-click: select player's ship.
+    // Left-click: select a ship of either side.
     if inside_battle && is_mouse_button_pressed(MouseButton::Left) {
         let mut hit = None;
         for (i, ship) in session.ships.iter().enumerate() {
             if !ship.alive || ship.retreating {
-                continue;
-            }
-            if ship.is_attacker != session.player_is_attacker {
                 continue;
             }
             let projected_hit = projections.get(&i).is_some_and(|projection| {
@@ -8982,23 +9035,7 @@ fn handle_combat_input(
         }
 
         if let Some(idx) = hit {
-            // The original manual uses Ctrl to build a multi-ship selection
-            // before assigning those ships to a task force.
-            if is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl) {
-                session.ships[idx].selected = !session.ships[idx].selected;
-            } else {
-                for s in &mut session.ships {
-                    s.selected = false;
-                }
-                session.ships[idx].selected = true;
-            }
-            session.selected_ship = Some(idx);
-            session.selected_fighter_group = None;
-            // A unit selection (`0x66bce8`, or `0x66bc98` with Ctrl).
-            session.task_force_selection = None;
-            for fighter in &mut session.fighters {
-                fighter.selected = false;
-            }
+            select_clicked_ship(session, idx, control);
             macroquad::logging::info!(
                 "[tactical_3d] selection object_id={} source_projection={}",
                 idx + 1,
@@ -14013,6 +14050,124 @@ mod tests {
             opposing_side_resource_base: 0,
         });
         assert_eq!(tactical_fighter_count(std::iter::once(&unknown)), None);
+    }
+
+    // 0x005a0d10: a click on a ship of the other side (+0x168 against the
+    // player's +0x9ec) builds the enemy state 0x66bba8 (FUN_005a1110).
+    #[test]
+    fn a_click_on_an_enemy_ship_selects_it_alone() {
+        let mut own = test_ship(1, 0, true, true);
+        own.selected = true;
+        let mut session = test_session(
+            vec![own, test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        session.selected_ship = Some(0);
+        select_clicked_ship(&mut session, 1, false);
+        assert!(!session.ships[0].selected);
+        assert!(session.ships[1].selected);
+        assert_eq!(session.selected_ship, Some(1));
+    }
+
+    // 0x005a1240 (0x66bba8 slot +0xc): a Ctrl click from the enemy state
+    // starts a new one-unit selection; it never adds to the enemy's.
+    #[test]
+    fn a_ctrl_click_from_an_enemy_selection_starts_a_new_one() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        select_clicked_ship(&mut session, 1, false);
+        select_clicked_ship(&mut session, 0, true);
+        assert!(session.ships[0].selected);
+        assert!(!session.ships[1].selected);
+        select_clicked_ship(&mut session, 1, true);
+        assert!(!session.ships[0].selected);
+        assert!(session.ships[1].selected);
+    }
+
+    // The player's own ships still gather with Ctrl (0x66bc98).
+    #[test]
+    fn a_ctrl_click_on_an_own_ship_adds_it_to_the_selection() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(3, 1, true, true)],
+            Vec::new(),
+            true,
+        );
+        select_clicked_ship(&mut session, 0, false);
+        select_clicked_ship(&mut session, 1, true);
+        assert!(session.ships[0].selected && session.ships[1].selected);
+        select_clicked_ship(&mut session, 1, true);
+        assert!(session.ships[0].selected && !session.ships[1].selected);
+    }
+
+    // FUN_005a1110 shows its unit like FUN_005a1550 (FUN_005c5f20,
+    // FUN_0051c9b0), with no group slot of the player's.
+    #[test]
+    fn an_enemy_selection_shows_its_ship_in_the_panel() {
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.name = "Star Destroyer".into();
+        let mut session = test_session(vec![test_ship(1, 0, true, true), enemy], Vec::new(), true);
+        select_clicked_ship(&mut session, 1, false);
+        let hud = TacticalGroupHud::from_session(&session);
+        assert_eq!(hud.selected_ship_name, Some("Star Destroyer"));
+        assert!(hud.selected_enemy);
+        assert_eq!(hud.selected_task_force, None);
+        assert_eq!(hud.selected_ship_hull, Some((session.ships[1].hull_current, session.ships[1].hull_max)));
+    }
+
+    // Only a living, selected ship of the other side is an enemy selection.
+    #[test]
+    fn an_enemy_selection_is_a_living_selected_enemy_ship() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        session.ships[0].selected = true;
+        session.selected_ship = Some(0);
+        assert!(selected_enemy_ship(&session).is_none());
+        session.selected_ship = Some(1);
+        assert!(selected_enemy_ship(&session).is_none());
+        session.ships[1].selected = true;
+        assert!(selected_enemy_ship(&session).is_some());
+        session.ships[1].alive = false;
+        assert!(selected_enemy_ship(&session).is_none());
+    }
+
+    // The panel shows a task force's ship or an enemy's; a lone own ship in
+    // no group shows none, as before.
+    #[test]
+    fn the_panel_shows_a_grouped_or_an_enemy_ship() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        select_clicked_ship(&mut session, 0, false);
+        assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_some());
+        session.ships[0].task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+        assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_none());
+        select_clicked_ship(&mut session, 1, false);
+        assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_some());
+    }
+
+    // 0x66bba8's order and tactic slots +0x20, +0x24 and +0x28 are the
+    // empty 0x0048b440: an enemy selection takes no order.
+    #[test]
+    fn an_enemy_selection_takes_no_order() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true), test_ship(4, 1, false, true)],
+            Vec::new(),
+            true,
+        );
+        select_clicked_ship(&mut session, 1, false);
+        assert_eq!(assign_selected_escort(&mut session, 0), (0, 0));
+        assert_eq!(assign_selected_escort(&mut session, 2), (0, 0));
+        assert_eq!(session.ships[1].order, TacticalOrder::None);
+        assert_eq!(session.ships[1].escort_target, None);
     }
 
     #[test]
