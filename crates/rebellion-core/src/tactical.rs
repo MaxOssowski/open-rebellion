@@ -5931,16 +5931,32 @@ impl BattleSession {
     }
 
     pub fn commit_death_star_shot(&mut self, target: usize) -> bool {
+        let stamp = self.command_event_stamp();
+        if !self.commit_death_star_shot_by(self.player_is_attacker, target, stamp) {
+            return false;
+        }
+        // The interface's fire control (`Class_0066be80` slot `+0xc`)
+        // queues the firing voice after `FUN_005ba720`; the commander's
+        // shot has none.
+        self.pending_voice_cues
+            .push(TacticalVoiceCue::death_star_firing());
+        true
+    }
+
+    /// `FUN_005ba720`: the Death Star's owner fires its full superlaser at
+    /// an enemy capital ship; event `0x44` at `stamp`, the kill a turn
+    /// later.
+    fn commit_death_star_shot_by(&mut self, owner_is_attacker: bool, target: usize, stamp: u32) -> bool {
         if self.death_star_beam.is_some()
             || self
                 .ships
                 .get(target)
-                .is_none_or(|ship| !ship.alive || ship.is_attacker == self.player_is_attacker)
+                .is_none_or(|ship| !ship.alive || ship.is_attacker == owner_is_attacker)
         {
             return false;
         }
         let Some(death_star) = self.death_star.as_mut().filter(|death_star| {
-            death_star.is_attacker == self.player_is_attacker
+            death_star.is_attacker == owner_is_attacker
                 && death_star.operational()
                 && death_star.laser_charge >= ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
         }) else {
@@ -5957,11 +5973,8 @@ impl BattleSession {
             elapsed: 0.0,
         });
         // Event 0x44 at `+0x87c`, the kill at `+0x87c + 1.0`.
-        let stamp = self.command_event_stamp();
         self.post_turn_event(stamp, TacticalTurnEvent::DeathStarBeam { target });
         self.post_turn_event(stamp + 1, TacticalTurnEvent::DeathStarKill { target });
-        self.pending_voice_cues
-            .push(TacticalVoiceCue::death_star_firing());
         self.diagnostic_log.push(format!(
             "[tactical_death_star] superlaser_committed target_object_id={} charge=0",
             target + 1
@@ -8310,6 +8323,7 @@ impl BattleSession {
             if self.observer_review_countdown == 0 {
                 let player_alliance = self.attacker_is_alliance == self.player_is_attacker;
                 self.link_commander_targets(player_alliance);
+                self.commander_superlaser(player_alliance);
                 self.observer_review_countdown = ORIGINAL_COMMANDER_REVIEW_TURNS;
             }
             self.observer_review_countdown -= 1;
@@ -8320,19 +8334,43 @@ impl BattleSession {
         let alliance = self.attacker_is_alliance != self.player_is_attacker;
         self.link_commander_targets(alliance);
         let side = usize::from(!alliance);
-        if !self.retreat_allowed[side]
-            || self.retreat_done[side]
-            || self.trench_run_under_way()
-            || !crate::abstract_battle::tactical_side_withdraws(self, alliance)
+        if self.retreat_allowed[side]
+            && !self.retreat_done[side]
+            && !self.trench_run_under_way()
+            && crate::abstract_battle::tactical_side_withdraws(self, alliance)
         {
+            let ai = !self.player_is_attacker;
+            let stamp = self.step_event_stamp();
+            self.begin_withdrawal_stamped(ai, stamp);
+            self.withdraw_fighters_stamped(ai, stamp);
+            // `+0x84` = 2: the side cannot order it again (`FUN_005c7e80`).
+            self.retreat_done[side] = true;
+        }
+        self.commander_superlaser(alliance);
+    }
+
+    /// `0x5c8bbc`..`0x5c8c33`, after the withdrawal test of a review: the
+    /// Empire's commander, its Death Star operational and charged to
+    /// exactly 100 (`DAT_0066cbd8`), fires at the first capital ship of its
+    /// target list still in the fight (`FUN_005ba720`).
+    fn commander_superlaser(&mut self, alliance: bool) {
+        if alliance {
             return;
         }
-        let ai = !self.player_is_attacker;
-        let stamp = self.step_event_stamp();
-        self.begin_withdrawal_stamped(ai, stamp);
-        self.withdraw_fighters_stamped(ai, stamp);
-        // `+0x84` = 2: the side cannot order it again (`FUN_005c7e80`).
-        self.retreat_done[side] = true;
+        // The Empire attacks when the Alliance does not.
+        let owner = !self.attacker_is_alliance;
+        let ready = self.death_star.is_some_and(|death_star| {
+            !death_star.is_alliance
+                && death_star.operational()
+                && death_star.laser_charge == ORIGINAL_DEATH_STAR_LASER_FULL_CHARGE
+        });
+        if !ready {
+            return;
+        }
+        if let Some(target) = crate::abstract_battle::commander_superlaser_target(self, false) {
+            let stamp = self.step_event_stamp();
+            self.commit_death_star_shot_by(owner, target, stamp);
+        }
     }
 
     /// Command `0x7b` (`FUN_0059fd40`): Observe Battle hands the player's

@@ -1714,6 +1714,22 @@ pub fn commander_targets(
     targets
 }
 
+/// `0x5c8bbc`..`0x5c8c33` of `FUN_005c8780`: the Empire's commander with a
+/// full superlaser fires at the first unit of its target list `+0x90`
+/// (priority order, `FUN_005c8e10`) that is not a fighter and is still in
+/// the fight (`FUN_005ad870`; the list holds only units in the fight).
+#[must_use]
+pub fn commander_superlaser_target(session: &BattleSession, alliance: bool) -> Option<usize> {
+    let battle = AbstractBattle::new(session.clone());
+    battle
+        .ranked_enemies(alliance)
+        .into_iter()
+        .find_map(|unit| match unit {
+            AbstractUnit::Capital(index) => Some(index),
+            AbstractUnit::Fighter(_) => None,
+        })
+}
+
 /// The tactical commander's test in `FUN_005c8780`: with its retreat order
 /// and a way out (`FUN_005c7e80`), a side withdraws when the enemy's
 /// strength is above 0 (`_DAT_0066cbb4`) and its own is under 0.33 (`+0x24`)
@@ -7874,6 +7890,91 @@ mod tests {
         assert_eq!(player_links(&tactical), 0);
         tactical.set_player_observing(true);
         assert_eq!(tactical.observer_review_countdown, 0);
+    }
+
+    // 0x5c8bbc..0x5c8c33 of FUN_005c8780: on a review, the Empire's
+    // commander with its Death Star operational and charged to exactly 100
+    // (DAT_0066cbd8) fires at the first capital ship of its priority list
+    // still in the fight (FUN_005ba720, event 0x44).
+    #[test]
+    fn the_computer_empire_fires_a_full_superlaser_at_its_first_priority_ship() {
+        use crate::tactical::{TacticalDeathStar, TacticalTurnEvent, TacticalWorldPosition};
+        let mut small = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
+        small.source_position.z = -40.0;
+        let mut big = ship(true, TacticalWeaponArc::new(0, 0, 8), 1.0);
+        big.source_position.z = -45.0;
+        big.source_position.x = 20.0;
+        big.hull_max = 5_000;
+        big.hull_current = 5_000;
+        // The big ship (index 0) outranks the small one (FUN_005ed8e0).
+        let mut tactical = session(vec![big, small], Vec::new());
+        let death_star = |charge: f32| TacticalDeathStar {
+            resource: crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE,
+            is_attacker: false,
+            is_alliance: false,
+            source_position: TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: 60.0,
+            },
+            hull: 100.0,
+            laser_charge: charge,
+            shielded: false,
+            destroyed: false,
+            action_committed: false,
+        };
+        let beams = |t: &BattleSession| {
+            t.turn_events
+                .iter()
+                .filter_map(|queued| match queued.event {
+                    TacticalTurnEvent::DeathStarBeam { target } => Some((queued.stamp, target)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        // Short of full: no shot at turn 1's review.
+        let mut early = tactical.clone();
+        early.death_star = Some(death_star(10.0));
+        for _ in 0..4 {
+            early.step();
+        }
+        assert!(early.death_star.unwrap().laser_charge < 100.0);
+        assert!(beams(&early).is_empty());
+        // Full: the first-priority capital ship still in the fight.
+        tactical.death_star = Some(death_star(100.0));
+        assert_eq!(commander_superlaser_target(&tactical, false), Some(0));
+        let mut fallback = tactical.clone();
+        fallback.ships[0].alive = false;
+        assert_eq!(commander_superlaser_target(&fallback, false), Some(1));
+        // Destroyed or Alliance-owned, it does not fire.
+        for broken in [
+            TacticalDeathStar { destroyed: true, ..death_star(100.0) },
+            TacticalDeathStar { is_alliance: true, ..death_star(100.0) },
+        ] {
+            let mut quiet = tactical.clone();
+            quiet.death_star = Some(broken);
+            for _ in 0..4 {
+                quiet.step();
+            }
+            assert!(beams(&quiet).is_empty());
+        }
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(beams(&tactical), vec![(3, 0)]);
+        assert_eq!(tactical.death_star.unwrap().laser_charge, 0.0);
+        // The firing voice belongs to the player's fire control only.
+        assert!(!tactical
+            .take_pending_voice_cues()
+            .contains(&crate::tactical::TacticalVoiceCue::death_star_firing()));
+        // An Alliance computer has no superlaser branch.
+        let mut alliance = session(vec![ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)], Vec::new());
+        alliance.player_is_attacker = false;
+        alliance.death_star = Some(death_star(100.0));
+        for _ in 0..4 {
+            alliance.step();
+        }
+        assert!(beams(&alliance).is_empty());
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,
