@@ -5555,10 +5555,11 @@ mod tests {
         }
     }
 
-    // FUN_005c6610's approach moves the force's members (alive, with craft,
-    // of the run's group, on order 6) by one step at the slowest member's
-    // power toward its point, (-side.z, 0, side.x) * 0.5 extent: -x for the
-    // Alliance (side vector (0, 0, 1)), +x for the Empire.
+    // FUN_005c6610's approach steps the force's anchor at its slowest
+    // member's speed toward its point, (-side.z, 0, side.x) * 0.5 extent:
+    // -x for the Alliance (side vector (0, 0, 1)), +x for the Empire; the
+    // mover faces that way. The members on order 6 (alive, with craft, of
+    // the run's group) fly their frames to their places.
     #[test]
     fn a_trench_run_approach_moves_only_its_group_toward_its_side_s_point() {
         for alliance in [true, false] {
@@ -5573,7 +5574,8 @@ mod tests {
                 value
             };
             let mut other_group = member(1.0);
-            other_group.fighter_group = 2;
+            // An earlier group, whose mover comes first.
+            other_group.fighter_group = 0;
             let mut empty = member(1.0);
             empty.squad_count = 0;
             let mut unordered = member(1.0);
@@ -5600,22 +5602,30 @@ mod tests {
             tactical.trench_run_group = Some(1);
             tactical.combat_tick = 11;
             tactical.step();
-            // Three from the point at speed 1: 250 ms along (-2, -2, -1) / 3,
-            // in 60 Hz frames (port).
+            // Three from the point at the slowest speed (the commander term
+            // 1 plus 1): 250 ms along (-2, -2, -1) / 3, in 60 Hz frames
+            // (port).
             assert!((crate::tactical::PORT_MOVER_FRAME_MILLISECONDS * 60.0 - 1000.0).abs() < 1e-3);
-            let moved = crate::tactical::TacticalWorldPosition {
-                x: point_x + 2.0 - 0.25 * 2.0 / 3.0,
-                y: 2.0 - 0.25 * 2.0 / 3.0,
-                z: 1.0 - 0.25 / 3.0,
+            let speed = tactical.original_fighter_speed(0);
+            assert!(speed < tactical.original_fighter_speed(1));
+            let travel = 0.25 * speed / 3.0;
+            let mover = tactical.fighter_mover_of(0).expect("a mover");
+            let anchor = mover.anchor;
+            let expected = crate::tactical::TacticalWorldPosition {
+                x: point_x + 2.0 - 2.0 * travel,
+                y: 2.0 - 2.0 * travel,
+                z: 1.0 - travel,
             };
+            assert!(
+                (anchor.x - expected.x).abs() < 1e-4
+                    && (anchor.y - expected.y).abs() < 1e-4
+                    && (anchor.z - expected.z).abs() < 1e-4,
+                "{alliance} {anchor:?}"
+            );
+            let side_x = if alliance { -1.0 } else { 1.0 };
+            assert_eq!(mover.forward, vector(side_x, 0.0, 0.0));
             for index in [0, 1] {
-                let at = tactical.fighters[index].source_position;
-                assert!(
-                    (at.x - moved.x).abs() < 1e-4
-                        && (at.y - moved.y).abs() < 1e-4
-                        && (at.z - moved.z).abs() < 1e-4,
-                    "{alliance} {at:?}"
-                );
+                assert_ne!(tactical.fighters[index].source_position, start, "{alliance}");
             }
             for index in 2..6 {
                 assert_eq!(tactical.fighters[index].source_position, start);
@@ -5712,29 +5722,47 @@ mod tests {
         );
         assert!(tactical.trench_run_under_way());
         // State 2, stamped 3, runs at turn 4 (step 16); the frame's order
-        // step then flies 1.0 a second.
+        // step then moves the anchor at the squadron's speed, the commander
+        // term 1 plus 1 (0x5ba190): 2.0 a second.
+        let anchor_x = |tactical: &BattleSession| {
+            tactical.fighter_mover_of(0).expect("a mover").anchor.x
+        };
         for _ in 0..15 {
             tactical.step();
         }
+        assert_eq!(anchor_x(&tactical), -half + 2.0);
         assert_eq!(tactical.fighters[0].source_position.x, -half + 2.0);
         tactical.step();
-        assert!((tactical.fighters[0].source_position.x - (-half + 1.75)).abs() < 1e-3);
-        // Within 0.2 after 1.8 units, 108 frames: during step 23, stamped 8
-        // (turn 5 plus the lead), so state 5 runs at turn 9, step 36.
-        for _ in 0..6 {
+        assert!((anchor_x(&tactical) - (-half + 1.5)).abs() < 1e-3);
+        // Within 0.2 after 1.8 units, 54 frames: during step 19, stamped 7
+        // (turn 4 plus the lead), so state 5 runs at turn 8, step 32.
+        for _ in 0..2 {
             tactical.step();
         }
         assert!(!tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(5)));
         tactical.step();
-        assert_eq!(tactical.combat_tick, 23);
+        assert_eq!(tactical.combat_tick, 19);
         assert!(tactical.turn_event_pending(&TacticalTurnEvent::TrenchRunState(5)));
-        assert_eq!(tactical.turn_events[0].stamp, 8);
+        assert_eq!(tactical.turn_events[0].stamp, 7);
         assert_eq!(tactical.trench_run_remaining_ms, None);
+        // It is posted once.
+        tactical.step();
+        assert_eq!(
+            tactical
+                .turn_events
+                .iter()
+                .filter(|event| event.event == TacticalTurnEvent::TrenchRunState(5))
+                .count(),
+            1
+        );
         tactical.take_pending_voice_cues();
-        for _ in 0..13 {
+        for _ in 0..11 {
             tactical.step();
         }
-        assert_eq!(tactical.combat_tick, 36);
+        assert_eq!(tactical.combat_tick, 31);
+        assert!(tactical.trench_run_remaining_ms.is_none());
+        tactical.step();
+        assert_eq!(tactical.combat_tick, 32);
         assert!(tactical.trench_run_remaining_ms.is_some());
         assert!(tactical
             .take_pending_voice_cues()

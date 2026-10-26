@@ -7138,36 +7138,25 @@ impl BattleSession {
     }
 
     /// The approach, in `FUN_005c6610`'s order 6 step (the task force's
-    /// slot `+0x14`, run each frame by `0x005a9ff8`): the force flies toward
-    /// the side vector turned a quarter about y, `(-side.z, 0, side.x)`,
-    /// times half the extent (`0x005c6848`..`0x005c68f5`), with the move's
-    /// radius 0.2 (`0x005c68f0`). On arrival it posts state 5
-    /// (`0x005c6924`).
+    /// slot `+0x14`, run each frame by `0x005a9ff8`): the force's mover
+    /// faces the side vector turned a quarter about y, `(-side.z, 0,
+    /// side.x)` (`+0x1c`), and its anchor steps (`0x005ec0d0`) toward that
+    /// forward times half the extent (`0x005c6848`..`0x005c68f5`), with the
+    /// move's radius 0.2 (`0x005c68f0`), at the slowest member's speed. On
+    /// arrival it posts state 5 once (the result's latch, `0x005c6924`).
+    /// Each member flies its frame to its place round the anchor
+    /// (`0x5b8f70`, `0x5ebe30`).
     ///
-    /// port: the force's position is its first member's, and it moves at
-    /// the slowest member's engine power. The step's time is flown in
-    /// frames of `PORT_MOVER_FRAME_MILLISECONDS`: in one 250 ms step a
-    /// fighter group would pass the point by more than the radius and swing
-    /// back and forth without arriving.
+    /// port: the anchor's step is flown in frames of
+    /// `PORT_MOVER_FRAME_MILLISECONDS`: in one 250 ms step a fighter group
+    /// would pass the point by more than the radius and swing back and
+    /// forth without arriving.
     fn advance_trench_run_approach(&mut self, milliseconds: f32) {
-        let mut left = milliseconds;
-        while left > 0.0 {
-            let frame = left.min(PORT_MOVER_FRAME_MILLISECONDS);
-            left -= frame;
-            if !self.advance_trench_run_approach_frame(frame) {
-                return;
-            }
-        }
-    }
-
-    /// One frame of `FUN_005c6610`'s approach. Returns false once it has
-    /// arrived or there is no approach.
-    fn advance_trench_run_approach_frame(&mut self, milliseconds: f32) -> bool {
         if !self.trench_run_approaching() {
-            return false;
+            return;
         }
         let Some(group) = self.trench_run_group else {
-            return false;
+            return;
         };
         let members = self
             .fighters
@@ -7182,34 +7171,50 @@ impl BattleSession {
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
         let Some(&first) = members.first() else {
-            return false;
+            return;
         };
-        let side_z = if self.fighters[first].identity.is_alliance { 1.0 } else { -1.0 };
+        self.sync_fighter_movers();
+        let alliance = self.fighters[first].identity.is_alliance;
+        let Some(at) = self
+            .fighter_movers
+            .iter()
+            .position(|mover| mover.alliance == alliance && mover.group == group)
+        else {
+            return;
+        };
+        let side = original_side_vector(alliance);
+        let forward = TacticalWorldVector {
+            x: -side.z,
+            y: 0.0,
+            z: side.x,
+        };
         let half = self.source_layout.battle_extent * ORIGINAL_WITHDRAWAL_EXIT_EXTENT_SCALE;
         let point = TacticalWorldPosition {
-            x: -side_z * half,
-            y: 0.0,
-            z: 0.0,
+            x: forward.x * half,
+            y: forward.y * half,
+            z: forward.z * half,
         };
-        let delta = source_delta(point, self.fighters[first].source_position);
-        let distance = delta.x.hypot(delta.y).hypot(delta.z);
-        if distance <= ORIGINAL_TRENCH_RUN_APPROACH_RADIUS {
-            let stamp = self.step_event_stamp();
-            self.post_turn_event(stamp, TacticalTurnEvent::TrenchRunState(5));
-            return false;
+        self.fighter_movers[at].forward = forward;
+        let mut left = milliseconds;
+        while left > 0.0 {
+            let frame = left.min(PORT_MOVER_FRAME_MILLISECONDS);
+            left -= frame;
+            if !step_fighter_anchor(
+                &mut self.fighter_movers[at],
+                point,
+                ORIGINAL_TRENCH_RUN_APPROACH_RADIUS,
+                frame,
+            ) {
+                let stamp = self.step_event_stamp();
+                self.post_turn_event(stamp, TacticalTurnEvent::TrenchRunState(5));
+                break;
+            }
         }
-        let speed = members
-            .iter()
-            .map(|&index| self.fighters[index].sublight_engine_power.max(0.0))
-            .fold(f32::INFINITY, f32::min);
-        let step = speed * milliseconds * 0.001 / distance;
+        let mover = self.fighter_movers[at].clone();
         for index in members {
-            let fighter = &mut self.fighters[index];
-            fighter.source_position.x += delta.x * step;
-            fighter.source_position.y += delta.y * step;
-            fighter.source_position.z += delta.z * step;
+            let delta = self.fighter_place_delta(&mover, index);
+            self.fly_fighter_squadron(index, delta, None, mover.forward, milliseconds);
         }
-        true
     }
 
     /// `FUN_005cfec0` state 5: the run's 120 000 ms timer
