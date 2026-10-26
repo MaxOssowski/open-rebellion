@@ -3074,7 +3074,13 @@ async function probeTacticalDeathStarPresentation(
     assert.ok(launchLog,
     "Alliance fighter group did not enter the production trench-run lifecycle");
     const launchRngState = Number(launchLog.text.match(/rng_state=(\d+)/)?.[1]);
-    assert.equal(launchRngState, ready.tactical_rng_state,
+    const launchWeaponDraws = Number(launchLog.text.match(/weapon_draws=(\d+)/)?.[1]);
+    assert.ok(Number.isInteger(launchWeaponDraws),
+      "trench-run launch log lost its weapon draw count");
+    // Until then only the units' weapon turns draw, once each
+    // (FUN_005b3a40, FUN_005a8a70).
+    assert.equal(launchRngState,
+      advanceTacticalRng(ready.tactical_rng_state, launchWeaponDraws - ready.weapon_draws),
       "the trench-run order drew from the shared tactical RNG before state 5");
   } else {
     assert.ok(!orderLogs.some((line) => /order=6/.test(line)),
@@ -3321,6 +3327,15 @@ async function probeTacticalDeathStarLaserJourney(
     executable_functions: ["FUN_005ba5e0", "FUN_005ba7f0", "FUN_005c4ed0", "FUN_005d4d10"],
   });
   return probes;
+}
+
+// The tactical stream after `count` draws (FUN_0061a310: MSVC rand).
+function advanceTacticalRng(state, count) {
+  let next = state >>> 0;
+  for (let draw = 0; draw < count; draw += 1) {
+    next = (Math.imul(next, 0x343fd) + 0x269ec3) >>> 0;
+  }
+  return next;
 }
 
 function probeTacticalTrenchRunOutcome(folder, stable, consoleLines, ready, expected) {

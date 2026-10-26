@@ -9417,6 +9417,7 @@ mod tests {
             start_tick: 0,
             combat_tick: 0,
             tactical_rng: OriginalTacticalRng::new(0x5eed_ba77),
+            weapon_draws: 0,
             weapon_effects: Vec::new(),
             impact_effects: Vec::new(),
             pending_audio_cues: Vec::new(),
@@ -12246,6 +12247,14 @@ mod tests {
 
             let mut session = test_session(vec![source, capital], vec![exhausted_fighter], true);
             session.paused = false;
+            // The source's draw opens its turn 1 (FUN_005b3a40's 0 to 2).
+            session.tactical_rng = (0..)
+                .map(OriginalTacticalRng::new)
+                .find(|rng| {
+                    let mut rng = *rng;
+                    rng.inclusive(0, rebellion_core::tactical::ORIGINAL_WEAPON_TURN_DRAW_MAX) == 0
+                })
+                .expect("a stream opens the turn");
             session
         }
 

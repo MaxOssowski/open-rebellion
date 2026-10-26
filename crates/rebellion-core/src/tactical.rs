@@ -45,6 +45,9 @@ pub const ORIGINAL_PROJECTILE_DURATION_LONG: f32 = 2.0;
 /// `FUN_005b0330` resets the subsystem-repair timer to 50 * 1000 ms; it
 /// runs once a turn (`0x005a9de0`, slot `+0x9c`), so every 50 turns.
 pub const ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS: u32 = 50;
+/// `FUN_005b3a40` (`0x5b3a92`): a unit's weapons draw 0 to this each turn
+/// and fire only on 0.
+pub const ORIGINAL_WEAPON_TURN_DRAW_MAX: u32 = 2;
 /// `FUN_005b05c0` converts the CAPSHPSD sublight rating by 0.4 * 0.6.
 pub const ORIGINAL_SUBLIGHT_ENGINE_SCALE: f32 = 0.24;
 /// `FUN_005b9c60` converts the FIGHTSD sublight rating by 0.4 without the
@@ -1576,6 +1579,10 @@ pub struct BattleSession {
     /// One source-compatible tactical random stream. The campaign contributes
     /// its seed at battle entry; every combat consumer advances it in order.
     pub tactical_rng: OriginalTacticalRng,
+    /// Draws the units' weapon turns took from `tactical_rng`
+    /// (`FUN_005b3a40`). A diagnostic: the browser probes use it to tell
+    /// these draws from any other.
+    pub weapon_draws: u32,
     /// Active weapon fire visual effects (source ship idx -> target ship idx).
     pub weapon_effects: Vec<WeaponEffect>,
     /// Target-attached original type-303 hit, damage, and destruction sequences.
@@ -4217,6 +4224,7 @@ impl BattleSession {
             start_tick: tick,
             combat_tick: 0,
             tactical_rng: OriginalTacticalRng::new(rng_seed),
+            weapon_draws: 0,
             weapon_effects: Vec::new(),
             impact_effects: Vec::new(),
             pending_audio_cues: Vec::new(),
@@ -6395,59 +6403,108 @@ impl BattleSession {
             fighter.advance_original_recharge(ORIGINAL_TACTICAL_TURN_SECONDS);
         }
 
-        // FUN_005b0330 invokes FUN_005b1490 every 50 turns. Both draws
-        // advance the one recovered tactical manager stream in source call
-        // order.
-        if self
+        // `0x005a9de0`, unit by unit: a capital ship's repair (slot `+0x9c`,
+        // `FUN_005b0330`, which invokes `FUN_005b1490` every 50 turns), then
+        // the unit's weapons (slot `+0x88`, `FUN_005b3a40`). Both draw on
+        // the one tactical stream in this order. port: the units go in the
+        // port's order, capital ships first; the list `+0x988` holds them
+        // in the order they entered the fight (`FUN_005a9170`).
+        let repair_turn = self
             .event_turn()
-            .is_multiple_of(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS)
-        {
-            for (ship_index, ship) in self.ships.iter_mut().enumerate() {
-                let hits = ship.subsystem_damage.total_hits();
-                if hits == 0 {
-                    continue;
-                }
+            .is_multiple_of(ORIGINAL_SUBSYSTEM_REPAIR_INTERVAL_TURNS);
+        let mut shots = Vec::new();
+        for ship_index in 0..self.ships.len() {
+            if !self.unit_takes_its_turn(TacticalUnitRef::Ship(ship_index)) {
+                continue;
+            }
+            if repair_turn && self.ships[ship_index].subsystem_damage.total_hits() > 0 {
+                let hits = self.ships[ship_index].subsystem_damage.total_hits();
                 let chance_roll = u8::try_from(self.tactical_rng.inclusive(1, 100)).unwrap_or(100);
                 let selection_roll =
                     u16::try_from(self.tactical_rng.inclusive(1, u32::from(hits))).unwrap_or(hits);
-                if let Some(repair) =
-                    attempt_original_subsystem_repair(ship, ship_index, chance_roll, selection_roll)
-                {
+                if let Some(repair) = attempt_original_subsystem_repair(
+                    &mut self.ships[ship_index],
+                    ship_index,
+                    chance_roll,
+                    selection_roll,
+                ) {
                     self.subsystem_repairs.push(repair);
                 }
+                refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
             }
-            refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
+            if !self.weapon_turn_opens(TacticalUnitRef::Ship(ship_index)) {
+                continue;
+            }
+            let side = self.ships[ship_index].is_attacker;
+            let targets = self
+                .ships
+                .iter()
+                .enumerate()
+                .filter(|(_, ship)| ship.is_attacker != side && ship.alive && !ship.jumping())
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            Self::fire_side(&mut self.ships, &[ship_index], &targets, &mut shots);
+            self.fire_capitals_at_fighters_from(ship_index..ship_index + 1, &mut shots);
         }
-
-        // Collect the ship indices per side still in the fight: a withdrawing
-        // ship fights and can be hit until its jump starts (`FUN_005cdf50`
-        // and `FUN_005b3a40` take states 2 and 4, not 6, `FUN_005ad870`).
-        let atk_alive: Vec<usize> = self
-            .ships
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| s.is_attacker && s.alive && !s.jumping())
-            .map(|(i, _)| i)
-            .collect();
-        let def_alive: Vec<usize> = self
-            .ships
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| !s.is_attacker && s.alive && !s.jumping())
-            .map(|(i, _)| i)
-            .collect();
-        let mut shots = Vec::new();
-        Self::fire_side(&mut self.ships, &atk_alive, &def_alive, &mut shots);
-        Self::fire_side(&mut self.ships, &def_alive, &atk_alive, &mut shots);
-        self.fire_capitals_at_fighters(&mut shots);
-        // Fighter groups use the same slot (`0x66c560 + 0x88`,
+        // Fighter groups use the same slot (`0x66c028 + 0x88`,
         // `FUN_005b3a40`); their own readiness and recharge gate each shot.
-        self.fighter_step(&mut shots);
+        for fighter_index in 0..self.fighters.len() {
+            if self.unit_takes_its_turn(TacticalUnitRef::Fighter(fighter_index))
+                && self.weapon_turn_opens(TacticalUnitRef::Fighter(fighter_index))
+            {
+                self.fighter_step_from(fighter_index..fighter_index + 1, &mut shots);
+            }
+        }
         let stamp = self.step_event_stamp();
         for shot in shots {
             self.post_turn_event(stamp + 1, TacticalTurnEvent::WeaponFire(shot));
             self.post_turn_event(stamp + 2, TacticalTurnEvent::WeaponHit(shot));
         }
+    }
+
+    /// `0x005a9e43` (`FUN_005ad870`): the unit is in the fight, not docked
+    /// (state 5), and, for its weapons (`FUN_005b3a40`), not in its jump
+    /// (state 6 on).
+    fn unit_takes_its_turn(&self, unit: TacticalUnitRef) -> bool {
+        match unit {
+            TacticalUnitRef::Ship(index) => self
+                .ships
+                .get(index)
+                .is_some_and(|ship| ship.alive && !ship.jumping()),
+            TacticalUnitRef::Fighter(index) => self.fighters.get(index).is_some_and(|fighter| {
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && !fighter.jumping()
+                    && fighter.recovery_state != TacticalFighterRecoveryState::Recovered
+            }),
+        }
+    }
+
+    /// `FUN_005b3a40`'s gate (`0x5b3a6b`..`0x5b3ae5`): a unit fires only
+    /// with a ready arc (`+0x1e0`, one arc record `0x74` apart), only when
+    /// its draw of 0 to 2 (`FUN_005a8a70`) comes up 0, and never on Escort
+    /// (its force's order `+0x64` is 1). The draw comes before the order's
+    /// check, so an escort still draws. The manual's "opportunity fire" of
+    /// an escort is contradicted by the executable.
+    fn weapon_turn_opens(&mut self, unit: TacticalUnitRef) -> bool {
+        let (ready, order) = match unit {
+            TacticalUnitRef::Ship(index) => {
+                let ship = &self.ships[index];
+                (ship.weapon_arcs.iter().any(|arc| arc.ready), ship.order)
+            }
+            TacticalUnitRef::Fighter(index) => {
+                let fighter = &self.fighters[index];
+                (fighter.weapon_arc.ready, fighter.order)
+            }
+        };
+        if !ready {
+            return false;
+        }
+        self.weapon_draws = self.weapon_draws.wrapping_add(1);
+        if self.tactical_rng.inclusive(0, ORIGINAL_WEAPON_TURN_DRAW_MAX) != 0 {
+            return false;
+        }
+        order != TacticalOrder::Escort
     }
 
     /// A subsystem hit event (`0x005b28d0` and its siblings): the ship's
@@ -6772,7 +6829,17 @@ impl BattleSession {
     /// `FUN_005b3f10` capital batteries against fighters; index 3 bounds the four batteries of `FUN_005b0e50`.
 
     pub fn fire_capitals_at_fighters(&mut self, shots: &mut Vec<TacticalShot>) {
-        for source in 0..self.ships.len() {
+        self.fire_capitals_at_fighters_from(0..self.ships.len(), shots);
+    }
+
+    /// The capital ships `sources` fire their batteries at their fighter
+    /// targets (`FUN_005b3f10`).
+    fn fire_capitals_at_fighters_from(
+        &mut self,
+        sources: std::ops::Range<usize>,
+        shots: &mut Vec<TacticalShot>,
+    ) {
+        for source in sources {
             let Some(TacticalAttackTarget::FighterGroup(target)) = self.ships[source].attack_target
             else {
                 continue;
@@ -6975,7 +7042,11 @@ impl BattleSession {
 
     /// Fire each live fighter group through the source fore battery record.
     pub fn fighter_step(&mut self, shots: &mut Vec<TacticalShot>) {
-        for source in 0..self.fighters.len() {
+        self.fighter_step_from(0..self.fighters.len(), shots);
+    }
+
+    fn fighter_step_from(&mut self, sources: std::ops::Range<usize>, shots: &mut Vec<TacticalShot>) {
+        for source in sources {
             let Some(target) = self.fighter_target(source) else {
                 continue;
             };
@@ -9453,10 +9524,11 @@ pub fn begin_original_attack_order(
             "rejected"
         };
         session.diagnostic_log.push(format!(
-            "[tactical_death_star] trench_run_launch status={status} fighter_members={} group={fighter_group} remaining_ms={} rng_state={}",
+            "[tactical_death_star] trench_run_launch status={status} fighter_members={} group={fighter_group} remaining_ms={} rng_state={} weapon_draws={}",
             selected_fighters.len(),
             session.trench_run_remaining_ms.unwrap_or(0.0),
             session.tactical_rng.state(),
+            session.weapon_draws,
         ));
         return;
     }

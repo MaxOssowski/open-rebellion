@@ -10296,6 +10296,7 @@ mod tactical_ground_tests {
             start_tick: 1,
             combat_tick: 1,
             tactical_rng: rebellion_render::OriginalTacticalRng::new(0x5eed_ba77),
+            weapon_draws: 0,
             weapon_effects: vec![],
             impact_effects: vec![],
             pending_audio_cues: vec![],

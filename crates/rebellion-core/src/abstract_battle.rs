@@ -1930,6 +1930,26 @@ mod tests {
         }
     }
 
+    /// The first stream whose next weapon draws (`FUN_005b3a40`'s 0 to 2)
+    /// come up as `draws`.
+    fn stream_with_weapon_draws(draws: &[u32]) -> OriginalTacticalRng {
+        (0..)
+            .map(OriginalTacticalRng::new)
+            .find(|rng| {
+                let mut rng = *rng;
+                draws.iter().all(|&draw| {
+                    rng.inclusive(0, crate::tactical::ORIGINAL_WEAPON_TURN_DRAW_MAX) == draw
+                })
+            })
+            .expect("a stream gives the draws")
+    }
+
+    /// A stream whose next `count` weapon draws all come up 0, so the units
+    /// fire on their first turns.
+    fn stream_opening_weapon_turns(count: usize) -> OriginalTacticalRng {
+        stream_with_weapon_draws(&vec![0; count])
+    }
+
     fn session(ships: Vec<TacticalShip>, fighters: Vec<TacticalFighter>) -> BattleSession {
         BattleSession {
             system: SystemKey::default(),
@@ -1977,6 +1997,7 @@ mod tests {
             start_tick: 0,
             combat_tick: 0,
             tactical_rng: OriginalTacticalRng::new(7),
+            weapon_draws: 0,
             weapon_effects: Vec::new(),
             impact_effects: Vec::new(),
             pending_audio_cues: Vec::new(),
@@ -5089,6 +5110,8 @@ mod tests {
             enemy.source_position.z = 10.0;
             enemy.weapon_arcs = [TacticalWeaponArc::new(0, 0, 4); 4];
             let mut tactical = session(vec![own, enemy], Vec::new());
+            // The enemy's draw opens its turn 1 (FUN_005b3a40).
+            tactical.tactical_rng = stream_opening_weapon_turns(1);
             tactical.withdrawal_ms = Some(if jumping { 0.0 } else { 30_000.0 });
             // Fire decided at turn 1 hits at turn 6, step 24 (FUN_005b3f10's
             // hit event at +0x87c + 2.0). The turn's recharge after the
@@ -5142,6 +5165,9 @@ mod tests {
         wing.source_position.z = 6.0;
         wing.order = TacticalOrder::AttackCapitalShips;
         let mut tactical = session(vec![shooter, jumping, dead, live, own_jumping], vec![wing]);
+        // The shooter's, the live ship's and the wing's draws open turn 1
+        // (FUN_005b3a40); the dead and jumping ships do not draw.
+        tactical.tactical_rng = stream_opening_weapon_turns(3);
         let before = |tactical: &BattleSession, index: usize| {
             let ship = &tactical.ships[index];
             (ship.hull_current, ship.shield)
@@ -5837,6 +5863,174 @@ mod tests {
         assert!(flown.x > limit && flown.y < -limit && flown.z > limit);
     }
 
+    /// A capital ship 10 ahead of an unarmed target, and a fighter group
+    /// beside it with a target of its own, all in range, after turn 1's
+    /// updates (step 4) from `rng`: the shots decided, and the stream.
+    fn weapon_turn(
+        order: TacticalOrder,
+        ready: bool,
+        rng: OriginalTacticalRng,
+    ) -> (Vec<crate::tactical::TacticalUnitRef>, OriginalTacticalRng, u32) {
+        use crate::tactical::{TacticalAttackTarget, TacticalTurnEvent};
+        let ranges = TacticalWeaponRanges {
+            laser_cannon: 100.0,
+            ion_cannon: 100.0,
+            turbolaser: 100.0,
+        };
+        let mut shooter = ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0);
+        shooter.weapon_arcs = [TacticalWeaponArc::new(0, 0, 4); 4];
+        shooter.weapon_ranges = ranges;
+        shooter.order = order;
+        shooter.attack_target = (order == TacticalOrder::AttackCapitalShips)
+            .then_some(TacticalAttackTarget::CapitalShip(1));
+        shooter.escort_target = (order == TacticalOrder::Escort).then_some(2);
+        if !ready {
+            for arc in &mut shooter.weapon_arcs {
+                arc.ready = false;
+            }
+        }
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.source_position.z = 10.0;
+        target.hull_current = 1_000_000;
+        target.hull_max = 1_000_000;
+        let mut escorted = ship(true, TacticalWeaponArc::default(), 0.0);
+        escorted.source_position.x = 30.0;
+        let mut tactical = session(vec![shooter, target, escorted], Vec::new());
+        tactical.tactical_rng = rng;
+        for _ in 0..4 {
+            tactical.step();
+        }
+        let sources = tactical
+            .turn_events
+            .iter()
+            .filter_map(|queued| match queued.event {
+                TacticalTurnEvent::WeaponFire(shot) => Some(shot.source),
+                _ => None,
+            })
+            .collect();
+        (sources, tactical.tactical_rng, tactical.weapon_draws)
+    }
+
+    /// `rng` after `count` weapon draws.
+    fn after_draws(mut rng: OriginalTacticalRng, count: usize) -> OriginalTacticalRng {
+        for _ in 0..count {
+            rng.inclusive(0, crate::tactical::ORIGINAL_WEAPON_TURN_DRAW_MAX);
+        }
+        rng
+    }
+
+    // FUN_005b3a40 (0x5b3a92): each turn a unit with a ready arc draws 0 to
+    // 2 (FUN_005a8a70) and fires only on 0.
+    #[test]
+    fn a_unit_fires_only_when_its_draw_comes_up_zero() {
+        use crate::tactical::TacticalUnitRef;
+        for draw in 0..=2 {
+            let rng = stream_with_weapon_draws(&[draw]);
+            let (sources, after, draws) =
+                weapon_turn(TacticalOrder::AttackCapitalShips, true, rng);
+            let fires = if draw == 0 { vec![TacticalUnitRef::Ship(0)] } else { Vec::new() };
+            assert_eq!(sources, fires, "draw {draw}");
+            assert_eq!(after, after_draws(rng, 1), "draw {draw}");
+            assert_eq!(draws, 1, "draw {draw}");
+        }
+    }
+
+    // FUN_005b3a40 (0x5b3a6b): a unit with no ready arc (+0x1e0, one arc
+    // record 0x74 apart) returns before its draw.
+    #[test]
+    fn a_unit_with_no_ready_arc_does_not_draw() {
+        let rng = stream_opening_weapon_turns(1);
+        let (sources, after, draws) = weapon_turn(TacticalOrder::AttackCapitalShips, false, rng);
+        assert!(sources.is_empty());
+        assert_eq!(after, rng);
+        assert_eq!(draws, 0);
+    }
+
+    // FUN_005b3a40 (0x5b3ae2): a force on Escort (order +0x64 = 1) returns
+    // after the draw, before any target or fire.
+    #[test]
+    fn an_escort_draws_but_holds_its_fire() {
+        let rng = stream_opening_weapon_turns(1);
+        let (sources, after, draws) = weapon_turn(TacticalOrder::Escort, true, rng);
+        assert!(sources.is_empty());
+        assert_eq!(after, after_draws(rng, 1));
+        assert_eq!(draws, 1);
+        let (sources, _, _) = weapon_turn(TacticalOrder::None, true, rng);
+        assert_eq!(sources, [crate::tactical::TacticalUnitRef::Ship(0)]);
+    }
+
+    // 0x005a9e43 (FUN_005ad870) and FUN_005b3a40 (0x5b3a5e): a unit out of
+    // the fight, docked or in its jump takes no weapon turn, so it does not
+    // draw. Each unit below fails one condition only.
+    #[test]
+    fn a_unit_out_of_the_fight_takes_no_weapon_turn() {
+        use crate::tactical::TacticalFighterRecoveryState;
+        let armed = || {
+            let mut value = ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0);
+            value.weapon_arcs = [TacticalWeaponArc::new(0, 0, 4); 4];
+            value
+        };
+        let mut dead = armed();
+        dead.alive = false;
+        let mut jumping = armed();
+        jumping.retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+        let wing = || fighter(true, TacticalWeaponArc::new(4, 0, 0));
+        let mut lost = wing();
+        lost.alive = false;
+        let mut empty = wing();
+        empty.squad_count = 0;
+        let mut leaving = wing();
+        leaving.retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+        let mut docked = wing();
+        docked.recovery_state = TacticalFighterRecoveryState::Recovered;
+        // An unarmed enemy keeps the battle going and has no arc to draw for.
+        let enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        let mut tactical = session(vec![dead, jumping, enemy], vec![lost, empty, leaving, docked]);
+        let rng = stream_opening_weapon_turns(1);
+        tactical.tactical_rng = rng;
+        for _ in 0..4 {
+            tactical.step();
+        }
+        assert_eq!(tactical.phase, crate::tactical::BattlePhase::Combat);
+        assert_eq!(tactical.tactical_rng, rng);
+    }
+
+    // FUN_005b3a40 is slot +0x88 of the fighter class too (0x66c028): a
+    // group draws after the capital ships (port order) and fires only on 0.
+    #[test]
+    fn a_fighter_group_takes_the_same_weapon_turn() {
+        use crate::tactical::{TacticalAttackTarget, TacticalTurnEvent, TacticalUnitRef};
+        let run = |draws: &[u32]| {
+            let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+            target.source_position.z = 3.0;
+            target.hull_current = 1_000_000;
+            target.hull_max = 1_000_000;
+            let mut wing = fighter(true, TacticalWeaponArc::new(4, 0, 0));
+            wing.weapon_ranges = TacticalWeaponRanges {
+                laser_cannon: 100.0,
+                ion_cannon: 100.0,
+                turbolaser: 100.0,
+            };
+            wing.order = TacticalOrder::AttackCapitalShips;
+            wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+            let mut tactical = session(vec![target], vec![wing]);
+            let rng = stream_with_weapon_draws(draws);
+            tactical.tactical_rng = rng;
+            for _ in 0..4 {
+                tactical.step();
+            }
+            let fired = tactical.turn_events.iter().any(|queued| {
+                matches!(
+                    queued.event,
+                    TacticalTurnEvent::WeaponFire(shot) if shot.source == TacticalUnitRef::Fighter(0)
+                )
+            });
+            (fired, tactical.tactical_rng == after_draws(rng, 1))
+        };
+        assert_eq!(run(&[0]), (true, true));
+        assert_eq!(run(&[1]), (false, true));
+    }
+
     // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit
     // at + 2.0; the fire event (FUN_005b1f60) needs both units in the fight
     // (FUN_005ad870), the hit (0x005b2ac0) the target.
@@ -5857,6 +6051,8 @@ mod tests {
         target.hull_current = 1_000_000;
         target.hull_max = 1_000_000;
         let mut tactical = session(vec![shooter, target], Vec::new());
+        // The shooter's draw opens its turn 1 (FUN_005b3a40).
+        tactical.tactical_rng = stream_opening_weapon_turns(1);
         for _ in 0..4 {
             tactical.step();
         }
