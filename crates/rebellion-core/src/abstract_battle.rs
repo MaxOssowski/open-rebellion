@@ -1865,6 +1865,7 @@ mod tests {
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
+            member_states: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -7275,6 +7276,214 @@ mod tests {
         nearer.ships[0].source_desired_forward = vector(0.0, 0.0, -1.0);
         nearer.advance_original_tactical_movement(250.0);
         assert!(near(nearer.ships[0].source_desired_forward, vector(0.0, 0.0, -1.0)));
+    }
+
+    fn neighbour(y: f32, half_height: f32, id: usize) -> crate::tactical::TacticalHeightNeighbour {
+        crate::tactical::TacticalHeightNeighbour { y, half_height, id }
+    }
+
+    // FUN_005b2f30's vertical step between the nearby ships' floor (+0x404)
+    // and ceiling (+0x408). Heights sit off zero so that sums and
+    // differences of heights differ.
+    #[test]
+    fn a_member_climbs_within_its_height_band() {
+        use crate::tactical::original_height_band_step as band;
+        let own = neighbour(10.0, 1.0, 5);
+        // Free: the step's length.
+        assert_eq!(band(own, &[], 5.0, 2.0), (12.0, false));
+        assert_eq!(band(own, &[], -0.5, 2.0), (9.5, false));
+        assert_eq!(band(own, &[], 0.0, 2.0), (10.0, false));
+        // A ship above at 13: the ceiling is 13 - 1 - 1 = 11.
+        assert_eq!(band(own, &[neighbour(13.0, 1.0, 1)], 5.0, 2.0), (11.0, false));
+        // Diving is not limited by a ship above.
+        assert_eq!(band(own, &[neighbour(13.0, 1.0, 1)], -5.0, 2.0), (8.0, false));
+        // A ship below at 7.5: the floor is 9.5.
+        assert_eq!(band(own, &[neighbour(7.5, 1.0, 1)], -5.0, 2.0), (9.5, false));
+        // Climbing is not limited by a ship below.
+        assert_eq!(band(own, &[neighbour(7.5, 1.0, 1)], 5.0, 2.0), (12.0, false));
+        // A floor exactly at its height is not inside it: it climbs.
+        assert_eq!(band(own, &[neighbour(8.0, 1.0, 1)], 5.0, 1.0), (11.0, false));
+        // The ceiling at its own height holds the climb.
+        assert_eq!(band(own, &[neighbour(12.0, 1.0, 1)], 5.0, 2.0), (10.0, true));
+        // Inside the ceiling (9.5) it steps down, at most the step.
+        assert_eq!(band(own, &[neighbour(11.5, 1.0, 1)], 5.0, 0.3), (9.7, false));
+        assert_eq!(band(own, &[neighbour(11.5, 1.0, 1)], 5.0, 2.0), (9.5, false));
+        // Inside the floor (10.5) it steps up.
+        assert_eq!(band(own, &[neighbour(8.5, 1.0, 1)], -5.0, 0.3), (10.3, false));
+        assert_eq!(band(own, &[neighbour(8.5, 1.0, 1)], -5.0, 2.0), (10.5, false));
+        // Pinned inside both: held (inside both, the ceiling is below the
+        // floor, so the code's "fits" branch never runs).
+        assert_eq!(
+            band(own, &[neighbour(11.5, 1.0, 1), neighbour(8.5, 1.0, 2)], 5.0, 2.0),
+            (10.0, true)
+        );
+        // Pinned low, under a tall ship: still held.
+        assert_eq!(
+            band(
+                neighbour(-20.0, 1.0, 5),
+                &[neighbour(-19.9, 20.0, 1), neighbour(-20.1, 1.0, 2)],
+                5.0,
+                2.0
+            ),
+            (-20.0, true)
+        );
+        // At the same height: a higher id goes above, a lower or equal one
+        // below; either way it is inside and steps out.
+        assert_eq!(band(own, &[neighbour(10.0, 1.0, 9)], 0.0, 0.5), (9.5, false));
+        assert_eq!(band(own, &[neighbour(10.0, 1.0, 5)], 0.0, 0.5), (10.5, false));
+        // With only a ship above, a same-height one with a lower id goes above.
+        assert_eq!(
+            band(own, &[neighbour(20.0, 1.0, 9), neighbour(10.0, 1.0, 1)], 0.0, 0.5),
+            (9.5, false)
+        );
+        // With only a ship below, a higher id goes below.
+        assert_eq!(
+            band(own, &[neighbour(0.0, 1.0, 1), neighbour(10.0, 1.0, 9)], 0.0, 0.5),
+            (10.5, false)
+        );
+        // With both, it goes above only when the room below (y - floor)
+        // exceeds the room above (ceiling - y). Here 1 against 6: below.
+        assert_eq!(
+            band(
+                own,
+                &[neighbour(18.0, 1.0, 1), neighbour(7.0, 1.0, 2), neighbour(10.0, 1.0, 9)],
+                0.0,
+                0.5
+            ),
+            (10.5, false)
+        );
+        // Equal room (3 and 3): below.
+        assert_eq!(
+            band(
+                own,
+                &[neighbour(15.0, 1.0, 1), neighbour(5.0, 1.0, 2), neighbour(10.0, 1.0, 9)],
+                0.0,
+                0.5
+            ),
+            (10.5, false)
+        );
+        // 8 against 6: above; 3 against 5: below.
+        assert_eq!(
+            band(
+                own,
+                &[neighbour(18.0, 1.0, 1), neighbour(0.0, 1.0, 2), neighbour(10.0, 1.0, 9)],
+                0.0,
+                0.5
+            ),
+            (9.5, false)
+        );
+        assert_eq!(
+            band(
+                own,
+                &[neighbour(17.0, 1.0, 1), neighbour(5.0, 1.0, 2), neighbour(10.0, 1.0, 9)],
+                0.0,
+                0.5
+            ),
+            (10.5, false)
+        );
+        // And 6 against 1: above.
+        assert_eq!(
+            band(
+                own,
+                &[neighbour(13.0, 1.0, 1), neighbour(2.0, 1.0, 2), neighbour(10.0, 1.0, 9)],
+                0.0,
+                0.5
+            ),
+            (9.5, false)
+        );
+    }
+
+    // FUN_005cdbf0: neighbours along x until the first beyond both reaches
+    // (half the speed plus 5/9 of the planar diameter, DAT_0066c534), kept
+    // when z is within the reaches and y within both half-heights plus 0.4
+    // of the frame's travel (DAT_0066d03c).
+    #[test]
+    fn nearby_capitals_stop_at_the_first_beyond_reach() {
+        use crate::tactical::OriginalTacticalCollisionEnvelope;
+        let envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 9.0,
+        });
+        // The ship stands off the origin, at (3, 7, -2).
+        let at = |x: f32, y: f32, z: f32| {
+            let mut unit = ship(true, TacticalWeaponArc::default(), 0.0);
+            unit.source_collision_envelope = envelope;
+            unit.source_position = crate::tactical::TacticalWorldPosition {
+                x: 3.0 + x,
+                y: 7.0 + y,
+                z: -2.0 + z,
+            };
+            unit
+        };
+        // Reach 5 each, 10 together; travel 2 gives a vertical limit of
+        // 1 + 1 + 0.8.
+        let ships = vec![
+            at(0.0, 0.0, 0.0),
+            at(10.0, 0.0, 0.0),
+            at(11.0, 0.0, 0.0),
+            at(15.0, 0.0, 0.0),
+            at(-9.0, 0.0, 10.5),
+            at(-8.0, 2.7, -10.0),
+            at(-7.0, 2.9, 0.0),
+            at(-6.0, -2.9, 0.0),
+        ];
+        let mut tactical = session(ships, Vec::new());
+        let mut nearby = tactical.nearby_capitals(0, 2.0);
+        nearby.sort_unstable();
+        // 10 away exactly is within; 11 stops the walk, so 15 is never
+        // reached; -9 is too far in z; 2.9 above or below is too high.
+        assert_eq!(nearby, vec![1, 5]);
+        // Speed widens the reach: at 4 the reach is 7, 12 together.
+        tactical.ships[0].source_velocity = vector(0.0, 0.0, 4.0);
+        let mut nearby = tactical.nearby_capitals(0, 2.0);
+        nearby.sort_unstable();
+        assert_eq!(nearby, vec![1, 2, 4, 5]);
+        // Destroyed, jumping or envelope-less ships are not in the tree.
+        tactical.ships[1].alive = false;
+        tactical.ships[2].retreat_progress = 0.5;
+        tactical.ships[4].source_collision_envelope = None;
+        assert_eq!(tactical.nearby_capitals(0, 2.0), vec![5]);
+        // A ship without an envelope has no neighbours.
+        tactical.ships[0].source_collision_envelope = None;
+        assert!(tactical.nearby_capitals(0, 2.0).is_empty());
+    }
+
+    // FUN_005b2f30: +0x414 records a vertical step that the band held or
+    // that overlapped a nearby ship; a member with nothing to cover clears it.
+    #[test]
+    fn a_held_climb_marks_the_member_blocked() {
+        use crate::tactical::OriginalTacticalCollisionEnvelope;
+        let envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 1.0,
+            planar_diameter: 4.0,
+        });
+        let mut climber = ship(true, TacticalWeaponArc::default(), 0.0);
+        climber.source_collision_envelope = envelope;
+        climber.task_force = 255;
+        let mut roof = ship(false, TacticalWeaponArc::default(), 0.0);
+        roof.source_collision_envelope = envelope;
+        roof.subsystem_capacity.engines = false;
+        roof.sublight_engine_power = 0.0;
+        roof.task_force = 255;
+        roof.source_position.y = 2.0;
+        roof.source_position.x = 1.0;
+        let mut tactical = session(vec![climber, roof], Vec::new());
+        tactical.advance_original_tactical_movement(250.0);
+        // Its place is 10 above: the roof's ceiling at 0 holds it.
+        let key = tactical.force_key(0);
+        for mover in &mut tactical.force_movers {
+            if mover.force == key {
+                mover.anchor.y = 10.0;
+            }
+        }
+        tactical.advance_original_tactical_movement(250.0);
+        assert_eq!(tactical.ships[0].source_position.y, 0.0);
+        assert!(tactical.member_states[0].blocked);
+        // Without the roof it climbs and is not blocked.
+        tactical.ships[1].source_position.x = 100.0;
+        tactical.advance_original_tactical_movement(250.0);
+        assert!(tactical.ships[0].source_position.y > 0.0);
+        assert!(!tactical.member_states[0].blocked);
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

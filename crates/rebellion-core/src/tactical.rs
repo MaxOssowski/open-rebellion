@@ -1498,6 +1498,8 @@ pub struct BattleSession {
     pub fighter_orbit_angles: Vec<f32>,
     /// Each capital force's mover (`+0x54`): its anchor, facing and rates.
     pub force_movers: Vec<TacticalForceMover>,
+    /// Each ship's own movement state, by ship index.
+    pub member_states: Vec<TacticalMemberState>,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -3002,6 +3004,128 @@ pub const ORIGINAL_FORMATION_TURN_RATE_START: f32 = 99.0;
 /// their strongest arc (`FUN_005b4d40`).
 pub const ORIGINAL_STILL_TURNS_TO_FACE: u32 = 5;
 
+/// A member's own movement state (unit `+0x40c`..`+0x414`, zeroed by
+/// `FUN_005b0f70`).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct TacticalMemberState {
+    /// `+0x414`: its last vertical step was held (`FUN_005b2f30`).
+    pub blocked: bool,
+}
+
+/// A nearby capital ship for the height bands: its height, vertical radius
+/// (`+0x8`) and object id.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TacticalHeightNeighbour {
+    pub y: f32,
+    pub half_height: f32,
+    pub id: usize,
+}
+
+/// `DAT_0066c534`: an object's reach in the neighbour search is half its
+/// speed plus 5/9 of its planar diameter (vt `+0x8c`).
+pub const ORIGINAL_NEIGHBOUR_DIAMETER_SHARE: f32 = 0.555_555_6;
+/// `DAT_0066d03c`: the search's vertical slack, 0.4 of a frame's travel.
+pub const ORIGINAL_NEIGHBOUR_VERTICAL_SLACK: f32 = 0.4;
+
+/// `FUN_005b2f30`'s vertical step between the nearby ships' bands
+/// (`+0x404` floor, `+0x408` ceiling): ships above lower the ceiling to
+/// their y less both half-heights, ships below raise the floor; one at the
+/// same height goes above or below by id and by the room on each side.
+/// Pinned inside both, the member is held when it does not fit, else it
+/// steps by `(ceiling - floor) / 2 - y` (the code's own sum); inside one it
+/// steps out; otherwise it moves toward `dy`, no farther than the band.
+/// Returns the new y and whether the step was held.
+pub fn original_height_band_step(
+    own: TacticalHeightNeighbour,
+    neighbours: &[TacticalHeightNeighbour],
+    dy: f32,
+    step: f32,
+) -> (f32, bool) {
+    struct Band {
+        floor: f32,
+        ceiling: f32,
+        above: bool,
+        below: bool,
+        inside_ceiling: bool,
+        inside_floor: bool,
+    }
+    impl Band {
+        fn put(&mut self, own: TacticalHeightNeighbour, neighbour: TacticalHeightNeighbour, up: bool) {
+            if up {
+                self.above = true;
+                self.ceiling = self
+                    .ceiling
+                    .min(neighbour.y - neighbour.half_height - own.half_height);
+                if own.y > self.ceiling {
+                    self.inside_ceiling = true;
+                }
+            } else {
+                self.below = true;
+                self.floor = self
+                    .floor
+                    .max(neighbour.y + neighbour.half_height + own.half_height);
+                if own.y < self.floor {
+                    self.inside_floor = true;
+                }
+            }
+        }
+    }
+    let mut band = Band {
+        floor: -f32::MAX,
+        ceiling: f32::MAX,
+        above: false,
+        below: false,
+        inside_ceiling: false,
+        inside_floor: false,
+    };
+    let mut level = Vec::new();
+    for &neighbour in neighbours {
+        let rise = neighbour.y - own.y;
+        if rise > 0.0 {
+            band.put(own, neighbour, true);
+        } else if rise < 0.0 {
+            band.put(own, neighbour, false);
+        } else {
+            level.push(neighbour);
+        }
+    }
+    for neighbour in level {
+        let up = if neighbour.id > own.id && !band.below {
+            true
+        } else if neighbour.id <= own.id && !band.above {
+            false
+        } else if band.above && band.below {
+            own.y - band.floor > band.ceiling - own.y
+        } else {
+            band.above
+        };
+        band.put(own, neighbour, up);
+    }
+    let y = own.y;
+    if band.inside_ceiling && band.inside_floor {
+        if 2.0 * own.half_height > band.ceiling - band.floor {
+            return (y, true);
+        }
+        return (y + ((band.ceiling - band.floor) * 0.5 - y).clamp(-step, step), false);
+    }
+    if band.inside_ceiling {
+        return (y - (band.ceiling - y).abs().min(step), false);
+    }
+    if band.inside_floor {
+        return (y + (y - band.floor).abs().min(step), false);
+    }
+    if dy == 0.0 {
+        return (y, false);
+    }
+    let mut travel = dy.abs().min(step);
+    if dy > 0.0 && band.above {
+        travel = travel.min(band.ceiling - y);
+    } else if dy < 0.0 && band.below {
+        travel = travel.min(y - band.floor);
+    }
+    (y + travel.copysign(dy), travel == 0.0)
+}
+
 /// `FUN_005cd460` on any vector: the signed level turn toward `desired` at
 /// `rate` radians per second, or a snap onto it once the step reaches the
 /// angle. Returns the signed angle applied.
@@ -3819,6 +3943,7 @@ impl BattleSession {
             task_force_formations: [[TacticalTactic::StandOff; 8]; 2],
             engagement_bands: Vec::new(),
             force_movers: Vec::new(),
+            member_states: Vec::new(),
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -4249,6 +4374,71 @@ impl BattleSession {
         arrived
     }
 
+    /// `FUN_005cdbf0` over the capital ships' tree (`+0x8f8`, sorted by x):
+    /// walking out from the ship on each side, it stops at the first whose
+    /// x is farther than both reaches, and keeps those whose z is within
+    /// them and whose height is within both half-heights plus 0.4 of this
+    /// frame's travel `travel`.
+    pub fn nearby_capitals(&self, index: usize, travel: f32) -> Vec<usize> {
+        let reach = |ship: &TacticalShip| {
+            let velocity = ship.source_velocity;
+            let speed = velocity.x.hypot(velocity.y).hypot(velocity.z);
+            0.5 * speed
+                + ORIGINAL_NEIGHBOUR_DIAMETER_SHARE
+                    * ship
+                        .source_collision_envelope
+                        .map_or(0.0, |envelope| envelope.planar_diameter)
+        };
+        let Some(own_envelope) = self.ships[index].source_collision_envelope else {
+            return Vec::new();
+        };
+        let mut sorted = (0..self.ships.len())
+            .filter(|&other| {
+                other == index || {
+                    let ship = &self.ships[other];
+                    ship.alive && !ship.jumping() && ship.source_collision_envelope.is_some()
+                }
+            })
+            .collect::<Vec<_>>();
+        sorted.sort_by(|left, right| {
+            self.ships[*left]
+                .source_position
+                .x
+                .total_cmp(&self.ships[*right].source_position.x)
+                .then(left.cmp(right))
+        });
+        let at = sorted.iter().position(|&other| other == index).unwrap_or(0);
+        let own = &self.ships[index];
+        let own_reach = reach(own);
+        let mut nearby = Vec::new();
+        let mut visit = |other: usize| {
+            let ship = &self.ships[other];
+            let both = own_reach + reach(ship);
+            if (ship.source_position.x - own.source_position.x).abs() > both {
+                return false;
+            }
+            let half = ship.source_collision_envelope.map_or(0.0, |e| e.vertical_radius);
+            if (ship.source_position.y - own.source_position.y).abs()
+                <= half + own_envelope.vertical_radius + ORIGINAL_NEIGHBOUR_VERTICAL_SLACK * travel
+                && (ship.source_position.z - own.source_position.z).abs() <= both
+            {
+                nearby.push(other);
+            }
+            true
+        };
+        for &other in sorted[..at].iter().rev() {
+            if !visit(other) {
+                break;
+            }
+        }
+        for &other in &sorted[at + 1..] {
+            if !visit(other) {
+                break;
+            }
+        }
+        nearby
+    }
+
     /// A member's frame (its slot `+0x8`, `FUN_005b2f30`): it steers to its
     /// place at no more than the force's speed, moves up or down apart,
     /// snaps the last stretch, turns past pi / 48 (`0x5b1410`), and moves
@@ -4280,23 +4470,46 @@ impl BattleSession {
                 delta
             }
         };
-        let overlaps = |session: &Self| {
-            session.ships.iter().enumerate().any(|(other_index, other)| {
-                other_index != index
-                    && other.alive
-                    && !other.jumping()
-                    && original_tactical_objects_overlap(&session.ships[index], other)
-            })
-        };
-        // The vertical move (`DAT_0066c4c4`, `DAT_0066c4fc`), undone on an
-        // overlap. port: the nearby objects' height bands (`+0x404`,
-        // `+0x408`, `FUN_005cdbf0`) are not ported.
+        if self.member_states.len() < self.ships.len() {
+            self.member_states
+                .resize(self.ships.len(), TacticalMemberState::default());
+        }
+        self.member_states[index].blocked = false;
+        // With a distance to cover, the nearby capital ships
+        // (`FUN_005cdbf0`) bound the vertical step (`DAT_0066c4c4`,
+        // `DAT_0066c4fc`); the overlap tests (`FUN_005b2e60`) use only them.
         let mut delta = to_place(&self.ships[index]);
+        let nearby = if delta == TacticalWorldVector::ZERO {
+            Vec::new()
+        } else {
+            self.nearby_capitals(index, reach)
+        };
+        let overlaps = |session: &Self| {
+            nearby
+                .iter()
+                .any(|&other| original_tactical_objects_overlap(&session.ships[index], &session.ships[other]))
+        };
         let before_vertical = self.ships[index].source_position;
-        let climb = speed * ORIGINAL_FORMATION_VERTICAL_SHARE * seconds;
-        self.ships[index].source_position.y += delta.y.clamp(-climb, climb);
-        if overlaps(self) {
-            self.ships[index].source_position = before_vertical;
+        if delta != TacticalWorldVector::ZERO {
+            let climb = speed * ORIGINAL_FORMATION_VERTICAL_SHARE * seconds;
+            let height = |other: usize| TacticalHeightNeighbour {
+                y: self.ships[other].source_position.y,
+                half_height: self.ships[other]
+                    .source_collision_envelope
+                    .map_or(0.0, |envelope| envelope.vertical_radius),
+                id: other,
+            };
+            let neighbours = nearby.iter().map(|&other| height(other)).collect::<Vec<_>>();
+            let (y, held) = original_height_band_step(height(index), &neighbours, delta.y, climb);
+            self.ships[index].source_position.y = y;
+            let mut blocked = held;
+            if y != before_vertical.y {
+                blocked = overlaps(self);
+                if blocked {
+                    self.ships[index].source_position = before_vertical;
+                }
+            }
+            self.member_states[index].blocked = blocked;
         }
         let settled = self.ships[index].source_position;
         let ship = &self.ships[index];
