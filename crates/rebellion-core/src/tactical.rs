@@ -1503,6 +1503,8 @@ pub struct BattleSession {
     pub engagement_bands: Vec<TacticalEngagementBand>,
     /// Each fighter force's circling angle (`+0xc0`, `FUN_005c6610`).
     pub fighter_orbit_angles: Vec<f32>,
+    /// The fighter forces' movers, one per side and group.
+    pub fighter_movers: Vec<TacticalFighterMover>,
     /// Each capital force's mover (`+0x54`): its anchor, facing and rates.
     pub force_movers: Vec<TacticalForceMover>,
     /// Each ship's own movement state, by ship index.
@@ -3170,6 +3172,113 @@ pub fn original_height_band_step(
     (y + travel.copysign(dy), travel == 0.0)
 }
 
+/// The fighter mover's slot offsets (`0x5ebee0`, slot `+0x30`) for the
+/// member that makes the count `n` = 2..31, with forward (0, 0, 1); they
+/// repeat every 30. Read from an x87 trace of the routine: `k = 1 - m ×
+/// (n >> 1)` with `m = ftol(±3 × -1.5)`, `θ = kπ`, the forward turned by
+/// `2θ/3`, `θ/2` and `0.4θ` (`DAT_0066d8b0`, `DAT_0066d86c`,
+/// `DAT_0066d8b4`). A forward of (0, 0, -1) negates them.
+pub const ORIGINAL_FIGHTER_SLOT_OFFSETS: [[f32; 3]; 30] = [
+    [-0.8090170, -0.5877852, 0.0],
+    [-0.5000000, 0.8660254, 0.0],
+    [-0.1045285, -0.9945219, 0.0],
+    [0.3090170, 0.9510565, 0.0],
+    [0.6691306, -0.7431448, 0.0],
+    [0.9135454, 0.4067366, 0.0],
+    [1.0000000, 0.0, 0.0],
+    [0.9135454, -0.4067366, 0.0],
+    [0.6691306, 0.7431448, 0.0],
+    [0.3090170, -0.9510565, 0.0],
+    [-0.1045285, 0.9945219, 0.0],
+    [-0.5000000, -0.8660254, 0.0],
+    [-0.8090170, 0.5877852, 0.0],
+    [-0.9781476, -0.2079117, 0.0],
+    [-0.9781476, -0.2079117, 0.0],
+    [-0.8090170, 0.5877852, 0.0],
+    [-0.5000000, -0.8660254, 0.0],
+    [-0.1045285, 0.9945219, 0.0],
+    [0.3090170, -0.9510565, 0.0],
+    [0.6691306, 0.7431448, 0.0],
+    [0.9135454, -0.4067366, 0.0],
+    [1.0000000, 0.0, 0.0],
+    [0.9135454, 0.4067366, 0.0],
+    [0.6691306, -0.7431448, 0.0],
+    [0.3090170, 0.9510565, 0.0],
+    [-0.1045285, -0.9945219, 0.0],
+    [-0.5000000, 0.8660254, 0.0],
+    [-0.8090170, -0.5877852, 0.0],
+    [-0.9781476, 0.2079117, 0.0],
+    [-0.9781476, 0.2079117, 0.0],
+];
+
+/// A fighter force's slot offset for the member that makes its count `n`
+/// (`0x5ebee0`, slot `+0x30` of the `FUN_005c72b0` mover): none for the lead
+/// (`n` = 1), then the table's entry
+/// `(n - 2) mod 30`.
+#[must_use]
+pub fn original_fighter_slot_offset(n: usize, forward_z: f32) -> TacticalWorldVector {
+    if n <= 1 {
+        return TacticalWorldVector::ZERO;
+    }
+    let [x, y, z] = ORIGINAL_FIGHTER_SLOT_OFFSETS[(n - 2) % 30];
+    let sign = if forward_z < 0.0 { -1.0 } else { 1.0 };
+    TacticalWorldVector {
+        x: x * sign,
+        y: y * sign,
+        z: z * sign,
+    }
+}
+
+/// A fighter force (class 4, one per group: `FUN_005adfa0`) and its mover
+/// (`FUN_005c72b0`, vtables `0x66cb50` / `0x66cb30`, on `FUN_005ea030`): an
+/// anchor stepped toward its point at the slowest member's speed, never
+/// turning, with each squadron's place the anchor less its slot.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TacticalFighterMover {
+    pub alliance: bool,
+    pub group: u8,
+    /// `+0x3c`: set to the first member's position when it is added.
+    pub anchor: TacticalWorldPosition,
+    /// `+0x1c`.
+    pub forward: TacticalWorldVector,
+    /// `+0x78`.
+    pub velocity: TacticalWorldVector,
+    /// `+0x124`: the slowest positive member speed, once a turn.
+    pub speed: f32,
+    /// The members (fighter indices) and their slot offsets, in order of
+    /// joining.
+    pub slots: Vec<(usize, TacticalWorldVector)>,
+}
+
+/// `0x005ec0d0`, the fighter mover's step: beyond `radius` of the point the
+/// anchor moves by the unit delta × speed × ms × 0.001 (`DAT_0066d894`), in
+/// three dimensions, unclamped; within it the velocity is cleared. Returns
+/// whether it moved (1).
+pub fn step_fighter_anchor(
+    mover: &mut TacticalFighterMover,
+    point: TacticalWorldPosition,
+    radius: f32,
+    delta_milliseconds: f32,
+) -> bool {
+    let delta = source_delta(point, mover.anchor);
+    let length = delta.x.hypot(delta.y).hypot(delta.z);
+    if delta == TacticalWorldVector::ZERO || length <= radius {
+        mover.velocity = TacticalWorldVector::ZERO;
+        return false;
+    }
+    let unit = delta.normalized();
+    mover.velocity = TacticalWorldVector {
+        x: unit.x * mover.speed,
+        y: unit.y * mover.speed,
+        z: unit.z * mover.speed,
+    };
+    let seconds = delta_milliseconds * 0.001;
+    mover.anchor.x += mover.velocity.x * seconds;
+    mover.anchor.y += mover.velocity.y * seconds;
+    mover.anchor.z += mover.velocity.z * seconds;
+    true
+}
+
 /// `FUN_005cd460` on any vector: the signed level turn toward `desired` at
 /// `rate` radians per second, or a snap onto it once the step reaches the
 /// angle. Returns the signed angle applied.
@@ -3993,6 +4102,7 @@ impl BattleSession {
             observer_review_countdown: 0,
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
+            fighter_movers: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -4178,6 +4288,15 @@ impl BattleSession {
     }
 
     pub(crate) fn update_force_movers(&mut self) {
+        self.sync_fighter_movers();
+        for at in 0..self.fighter_movers.len() {
+            let members = self.fighter_movers[at]
+                .slots
+                .iter()
+                .map(|(member, _)| *member)
+                .collect::<Vec<_>>();
+            self.fighter_movers[at].speed = self.fighter_mover_speed(&members);
+        }
         self.sync_force_movers();
         for members in self.moving_forces() {
             let key = self.force_key(members[0]);
@@ -7866,6 +7985,95 @@ impl BattleSession {
             .collect()
     }
 
+    /// The squadrons in the fight of a side's group, in index order.
+    fn fighter_group_members(&self, alliance: bool, group: u8) -> Vec<usize> {
+        (0..self.fighters.len())
+            .filter(|&index| {
+                let fighter = &self.fighters[index];
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && !fighter.jumping()
+                    && fighter.identity.is_alliance == alliance
+                    && fighter.fighter_group == group
+            })
+            .collect()
+    }
+
+    /// `FUN_005ea740` for a fighter mover: the slowest positive member
+    /// speed. port: a squadron's speed is its sublight rating.
+    fn fighter_mover_speed(&self, members: &[usize]) -> f32 {
+        let speed = members
+            .iter()
+            .map(|&index| self.fighters[index].sublight_engine_power)
+            .filter(|speed| *speed > 0.0)
+            .fold(f32::INFINITY, f32::min);
+        if speed.is_finite() {
+            speed
+        } else {
+            0.0
+        }
+    }
+
+    /// Keep one mover per side and group with squadrons in the fight
+    /// (`FUN_005adfa0`, `FUN_005c62b0`): a new one starts on its first
+    /// member, facing its side (hyp, as the capital movers); a member that
+    /// joins takes the slot of the count it makes (`0x5ebee0`), one that
+    /// leaves frees the count (`0x5ea630`). A tactic does not rebuild it
+    /// (`FUN_005c9c50` rebuilds only class 3).
+    pub(crate) fn sync_fighter_movers(&mut self) {
+        let mut wanted = Vec::new();
+        for alliance in [true, false] {
+            for group in 0..4_u8 {
+                let members = self.fighter_group_members(alliance, group);
+                if !members.is_empty() {
+                    wanted.push((alliance, group, members));
+                }
+            }
+        }
+        self.fighter_movers
+            .retain(|mover| wanted.iter().any(|(a, g, _)| *a == mover.alliance && *g == mover.group));
+        for (alliance, group, members) in wanted {
+            let speed = self.fighter_mover_speed(&members);
+            let position = self.fighters[members[0]].source_position;
+            let at = match self
+                .fighter_movers
+                .iter()
+                .position(|mover| mover.alliance == alliance && mover.group == group)
+            {
+                Some(at) => at,
+                None => {
+                    self.fighter_movers.push(TacticalFighterMover {
+                        alliance,
+                        group,
+                        anchor: position,
+                        forward: original_side_vector(alliance),
+                        velocity: TacticalWorldVector::ZERO,
+                        // port: set at once, not at the next turn.
+                        speed,
+                        slots: Vec::new(),
+                    });
+                    self.fighter_movers.len() - 1
+                }
+            };
+            let mover = &mut self.fighter_movers[at];
+            mover.slots.retain(|(index, _)| members.contains(index));
+            for index in members {
+                if mover.slots.iter().any(|(member, _)| *member == index) {
+                    continue;
+                }
+                let offset = original_fighter_slot_offset(mover.slots.len() + 1, mover.forward.z);
+                mover.slots.push((index, offset));
+            }
+        }
+    }
+
+    /// A squadron's mover, if it has one.
+    pub fn fighter_mover_of(&self, index: usize) -> Option<&TacticalFighterMover> {
+        self.fighter_movers
+            .iter()
+            .find(|mover| mover.slots.iter().any(|(member, _)| *member == index))
+    }
+
     /// `FUN_005c6610` for a fighter force with a live target, each step from
     /// turn 3: it heads for a point one `+0xc` step toward the target (the
     /// move `0x005ec0d0`, radius 2.0, a full step at its speed beyond it).
@@ -7878,8 +8086,19 @@ impl BattleSession {
         if self.fighter_orbit_angles.len() < self.fighters.len() {
             self.fighter_orbit_angles.resize(self.fighters.len(), 0.0);
         }
-        for index in self.fighter_forces() {
-            let Some(target) = self.fighters[index].attack_target else {
+        self.sync_fighter_movers();
+        let free = self.fighter_forces();
+        for at in 0..self.fighter_movers.len() {
+            // The force's order step runs for its first free member.
+            let Some(lead) = self.fighter_movers[at]
+                .slots
+                .iter()
+                .map(|(member, _)| *member)
+                .find(|member| free.contains(member))
+            else {
+                continue;
+            };
+            let Some(target) = self.fighters[lead].attack_target else {
                 continue;
             };
             let Some(target_position) = self.attack_target_position(target) else {
@@ -7888,11 +8107,10 @@ impl BattleSession {
             let step = self
                 .engagement_bands
                 .iter()
-                .find(|band| band.leader == TacticalUnitRef::Fighter(index))
+                .find(|band| band.leader == TacticalUnitRef::Fighter(lead))
                 .map_or(ORIGINAL_SURROUND_APPROACH_STEP, |band| band.step);
-            let fighter = &self.fighters[index];
-            let anchor = fighter.source_position;
-            let side_z = if fighter.identity.is_alliance {
+            let anchor = self.fighter_movers[at].anchor;
+            let side_z = if self.fighters[lead].identity.is_alliance {
                 1.0
             } else {
                 -1.0
@@ -7911,41 +8129,50 @@ impl BattleSession {
                 y: anchor.y + unit.y * step,
                 z: anchor.z + unit.z * step,
             };
-            let to_goal = source_delta(goal, anchor);
-            let goal_distance = to_goal.x.hypot(to_goal.y).hypot(to_goal.z);
-            if goal_distance > ORIGINAL_STAND_OFF_MIN_STEP {
-                let travel =
-                    fighter.sublight_engine_power.max(0.0) * ORIGINAL_TACTICAL_STEP_SECONDS;
-                let heading = to_goal.normalized();
-                let fighter = &mut self.fighters[index];
-                fighter.source_position.x += heading.x * travel;
-                fighter.source_position.y += heading.y * travel;
-                fighter.source_position.z += heading.z * travel;
-                continue;
+            let moved = step_fighter_anchor(
+                &mut self.fighter_movers[at],
+                goal,
+                ORIGINAL_STAND_OFF_MIN_STEP,
+                ORIGINAL_TACTICAL_STEP_MILLISECONDS,
+            );
+            if !moved {
+                let size = match target {
+                    TacticalAttackTarget::CapitalShip(ship) => self.ships[ship]
+                        .source_collision_envelope
+                        .map_or(0.0, |envelope| envelope.planar_diameter),
+                    TacticalAttackTarget::FighterGroup(_) => 0.0,
+                };
+                let full_turn = 2.0 * std::f32::consts::PI;
+                let mut angle = self.fighter_orbit_angles[lead]
+                    + ORIGINAL_TACTICAL_STEP_MILLISECONDS * std::f32::consts::PI * 0.000_2;
+                if full_turn <= angle {
+                    angle -= full_turn;
+                }
+                if !self.fighters[lead].identity.is_alliance {
+                    angle = -angle;
+                }
+                self.fighter_orbit_angles[lead] = angle;
+                let radius = (size * 2.4).max(1.5);
+                let (sin, cos) = angle.sin_cos();
+                // On arrival the anchor goes to the circling point at once.
+                self.fighter_movers[at].anchor = TacticalWorldPosition {
+                    x: target_position.x + (cos * radius - sin * radius),
+                    y: target_position.y + radius * 0.5,
+                    z: target_position.z + cos * radius + sin * radius,
+                };
             }
-            let size = match target {
-                TacticalAttackTarget::CapitalShip(ship) => self.ships[ship]
-                    .source_collision_envelope
-                    .map_or(0.0, |envelope| envelope.planar_diameter),
-                TacticalAttackTarget::FighterGroup(_) => 0.0,
-            };
-            let full_turn = 2.0 * std::f32::consts::PI;
-            let mut angle = self.fighter_orbit_angles[index]
-                + ORIGINAL_TACTICAL_STEP_MILLISECONDS * std::f32::consts::PI * 0.000_2;
-            if full_turn <= angle {
-                angle -= full_turn;
+            // port: until the squadrons' own frame (`0x5b8f70`) is ported,
+            // each free member stands at its place, the anchor less its slot.
+            let mover = self.fighter_movers[at].clone();
+            for (member, offset) in mover.slots {
+                if free.contains(&member) {
+                    self.fighters[member].source_position = TacticalWorldPosition {
+                        x: mover.anchor.x - offset.x,
+                        y: mover.anchor.y - offset.y,
+                        z: mover.anchor.z - offset.z,
+                    };
+                }
             }
-            if !self.fighters[index].identity.is_alliance {
-                angle = -angle;
-            }
-            self.fighter_orbit_angles[index] = angle;
-            let radius = (size * 2.4).max(1.5);
-            let (sin, cos) = angle.sin_cos();
-            self.fighters[index].source_position = TacticalWorldPosition {
-                x: target_position.x + (cos * radius - sin * radius),
-                y: target_position.y + radius * 0.5,
-                z: target_position.z + cos * radius + sin * radius,
-            };
         }
     }
 

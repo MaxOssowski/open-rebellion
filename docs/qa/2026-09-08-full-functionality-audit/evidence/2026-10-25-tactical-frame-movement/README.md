@@ -14,9 +14,11 @@ Static reading of `REBEXE.EXE` (SHA-256 `b3fe3997...ed6ab`).
 - `0x005a9ec0` walks the units (`+0x988`):
   - **State 2 (in the fight):** it calls the unit's slot `+0x8`. That is
     `FUN_005b2f30`, velocity and `FUN_005cd640`'s position, for both
-    capital ships (`0x66c140`) and fighter groups (`0x66c560`). Then it
-    holds each axis of the position within `+-2/3` of the battle extent
-    `+0x8cc` (`DAT_0066c290` = −0.6667, `DAT_0066c294` = 0.6667;
+    capital ships (`0x66c140`) and fighter groups (`0x66c560`). (Corrected
+    2026-10-26, `../2026-10-26-fighter-forces/`: `0x66c560` is the
+    abstract base class; the fighter class `0x66c028` has its own frame
+    `0x5b8f70`.) Then it holds each axis of the position within `+-2/3`
+    of the battle extent `+0x8cc` (`DAT_0066c290` = −0.6667, `DAT_0066c294` = 0.6667;
     `0x005aa089`..`0x005aa17a`).
   - **State 7:** `FUN_005a6b40` flies the jump. When the flight is done
     it sets state 8 and posts event `0x2e` (`0x005aa2a3`..`0x005aa2e5`),

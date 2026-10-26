@@ -1956,6 +1956,7 @@ mod tests {
             observer_review_countdown: 0,
             alliance_raid_sent: false,
             fighter_orbit_angles: Vec::new(),
+            fighter_movers: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
             trench_run_group: None,
@@ -8129,6 +8130,147 @@ mod tests {
         imperial.trench_run_remaining_ms = Some(1_000.0);
         imperial.set_player_observing(true);
         assert!(!imperial.alliance_raid_sent);
+    }
+
+    // 0x5ebee0 (the FUN_005c72b0 mover's slot +0x30): the lead has no
+    // offset; the member making the count n takes the traced unit offset,
+    // which repeats every 30 and flips with a forward of (0, 0, -1).
+    #[test]
+    fn fighter_slots_follow_the_traced_offsets() {
+        use crate::tactical::original_fighter_slot_offset as slot;
+        assert_eq!(slot(1, 1.0), TacticalWorldVector::ZERO);
+        let close = |n: usize, z: f32, expected: (f32, f32)| {
+            let offset = slot(n, z);
+            assert!(
+                (offset.x - expected.0).abs() < 1e-3 && (offset.y - expected.1).abs() < 1e-3,
+                "{n}: {offset:?}"
+            );
+            assert_eq!(offset.z, 0.0);
+        };
+        close(2, 1.0, (-0.809, -0.588));
+        close(3, 1.0, (-0.5, 0.866));
+        close(4, 1.0, (-0.105, -0.995));
+        close(5, 1.0, (0.309, 0.951));
+        close(8, 1.0, (1.0, 0.0));
+        close(32, 1.0, (-0.809, -0.588));
+        close(2, -1.0, (0.809, 0.588));
+        // The traced table is a ring of unit vectors in the plane, mirrored:
+        // entry i equals entry 27 - i, and the last two are equal.
+        let table = crate::tactical::ORIGINAL_FIGHTER_SLOT_OFFSETS;
+        for (i, [x, y, z]) in table.iter().enumerate() {
+            assert!((x.hypot(*y) - 1.0).abs() < 1e-5 && *z == 0.0, "{i}");
+            if i <= 27 {
+                assert_eq!(table[i], table[27 - i], "{i}");
+            }
+        }
+        assert_eq!(table[28], table[29]);
+    }
+
+    // 0x005ec0d0: beyond the radius the anchor moves by the unit delta x
+    // speed x ms x 0.001 in three dimensions, unclamped; within it, or on
+    // the point, the velocity clears and the step returns 0.
+    #[test]
+    fn the_fighter_anchor_steps_in_three_dimensions_and_can_overshoot() {
+        use crate::tactical::{step_fighter_anchor, TacticalFighterMover, TacticalWorldPosition};
+        let mut mover = TacticalFighterMover {
+            alliance: true,
+            group: 0,
+            anchor: TacticalWorldPosition::ORIGIN,
+            forward: TacticalWorldVector::SOURCE_FORWARD,
+            velocity: TacticalWorldVector::ZERO,
+            speed: 40.0,
+            slots: Vec::new(),
+        };
+        let point = TacticalWorldPosition {
+            x: 0.0,
+            y: 3.0,
+            z: 4.0,
+        };
+        assert!(step_fighter_anchor(&mut mover, point, 2.0, 250.0));
+        // 10 along (0, 0.6, 0.8): past the point 5 away.
+        assert!((mover.anchor.y - 6.0).abs() < 1e-5 && (mover.anchor.z - 8.0).abs() < 1e-5);
+        assert!((mover.velocity.z - 32.0).abs() < 1e-5);
+        let near = TacticalWorldPosition {
+            x: 0.0,
+            y: 6.0,
+            z: 9.5,
+        };
+        assert!(!step_fighter_anchor(&mut mover, near, 2.0, 250.0));
+        assert_eq!(mover.velocity, TacticalWorldVector::ZERO);
+        let here = mover.anchor;
+        assert!(!step_fighter_anchor(&mut mover, here, 0.0, 250.0));
+    }
+
+    // FUN_005adfa0: one fighter force per side and group, its mover on the
+    // first member; the anchor moves at the slowest member's speed and each
+    // squadron stands at the anchor less its slot.
+    #[test]
+    fn a_fighter_group_moves_as_one_force() {
+        use crate::tactical::{original_fighter_slot_offset, TacticalAttackTarget};
+        let mut fast = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        fast.sublight_engine_power = 12.0;
+        fast.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        let mut slow = fast.clone();
+        slow.sublight_engine_power = 8.0;
+        slow.source_position.x = 3.0;
+        let mut other_group = fast.clone();
+        other_group.fighter_group = 2;
+        let mut enemy_wing = fighter(false, TacticalWeaponArc::new(2, 0, 0));
+        enemy_wing.source_position.z = 40.0;
+        let mut target = ship(false, TacticalWeaponArc::default(), 0.0);
+        target.source_position.z = 100.0;
+        let mut tactical = session(vec![target], vec![fast, slow, other_group, enemy_wing]);
+        tactical.advance_fighter_approach();
+        assert_eq!(tactical.fighter_movers.len(), 3);
+        let mover = tactical.fighter_mover_of(0).expect("a mover").clone();
+        assert_eq!(mover.slots.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![0, 1]);
+        assert_eq!(mover.speed, 8.0);
+        // From the first member's position, 8 x 0.25 toward the target.
+        assert!((mover.anchor.z - 2.0).abs() < 1e-5, "{mover:?}");
+        let second = original_fighter_slot_offset(2, 1.0);
+        assert_eq!(tactical.fighters[0].source_position, mover.anchor);
+        assert!((tactical.fighters[1].source_position.x - (mover.anchor.x - second.x)).abs() < 1e-5);
+        assert!((tactical.fighters[1].source_position.y - (mover.anchor.y - second.y)).abs() < 1e-5);
+        // The mover of a squadron in another group is that group's.
+        assert_eq!(tactical.fighter_mover_of(2).map(|mover| mover.group), Some(2));
+        assert_eq!(tactical.fighter_mover_of(3).map(|mover| mover.alliance), Some(false));
+        // A member gone frees the count: a new one takes slot 2 again.
+        tactical.fighters[1].alive = false;
+        tactical.fighters.push({
+            let mut late = tactical.fighters[0].clone();
+            late.source_position.x = -4.0;
+            late
+        });
+        tactical.sync_fighter_movers();
+        let mover = tactical.fighter_mover_of(0).expect("a mover");
+        assert_eq!(mover.slots.len(), 2);
+        assert_eq!(mover.slots[1], (4, second));
+        // An emptied squadron leaves; a squadron without speed does not set
+        // the force's.
+        tactical.fighters[4].squad_count = 0;
+        tactical.fighters[0].sublight_engine_power = 0.0;
+        tactical.fighters[2].fighter_group = 0;
+        tactical.update_force_movers();
+        let mover = tactical.fighter_mover_of(0).expect("a mover");
+        assert_eq!(mover.slots.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![0, 2]);
+        assert_eq!(mover.speed, 12.0);
+        // The Alliance's group 2, now empty, loses its mover; the Empire's
+        // group 0 keeps its own.
+        assert!(!tactical.fighter_movers.iter().any(|mover| mover.alliance && mover.group == 2));
+        assert!(tactical.fighter_movers.iter().any(|mover| !mover.alliance && mover.group == 0));
+        assert_eq!(tactical.fighter_movers.len(), 2);
+        // Group 1 on both sides: the Alliance's emptied, the Empire's kept.
+        let mut ours = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        ours.fighter_group = 1;
+        let mut theirs = fighter(false, TacticalWeaponArc::new(2, 0, 0));
+        theirs.fighter_group = 1;
+        let mut pair = session(Vec::new(), vec![ours, theirs]);
+        pair.sync_fighter_movers();
+        assert_eq!(pair.fighter_movers.len(), 2);
+        pair.fighters[0].alive = false;
+        pair.sync_fighter_movers();
+        assert_eq!(pair.fighter_movers.len(), 1);
+        assert!(!pair.fighter_movers[0].alliance);
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

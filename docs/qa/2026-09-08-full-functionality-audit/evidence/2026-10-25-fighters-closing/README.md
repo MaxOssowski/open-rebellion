@@ -20,7 +20,9 @@ Unless it holds (order 11), it then:
 1. takes `d`, the target's position less the anchor. When `d` is zero,
    the side's vector replaces it.
 2. heads for `anchor + unit(d) × step`, where the step is the tactic
-   object's `+0xc` (slot `+0xc`). The move has radius 2.0 (`0x005eb1a0`):
+   object's `+0xc` (slot `+0xc`). The move has radius 2.0 (`0x005ec0d0`,
+   the fighter mover's step; corrected 2026-10-26 from `0x005eb1a0`, see
+   `../2026-10-26-fighter-forces/`):
    beyond it, a full step at the force's speed (it returns 1); within it,
    it stops (returns 0).
 3. on arrival (0), circles the target:
