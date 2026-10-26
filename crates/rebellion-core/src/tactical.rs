@@ -4350,7 +4350,7 @@ impl BattleSession {
         (if speed.is_finite() { speed } else { 0.0 }, turn_rate)
     }
 
-    pub(crate) fn update_force_movers(&mut self) {
+    pub fn update_force_movers(&mut self) {
         self.sync_fighter_movers();
         for at in 0..self.fighter_movers.len() {
             let members = self.fighter_movers[at]
@@ -4948,16 +4948,17 @@ impl BattleSession {
             };
             // `FUN_005cc300`'s radii: a route, a maneuver, an escort or the
             // withdrawal arrives within 1.0; closing on a target within 2.0.
+            // An escort closes on its escorted ship like an attack on its
+            // target (`FUN_005cc300` on `+0x8c`, radius `0x40000000`).
             let closing = !withdrawing
                 && lead.navigation_route.is_empty()
-                && lead.attack_target.is_some()
+                && self.ship_force_target(leader).is_some()
                 && !matches!(
                     lead.order,
                     TacticalOrder::LeftHook
                         | TacticalOrder::RightHook
                         | TacticalOrder::Hammer
                         | TacticalOrder::Anvil
-                        | TacticalOrder::Escort
                 );
             let radius = if closing {
                 ORIGINAL_CLOSING_ARRIVAL_RADIUS
@@ -6295,7 +6296,6 @@ impl BattleSession {
         // `+0x878` has reached `+0x8ac` (`0x005bef1d`): nothing moves for
         // the first three turns.
         if self.event_turn() >= ORIGINAL_TACTICAL_EVENT_LEAD_TURNS {
-            advance_original_escort_movement(self, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             // The forces' order steps (slot `+0x14`) come before the units'
             // moves (slot `+0x8`) in the frame (`0x005a9ec0`).
             self.advance_engagement_approach();
@@ -8387,7 +8387,7 @@ impl BattleSession {
 
     /// Once a turn (`0x005a9d40` -> force slot `+0xc`, `0x005c9bd0`): each
     /// force's tactic object recomputes its band against its first target.
-    pub(crate) fn update_engagement_bands(&mut self) {
+    pub fn update_engagement_bands(&mut self) {
         let mut forces = self
             .capital_forces()
             .into_iter()
@@ -8408,7 +8408,7 @@ impl BattleSession {
             let leader = members[0];
             let (target, tactic) = match leader {
                 TacticalUnitRef::Ship(index) => {
-                    (self.ships[index].attack_target, self.force_tactic(index))
+                    (self.ship_force_target(index), self.force_tactic(index))
                 }
                 TacticalUnitRef::Fighter(index) => {
                     (self.fighter_force_target(index), self.fighters[index].tactic)
@@ -8445,6 +8445,18 @@ impl BattleSession {
     /// order is left; its executor (class `0x66ceb8`, `0x5ae1e0`) does
     /// nothing, so `FUN_005c6610` closes on and circles the escorted ship as
     /// on any target.
+    /// A capital ship's force target (`+0x8c`): its escorted ship on Escort
+    /// (`FUN_005cb600`), else its attack target. `FUN_005cc300` closes on
+    /// either alike.
+    pub(crate) fn ship_force_target(&self, index: usize) -> Option<TacticalAttackTarget> {
+        let ship = &self.ships[index];
+        if ship.order == TacticalOrder::Escort {
+            ship.escort_target.map(TacticalAttackTarget::CapitalShip)
+        } else {
+            ship.attack_target
+        }
+    }
+
     pub(crate) fn fighter_force_target(&self, index: usize) -> Option<TacticalAttackTarget> {
         let fighter = &self.fighters[index];
         if fighter.order == TacticalOrder::Escort {
@@ -8874,14 +8886,13 @@ impl BattleSession {
     /// a point one step toward the target while out of its band, and stops
     /// inside it. Stand Off backs off when too close, unless the target
     /// attacks one of the force.
-    pub(crate) fn advance_engagement_approach(&mut self) {
+    pub fn advance_engagement_approach(&mut self) {
         for members in self.capital_forces() {
             let leader = members[0];
             let ship = &self.ships[leader];
             if matches!(
                 ship.order,
                 TacticalOrder::HoldPosition
-                    | TacticalOrder::Escort
                     | TacticalOrder::LeftHook
                     | TacticalOrder::RightHook
                     | TacticalOrder::Hammer
@@ -8890,7 +8901,7 @@ impl BattleSession {
             {
                 continue;
             }
-            let Some(target) = ship.attack_target else {
+            let Some(target) = self.ship_force_target(leader) else {
                 continue;
             };
             let Some(target_position) = self.attack_target_position(target) else {
@@ -9541,9 +9552,11 @@ pub fn escort_target_is_eligible(
         .is_some_and(|ship| ship.alive && !ship.retreating && ship.is_attacker == source_side)
 }
 
-/// Clear order-1 target slots when the protected hull is destroyed or leaves
-/// combat. This mirrors the executor's object-lifetime boundary and prevents a
-/// stale white escort box.
+/// Order 1 keeps its escorted ship (`+0x8c`) for as long as the order
+/// stands. When that ship leaves the fight, the force step latches
+/// `+0xb0` (`FUN_005cc300`, `FUN_005c6610`) and the force stops closing, but
+/// the order and its target stay: only a new order or target clears them
+/// (`0x5cb600`, `0x5cb4d0`). A target that is not a friendly ship clears.
 pub fn refresh_original_escort_targets(session: &mut BattleSession) {
     for index in 0..session.ships.len() {
         if session.ships[index].order != TacticalOrder::Escort {
@@ -9552,7 +9565,10 @@ pub fn refresh_original_escort_targets(session: &mut BattleSession) {
         }
         let valid = session.ships[index].escort_target.is_some_and(|target| {
             target != index
-                && escort_target_is_eligible(session, session.ships[index].is_attacker, target)
+                && session
+                    .ships
+                    .get(target)
+                    .is_some_and(|ship| ship.is_attacker == session.ships[index].is_attacker)
         });
         if !valid {
             let ship = &mut session.ships[index];
@@ -9568,47 +9584,15 @@ pub fn refresh_original_escort_targets(session: &mut BattleSession) {
             continue;
         }
         let valid = session.fighters[index].escort_target.is_some_and(|target| {
-            escort_target_is_eligible(session, session.fighters[index].is_attacker, target)
+            session
+                .ships
+                .get(target)
+                .is_some_and(|ship| ship.is_attacker == session.fighters[index].is_attacker)
         });
         if !valid {
             session.fighters[index].order = TacticalOrder::None;
             session.fighters[index].escort_target = None;
         }
-    }
-}
-
-/// Keep order-1 capital ships around their protected ship while autonomous
-/// weapons continue to select nearby opportunity targets, through the normal
-/// retained movement integrator. Fighter groups escort through their force's
-/// step (`BattleSession::fighter_force_target`).
-///
-/// port: the capital escort offsets are the port's own; movement integrates per `FUN_005cd640`.
-pub fn advance_original_escort_movement(session: &mut BattleSession, delta_milliseconds: f32) {
-    if !delta_milliseconds.is_finite() || delta_milliseconds <= 0.0 {
-        return;
-    }
-    let target_positions = session
-        .ships
-        .iter()
-        .map(|ship| ship.source_position)
-        .collect::<Vec<_>>();
-    for (index, ship) in session.ships.iter_mut().enumerate() {
-        let Some(target) = ship
-            .escort_target
-            .filter(|_| ship.order == TacticalOrder::Escort)
-        else {
-            continue;
-        };
-        let Some(mut waypoint) = target_positions.get(target).copied() else {
-            continue;
-        };
-        let side = if index % 2 == 0 { 1.0 } else { -1.0 };
-        waypoint.x += side * 8.0;
-        waypoint.z -= 6.0 + (index % 3) as f32 * 3.0;
-        ship.navigation_route.clear();
-        ship.navigation_route.push(waypoint);
-        ship.source_waypoint = Some(waypoint);
-        ship.source_desired_forward = source_delta(waypoint, ship.source_position).normalized();
     }
 }
 

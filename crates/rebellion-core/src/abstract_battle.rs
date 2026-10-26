@@ -10041,6 +10041,74 @@ mod tests {
         assert_eq!(tactical.fighter_forces(), [0, 2]);
     }
 
+    // FUN_005cc300 closes a capital force on its +0x8c target alike for an
+    // attack and an escort (FUN_005cb600 sets the escorted ship there): the
+    // escort's waypoint is the band step toward its ship, as an attack on
+    // the same ship would take, and its arrival radius is 2.0
+    // (0x40000000).
+    #[test]
+    fn a_capital_escort_closes_on_its_ship_like_an_attack() {
+        use crate::tactical::TacticalAttackTarget;
+        let run = |escort: bool| {
+            let mut guarded = ship(true, TacticalWeaponArc::default(), 0.0);
+            guarded.source_position.z = 60.0;
+            guarded.source_position.x = 3.0;
+            guarded.task_force = 1;
+            let mut escort_ship = ship(true, TacticalWeaponArc::new(0, 0, 4), 0.0);
+            if escort {
+                escort_ship.order = TacticalOrder::Escort;
+                escort_ship.escort_target = Some(0);
+            } else {
+                escort_ship.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+            }
+            let mut tactical = session(vec![guarded, escort_ship], Vec::new());
+            // Surround's band (0 to 12.5) and step are the port's known ones.
+            tactical.task_force_formations[1][0] = crate::tactical::TacticalTactic::Surround;
+            tactical.update_engagement_bands();
+            tactical.update_force_movers();
+            tactical.advance_engagement_approach();
+            tactical.ships[1].source_waypoint
+        };
+        let escort = run(true);
+        assert!(escort.is_some());
+        assert_eq!(escort, run(false));
+    }
+
+    // FUN_005cc300 / FUN_005c6610: when the escorted ship leaves the fight
+    // the force latches +0xb0 and stops closing, but order 1 and its target
+    // stay (only 0x5cb600 / 0x5cb4d0 clear them); an escort holds its fire
+    // (FUN_005b3a40), so it stands.
+    #[test]
+    fn an_escort_keeps_its_order_when_its_ship_is_lost() {
+        let mut guarded = ship(true, TacticalWeaponArc::default(), 0.0);
+        guarded.source_position.z = 60.0;
+        guarded.alive = false;
+        guarded.task_force = 1;
+        let mut escort_ship = ship(true, TacticalWeaponArc::new(0, 0, 4), 0.0);
+        escort_ship.order = TacticalOrder::Escort;
+        escort_ship.escort_target = Some(0);
+        let mut wing = fighter(true, TacticalWeaponArc::new(2, 0, 0));
+        wing.order = TacticalOrder::Escort;
+        wing.escort_target = Some(0);
+        let enemy = ship(false, TacticalWeaponArc::default(), 0.0);
+        let mut tactical = session(vec![guarded, escort_ship, enemy], vec![wing]);
+        tactical.sync_fighter_movers();
+        let anchor = tactical.fighter_movers[0].anchor;
+        for _ in 0..20 {
+            tactical.step();
+        }
+        assert_eq!(tactical.ships[1].order, TacticalOrder::Escort);
+        assert_eq!(tactical.ships[1].escort_target, Some(0));
+        assert_eq!(tactical.fighters[0].order, TacticalOrder::Escort);
+        assert_eq!(tactical.fighters[0].escort_target, Some(0));
+        assert_eq!(tactical.fighter_movers[0].anchor, anchor);
+        assert_eq!(tactical.ships[1].source_waypoint, None);
+        // A friendly target is required: an enemy as the target clears.
+        tactical.ships[1].escort_target = Some(2);
+        crate::tactical::refresh_original_escort_targets(&mut tactical);
+        assert_eq!(tactical.ships[1].order, TacticalOrder::None);
+    }
+
     // FUN_005c6610 takes the escorted ship from +0x8c like any target: the
     // force's anchor steps toward it, and with a step within the move's
     // radius (2.0) it goes onto the circle round the ship (radius 1.5,

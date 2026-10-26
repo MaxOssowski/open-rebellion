@@ -14757,9 +14757,12 @@ mod tests {
     }
 
     // Source: FUN_005ca6d0 dispatches Escort as order code 1; FUN_005d0af0,
-    // FUN_005cf910 and FUN_005cf920 install, retain and clear its target (P58-B14).
+    // FUN_005cf910 and FUN_005cf920 install and retain its target (P58-B14).
+    // FUN_005cc300 closes on it like an attack target; when it is destroyed
+    // the force latches +0xb0 and stands, and order 1 and its target stay
+    // (only 0x5cb600 / 0x5cb4d0 clear them).
     #[test]
-    fn direct_escort_retains_friendly_target_and_clears_when_it_is_destroyed() {
+    fn direct_escort_retains_friendly_target_even_when_it_is_destroyed() {
         let mut escort = test_ship(64, 0, true, true);
         escort.selected = true;
         let target = test_ship(65, 1, true, true);
@@ -14770,13 +14773,22 @@ mod tests {
         assert_eq!(assign_selected_escort(&mut session, 1), (1, 0));
         assert_eq!(session.ships[0].order, TacticalOrder::Escort);
         assert_eq!(session.ships[0].escort_target, Some(1));
-        advance_original_escort_movement(&mut session, ORIGINAL_TACTICAL_STEP_MILLISECONDS);
+        // The escorted ship in a force of its own, the escort's in Surround,
+        // whose band (0 to 12.5) the port knows.
+        session.ships[1].source_position.z = 60.0;
+        session.ships[1].task_force = 1;
+        session.task_force_formations[1][0] = TacticalTactic::Surround;
+        session.update_engagement_bands();
+        session.update_force_movers();
+        session.advance_engagement_approach();
         assert!(session.ships[0].source_waypoint.is_some());
 
         session.ships[1].alive = false;
+        session.ships[0].source_waypoint = None;
         refresh_original_escort_targets(&mut session);
-        assert_eq!(session.ships[0].order, TacticalOrder::None);
-        assert_eq!(session.ships[0].escort_target, None);
+        session.advance_engagement_approach();
+        assert_eq!(session.ships[0].order, TacticalOrder::Escort);
+        assert_eq!(session.ships[0].escort_target, Some(1));
         assert_eq!(session.ships[0].source_waypoint, None);
     }
 
