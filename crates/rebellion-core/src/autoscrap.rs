@@ -545,6 +545,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: wing,
                 count: 2,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -572,6 +573,7 @@ mod tests {
         f.world.systems[f.here].fighters.push(FighterEntry {
             class: wing,
             count: 1,
+            carrier: None,
         });
 
         // Neither the other side's objects nor those without upkeep count
@@ -595,10 +597,10 @@ mod tests {
         for class in [free_wing, enemy_wing] {
             f.world.fleets[fleet]
                 .fighters
-                .push(FighterEntry { class, count: 1 });
+                .push(FighterEntry { class, count: 1, carrier: None });
             f.world.systems[f.here]
                 .fighters
-                .push(FighterEntry { class, count: 1 });
+                .push(FighterEntry { class, count: 1, carrier: None });
         }
         let enemy_ship = f.world.capital_ship_classes.insert(CapitalShipClass {
             is_alliance: false,
@@ -611,6 +613,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: enemy_wing,
                 count: 1,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -729,6 +732,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: wing,
                 count: 1,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,

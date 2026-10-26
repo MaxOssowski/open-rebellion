@@ -792,6 +792,7 @@ mod tests {
                 fighters: vec![FighterEntry {
                     class: craft,
                     count: 1,
+                    carrier: None,
                 }],
                 is_headquarters: false,
                 is_destroyed: false,

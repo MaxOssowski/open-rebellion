@@ -1192,6 +1192,7 @@ mod tests {
         fx.world.fleets[fx.fleet].fighters.push(FighterEntry {
             class: squadron,
             count: 4,
+            carrier: None,
         });
         defense(
             &mut fx.world,
@@ -1400,6 +1401,7 @@ mod tests {
         fx2.world.fleets[fx2.fleet].fighters.push(FighterEntry {
             class: squadron,
             count: 4,
+            carrier: None,
         });
         let with_squadrons = resolve(
             &fx2.world,

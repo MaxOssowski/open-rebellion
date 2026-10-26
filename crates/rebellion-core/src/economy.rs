@@ -1484,6 +1484,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: squadron,
                 count: 4,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -1501,6 +1502,7 @@ mod tests {
         system.fighters.push(FighterEntry {
             class: squadron,
             count: 1,
+            carrier: None,
         });
         (world, sys)
     }
@@ -2335,6 +2337,7 @@ mod tests {
             fighters: vec![crate::world::FighterEntry {
                 class: crate::ids::FighterKey::default(),
                 count: 5,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,

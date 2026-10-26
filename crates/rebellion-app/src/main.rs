@@ -10120,10 +10120,12 @@ mod tactical_ground_tests {
                 FighterEntry {
                     class: fighter_class,
                     count: 12,
+                    carrier: None,
                 },
                 FighterEntry {
                     class: fighter_class,
                     count: 12,
+                    carrier: None,
                 },
             ],
             characters: vec![],

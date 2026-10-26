@@ -2443,7 +2443,7 @@ mod interaction_tests {
             let fleet = world.fleets.insert(rebellion_core::world::Fleet {
                 location: key,
                 capital_ships: vec![],
-                fighters: vec![rebellion_core::world::FighterEntry { class, count }],
+                fighters: vec![rebellion_core::world::FighterEntry { class, count, carrier: None }],
                 characters: vec![],
                 is_alliance,
                 has_death_star: false,
@@ -2452,7 +2452,7 @@ mod interaction_tests {
             world.systems[key].fleets.push(fleet);
             world.systems[key]
                 .fighters
-                .push(rebellion_core::world::FighterEntry { class, count: 1 });
+                .push(rebellion_core::world::FighterEntry { class, count: 1, carrier: None });
         }
         assert_eq!(
             gid_all_defenses(&world, key, &world.systems[key]),

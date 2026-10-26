@@ -17,8 +17,14 @@
 //! hyperdrive), so a Move to another system sends it there on its own, as a
 //! regiment's does (`FUN_00556390`, `FUN_00556430`).
 //!
-//! port: the room is the whole fleet's, where the original fills one ship
-//! at a time.
+//! A squadron in a fleet rides on one of its capital ships
+//! ([`FighterEntry::carrier`]): a fleet's own room (`FUN_004fe160`) takes
+//! only capital ships, so it never holds a squadron itself.
+//!
+//! port: the room for a move is the whole fleet's, where the original's
+//! order names one ship and is refused when that ship has none
+//! (`FUN_00550700`, status `0x27`); [`seat_squadrons`] then boards the
+//! squadrons onto its ships.
 
 use std::fmt;
 
@@ -27,32 +33,124 @@ use serde::{Deserialize, Serialize};
 use crate::ids::{FighterKey, FleetKey, SystemKey};
 use crate::world::{FighterEntry, GameWorld};
 
-/// Add `count` squadrons of `class` to `entries`.
+/// Add `count` squadrons of `class` to `entries`, not yet on a ship.
 pub fn add(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32) {
     if count == 0 {
         return;
     }
-    if let Some(entry) = entries.iter_mut().find(|entry| entry.class == class) {
+    if let Some(entry) = entries
+        .iter_mut()
+        .find(|entry| entry.class == class && entry.carrier.is_none())
+    {
         entry.count = entry.count.saturating_add(count);
     } else {
-        entries.push(FighterEntry { class, count });
+        entries.push(FighterEntry { class, count, carrier: None });
     }
 }
 
-/// Take `count` squadrons of `class` from `entries`, dropping an emptied
-/// entry. Nothing changes when there are fewer.
+/// Take `count` squadrons of `class` from `entries`, dropping each emptied
+/// entry. Nothing changes when there are fewer. port: the port's orders name
+/// a class, not a squadron, so it takes from the last entries first.
 pub fn take(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32) -> bool {
-    let Some(index) = entries.iter().position(|entry| entry.class == class) else {
-        return false;
-    };
-    if entries[index].count < count {
+    let held = entries
+        .iter()
+        .filter(|entry| entry.class == class)
+        .fold(0_u32, |sum, entry| sum.saturating_add(entry.count));
+    if held < count {
         return false;
     }
-    entries[index].count -= count;
-    if entries[index].count == 0 {
-        entries.remove(index);
+    let mut left = count;
+    for index in (0..entries.len()).rev() {
+        if left == 0 {
+            break;
+        }
+        if entries[index].class != class {
+            continue;
+        }
+        let taken = entries[index].count.min(left);
+        entries[index].count -= taken;
+        left -= taken;
+        if entries[index].count == 0 {
+            entries.remove(index);
+        }
     }
     true
+}
+
+/// The squadrons aboard the ship numbered `ship`.
+#[must_use]
+pub fn aboard(entries: &[FighterEntry], ship: u64) -> u32 {
+    entries
+        .iter()
+        .filter(|entry| entry.carrier == Some(ship))
+        .fold(0_u32, |sum, entry| sum.saturating_add(entry.count))
+}
+
+/// Seat `fleet`'s squadrons that ride on none of its living ships: each
+/// goes aboard the first living ship, in fleet order, with room for it
+/// (fighter capacity `+0x26c` less the squadrons aboard, `FUN_00500b40`).
+/// Entries of a class on one ship are merged. hyp: the order the ships are
+/// filled in; the original's order names its ship. port: squadrons left
+/// over when no ship has room stay in the fleet on no ship, as the port's
+/// seeding and sorties can put them there.
+pub fn seat_squadrons(world: &mut GameWorld, fleet: FleetKey) {
+    let Some(value) = world.fleets.get(fleet) else {
+        return;
+    };
+    let ships = value
+        .capital_ships
+        .iter()
+        .filter(|ship| ship.alive && ship.id != 0)
+        .map(|ship| {
+            let capacity = world
+                .capital_ship_classes
+                .get(ship.class)
+                .map_or(0, |class| class.fighter_capacity);
+            (ship.id, capacity)
+        })
+        .collect::<Vec<_>>();
+    let seated = |entry: &FighterEntry| {
+        entry
+            .carrier
+            .is_some_and(|carrier| ships.iter().any(|(id, _)| *id == carrier))
+    };
+    if value.fighters.iter().all(|entry| seated(entry)) {
+        return;
+    }
+    let entries = std::mem::take(&mut world.fleets[fleet].fighters);
+    let (mut kept, loose): (Vec<_>, Vec<_>) = entries.into_iter().partition(|entry| seated(entry));
+    for entry in loose {
+        let mut left = entry.count;
+        for &(ship, capacity) in &ships {
+            if left == 0 {
+                break;
+            }
+            let room = capacity.saturating_sub(aboard(&kept, ship));
+            let boarding = room.min(left);
+            if boarding == 0 {
+                continue;
+            }
+            left -= boarding;
+            put(&mut kept, entry.class, boarding, Some(ship));
+        }
+        put(&mut kept, entry.class, left, None);
+    }
+    world.fleets[fleet].fighters = kept;
+}
+
+/// Add `count` squadrons of `class` on `carrier` to `entries`.
+fn put(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32, carrier: Option<u64>) {
+    if count == 0 {
+        return;
+    }
+    if let Some(entry) = entries
+        .iter_mut()
+        .find(|entry| entry.class == class && entry.carrier == carrier)
+    {
+        entry.count = entry.count.saturating_add(count);
+    } else {
+        entries.push(FighterEntry { class, count, carrier });
+    }
 }
 
 /// The squadrons in `entries`.
@@ -601,6 +699,7 @@ pub fn recover(world: &mut GameWorld, sorties: &[Sortie]) {
                     landing.push(FighterEntry {
                         class: sent.class,
                         count,
+                        carrier: None,
                     });
                 }
             }
@@ -707,6 +806,82 @@ mod tests {
         }
     }
 
+    // FUN_00500b40: a ship holds up to its fighter capacity (+0x26c), and
+    // a fleet's squadrons ride on its ships (FUN_004fe160 takes only
+    // capital ships). hyp: the ships fill in fleet order.
+    #[test]
+    fn squadrons_board_the_fleets_ships_in_order_up_to_their_room() {
+        let mut setup = setup(2);
+        let carrier = setup.world.fleets[setup.fleet].capital_ships[0].class;
+        let fleet = &mut setup.world.fleets[setup.fleet];
+        fleet.capital_ships.push(ShipInstance::new(carrier, 100, true));
+        add(&mut fleet.fighters, setup.x_wing, 5);
+        setup.world.number_ships();
+        let fleet = &setup.world.fleets[setup.fleet];
+        let first = fleet.capital_ships[0].id;
+        let second = fleet.capital_ships[1].id;
+        assert_eq!(aboard(&fleet.fighters, first), 2);
+        assert_eq!(aboard(&fleet.fighters, second), 2);
+        // The one left over has no ship.
+        assert_eq!(
+            fleet.fighters.iter().filter(|entry| entry.carrier.is_none()).map(|entry| entry.count).sum::<u32>(),
+            1
+        );
+        assert_eq!(total(&fleet.fighters), 5);
+    }
+
+    // Two loose entries of one class boarding one ship make one entry.
+    #[test]
+    fn squadrons_of_a_class_on_one_ship_share_an_entry() {
+        let mut setup = setup(4);
+        let fleet = &mut setup.world.fleets[setup.fleet];
+        fleet.fighters.push(FighterEntry { class: setup.x_wing, count: 1, carrier: None });
+        fleet.fighters.push(FighterEntry { class: setup.x_wing, count: 2, carrier: Some(99) });
+        fleet.fighters.push(FighterEntry { class: setup.tie, count: 1, carrier: None });
+        setup.world.number_ships();
+        let fleet = &setup.world.fleets[setup.fleet];
+        let ship = fleet.capital_ships[0].id;
+        assert_eq!(
+            fleet.fighters.iter().map(|entry| (entry.class, entry.count, entry.carrier)).collect::<Vec<_>>(),
+            [(setup.x_wing, 3, Some(ship)), (setup.tie, 1, Some(ship))]
+        );
+    }
+
+    // A squadron whose ship is lost boards another ship with room.
+    // hyp: the original's rule for a lost carrier's squadrons is untraced.
+    #[test]
+    fn a_lost_ships_squadrons_board_another_ship() {
+        let mut setup = setup(2);
+        let carrier = setup.world.fleets[setup.fleet].capital_ships[0].class;
+        let fleet = &mut setup.world.fleets[setup.fleet];
+        fleet.capital_ships.push(ShipInstance::new(carrier, 100, true));
+        add(&mut fleet.fighters, setup.x_wing, 2);
+        setup.world.number_ships();
+        let first = setup.world.fleets[setup.fleet].capital_ships[0].id;
+        assert_eq!(aboard(&setup.world.fleets[setup.fleet].fighters, first), 2);
+        setup.world.fleets[setup.fleet].capital_ships[0].alive = false;
+        setup.world.number_ships();
+        let fleet = &setup.world.fleets[setup.fleet];
+        let second = fleet.capital_ships[1].id;
+        assert_eq!(aboard(&fleet.fighters, second), 2);
+        assert_eq!(fleet.fighters.len(), 1);
+    }
+
+    // port: an order names a class, so the squadrons come from the last
+    // entries first, across ships.
+    #[test]
+    fn taking_squadrons_draws_on_the_last_entries_first() {
+        let mut entries = vec![
+            FighterEntry { class: FighterKey::default(), count: 2, carrier: Some(1) },
+            FighterEntry { class: FighterKey::default(), count: 1, carrier: Some(2) },
+        ];
+        assert!(take(&mut entries, FighterKey::default(), 2));
+        assert_eq!(entries.len(), 1);
+        assert_eq!((entries[0].count, entries[0].carrier), (1, Some(1)));
+        assert!(!take(&mut entries, FighterKey::default(), 2));
+        assert_eq!(entries[0].count, 1);
+    }
+
     /// A Move on day 0 with no squadron travelling.
     fn move_squadrons(
         world: &mut GameWorld,
@@ -756,6 +931,7 @@ mod tests {
         s.world.fleets[s.fleet].fighters.push(FighterEntry {
             class: s.x_wing,
             count: 1,
+            carrier: None,
         });
         assert_eq!(fleet_room(&s.world, s.fleet), 2);
         s.world.fleets[s.fleet].capital_ships[0].alive = false;
@@ -944,6 +1120,7 @@ mod tests {
         s.world.systems[s.there].fighters.push(FighterEntry {
             class: s.x_wing,
             count: 0,
+            carrier: None,
         });
         assert!(!move_enabled(
             &s.world,
@@ -1035,6 +1212,7 @@ mod tests {
         s.world.systems[s.there].fighters.push(FighterEntry {
             class: s.tie,
             count: 0,
+            carrier: None,
         });
         assert!(scramble(&mut s.world, s.there).is_empty());
         assert!(scramble(&mut s.world, SystemKey::default()).is_empty());

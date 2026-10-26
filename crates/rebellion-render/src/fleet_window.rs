@@ -3087,6 +3087,7 @@ pub(crate) mod tests {
             .push(rebellion_core::world::FighterEntry {
                 class: tie,
                 count: 2,
+                carrier: None,
             });
         let officer = world.characters.insert(rebellion_core::world::Character {
             name: "Tarkin".into(),
@@ -3321,6 +3322,7 @@ pub(crate) mod tests {
             .push(rebellion_core::world::FighterEntry {
                 class: fighter,
                 count: 1,
+                carrier: None,
             });
 
         let (actions, release, held) = drag_from_tab(
@@ -3587,6 +3589,7 @@ pub(crate) mod tests {
                 .push(rebellion_core::world::FighterEntry {
                     class: fighter,
                     count: 1,
+                    carrier: None,
                 });
         }
         let mut state = opened(&world, system);
@@ -4523,6 +4526,7 @@ pub(crate) mod tests {
             .push(rebellion_core::world::FighterEntry {
                 class: squadron,
                 count: 0,
+                carrier: None,
             });
         assert!(!lit(&world, FleetWindowTab::Fighters));
         world.fleets[fleet].fighters[0].count = 1;

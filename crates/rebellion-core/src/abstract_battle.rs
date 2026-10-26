@@ -2784,6 +2784,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: escort,
                 count: 2,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -2809,6 +2810,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: craft,
                 count: 2,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -3687,6 +3689,7 @@ mod tests {
         world.systems[battle].fighters.push(FighterEntry {
             class: tie,
             count: 0,
+            carrier: None,
         });
         assert!(!retreat_offered(&world, battle, false));
         world.systems[battle].fighters[0].count = 1;

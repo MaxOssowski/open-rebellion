@@ -249,11 +249,12 @@ pub fn merge_fleet_into(
     }
     let target = &mut world.fleets[to];
     target.capital_ships.extend(source.capital_ships);
+    // The squadrons stay aboard their ships.
     for fighter in source.fighters {
         if let Some(entry) = target
             .fighters
             .iter_mut()
-            .find(|entry| entry.class == fighter.class)
+            .find(|entry| entry.class == fighter.class && entry.carrier == fighter.carrier)
         {
             entry.count = entry.count.saturating_add(fighter.count);
         } else {
@@ -296,7 +297,19 @@ fn move_ships_into(
         moved.push(source.capital_ships.remove(index));
     }
     moved.reverse();
+    // The squadrons aboard the ships go with them (`FUN_00552300`: a ship's
+    // cargo travels with it).
+    let carriers = moved
+        .iter()
+        .filter(|ship| ship.id != 0)
+        .map(|ship| ship.id)
+        .collect::<Vec<_>>();
+    let (going, staying): (Vec<_>, Vec<_>) = std::mem::take(&mut source.fighters)
+        .into_iter()
+        .partition(|entry| entry.carrier.is_some_and(|carrier| carriers.contains(&carrier)));
+    source.fighters = staying;
     world.fleets[to].capital_ships.extend(moved);
+    world.fleets[to].fighters.extend(going);
     // A Death Star among the ships flies under its own flag; a flag with
     // no Death Star ship is the separate tactical object and stays.
     if ships_carried_it {
@@ -780,10 +793,12 @@ mod tests {
         setup.world.fleets[mover].fighters.push(FighterEntry {
             class: fighter,
             count: 2,
+            carrier: None,
         });
         setup.world.fleets[target].fighters.push(FighterEntry {
             class: fighter,
             count: 1,
+            carrier: None,
         });
         let admiral = setup.world.characters.insert(Character {
             name: "Admiral".into(),
@@ -907,6 +922,79 @@ mod tests {
         assert_eq!(hulls(&setup.world, mover), [20]);
         assert_eq!(hulls(&setup.world, target), [40, 10, 30]);
         assert_eq!(transport.cargo(mover), [troop]);
+    }
+
+    // FUN_00552300: a ship's cargo travels with it, so the squadrons aboard
+    // the moved ships go with them and the others stay.
+    #[test]
+    fn moved_ships_take_the_squadrons_aboard_them() {
+        let mut setup = setup();
+        let here = setup.here;
+        let mover = fleet(&mut setup, here, &[10, 20], true);
+        let target = fleet(&mut setup, here, &[40], true);
+        setup.world.number_ships();
+        let ids = setup.world.fleets[mover]
+            .capital_ships
+            .iter()
+            .map(|ship| ship.id)
+            .collect::<Vec<_>>();
+        for (&carrier, count) in ids.iter().zip([1, 2]) {
+            setup.world.fleets[mover].fighters.push(FighterEntry {
+                class: crate::ids::FighterKey::default(),
+                count,
+                carrier: Some(carrier),
+            });
+        }
+        let mut transport = TroopTransportState::default();
+        let chosen = roster(&setup.world, mover).unwrap();
+        let outcome = join_fleet(
+            &mut setup.world,
+            &mut MovementState::new(),
+            &mut transport,
+            &FleetMover::Ships {
+                fleet: mover,
+                ships: vec![0],
+                roster: chosen,
+            },
+            target,
+            true,
+        );
+        assert_eq!(outcome, Ok(FleetOrderOutcome::Joined(target)));
+        let carried = |fleet: FleetKey| {
+            setup.world.fleets[fleet]
+                .fighters
+                .iter()
+                .map(|entry| (entry.carrier, entry.count))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(carried(target), [(Some(ids[0]), 1)]);
+        assert_eq!(carried(mover), [(Some(ids[1]), 2)]);
+    }
+
+    // A merge keeps each squadron on its ship: entries of one class on
+    // different ships stay apart, those on the same ship merge.
+    #[test]
+    fn a_merge_keeps_each_squadron_on_its_ship() {
+        let mut setup = setup();
+        let here = setup.here;
+        let from = fleet(&mut setup, here, &[10], true);
+        let to = fleet(&mut setup, here, &[20], true);
+        let class = crate::ids::FighterKey::default();
+        setup.world.fleets[from].fighters = vec![
+            FighterEntry { class, count: 1, carrier: Some(1) },
+            FighterEntry { class, count: 2, carrier: Some(2) },
+        ];
+        setup.world.fleets[to].fighters = vec![FighterEntry { class, count: 3, carrier: Some(2) }];
+        let mut transport = TroopTransportState::default();
+        merge_fleet_into(&mut setup.world, &mut transport, from, to);
+        assert_eq!(
+            setup.world.fleets[to]
+                .fighters
+                .iter()
+                .map(|entry| (entry.carrier, entry.count))
+                .collect::<Vec<_>>(),
+            [(Some(2), 5), (Some(1), 1)]
+        );
     }
 
     // FUN_004fe630: a fleet whose last ship leaves disbands, so moving every

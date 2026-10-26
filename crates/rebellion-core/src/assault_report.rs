@@ -524,6 +524,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: fighter,
                 count: 2,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: false,

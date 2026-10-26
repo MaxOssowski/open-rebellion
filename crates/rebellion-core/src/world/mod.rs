@@ -1069,11 +1069,18 @@ impl Fleet {
     }
 }
 
-/// One entry in a fleet's fighter roster: a class plus the number of squadrons.
+/// One entry in a fleet's or a system's fighter roster: a class, the number
+/// of squadrons, and the capital ship they ride on.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FighterEntry {
     pub class: FighterKey,
     pub count: u32,
+    /// The `ShipInstance::id` of the capital ship that carries them. In the
+    /// original a squadron's container is a capital ship (galaxy types
+    /// `0x14..0x1c`, `FUN_00500b40`) or a system, never the fleet itself
+    /// (`FUN_004fe160`); `None` on a system, and in a fleet for the port's
+    /// squadrons not yet boarded.
+    pub carrier: Option<u64>,
 }
 
 /// A single hull of a capital ship — the primary ship record in Fleet.
@@ -2008,6 +2015,10 @@ impl GameWorld {
     /// campaign and at a load, so the AI's per-ship state
     /// ([`crate::ai::AIState::ship_holds`]) can follow a ship between
     /// fleets.
+    /// Number each new ship, then seat each fleet's squadrons that ride on
+    /// no living ship of it (`crate::squadrons::seat_squadrons`): a
+    /// squadron's container is a capital ship (`FUN_00500b40`), which needs
+    /// its id.
     pub fn number_ships(&mut self) {
         let mut last = self.last_ship_id;
         for fleet in self.fleets.values_mut() {
@@ -2017,6 +2028,10 @@ impl GameWorld {
             }
         }
         self.last_ship_id = last;
+        let fleets = self.fleets.keys().collect::<Vec<_>>();
+        for fleet in fleets {
+            crate::squadrons::seat_squadrons(self, fleet);
+        }
     }
 
     pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {

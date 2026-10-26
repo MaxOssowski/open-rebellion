@@ -330,6 +330,7 @@ mod tests {
             fighters: vec![FighterEntry {
                 class: tie,
                 count: 4,
+                carrier: None,
             }],
             characters: Vec::new(),
             is_alliance: false,
@@ -405,10 +406,12 @@ mod tests {
             FighterEntry {
                 class: x_wing,
                 count: 2,
+                carrier: None,
             },
             FighterEntry {
                 class: tie,
                 count: 5,
+                carrier: None,
             },
         ];
 

@@ -10929,6 +10929,7 @@ mod tests {
             fighters: vec![crate::world::FighterEntry {
                 class: tie,
                 count: 1,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -10997,10 +10998,12 @@ mod tests {
                 FighterEntry {
                     class: bomber,
                     count: 1,
+                    carrier: None,
                 },
                 FighterEntry {
                     class: tie,
                     count: 0,
+                    carrier: None,
                 },
             ],
             characters: vec![],
@@ -11020,6 +11023,7 @@ mod tests {
         world.fleets[fleet].fighters.push(FighterEntry {
             class: tie,
             count: 1,
+            carrier: None,
         });
         assert!(ship.state(&world).is_some());
         assert!(squadron.state(&world).is_some());

@@ -10062,6 +10062,7 @@ mod tests {
             vec![FighterEntry {
                 class: awing,
                 count: 1,
+                carrier: None,
             }],
             vec![leia],
         ));
@@ -10071,10 +10072,12 @@ mod tests {
             FighterEntry {
                 class: awing,
                 count: 2,
+                carrier: None,
             },
             FighterEntry {
                 class: tie,
                 count: 1,
+                carrier: None,
             },
         ];
         let rows = battle_alert_rows(
@@ -13756,7 +13759,7 @@ mod tests {
         let fleet = world.fleets.insert(rebellion_core::world::Fleet {
             location: SystemKey::default(),
             capital_ships: Vec::new(),
-            fighters: vec![rebellion_core::world::FighterEntry { class, count: 2 }],
+            fighters: vec![rebellion_core::world::FighterEntry { class, count: 2, carrier: None }],
             characters: Vec::new(),
             is_alliance: true,
             has_death_star: false,

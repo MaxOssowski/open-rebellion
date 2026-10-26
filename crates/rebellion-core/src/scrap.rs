@@ -406,6 +406,7 @@ mod tests {
             vec![crate::world::FighterEntry {
                 class: wing,
                 count: 1,
+                carrier: None,
             }],
         );
         let mut production = ProductionState::new();
@@ -498,10 +499,12 @@ mod tests {
             crate::world::FighterEntry {
                 class: x_wing,
                 count: 0,
+                carrier: None,
             },
             crate::world::FighterEntry {
                 class: a_wing,
                 count: 1,
+                carrier: None,
             },
         ];
         assert_eq!(

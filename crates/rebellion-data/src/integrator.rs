@@ -5509,6 +5509,7 @@ mod combat_application_tests {
             fighters: vec![FighterEntry {
                 class: FighterKey::default(),
                 count: 4,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -5521,6 +5522,7 @@ mod combat_application_tests {
             fighters: vec![FighterEntry {
                 class: FighterKey::default(),
                 count: 3,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: false,
@@ -5593,6 +5595,7 @@ mod combat_application_tests {
             fighters: vec![FighterEntry {
                 class: FighterKey::default(),
                 count: 4,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -5605,6 +5608,7 @@ mod combat_application_tests {
             fighters: vec![FighterEntry {
                 class: FighterKey::default(),
                 count: 3,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: false,

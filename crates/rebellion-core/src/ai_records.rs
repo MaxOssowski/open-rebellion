@@ -2563,6 +2563,7 @@ mod tests {
             fighters: vec![crate::world::FighterEntry {
                 class: wing,
                 count: 2,
+                carrier: None,
             }],
             characters: vec![],
             is_alliance: true,
@@ -4243,6 +4244,7 @@ mod tests {
             fighters: vec![crate::world::FighterEntry {
                 class: wing,
                 count: 1,
+                carrier: None,
             }],
             characters: vec![officer],
             is_alliance: true,

@@ -1775,7 +1775,7 @@ mod tests {
         fx.world.systems[at].fighters = classes
             .iter()
             .zip(count)
-            .map(|(&class, count)| FighterEntry { class, count })
+            .map(|(&class, count)| FighterEntry { class, count, carrier: None })
             .collect();
         classes
     }
@@ -1843,7 +1843,7 @@ mod tests {
         let at = fx.systems[0];
         fx.world.systems[at]
             .fighters
-            .push(FighterEntry { class: a, count: 3 });
+            .push(FighterEntry { class: a, count: 3, carrier: None });
         rebuild(&mut fx);
         p.base = Some(at);
         p.plan_state = 4;

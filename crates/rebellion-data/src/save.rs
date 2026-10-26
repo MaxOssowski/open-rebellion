@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 105;
+pub const SAVE_VERSION: u32 = 106;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1500,6 +1500,34 @@ mod tests {
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
 
         assert_eq!(loaded.world.fleets[fleet].special_forces, vec![unit]);
+    }
+
+    #[test]
+    fn a_round_trip_keeps_the_ship_a_squadron_rides_on() {
+        // v106: a squadron's container is a capital ship (FUN_00500b40,
+        // FUN_004fe160), kept as its ship's id.
+        let saves_dir = tmp_dir("v106_squadron_carrier");
+        let mut state = minimal_save_state();
+        let system = state.world.systems.keys().next().unwrap();
+        let fleet = state.world.fleets.insert(rebellion_core::world::Fleet {
+            location: system,
+            capital_ships: vec![],
+            fighters: vec![rebellion_core::world::FighterEntry {
+                class: rebellion_core::ids::FighterKey::default(),
+                count: 2,
+                carrier: Some(7),
+            }],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: vec![],
+        });
+        state.world.systems[system].fleets.push(fleet);
+        save_slot(&saves_dir, 0, "Carried", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.world.fleets[fleet].fighters[0].carrier, Some(7));
     }
 
     #[test]
