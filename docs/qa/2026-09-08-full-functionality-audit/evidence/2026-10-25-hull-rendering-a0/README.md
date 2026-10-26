@@ -48,6 +48,9 @@ projected point.
      close to A0.
    - `hyp:` A0 is the evidence here; the retained-mode device's exact
      lighting path is not read.
+   - Superseded in `../2026-10-26-d3dim-hull-lighting/`: d3dim clamps the
+     light before the texture, as the port first did. A0's 255 peaks come
+     from the specular, which the port then lacked.
 3. **The detail level used a raw distance and a scale of 1.**
    `FUN_005d3770`:
    - takes the hull's offset from the camera along the camera's direction,

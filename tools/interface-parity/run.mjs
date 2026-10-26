@@ -5129,7 +5129,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           /light_directional_rgb=0\.8 light_ambient_rgb=0\.5 light_frame_source=5,5,-1 surface_to_light_rh=0\.70014006,0\.70014006,0\.14002801 light_constraint=z/,
           "source-traced tactical light rig did not preserve its retained-mode contract");
         assert.match(familyLogs[0]?.text || "",
-          /render_quality=flat device_dither=false texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular=false material=diffuse_plus_emissive/,
+          /render_quality=flat device_dither=false texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular=true material=ambient_diffuse_specular_emissive/,
           "source-traced tactical renderer did not preserve its retained-mode device state");
         const expectedResources = scenario.expected_lod_sequence
           || [scenario.expected_lod_resource];
@@ -5187,8 +5187,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             target_cull: "back_cw",
             depth_test: "less_equal",
             depth_write: true,
-            specular: false,
-            material: "diffuse_plus_emissive",
+            specular: true,
+            material: "ambient_diffuse_specular_emissive",
           },
         });
         if (scenario.camera_journey) {

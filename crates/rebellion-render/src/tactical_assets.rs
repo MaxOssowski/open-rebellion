@@ -57,10 +57,16 @@ const ORIGINAL_CAMERA_INITIAL_STEP: i32 = 5;
 const ORIGINAL_LIGHT_FRAME_SOURCE_POSITION: [f32; 3] = [5.0, 5.0, -1.0];
 const ORIGINAL_AMBIENT_LIGHT_RGB: f32 = 0.5;
 const ORIGINAL_DIRECTIONAL_LIGHT_RGB: f32 = 0.8;
+/// d3drm packs the summed ambient light as `min(255, trunc(sum × 256))`
+/// (`FUN_6d83df1e`, the double 256.0 at `0x6d802828`) for
+/// `D3DLIGHTSTATE_AMBIENT`: 0.5 becomes 128.
+const ORIGINAL_AMBIENT_LIGHT_BYTE: f32 = 128.0;
 #[cfg(any(feature = "interface-test-fixtures", test))]
 const ORIGINAL_DEVICE_DITHER: bool = false;
+/// `FUN_6d837223` sets `SPECULARENABLE` (render state `0x1d`) for every
+/// group with a material; the hull meshes carry one.
 #[cfg(any(feature = "interface-test-fixtures", test))]
-const ORIGINAL_SPECULAR_ENABLED: bool = false;
+const ORIGINAL_SPECULAR_ENABLED: bool = true;
 
 fn original_tactical_texture_filter() -> FilterMode {
     // `FUN_005c1c10` initializes the retained-mode device without calling
@@ -93,13 +99,41 @@ fn original_surface_to_light_direction() -> Vec3 {
     .normalize()
 }
 
+/// The hull shader's light, on d3dim's 0-255 scale (`FUN_7402029b`,
+/// `FUN_74020ff0`, `FUN_74020945`, `0x74025ff6`): the diffuse is ambient
+/// 128 × material + 204 × material × max(0, n·l) + 255 × emissive, rounded
+/// and clamped before the texture; the specular, only when n·l > 0, is
+/// 204 × specular × (n·h)^power. The shaders compute the same.
 #[cfg(test)]
-fn original_tactical_light_factor(normal: Vec3) -> f32 {
-    let diffuse = normal
-        .normalize()
-        .dot(original_surface_to_light_direction())
-        .max(0.0);
-    ORIGINAL_AMBIENT_LIGHT_RGB + ORIGINAL_DIRECTIONAL_LIGHT_RGB * diffuse
+fn original_face_light(
+    tint: Vec3,
+    emissive: Vec3,
+    specular: [f32; 4],
+    normal: Vec3,
+    view: Vec3,
+) -> (Vec3, Vec3) {
+    let n = normal.normalize();
+    let l = original_surface_to_light_direction();
+    let nl = n.dot(l).max(0.0);
+    let light = ORIGINAL_DIRECTIONAL_LIGHT_RGB * 255.0;
+    let lit = ORIGINAL_AMBIENT_LIGHT_BYTE * tint + light * tint * nl + emissive * 255.0;
+    let diffuse = (lit + Vec3::splat(0.5)).floor().clamp(Vec3::ZERO, Vec3::splat(255.0));
+    let mut shine = Vec3::ZERO;
+    if nl > 0.0 && specular[3] > 0.0 {
+        let nh = n.dot((l + view).normalize()).max(0.0);
+        shine = (light * vec3(specular[0], specular[1], specular[2]) * nh.powf(specular[3])
+            + Vec3::splat(0.5))
+        .floor()
+        .clamp(Vec3::ZERO, Vec3::splat(255.0));
+    }
+    (diffuse, shine)
+}
+
+/// d3dim's modulate and specular add (`FUN_7403a950`, `FUN_7403c550`): a
+/// channel is `min(255, (texel × diffuse) >> 8 + specular)`.
+#[cfg(test)]
+fn original_hull_channel(texel: u8, diffuse: f32, specular: f32) -> f32 {
+    ((f32::from(texel) * diffuse / 256.0).floor() + specular).min(255.0)
 }
 
 /// Source-traced tactical camera state from `FUN_005d9490`, `FUN_005d9620`,
@@ -910,6 +944,8 @@ impl TacticalLodAsset {
 struct TacticalMeshChunk {
     mesh: Mesh,
     emissive: [f32; 3],
+    /// The material's specular colour and power.
+    specular: [f32; 4],
 }
 
 struct TacticalFighterAsset {
@@ -970,6 +1006,14 @@ pub(crate) fn original_hull_axes(forward: Vec3) -> [Vec3; 3] {
     let rows = [side, Vec3::Y, -forward];
     let reflect = |row: Vec3| vec3(row.x, row.y, -row.z);
     [reflect(rows[0]), reflect(rows[1]), -reflect(rows[2])]
+}
+
+/// hyp: d3dim's non-local viewer (`FUN_74020ff0`): the half vector takes
+/// one view direction for the whole scene, from the target to the eye, so a
+/// face's specular is as flat as its diffuse light.
+fn set_view_direction(material: &Material, (position, target): (Vec3, Vec3)) {
+    let view = (position - target).normalize_or_zero();
+    material.set_uniform("ViewDirection", [view.x, view.y, view.z, 0.0]);
 }
 
 fn set_object_axes(material: &Material, axes: [Vec3; 3]) {
@@ -1506,6 +1550,7 @@ impl TacticalAssetRenderer {
             width.round() as i32,
             height.round() as i32,
         );
+        let (camera_position, camera_target);
         if let Some(source_camera) = self.source_camera {
             let pose = source_camera.pose();
             let camera_key = [
@@ -1541,6 +1586,7 @@ impl TacticalAssetRenderer {
                 );
                 self.logged_camera = Some(camera_key);
             }
+            (camera_position, camera_target) = (pose.position, pose.target);
             set_camera(&Camera3D {
                 position: pose.position,
                 target: pose.target,
@@ -1555,6 +1601,7 @@ impl TacticalAssetRenderer {
         } else {
             let camera_direction = vec3(2.8, -4.2, 2.2).normalize();
             let camera_distance = self.view.view_depth.mul_add(0.24, 2.0);
+            (camera_position, camera_target) = (camera_direction * camera_distance, Vec3::ZERO);
             set_camera(&Camera3D {
                 position: camera_direction * camera_distance,
                 target: Vec3::ZERO,
@@ -1569,6 +1616,7 @@ impl TacticalAssetRenderer {
         }
         let material = self.material.as_ref().unwrap();
         gl_use_material(material);
+        set_view_direction(material, (camera_position, camera_target));
         material.set_uniform("ObjectTranslation", [0.0_f32; 4]);
         set_object_axes(material, IDENTITY_HULL_AXES);
         let asset = &self.assets[self.current_lod as usize];
@@ -1578,6 +1626,7 @@ impl TacticalAssetRenderer {
                 "MaterialEmissive",
                 [chunk.emissive[0], chunk.emissive[1], chunk.emissive[2], 0.0],
             );
+            material.set_uniform("MaterialSpecular", chunk.specular);
             draw_mesh(&chunk.mesh);
         }
         gl_use_default_material();
@@ -1721,6 +1770,7 @@ impl TacticalAssetRenderer {
 
         let material = self.material.as_ref().unwrap();
         gl_use_material(material);
+        set_view_direction(material, (camera.position, camera.target));
         let mut selected_resources = Vec::new();
         let mut screen_positions = Vec::new();
         let mut screen_bounds = Vec::new();
@@ -1761,6 +1811,7 @@ impl TacticalAssetRenderer {
                     "MaterialEmissive",
                     [chunk.emissive[0], chunk.emissive[1], chunk.emissive[2], 0.0],
                 );
+                material.set_uniform("MaterialSpecular", chunk.specular);
                 draw_mesh(&chunk.mesh);
             }
             report.rendered_object_ids.push(object.object_id);
@@ -2431,6 +2482,7 @@ impl TacticalAssetRenderer {
                     .map(|chunk| TacticalMeshChunk {
                         mesh: chunk.mesh,
                         emissive: chunk.emissive,
+                        specular: chunk.specular,
                     })
                     .collect(),
             });
@@ -2444,7 +2496,7 @@ impl TacticalAssetRenderer {
         self.assets = assets;
         self.family_loads = self.family_loads.saturating_add(1);
         macroquad::logging::info!(
-            "[tactical_3d] family_loaded base=2560 resources=2560,2561,2562 textures=SDESTI52.BMP,SDESTI_M.BMP palette_selector={} palette_resource_id={} palette_flags=68 transform=authored_xyz_z_reflection light_directional_rgb={} light_ambient_rgb={} light_frame_source=5,5,-1 surface_to_light_rh={},{},{} light_constraint=z render_quality=flat device_dither={} texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular={} material=diffuse_plus_emissive diagnostics={} family_loads={}",
+            "[tactical_3d] family_loaded base=2560 resources=2560,2561,2562 textures=SDESTI52.BMP,SDESTI_M.BMP palette_selector={} palette_resource_id={} palette_flags=68 transform=authored_xyz_z_reflection light_directional_rgb={} light_ambient_rgb={} light_frame_source=5,5,-1 surface_to_light_rh={},{},{} light_constraint=z render_quality=flat device_dither={} texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular={} material=ambient_diffuse_specular_emissive diagnostics={} family_loads={}",
             self.palette_selector,
             palette_resource_id,
             ORIGINAL_DIRECTIONAL_LIGHT_RGB,
@@ -2557,6 +2609,7 @@ impl TacticalAssetRenderer {
                     .map(|chunk| TacticalMeshChunk {
                         mesh: chunk.mesh,
                         emissive: chunk.emissive,
+                        specular: chunk.specular,
                     })
                     .collect(),
             });
@@ -2943,6 +2996,7 @@ struct DecodedMeshChunk {
     mesh: Mesh,
     texture_name: Option<String>,
     emissive: [f32; 3],
+    specular: [f32; 4],
 }
 
 struct DecodedMeshObject {
@@ -2957,6 +3011,7 @@ struct DecodedMeshObject {
 struct DecodedMaterial {
     diffuse: Color,
     emissive: [f32; 3],
+    specular: [f32; 4],
     texture_name: Option<String>,
 }
 
@@ -3032,8 +3087,8 @@ fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
     let mut decoded_materials = Vec::with_capacity(materials);
     for _ in 0..materials {
         let diffuse = [reader.f32()?, reader.f32()?, reader.f32()?, reader.f32()?];
-        let _specular_exponent = reader.f32()?;
-        let _specular = [reader.f32()?, reader.f32()?, reader.f32()?];
+        let specular_exponent = reader.f32()?;
+        let specular = [reader.f32()?, reader.f32()?, reader.f32()?];
         let emissive = [reader.f32()?, reader.f32()?, reader.f32()?];
         let name_len = reader.bounded_count(512, "texture name")?;
         let name = reader.bytes(name_len)?;
@@ -3046,6 +3101,7 @@ fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
                 diffuse[3].clamp(0.0, 1.0),
             ),
             emissive,
+            specular: [specular[0], specular[1], specular[2], specular_exponent],
             texture_name: (!name.is_empty()).then(|| name.to_string()),
         });
     }
@@ -3091,6 +3147,7 @@ fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
                 mesh,
                 texture_name: decoded_material.texture_name.clone(),
                 emissive: decoded_material.emissive,
+                specular: decoded_material.specular,
             });
         }
     }
@@ -3390,6 +3447,8 @@ fn load_tactical_material(palette: &[[u8; 4]; 256]) -> Result<(Material, Texture
                 UniformDesc::new("SourceLightDirectionAmbient", UniformType::Float4),
                 UniformDesc::new("SourceLightColorDirectional", UniformType::Float4),
                 UniformDesc::new("MaterialEmissive", UniformType::Float4),
+                UniformDesc::new("MaterialSpecular", UniformType::Float4),
+                UniformDesc::new("ViewDirection", UniformType::Float4),
                 UniformDesc::new("ObjectTranslation", UniformType::Float4),
                 UniformDesc::new("ObjectAxisX", UniformType::Float4),
                 UniformDesc::new("ObjectAxisY", UniformType::Float4),
@@ -3409,7 +3468,7 @@ fn load_tactical_material(palette: &[[u8; 4]; 256]) -> Result<(Material, Texture
             direction.x,
             direction.y,
             direction.z,
-            ORIGINAL_AMBIENT_LIGHT_RGB,
+            ORIGINAL_AMBIENT_LIGHT_BYTE,
         ],
     );
     material.set_uniform(
@@ -3417,6 +3476,8 @@ fn load_tactical_material(palette: &[[u8; 4]; 256]) -> Result<(Material, Texture
         [1.0, 1.0, 1.0, ORIGINAL_DIRECTIONAL_LIGHT_RGB],
     );
     material.set_uniform("MaterialEmissive", [0.0_f32; 4]);
+    material.set_uniform("MaterialSpecular", [0.0_f32; 4]);
+    material.set_uniform("ViewDirection", [0.0_f32, 0.0, 1.0, 0.0]);
     material.set_uniform("ObjectTranslation", [0.0_f32; 4]);
     set_object_axes(&material, IDENTITY_HULL_AXES);
     Ok((material, cube))
@@ -3491,13 +3552,16 @@ attribute vec2 texcoord;
 attribute vec4 color0;
 attribute vec4 normal;
 varying lowp vec2 uv;
-varying lowp vec3 light;
-varying lowp vec4 tint;
+varying mediump vec3 diffuse_light;
+varying mediump vec3 specular_light;
+varying lowp float alpha;
 uniform mat4 Model;
 uniform mat4 Projection;
 uniform vec4 SourceLightDirectionAmbient;
 uniform vec4 SourceLightColorDirectional;
 uniform lowp vec4 MaterialEmissive;
+uniform vec4 MaterialSpecular;
+uniform vec4 ViewDirection;
 uniform vec4 ObjectTranslation;
 uniform vec4 ObjectAxisX;
 uniform vec4 ObjectAxisY;
@@ -3507,26 +3571,37 @@ void main() {
     vec3 turned = normal.x * ObjectAxisX.xyz + normal.y * ObjectAxisY.xyz + normal.z * ObjectAxisZ.xyz;
     gl_Position = Projection * Model * vec4(placed + ObjectTranslation.xyz, 1.0);
     uv = texcoord;
-    tint = color0 / 255.0;
-    lowp float diffuse = max(dot(normalize(turned), normalize(SourceLightDirectionAmbient.xyz)), 0.0);
-    light = vec3(SourceLightDirectionAmbient.w) + SourceLightColorDirectional.rgb * SourceLightColorDirectional.w * diffuse;
+    vec3 tint = color0.rgb / 255.0;
+    alpha = color0.a / 255.0;
+    vec3 n = normalize(turned);
+    vec3 l = normalize(SourceLightDirectionAmbient.xyz);
+    float nl = max(dot(n, l), 0.0);
+    vec3 light = SourceLightColorDirectional.rgb * SourceLightColorDirectional.w * 255.0;
+    vec3 lit = SourceLightDirectionAmbient.w * tint + light * tint * nl + MaterialEmissive.rgb * 255.0;
+    diffuse_light = clamp(floor(lit + 0.5), 0.0, 255.0);
+    vec3 shine = vec3(0.0);
+    if (nl > 0.0 && MaterialSpecular.w > 0.0) {
+        float nh = max(dot(n, normalize(l + ViewDirection.xyz)), 0.0);
+        shine = clamp(floor(light * MaterialSpecular.rgb * pow(nh, MaterialSpecular.w) + 0.5), 0.0, 255.0);
+    }
+    specular_light = shine;
 }"#;
 
 const TACTICAL_FRAGMENT_GLSL: &str = r#"#version 100
-precision lowp float;
+precision mediump float;
 varying lowp vec2 uv;
-varying lowp vec3 light;
-varying lowp vec4 tint;
+varying mediump vec3 diffuse_light;
+varying mediump vec3 specular_light;
+varying lowp float alpha;
 uniform sampler2D Texture;
 uniform sampler2D CubeLut;
-uniform lowp vec4 MaterialEmissive;
 void main() {
-    lowp vec4 texel = texture2D(Texture, uv);
-    lowp vec3 material = tint.rgb * light + MaterialEmissive.rgb;
-    mediump vec3 channel = floor(min(vec3(1.0), texel.rgb * material) * 255.0 + 0.001);
-    mediump vec3 level = floor((channel * 5.0 + 128.0) / 256.0);
-    mediump float cell = level.r * 36.0 + level.g * 6.0 + level.b;
-    gl_FragColor = vec4(texture2D(CubeLut, vec2((cell + 0.5) / 216.0, 0.5)).rgb, texel.a * tint.a);
+    vec4 texel = texture2D(Texture, uv);
+    vec3 t = floor(texel.rgb * 255.0 + 0.5);
+    vec3 channel = min(vec3(255.0), floor(t * diffuse_light / 256.0) + specular_light);
+    vec3 level = floor((channel * 5.0 + 128.0) / 256.0);
+    float cell = level.r * 36.0 + level.g * 6.0 + level.b;
+    gl_FragColor = vec4(texture2D(CubeLut, vec2((cell + 0.5) / 216.0, 0.5)).rgb, texel.a * alpha);
 }"#;
 
 const TACTICAL_METAL: &str = r#"
@@ -3539,6 +3614,8 @@ struct Uniforms {
     float4 SourceLightDirectionAmbient;
     float4 SourceLightColorDirectional;
     float4 MaterialEmissive;
+    float4 MaterialSpecular;
+    float4 ViewDirection;
     float4 ObjectTranslation;
     float4 ObjectAxisX;
     float4 ObjectAxisY;
@@ -3553,8 +3630,9 @@ struct Vertex {
 struct RasterizerData {
     float4 position [[position]];
     float2 uv [[user(locn0)]];
-    float3 light [[user(locn1)]];
-    float4 tint [[user(locn2)]];
+    float3 diffuse_light [[user(locn1)]];
+    float3 specular_light [[user(locn2)]];
+    float alpha [[user(locn3)]];
 };
 vertex RasterizerData vertexShader(Vertex v [[stage_in]], constant Uniforms& u [[buffer(0)]]) {
     RasterizerData out;
@@ -3562,18 +3640,29 @@ vertex RasterizerData vertexShader(Vertex v [[stage_in]], constant Uniforms& u [
     float3 turned = v.normal.x * u.ObjectAxisX.xyz + v.normal.y * u.ObjectAxisY.xyz + v.normal.z * u.ObjectAxisZ.xyz;
     out.position = u.Projection * u.Model * float4(placed + u.ObjectTranslation.xyz, 1.0);
     out.uv = v.texcoord;
-    out.tint = v.color0 / 255.0;
-    float diffuse = max(dot(normalize(turned), normalize(u.SourceLightDirectionAmbient.xyz)), 0.0);
-    out.light = float3(u.SourceLightDirectionAmbient.w) + u.SourceLightColorDirectional.rgb * u.SourceLightColorDirectional.w * diffuse;
+    float3 tint = v.color0.rgb / 255.0;
+    out.alpha = v.color0.a / 255.0;
+    float3 n = normalize(turned);
+    float3 l = normalize(u.SourceLightDirectionAmbient.xyz);
+    float nl = max(dot(n, l), 0.0);
+    float3 light = u.SourceLightColorDirectional.rgb * u.SourceLightColorDirectional.w * 255.0;
+    float3 lit = u.SourceLightDirectionAmbient.w * tint + light * tint * nl + u.MaterialEmissive.rgb * 255.0;
+    out.diffuse_light = clamp(floor(lit + 0.5), 0.0, 255.0);
+    float3 shine = float3(0.0);
+    if (nl > 0.0 && u.MaterialSpecular.w > 0.0) {
+        float nh = max(dot(n, normalize(l + u.ViewDirection.xyz)), 0.0);
+        shine = clamp(floor(light * u.MaterialSpecular.rgb * pow(nh, u.MaterialSpecular.w) + 0.5), 0.0, 255.0);
+    }
+    out.specular_light = shine;
     return out;
 }
 fragment float4 fragmentShader(RasterizerData in [[stage_in]], constant Uniforms& u [[buffer(0)]], texture2d<float> Texture [[texture(0)]], sampler TextureSmplr [[sampler(0)]], texture2d<float> CubeLut [[texture(1)]], sampler CubeLutSmplr [[sampler(1)]]) {
     float4 texel = Texture.sample(TextureSmplr, in.uv);
-    float3 material = in.tint.rgb * in.light + u.MaterialEmissive.rgb;
-    float3 channel = floor(min(float3(1.0), texel.rgb * material) * 255.0 + 0.001);
+    float3 t = floor(texel.rgb * 255.0 + 0.5);
+    float3 channel = min(float3(255.0), floor(t * in.diffuse_light / 256.0) + in.specular_light);
     float3 level = floor((channel * 5.0 + 128.0) / 256.0);
     float cell = level.r * 36.0 + level.g * 6.0 + level.b;
-    return float4(CubeLut.sample(CubeLutSmplr, float2((cell + 0.5) / 216.0, 0.5)).rgb, texel.a * in.tint.a);
+    return float4(CubeLut.sample(CubeLutSmplr, float2((cell + 0.5) / 216.0, 0.5)).rgb, texel.a * in.alpha);
 }"#;
 
 #[cfg(test)]
@@ -3687,10 +3776,11 @@ mod tests {
     }
 
     // Source: FUN_005d4d10 creates the directional light frame at (5,5,-1)
-    // and the ambient light. Intensity values sit behind COM calls, so the
-    // intensity assertions pin the port's reading, not a recovered value.
-    // The light is not clamped before the texture: A0 TAC-01-C003's hulls
-    // reach 255 where a clamped light stops at the brightest texel.
+    // and the 0.5 ambient light; d3drm packs the ambient as trunc(0.5 x 256)
+    // = 128 (FUN_6d83df1e); d3dim lights on a 0-255 scale and rounds and
+    // clamps the vertex colour before the texture (FUN_7402029b,
+    // 0x74025ff6), adding specular only when n.l > 0 (FUN_74020945).
+    // A0's 255 peaks are that specular, not an unclamped light.
     #[test]
     fn source_light_rig_preserves_retained_mode_direction_and_intensity() {
         let direction = original_surface_to_light_direction();
@@ -3698,15 +3788,38 @@ mod tests {
         assert_near(direction.x, 5.0 * inverse_length);
         assert_near(direction.y, 5.0 * inverse_length);
         assert_near(direction.z, inverse_length);
-        assert_near(
-            original_tactical_light_factor(-direction),
-            ORIGINAL_AMBIENT_LIGHT_RGB,
-        );
-        assert_near(original_tactical_light_factor(direction), 1.3);
-        assert_near(
-            original_tactical_light_factor(vec3(-1.0, 1.0, 0.0)),
-            ORIGINAL_AMBIENT_LIGHT_RGB,
-        );
+        assert_eq!(ORIGINAL_AMBIENT_LIGHT_BYTE, (ORIGINAL_AMBIENT_LIGHT_RGB * 256.0).trunc());
+        let white = Vec3::ONE;
+        let hull = [1.0, 1.0, 1.0, 15.0];
+        // Facing away: the ambient alone, no specular.
+        let (diffuse, shine) = original_face_light(white, Vec3::ZERO, hull, -direction, direction);
+        assert_eq!(diffuse, Vec3::splat(128.0));
+        assert_eq!(shine, Vec3::ZERO);
+        // Facing the light: 128 + 204 clamps to 255; with the eye along the
+        // light, n.h = 1 and the specular is 204.
+        let (diffuse, shine) = original_face_light(white, Vec3::ZERO, hull, direction, direction);
+        assert_eq!(diffuse, Vec3::splat(255.0));
+        assert_eq!(shine, Vec3::splat(204.0));
+        // Half lit, a grey material: round(128 x 0.5 + 204 x 0.5 x n.l).
+        let tilted = (direction + Vec3::Y * 0.2).normalize();
+        let nl = tilted.dot(direction);
+        let grey = Vec3::splat(0.5);
+        let (diffuse, _) = original_face_light(grey, Vec3::ZERO, [0.0; 4], tilted, direction);
+        assert_eq!(diffuse.x, (64.0 + 102.0 * nl + 0.5).floor());
+        // Emissive adds 255 x emissive.
+        let (diffuse, _) =
+            original_face_light(grey, Vec3::splat(0.1), [0.0; 4], -direction, direction);
+        assert_eq!(diffuse.x, 90.0);
+        // A specular power of 15 falls off away from the half vector.
+        let view = (direction + Vec3::X).normalize();
+        let (_, shine) = original_face_light(white, Vec3::ZERO, hull, direction, view);
+        let nh = direction.dot((direction + view).normalize());
+        assert_eq!(shine.x, (204.0 * nh.powf(15.0) + 0.5).floor());
+        // The texel's channel: (t x d) >> 8, plus the specular, at most 255.
+        assert_eq!(original_hull_channel(165, 255.0, 0.0), 164.0);
+        assert_eq!(original_hull_channel(165, 128.0, 0.0), 82.0);
+        assert_eq!(original_hull_channel(165, 255.0, 40.0), 204.0);
+        assert_eq!(original_hull_channel(228, 255.0, 204.0), 255.0);
     }
 
     // Source: FUN_005d3770 dots the hull's position in camera coordinates
@@ -3773,7 +3886,9 @@ mod tests {
     #[test]
     fn source_device_state_uses_nearest_gouraud_backface_depth_contract() {
         assert!(!ORIGINAL_DEVICE_DITHER);
-        assert!(!ORIGINAL_SPECULAR_ENABLED);
+        // d3drm FUN_6d837223 enables specular for every group with a
+        // material.
+        assert!(ORIGINAL_SPECULAR_ENABLED);
         assert_eq!(original_tactical_texture_filter(), FilterMode::Nearest);
         let pipeline = original_tactical_pipeline_params();
         assert_eq!(pipeline.cull_face, CullFace::Back);
