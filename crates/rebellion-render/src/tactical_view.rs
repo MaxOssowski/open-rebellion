@@ -1427,12 +1427,17 @@ impl TacticalState {
             session.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
 
             let carrier_position = session.ships[arriving].source_position;
+            // 2.5 behind the carrier's underside (0x5b0b80), facing it, so
+            // its one frame (0x5b8f70) brings it within the 2.0 gate.
+            let below = session.ships[arriving]
+                .source_collision_envelope
+                .map_or(0.0, |envelope| envelope.vertical_radius);
             let returning = player_fighters[0];
             session.fighters[returning].fighter_group = 0;
             session.fighters[returning].source_position = TacticalWorldPosition {
                 x: carrier_position.x,
-                y: carrier_position.y,
-                z: carrier_position.z + 2.5 * forward_z,
+                y: carrier_position.y - below,
+                z: carrier_position.z - 2.5 * forward_z,
             };
             session.fighters[returning].sublight_engine_power = 4.0;
             session.fighters[returning].order = TacticalOrder::Recover;
@@ -1445,6 +1450,14 @@ impl TacticalState {
             session.fighters[docking].order = TacticalOrder::Recover;
             session.fighters[docking].recovery_state = TacticalFighterRecoveryState::Docking;
             session.fighters[docking].recovery_target = Some(arriving);
+            if let Some(frame) = session.fighter_frames.get_mut(returning) {
+                frame.forward = TacticalWorldVector {
+                    x: 0.0,
+                    y: 0.0,
+                    z: forward_z,
+                };
+            }
+            session.advance_recovering_fighters(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             session.advance_original_fighter_recovery(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
 
             session.selected_ship = Some(turning);
@@ -11638,8 +11651,9 @@ mod tests {
         carrier.order = TacticalOrder::Anvil;
 
         let mut fighter = test_fighter(1, true);
-        // 2.5 from the carrier, which arrives where it stands.
-        fighter.source_position.z = 2.5;
+        // 2.5 behind the carrier, which arrives where it stands, facing it
+        // (+z).
+        fighter.source_position.z = -2.5;
         fighter.sublight_engine_power = 4.0;
         fighter.order = TacticalOrder::Recover;
         fighter.recovery_state = TacticalFighterRecoveryState::Returning;
@@ -11654,8 +11668,11 @@ mod tests {
         assert_eq!(session.ships[0].source_velocity, TacticalWorldVector::ZERO);
         assert_eq!(session.ships[0].order, TacticalOrder::None);
 
+        // 0x5b8f70: it flies its forward at its speed (commander term 1 plus
+        // 4) for 250 ms, then FUN_005cf980 docks it within 2.0.
+        session.advance_recovering_fighters(250.0);
         session.advance_original_fighter_recovery(250.0);
-        assert_eq!(session.fighters[0].source_position.z, 1.5);
+        assert_eq!(session.fighters[0].source_position.z, -1.25);
         assert_eq!(
             session.fighters[0].recovery_state,
             TacticalFighterRecoveryState::Docking

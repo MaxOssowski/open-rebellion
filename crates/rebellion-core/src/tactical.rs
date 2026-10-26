@@ -5070,48 +5070,95 @@ impl BattleSession {
         }
     }
 
-    /// Advance the recovered `FUN_005cf980` fighter states. State 2 moves the
-    /// group toward its reserved carrier, the exact 2.0-unit gate enters state
-    /// 3, and the following docking callback removes the tactical object in
-    /// state 4 without changing its strategic squadron count.
+    /// A recovering carrier's docking point: the vt `+4` of its `+0x418`
+    /// sub-object (`FUN_005a6360`, `0x5b0b80`), its position lowered by its
+    /// vertical radius (`+0x8`), the hull's underside.
+    fn carrier_underside(&self, carrier: usize) -> TacticalWorldPosition {
+        let ship = &self.ships[carrier];
+        let below = ship
+            .source_collision_envelope
+            .map_or(0.0, |envelope| envelope.vertical_radius);
+        TacticalWorldPosition {
+            y: ship.source_position.y - below,
+            ..ship.source_position
+        }
+    }
+
+    /// The carrier a recovering squadron flies to (`+0x164`), while alive on
+    /// its side.
+    fn recovery_carrier(&self, index: usize) -> Option<usize> {
+        let fighter = &self.fighters[index];
+        fighter.recovery_target.filter(|&carrier| {
+            self.ships
+                .get(carrier)
+                .is_some_and(|ship| ship.alive && ship.is_attacker == fighter.is_attacker)
+        })
+    }
+
+    /// The members of a recovering force (order 2) fly their frames
+    /// (`0x5b8f70`) each step from turn 3. Their distance (vt `+0x7c`, the
+    /// force's `0x5c7060`) is the raw one to their carrier's underside, else
+    /// the place delta (`0x5cb050`). The force's anchor stands: order 2's
+    /// install (`FUN_005ca6d0`) clears its route and target.
+    /// port: a squadron flies to the carrier that reserved it; the home
+    /// carrier (`FUN_005b84a0`) is not kept.
+    pub fn advance_recovering_fighters(&mut self, delta_milliseconds: f32) {
+        self.sync_fighter_movers();
+        for index in 0..self.fighters.len() {
+            let fighter = &self.fighters[index];
+            if fighter.retreating || fighter.order != TacticalOrder::Recover {
+                continue;
+            }
+            // A mover holds only the squadrons in the fight.
+            let Some(mover) = self.fighter_mover_of(index).cloned() else {
+                continue;
+            };
+            let delta = match fighter.recovery_state {
+                TacticalFighterRecoveryState::Returning => {
+                    let Some(carrier) = self.recovery_carrier(index) else {
+                        continue;
+                    };
+                    let delta = source_delta(self.carrier_underside(carrier), fighter.source_position);
+                    // port: `FUN_005cf980`'s docking pass is taken to come
+                    // before the move, so a member already within 2.0 stays.
+                    if delta.x.hypot(delta.y).hypot(delta.z) < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
+                        continue;
+                    }
+                    delta
+                }
+                TacticalFighterRecoveryState::AwaitingCarrier
+                | TacticalFighterRecoveryState::Reserved => self.fighter_place_delta(&mover, index),
+                TacticalFighterRecoveryState::Docking
+                | TacticalFighterRecoveryState::Recovered => continue,
+            };
+            self.fly_fighter_squadron(index, delta, None, mover.forward, delta_milliseconds);
+        }
+    }
+
+    /// Advance the recovered `FUN_005cf980` fighter states. In state 2 a
+    /// squadron within 2.0 (`DAT_0066d088`) of its carrier's underside enters
+    /// state 3, and the following docking callback removes the tactical
+    /// object in state 4 without changing its strategic squadron count.
     pub fn advance_original_fighter_recovery(&mut self, delta_milliseconds: f32) {
         if !delta_milliseconds.is_finite() || delta_milliseconds <= 0.0 {
             return;
         }
-        let seconds = delta_milliseconds * 0.001;
+        let undersides = (0..self.fighters.len())
+            .map(|index| self.recovery_carrier(index).map(|carrier| self.carrier_underside(carrier)))
+            .collect::<Vec<_>>();
         let player_is_attacker = self.player_is_attacker;
         let player_faction = self.player_voice_faction();
         let mut transitioned_groups = [false; 4];
-        for fighter in &mut self.fighters {
+        for (fighter, underside) in self.fighters.iter_mut().zip(undersides) {
             match fighter.recovery_state {
                 TacticalFighterRecoveryState::Returning => {
-                    let Some(carrier) = fighter
-                        .recovery_target
-                        .and_then(|index| self.ships.get(index))
-                        .filter(|ship| ship.alive && ship.is_attacker == fighter.is_attacker)
-                    else {
+                    let Some(underside) = underside else {
                         fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
                         fighter.recovery_target = None;
                         continue;
                     };
-                    let delta = source_delta(carrier.source_position, fighter.source_position);
-                    let distance = delta.x.hypot(delta.y).hypot(delta.z);
-                    if distance < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
-                        fighter.recovery_state = TacticalFighterRecoveryState::Docking;
-                        continue;
-                    }
-                    let step = fighter.sublight_engine_power.max(0.0) * seconds;
-                    if step > 0.0 {
-                        let direction = delta.normalized();
-                        let travel = step.min(distance);
-                        fighter.source_position.x += direction.x * travel;
-                        fighter.source_position.y += direction.y * travel;
-                        fighter.source_position.z += direction.z * travel;
-                    }
-                    let remaining = source_delta(carrier.source_position, fighter.source_position);
-                    if remaining.x.hypot(remaining.y).hypot(remaining.z)
-                        < ORIGINAL_FIGHTER_DOCKING_DISTANCE
-                    {
+                    let delta = source_delta(underside, fighter.source_position);
+                    if delta.x.hypot(delta.y).hypot(delta.z) < ORIGINAL_FIGHTER_DOCKING_DISTANCE {
                         fighter.recovery_state = TacticalFighterRecoveryState::Docking;
                     }
                 }
@@ -6238,6 +6285,7 @@ impl BattleSession {
             // moves (slot `+0x8`) in the frame (`0x005a9ec0`).
             self.advance_engagement_approach();
             self.advance_fighter_approach();
+            self.advance_recovering_fighters(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.advance_original_tactical_movement(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.advance_trench_run_approach(ORIGINAL_TACTICAL_STEP_MILLISECONDS);
             self.keep_units_in_the_field();

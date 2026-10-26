@@ -4696,9 +4696,13 @@ mod tests {
             16
         );
         assert_eq!(tactical.fighters[1].recovery_target, Some(0));
-        // The inbound leg (Returning) has already reached the carrier, which
-        // stands where it does, within that step's recovery.
-        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Docking);
+        // Until then it flew round its place (0x5cb050; port: no home
+        // carrier). Now it flies its frame to the carrier's underside
+        // (0x5c7060, 0x5b8f70) and docks within 2.0 of it (FUN_005cf980).
+        assert_eq!(tactical.fighters[1].recovery_state, Recovery::Returning);
+        let mut docking = tactical.clone();
+        let docked = step_until(&mut docking, |t| t.fighters[1].recovery_state == Recovery::Docking);
+        assert!(docked < 40, "{docked}");
         tactical.fighters[0].source_position.z = tactical.withdrawal_exit_z(false);
         // Its group's anchor goes with it (FUN_005c72b0's +0x3c).
         let exit_z = tactical.withdrawal_exit_z(false);
@@ -4748,6 +4752,154 @@ mod tests {
             Recovery::AwaitingCarrier
         );
         assert!(tactical.take_pending_voice_cues().is_empty());
+    }
+
+    // 0x5c7060: a recovering member's distance is the raw one to its
+    // carrier's +0x418 sub-object, whose vt +4 (0x5b0b80) is the hull's
+    // underside (y less the vertical radius +0x8); 0x5b8f70 then turns and
+    // flies it at its speed and alignment.
+    #[test]
+    fn a_returning_squadron_flies_its_frame_to_the_carrier_underside() {
+        use crate::tactical::{
+            original_capital_turn_rate, turn_original_fighter, OriginalTacticalCollisionEnvelope,
+            TacticalFighterRecoveryState as Recovery, TacticalWorldPosition,
+        };
+        let mut carrier = ship(true, TacticalWeaponArc::default(), 0.0);
+        carrier.source_position = TacticalWorldPosition {
+            x: 4.0,
+            y: 2.0,
+            z: 10.0,
+        };
+        carrier.source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
+            vertical_radius: 3.0,
+            planar_diameter: 0.0,
+        });
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.order = TacticalOrder::Recover;
+        wing.recovery_state = Recovery::Returning;
+        wing.recovery_target = Some(0);
+        let mut tactical = session(vec![carrier], vec![wing]);
+        let speed = tactical.original_fighter_speed(0);
+        tactical.advance_recovering_fighters(250.0);
+        // Toward (4, -1, 10), from the side's forward +z.
+        let heading = vector(4.0, -1.0, 10.0).normalized();
+        let rate = original_capital_turn_rate(tactical.fighters[0].maneuverability);
+        let forward = turn_original_fighter(vector(0.0, 0.0, 1.0), heading, rate, 250.0);
+        let travel = speed * forward.dot(heading).max(0.25) * 0.25;
+        let at = tactical.fighters[0].source_position;
+        assert!((at.x - forward.x * travel).abs() < 1e-5, "{at:?}");
+        assert!((at.y - forward.y * travel).abs() < 1e-5, "{at:?}");
+        assert!((at.z - forward.z * travel).abs() < 1e-5, "{at:?}");
+        assert!(at.y < 0.0, "{at:?}");
+        // Its force's anchor stands.
+        assert_eq!(
+            tactical.fighter_mover_of(0).expect("a mover").anchor,
+            TacticalWorldPosition::ORIGIN
+        );
+    }
+
+    // FUN_005cf980's second loop: only in state 2, a member within 2.0
+    // (DAT_0066d088) of its carrier's underside enters state 3.
+    #[test]
+    fn a_squadron_docks_within_two_of_the_carrier_underside() {
+        use crate::tactical::{
+            OriginalTacticalCollisionEnvelope, TacticalFighterRecoveryState as Recovery,
+            TacticalWorldPosition,
+        };
+        let dock = |state: Recovery, x: f32, y: f32| {
+            let mut carrier = ship(true, TacticalWeaponArc::default(), 0.0);
+            carrier.source_position.z = 10.0;
+            carrier.source_collision_envelope = Some(OriginalTacticalCollisionEnvelope {
+                vertical_radius: 3.0,
+                planar_diameter: 0.0,
+            });
+            let mut wing = fighter(true, TacticalWeaponArc::default());
+            wing.order = TacticalOrder::Recover;
+            wing.recovery_state = state;
+            wing.recovery_target = Some(0);
+            wing.source_position = TacticalWorldPosition { x, y, z: 10.0 };
+            let mut tactical = session(vec![carrier], vec![wing]);
+            tactical.advance_original_fighter_recovery(250.0);
+            tactical.fighters[0].recovery_state
+        };
+        // 1.5 below the underside (-3), 4.5 below the centre.
+        assert_eq!(dock(Recovery::Returning, 0.0, -4.5), Recovery::Docking);
+        // At the centre, 3 above the underside.
+        assert_eq!(dock(Recovery::Returning, 0.0, 0.0), Recovery::Returning);
+        // Off to the side: 1.9 and 2.1 from it.
+        assert_eq!(dock(Recovery::Returning, 1.9, -3.0), Recovery::Docking);
+        assert_eq!(dock(Recovery::Returning, 2.1, -3.0), Recovery::Returning);
+        // Exactly 2.0 is not within it.
+        assert_eq!(dock(Recovery::Returning, 2.0, -3.0), Recovery::Returning);
+        // Not yet in state 2.
+        assert_eq!(dock(Recovery::Reserved, 0.0, -3.0), Recovery::Reserved);
+    }
+
+    // The squadrons a recovery flies: in state 2 with a live carrier of its
+    // own side, not already within the docking gate (port), and not
+    // withdrawing.
+    #[test]
+    fn a_recovery_flies_only_squadrons_still_on_their_way() {
+        use crate::tactical::{TacticalFighterRecoveryState as Recovery, TacticalWorldPosition};
+        let flies = |carrier_side: bool, start_z: f32, retreating: bool| {
+            let mut carrier = ship(carrier_side, TacticalWeaponArc::default(), 0.0);
+            carrier.source_position.z = 10.0;
+            let mut wing = fighter(true, TacticalWeaponArc::default());
+            wing.order = TacticalOrder::Recover;
+            wing.recovery_state = Recovery::Returning;
+            wing.recovery_target = Some(0);
+            wing.retreating = retreating;
+            let start = TacticalWorldPosition {
+                x: 0.0,
+                y: 0.0,
+                z: start_z,
+            };
+            wing.source_position = start;
+            let mut tactical = session(vec![carrier], vec![wing]);
+            tactical.advance_recovering_fighters(250.0);
+            let moved = tactical.fighters[0].source_position != start;
+            tactical.advance_original_fighter_recovery(250.0);
+            (moved, tactical.fighters[0].recovery_state)
+        };
+        assert_eq!(flies(true, 0.0, false), (true, Recovery::Returning));
+        // A carrier of the other side is no carrier: the state resets.
+        assert_eq!(flies(false, 0.0, false), (false, Recovery::AwaitingCarrier));
+        // Exactly 2.0 off, it still flies; within 2.0 it waits for the
+        // docking pass.
+        assert!(flies(true, 8.0, false).0);
+        assert_eq!(flies(true, 8.5, false), (false, Recovery::Docking));
+        assert_eq!(flies(true, 0.0, true).0, false);
+    }
+
+    // 0x5cb050 for a recovering member with no carrier: its place round the
+    // force's anchor, which stands (order 2's install clears its target).
+    #[test]
+    fn a_squadron_with_no_carrier_flies_to_its_place() {
+        use crate::tactical::{TacticalAttackTarget, TacticalWorldPosition};
+        let mut wing = fighter(true, TacticalWeaponArc::default());
+        wing.order = TacticalOrder::Recover;
+        wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        let mut far = ship(false, TacticalWeaponArc::default(), 0.0);
+        far.source_position.z = 50.0;
+        let mut tactical = session(vec![far], vec![wing]);
+        tactical.sync_fighter_movers();
+        tactical.fighter_movers[0].anchor = TacticalWorldPosition {
+            x: 0.0,
+            y: 0.0,
+            z: -20.0,
+        };
+        tactical.advance_recovering_fighters(250.0);
+        let at = tactical.fighters[0].source_position;
+        // It faces +z and its place is behind: it still flies a quarter.
+        assert!(at.z > 0.0, "{at:?}");
+        assert_eq!(tactical.fighter_movers[0].anchor.z, -20.0);
+        // A squadron not recovering is left to its force's step.
+        let mut free = session(
+            vec![ship(false, TacticalWeaponArc::default(), 0.0)],
+            vec![fighter(true, TacticalWeaponArc::default())],
+        );
+        free.advance_recovering_fighters(250.0);
+        assert_eq!(free.fighters[0].source_position, TacticalWorldPosition::ORIGIN);
     }
 
     // FUN_005c7f70 (as FUN_005d0ce0) leaves out a capital ship whose enemy

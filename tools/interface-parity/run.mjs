@@ -2770,7 +2770,9 @@ function probeTacticalCommandProgressionPresentation(
   assert.equal(docking.active, true);
   assert.equal(docking.order_code, 2);
   assert.equal(docking.recovery_target, ready.faction === "alliance" ? 1 : 4);
-  assert.equal(Math.abs(docking.source_position[2] - arrived.source_position[2]), 1.5);
+  // It starts 2.5 behind the carrier's underside and flies its frame
+  // (0x5b8f70) at its speed 5 for 250 ms toward it (0x5c7060, 0x5b0b80).
+  assert.equal(Math.abs(docking.source_position[2] - arrived.source_position[2]), 1.25);
   assert.ok(recovered, "docking callback did not enter the source recovered state");
   assert.equal(recovered.active, false);
   assert.equal(recovered.order_code, 0);
