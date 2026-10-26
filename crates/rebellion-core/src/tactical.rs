@@ -1509,6 +1509,12 @@ pub struct BattleSession {
     pub member_states: Vec<TacticalMemberState>,
     /// The forces' detour records (`+0xec`).
     pub force_detours: Vec<TacticalForceDetour>,
+    /// The player's commander in mode 1 (`+0x08`, `FUN_005c7e10`), set by
+    /// command `0x7b` from Observe Battle (`FUN_0059fd40`): the commander
+    /// then reviews the player's side as well.
+    pub player_observing: bool,
+    /// The player's commander's count `+0x40`, in turns to its next review.
+    pub observer_review_countdown: u32,
     /// Resolved Death Star trench-run result, if one has occurred.
     pub trench_run_outcome: Option<TacticalTrenchRunOutcome>,
     /// Remaining source milliseconds in the active state-5 trench run.
@@ -3980,6 +3986,8 @@ impl BattleSession {
             force_movers: Vec::new(),
             member_states: Vec::new(),
             force_detours: Vec::new(),
+            player_observing: false,
+            observer_review_countdown: 0,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -8295,13 +8303,52 @@ impl BattleSession {
     /// run is under way (`FUN_005d0ae0`; port: from state 5's timer to its
     /// result).
     fn ai_side_leaves(&mut self) {
+        // Observing, the player's commander reviews too: from the turn it
+        // was switched on (its count starts at 0), every sixth. It never
+        // withdraws its own side (`0x005c8a8f`: the local side in mode 1).
+        if self.player_observing {
+            if self.observer_review_countdown == 0 {
+                let player_alliance = self.attacker_is_alliance == self.player_is_attacker;
+                self.link_commander_targets(player_alliance);
+                self.observer_review_countdown = ORIGINAL_COMMANDER_REVIEW_TURNS;
+            }
+            self.observer_review_countdown -= 1;
+        }
         if (self.event_turn() - 1) % ORIGINAL_COMMANDER_REVIEW_TURNS != 0 {
             return;
         }
         let alliance = self.attacker_is_alliance != self.player_is_attacker;
-        // `FUN_005c9200` comes before the withdrawal test: the commander
-        // links its task forces to targets (`FUN_005a8fc0`). Each new link
-        // is event `0x36` at the command stamp; a kept target posts none.
+        self.link_commander_targets(alliance);
+        let side = usize::from(!alliance);
+        if !self.retreat_allowed[side]
+            || self.retreat_done[side]
+            || self.trench_run_under_way()
+            || !crate::abstract_battle::tactical_side_withdraws(self, alliance)
+        {
+            return;
+        }
+        let ai = !self.player_is_attacker;
+        let stamp = self.step_event_stamp();
+        self.begin_withdrawal_stamped(ai, stamp);
+        self.withdraw_fighters_stamped(ai, stamp);
+        // `+0x84` = 2: the side cannot order it again (`FUN_005c7e80`).
+        self.retreat_done[side] = true;
+    }
+
+    /// Command `0x7b` (`FUN_0059fd40`): Observe Battle hands the player's
+    /// side to its commander, Take Command takes it back. Switching it on
+    /// starts the commander's count afresh (`FUN_005c7e10`).
+    pub fn set_player_observing(&mut self, observing: bool) {
+        if observing && !self.player_observing {
+            self.observer_review_countdown = 0;
+        }
+        self.player_observing = observing;
+    }
+
+    /// `FUN_005c9200` comes before the withdrawal test: the commander
+    /// links its task forces to targets (`FUN_005a8fc0`). Each new link
+    /// is event `0x36` at the command stamp; a kept target posts none.
+    fn link_commander_targets(&mut self, alliance: bool) {
         let stamp = self.step_event_stamp();
         let mut links: Vec<(TacticalAttackTarget, Vec<TacticalUnitRef>)> = Vec::new();
         for (unit, target) in crate::abstract_battle::commander_targets(self, alliance) {
@@ -8324,20 +8371,6 @@ impl BattleSession {
         for (target, units) in links {
             self.post_turn_event(stamp, TacticalTurnEvent::TaskForceTarget { units, target });
         }
-        let side = usize::from(!alliance);
-        if !self.retreat_allowed[side]
-            || self.retreat_done[side]
-            || self.trench_run_under_way()
-            || !crate::abstract_battle::tactical_side_withdraws(self, alliance)
-        {
-            return;
-        }
-        let ai = !self.player_is_attacker;
-        let stamp = self.step_event_stamp();
-        self.begin_withdrawal_stamped(ai, stamp);
-        self.withdraw_fighters_stamped(ai, stamp);
-        // `+0x84` = 2: the side cannot order it again (`FUN_005c7e80`).
-        self.retreat_done[side] = true;
     }
 
     pub fn queue_battle_outcome_voice(&mut self, winner: CombatWinner) {

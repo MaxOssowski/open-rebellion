@@ -10271,6 +10271,8 @@ mod tactical_ground_tests {
             force_movers: Vec::new(),
             member_states: Vec::new(),
             force_detours: Vec::new(),
+            player_observing: false,
+            observer_review_countdown: 0,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,

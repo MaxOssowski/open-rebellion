@@ -1936,6 +1936,8 @@ mod tests {
             force_movers: Vec::new(),
             member_states: Vec::new(),
             force_detours: Vec::new(),
+            player_observing: false,
+            observer_review_countdown: 0,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
@@ -7819,6 +7821,59 @@ mod tests {
             .map(|(unit, _)| unit)
             .collect::<Vec<_>>();
         assert_eq!(units, vec![AbstractUnit::Capital(1)]);
+    }
+
+    // Command 0x7b (FUN_0059fd40) from Observe Battle puts the player's
+    // commander in mode 1 (FUN_005c7e10): its count starts at 0, so it
+    // reviews on the next turn's updates and every sixth after; Take Command
+    // stops it.
+    #[test]
+    fn observing_hands_the_player_side_to_its_commander() {
+        use crate::tactical::{
+            TacticalTurnEvent, TacticalUnitRef, ORIGINAL_TACTICAL_TURN_STEPS as STEPS,
+        };
+        let mut player = ship(true, TacticalWeaponArc::new(0, 0, 2), 1.0);
+        player.source_position.z = -50.0;
+        let mut enemy = ship(false, TacticalWeaponArc::new(0, 0, 2), 1.0);
+        enemy.source_position.z = 50.0;
+        enemy.task_force = 1;
+        let mut tactical = session(vec![player, enemy], Vec::new());
+        let player_links = |t: &BattleSession| {
+            t.turn_events
+                .iter()
+                .filter(|queued| match &queued.event {
+                    TacticalTurnEvent::TaskForceTarget { units, .. } => {
+                        units.contains(&TacticalUnitRef::Ship(0))
+                    }
+                    _ => false,
+                })
+                .count()
+        };
+        for _ in 0..(2 * STEPS) {
+            tactical.step();
+        }
+        assert_eq!(player_links(&tactical), 0);
+        tactical.set_player_observing(true);
+        // The next turn's updates (turn 2, between the computer's reviews).
+        for _ in 0..STEPS {
+            tactical.step();
+        }
+        assert_eq!(player_links(&tactical), 1);
+        assert_eq!(tactical.observer_review_countdown, 5);
+        // Observe pressed again while observing keeps the count.
+        tactical.set_player_observing(true);
+        assert_eq!(tactical.observer_review_countdown, 5);
+        // Taking command back stops the reviews; switching it on again
+        // restarts the count.
+        tactical.set_player_observing(false);
+        tactical.ships[0].attack_target = None;
+        tactical.turn_events.clear();
+        for _ in 0..(8 * STEPS) {
+            tactical.step();
+        }
+        assert_eq!(player_links(&tactical), 0);
+        tactical.set_player_observing(true);
+        assert_eq!(tactical.observer_review_countdown, 0);
     }
 
     // FUN_005ab650 0x005ab921 copies each unit's side vector (FUN_005b5ad0,

@@ -4723,6 +4723,9 @@ fn activate_tactical_battle_options(
         }
         TacticalBattleOptionsControl::ObserveToggle => {
             state.player_observing = !state.player_observing;
+            if let Some(session) = state.session.as_mut() {
+                session.set_player_observing(state.player_observing);
+            }
             macroquad::logging::info!(
                 "[tactical_options] command={} observing={}",
                 if state.player_observing {
@@ -9376,6 +9379,8 @@ mod tests {
             force_movers: Vec::new(),
             member_states: Vec::new(),
             force_detours: Vec::new(),
+            player_observing: false,
+            observer_review_countdown: 0,
             fighter_orbit_angles: Vec::new(),
             trench_run_outcome: None,
             trench_run_remaining_ms: None,
