@@ -2444,7 +2444,7 @@ impl TacticalAssetRenderer {
         self.assets = assets;
         self.family_loads = self.family_loads.saturating_add(1);
         macroquad::logging::info!(
-            "[tactical_3d] family_loaded base=2560 resources=2560,2561,2562 textures=SDESTI52.BMP,SDESTI_M.BMP palette_selector={} palette_resource_id={} palette_flags=68 transform=authored_xyz_z_reflection light_directional_rgb={} light_ambient_rgb={} light_frame_source=5,5,-1 surface_to_light_rh={},{},{} light_constraint=z render_quality=gouraud device_dither={} texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular={} material=diffuse_plus_emissive diagnostics={} family_loads={}",
+            "[tactical_3d] family_loaded base=2560 resources=2560,2561,2562 textures=SDESTI52.BMP,SDESTI_M.BMP palette_selector={} palette_resource_id={} palette_flags=68 transform=authored_xyz_z_reflection light_directional_rgb={} light_ambient_rgb={} light_frame_source=5,5,-1 surface_to_light_rh={},{},{} light_constraint=z render_quality=flat device_dither={} texture_filter=nearest mip_filter=none source_cull=d3dcull_ccw target_cull=back_ccw depth_test=less_equal depth_write=true specular={} material=diffuse_plus_emissive diagnostics={} family_loads={}",
             self.palette_selector,
             palette_resource_id,
             ORIGINAL_DIRECTIONAL_LIGHT_RGB,
@@ -2960,6 +2960,52 @@ struct DecodedMaterial {
     texture_name: Option<String>,
 }
 
+/// d3drm lights a hull once per face: the device's quality defaults to
+/// `D3DRMRENDER_FLAT` (constructor `0x6d81a08b`, `+0x68` = 0x88), REBEXE sets
+/// no device quality, and `FUN_6d827ec2` takes the lower of the device's and
+/// the mesh's. Each face gets its own vertices carrying its plane's normal,
+/// turned to the side its vertex normals face. A chunk splits where its
+/// vertices would pass the `u16` index range.
+fn flat_shaded_meshes(vertices: &[Vertex], indices: &[u16]) -> Vec<Mesh> {
+    const MAX_VERTICES: usize = u16::MAX as usize;
+    let mut meshes = Vec::new();
+    let mut flat = Vec::new();
+    for triangle in indices.chunks_exact(3) {
+        if flat.len() + 3 > MAX_VERTICES {
+            meshes.push(flat_mesh(std::mem::take(&mut flat)));
+        }
+        let corners = [0, 1, 2].map(|corner| vertices[usize::from(triangle[corner])]);
+        let [a, b, c] = corners.map(|vertex| vertex.position);
+        let smooth = corners
+            .iter()
+            .map(|vertex| vertex.normal.truncate())
+            .fold(Vec3::ZERO, |sum, normal| sum + normal);
+        let mut normal = (b - a).cross(c - a).normalize_or_zero();
+        if normal == Vec3::ZERO {
+            normal = smooth.normalize_or_zero();
+        } else if normal.dot(smooth) < 0.0 {
+            normal = -normal;
+        }
+        flat.extend(corners.map(|vertex| Vertex {
+            normal: normal.extend(0.0),
+            ..vertex
+        }));
+    }
+    if !flat.is_empty() {
+        meshes.push(flat_mesh(flat));
+    }
+    meshes
+}
+
+fn flat_mesh(vertices: Vec<Vertex>) -> Mesh {
+    let indices = (0..u16::try_from(vertices.len()).unwrap_or(u16::MAX)).collect();
+    Mesh {
+        vertices,
+        indices,
+        texture: None,
+    }
+}
+
 fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
     let mut reader = Reader::new(bytes);
     reader.expect(MESH_MAGIC)?;
@@ -3040,15 +3086,13 @@ fn decode_mesh_object(bytes: &[u8]) -> Result<DecodedMeshObject, String> {
         for triangle in indices.chunks_exact_mut(3) {
             triangle.swap(1, 2);
         }
-        output.push(DecodedMeshChunk {
-            mesh: Mesh {
-                vertices,
-                indices,
-                texture: None,
-            },
-            texture_name: decoded_material.texture_name.clone(),
-            emissive: decoded_material.emissive,
-        });
+        for mesh in flat_shaded_meshes(&vertices, &indices) {
+            output.push(DecodedMeshChunk {
+                mesh,
+                texture_name: decoded_material.texture_name.clone(),
+                emissive: decoded_material.emissive,
+            });
+        }
     }
     if !reader.finished() {
         return Err("tactical mesh object has trailing bytes".to_string());
@@ -3993,6 +4037,60 @@ mod tests {
         );
         let envelope = tactical_collision_envelope(decoded.source_bounds);
         assert_eq!(envelope.vertical_radius, 1.5);
+    }
+
+    // Source: d3drm.dll device constructor 0x6d81a08b (quality +0x68 =
+    // 0x88, D3DRMRENDER_FLAT) and FUN_6d827ec2 (the lower of device and
+    // mesh quality): one normal per face.
+    #[test]
+    fn hull_faces_are_lit_flat_with_their_plane_normal() {
+        let vertex = |position: Vec3, normal: Vec3| Vertex {
+            position,
+            uv: vec2(0.0, 0.0),
+            color: [255, 255, 255, 255],
+            normal: normal.extend(0.0),
+        };
+        // Two faces sharing an edge, their vertex normals smoothed apart.
+        let vertices = [
+            vertex(vec3(0.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0)),
+            vertex(vec3(1.0, 0.0, 0.0), vec3(0.6, 0.8, 0.0)),
+            vertex(vec3(0.0, 0.0, 1.0), vec3(0.0, 0.8, 0.6)),
+            vertex(vec3(1.0, -1.0, 1.0), vec3(0.6, 0.0, 0.8)),
+        ];
+        let meshes = flat_shaded_meshes(&vertices, &[0, 2, 1, 1, 2, 3]);
+        assert_eq!(meshes.len(), 1);
+        let mesh = &meshes[0];
+        assert_eq!(mesh.vertices.len(), 6);
+        assert_eq!(mesh.indices, vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(mesh.vertices[1].position, vertices[2].position);
+        // The first face lies in y = 0; its normal faces its vertex
+        // normals' side, +y, whatever its winding.
+        for corner in &mesh.vertices[..3] {
+            assert!((corner.normal.truncate() - Vec3::Y).length() < 1e-6);
+        }
+        let second = (vertices[2].position - vertices[1].position)
+            .cross(vertices[3].position - vertices[1].position)
+            .normalize();
+        let second = if second.y < 0.0 { -second } else { second };
+        for corner in &mesh.vertices[3..] {
+            assert!((corner.normal.truncate() - second).length() < 1e-6);
+        }
+        // Wound the other way, the same face still faces +y.
+        let turned = flat_shaded_meshes(&vertices, &[0, 1, 2]);
+        for corner in &turned[0].vertices {
+            assert!((corner.normal.truncate() - Vec3::Y).length() < 1e-6);
+        }
+        // A degenerate face keeps its smoothed normal.
+        let line = flat_shaded_meshes(&vertices[..2], &[0, 1, 1]);
+        let expected = (vec3(0.0, 1.0, 0.0) + vec3(1.2, 1.6, 0.0)).normalize();
+        assert!((line[0].vertices[0].normal.truncate() - expected).length() < 1e-6);
+        // A chunk past the u16 range splits.
+        let many = (0..30_000_u16).flat_map(|_| [0, 2, 1]).collect::<Vec<_>>();
+        let split = flat_shaded_meshes(&vertices, &many);
+        assert_eq!(split.len(), 2);
+        assert_eq!(split[0].vertices.len(), 65_535);
+        assert_eq!(split.iter().map(|mesh| mesh.vertices.len()).sum::<usize>(), 90_000);
+        assert!(split.iter().all(|mesh| mesh.vertices.len() <= u16::MAX as usize));
     }
 
     // Source: FUN_005da150 (nine vertices, eight faces round vertex 8,
