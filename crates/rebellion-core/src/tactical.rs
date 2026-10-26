@@ -2499,25 +2499,6 @@ pub fn original_tactical_weapon_arc_to_position(
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct OriginalTacticalWeaponCandidate {
-    pub strength: f32,
-    pub target: Option<usize>,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct OriginalTacticalArcCandidates {
-    pub laser: OriginalTacticalWeaponCandidate,
-    pub ion: OriginalTacticalWeaponCandidate,
-    pub turbolaser: OriginalTacticalWeaponCandidate,
-}
-
-impl OriginalTacticalArcCandidates {
-    pub fn total(self) -> f32 {
-        self.laser.strength + self.ion.strength + self.turbolaser.strength
-    }
-}
-
 pub fn original_capital_weapon_strength(
     ship: &TacticalShip,
     count: u32,
@@ -3862,69 +3843,6 @@ pub enum TacticalTrenchRunOutcome {
     Failure,
 }
 
-/// `FUN_005b0e50` four batteries, consumed by `FUN_005b3f10`.
-
-pub fn original_capital_weapon_candidates(
-    ships: &[TacticalShip],
-    source: usize,
-    targets: &[usize],
-    direct_target: Option<usize>,
-) -> [OriginalTacticalArcCandidates; 4] {
-    let mut candidates = [OriginalTacticalArcCandidates::default(); 4];
-    let Some(source_ship) = ships.get(source) else {
-        return candidates;
-    };
-    let scale_for_hull = direct_target.is_none();
-
-    for &target in targets {
-        if direct_target.is_some_and(|direct| direct != target) {
-            continue;
-        }
-        let Some(target_ship) = ships
-            .get(target)
-            .filter(|ship| ship.alive && !ship.jumping())
-        else {
-            continue;
-        };
-        let arc_index = original_tactical_weapon_arc(source_ship, target_ship).index();
-        let arc = source_ship.weapon_arcs[arc_index];
-        if !arc.ready {
-            continue;
-        }
-        let delta = source_delta(target_ship.source_position, source_ship.source_position);
-        let distance = delta.x.hypot(delta.y).hypot(delta.z);
-
-        for kind in [
-            WeaponKind::LaserCannon,
-            WeaponKind::IonCannon,
-            WeaponKind::Turbolaser,
-        ] {
-            let count = original_weapon_count(arc, kind);
-            let range = original_weapon_range(source_ship, kind);
-            if count == 0 || range <= 0.0 || distance > range {
-                continue;
-            }
-            let strength =
-                original_capital_weapon_strength(source_ship, count, kind, scale_for_hull);
-            let candidate = match kind {
-                WeaponKind::LaserCannon => &mut candidates[arc_index].laser,
-                WeaponKind::IonCannon => &mut candidates[arc_index].ion,
-                WeaponKind::Turbolaser => &mut candidates[arc_index].turbolaser,
-                WeaponKind::FighterAttack => continue,
-            };
-            // The executable keeps the first target on an equal score.
-            if candidate.strength < strength {
-                *candidate = OriginalTacticalWeaponCandidate {
-                    strength,
-                    target: Some(target),
-                };
-            }
-        }
-    }
-
-    candidates
-}
-
 pub fn original_tactical_integer_damage(strength: f32) -> i32 {
     if !strength.is_finite() || strength <= 0.0 {
         0
@@ -3933,6 +3851,20 @@ pub fn original_tactical_integer_damage(strength: f32) -> i32 {
         // shield state remains integral, so round only at that storage edge.
         strength.round().max(1.0) as i32
     }
+}
+
+/// What a direct shot (slot `+0xa8`, `FUN_005b6530`) came to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OriginalDirectFire {
+    /// 1: the arc toward the target, or the fore arc for a fighter target,
+    /// is not ready.
+    NotReady,
+    /// 2: beyond the unit's longest range.
+    OutOfRange,
+    /// 3: `FUN_005b3f10` fired nothing.
+    Nothing,
+    /// 4: something fired.
+    Fired,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -6432,27 +6364,17 @@ impl BattleSession {
                 }
                 refresh_original_subsystem_conditions(&mut self.ships, &self.field_effects);
             }
-            if !self.weapon_turn_opens(TacticalUnitRef::Ship(ship_index)) {
-                continue;
+            if self.weapon_turn_opens(TacticalUnitRef::Ship(ship_index)) {
+                self.fire_unit_weapons(TacticalUnitRef::Ship(ship_index), &mut shots);
             }
-            let side = self.ships[ship_index].is_attacker;
-            let targets = self
-                .ships
-                .iter()
-                .enumerate()
-                .filter(|(_, ship)| ship.is_attacker != side && ship.alive && !ship.jumping())
-                .map(|(index, _)| index)
-                .collect::<Vec<_>>();
-            Self::fire_side(&mut self.ships, &[ship_index], &targets, &mut shots);
-            self.fire_capitals_at_fighters_from(ship_index..ship_index + 1, &mut shots);
         }
         // Fighter groups use the same slot (`0x66c028 + 0x88`,
-        // `FUN_005b3a40`); their own readiness and recharge gate each shot.
+        // `FUN_005b3a40`).
         for fighter_index in 0..self.fighters.len() {
             if self.unit_takes_its_turn(TacticalUnitRef::Fighter(fighter_index))
                 && self.weapon_turn_opens(TacticalUnitRef::Fighter(fighter_index))
             {
-                self.fighter_step_from(fighter_index..fighter_index + 1, &mut shots);
+                self.fire_unit_weapons(TacticalUnitRef::Fighter(fighter_index), &mut shots);
             }
         }
         let stamp = self.step_event_stamp();
@@ -6505,6 +6427,505 @@ impl BattleSession {
             return false;
         }
         order != TacticalOrder::Escort
+    }
+
+    /// The rest of `FUN_005b3a40`, once its gate opened:
+    /// - the force's target `T` (`+0x8c`, `FUN_005d2190`): when no arc can
+    ///   hurt its class (slot `+0x84`, `FUN_005b4c60`, returns 4), the turn
+    ///   ends; else a direct shot at it (slot `+0xa8`, `FUN_005b6530`);
+    /// - while that came to "out of range" (2), or with no target, a direct
+    ///   shot at the force's nearest enemy (`+0xa4`, [`Self::force_nearest_enemy`]);
+    /// - on Attack Fighters (order 4), or with laser cannons
+    ///   (`FUN_005b7ce0`) and still out of range, fire at the enemy fighter
+    ///   groups nearby ([`Self::fire_at_nearby_fighters`]).
+    ///
+    /// No unit picks a capital target on its own: only its force's target or
+    /// nearest enemy. port: the Death Star run (order 6) keeps to its own
+    /// producer, as before.
+    pub fn fire_unit_weapons(&mut self, unit: TacticalUnitRef, shots: &mut Vec<TacticalShot>) {
+        // `0x5b3a51`, `0x5b3a5e`: only a unit in the fight, not in its jump.
+        if !self.unit_takes_its_turn(unit) {
+            return;
+        }
+        let order = self.unit_order(unit);
+        if order == TacticalOrder::AttackDeathStar {
+            return;
+        }
+        let mut outcome = OriginalDirectFire::OutOfRange;
+        if let Some(target) = self.force_target(unit) {
+            if !self.unit_has_weapons_against(unit, matches!(target, OriginalFighterTarget::Fighter(_))) {
+                return;
+            }
+            outcome = self.direct_fire(unit, target, shots);
+        }
+        if outcome == OriginalDirectFire::OutOfRange {
+            if let Some(nearest) = self.force_nearest_enemy(unit) {
+                outcome = self.direct_fire(unit, nearest, shots);
+            }
+        }
+        if order == TacticalOrder::AttackFighters
+            || (self.unit_has_lasers(unit) && outcome == OriginalDirectFire::OutOfRange)
+        {
+            self.fire_at_nearby_fighters(unit, shots);
+        }
+    }
+
+    fn unit_order(&self, unit: TacticalUnitRef) -> TacticalOrder {
+        match unit {
+            TacticalUnitRef::Ship(index) => self.ships[index].order,
+            TacticalUnitRef::Fighter(index) => self.fighters[index].order,
+        }
+    }
+
+    fn unit_position(&self, unit: TacticalUnitRef) -> TacticalWorldPosition {
+        match unit {
+            TacticalUnitRef::Ship(index) => self.ships[index].source_position,
+            TacticalUnitRef::Fighter(index) => self.fighters[index].source_position,
+        }
+    }
+
+    fn unit_is_attacker(&self, unit: TacticalUnitRef) -> bool {
+        match unit {
+            TacticalUnitRef::Ship(index) => self.ships[index].is_attacker,
+            TacticalUnitRef::Fighter(index) => self.fighters[index].is_attacker,
+        }
+    }
+
+    /// A unit's arcs: four for a capital ship, the fore one for a group.
+    fn unit_arcs(&self, unit: TacticalUnitRef) -> Vec<TacticalWeaponArc> {
+        match unit {
+            TacticalUnitRef::Ship(index) => self.ships[index].weapon_arcs.to_vec(),
+            TacticalUnitRef::Fighter(index) => vec![self.fighters[index].weapon_arc],
+        }
+    }
+
+    fn unit_weapon_range(&self, unit: TacticalUnitRef, kind: WeaponKind) -> f32 {
+        match unit {
+            TacticalUnitRef::Ship(index) => original_weapon_range(&self.ships[index], kind),
+            TacticalUnitRef::Fighter(index) => {
+                original_fighter_weapon_range(&self.fighters[index], kind)
+            }
+        }
+    }
+
+    /// `FUN_005b18d0`: the longest range of a family installed in some arc.
+    fn unit_max_weapon_range(&self, unit: TacticalUnitRef) -> f32 {
+        let mut longest = 0.0_f32;
+        for arc in self.unit_arcs(unit) {
+            for kind in [
+                WeaponKind::IonCannon,
+                WeaponKind::LaserCannon,
+                WeaponKind::Turbolaser,
+            ] {
+                if original_weapon_count(arc, kind) != 0 {
+                    longest = longest.max(self.unit_weapon_range(unit, kind));
+                }
+            }
+        }
+        longest
+    }
+
+    /// `FUN_005b7ce0`: some arc carries laser cannons.
+    fn unit_has_lasers(&self, unit: TacticalUnitRef) -> bool {
+        self.unit_arcs(unit).iter().any(|arc| arc.laser_cannons != 0)
+    }
+
+    /// Slot `+0x84` (`FUN_005b4c60`) is not 4: some arc can hurt the class.
+    /// Ion cannons count against capital ships only.
+    fn unit_has_weapons_against(&self, unit: TacticalUnitRef, fighters: bool) -> bool {
+        self.unit_arcs(unit).iter().any(|arc| {
+            arc.laser_cannons != 0 || arc.turbolasers != 0 || (!fighters && arc.ion_cannons != 0)
+        })
+    }
+
+    fn target_position(&self, target: OriginalFighterTarget) -> Option<TacticalWorldPosition> {
+        match target {
+            OriginalFighterTarget::Capital(index) => {
+                self.ships.get(index).map(|ship| ship.source_position)
+            }
+            OriginalFighterTarget::Fighter(index) => {
+                self.fighters.get(index).map(|fighter| fighter.source_position)
+            }
+            OriginalFighterTarget::DeathStar => {
+                self.death_star.map(|death_star| death_star.source_position)
+            }
+        }
+    }
+
+    /// The force's target (`+0x8c`): the unit's attack target while it is
+    /// an enemy in the fight. The attack executors (`FUN_005d0b10`,
+    /// `FUN_005d0bb0`) keep it; no other order holds one.
+    fn force_target(&self, unit: TacticalUnitRef) -> Option<OriginalFighterTarget> {
+        let attack_target = match unit {
+            TacticalUnitRef::Ship(index) => self.ships[index].attack_target,
+            TacticalUnitRef::Fighter(index) => self.fighters[index].attack_target,
+        };
+        let side = self.unit_is_attacker(unit);
+        let target = match attack_target? {
+            TacticalAttackTarget::CapitalShip(index) => OriginalFighterTarget::Capital(index),
+            TacticalAttackTarget::FighterGroup(index) => OriginalFighterTarget::Fighter(index),
+        };
+        let enemy = match target {
+            OriginalFighterTarget::Capital(index) => self.ships.get(index)?.is_attacker != side,
+            OriginalFighterTarget::Fighter(index) => self.fighters.get(index)?.is_attacker != side,
+            OriginalFighterTarget::DeathStar => false,
+        };
+        (enemy && self.unit_in_the_fight(target)).then_some(target)
+    }
+
+    /// The force's first member and its mover's anchor (`+0x54` + `0x3c`);
+    /// a unit with no mover stands for its own force.
+    fn force_lead_and_anchor(&self, unit: TacticalUnitRef) -> (TacticalUnitRef, TacticalWorldPosition) {
+        match unit {
+            TacticalUnitRef::Ship(index) => {
+                let lead = self
+                    .moving_forces()
+                    .into_iter()
+                    .find(|members| members.contains(&index))
+                    .map_or(index, |members| members[0]);
+                let anchor = self
+                    .force_mover(self.force_key(lead))
+                    .map_or(self.ships[lead].source_position, |mover| mover.anchor);
+                (TacticalUnitRef::Ship(lead), anchor)
+            }
+            TacticalUnitRef::Fighter(index) => match self.fighter_mover_of(index) {
+                Some(mover) => (
+                    TacticalUnitRef::Fighter(mover.slots.first().map_or(index, |slot| slot.0)),
+                    mover.anchor,
+                ),
+                None => (unit, self.fighters[index].source_position),
+            },
+        }
+    }
+
+    /// `FUN_005cb6e0` (the force's turn slot `+0x10`, `FUN_005c65e0`): the
+    /// force's nearest enemy (`+0xa4`) from its anchor, through
+    /// `FUN_005aa970`: a fighter group when its first member carries laser
+    /// cannons, a capital ship when it carries only ion cannons or
+    /// turbolasers, none when unarmed. The first of equal distances stays.
+    /// port: the units in the fight are those not jumping, in the port's
+    /// order.
+    fn force_nearest_enemy(&self, unit: TacticalUnitRef) -> Option<OriginalFighterTarget> {
+        let (lead, anchor) = self.force_lead_and_anchor(unit);
+        let fighters = if self.unit_has_lasers(lead) {
+            true
+        } else if self.unit_has_weapons_against(lead, false) {
+            false
+        } else {
+            return None;
+        };
+        let side = self.unit_is_attacker(unit);
+        let candidates: Vec<OriginalFighterTarget> = if fighters {
+            (0..self.fighters.len())
+                .filter(|&index| self.fighters[index].is_attacker != side)
+                .map(OriginalFighterTarget::Fighter)
+                .collect()
+        } else {
+            (0..self.ships.len())
+                .filter(|&index| self.ships[index].is_attacker != side)
+                .map(OriginalFighterTarget::Capital)
+                .collect()
+        };
+        let mut nearest = None;
+        let mut nearest_squared = f32::MAX;
+        for candidate in candidates {
+            if !self.unit_in_the_fight(candidate) {
+                continue;
+            }
+            let Some(position) = self.target_position(candidate) else {
+                continue;
+            };
+            let delta = source_delta(position, anchor);
+            let squared = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+            if squared < nearest_squared {
+                nearest = Some(candidate);
+                nearest_squared = squared;
+            }
+        }
+        nearest
+    }
+
+    /// A family's strength from `unit` at a target of the class, before any
+    /// hull scale: the arc's count times its coefficient and the class's
+    /// modifier (`FUN_005d2360`, `FUN_005d2490`, `FUN_005d24e0`,
+    /// `FUN_005d2530`).
+    fn family_strength(&self, unit: TacticalUnitRef, count: u32, kind: WeaponKind, fighter: bool) -> f32 {
+        match unit {
+            TacticalUnitRef::Ship(index) => {
+                let strength = original_capital_weapon_strength(&self.ships[index], count, kind, false);
+                if !fighter {
+                    strength
+                } else {
+                    match kind {
+                        WeaponKind::LaserCannon => {
+                            strength * ORIGINAL_LASER_VS_FIGHTER / ORIGINAL_LASER_VS_CAPITAL
+                        }
+                        WeaponKind::Turbolaser => strength * ORIGINAL_TURBOLASER_VS_FIGHTER,
+                        WeaponKind::IonCannon => strength * ORIGINAL_ION_VS_FIGHTER,
+                        WeaponKind::FighterAttack => 0.0,
+                    }
+                }
+            }
+            TacticalUnitRef::Fighter(index) => {
+                original_fighter_weapon_strength(&self.fighters[index], count, kind, fighter)
+            }
+        }
+    }
+
+    /// The arc toward a position: by the ±45° tests for a capital ship
+    /// (`FUN_005b6530`), always the fore arc for a group (`+0x140` = 1,
+    /// `FUN_005b9c60`).
+    fn unit_arc_toward(&self, unit: TacticalUnitRef, position: TacticalWorldPosition) -> usize {
+        match unit {
+            TacticalUnitRef::Ship(index) => {
+                original_tactical_weapon_arc_to_position(&self.ships[index], position).index()
+            }
+            TacticalUnitRef::Fighter(_) => 0,
+        }
+    }
+
+    /// Slot `+0xa8` (`FUN_005b6530`): a direct shot at one target.
+    /// - a fighter target with the fore arc not ready: 1;
+    /// - beyond the longest range (`FUN_005b18d0`, compared squared): 2;
+    /// - the arc toward it not ready: 1;
+    /// - else each family of that arc within its range takes it, ion
+    ///   cannons against capital ships only, with no hull scale; then
+    ///   `FUN_005b3f10` fires: 4 when something fired, else 3.
+    fn direct_fire(
+        &mut self,
+        unit: TacticalUnitRef,
+        target: OriginalFighterTarget,
+        shots: &mut Vec<TacticalShot>,
+    ) -> OriginalDirectFire {
+        let Some(position) = self.target_position(target) else {
+            return OriginalDirectFire::Nothing;
+        };
+        let target_is_fighter = matches!(target, OriginalFighterTarget::Fighter(_));
+        let arcs = self.unit_arcs(unit);
+        if target_is_fighter && !arcs[0].ready {
+            return OriginalDirectFire::NotReady;
+        }
+        let delta = source_delta(position, self.unit_position(unit));
+        let squared = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+        let longest = self.unit_max_weapon_range(unit);
+        if longest * longest < squared {
+            return OriginalDirectFire::OutOfRange;
+        }
+        let arc_index = self.unit_arc_toward(unit, position);
+        let arc = arcs[arc_index];
+        if !arc.ready {
+            return OriginalDirectFire::NotReady;
+        }
+        let distance = squared.sqrt();
+        let mut candidates = [[None; 3]; 4];
+        for (family, kind) in [
+            WeaponKind::IonCannon,
+            WeaponKind::LaserCannon,
+            WeaponKind::Turbolaser,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let count = original_weapon_count(arc, kind);
+            if count == 0
+                || (kind == WeaponKind::IonCannon && target_is_fighter)
+                || distance > self.unit_weapon_range(unit, kind)
+            {
+                continue;
+            }
+            let strength = self.family_strength(unit, count, kind, target_is_fighter);
+            candidates[arc_index][family] = Some((target, strength));
+        }
+        if self.fire_candidates(unit, candidates, shots) {
+            OriginalDirectFire::Fired
+        } else {
+            OriginalDirectFire::Nothing
+        }
+    }
+
+    /// The tail of `FUN_005b3a40` (`0x5b3ba0`): fire at the enemy fighter
+    /// groups nearby (`FUN_005cdf50` on the fighter tree `+0x900`: in the
+    /// fight, not in their jump), walked out from the unit by x, down then
+    /// up. Each one in a ready arc offers its laser cannons and turbolasers
+    /// within range. A family takes it when its kept strength is below the
+    /// family's full strength, and keeps it scaled by the unit's hull
+    /// (`FUN_005b1770`), so a damaged unit keeps the last one and an
+    /// undamaged one the first. `FUN_005cdf50`'s box of the longest range
+    /// holds every group a family can reach, so the port walks them all.
+    fn fire_at_nearby_fighters(&mut self, unit: TacticalUnitRef, shots: &mut Vec<TacticalShot>) {
+        let own = self.unit_position(unit);
+        let side = self.unit_is_attacker(unit);
+        let mut sorted = (0..self.fighters.len()).collect::<Vec<_>>();
+        sorted.sort_by(|left, right| {
+            self.fighters[*left]
+                .source_position
+                .x
+                .total_cmp(&self.fighters[*right].source_position.x)
+                .then(left.cmp(right))
+        });
+        let (below, above) = match unit {
+            TacticalUnitRef::Fighter(index) => {
+                let at = sorted.iter().position(|&other| other == index).unwrap_or(0);
+                (sorted[..at].to_vec(), sorted[at + 1..].to_vec())
+            }
+            TacticalUnitRef::Ship(_) => {
+                let at = sorted
+                    .iter()
+                    .position(|&other| self.fighters[other].source_position.x > own.x)
+                    .unwrap_or(sorted.len());
+                (sorted[..at].to_vec(), sorted[at..].to_vec())
+            }
+        };
+        let nearby = below
+            .iter()
+            .rev()
+            .chain(&above)
+            .copied()
+            .filter(|&other| {
+                self.fighters[other].is_attacker != side
+                    && self.unit_in_the_fight(OriginalFighterTarget::Fighter(other))
+            })
+            .collect::<Vec<_>>();
+        let hull_ratio = match unit {
+            TacticalUnitRef::Ship(index) => self.ships[index].hull_ratio(),
+            TacticalUnitRef::Fighter(index) => {
+                let fighter = &self.fighters[index];
+                if fighter.hull_max > 0.0 {
+                    fighter.hull_current / fighter.hull_max
+                } else {
+                    0.0
+                }
+            }
+        };
+        let arcs = self.unit_arcs(unit);
+        let mut candidates: [[Option<(OriginalFighterTarget, f32)>; 3]; 4] = [[None; 3]; 4];
+        for other in nearby {
+            let position = self.fighters[other].source_position;
+            let arc_index = self.unit_arc_toward(unit, position);
+            let arc = arcs[arc_index];
+            if !arc.ready {
+                continue;
+            }
+            let delta = source_delta(position, own);
+            let distance = delta.x.hypot(delta.y).hypot(delta.z);
+            for (family, kind) in [(1, WeaponKind::LaserCannon), (2, WeaponKind::Turbolaser)] {
+                let count = original_weapon_count(arc, kind);
+                if count == 0 || distance > self.unit_weapon_range(unit, kind) {
+                    continue;
+                }
+                let full = self.family_strength(unit, count, kind, true);
+                let kept = candidates[arc_index][family].map_or(0.0, |(_, strength)| strength);
+                if kept < full {
+                    candidates[arc_index][family] =
+                        Some((OriginalFighterTarget::Fighter(other), full * hull_ratio));
+                }
+            }
+        }
+        self.fire_candidates(unit, candidates, shots);
+    }
+
+    /// `FUN_005b3f10`: until no arc offers a positive total, the first arc
+    /// with the strictly highest total fires every family it holds, ion,
+    /// laser, then turbolaser. A capital arc loses each fired family's
+    /// count of energy and waits in the recharge queue; a group fires its
+    /// torpedoes after its guns at a capital target without shields, and
+    /// spends its arc. Returns whether anything fired.
+    fn fire_candidates(
+        &mut self,
+        unit: TacticalUnitRef,
+        mut candidates: [[Option<(OriginalFighterTarget, f32)>; 3]; 4],
+        shots: &mut Vec<TacticalShot>,
+    ) -> bool {
+        let mut fired_any = false;
+        loop {
+            let mut strongest = 0.0;
+            let mut selected = None;
+            for (arc_index, arc_candidates) in candidates.iter().enumerate() {
+                let total: f32 = arc_candidates
+                    .iter()
+                    .map(|candidate| candidate.map_or(0.0, |(_, strength)| strength))
+                    .sum();
+                if strongest < total {
+                    strongest = total;
+                    selected = Some(arc_index);
+                }
+            }
+            let Some(arc_index) = selected else {
+                break;
+            };
+            let mut energy_spent = 0.0;
+            let mut torpedo_target = None;
+            for (family, kind) in [
+                WeaponKind::IonCannon,
+                WeaponKind::LaserCannon,
+                WeaponKind::Turbolaser,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let Some((target, strength)) = candidates[arc_index][family] else {
+                    continue;
+                };
+                shots.push(TacticalShot {
+                    source: unit,
+                    target,
+                    kind,
+                    strength,
+                });
+                torpedo_target = Some(target);
+                energy_spent += original_weapon_count(self.unit_arcs(unit)[arc_index], kind) as f32;
+            }
+            candidates[arc_index] = [None; 3];
+            fired_any = true;
+            match unit {
+                TacticalUnitRef::Ship(index) => {
+                    let ship = &mut self.ships[index];
+                    let arc = &mut ship.weapon_arcs[arc_index];
+                    arc.energy = (arc.energy - energy_spent).max(0.0);
+                    arc.ready = false;
+                    let arc_index = u8::try_from(arc_index).unwrap_or(3);
+                    if !ship.weapon_recharge_queue.contains(&arc_index) {
+                        ship.weapon_recharge_queue.push(arc_index);
+                    }
+                }
+                TacticalUnitRef::Fighter(index) => {
+                    if let Some(target) = torpedo_target {
+                        self.push_fighter_torpedo(index, target, shots);
+                    }
+                    self.fighters[index].consume_weapon_arc();
+                }
+            }
+        }
+        fired_any
+    }
+
+    /// A group's torpedoes at a capital target or the Death Star without
+    /// shields, within torpedo range (`FUN_005b3f10`, `FUN_005b23a0`).
+    fn push_fighter_torpedo(
+        &self,
+        index: usize,
+        target: OriginalFighterTarget,
+        shots: &mut Vec<TacticalShot>,
+    ) {
+        let fighter = &self.fighters[index];
+        let unshielded = match target {
+            OriginalFighterTarget::Capital(target) => self.ships[target].shield <= 0,
+            OriginalFighterTarget::Fighter(_) => return,
+            OriginalFighterTarget::DeathStar => true,
+        };
+        let Some(position) = self.target_position(target) else {
+            return;
+        };
+        let delta = source_delta(position, fighter.source_position);
+        let distance = delta.x.hypot(delta.y).hypot(delta.z);
+        if unshielded && fighter.torpedo_strength > 0 && distance <= fighter.torpedo_range {
+            shots.push(TacticalShot {
+                source: TacticalUnitRef::Fighter(index),
+                target,
+                kind: WeaponKind::FighterAttack,
+                strength: fighter.torpedo_strength as f32 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH,
+            });
+        }
     }
 
     /// A subsystem hit event (`0x005b28d0` and its siblings): the ship's
@@ -6716,410 +7137,6 @@ impl BattleSession {
         };
         self.pending_audio_cues
             .push(TacticalAudioCue::from_variant(impact_event, variant));
-    }
-
-    /// One side's ships fire through the four source battery records recovered
-    /// from `FUN_005b3a40`, `FUN_005b3f10`, and `FUN_005b6530`.
-    pub fn fire_side(
-        ships: &mut [TacticalShip],
-        firing: &[usize],
-        targets: &[usize],
-        shots: &mut Vec<TacticalShot>,
-    ) {
-        if targets.is_empty() {
-            return;
-        }
-
-        for &fire_idx in firing {
-            if !ships[fire_idx].alive || ships[fire_idx].jumping() {
-                continue;
-            }
-
-            // A typed capital target follows the direct-target callback. The
-            // autonomous path evaluates every in-range target independently
-            // for each family and keeps the first strongest target.
-            let direct_target = match ships[fire_idx].attack_target {
-                Some(TacticalAttackTarget::CapitalShip(target))
-                    if target < ships.len()
-                        && ships[target].alive
-                        && !ships[target].jumping()
-                        && targets.contains(&target) =>
-                {
-                    Some(target)
-                }
-                Some(TacticalAttackTarget::CapitalShip(_))
-                    if ships[fire_idx].order == TacticalOrder::AttackCapitalShips =>
-                {
-                    // The attack executor never redirects an invalid typed
-                    // target into an unrelated class or random capital. Its
-                    // target-list lifecycle reacquires before this phase.
-                    continue;
-                }
-                Some(TacticalAttackTarget::FighterGroup(_)) => {
-                    // FUN_005d0bb0 accepts only object class 1, and
-                    // FUN_005a8fc0 links that typed fighter target. Once the
-                    // shared list lifecycle clears it, do not enter the
-                    // autonomous capital-target path.
-                    continue;
-                }
-                None if matches!(
-                    ships[fire_idx].order,
-                    TacticalOrder::AttackCapitalShips | TacticalOrder::AttackFighters
-                ) =>
-                {
-                    // No eligible target of the requested class remains.
-                    continue;
-                }
-                _ => None,
-            };
-            let mut candidates =
-                original_capital_weapon_candidates(ships, fire_idx, targets, direct_target);
-
-            loop {
-                let mut strongest = 0.0;
-                let mut selected_arc = None;
-                for (arc_index, arc_candidates) in candidates.iter().enumerate() {
-                    let total = arc_candidates.total();
-                    if strongest < total {
-                        strongest = total;
-                        selected_arc = Some(arc_index);
-                    }
-                }
-                let Some(arc_index) = selected_arc else {
-                    break;
-                };
-
-                let arc_candidates = candidates[arc_index];
-                let arc = ships[fire_idx].weapon_arcs[arc_index];
-                let mut energy_spent = 0.0;
-                // Preserve the executable's event order: ion, laser, then
-                // turbolaser. Every populated family in the selected arc fires.
-                for (kind, candidate) in [
-                    (WeaponKind::IonCannon, arc_candidates.ion),
-                    (WeaponKind::LaserCannon, arc_candidates.laser),
-                    (WeaponKind::Turbolaser, arc_candidates.turbolaser),
-                ] {
-                    let Some(target_idx) = candidate.target else {
-                        continue;
-                    };
-                    shots.push(TacticalShot {
-                        source: TacticalUnitRef::Ship(fire_idx),
-                        target: OriginalFighterTarget::Capital(target_idx),
-                        kind,
-                        strength: candidate.strength,
-                    });
-                    energy_spent += original_weapon_count(arc, kind) as f32;
-                }
-
-                if energy_spent > 0.0 {
-                    let source = &mut ships[fire_idx];
-                    let arc = &mut source.weapon_arcs[arc_index];
-                    arc.energy = (arc.energy - energy_spent).max(0.0);
-                    arc.ready = false;
-                    let arc_index = u8::try_from(arc_index).unwrap_or(3);
-                    if !source.weapon_recharge_queue.contains(&arc_index) {
-                        source.weapon_recharge_queue.push(arc_index);
-                    }
-                }
-                candidates[arc_index] = OriginalTacticalArcCandidates::default();
-            }
-        }
-    }
-
-    /// `FUN_005b3f10` capital batteries against fighters; index 3 bounds the four batteries of `FUN_005b0e50`.
-
-    pub fn fire_capitals_at_fighters(&mut self, shots: &mut Vec<TacticalShot>) {
-        self.fire_capitals_at_fighters_from(0..self.ships.len(), shots);
-    }
-
-    /// The capital ships `sources` fire their batteries at their fighter
-    /// targets (`FUN_005b3f10`).
-    fn fire_capitals_at_fighters_from(
-        &mut self,
-        sources: std::ops::Range<usize>,
-        shots: &mut Vec<TacticalShot>,
-    ) {
-        for source in sources {
-            let Some(TacticalAttackTarget::FighterGroup(target)) = self.ships[source].attack_target
-            else {
-                continue;
-            };
-            if self.ships[source].order != TacticalOrder::AttackFighters
-                || !self.ships[source].alive
-                || self.ships[source].jumping()
-                || !self.fighters.get(target).is_some_and(|fighter| {
-                    fighter.alive
-                        && fighter.squad_count > 0
-                        && !fighter.jumping()
-                        && fighter.is_attacker != self.ships[source].is_attacker
-                })
-            {
-                continue;
-            }
-
-            let target_position = self.fighters[target].source_position;
-            let delta = source_delta(target_position, self.ships[source].source_position);
-            let distance = delta.x.hypot(delta.y).hypot(delta.z);
-            let arc_index =
-                original_tactical_weapon_arc_to_position(&self.ships[source], target_position)
-                    .index();
-            let arc = self.ships[source].weapon_arcs[arc_index];
-            if !arc.ready {
-                continue;
-            }
-            let mut fired = false;
-            for kind in [WeaponKind::LaserCannon, WeaponKind::Turbolaser] {
-                let count = original_weapon_count(arc, kind);
-                if count == 0 || distance > original_weapon_range(&self.ships[source], kind) {
-                    continue;
-                }
-                let strength =
-                    original_capital_weapon_strength(&self.ships[source], count, kind, false)
-                        * if kind == WeaponKind::Turbolaser {
-                            ORIGINAL_TURBOLASER_VS_FIGHTER
-                        } else {
-                            ORIGINAL_LASER_VS_FIGHTER / ORIGINAL_LASER_VS_CAPITAL
-                        };
-                shots.push(TacticalShot {
-                    source: TacticalUnitRef::Ship(source),
-                    target: OriginalFighterTarget::Fighter(target),
-                    kind,
-                    strength,
-                });
-                fired = true;
-            }
-            if fired {
-                let ship = &mut self.ships[source];
-                let arc = &mut ship.weapon_arcs[arc_index];
-                arc.energy = 0.0;
-                arc.ready = false;
-                let arc_index = u8::try_from(arc_index).unwrap_or(3);
-                if !ship.weapon_recharge_queue.contains(&arc_index) {
-                    ship.weapon_recharge_queue.push(arc_index);
-                }
-            }
-        }
-    }
-
-    pub fn fighter_target(&self, source: usize) -> Option<OriginalFighterTarget> {
-        let fighter = self.fighters.get(source)?;
-        if fighter.jumping() {
-            return None;
-        }
-        let requested = match (fighter.order, fighter.attack_target) {
-            (
-                TacticalOrder::AttackCapitalShips,
-                Some(TacticalAttackTarget::CapitalShip(target)),
-            ) => Some(OriginalFighterTarget::Capital(target)),
-            (TacticalOrder::AttackFighters, Some(TacticalAttackTarget::FighterGroup(target))) => {
-                Some(OriginalFighterTarget::Fighter(target))
-            }
-            // State 5 owns the timed trench-run producer. These fighters do
-            // not chip the Death Star through the ordinary battery path.
-            (TacticalOrder::AttackDeathStar, _) => return None,
-            (TacticalOrder::AttackCapitalShips | TacticalOrder::AttackFighters, _) => return None,
-            _ => None,
-        };
-        if let Some(target) = requested {
-            return self
-                .fighter_target_in_range(source, target)
-                .then_some(target);
-        }
-
-        // Autonomous executors retain the first target on equal strength.
-        let mut selected = None;
-        let mut selected_strength = 0.0;
-        for (target, ship) in self.ships.iter().enumerate() {
-            if !ship.alive || ship.jumping() || ship.is_attacker == fighter.is_attacker {
-                continue;
-            }
-            let candidate = OriginalFighterTarget::Capital(target);
-            let strength = self.fighter_target_strength(source, candidate);
-            if selected_strength < strength {
-                selected = Some(candidate);
-                selected_strength = strength;
-            }
-        }
-        for (target, opponent) in self.fighters.iter().enumerate() {
-            if target == source
-                || !opponent.alive
-                || opponent.squad_count == 0
-                || opponent.recovery_state == TacticalFighterRecoveryState::Recovered
-                || opponent.is_attacker == fighter.is_attacker
-            {
-                continue;
-            }
-            let candidate = OriginalFighterTarget::Fighter(target);
-            let strength = self.fighter_target_strength(source, candidate);
-            if selected_strength < strength {
-                selected = Some(candidate);
-                selected_strength = strength;
-            }
-        }
-        selected
-    }
-
-    pub fn fighter_target_in_range(&self, source: usize, target: OriginalFighterTarget) -> bool {
-        self.fighter_target_strength(source, target) > 0.0
-    }
-
-    /// Fighter receivers clamp the maneuverability ratio at 0.1 (`FUN_005b5100`).
-
-    pub fn fighter_target_strength(&self, source: usize, target: OriginalFighterTarget) -> f32 {
-        let Some(fighter) = self.fighters.get(source).filter(|fighter| {
-            fighter.alive
-                && fighter.squad_count > 0
-                && !fighter.jumping()
-                && fighter.weapon_arc.ready
-        }) else {
-            return 0.0;
-        };
-        let (position, target_is_fighter, target_maneuverability, target_unshielded) = match target
-        {
-            OriginalFighterTarget::Capital(index) => {
-                let Some(ship) = self.ships.get(index).filter(|ship| {
-                    ship.alive && !ship.jumping() && ship.is_attacker != fighter.is_attacker
-                }) else {
-                    return 0.0;
-                };
-                (ship.source_position, false, 1.0, ship.shield <= 0)
-            }
-            OriginalFighterTarget::Fighter(index) => {
-                let Some(opponent) = self.fighters.get(index).filter(|opponent| {
-                    opponent.alive
-                        && opponent.squad_count > 0
-                        && !opponent.jumping()
-                        && opponent.recovery_state != TacticalFighterRecoveryState::Recovered
-                        && opponent.is_attacker != fighter.is_attacker
-                }) else {
-                    return 0.0;
-                };
-                (
-                    opponent.source_position,
-                    true,
-                    opponent.effective_maneuverability(),
-                    false,
-                )
-            }
-            OriginalFighterTarget::DeathStar => {
-                let Some(death_star) = self.death_star.filter(|death_star| {
-                    death_star.operational() && death_star.is_attacker != fighter.is_attacker
-                }) else {
-                    return 0.0;
-                };
-                (death_star.source_position, false, 1.0, true)
-            }
-        };
-        let delta = source_delta(position, fighter.source_position);
-        let distance = delta.x.hypot(delta.y).hypot(delta.z);
-        let maneuver_modifier = if target_is_fighter {
-            (fighter.effective_maneuverability() / target_maneuverability).max(0.1)
-        } else {
-            1.0
-        };
-        let mut strength = 0.0;
-        for kind in [
-            WeaponKind::IonCannon,
-            WeaponKind::LaserCannon,
-            WeaponKind::Turbolaser,
-        ] {
-            let count = original_weapon_count(fighter.weapon_arc, kind);
-            if count > 0 && distance <= original_fighter_weapon_range(fighter, kind) {
-                strength +=
-                    original_fighter_weapon_strength(fighter, count, kind, target_is_fighter)
-                        * maneuver_modifier;
-            }
-        }
-        if !target_is_fighter
-            && target_unshielded
-            && fighter.torpedo_strength > 0
-            && distance <= fighter.torpedo_range
-        {
-            strength += fighter.torpedo_strength as f32 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH;
-        }
-        strength
-    }
-
-    /// Fire each live fighter group through the source fore battery record.
-    pub fn fighter_step(&mut self, shots: &mut Vec<TacticalShot>) {
-        self.fighter_step_from(0..self.fighters.len(), shots);
-    }
-
-    fn fighter_step_from(&mut self, sources: std::ops::Range<usize>, shots: &mut Vec<TacticalShot>) {
-        for source in sources {
-            let Some(target) = self.fighter_target(source) else {
-                continue;
-            };
-            let source_snapshot = self.fighters[source].clone();
-            let target_position = match target {
-                OriginalFighterTarget::Capital(index) => self.ships[index].source_position,
-                OriginalFighterTarget::Fighter(index) => self.fighters[index].source_position,
-                OriginalFighterTarget::DeathStar => {
-                    let Some(death_star) = self.death_star else {
-                        continue;
-                    };
-                    death_star.source_position
-                }
-            };
-            let delta = source_delta(target_position, source_snapshot.source_position);
-            let distance = delta.x.hypot(delta.y).hypot(delta.z);
-            let target_is_fighter = matches!(target, OriginalFighterTarget::Fighter(_));
-            let target_was_unshielded = match target {
-                OriginalFighterTarget::Capital(index) => self.ships[index].shield <= 0,
-                OriginalFighterTarget::Fighter(_) => false,
-                OriginalFighterTarget::DeathStar => true,
-            };
-            let mut fired = false;
-
-            // Preserve the executable family-event order used by FUN_005b3f10.
-            for kind in [
-                WeaponKind::IonCannon,
-                WeaponKind::LaserCannon,
-                WeaponKind::Turbolaser,
-            ] {
-                let count = original_weapon_count(source_snapshot.weapon_arc, kind);
-                if count == 0 || distance > original_fighter_weapon_range(&source_snapshot, kind) {
-                    continue;
-                }
-                let strength = original_fighter_weapon_strength(
-                    &source_snapshot,
-                    count,
-                    kind,
-                    target_is_fighter,
-                );
-                if strength <= 0.0 {
-                    continue;
-                }
-                shots.push(TacticalShot {
-                    source: TacticalUnitRef::Fighter(source),
-                    target,
-                    kind,
-                    strength,
-                });
-                fired = true;
-            }
-
-            if matches!(
-                target,
-                OriginalFighterTarget::Capital(_) | OriginalFighterTarget::DeathStar
-            ) && target_was_unshielded
-                && source_snapshot.torpedo_strength > 0
-                && distance <= source_snapshot.torpedo_range
-            {
-                let strength =
-                    source_snapshot.torpedo_strength as f32 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH;
-                shots.push(TacticalShot {
-                    source: TacticalUnitRef::Fighter(source),
-                    target,
-                    kind: WeaponKind::FighterAttack,
-                    strength,
-                });
-                fired = true;
-            }
-            if fired {
-                self.fighters[source].consume_weapon_arc();
-            }
-        }
     }
 
     pub fn has_active_trench_run(&self) -> bool {

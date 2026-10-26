@@ -12226,8 +12226,11 @@ mod tests {
         fn session_with_source_order(order: TacticalOrder) -> BattleSession {
             let mut source = test_ship(64, 0, true, true);
             source.order = order;
-            source.attack_target = (order == TacticalOrder::AttackFighters)
-                .then_some(TacticalAttackTarget::FighterGroup(0));
+            source.attack_target = match order {
+                TacticalOrder::AttackFighters => Some(TacticalAttackTarget::FighterGroup(0)),
+                TacticalOrder::AttackCapitalShips => Some(TacticalAttackTarget::CapitalShip(1)),
+                _ => None,
+            };
             source.weapon_arcs[0] = TacticalWeaponArc::new(300, 0, 0);
             source.weapon_ranges.laser_cannon = 100.0;
 
@@ -12282,7 +12285,20 @@ mod tests {
         assert!(ordered.impact_effects.is_empty());
         assert!(ordered.pending_audio_cues.is_empty());
 
-        let mut autonomous = session_with_source_order(TacticalOrder::None);
+        // With no order, a laser-armed ship's force takes the nearest enemy
+        // fighter group as its target (FUN_005cb6e0, FUN_005aa970), and its
+        // own search finds only fighter groups (FUN_005b3a40 on the fighter
+        // tree +0x900, FUN_005cdf50): it never fires at the capital ship.
+        let mut idle = session_with_source_order(TacticalOrder::None);
+        let idle_capital_before = (idle.ships[1].hull_current, idle.ships[1].shield);
+        for _ in 0..24 {
+            idle.step();
+        }
+        assert_eq!((idle.ships[1].hull_current, idle.ships[1].shield), idle_capital_before);
+        assert!(idle.weapon_effects.is_empty());
+
+        // The capital ship as the force's target (FUN_005b6530) is hit.
+        let mut autonomous = session_with_source_order(TacticalOrder::AttackCapitalShips);
         let autonomous_capital_before =
             (autonomous.ships[1].hull_current, autonomous.ships[1].shield);
 
@@ -12365,12 +12381,13 @@ mod tests {
         source.weapon_ranges.laser_cannon = 100.0;
         let dead_target = test_ship(128, 0, false, false);
         let live_target = test_ship(129, 1, false, true);
-        let mut ships = vec![source, dead_target, live_target];
+        let ships = vec![source, dead_target, live_target];
         let original_hull = ships[2].hull_current;
 
         let mut shots = Vec::new();
-        BattleSession::fire_side(&mut ships, &[0], &[2], &mut shots);
-        let resolved = resolve_test_shots(ships, &shots);
+        let mut firing = test_session(ships, Vec::new(), true);
+        firing.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
+        let resolved = resolve_test_shots(firing.ships, &shots);
         let ships = &resolved.ships;
         let projectiles = &resolved.weapon_effects;
         let impacts = &resolved.impact_effects;
@@ -12620,11 +12637,12 @@ mod tests {
         target.hull_max = 1000;
         target.shield = 1000;
         target.shield_max = 1000;
-        let mut ships = vec![source, target];
+        let ships = vec![source, target];
 
         let mut shots = Vec::new();
-        BattleSession::fire_side(&mut ships, &[0], &[1], &mut shots);
-        let resolved = resolve_test_shots(ships, &shots);
+        let mut firing = test_session(ships, Vec::new(), true);
+        firing.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
+        let resolved = resolve_test_shots(firing.ships, &shots);
         let ships = &resolved.ships;
         let projectiles = &resolved.weapon_effects;
         let impacts = &resolved.impact_effects;
@@ -12664,7 +12682,9 @@ mod tests {
         }));
     }
 
-    // Source: FUN_005b3a40 / FUN_005b3f10 automatic weapon fire.
+    // Source: FUN_005b3a40 / FUN_005b3f10 automatic weapon fire. The search
+    // takes enemy fighter groups only (FUN_005cdf50 on the fighter tree
+    // +0x900), so the two targets are groups.
     #[test]
     fn automatic_weapon_callback_keeps_first_arc_on_ties_and_fires_each_ready_arc() {
         let mut source = test_ship(64, 0, true, true);
@@ -12673,65 +12693,74 @@ mod tests {
         source.weapon_arcs[0] = TacticalWeaponArc::new(0, 0, 30);
         source.weapon_arcs[1] = TacticalWeaponArc::new(0, 0, 30);
         source.weapon_ranges.turbolaser = 100.0;
-        let mut fore = test_ship(128, 0, false, true);
+        // Attack Fighters with no target searches (order 4, 0x5b3b83).
+        source.order = TacticalOrder::AttackFighters;
+        let mut fore = test_fighter(5, false);
         fore.source_position.z = 10.0;
-        fore.hull_current = 1000;
-        fore.hull_max = 1000;
-        fore.shield = 1000;
-        fore.shield_max = 1000;
-        let mut starboard = fore.clone();
-        starboard.identity.fleet_roster_index = 1;
+        let mut starboard = test_fighter(5, false);
         starboard.source_position = TacticalWorldPosition {
             x: 10.0,
             y: 0.0,
             z: 0.0,
         };
-        let mut ships = vec![source, fore, starboard];
+        let mut session = test_session(vec![source], vec![fore, starboard], true);
 
         let mut shots = Vec::new();
-        BattleSession::fire_side(&mut ships, &[0], &[1, 2], &mut shots);
-        let resolved = resolve_test_shots(ships, &shots);
-        let ships = &resolved.ships;
-        let projectiles = &resolved.weapon_effects;
-        let impacts = &resolved.impact_effects;
-        let audio_cues = &resolved.pending_audio_cues;
+        session.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
+        resolve_session_shots(&mut session, &shots);
 
         assert_eq!(
-            projectiles
+            session
+                .weapon_effects
                 .iter()
-                .map(|effect| effect.target)
+                .map(|effect| effect.target_position)
                 .collect::<Vec<_>>(),
-            vec![1, 2]
+            vec![
+                session.fighters[0].source_position,
+                session.fighters[1].source_position
+            ]
         );
-        assert_eq!(ships[0].weapon_recharge_queue, vec![0, 1]);
-        assert_eq!(audio_cues.len(), 4);
+        assert_eq!(session.ships[0].weapon_recharge_queue, vec![0, 1]);
+        assert_eq!(session.pending_audio_cues.len(), 4);
     }
 
-    // Source: FUN_005d2360 weapon strength coefficient.
+    // Source: FUN_005d2360 weapon strength coefficient; FUN_005b6530 gives a
+    // direct target its full strength, the search of FUN_005b3a40 scales
+    // its fighter targets by the hull (FUN_005b1770).
     #[test]
     fn weapon_candidates_enforce_range_and_apply_hull_scaling_only_to_auto_fire() {
-        let mut source = test_ship(64, 0, true, true);
-        source.hull_current = 50;
-        source.hull_max = 100;
-        source.weapon_arcs[0] = TacticalWeaponArc::new(0, 0, 100);
-        source.weapon_ranges.turbolaser = 10.0;
-        let mut target = test_ship(128, 0, false, true);
-        target.source_position.z = 10.0;
-        let ships = vec![source, target];
+        let strengths = |z: f32| {
+            let mut source = test_ship(64, 0, true, true);
+            source.hull_current = 50;
+            source.hull_max = 100;
+            source.weapon_arcs[0] = TacticalWeaponArc::new(0, 0, 100);
+            source.weapon_ranges.turbolaser = 10.0;
+            source.order = TacticalOrder::AttackCapitalShips;
+            source.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+            let mut target = test_ship(128, 0, false, true);
+            target.source_position.z = z;
+            let direct = test_session(vec![source.clone(), target], Vec::new(), true);
+            source.order = TacticalOrder::AttackFighters;
+            source.attack_target = None;
+            let mut wing = test_fighter(5, false);
+            wing.source_position.z = z;
+            let automatic = test_session(vec![source], vec![wing], true);
+            [direct, automatic].map(|mut session| {
+                let mut shots = Vec::new();
+                session.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
+                shots.iter().map(|shot| shot.strength).collect::<Vec<_>>()
+            })
+        };
+        let [direct, automatic] = strengths(10.0);
+        assert_eq!(direct.len(), 1);
+        assert!((direct[0] - 26.666_668).abs() < 0.000_01);
+        // A turbolaser's half against fighters (FUN_005d2490), then the hull.
+        assert_eq!(automatic.len(), 1);
+        assert!((automatic[0] - 6.666_667).abs() < 0.000_01);
 
-        let automatic = original_capital_weapon_candidates(&ships, 0, &[1], None);
-        let direct = original_capital_weapon_candidates(&ships, 0, &[1], Some(1));
-        assert!((automatic[0].turbolaser.strength - 13.333_334).abs() < 0.000_01);
-        assert!((direct[0].turbolaser.strength - 26.666_668).abs() < 0.000_01);
-
-        let mut out_of_range = ships;
-        out_of_range[1].source_position.z = 10.001;
-        assert_eq!(
-            original_capital_weapon_candidates(&out_of_range, 0, &[1], None)[0]
-                .turbolaser
-                .target,
-            None
-        );
+        let [direct, automatic] = strengths(10.001);
+        assert!(direct.is_empty());
+        assert!(automatic.is_empty());
     }
 
     // Source: FUN_005b64e0 / FUN_005b6320 weapon recharge FIFO.
@@ -12814,6 +12843,10 @@ mod tests {
         source.hull_max = 1000;
         source.weapon_arcs[0] = TacticalWeaponArc::new(300, 0, 0);
         source.weapon_ranges.laser_cannon = 100.0;
+        // A capital ship fires at one only as its force's target
+        // (FUN_005b3a40, FUN_005b6530).
+        source.order = TacticalOrder::AttackCapitalShips;
+        source.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
         let mut target = test_ship(128, 0, false, true);
         target.hull_current = 1000;
         target.hull_max = 1000;
@@ -12821,11 +12854,12 @@ mod tests {
         target.shield_max = 10;
         target.subsystem_capacity.shields = true;
         target.refresh_subsystem_condition();
-        let mut ships = vec![source, target];
+        let ships = vec![source, target];
 
         let mut shots = Vec::new();
-        BattleSession::fire_side(&mut ships, &[0], &[1], &mut shots);
-        let resolved = resolve_test_shots(ships, &shots);
+        let mut firing = test_session(ships, Vec::new(), true);
+        firing.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
+        let resolved = resolve_test_shots(firing.ships, &shots);
         let ships = &resolved.ships;
         let projectiles = &resolved.weapon_effects;
         let impacts = &resolved.impact_effects;
@@ -13727,7 +13761,7 @@ mod tests {
         let mut session = test_session(vec![target], vec![fighter], true);
 
         let mut shots = Vec::new();
-        session.fighter_step(&mut shots);
+        session.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Fighter(0), &mut shots);
         resolve_session_shots(&mut session, &shots);
 
         assert!(session.ships[0].hull_current < 1000);
@@ -13782,7 +13816,7 @@ mod tests {
         let mut session = test_session(Vec::new(), vec![source, target], true);
 
         let mut shots = Vec::new();
-        session.fighter_step(&mut shots);
+        session.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Fighter(0), &mut shots);
         resolve_session_shots(&mut session, &shots);
 
         assert!(session.fighters[1].hull_current < 96.0);
@@ -13809,7 +13843,7 @@ mod tests {
         let mut session = test_session(vec![source], vec![target], true);
         let mut shots = Vec::new();
 
-        session.fire_capitals_at_fighters(&mut shots);
+        session.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
         resolve_session_shots(&mut session, &shots);
 
         assert!(!session.fighters[0].alive);

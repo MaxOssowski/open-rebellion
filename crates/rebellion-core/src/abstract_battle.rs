@@ -3211,8 +3211,12 @@ mod tests {
         tactical.ships[0].subsystem_condition.hyperdrive = 100;
         // FUN_005ad530 gives every capital ship order 3, a damaged or a
         // missing hyperdrive too.
+        // Its hyperdrive takes every hit it can (FUN_005b1970, case 4), so a
+        // hit elsewhere that refreshes every ship's condition keeps it at 0.
         let mut damaged = jumper(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
-        damaged.subsystem_condition.hyperdrive = 0;
+        damaged.subsystem_damage.hyperdrive = damaged.subsystem_capacity.hyperdrive;
+        damaged.refresh_subsystem_condition();
+        assert_eq!(damaged.subsystem_condition.hyperdrive, 0);
         let mut missing = ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0);
         missing.subsystem_condition.hyperdrive = 100;
         tactical.ships.push(damaged);
@@ -5201,7 +5205,7 @@ mod tests {
     fn a_jumping_fighter_group_drops_out_of_the_fight() {
         use crate::tactical::{
             first_original_attack_target, manual_attack_target_is_eligible,
-            tactical_attack_target_is_eligible, OriginalFighterTarget, TacticalAttackTarget,
+            tactical_attack_target_is_eligible, TacticalAttackTarget,
         };
         let ranges = TacticalWeaponRanges {
             laser_cannon: 100.0,
@@ -5215,6 +5219,14 @@ mod tests {
         enemy.source_position.z = 5.0;
         let tactical = session(Vec::new(), vec![own, enemy]);
         let target = TacticalAttackTarget::FighterGroup(1);
+        // Each group's nearest enemy is the other (FUN_005cb6e0).
+        let fires = |tactical: &BattleSession, index: usize| {
+            let mut shots = Vec::new();
+            tactical
+                .clone()
+                .fire_unit_weapons(crate::tactical::TacticalUnitRef::Fighter(index), &mut shots);
+            !shots.is_empty()
+        };
         let check = |tactical: &BattleSession| {
             (
                 tactical_attack_target_is_eligible(
@@ -5225,19 +5237,15 @@ mod tests {
                 ),
                 manual_attack_target_is_eligible(tactical, true, target),
                 first_original_attack_target(tactical, true, TacticalOrder::AttackFighters),
-                tactical.fighter_target(1).is_some(),
-                tactical.fighter_target_strength(1, OriginalFighterTarget::Fighter(0)) > 0.0,
-                tactical.fighter_target_strength(0, OriginalFighterTarget::Fighter(1)) > 0.0,
+                fires(tactical, 1),
+                fires(tactical, 0),
             )
         };
-        assert_eq!(
-            check(&tactical),
-            (true, true, Some(target), true, true, true)
-        );
+        assert_eq!(check(&tactical), (true, true, Some(target), true, true));
         let mut jumping = tactical.clone();
         jumping.fighters[1].retreating = true;
         jumping.fighters[1].retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
-        assert_eq!(check(&jumping), (false, false, None, false, false, false));
+        assert_eq!(check(&jumping), (false, false, None, false, false));
     }
 
     // FUN_005ad530 posts event 0x3c (state 8) for a withdrawing fighter
@@ -6031,6 +6039,423 @@ mod tests {
         assert_eq!(run(&[1]), (false, true));
     }
 
+    /// Every family's range at 100.
+    fn long_ranges() -> TacticalWeaponRanges {
+        TacticalWeaponRanges {
+            laser_cannon: 100.0,
+            ion_cannon: 100.0,
+            turbolaser: 100.0,
+        }
+    }
+
+    /// A capital ship with `arc` in all four arcs and every range at 100.
+    fn gunship(alliance: bool, arc: TacticalWeaponArc) -> TacticalShip {
+        let mut value = ship(alliance, arc, 30.0);
+        value.weapon_arcs = [arc; 4];
+        value.weapon_ranges = long_ranges();
+        value.hull_current = 1_000_000;
+        value.hull_max = 1_000_000;
+        value
+    }
+
+    /// A fighter group with lasers and every range at 100, at `z`.
+    fn wing_at(alliance: bool, z: f32) -> TacticalFighter {
+        let mut value = fighter(alliance, TacticalWeaponArc::new(4, 0, 0));
+        value.weapon_ranges = long_ranges();
+        value.source_position.z = z;
+        value
+    }
+
+    /// The shots one unit's weapons decide (`FUN_005b3a40` past its gate).
+    fn unit_shots(
+        tactical: &mut BattleSession,
+        unit: crate::tactical::TacticalUnitRef,
+    ) -> Vec<crate::tactical::TacticalShot> {
+        let mut shots = Vec::new();
+        tactical.fire_unit_weapons(unit, &mut shots);
+        shots
+    }
+
+    fn shot_targets(shots: &[crate::tactical::TacticalShot]) -> Vec<crate::tactical::OriginalFighterTarget> {
+        shots.iter().map(|shot| shot.target).collect()
+    }
+
+    // FUN_005cb6e0 (FUN_005aa970): with no target, a force whose first
+    // member has only ion cannons or turbolasers fires at the nearest enemy
+    // capital ship; one with laser cannons at the nearest enemy fighter
+    // group, and, with none, at no capital ship at all (FUN_005b3a40 searches
+    // the fighter tree +0x900 only).
+    #[test]
+    fn an_idle_force_fires_only_at_its_nearest_enemy() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let enemies = || {
+            let mut far = gunship(false, TacticalWeaponArc::default());
+            far.source_position.z = 50.0;
+            let mut near = gunship(false, TacticalWeaponArc::default());
+            near.source_position.z = 10.0;
+            [far, near]
+        };
+        let [far, near] = enemies();
+        let mut turbolasers = session(
+            vec![gunship(true, TacticalWeaponArc::new(0, 0, 4)), far, near],
+            Vec::new(),
+        );
+        let shots = unit_shots(&mut turbolasers, TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Capital(2)]);
+
+        let [far, near] = enemies();
+        let mut lasers = session(
+            vec![gunship(true, TacticalWeaponArc::new(4, 0, 0)), far, near],
+            Vec::new(),
+        );
+        assert!(unit_shots(&mut lasers, TacticalUnitRef::Ship(0)).is_empty());
+        lasers.fighters.push(wing_at(false, 40.0));
+        lasers.fighters.push(wing_at(false, 20.0));
+        let shots = unit_shots(&mut lasers, TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Fighter(1)]);
+
+        let [far, near] = enemies();
+        let mut unarmed = session(
+            vec![gunship(true, TacticalWeaponArc::default()), far, near],
+            vec![wing_at(false, 20.0)],
+        );
+        assert!(unit_shots(&mut unarmed, TacticalUnitRef::Ship(0)).is_empty());
+    }
+
+    // FUN_005cb6e0 measures from the force's mover anchor (+0x54 + 0x3c,
+    // FUN_005a2260), not from the unit; the first of equal distances stays
+    // (FUN_005aa970's strict <).
+    #[test]
+    fn the_nearest_enemy_is_measured_from_the_forces_anchor() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let mut by_the_unit = gunship(false, TacticalWeaponArc::default());
+        by_the_unit.source_position.z = 10.0;
+        let mut by_the_anchor = gunship(false, TacticalWeaponArc::default());
+        by_the_anchor.source_position.z = 45.0;
+        let mut tactical = session(
+            vec![
+                gunship(true, TacticalWeaponArc::new(0, 0, 4)),
+                by_the_unit,
+                by_the_anchor,
+            ],
+            Vec::new(),
+        );
+        tactical.update_force_movers();
+        let key = tactical.force_key(0);
+        for mover in &mut tactical.force_movers {
+            if mover.force == key {
+                mover.anchor.z = 40.0;
+            }
+        }
+        let shots = unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Capital(2)]);
+
+        let mut tied = session(
+            vec![gunship(true, TacticalWeaponArc::new(0, 0, 4))],
+            Vec::new(),
+        );
+        for x in [-10.0, 10.0] {
+            let mut enemy = gunship(false, TacticalWeaponArc::default());
+            enemy.source_position.x = x;
+            tied.ships.push(enemy);
+        }
+        let shots = unit_shots(&mut tied, TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Capital(1)]);
+    }
+
+    // FUN_005b6530 returns 2 beyond the longest range (FUN_005b18d0), and
+    // FUN_005b3a40 then tries the force's nearest enemy; its 1 (the arc not
+    // ready) stops the turn there.
+    #[test]
+    fn a_target_out_of_range_falls_to_the_nearest_enemy() {
+        use crate::tactical::{OriginalFighterTarget, TacticalAttackTarget, TacticalUnitRef};
+        let mut far = gunship(false, TacticalWeaponArc::default());
+        far.source_position.z = 150.0;
+        let mut beside = gunship(false, TacticalWeaponArc::default());
+        beside.source_position.x = 30.0;
+        let mut shooter = gunship(true, TacticalWeaponArc::new(0, 0, 4));
+        shooter.order = TacticalOrder::AttackCapitalShips;
+        shooter.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        let mut tactical = session(vec![shooter, far, beside], Vec::new());
+        let shots = unit_shots(&mut tactical.clone(), TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Capital(2)]);
+
+        // The target in the fore arc at 30, that arc spent: no fallback.
+        tactical.ships[1].source_position.z = 30.0;
+        tactical.ships[2].source_position.x = 20.0;
+        tactical.ships[0].weapon_arcs[0].ready = false;
+        assert!(unit_shots(&mut tactical, TacticalUnitRef::Ship(0)).is_empty());
+    }
+
+    // FUN_005b3a40 (0x5b3afc): when no arc can hurt the target's class
+    // (slot +0x84, FUN_005b4c60, returns 4), the turn ends before any other
+    // shot; ion cannons do not hurt fighters.
+    #[test]
+    fn no_weapon_against_the_targets_class_ends_the_turn() {
+        use crate::tactical::{OriginalFighterTarget, TacticalAttackTarget, TacticalUnitRef};
+        let mut ions = gunship(true, TacticalWeaponArc::new(0, 4, 0));
+        ions.order = TacticalOrder::AttackFighters;
+        ions.attack_target = Some(TacticalAttackTarget::FighterGroup(0));
+        let mut capital = gunship(false, TacticalWeaponArc::default());
+        capital.source_position.z = 10.0;
+        let mut tactical = session(vec![ions, capital], vec![wing_at(false, 10.0)]);
+        assert!(unit_shots(&mut tactical.clone(), TacticalUnitRef::Ship(0)).is_empty());
+        tactical.ships[0].order = TacticalOrder::None;
+        tactical.ships[0].attack_target = None;
+        let shots = unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Capital(1)]);
+    }
+
+    // FUN_005b3a40 (0x5b3b83): on Attack Fighters, after the direct shot at
+    // its target, the unit searches the groups nearby with its other ready
+    // arcs; a fired arc keeps the energy of the families it did not fire
+    // (FUN_005b3f10).
+    #[test]
+    fn attack_fighters_fires_at_its_target_then_at_groups_nearby() {
+        use crate::tactical::{OriginalFighterTarget, TacticalAttackTarget, TacticalUnitRef};
+        let mut shooter = gunship(true, TacticalWeaponArc::new(4, 2, 0));
+        shooter.order = TacticalOrder::AttackFighters;
+        shooter.attack_target = Some(TacticalAttackTarget::FighterGroup(0));
+        let mut tactical = session(
+            vec![shooter],
+            vec![wing_at(false, 10.0), wing_at(false, -10.0)],
+        );
+        let shots = unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+        assert_eq!(
+            shot_targets(&shots),
+            [OriginalFighterTarget::Fighter(0), OriginalFighterTarget::Fighter(1)]
+        );
+        let ship = &tactical.ships[0];
+        assert_eq!(ship.weapon_recharge_queue, vec![0, 2]);
+        assert_eq!(ship.weapon_arcs[0].energy, 2.0);
+        assert!(ship.weapon_arcs[1].ready && ship.weapon_arcs[3].ready);
+    }
+
+    // FUN_005b3a40's search (FUN_005cdf50, then 0x5b3cf0..): a family keeps
+    // a group while its kept strength is below its full strength, and keeps
+    // it scaled by the hull (FUN_005b1770). A whole unit keeps the first
+    // group it walks to, a damaged one the last. The nearest group, behind,
+    // takes the aft arc's direct shot first (FUN_005cb6e0, FUN_005b6530).
+    #[test]
+    fn the_search_keeps_the_first_group_when_whole_and_the_last_when_damaged() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let run = |hull: i32| {
+            let mut shooter = gunship(true, TacticalWeaponArc::new(4, 0, 0));
+            shooter.order = TacticalOrder::AttackFighters;
+            shooter.hull_current = hull;
+            let behind = wing_at(false, -5.0);
+            let mut left = wing_at(false, 10.0);
+            left.source_position.x = -1.0;
+            let mut right = wing_at(false, 10.0);
+            right.source_position.x = 1.0;
+            let mut tactical = session(vec![shooter], vec![behind, left, right]);
+            let shots = unit_shots(&mut tactical, TacticalUnitRef::Ship(0));
+            (shot_targets(&shots), shots.get(1).map(|shot| shot.strength))
+        };
+        let (whole, whole_strength) = run(1_000_000);
+        assert_eq!(
+            whole,
+            [OriginalFighterTarget::Fighter(0), OriginalFighterTarget::Fighter(1)]
+        );
+        let (damaged, damaged_strength) = run(500_000);
+        assert_eq!(
+            damaged,
+            [OriginalFighterTarget::Fighter(0), OriginalFighterTarget::Fighter(2)]
+        );
+        assert!((damaged_strength.unwrap() * 2.0 - whole_strength.unwrap()).abs() < 0.000_1);
+    }
+
+    // FUN_005cdf50 and FUN_005b3a40's search: enemy groups in the fight
+    // (not in their jump) within a family's range of a ready arc. The
+    // nearest group ahead is a decoy: the fore arc has no guns, so the direct
+    // shot at a fighter target stops at 1 (FUN_005b6530), and Attack
+    // Fighters still searches (0x5b3b83).
+    #[test]
+    fn the_search_takes_enemy_groups_in_range_of_a_ready_arc() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let run = |x: f32, alliance: bool, jumping: bool| {
+            let mut shooter = gunship(true, TacticalWeaponArc::default());
+            shooter.weapon_arcs[1] = TacticalWeaponArc::new(4, 0, 0);
+            shooter.order = TacticalOrder::AttackFighters;
+            let decoy = wing_at(false, 5.0);
+            let mut wing = wing_at(alliance, 0.0);
+            wing.source_position.x = x;
+            if jumping {
+                wing.retreat_progress = crate::tactical::ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+            }
+            let mut tactical = session(vec![shooter], vec![decoy, wing]);
+            shot_targets(&unit_shots(&mut tactical, TacticalUnitRef::Ship(0)))
+        };
+        assert_eq!(run(60.0, false, false), [OriginalFighterTarget::Fighter(1)]);
+        assert_eq!(run(100.0, false, false), [OriginalFighterTarget::Fighter(1)]);
+        assert!(run(100.5, false, false).is_empty());
+        assert!(run(60.0, true, false).is_empty());
+        assert!(run(60.0, false, true).is_empty());
+    }
+
+    // FUN_005b3a40 (0x5b3b83): the search runs on Attack Fighters, or with
+    // laser cannons when the direct shots came to 2 (out of range); a
+    // fired laser ship, or one without lasers out of range, does not search.
+    #[test]
+    fn only_lasers_out_of_range_or_attack_fighters_search() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let mut lasers = session(
+            vec![gunship(true, TacticalWeaponArc::new(4, 0, 0))],
+            vec![wing_at(false, 10.0), wing_at(false, -20.0)],
+        );
+        let shots = unit_shots(&mut lasers, TacticalUnitRef::Ship(0));
+        assert_eq!(shot_targets(&shots), [OriginalFighterTarget::Fighter(0)]);
+
+        let mut far = gunship(false, TacticalWeaponArc::default());
+        far.source_position.z = 150.0;
+        let mut turbolasers = session(
+            vec![gunship(true, TacticalWeaponArc::new(0, 0, 4)), far],
+            vec![wing_at(false, 10.0)],
+        );
+        assert!(unit_shots(&mut turbolasers, TacticalUnitRef::Ship(0)).is_empty());
+    }
+
+    // The force's target (+0x8c) is an enemy in the fight (FUN_005d2190,
+    // FUN_005ad870): a friend or a dead enemy draws no shot.
+    #[test]
+    fn a_friend_or_a_dead_ship_is_no_target() {
+        use crate::tactical::{TacticalAttackTarget, TacticalUnitRef};
+        for (alliance, alive) in [(true, true), (false, false)] {
+            let mut shooter = gunship(true, TacticalWeaponArc::new(0, 0, 4));
+            shooter.order = TacticalOrder::AttackCapitalShips;
+            shooter.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+            let mut target = gunship(alliance, TacticalWeaponArc::default());
+            target.source_position.z = 10.0;
+            target.alive = alive;
+            let mut tactical = session(vec![shooter, target], Vec::new());
+            assert!(unit_shots(&mut tactical, TacticalUnitRef::Ship(0)).is_empty());
+        }
+    }
+
+    // FUN_005aa970 and FUN_005b6530 measure squared three-dimensional
+    // distances, each axis squared.
+    #[test]
+    fn distances_take_every_axis_squared() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let at = |x: f32, y: f32, z: f32| TacticalWorldPosition { x, y, z };
+        let nearest = |first: TacticalWorldPosition, second: TacticalWorldPosition| {
+            let mut tactical = session(
+                vec![gunship(true, TacticalWeaponArc::new(0, 0, 4))],
+                Vec::new(),
+            );
+            for position in [first, second] {
+                let mut enemy = gunship(false, TacticalWeaponArc::default());
+                enemy.source_position = position;
+                tactical.ships.push(enemy);
+            }
+            shot_targets(&unit_shots(&mut tactical, TacticalUnitRef::Ship(0)))
+        };
+        assert_eq!(
+            nearest(at(0.0, 0.0, 10.0), at(0.0, 6.0, 8.2)),
+            [OriginalFighterTarget::Capital(1)]
+        );
+        assert_eq!(
+            nearest(at(10.0, 0.0, 0.0), at(0.0, 0.0, 10.1)),
+            [OriginalFighterTarget::Capital(1)]
+        );
+        assert_eq!(
+            nearest(at(0.0, 0.0, 10.0), at(6.0, 6.0, 0.0)),
+            [OriginalFighterTarget::Capital(2)]
+        );
+        assert_eq!(
+            nearest(at(10.0, 0.0, 0.0), at(0.0, 0.0, 9.9)),
+            [OriginalFighterTarget::Capital(2)]
+        );
+        for position in [at(100.5, 0.0, 0.0), at(0.0, 100.5, 0.0), at(0.0, 0.0, 100.5), at(60.0, 60.0, 60.0)] {
+            let mut tactical = session(
+                vec![gunship(true, TacticalWeaponArc::new(0, 0, 4))],
+                Vec::new(),
+            );
+            let mut enemy = gunship(false, TacticalWeaponArc::default());
+            enemy.source_position = position;
+            tactical.ships.push(enemy);
+            assert!(
+                unit_shots(&mut tactical, TacticalUnitRef::Ship(0)).is_empty(),
+                "{position:?}"
+            );
+        }
+    }
+
+    // FUN_005cdf50 walks the x-sorted tree out from the unit: a capital
+    // ship's search point sorts after groups of equal x (the walk goes down
+    // through them, the last first), and a group walks from its own node.
+    // With the tie rule, a whole unit keeps the first group it walks to.
+    #[test]
+    fn the_search_walks_out_from_the_unit_by_x() {
+        use crate::tactical::{OriginalFighterTarget, TacticalUnitRef};
+        let capital = |hull: i32| {
+            let mut shooter = gunship(true, TacticalWeaponArc::default());
+            shooter.weapon_arcs[0] = TacticalWeaponArc::new(4, 0, 0);
+            shooter.order = TacticalOrder::AttackFighters;
+            shooter.hull_current = hull;
+            let mut behind = wing_at(false, -10.0);
+            behind.source_position.x = -1.0;
+            let mut tactical = session(
+                vec![shooter],
+                vec![wing_at(false, 10.0), wing_at(false, 12.0), behind, wing_at(false, -3.0)],
+            );
+            shot_targets(&unit_shots(&mut tactical, TacticalUnitRef::Ship(0)))
+        };
+        assert_eq!(capital(1_000_000), [OriginalFighterTarget::Fighter(1)]);
+        assert_eq!(capital(500_000), [OriginalFighterTarget::Fighter(0)]);
+
+        let group = |hull: f32| {
+            let mut shooter = wing_at(true, 0.0);
+            shooter.order = TacticalOrder::AttackFighters;
+            shooter.hull_current = hull;
+            let mut tactical = session(
+                Vec::new(),
+                vec![wing_at(false, 10.0), shooter, wing_at(false, 12.0), wing_at(false, -150.0)],
+            );
+            tactical.sync_fighter_movers();
+            for mover in &mut tactical.fighter_movers {
+                if mover.slots.iter().any(|(member, _)| *member == 1) {
+                    mover.anchor.z = -200.0;
+                }
+            }
+            let shots = unit_shots(&mut tactical, TacticalUnitRef::Fighter(1));
+            (shot_targets(&shots), shots.first().map(|shot| shot.strength))
+        };
+        let (whole, whole_strength) = group(96.0);
+        assert_eq!(whole, [OriginalFighterTarget::Fighter(0)]);
+        let (damaged, damaged_strength) = group(48.0);
+        assert_eq!(damaged, [OriginalFighterTarget::Fighter(2)]);
+        // The group's own guns scale with its hull (FUN_005b9c00), and the
+        // search scales them once more (FUN_005b1770).
+        assert!((damaged_strength.unwrap() * 4.0 - whole_strength.unwrap()).abs() < 0.000_1);
+    }
+
+    // FUN_005b3f10 (FUN_005b23a0): a group's torpedoes follow its guns only
+    // at a capital target without shields, within torpedo range, with a
+    // torpedo rating.
+    #[test]
+    fn torpedoes_need_no_shields_range_and_a_rating() {
+        use crate::tactical::{TacticalAttackTarget, TacticalUnitRef, WeaponKind};
+        let run = |shield: i32, torpedoes: u32, z: f32| {
+            let mut bomber = wing_at(true, 0.0);
+            bomber.torpedo_strength = torpedoes;
+            bomber.torpedo_range = 7.0;
+            bomber.order = TacticalOrder::AttackCapitalShips;
+            bomber.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+            let mut target = gunship(false, TacticalWeaponArc::default());
+            target.shield = shield;
+            target.source_position.z = z;
+            let mut tactical = session(vec![target], vec![bomber]);
+            unit_shots(&mut tactical, TacticalUnitRef::Fighter(0))
+                .iter()
+                .any(|shot| shot.kind == WeaponKind::FighterAttack)
+        };
+        assert!(run(0, 16, 7.0));
+        assert!(!run(10, 16, 5.0));
+        assert!(!run(0, 0, 5.0));
+        assert!(!run(0, 16, 7.5));
+    }
+
     // FUN_005b3f10 posts each shot's fire event at +0x87c + 1.0 and its hit
     // at + 2.0; the fire event (FUN_005b1f60) needs both units in the fight
     // (FUN_005ad870), the hit (0x005b2ac0) the target.
@@ -6241,7 +6666,7 @@ mod tests {
         target.source_position.z = 5.0;
         let mut run = session(vec![target], vec![bomber]);
         let mut shots = Vec::new();
-        run.fighter_step(&mut shots);
+        run.fire_unit_weapons(crate::tactical::TacticalUnitRef::Fighter(0), &mut shots);
         assert_eq!(
             shots.iter().find(|shot| shot.kind == WeaponKind::FighterAttack).map(|shot| shot.strength),
             Some(16.0 * ORIGINAL_FIGHTER_TORPEDO_STRENGTH)
