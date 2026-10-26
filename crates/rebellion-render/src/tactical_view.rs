@@ -3123,9 +3123,63 @@ enum TacticalFocusAssignment {
 /// A capital selection spanning more than one task force is rejected before
 /// any target or escort state changes, and the faction-specific source event
 /// is queued for the production audio path.
+/// Space (`FUN_0059b730`, key `0x20`, the selection state's slot `+0x1c`):
+/// from the selection's point, its one ship's position (`0x005a21e0`) or
+/// its members' centroid (`0x005a3250` for several ships, `0x005a4180` for
+/// a task force), the nearest enemy capital ship in the fight, else the
+/// nearest enemy squadron (`FUN_005aa970`), becomes the target as by a
+/// right click without Ctrl (slot `+0xc` with 0). An enemy selection or
+/// none does nothing (`0x006158b0`). port: a fighter group's Space waits
+/// for the fighter groups' targets of a right click.
+fn attack_nearest_enemy(session: &mut BattleSession) -> Option<TacticalFocusAssignment> {
+    if session.selected_fighter_group.is_some() {
+        return None;
+    }
+    let mut sum = TacticalWorldPosition { x: 0.0, y: 0.0, z: 0.0 };
+    let mut count = 0.0_f32;
+    for ship in session
+        .ships
+        .iter()
+        .filter(|ship| ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker)
+    {
+        sum.x += ship.source_position.x;
+        sum.y += ship.source_position.y;
+        sum.z += ship.source_position.z;
+        count += 1.0;
+    }
+    if count <= 0.0 {
+        return None;
+    }
+    // The sum scaled by 1 / count (`DAT_0066bb54`).
+    let scale = 1.0 / count;
+    let point = TacticalWorldPosition {
+        x: scale * sum.x,
+        y: scale * sum.y,
+        z: scale * sum.z,
+    };
+    let enemy = !session.player_is_attacker;
+    let target = match session
+        .nearest_unit_of_side(point, enemy, false)
+        .or_else(|| session.nearest_unit_of_side(point, enemy, true))?
+    {
+        TacticalUnitRef::Ship(index) => TacticalAttackTarget::CapitalShip(index),
+        TacticalUnitRef::Fighter(index) => TacticalAttackTarget::FighterGroup(index),
+    };
+    Some(assign_selected_focus_target(session, target, false))
+}
+
 fn assign_selected_capital_focus_target(
     session: &mut BattleSession,
     target_idx: usize,
+    append: bool,
+) -> TacticalFocusAssignment {
+    assign_selected_focus_target(session, TacticalAttackTarget::CapitalShip(target_idx), append)
+}
+
+/// `assign_selected_capital_focus_target` for a capital ship or a squadron.
+fn assign_selected_focus_target(
+    session: &mut BattleSession,
+    target: TacticalAttackTarget,
     append: bool,
 ) -> TacticalFocusAssignment {
     let selected = session
@@ -3158,7 +3212,6 @@ fn assign_selected_capital_focus_target(
         };
     }
 
-    let target = TacticalAttackTarget::CapitalShip(target_idx);
     for index in selected.iter().copied() {
         let ship = &mut session.ships[index];
         ship.escort_target = None;
@@ -5063,154 +5116,27 @@ fn handle_original_tactical_controls(
         if let Some(control) = command_control {
             activate_tactical_command(state, control);
         } else {
-            match tactical_hud_control_at(cache, x, y) {
-                Some(TacticalHudControl::NavigationSet(set)) => {
-                    if let Some(visible) = state.navigation_sets_visible.get_mut(usize::from(set)) {
-                        *visible = !*visible;
-                        state.logged_navigation_scene = None;
-                        macroquad::logging::info!(
-                            "[tactical_navigation] event=set_visibility set={} visible={}",
-                            set + 1,
-                            *visible,
-                        );
-                    }
+            if let Some(control) = tactical_hud_control_at(cache, x, y) {
+                if let Some(action) = activate_tactical_hud_control(state, control) {
+                    return action;
                 }
-                Some(TacticalHudControl::TaskForce(group)) => {
-                    if let Some(session) = state.session.as_mut() {
-                        let control =
-                            is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
-                        let changed = if control {
-                            assign_selected_to_task_force(session, group)
-                        } else {
-                            select_task_force(session, group)
-                        };
-                        if changed > 0 {
-                            state.command_panel = TacticalCommandPanel::Display;
-                            macroquad::logging::info!(
-                                "[tactical_groups] task_force_{} slot={} members={}",
-                                if control { "assigned" } else { "selected" },
-                                group + 1,
-                                changed,
-                            );
-                        }
-                    }
-                }
-                Some(TacticalHudControl::FighterGroup(group)) => {
-                    if let Some(session) = state.session.as_mut() {
-                        if select_fighter_group(session, group) {
-                            state.command_panel = TacticalCommandPanel::Display;
-                            let members = session
-                                .fighters
-                                .iter()
-                                .filter(|fighter| fighter.selected)
-                                .count();
-                            macroquad::logging::info!(
-                                "[tactical_groups] fighter_group_selected slot={} members={}",
-                                group + 1,
-                                members,
-                            );
-                        }
-                    }
-                }
-                Some(TacticalHudControl::Pause) => return TacticalAction::TogglePause,
-                Some(TacticalHudControl::ZoomIn) => {
-                    state.camera_follow = None;
-                    state.zoom = (state.zoom * 1.25).min(2.0);
-                    state.asset_renderer.zoom_in();
-                }
-                Some(TacticalHudControl::ZoomOut) => {
-                    state.camera_follow = None;
-                    state.zoom = (state.zoom / 1.25).max(0.5);
-                    state.asset_renderer.zoom_out();
-                }
-                Some(TacticalHudControl::CameraTarget) => {
-                    state.camera_follow = None;
-                    let selected = state.session.as_ref().and_then(|session| {
-                        session.selected_ship.and_then(|index| {
-                            session.ships.get(index).map(|ship| {
-                                (index, ship.x, ship.y, ship.source_position.rendered())
-                            })
-                        })
-                    });
-                    if let Some((_index, x, y, _source_position)) = selected {
-                        (state.camera_x, state.camera_y) = camera_offset_for_target(x, y);
-                        state.asset_renderer.focus_target(
-                            u32::try_from(_index).unwrap_or(u32::MAX).saturating_add(1),
-                            _source_position,
-                        );
-                    }
-                }
-                Some(TacticalHudControl::CameraLeft) => {
-                    if state.camera_follow.take().is_some() {
-                        macroquad::logging::info!(
-                            "[tactical_camera] command=follow_exit reason=manual"
-                        );
-                    }
-                    state.asset_renderer.turn_left();
-                }
-                Some(TacticalHudControl::CameraRight) => {
-                    state.camera_follow = None;
-                    state.asset_renderer.turn_right();
-                }
-                Some(TacticalHudControl::CameraUp) => {
-                    state.camera_follow = None;
-                    state.asset_renderer.pitch_up();
-                }
-                Some(TacticalHudControl::CameraDown) => {
-                    state.camera_follow = None;
-                    state.asset_renderer.pitch_down();
-                }
-                Some(TacticalHudControl::CameraMemorize) => {
-                    state.memorized_camera =
-                        state
-                            .asset_renderer
-                            .camera_state()
-                            .map(|source| TacticalCameraBookmark {
-                                source,
-                                camera_x: state.camera_x,
-                                camera_y: state.camera_y,
-                                zoom: state.zoom,
-                            });
-                    macroquad::logging::info!(
-                        "[tactical_camera] command=memorize stored={}",
-                        state.memorized_camera.is_some(),
-                    );
-                }
-                Some(TacticalHudControl::CameraRecall) => {
-                    if let Some(bookmark) = state.memorized_camera.or(state.default_camera) {
-                        state.asset_renderer.restore_camera_state(bookmark.source);
-                        state.camera_x = bookmark.camera_x;
-                        state.camera_y = bookmark.camera_y;
-                        state.zoom = bookmark.zoom;
-                        state.camera_follow = None;
-                        macroquad::logging::info!(
-                            "[tactical_camera] command=recall source={}",
-                            if state.memorized_camera.is_some() {
-                                "memorized"
-                            } else {
-                                "default"
-                            },
-                        );
-                    }
-                }
-                Some(TacticalHudControl::HighlightAlliance) => {
-                    state.highlight_alliance = !state.highlight_alliance;
-                }
-                Some(TacticalHudControl::HighlightEmpire) => {
-                    state.highlight_empire = !state.highlight_empire;
-                }
-                Some(TacticalHudControl::BattleOptions) => {
-                    state.battle_options_open = true;
-                    state.withdraw_confirmation_open = false;
-                    state.withdraw_confirmation_pressed = None;
-                    state.command_panel = TacticalCommandPanel::Display;
-                    macroquad::logging::info!("[tactical_options] command=open");
-                }
-                None => {}
             }
         }
     }
-    let task_force_keys = [
+    // FUN_0059b730: a key presses its HUD button (`FUN_0059ca90`). Keys 1
+    // to 8 first release the group buttons (`FUN_0059b430`, `FUN_0059b600`).
+    // port: a held key acts once, at its press.
+    for (key, control) in TACTICAL_BUTTON_KEYS {
+        if is_key_pressed(key) {
+            if let Some(action) = activate_tactical_hud_control(state, control) {
+                return action;
+            }
+        }
+    }
+    // F1 to F8 and F9 to F12: the camera follows that task force or fighter
+    // group when it exists (`FUN_00595ba0`, `FUN_00595bc0`, then
+    // `FUN_005c2990` mode 0xb). The selection stays.
+    let follow_keys = [
         KeyCode::F1,
         KeyCode::F2,
         KeyCode::F3,
@@ -5219,68 +5145,262 @@ fn handle_original_tactical_controls(
         KeyCode::F6,
         KeyCode::F7,
         KeyCode::F8,
+        KeyCode::F9,
+        KeyCode::F10,
+        KeyCode::F11,
+        KeyCode::F12,
     ];
-    for (index, key) in task_force_keys.iter().enumerate() {
-        if is_key_pressed(*key) {
-            if let Some(session) = state.session.as_mut() {
-                if select_task_force(session, u8::try_from(index).unwrap_or(7)) > 0 {
-                    state.command_panel = TacticalCommandPanel::Display;
-                    let group = u8::try_from(index).unwrap_or(7);
-                    state.camera_follow = Some(TacticalCameraFollow::TaskForce(group));
-                    macroquad::logging::info!(
-                        "[tactical_camera] command=follow kind=task_force group={}",
-                        group + 1,
-                    );
-                }
-            }
+    for (index, key) in follow_keys.iter().enumerate() {
+        if !is_key_pressed(*key) {
+            continue;
+        }
+        let Some(session) = state.session.as_ref() else {
+            continue;
+        };
+        if let Some(follow) = camera_follow_for_key(session, index) {
+            state.camera_follow = Some(follow);
+            let (kind, group) = match follow {
+                TacticalCameraFollow::TaskForce(group) => ("task_force", group),
+                TacticalCameraFollow::FighterGroup(group) => ("fighter_group", group),
+            };
+            macroquad::logging::info!(
+                "[tactical_camera] command=follow kind={} group={}",
+                kind,
+                group + 1,
+            );
         }
     }
-    let fighter_group_keys = [KeyCode::F9, KeyCode::F10, KeyCode::F11, KeyCode::F12];
-    for (index, key) in fighter_group_keys.iter().enumerate() {
-        if is_key_pressed(*key) {
-            if let Some(session) = state.session.as_mut() {
-                if select_fighter_group(session, u8::try_from(index).unwrap_or(3)) {
-                    state.command_panel = TacticalCommandPanel::Display;
-                    let group = u8::try_from(index).unwrap_or(3);
-                    state.camera_follow = Some(TacticalCameraFollow::FighterGroup(group));
-                    macroquad::logging::info!(
-                        "[tactical_camera] command=follow kind=fighter_group group={}",
-                        group + 1,
-                    );
-                }
+    if is_key_pressed(KeyCode::Space) {
+        if let Some(session) = state.session.as_mut() {
+            if let Some(TacticalFocusAssignment::Assigned { object_ids, .. }) = attack_nearest_enemy(session) {
+                macroquad::logging::info!(
+                    "[tactical_navigation] event=nearest_target members={}",
+                    object_ids.len(),
+                );
             }
-        }
-    }
-    if is_key_pressed(KeyCode::Equal) {
-        state.camera_follow = None;
-        state.zoom = (state.zoom * 1.25).min(2.0);
-        state.asset_renderer.zoom_in();
-    }
-    if is_key_pressed(KeyCode::Minus) {
-        state.camera_follow = None;
-        state.zoom = (state.zoom / 1.25).max(0.5);
-        state.asset_renderer.zoom_out();
-    }
-    if is_key_pressed(KeyCode::Enter) {
-        state.camera_follow = None;
-        let selected = state.session.as_ref().and_then(|session| {
-            session.selected_ship.and_then(|index| {
-                session.ships.get(index).map(|ship| {
-                    (
-                        u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
-                        ship.x,
-                        ship.y,
-                        ship.source_position.rendered(),
-                    )
-                })
-            })
-        });
-        if let Some((object_id, x, y, source)) = selected {
-            (state.camera_x, state.camera_y) = camera_offset_for_target(x, y);
-            state.asset_renderer.focus_target(object_id, source);
         }
     }
     TacticalAction::None
+}
+
+/// `FUN_0059b730`'s keys and the buttons they press: Enter and NumPad. the
+/// camera target (`0xad21`), Page Up, NumPad 9 and NumPad + zoom in
+/// (`0xad1b`), Page Down, NumPad 3 and NumPad - zoom out (`0xad1c`), End
+/// and NumPad 1 recall (`0xad1a`), Home and NumPad 7 memorize (`0xad19`),
+/// the arrows and NumPad 4, 8, 6, 2 turn the camera (`0xad1d`, `0xad1f`,
+/// `0xad1e`, `0xad20`), and 1 to 8 the task forces (`0xad02`..`0xad09`).
+const TACTICAL_BUTTON_KEYS: [(KeyCode, TacticalHudControl); 28] = [
+    (KeyCode::Enter, TacticalHudControl::CameraTarget),
+    (KeyCode::KpDecimal, TacticalHudControl::CameraTarget),
+    (KeyCode::PageUp, TacticalHudControl::ZoomIn),
+    (KeyCode::Kp9, TacticalHudControl::ZoomIn),
+    (KeyCode::KpAdd, TacticalHudControl::ZoomIn),
+    (KeyCode::PageDown, TacticalHudControl::ZoomOut),
+    (KeyCode::Kp3, TacticalHudControl::ZoomOut),
+    (KeyCode::KpSubtract, TacticalHudControl::ZoomOut),
+    (KeyCode::End, TacticalHudControl::CameraRecall),
+    (KeyCode::Kp1, TacticalHudControl::CameraRecall),
+    (KeyCode::Home, TacticalHudControl::CameraMemorize),
+    (KeyCode::Kp7, TacticalHudControl::CameraMemorize),
+    (KeyCode::Left, TacticalHudControl::CameraLeft),
+    (KeyCode::Kp4, TacticalHudControl::CameraLeft),
+    (KeyCode::Up, TacticalHudControl::CameraUp),
+    (KeyCode::Kp8, TacticalHudControl::CameraUp),
+    (KeyCode::Right, TacticalHudControl::CameraRight),
+    (KeyCode::Kp6, TacticalHudControl::CameraRight),
+    (KeyCode::Down, TacticalHudControl::CameraDown),
+    (KeyCode::Kp2, TacticalHudControl::CameraDown),
+    (KeyCode::Key1, TacticalHudControl::TaskForce(0)),
+    (KeyCode::Key2, TacticalHudControl::TaskForce(1)),
+    (KeyCode::Key3, TacticalHudControl::TaskForce(2)),
+    (KeyCode::Key4, TacticalHudControl::TaskForce(3)),
+    (KeyCode::Key5, TacticalHudControl::TaskForce(4)),
+    (KeyCode::Key6, TacticalHudControl::TaskForce(5)),
+    (KeyCode::Key7, TacticalHudControl::TaskForce(6)),
+    (KeyCode::Key8, TacticalHudControl::TaskForce(7)),
+];
+
+/// F1 + `index`: F1 to F8 follow task forces 1 to 8, F9 to F12 fighter
+/// groups 1 to 4 (`FUN_0059b730`, cases `0x70`..`0x7b`).
+fn camera_follow_for_key(session: &BattleSession, index: usize) -> Option<TacticalCameraFollow> {
+    let group = u8::try_from(index % 8).ok()?;
+    if index < 8 {
+        task_force_exists(session, group).then_some(TacticalCameraFollow::TaskForce(group))
+    } else {
+        fighter_group_exists(session, group).then_some(TacticalCameraFollow::FighterGroup(group))
+    }
+}
+
+/// A player's task force with a member left. port: `FUN_00595ba0`'s list
+/// of the occupied slots.
+fn task_force_exists(session: &BattleSession, group: u8) -> bool {
+    session.ships.iter().any(|ship| {
+        ship.alive && ship.is_attacker == session.player_is_attacker && ship.task_force == group
+    })
+}
+
+/// A player's fighter group with a squadron left. port: `FUN_00595bc0`'s
+/// list of the occupied groups.
+fn fighter_group_exists(session: &BattleSession, group: u8) -> bool {
+    session.fighters.iter().any(|fighter| {
+        fighter.alive
+            && fighter.squad_count > 0
+            && fighter.is_attacker == session.player_is_attacker
+            && fighter.fighter_group == group
+    })
+}
+
+/// A HUD button (`FUN_0059b130`), pressed by the mouse or by its key
+/// (`FUN_0059b730`).
+fn activate_tactical_hud_control(
+    state: &mut TacticalState,
+    control: TacticalHudControl,
+) -> Option<TacticalAction> {
+    match control {
+        TacticalHudControl::NavigationSet(set) => {
+            if let Some(visible) = state.navigation_sets_visible.get_mut(usize::from(set)) {
+                *visible = !*visible;
+                state.logged_navigation_scene = None;
+                macroquad::logging::info!(
+                    "[tactical_navigation] event=set_visibility set={} visible={}",
+                    set + 1,
+                    *visible,
+                );
+            }
+        }
+        TacticalHudControl::TaskForce(group) => {
+            if let Some(session) = state.session.as_mut() {
+                let control =
+                    is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
+                let changed = if control {
+                    assign_selected_to_task_force(session, group)
+                } else {
+                    select_task_force(session, group)
+                };
+                if changed > 0 {
+                    state.command_panel = TacticalCommandPanel::Display;
+                    macroquad::logging::info!(
+                        "[tactical_groups] task_force_{} slot={} members={}",
+                        if control { "assigned" } else { "selected" },
+                        group + 1,
+                        changed,
+                    );
+                }
+            }
+        }
+        TacticalHudControl::FighterGroup(group) => {
+            if let Some(session) = state.session.as_mut() {
+                if select_fighter_group(session, group) {
+                    state.command_panel = TacticalCommandPanel::Display;
+                    let members = session
+                        .fighters
+                        .iter()
+                        .filter(|fighter| fighter.selected)
+                        .count();
+                    macroquad::logging::info!(
+                        "[tactical_groups] fighter_group_selected slot={} members={}",
+                        group + 1,
+                        members,
+                    );
+                }
+            }
+        }
+        TacticalHudControl::Pause => return Some(TacticalAction::TogglePause),
+        TacticalHudControl::ZoomIn => {
+            state.camera_follow = None;
+            state.zoom = (state.zoom * 1.25).min(2.0);
+            state.asset_renderer.zoom_in();
+        }
+        TacticalHudControl::ZoomOut => {
+            state.camera_follow = None;
+            state.zoom = (state.zoom / 1.25).max(0.5);
+            state.asset_renderer.zoom_out();
+        }
+        TacticalHudControl::CameraTarget => {
+            state.camera_follow = None;
+            let selected = state.session.as_ref().and_then(|session| {
+                session.selected_ship.and_then(|index| {
+                    session.ships.get(index).map(|ship| {
+                        (index, ship.x, ship.y, ship.source_position.rendered())
+                    })
+                })
+            });
+            if let Some((_index, x, y, _source_position)) = selected {
+                (state.camera_x, state.camera_y) = camera_offset_for_target(x, y);
+                state.asset_renderer.focus_target(
+                    u32::try_from(_index).unwrap_or(u32::MAX).saturating_add(1),
+                    _source_position,
+                );
+            }
+        }
+        TacticalHudControl::CameraLeft => {
+            if state.camera_follow.take().is_some() {
+                macroquad::logging::info!(
+                    "[tactical_camera] command=follow_exit reason=manual"
+                );
+            }
+            state.asset_renderer.turn_left();
+        }
+        TacticalHudControl::CameraRight => {
+            state.camera_follow = None;
+            state.asset_renderer.turn_right();
+        }
+        TacticalHudControl::CameraUp => {
+            state.camera_follow = None;
+            state.asset_renderer.pitch_up();
+        }
+        TacticalHudControl::CameraDown => {
+            state.camera_follow = None;
+            state.asset_renderer.pitch_down();
+        }
+        TacticalHudControl::CameraMemorize => {
+            state.memorized_camera =
+                state
+                    .asset_renderer
+                    .camera_state()
+                    .map(|source| TacticalCameraBookmark {
+                        source,
+                        camera_x: state.camera_x,
+                        camera_y: state.camera_y,
+                        zoom: state.zoom,
+                    });
+            macroquad::logging::info!(
+                "[tactical_camera] command=memorize stored={}",
+                state.memorized_camera.is_some(),
+            );
+        }
+        TacticalHudControl::CameraRecall => {
+            if let Some(bookmark) = state.memorized_camera.or(state.default_camera) {
+                state.asset_renderer.restore_camera_state(bookmark.source);
+                state.camera_x = bookmark.camera_x;
+                state.camera_y = bookmark.camera_y;
+                state.zoom = bookmark.zoom;
+                state.camera_follow = None;
+                macroquad::logging::info!(
+                    "[tactical_camera] command=recall source={}",
+                    if state.memorized_camera.is_some() {
+                        "memorized"
+                    } else {
+                        "default"
+                    },
+                );
+            }
+        }
+        TacticalHudControl::HighlightAlliance => {
+            state.highlight_alliance = !state.highlight_alliance;
+        }
+        TacticalHudControl::HighlightEmpire => {
+            state.highlight_empire = !state.highlight_empire;
+        }
+        TacticalHudControl::BattleOptions => {
+            state.battle_options_open = true;
+            state.withdraw_confirmation_open = false;
+            state.withdraw_confirmation_pressed = None;
+            state.command_panel = TacticalCommandPanel::Display;
+            macroquad::logging::info!("[tactical_options] command=open");
+        }
+    }
+    None
 }
 
 fn camera_offset_for_target(x: f32, y: f32) -> (f32, f32) {
@@ -14168,6 +14288,249 @@ mod tests {
         assert_eq!(assign_selected_escort(&mut session, 2), (0, 0));
         assert_eq!(session.ships[1].order, TacticalOrder::None);
         assert_eq!(session.ships[1].escort_target, None);
+    }
+
+    fn at(x: f32, y: f32, z: f32) -> TacticalWorldPosition {
+        TacticalWorldPosition { x, y, z }
+    }
+
+    // FUN_0059b730 key 0x20 -> 0x66bce8 slot +0x1c (0x005a21e0): the
+    // nearest enemy capital ship to the selected ship (FUN_005aa970)
+    // becomes its target, as a right click without Ctrl.
+    #[test]
+    fn space_targets_the_enemy_capital_nearest_the_selected_ship() {
+        let mut own = test_ship(1, 0, true, true);
+        own.selected = true;
+        own.manual_targets.push(TacticalAttackTarget::CapitalShip(1));
+        let mut far = test_ship(2, 0, false, true);
+        far.source_position = at(0.0, 0.0, 9.0);
+        let mut near = test_ship(3, 1, false, true);
+        near.source_position = at(0.0, -4.0, 0.0);
+        let mut session = test_session(vec![own, far, near], Vec::new(), true);
+        assert!(matches!(
+            attack_nearest_enemy(&mut session),
+            Some(TacticalFocusAssignment::Assigned { .. })
+        ));
+        assert_eq!(session.ships[0].manual_targets, vec![TacticalAttackTarget::CapitalShip(2)]);
+        assert_eq!(session.ships[0].attack_target, Some(TacticalAttackTarget::CapitalShip(2)));
+    }
+
+    // 0x005a3250 / 0x005a4180: several ships search from their centroid
+    // (the sum times 1 / count, DAT_0066bb54).
+    #[test]
+    fn space_searches_from_the_selected_ships_centroid() {
+        let mut left = test_ship(1, 0, true, true);
+        left.selected = true;
+        left.source_position = at(-10.0, 0.0, 0.0);
+        let mut right = test_ship(4, 0, true, true);
+        right.selected = true;
+        right.source_position = at(10.0, 0.0, 0.0);
+        // Nearest to the left ship, but the middle one is nearest the centroid.
+        let mut by_left = test_ship(2, 0, false, true);
+        by_left.source_position = at(-11.0, 0.0, 0.0);
+        let mut middle = test_ship(3, 1, false, true);
+        middle.source_position = at(0.0, 0.0, 5.0);
+        let mut session = test_session(vec![left, right, by_left, middle], Vec::new(), true);
+        attack_nearest_enemy(&mut session);
+        assert_eq!(session.ships[0].attack_target, Some(TacticalAttackTarget::CapitalShip(3)));
+        assert_eq!(session.ships[1].attack_target, Some(TacticalAttackTarget::CapitalShip(3)));
+    }
+
+    // 0x005a21e0's second search (type 1): with no enemy capital ship in
+    // the fight, the nearest enemy squadron.
+    #[test]
+    fn space_falls_back_to_the_nearest_enemy_squadron() {
+        let mut own = test_ship(1, 0, true, true);
+        own.selected = true;
+        let dead = test_ship(2, 0, false, false);
+        let mut far = test_fighter(5, false);
+        far.source_position = at(30.0, 0.0, 0.0);
+        let mut near = test_fighter(6, false);
+        near.source_position = at(3.0, 0.0, 0.0);
+        let mut session = test_session(vec![own, dead], vec![far, near], true);
+        attack_nearest_enemy(&mut session);
+        assert_eq!(session.ships[0].attack_target, Some(TacticalAttackTarget::FighterGroup(1)));
+    }
+
+    // An enemy selection's slot +0x1c is the empty 0x006158b0, and so is
+    // having no selection.
+    #[test]
+    fn space_with_an_enemy_or_no_selection_does_nothing() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        assert!(attack_nearest_enemy(&mut session).is_none());
+        select_clicked_ship(&mut session, 1, false);
+        assert!(attack_nearest_enemy(&mut session).is_none());
+        assert!(session.ships.iter().all(|ship| ship.attack_target.is_none()));
+    }
+
+    // FUN_005aa970 measures the squared distance over all three axes.
+    #[test]
+    fn the_nearest_unit_uses_the_squared_distance_over_three_axes() {
+        let mut above = test_ship(2, 0, false, true);
+        above.source_position = at(0.0, 3.0, 0.0); // 9
+        let mut across = test_ship(3, 1, false, true);
+        across.source_position = at(2.0, 0.0, 2.0); // 8
+        let mut ahead = test_ship(4, 2, false, true);
+        ahead.source_position = at(0.0, 0.0, 2.9); // 8.41
+        let session = test_session(vec![above, across, ahead], Vec::new(), true);
+        assert_eq!(
+            session.nearest_unit_of_side(at(0.0, 0.0, 0.0), false, false),
+            Some(TacticalUnitRef::Ship(1))
+        );
+    }
+
+    // FUN_005aa970 keeps the first unit on a tie and takes only the given
+    // side's units in the fight.
+    #[test]
+    fn the_nearest_unit_keeps_the_first_of_a_tie_and_skips_other_units() {
+        let mut own = test_ship(1, 0, true, true);
+        own.source_position = at(0.5, 0.0, 0.0);
+        let mut lost = test_ship(2, 0, false, false);
+        lost.source_position = at(0.0, 0.0, 0.0);
+        let mut first = test_ship(3, 1, false, true);
+        first.source_position = at(1.0, 0.0, 0.0);
+        let mut second = test_ship(4, 2, false, true);
+        second.source_position = at(-1.0, 0.0, 0.0);
+        let mut own_fighter = test_fighter(5, true);
+        own_fighter.source_position = at(0.1, 0.0, 0.0);
+        let mut enemy_fighter = test_fighter(6, false);
+        enemy_fighter.source_position = at(5.0, 0.0, 0.0);
+        let session = test_session(vec![own, lost, first, second], vec![own_fighter, enemy_fighter], true);
+        let origin = at(0.0, 0.0, 0.0);
+        assert_eq!(session.nearest_unit_of_side(origin, false, false), Some(TacticalUnitRef::Ship(2)));
+        assert_eq!(session.nearest_unit_of_side(origin, false, true), Some(TacticalUnitRef::Fighter(1)));
+    }
+
+    // 0x005a3250: the centroid is the sum times 1 / count on every axis.
+    #[test]
+    fn space_aims_from_the_exact_centroid_on_every_axis() {
+        let mut first = test_ship(1, 0, true, true);
+        first.selected = true;
+        first.source_position = at(2.0, 4.0, 6.0);
+        let mut second = test_ship(5, 0, true, true);
+        second.selected = true;
+        second.source_position = at(4.0, 8.0, 10.0);
+        let mut ships = vec![first, second];
+        // The centroid (3, 6, 8) and decoys where a wrong sum or scale lands.
+        for (roster, position) in [
+            (0, at(3.0, 6.0, 8.0)),
+            (1, at(6.0, 12.0, 16.0)),
+            (2, at(-3.0, 6.0, 8.0)),
+            (3, at(3.0, -6.0, 8.0)),
+            (4, at(3.0, 6.0, -8.0)),
+            (5, at(0.0, 6.0, 8.0)),
+            (6, at(3.0, 0.0, 8.0)),
+            (7, at(3.0, 6.0, 0.0)),
+            (8, at(12.0, 24.0, 32.0)),
+            // scale + sum on one axis (0.5 + 12, 0.5 + 16)
+            (9, at(3.0, 12.5, 8.0)),
+            (10, at(3.0, 6.0, 16.5)),
+            (11, at(6.5, 6.0, 8.0)),
+        ] {
+            let mut enemy = test_ship(10 + u32::try_from(roster).unwrap(), roster, false, true);
+            enemy.source_position = position;
+            ships.push(enemy);
+        }
+        let mut session = test_session(ships, Vec::new(), true);
+        attack_nearest_enemy(&mut session);
+        assert_eq!(session.ships[0].attack_target, Some(TacticalAttackTarget::CapitalShip(2)));
+    }
+
+    // F1..F8 follow task forces, F9..F12 fighter groups.
+    #[test]
+    fn f_keys_follow_task_forces_then_fighter_groups() {
+        let mut ship = test_ship(1, 0, true, true);
+        ship.task_force = 2;
+        let mut squadron = test_fighter(5, true);
+        squadron.fighter_group = 1;
+        let session = test_session(vec![ship], vec![squadron], true);
+        assert_eq!(camera_follow_for_key(&session, 2), Some(TacticalCameraFollow::TaskForce(2)));
+        assert_eq!(camera_follow_for_key(&session, 1), None);
+        assert_eq!(camera_follow_for_key(&session, 9), Some(TacticalCameraFollow::FighterGroup(1)));
+        assert_eq!(camera_follow_for_key(&session, 10), None);
+        // F9 is fighter group 1, not task force 1.
+        let mut first = test_ship(1, 0, true, true);
+        first.task_force = 0;
+        let session = test_session(vec![first], vec![test_fighter(5, true)], true);
+        assert_eq!(camera_follow_for_key(&session, 8), Some(TacticalCameraFollow::FighterGroup(0)));
+    }
+
+    // FUN_0059b130: the HUD buttons the keys press.
+    #[test]
+    fn the_hud_buttons_pause_zoom_and_toggle() {
+        let mut state = TacticalState::default();
+        assert_eq!(
+            activate_tactical_hud_control(&mut state, TacticalHudControl::Pause),
+            Some(TacticalAction::TogglePause)
+        );
+        state.zoom = 1.0;
+        assert_eq!(activate_tactical_hud_control(&mut state, TacticalHudControl::ZoomIn), None);
+        assert!((state.zoom - 1.25).abs() < 1e-6);
+        state.zoom = 1.0;
+        activate_tactical_hud_control(&mut state, TacticalHudControl::ZoomOut);
+        assert!((state.zoom - 0.8).abs() < 1e-6);
+        let (alliance, empire) = (state.highlight_alliance, state.highlight_empire);
+        activate_tactical_hud_control(&mut state, TacticalHudControl::HighlightAlliance);
+        activate_tactical_hud_control(&mut state, TacticalHudControl::HighlightEmpire);
+        assert_eq!((state.highlight_alliance, state.highlight_empire), (!alliance, !empire));
+        let visible = state.navigation_sets_visible[0];
+        activate_tactical_hud_control(&mut state, TacticalHudControl::NavigationSet(0));
+        assert_eq!(state.navigation_sets_visible[0], !visible);
+    }
+
+    // FUN_0059b730's virtual keys and the button ids they press.
+    #[test]
+    fn each_battle_key_presses_its_original_button() {
+        let find = |key: KeyCode| {
+            TACTICAL_BUTTON_KEYS
+                .iter()
+                .filter(|(each, _)| *each == key)
+                .map(|(_, control)| *control)
+                .collect::<Vec<_>>()
+        };
+        for (keys, control) in [
+            (&[KeyCode::Enter, KeyCode::KpDecimal][..], TacticalHudControl::CameraTarget),
+            (&[KeyCode::PageUp, KeyCode::Kp9, KeyCode::KpAdd], TacticalHudControl::ZoomIn),
+            (&[KeyCode::PageDown, KeyCode::Kp3, KeyCode::KpSubtract], TacticalHudControl::ZoomOut),
+            (&[KeyCode::End, KeyCode::Kp1], TacticalHudControl::CameraRecall),
+            (&[KeyCode::Home, KeyCode::Kp7], TacticalHudControl::CameraMemorize),
+            (&[KeyCode::Left, KeyCode::Kp4], TacticalHudControl::CameraLeft),
+            (&[KeyCode::Up, KeyCode::Kp8], TacticalHudControl::CameraUp),
+            (&[KeyCode::Right, KeyCode::Kp6], TacticalHudControl::CameraRight),
+            (&[KeyCode::Down, KeyCode::Kp2], TacticalHudControl::CameraDown),
+            (&[KeyCode::Key1], TacticalHudControl::TaskForce(0)),
+            (&[KeyCode::Key8], TacticalHudControl::TaskForce(7)),
+        ] {
+            for key in keys {
+                assert_eq!(find(*key), vec![control], "{key:?}");
+            }
+        }
+        // The main row's = and - are not the original's keys (0x6b, 0x6d
+        // are the NumPad's).
+        assert!(find(KeyCode::Equal).is_empty());
+        assert!(find(KeyCode::Minus).is_empty());
+    }
+
+    // FUN_00595ba0 / FUN_00595bc0: only an occupied group gives F1-F12 a
+    // camera to follow.
+    #[test]
+    fn a_camera_follow_key_needs_a_group_with_a_unit_left() {
+        let mut lost = test_ship(2, 1, true, false);
+        lost.task_force = 1;
+        let mut squadron = test_fighter(5, true);
+        squadron.fighter_group = 2;
+        let mut session = test_session(vec![test_ship(1, 0, true, true), lost], vec![squadron], true);
+        session.ships[0].task_force = 0;
+        assert!(task_force_exists(&session, 0));
+        assert!(!task_force_exists(&session, 1));
+        assert!(fighter_group_exists(&session, 2));
+        session.fighters[0].squad_count = 0;
+        assert!(!fighter_group_exists(&session, 2));
+        assert!(!fighter_group_exists(&session, 0));
     }
 
     #[test]

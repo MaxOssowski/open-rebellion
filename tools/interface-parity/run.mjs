@@ -4223,7 +4223,9 @@ async function probeTacticalGroupPresentation(
     screenshot_sha256: sha256(rejectedTarget),
   });
 
-  await page.keyboard.press("F1");
+  // FUN_0059b730: keys 1-8 press task-force buttons 0xad02-0xad09;
+  // F1-F12 only move the camera (FUN_005c2990 mode 0xb).
+  await page.keyboard.press("Digit1");
   await page.waitForTimeout(80);
   const taskOneHotkey = await capture("task-force-1-hotkey");
   probes.push({ type: "task-force-1-hotkey", ...verifyTacticalBitmap(
@@ -4231,9 +4233,9 @@ async function probeTacticalGroupPresentation(
   ) });
   await page.keyboard.press("F12");
   await page.waitForTimeout(80);
-  const goldHotkey = await capture("gold-group-hotkey");
-  probes.push({ type: "gold-group-f12-hotkey", ...verifyTacticalBitmap(
-    viewport, goldHotkey, 1019, 434, 2,
+  const followHotkey = await capture("camera-follow-f12-hotkey");
+  probes.push({ type: "camera-follow-f12-keeps-selection", ...verifyTacticalBitmap(
+    viewport, followHotkey, 1006, 60, 2, [], labelMask,
   ) });
 
   assert.ok(consoleLines.some(({ text }) =>
@@ -4257,7 +4259,7 @@ async function probeTacticalGroupPresentation(
         far: active_far_resource,
         indicator: active_indicator_resource,
       })),
-    keyboard: { task_forces: "F1-F8", fighter_groups: "F9-F12" },
+    keyboard: { task_forces: "1-8", camera_follow: "F1-F12" },
   });
   return probes;
 }
@@ -5344,8 +5346,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             assert.ok(cameraLogs.length >= 6,
               "navigation journey did not exercise the source tactical camera");
           } else if (scenario.group_presentation) {
-            assert.equal(cameraLogs.length, 3,
-              "group journey did not preserve its initial and two hotkey camera states");
+            // The initial state and F12's follow: key 1 presses the
+            // task-force button, which leaves the camera (FUN_0059b450).
+            assert.equal(cameraLogs.length, 2,
+              "group journey did not preserve its initial and follow-hotkey camera states");
           } else {
             assert.equal(cameraLogs.length, scenario.fighter_detail_journey ? 40 : 1,
               "production participants did not use the source tactical camera");

@@ -7475,6 +7475,48 @@ impl BattleSession {
         }
     }
 
+    /// `FUN_005aa970`: the unit of a side nearest `point` that is still in
+    /// the fight (`FUN_005ad870`), among the capital ships or, with
+    /// `fighters`, the squadrons (the unit's type, slot `+0x20`). The
+    /// first unit found keeps a tie.
+    #[must_use]
+    pub fn nearest_unit_of_side(
+        &self,
+        point: TacticalWorldPosition,
+        side_is_attacker: bool,
+        fighters: bool,
+    ) -> Option<TacticalUnitRef> {
+        let distance = |at: TacticalWorldPosition| {
+            let delta = source_delta(point, at);
+            delta.x * delta.x + delta.z * delta.z + delta.y * delta.y
+        };
+        let mut nearest: Option<(TacticalUnitRef, f32)> = None;
+        let mut consider = |unit: TacticalUnitRef, at: TacticalWorldPosition| {
+            let squared = distance(at);
+            if nearest.is_none_or(|(_, best)| squared < best) {
+                nearest = Some((unit, squared));
+            }
+        };
+        if fighters {
+            for (index, fighter) in self.fighters.iter().enumerate() {
+                if fighter.is_attacker == side_is_attacker
+                    && self.unit_in_the_fight(OriginalFighterTarget::Fighter(index))
+                {
+                    consider(TacticalUnitRef::Fighter(index), fighter.source_position);
+                }
+            }
+        } else {
+            for (index, ship) in self.ships.iter().enumerate() {
+                if ship.is_attacker == side_is_attacker
+                    && self.unit_in_the_fight(OriginalFighterTarget::Capital(index))
+                {
+                    consider(TacticalUnitRef::Ship(index), ship.source_position);
+                }
+            }
+        }
+        nearest.map(|(unit, _)| unit)
+    }
+
     fn unit_in_the_fight(&self, unit: OriginalFighterTarget) -> bool {
         match unit {
             OriginalFighterTarget::Capital(index) => self
