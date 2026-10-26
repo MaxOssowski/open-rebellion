@@ -1008,12 +1008,20 @@ pub(crate) fn original_hull_axes(forward: Vec3) -> [Vec3; 3] {
     [reflect(rows[0]), reflect(rows[1]), -reflect(rows[2])]
 }
 
-/// hyp: d3dim's non-local viewer (`FUN_74020ff0`): the half vector takes
-/// one view direction for the whole scene, from the target to the eye, so a
-/// face's specular is as flat as its diffuse light.
-fn set_view_direction(material: &Material, (position, target): (Vec3, Vec3)) {
-    let view = (position - target).normalize_or_zero();
+/// d3dim's non-local viewer: d3drm hands it the 0x4c `D3DLIGHT` struct
+/// (`FUN_6d8410d6`, render mode `+0x90` without
+/// `D3DRMRENDERMODE_VIEWDEPENDENTSPECULAR`), so `FUN_74017fc4` flags the
+/// light 1 and `FUN_7402029b` takes `FUN_74020ff0` from the table at
+/// `0x740473f4`. Its half vector uses one view direction per object, from
+/// the object's origin to the eye, so a face's specular is as flat as its
+/// diffuse light.
+fn set_view_direction(material: &Material, eye: Vec3, origin: Vec3) {
+    let view = original_view_direction(eye, origin);
     material.set_uniform("ViewDirection", [view.x, view.y, view.z, 0.0]);
+}
+
+fn original_view_direction(eye: Vec3, origin: Vec3) -> Vec3 {
+    (eye - origin).normalize_or_zero()
 }
 
 fn set_object_axes(material: &Material, axes: [Vec3; 3]) {
@@ -1550,7 +1558,7 @@ impl TacticalAssetRenderer {
             width.round() as i32,
             height.round() as i32,
         );
-        let (camera_position, camera_target);
+        let camera_position;
         if let Some(source_camera) = self.source_camera {
             let pose = source_camera.pose();
             let camera_key = [
@@ -1586,7 +1594,7 @@ impl TacticalAssetRenderer {
                 );
                 self.logged_camera = Some(camera_key);
             }
-            (camera_position, camera_target) = (pose.position, pose.target);
+            camera_position = pose.position;
             set_camera(&Camera3D {
                 position: pose.position,
                 target: pose.target,
@@ -1601,7 +1609,7 @@ impl TacticalAssetRenderer {
         } else {
             let camera_direction = vec3(2.8, -4.2, 2.2).normalize();
             let camera_distance = self.view.view_depth.mul_add(0.24, 2.0);
-            (camera_position, camera_target) = (camera_direction * camera_distance, Vec3::ZERO);
+            camera_position = camera_direction * camera_distance;
             set_camera(&Camera3D {
                 position: camera_direction * camera_distance,
                 target: Vec3::ZERO,
@@ -1616,7 +1624,7 @@ impl TacticalAssetRenderer {
         }
         let material = self.material.as_ref().unwrap();
         gl_use_material(material);
-        set_view_direction(material, (camera_position, camera_target));
+        set_view_direction(material, camera_position, Vec3::ZERO);
         material.set_uniform("ObjectTranslation", [0.0_f32; 4]);
         set_object_axes(material, IDENTITY_HULL_AXES);
         let asset = &self.assets[self.current_lod as usize];
@@ -1770,7 +1778,6 @@ impl TacticalAssetRenderer {
 
         let material = self.material.as_ref().unwrap();
         gl_use_material(material);
-        set_view_direction(material, (camera.position, camera.target));
         let mut selected_resources = Vec::new();
         let mut screen_positions = Vec::new();
         let mut screen_bounds = Vec::new();
@@ -1805,6 +1812,7 @@ impl TacticalAssetRenderer {
                 "ObjectTranslation",
                 [object.position.x, object.position.y, object.position.z, 0.0],
             );
+            set_view_direction(material, camera.position, object.position);
             set_object_axes(material, object.axes);
             for chunk in &asset.meshes {
                 material.set_uniform(
@@ -3781,6 +3789,18 @@ mod tests {
     // clamps the vertex colour before the texture (FUN_7402029b,
     // 0x74025ff6), adding specular only when n.l > 0 (FUN_74020945).
     // A0's 255 peaks are that specular, not an unclamped light.
+    // Source: d3dim FUN_7402029b with light flag 1 (FUN_74017fc4, the 0x4c
+    // D3DLIGHT from d3drm FUN_6d8410d6): the eye taken into the object's
+    // frame, so the view direction runs from the object's origin to the eye.
+    #[test]
+    fn the_view_direction_runs_from_each_object_to_the_eye() {
+        let eye = vec3(0.0, 10.0, 0.0);
+        assert_eq!(original_view_direction(eye, Vec3::ZERO), Vec3::Y);
+        let side = original_view_direction(eye, vec3(10.0, 0.0, 0.0));
+        assert!((side - vec3(-1.0, 1.0, 0.0).normalize()).length() < 1e-6);
+        assert_eq!(original_view_direction(eye, eye), Vec3::ZERO);
+    }
+
     #[test]
     fn source_light_rig_preserves_retained_mode_direction_and_intensity() {
         let direction = original_surface_to_light_direction();
