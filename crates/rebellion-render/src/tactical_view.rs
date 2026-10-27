@@ -3129,22 +3129,37 @@ enum TacticalFocusAssignment {
 /// a task force), the nearest enemy capital ship in the fight, else the
 /// nearest enemy squadron (`FUN_005aa970`), becomes the target as by a
 /// right click without Ctrl (slot `+0xc` with 0). An enemy selection or
-/// none does nothing (`0x006158b0`). port: a fighter group's Space waits
-/// for the fighter groups' targets of a right click.
+/// none does nothing (`0x006158b0`). A fighter group searches from its
+/// squadrons' centroid (`0x005a50d0`).
 fn attack_nearest_enemy(session: &mut BattleSession) -> Option<TacticalFocusAssignment> {
-    if session.selected_fighter_group.is_some() {
-        return None;
-    }
+    let group = session.selected_fighter_group;
+    let player_is_attacker = session.player_is_attacker;
+    let positions = match group {
+        // `0x005a50d0`: a fighter group's members.
+        Some(group) => session
+            .fighters
+            .iter()
+            .filter(|fighter| {
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && fighter.is_attacker == player_is_attacker
+                    && fighter.fighter_group == group
+            })
+            .map(|fighter| fighter.source_position)
+            .collect::<Vec<_>>(),
+        None => session
+            .ships
+            .iter()
+            .filter(|ship| ship.alive && ship.selected && ship.is_attacker == player_is_attacker)
+            .map(|ship| ship.source_position)
+            .collect(),
+    };
     let mut sum = TacticalWorldPosition { x: 0.0, y: 0.0, z: 0.0 };
     let mut count = 0.0_f32;
-    for ship in session
-        .ships
-        .iter()
-        .filter(|ship| ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker)
-    {
-        sum.x += ship.source_position.x;
-        sum.y += ship.source_position.y;
-        sum.z += ship.source_position.z;
+    for position in positions {
+        sum.x += position.x;
+        sum.y += position.y;
+        sum.z += position.z;
         count += 1.0;
     }
     if count <= 0.0 {
@@ -3165,6 +3180,13 @@ fn attack_nearest_enemy(session: &mut BattleSession) -> Option<TacticalFocusAssi
         TacticalUnitRef::Ship(index) => TacticalAttackTarget::CapitalShip(index),
         TacticalUnitRef::Fighter(index) => TacticalAttackTarget::FighterGroup(index),
     };
+    if group.is_some() {
+        let members = assign_selected_fighter_group_target(session, target, false);
+        return (members > 0).then(|| TacticalFocusAssignment::Assigned {
+            object_ids: Vec::new(),
+            maximum_targets: 1,
+        });
+    }
     Some(assign_selected_focus_target(session, target, false))
 }
 
@@ -3174,6 +3196,72 @@ fn assign_selected_capital_focus_target(
     append: bool,
 ) -> TacticalFocusAssignment {
     assign_selected_focus_target(session, TacticalAttackTarget::CapitalShip(target_idx), append)
+}
+
+/// The lowest-indexed enemy squadron still flying among the projected hits.
+fn enemy_squadron_hit(
+    session: &BattleSession,
+    hits: impl Iterator<Item = (usize, bool)>,
+) -> Option<usize> {
+    hits.filter_map(|(index, hit)| {
+        let fighter = session.fighters.get(index)?;
+        (hit && fighter.alive
+            && fighter.squad_count > 0
+            && fighter.is_attacker != session.player_is_attacker)
+            .then_some(index)
+    })
+    .min()
+}
+
+/// The fighter group state's slot `+0xc` (`0x005a4bd0`) for an enemy unit:
+/// without Ctrl, the group's attack voice (`0x44`/`0xbe` plus its slot),
+/// order 0 (slot `+100`) and the unit as its target (`FUN_005a8fc0`); with
+/// Ctrl, a target it already holds (`FUN_005ca310`) is dropped
+/// (`FUN_005a8e80`) and another one is added. port: a squadron holds one
+/// target, so a Ctrl click on a new one replaces it. hyp: the voice plays
+/// whenever there is no Ctrl (the original also asks the force's `+0x80`
+/// slot `+0xc`). Returns the members it changed.
+fn assign_selected_fighter_group_target(
+    session: &mut BattleSession,
+    target: TacticalAttackTarget,
+    append: bool,
+) -> usize {
+    let Some(group) = session.selected_fighter_group else {
+        return 0;
+    };
+    let player_is_attacker = session.player_is_attacker;
+    let members = (0..session.fighters.len())
+        .filter(|&index| {
+            let fighter = &session.fighters[index];
+            fighter.alive
+                && fighter.squad_count > 0
+                && fighter.is_attacker == player_is_attacker
+                && fighter.fighter_group == group
+        })
+        .collect::<Vec<_>>();
+    if members.is_empty() {
+        return 0;
+    }
+    let held = members
+        .iter()
+        .any(|&index| session.fighters[index].attack_target == Some(target));
+    for &index in &members {
+        let fighter = &mut session.fighters[index];
+        if append && held {
+            fighter.attack_target = None;
+        } else {
+            fighter.order = TacticalOrder::None;
+            fighter.escort_target = None;
+            fighter.attack_target = Some(target);
+        }
+    }
+    if !append {
+        let faction = session.player_voice_faction();
+        session
+            .pending_voice_cues
+            .push(TacticalVoiceCue::fighter_attack(faction, group));
+    }
+    members.len()
 }
 
 /// `assign_selected_capital_focus_target` for a capital ship or a squadron.
@@ -8580,6 +8668,7 @@ pub fn draw_tactical_view(
             offset_y,
             canvas.aperture(),
             &ship_projections,
+            &fighter_projections,
             &navigation_projections,
         );
     }
@@ -9090,6 +9179,7 @@ fn handle_combat_input(
     offset_y: f32,
     aperture: NativeRect,
     projections: &HashMap<usize, TacticalScreenProjection>,
+    fighter_projections: &HashMap<usize, TacticalScreenProjection>,
     navigation_projections: &[TacticalNavigationProjection],
 ) {
     let (mx, my) = mouse_position();
@@ -9274,6 +9364,41 @@ fn handle_combat_input(
             return;
         }
 
+        // An enemy squadron is a target too: the state's slot `+0xc` takes
+        // any unit (`0x005a1af0`, `0x005a4bd0`).
+        let squadron_hit = enemy_squadron_hit(
+            session,
+            fighter_projections.iter().map(|(&index, projection)| {
+                (index, projection.contains(screen_pointer, projected_hit_radius))
+            }),
+        );
+        let unit_target = target_hit
+            .map(TacticalAttackTarget::CapitalShip)
+            .or_else(|| squadron_hit.map(TacticalAttackTarget::FighterGroup));
+        if session.selected_fighter_group.is_some() {
+            if let Some(target) = unit_target {
+                let members = assign_selected_fighter_group_target(session, target, control);
+                macroquad::logging::info!(
+                    "[tactical_navigation] event=fighter_target_assign append={} target={:?} members={}",
+                    control,
+                    target,
+                    members,
+                );
+                return;
+            }
+        } else if let (None, Some(fighter_target)) = (target_hit, squadron_hit) {
+            assign_selected_focus_target(
+                session,
+                TacticalAttackTarget::FighterGroup(fighter_target),
+                control,
+            );
+            macroquad::logging::info!(
+                "[tactical_navigation] event=target_assign status=assigned append={} target_fighter={}",
+                control,
+                fighter_target + 1,
+            );
+            return;
+        }
         if let Some(target_idx) = target_hit {
             // Assign one or several ordered focus targets to selected ships.
             match assign_selected_capital_focus_target(session, target_idx, control) {
@@ -14480,6 +14605,134 @@ mod tests {
         let visible = state.navigation_sets_visible[0];
         activate_tactical_hud_control(&mut state, TacticalHudControl::NavigationSet(0));
         assert_eq!(state.navigation_sets_visible[0], !visible);
+    }
+
+    // 0x66bbf8 slot +0xc (0x005a4bd0): a right click on an enemy unit gives
+    // the selected fighter group order 0, that target and its attack voice.
+    #[test]
+    fn a_fighter_group_takes_an_enemy_unit_as_its_target() {
+        let mut escorting = test_fighter(5, true);
+        escorting.order = TacticalOrder::Escort;
+        escorting.escort_target = Some(0);
+        let mut other_group = test_fighter(6, true);
+        other_group.fighter_group = 1;
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            vec![escorting, other_group, test_fighter(7, false)],
+            true,
+        );
+        assert!(select_fighter_group(&mut session, 0));
+        let cues = session.pending_voice_cues.len();
+        assert_eq!(
+            assign_selected_fighter_group_target(&mut session, TacticalAttackTarget::FighterGroup(2), false),
+            1
+        );
+        let fighter = &session.fighters[0];
+        assert_eq!(fighter.attack_target, Some(TacticalAttackTarget::FighterGroup(2)));
+        assert_eq!(fighter.order, TacticalOrder::None);
+        assert_eq!(fighter.escort_target, None);
+        assert_eq!(session.fighters[1].attack_target, None);
+        assert_eq!(session.pending_voice_cues.len(), cues + 1);
+    }
+
+    // FUN_005ca310 / FUN_005a8e80: with Ctrl, a target the group holds is
+    // dropped; a new one replaces it (port: one target a squadron).
+    #[test]
+    fn a_ctrl_right_click_on_a_held_target_drops_it() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true), test_ship(3, 1, false, true)],
+            vec![test_fighter(5, true)],
+            true,
+        );
+        assert!(select_fighter_group(&mut session, 0));
+        let first = TacticalAttackTarget::CapitalShip(1);
+        assign_selected_fighter_group_target(&mut session, first, false);
+        let cues = session.pending_voice_cues.len();
+        assign_selected_fighter_group_target(&mut session, first, true);
+        assert_eq!(session.fighters[0].attack_target, None);
+        assign_selected_fighter_group_target(&mut session, TacticalAttackTarget::CapitalShip(2), true);
+        assert_eq!(session.fighters[0].attack_target, Some(TacticalAttackTarget::CapitalShip(2)));
+        assert_eq!(session.pending_voice_cues.len(), cues);
+    }
+
+    // A right click takes the lowest-indexed enemy squadron it hits that
+    // still flies.
+    #[test]
+    fn a_right_click_hits_the_first_flying_enemy_squadron() {
+        let mut lost = test_fighter(5, false);
+        lost.alive = false;
+        let mut spent = test_fighter(6, false);
+        spent.squad_count = 0;
+        let session = test_session(
+            Vec::new(),
+            vec![lost, spent, test_fighter(7, true), test_fighter(8, false), test_fighter(9, false)],
+            true,
+        );
+        let hits = [(4, true), (0, true), (1, true), (2, true), (3, true)];
+        assert_eq!(enemy_squadron_hit(&session, hits.into_iter()), Some(3));
+        assert_eq!(enemy_squadron_hit(&session, [(3, false), (4, true)].into_iter()), Some(4));
+        assert_eq!(enemy_squadron_hit(&session, [(9, true)].into_iter()), None);
+    }
+
+    // Only the group's flying squadrons take the target and give Space its
+    // centroid.
+    #[test]
+    fn a_fighter_group_order_skips_its_lost_squadrons_and_other_groups() {
+        let mut member = test_fighter(5, true);
+        member.source_position = at(0.0, 0.0, 0.0);
+        let mut lost = test_fighter(6, true);
+        lost.alive = false;
+        lost.source_position = at(100.0, 0.0, 0.0);
+        let mut spent = test_fighter(7, true);
+        spent.squad_count = 0;
+        spent.source_position = at(100.0, 0.0, 0.0);
+        let mut other = test_fighter(8, true);
+        other.fighter_group = 1;
+        other.source_position = at(100.0, 0.0, 0.0);
+        let mut enemy_member = test_fighter(9, false);
+        enemy_member.source_position = at(100.0, 0.0, 0.0);
+        let mut near = test_ship(2, 0, false, true);
+        near.source_position = at(1.0, 0.0, 0.0);
+        let mut far = test_ship(3, 1, false, true);
+        far.source_position = at(60.0, 0.0, 0.0);
+        let mut session =
+            test_session(vec![near, far], vec![member, lost, spent, other, enemy_member], true);
+        assert!(select_fighter_group(&mut session, 0));
+        assert!(attack_nearest_enemy(&mut session).is_some());
+        assert_eq!(session.fighters[0].attack_target, Some(TacticalAttackTarget::CapitalShip(0)));
+        for index in 1..5 {
+            assert_eq!(session.fighters[index].attack_target, None, "{index}");
+        }
+    }
+
+    // Without a fighter group selected, nothing changes.
+    #[test]
+    fn a_fighter_target_needs_a_selected_group() {
+        let mut session = test_session(vec![test_ship(2, 0, false, true)], vec![test_fighter(5, true)], true);
+        assert_eq!(
+            assign_selected_fighter_group_target(&mut session, TacticalAttackTarget::CapitalShip(0), false),
+            0
+        );
+        assert_eq!(session.fighters[0].attack_target, None);
+    }
+
+    // 0x005a50d0: a fighter group's Space searches from its squadrons'
+    // centroid.
+    #[test]
+    fn space_for_a_fighter_group_targets_from_its_squadrons_centroid() {
+        let mut left = test_fighter(5, true);
+        left.source_position = at(-10.0, 0.0, 0.0);
+        let mut right = test_fighter(6, true);
+        right.source_position = at(10.0, 0.0, 0.0);
+        let mut by_left = test_ship(2, 0, false, true);
+        by_left.source_position = at(-11.0, 0.0, 0.0);
+        let mut middle = test_ship(3, 1, false, true);
+        middle.source_position = at(0.0, 0.0, 5.0);
+        let mut session = test_session(vec![by_left, middle], vec![left, right], true);
+        assert!(select_fighter_group(&mut session, 0));
+        assert!(attack_nearest_enemy(&mut session).is_some());
+        assert_eq!(session.fighters[0].attack_target, Some(TacticalAttackTarget::CapitalShip(1)));
+        assert_eq!(session.fighters[1].attack_target, Some(TacticalAttackTarget::CapitalShip(1)));
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.
