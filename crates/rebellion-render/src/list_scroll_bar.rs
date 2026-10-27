@@ -2,30 +2,58 @@
 //! (`FUN_0060a490` -> `FUN_0060aa70`, vtable `0x66e2e8`) that a
 //! `CoolDragList` (`FUN_00607ea0`) holds in its scroll host (`+0x94`).
 //!
-//! Its art is STRATEGY.DLL RCDATA 10653, read by `FUN_0060af70`: the
-//! width 12, the track tile 10656, the arrows 10685 / 10686 (up, normal and
-//! pressed) and 10687 / 10688 (down), and the thumb's top cap 10689,
-//! middle 10690 and bottom cap 10691 (`FUN_0060f910`).
+//! Its art is a STRATEGY.DLL RCDATA record that the list's owner names,
+//! read by `FUN_0060af70`: the width, the track tile, the up and down
+//! arrows (normal and pressed), and the thumb's top cap, middle and bottom
+//! cap (`FUN_0060f910`). Each piece, 13 wide, is centred on the bar
+//! (`width / 2 - 13 / 2`: the arrows `FUN_0060fa80`, the track
+//! `FUN_0060fb80`, the thumb `FUN_0060fca0`), so a bar narrower than 13
+//! clips it.
 //!
 //! The range is in pixels (`+0xdc` total, `+0xe0` first, `+0xe4` end): an
 //! arrow scrolls by the list's step (`+0xc0`), a click on the track by the
 //! list's height, and a drag follows the pointer. This module is pure
 //! geometry and input; the caller draws [`ScrollBar::pieces`].
 
-/// RCDATA 10653 `[0]`: the bar's width.
-pub const BAR_WIDTH: f32 = 12.0;
-/// RCDATA 10653 `[1]`: the track tile, 13 by 13.
-pub const TRACK_TILE: u32 = 10_656;
-/// RCDATA 10653 `[2]`, `[3]`: the up arrow, normal and pressed, 13 by 9.
-pub const UP_ARROW: [u32; 2] = [10_685, 10_686];
-/// RCDATA 10653 `[4]`, `[5]`: the down arrow, normal and pressed.
-pub const DOWN_ARROW: [u32; 2] = [10_687, 10_688];
-/// RCDATA 10653 `[6]`: the thumb's top cap, 13 by 6.
-pub const THUMB_TOP: u32 = 10_689;
-/// RCDATA 10653 `[7]`: the thumb's middle, 13 by 12, tiled.
-pub const THUMB_MIDDLE: u32 = 10_690;
-/// RCDATA 10653 `[8]`: the thumb's bottom cap, 13 by 6.
-pub const THUMB_BOTTOM: u32 = 10_691;
+/// A bar's RCDATA record (`FUN_0060af70`): `[0]` the width, `[1]` the
+/// track tile (13 by 13), `[2]`/`[3]` the up arrow and `[4]`/`[5]` the down
+/// arrow, normal and pressed (13 by 9), `[6]`..`[8]` the thumb's top cap
+/// (13 by 6), middle (13 by 12, tiled) and bottom cap. `[9]` is not read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BarArt {
+    pub width: u16,
+    pub track: u32,
+    pub up: [u32; 2],
+    pub down: [u32; 2],
+    pub top: u32,
+    pub middle: u32,
+    pub bottom: u32,
+}
+
+/// RCDATA 10653, the Battle Results' forces list's bar (`FUN_0046f360`).
+pub const RESULTS_ART: BarArt = BarArt {
+    width: 12,
+    track: 10_656,
+    up: [10_685, 10_686],
+    down: [10_687, 10_688],
+    top: 10_689,
+    middle: 10_690,
+    bottom: 10_691,
+};
+
+/// RCDATA 10748 (`0x29fc`), the Battle Alert's list's bar (`FUN_0044f860`).
+pub const ALERT_ART: BarArt = BarArt {
+    width: 10,
+    track: 10_749,
+    up: [10_750, 10_751],
+    down: [10_752, 10_753],
+    top: 10_754,
+    middle: 10_755,
+    bottom: 10_756,
+};
+
+/// Every piece's width.
+const PIECE_WIDTH: u16 = 13;
 
 const ARROW_HEIGHT: f32 = 9.0;
 const TRACK_TILE_HEIGHT: f32 = 13.0;
@@ -64,8 +92,10 @@ pub fn max_first(content: f32, view: f32) -> f32 {
 /// A bar beside a list, in the caller's coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollBar {
-    /// The bar's left edge: the list's right edge less [`BAR_WIDTH`]
-    /// (`FUN_0060fa80`: `MoveWindow(bar, list.w - 12, 0, 12, list.h)`).
+    /// Its art.
+    pub art: BarArt,
+    /// The bar's left edge: the list's right edge less the bar's width
+    /// (`FUN_0060fa80`: `MoveWindow(bar, list.w - width, 0, width, list.h)`).
     pub x: f32,
     /// The list's top.
     pub y: f32,
@@ -97,12 +127,21 @@ pub struct Piece {
 
 impl ScrollBar {
     /// The bar of a list at `(left, top)`, `width` by `view`, holding
-    /// `content` pixels scrolled to `first`.
+    /// `content` pixels scrolled to `first`, drawn with `art`.
     #[must_use]
-    pub fn new(left: f32, top: f32, width: f32, view: f32, content: f32, first: f32) -> Self {
+    pub fn new(
+        art: BarArt,
+        left: f32,
+        top: f32,
+        width: f32,
+        view: f32,
+        content: f32,
+        first: f32,
+    ) -> Self {
         let max = max_first(content, view);
         Self {
-            x: left + width - BAR_WIDTH,
+            art,
+            x: left + width - f32::from(art.width),
             y: top,
             view,
             max,
@@ -147,7 +186,7 @@ impl ScrollBar {
     /// The part under `(x, y)`, if any.
     #[must_use]
     pub fn part_at(&self, (x, y): (f32, f32)) -> Option<Part> {
-        if !self.visible() || !(self.x..self.x + BAR_WIDTH).contains(&x) {
+        if !self.visible() || !(self.x..self.x + f32::from(self.art.width)).contains(&x) {
             return None;
         }
         let bottom = self.y + self.view;
@@ -171,44 +210,47 @@ impl ScrollBar {
     }
 
     /// The bar's bitmaps, back to front, with the arrow `pressed` drawn
-    /// pressed. The 13-wide art is clipped to the bar's 12 by the caller
-    /// (`FUN_0060fa80` centres it at `12 / 2 - 13 / 2 = 0`); the track and
-    /// the thumb's middle tile past their ends, which the caller clips to
-    /// the bar too.
+    /// pressed. The 13-wide art sits at `width / 2 - 13 / 2` and the caller
+    /// clips it to the bar; the track and the thumb's middle tile past their
+    /// ends, which the clip takes too.
     #[must_use]
     pub fn pieces(&self, pressed: Option<Part>) -> Vec<Piece> {
         let mut pieces = Vec::new();
         if !self.visible() {
             return pieces;
         }
+        let art = self.art;
+        let x = self.x
+            + f32::from(i16::try_from(art.width / 2).unwrap_or(0)
+                - i16::try_from(PIECE_WIDTH / 2).unwrap_or(0));
         let track_top = self.y + ARROW_HEIGHT;
         let track_bottom = self.y + self.view - ARROW_HEIGHT;
         let mut y = track_top;
         while y < track_bottom {
-            pieces.push(Piece { id: TRACK_TILE, x: self.x, y });
+            pieces.push(Piece { id: art.track, x, y });
             y += TRACK_TILE_HEIGHT;
         }
         let (top, height) = self.thumb();
         let mut y = top;
         while y < top + height {
-            pieces.push(Piece { id: THUMB_MIDDLE, x: self.x, y });
+            pieces.push(Piece { id: art.middle, x, y });
             y += THUMB_MIDDLE_HEIGHT;
         }
-        pieces.push(Piece { id: THUMB_TOP, x: self.x, y: top });
+        pieces.push(Piece { id: art.top, x, y: top });
         pieces.push(Piece {
-            id: THUMB_BOTTOM,
-            x: self.x,
+            id: art.bottom,
+            x,
             y: top + height - THUMB_CAP_HEIGHT,
         });
         let state = |part| usize::from(pressed == Some(part));
         pieces.push(Piece {
-            id: UP_ARROW[state(Part::Up)],
-            x: self.x,
+            id: art.up[state(Part::Up)],
+            x,
             y: self.y,
         });
         pieces.push(Piece {
-            id: DOWN_ARROW[state(Part::Down)],
-            x: self.x,
+            id: art.down[state(Part::Down)],
+            x,
             y: track_bottom,
         });
         pieces
@@ -217,7 +259,7 @@ impl ScrollBar {
     /// The bar's clip rectangle: x, y, width, height.
     #[must_use]
     pub fn rect(&self) -> (f32, f32, f32, f32) {
-        (self.x, self.y, BAR_WIDTH, self.view)
+        (self.x, self.y, f32::from(self.art.width), self.view)
     }
 
     /// `first` for the thumb's top at `top` (`FUN_0060fd50`'s drag:
@@ -344,7 +386,7 @@ mod tests {
     /// The battle results' forces list (`FUN_0046f360`): (37, 136), 347
     /// by 166, three 70-high rows (content 210).
     fn results_bar(first: f32) -> ScrollBar {
-        ScrollBar::new(37.0, 136.0, 347.0, 166.0, 210.0, first)
+        ScrollBar::new(RESULTS_ART, 37.0, 136.0, 347.0, 166.0, 210.0, first)
     }
 
     fn press(at: (f32, f32)) -> Pointer {
@@ -382,7 +424,7 @@ mod tests {
         let bar = results_bar(0.0);
         assert_eq!((bar.x, bar.y, bar.max), (372.0, 136.0, 49.0));
         assert!(bar.visible());
-        let two_rows = ScrollBar::new(37.0, 136.0, 347.0, 166.0, 140.0, 0.0);
+        let two_rows = ScrollBar::new(RESULTS_ART, 37.0, 136.0, 347.0, 166.0, 140.0, 0.0);
         assert!(!two_rows.visible());
         assert!(two_rows.pieces(None).is_empty());
         assert_eq!(two_rows.part_at((375.0, 140.0)), None);
@@ -410,7 +452,7 @@ mod tests {
         assert_eq!(bar.part_at((371.0, 200.0)), None);
         assert_eq!(results_bar(24.0).part_at((375.0, 160.0)), Some(Part::PageUp));
         // A long list's thumb keeps 12 (`if (iVar1 < 0xd) iVar1 = 0xc`).
-        let long = ScrollBar::new(0.0, 0.0, 100.0, 166.0, 7000.0, 0.0);
+        let long = ScrollBar::new(RESULTS_ART, 0.0, 0.0, 100.0, 166.0, 7000.0, 0.0);
         assert_eq!(long.thumb().1, 12.0);
     }
 
@@ -422,22 +464,22 @@ mod tests {
         let ids: Vec<u32> = pieces.iter().map(|piece| piece.id).collect();
         // The track tiles from 145 to 293 (12 tiles of 13), the thumb's
         // middle from 145 to 259 (10 tiles of 12), the caps, the arrows.
-        assert_eq!(ids.iter().filter(|&&id| id == TRACK_TILE).count(), 12);
-        assert_eq!(ids.iter().filter(|&&id| id == THUMB_MIDDLE).count(), 10);
+        assert_eq!(ids.iter().filter(|&&id| id == RESULTS_ART.track).count(), 12);
+        assert_eq!(ids.iter().filter(|&&id| id == RESULTS_ART.middle).count(), 10);
         // A track of 11 whole tiles (161 - 18 = 143) and a thumb of 10
         // whole tiles (161 * 143 / 191 = 120) take no tile past their ends.
-        let exact = ScrollBar::new(0.0, 0.0, 100.0, 161.0, 186.0, 0.0);
+        let exact = ScrollBar::new(RESULTS_ART, 0.0, 0.0, 100.0, 161.0, 186.0, 0.0);
         assert_eq!(exact.thumb(), (9.0, 120.0));
         let ids: Vec<u32> = exact.pieces(None).iter().map(|piece| piece.id).collect();
-        assert_eq!(ids.iter().filter(|&&id| id == TRACK_TILE).count(), 11);
-        assert_eq!(ids.iter().filter(|&&id| id == THUMB_MIDDLE).count(), 10);
+        assert_eq!(ids.iter().filter(|&&id| id == RESULTS_ART.track).count(), 11);
+        assert_eq!(ids.iter().filter(|&&id| id == RESULTS_ART.middle).count(), 10);
         assert_eq!(
             &pieces[pieces.len() - 4..],
             [
-                Piece { id: THUMB_TOP, x: 372.0, y: 145.0 },
-                Piece { id: THUMB_BOTTOM, x: 372.0, y: 253.0 },
-                Piece { id: UP_ARROW[0], x: 372.0, y: 136.0 },
-                Piece { id: DOWN_ARROW[1], x: 372.0, y: 293.0 },
+                Piece { id: RESULTS_ART.top, x: 372.0, y: 145.0 },
+                Piece { id: RESULTS_ART.bottom, x: 372.0, y: 253.0 },
+                Piece { id: RESULTS_ART.up[0], x: 372.0, y: 136.0 },
+                Piece { id: RESULTS_ART.down[1], x: 372.0, y: 293.0 },
             ]
         );
     }
@@ -494,7 +536,7 @@ mod tests {
         // FUN_0060fd50: below the thumb pages down by the list's height,
         // clamped; held, again every 150 ms (SetTimer 0x96) while the
         // pointer stays below the thumb.
-        let tall = |first| ScrollBar::new(37.0, 136.0, 347.0, 166.0, 700.0, first);
+        let tall = |first| ScrollBar::new(RESULTS_ART, 37.0, 136.0, 347.0, 166.0, 700.0, first);
         let mut hold = None;
         let below = (375.0, 290.0);
         assert_eq!(update(&tall(0.0), &mut hold, press(below), 10.0, 1.0), 166.0);

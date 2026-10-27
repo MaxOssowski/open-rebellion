@@ -611,6 +611,8 @@ pub struct TacticalState {
     battle_alert_tab: BattleAlertTab,
     /// The first row the alert's list shows (the wheel scrolls it).
     battle_alert_scroll: usize,
+    /// A press held on the alert list's scroll bar.
+    battle_alert_scroll_hold: Option<crate::list_scroll_bar::Hold>,
     battle_alert_pressed: Option<BattleAlertControl>,
     /// The strategic world already consumed the auto-resolve result. Closing
     /// the result window must not apply the same losses a second time.
@@ -746,6 +748,7 @@ impl Default for TacticalState {
             battle_alert_open: false,
             battle_alert_tab: BattleAlertTab::Summary,
             battle_alert_scroll: 0,
+            battle_alert_scroll_hold: None,
             battle_alert_pressed: None,
             strategic_results_applied: false,
             battle_options_open: false,
@@ -7036,6 +7039,7 @@ fn battle_result_row_height(category: BattleResultCategory) -> f32 {
 /// `FUN_0060a490(.., list, 7, 0x299d, ..)`) in window coordinates.
 fn battle_result_bar(content: f32, scroll: usize) -> crate::list_scroll_bar::ScrollBar {
     crate::list_scroll_bar::ScrollBar::new(
+        crate::list_scroll_bar::RESULTS_ART,
         37.0,
         136.0,
         347.0,
@@ -7616,13 +7620,82 @@ fn draw_battle_alert_text(
         origin,
     );
     let rows = battle_alert_rows(world, troop_transport, session.system, list);
-    draw_page_ops_at(
-        cache,
-        canvas,
-        battle_alert_list(&rows, state.battle_alert_scroll),
-        origin,
+    let content = alert_list_content(rows.len());
+    let (screen_x, screen_y) = mouse_position();
+    let pressed = alert_pressed_arrow(
+        state,
+        content,
+        canvas.logical_pointer(screen_x, screen_y),
+        is_mouse_button_down(MouseButton::Left),
     );
+    let mut ops = battle_alert_list(&rows, state.battle_alert_scroll);
+    ops.extend(alert_bar_ops(&alert_list_bar(content, state.battle_alert_scroll), pressed));
+    draw_page_ops_at(cache, canvas, ops, origin);
     rows.len()
+}
+
+/// The alert list's content in pixels: its 40-high rows.
+fn alert_list_content(rows: usize) -> f32 {
+    rows as f32 * ALERT_LIST_ROW
+}
+
+/// The alert list's scroll bar (`FUN_0044f860` at `0x44fd73`:
+/// `FUN_0060a490(.., list, 7, 0x29fc, ..)`), in window coordinates.
+fn alert_list_bar(content: f32, scroll: usize) -> crate::list_scroll_bar::ScrollBar {
+    crate::list_scroll_bar::ScrollBar::new(
+        crate::list_scroll_bar::ALERT_ART,
+        ALERT_LIST_LEFT,
+        ALERT_LIST_TOP,
+        ALERT_LIST_WIDTH,
+        ALERT_LIST_HEIGHT,
+        content,
+        scroll as f32,
+    )
+}
+
+/// The alert bar's bitmaps (STRATEGY.DLL), clipped to the bar.
+fn alert_bar_ops(
+    bar: &crate::list_scroll_bar::ScrollBar,
+    pressed: Option<crate::list_scroll_bar::Part>,
+) -> Vec<PageOp> {
+    battle_result_bar_ops(bar, pressed)
+}
+
+/// The alert bar's arrow drawn pressed: the held arrow while the pointer
+/// stays on it.
+fn alert_pressed_arrow(
+    state: &TacticalState,
+    content: f32,
+    mouse: (f32, f32),
+    down: bool,
+) -> Option<crate::list_scroll_bar::Part> {
+    let held = state.battle_alert_scroll_hold?.part;
+    let over = alert_list_bar(content, state.battle_alert_scroll).part_at(battle_window_local(mouse));
+    (matches!(held, crate::list_scroll_bar::Part::Up | crate::list_scroll_bar::Part::Down)
+        && over == Some(held)
+        && down)
+        .then_some(held)
+}
+
+/// The alert list's bar and wheel for one frame: the list's step `+0xc0`
+/// is 10 (`FUN_00607ea0`'s argument at `0x44fcd6`).
+fn alert_list_step(
+    (scroll, hold): (&mut usize, &mut Option<crate::list_scroll_bar::Hold>),
+    content: f32,
+    mouse: (f32, f32),
+    (pressed, down, released): (bool, bool, bool),
+    wheel: f32,
+    now: f64,
+) {
+    let pointer = crate::list_scroll_bar::Pointer {
+        at: battle_window_local(mouse),
+        pressed,
+        down,
+        released,
+    };
+    let bar = alert_list_bar(content, *scroll);
+    let first = crate::list_scroll_bar::update(&bar, hold, pointer, BATTLE_RESULT_LIST_STEP, now);
+    *scroll = alert_list_scroll(first as usize, mouse, wheel, content);
 }
 
 /// The text `FUN_0044f860` paints into the alert's scene, which sits at
@@ -7941,7 +8014,8 @@ const ALERT_LIST_LEFT: f32 = 83.0;
 const ALERT_LIST_TOP: f32 = 40.0;
 const ALERT_LIST_WIDTH: f32 = 256.0;
 const ALERT_LIST_HEIGHT: f32 = 234.0;
-const ALERT_LIST_ROWS: usize = 6;
+/// `FUN_00607ea0`'s cells at `0x44fcde`: 240 by 40.
+const ALERT_LIST_ROW: f32 = 40.0;
 
 /// Show a tab or category; another one's list starts at its top.
 fn select_resetting_scroll<T: PartialEq>(shown: &mut T, scroll: &mut usize, choice: T) {
@@ -7951,34 +8025,41 @@ fn select_resetting_scroll<T: PartialEq>(shown: &mut T, scroll: &mut usize, choi
     *shown = choice;
 }
 
-/// The list's first row after the wheel turns `wheel` with the pointer
-/// (in logical coordinates) at `pointer`: it scrolls only over the list.
-fn alert_list_scroll(scroll: usize, pointer: (f32, f32), wheel: f32, rows: usize) -> usize {
-    let (x, y) = (
-        pointer.0 - battle_window_origin().0,
-        pointer.1 - battle_window_origin().1,
-    );
+/// The list's first pixel after the wheel turns `wheel` with the pointer
+/// (in logical coordinates) at `pointer`: only over the list. port: the
+/// original has no wheel; a notch moves a row, within the bar's range.
+fn alert_list_scroll(scroll: usize, pointer: (f32, f32), wheel: f32, content: f32) -> usize {
+    let (x, y) = battle_window_local(pointer);
     let over = (ALERT_LIST_LEFT..ALERT_LIST_LEFT + ALERT_LIST_WIDTH).contains(&x)
         && (ALERT_LIST_TOP..ALERT_LIST_TOP + ALERT_LIST_HEIGHT).contains(&y);
-    over.then(|| crate::assault_summary::scrolled(scroll, wheel, rows, ALERT_LIST_ROWS))
-        .flatten()
-        .unwrap_or(scroll)
+    if !over {
+        return scroll;
+    }
+    let max = crate::list_scroll_bar::max_first(content, ALERT_LIST_HEIGHT);
+    let moved = if wheel > 0.0 {
+        scroll as f32 - ALERT_LIST_ROW
+    } else if wheel < 0.0 {
+        scroll as f32 + ALERT_LIST_ROW
+    } else {
+        scroll as f32
+    };
+    moved.clamp(0.0, max) as usize
 }
 
-/// The Battle Alert's list (`FUN_0044f860`, `FUN_00607ea0`): at (83, 40),
-/// 256 by 234, rows 40 high, white text. port: no scroll bar; the rows
-/// whose middle fits show.
+/// The Battle Alert's list (`FUN_0044f860`, `FUN_00607ea0` at `0x44fd09`):
+/// at (83, 40), 256 by 234, rows 40 high, white text, scrolled `scroll`
+/// pixels; the list window clips its rows.
 fn battle_alert_list(rows: &[AlertRow], scroll: usize) -> Vec<PageOp> {
     const LEFT: f32 = ALERT_LIST_LEFT;
     const TOP: f32 = ALERT_LIST_TOP;
     const WIDTH: f32 = ALERT_LIST_WIDTH;
     const HEIGHT: f32 = ALERT_LIST_HEIGHT;
-    const ROW: f32 = 40.0;
-    let mut ops = Vec::new();
-    for (index, row) in rows.iter().skip(scroll).enumerate() {
-        let top = TOP + ROW * index as f32;
-        if top + ROW / 2.0 > TOP + HEIGHT {
-            break;
+    const ROW: f32 = ALERT_LIST_ROW;
+    let mut ops = vec![PageOp::Clip(Some((LEFT, TOP, WIDTH, HEIGHT)))];
+    for (index, row) in rows.iter().enumerate() {
+        let top = TOP + ROW * index as f32 - scroll as f32;
+        if top + ROW <= TOP || top >= TOP + HEIGHT {
+            continue;
         }
         let size = if row.font == AlertFont::Heading {
             18.0
@@ -8015,6 +8096,7 @@ fn battle_alert_list(rows: &[AlertRow], scroll: usize) -> Vec<PageOp> {
             centered: false,
         });
     }
+    ops.push(PageOp::Clip(None));
     ops
 }
 
@@ -8143,14 +8225,18 @@ fn draw_original_battle_alert(
         battle_window_origin().1 + 13.0,
     );
     let rows = draw_battle_alert_text(state, cache, world, troop_transport, canvas, text_color);
-    // port: the list's scroll bar (0x29fc) is not drawn; the wheel over
-    // the list scrolls it a row at a time, as the port's other lists.
     let (screen_x, screen_y) = mouse_position();
-    state.battle_alert_scroll = alert_list_scroll(
-        state.battle_alert_scroll,
+    alert_list_step(
+        (&mut state.battle_alert_scroll, &mut state.battle_alert_scroll_hold),
+        alert_list_content(rows),
         canvas.logical_pointer(screen_x, screen_y),
+        (
+            is_mouse_button_pressed(MouseButton::Left),
+            is_mouse_button_down(MouseButton::Left),
+            is_mouse_button_released(MouseButton::Left),
+        ),
         mouse_wheel().1,
-        rows,
+        get_time(),
     );
     // A0 TAC-01-C010: the alert's tab buttons sit on frame 10710's own
     // rail; the separate rail 10820 (with its fifth socket) belongs to the
@@ -11593,7 +11679,7 @@ mod tests {
         assert_eq!(ops.last(), Some(&PageOp::Clip(None)));
         assert!(ops.contains(&PageOp::Bitmap {
             source: DllSource::Strategy,
-            id: crate::list_scroll_bar::UP_ARROW[0],
+            id: crate::list_scroll_bar::RESULTS_ART.up[0],
             x: 372.0,
             y: 136.0,
         }));
@@ -11735,9 +11821,11 @@ mod tests {
     }
 
     #[test]
-    fn the_wheel_scrolls_the_battle_alert_list_a_row_at_a_time() {
-        // port: the list's scroll bar (0x29fc) is not drawn; a scrolled
-        // list starts its first row at the top (83, 40).
+    fn the_battle_alert_list_scrolls_by_pixels_under_its_bar() {
+        // FUN_0044f860: the list (83, 40), 256 by 234, of 40-high rows
+        // (0x44fcde), clips its rows; its bar (0x29fc, RCDATA 10748: 10
+        // wide, art 10749..10756) sits at the list's right edge (329). Nine
+        // rows (360) scroll 360 + 5 - 234 = 131 (FUN_00609ae0).
         let rows: Vec<AlertRow> = (0..9)
             .map(|index| AlertRow {
                 text: format!("row {index}"),
@@ -11755,47 +11843,76 @@ mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        assert_eq!(texts(0).len(), ALERT_LIST_ROWS);
-        let scrolled = texts(3);
-        assert_eq!(scrolled.len(), ALERT_LIST_ROWS);
+        // 234 high: five rows and 34 pixels of a sixth.
+        assert_eq!(texts(0).len(), 6);
+        let scrolled = texts(120);
         assert_eq!(scrolled[0], ("row 3".to_owned(), 65.0));
-        assert_eq!(scrolled[5].0, "row 8");
-        // Nine rows, six shown: the wheel stops three down.
-        assert_eq!(
-            crate::assault_summary::scrolled(2, -1.0, 9, ALERT_LIST_ROWS),
-            Some(3)
-        );
-        assert_eq!(
-            crate::assault_summary::scrolled(3, -1.0, 9, ALERT_LIST_ROWS),
-            None
-        );
+        // Scrolled 39, the first row's last pixel still shows.
+        assert_eq!(texts(39)[0].0, "row 0");
+        assert_eq!(texts(40)[0].0, "row 1");
+        assert_eq!(scrolled.last().unwrap().0, "row 8");
+        let ops = battle_alert_list(&rows, 0);
+        assert_eq!(ops.first(), Some(&PageOp::Clip(Some((83.0, 40.0, 256.0, 234.0)))));
+        assert_eq!(ops.last(), Some(&PageOp::Clip(None)));
+        let bar = alert_list_bar(alert_list_content(9), 0);
+        assert_eq!((bar.x, bar.max), (329.0, 131.0));
+        // The 13-wide art sits at 10 / 2 - 13 / 2 = -1 from the bar.
+        let bar_ops = alert_bar_ops(&bar, None);
+        assert_eq!(bar_ops.first(), Some(&PageOp::Clip(Some((329.0, 40.0, 10.0, 234.0)))));
+        assert!(bar_ops.contains(&PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: 10_750,
+            x: 328.0,
+            y: 40.0,
+        }));
+        // Five rows fit: no bar.
+        assert!(alert_bar_ops(&alert_list_bar(alert_list_content(5), 0), None).is_empty());
     }
 
     #[test]
     fn the_wheel_scrolls_the_alert_list_only_over_it_and_a_new_tab_resets_it() {
         // The list at window (83, 40), 256 by 234; the Alliance window at (62, 49)
-        // (A0 TAC-01-C010).
+        // (A0 TAC-01-C010). port: a wheel notch moves a row (40).
+        let content = alert_list_content(9);
         let inside = (62.0 + 83.0, 49.0 + 40.0);
-        assert_eq!(alert_list_scroll(0, inside, -1.0, 9), 1);
-        assert_eq!(alert_list_scroll(1, inside, 1.0, 9), 0);
+        assert_eq!(alert_list_scroll(0, inside, -1.0, content), 40);
+        assert_eq!(alert_list_scroll(40, inside, 1.0, content), 0);
+        assert_eq!(alert_list_scroll(120, inside, -1.0, content), 131);
+        assert_eq!(alert_list_scroll(40, inside, 0.0, content), 40);
         let last = (62.0 + 83.0 + 255.5, 49.0 + 40.0 + 233.5);
-        assert_eq!(alert_list_scroll(0, last, -1.0, 9), 1);
+        assert_eq!(alert_list_scroll(0, last, -1.0, content), 40);
         for outside in [
             (62.0 + 82.5, 100.0),
             (62.0 + 83.0 + 256.0, 100.0),
             (200.0, 49.0 + 39.5),
             (200.0, 49.0 + 40.0 + 234.0),
         ] {
-            assert_eq!(alert_list_scroll(0, outside, -1.0, 9), 0);
+            assert_eq!(alert_list_scroll(0, outside, -1.0, content), 0);
         }
-        // Nothing to scroll: six rows fit.
-        assert_eq!(alert_list_scroll(0, inside, -1.0, ALERT_LIST_ROWS), 0);
-
+        // Nothing to scroll: five rows fit.
+        assert_eq!(alert_list_scroll(0, inside, -1.0, alert_list_content(5)), 0);
         let (mut tab, mut scroll) = (BattleAlertTab::AllianceForces, 2);
         select_resetting_scroll(&mut tab, &mut scroll, BattleAlertTab::AllianceForces);
         assert_eq!(scroll, 2);
         select_resetting_scroll(&mut tab, &mut scroll, BattleAlertTab::System);
         assert_eq!((tab, scroll), (BattleAlertTab::System, 0));
+        // A click on the bar's down arrow steps the list's 10, drawn pressed
+        // while held.
+        let mut state = TacticalState::default();
+        let origin = battle_window_origin();
+        let arrow = (origin.0 + 333.0, origin.1 + 40.0 + 230.0);
+        alert_list_step((&mut state.battle_alert_scroll, &mut state.battle_alert_scroll_hold), content, arrow, (true, true, false), 0.0, 0.0);
+        assert_eq!(
+            alert_pressed_arrow(&state, content, arrow, true),
+            Some(crate::list_scroll_bar::Part::Down)
+        );
+        assert_eq!(alert_pressed_arrow(&state, content, arrow, false), None);
+        assert_eq!(
+            alert_pressed_arrow(&state, content, (origin.0 + 333.0, origin.1 + 150.0), true),
+            None
+        );
+        alert_list_step((&mut state.battle_alert_scroll, &mut state.battle_alert_scroll_hold), content, arrow, (false, false, true), 0.0, 0.1);
+        assert_eq!(state.battle_alert_scroll, 10);
     }
 
     #[test]
@@ -11821,7 +11938,11 @@ mod tests {
             picture(true),
         ];
         rows.extend((0..5).map(|_| text("more", AlertFont::Bold)));
-        let ops = battle_alert_list(&rows, 0);
+        // The list's clip steps aside, the rows' steps in order.
+        let ops: Vec<PageOp> = battle_alert_list(&rows, 0)
+            .into_iter()
+            .filter(|op| !matches!(op, PageOp::Clip(_)))
+            .collect();
         assert_eq!(
             ops[0],
             PageOp::Text {

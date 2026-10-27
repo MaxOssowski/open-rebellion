@@ -3649,6 +3649,37 @@ async function probeTacticalBattleAlertEntry(
     const tab = point(tabX, tabY[index]);
     await page.mouse.click(tab.x, tab.y);
     const capture = await stableInteractionFrame(page, folder, `battle-alert-tab-${index}`);
+    if (index === 1) {
+      // FUN_0044f860 -> FUN_0060a490(.., 7, 0x29fc): five squadrons a side
+      // outgrow the 234-high list, so its 10-wide bar (RCDATA 10748) shows
+      // at window x 329, its 13-wide art at 328 with the outer columns
+      // clipped; the thumb's top cap starts at the track's top (49).
+      const clipped = [{ x: 0, y: 0, width: 1, height: 13 }, { x: 11, y: 0, width: 2, height: 13 }];
+      probes.push({
+        type: "battle-alert-scroll-bar",
+        up_arrow: verifyStrategyBitmap(viewport, capture, 10750, 65 + dx + 328, 54 + dy + 40, clipped),
+        down_arrow: verifyStrategyBitmap(viewport, capture, 10752, 65 + dx + 328, 54 + dy + 265, clipped),
+        thumb_top: verifyStrategyBitmap(viewport, capture, 10754, 65 + dx + 328, 54 + dy + 49, clipped),
+      });
+      // A click on the down arrow steps the list's 10 pixels (0x44fcd6):
+      // the thumb's top leaves 49.
+      const arrow = point(65 + dx + 334, 54 + dy + 269);
+      await page.mouse.click(arrow.x, arrow.y);
+      const stepped = await stableInteractionFrame(page, folder, "battle-alert-list-scrolled");
+      let moved = null;
+      if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1) {
+        for (let y = 50; y < 80 && moved === null; y++) {
+          try {
+            verifyStrategyBitmap(viewport, stepped, 10754, 65 + dx + 328, 54 + dy + y, clipped);
+            moved = y;
+          } catch (_) {
+            // not at this row
+          }
+        }
+        assert.ok(moved !== null, `${faction}: the alert list's thumb did not move`);
+      }
+      probes.push({ type: "battle-alert-scroll-step", thumb_top_y: moved });
+    }
     probes.push({
       type: "battle-alert-tab",
       tab: ["alliance-forces", "imperial-forces", "system-summary"][index - 1],
@@ -4867,6 +4898,16 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         outer_negative_z: -54.5,
         inner_negative_z: -34.5,
         inner_positive_z: 34.5,
+      } : scenario.battle_alert_presentation ? {
+        // A ship and five squadrons a side (the Battle Alert's forces list
+        // outgrows its height and scrolls).
+        first_active_objects: 6,
+        second_active_objects: 6,
+        battle_extent: 118,
+        outer_positive_z: 59,
+        outer_negative_z: -59,
+        inner_negative_z: -39,
+        inner_positive_z: 39,
       } : scenario.battle_results_presentation ? {
         // Three ships and five squadrons a side (the Fighters list
         // outgrows its height and scrolls).
@@ -4915,6 +4956,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
               : scenario.command_assignment_presentation
                 || scenario.battle_options_withdrawal ? 6
                 : scenario.battle_results_presentation ? 16
+                  : scenario.battle_alert_presentation ? 12
                   : scenario.death_star_presentation ? 3
                     : scenario.hull_scale_presentation ? 2 : 4);
       const expectedParticipantLanes = new Map([
@@ -5101,6 +5143,22 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.ok(allianceFighters.every(({ source_position: position }) =>
           position[2] === ready.source_layout.inner_negative_z));
         assert.ok(empireFighters.every(({ source_position: position }) =>
+          position[2] === ready.source_layout.inner_positive_z));
+      } else if (scenario.battle_alert_presentation) {
+        // A ship and five squadrons a side, on their side's lanes.
+        const of = (kind, faction) => ready.participants.filter((participant) =>
+          participant.kind === kind && participant.faction === faction);
+        assert.equal(of("capital-ship", "alliance").length, 1);
+        assert.equal(of("capital-ship", "empire").length, 1);
+        assert.equal(of("fighter-group", "alliance").length, 5);
+        assert.equal(of("fighter-group", "empire").length, 5);
+        assert.ok(of("capital-ship", "alliance").every(({ source_position: position }) =>
+          position[2] === ready.source_layout.outer_negative_z));
+        assert.ok(of("capital-ship", "empire").every(({ source_position: position }) =>
+          position[2] === ready.source_layout.outer_positive_z));
+        assert.ok(of("fighter-group", "alliance").every(({ source_position: position }) =>
+          position[2] === ready.source_layout.inner_negative_z));
+        assert.ok(of("fighter-group", "empire").every(({ source_position: position }) =>
           position[2] === ready.source_layout.inner_positive_z));
       } else if (scenario.hull_scale_presentation) {
         // A0 TAC-01-C003: the Medium Transport (2070) and the Victory
