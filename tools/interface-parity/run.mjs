@@ -4223,6 +4223,24 @@ async function probeTacticalGroupPresentation(
     screenshot_sha256: sha256(rejectedTarget),
   });
 
+  // 0x005a0d10: a left click on an enemy capital ship selects it, into
+  // the view-only enemy state 0x66bba8 (FUN_005a1110).
+  await page.mouse.click(hostilePosition.x, hostilePosition.y);
+  await page.waitForTimeout(120);
+  const enemySelected = await capture("enemy-capital-selected");
+  const enemySelectionLog = consoleLines.find(({ text }) =>
+    text.includes(`[tactical_3d] selection object_id=${hostileCapital.objectId} `));
+  assert.ok(enemySelectionLog, "a left click did not select the enemy capital ship");
+  assert.notEqual(sha256(enemySelected), sha256(rejectedTarget),
+    "the enemy selection changed nothing on screen");
+  probes.push({
+    type: "source-enemy-capital-selection",
+    executable_functions: ["0x005a0d10", "FUN_005a1110"],
+    hostile_object_id: hostileCapital.objectId,
+    selection_log: enemySelectionLog.text,
+    screenshot_sha256: sha256(enemySelected),
+  });
+
   // FUN_0059b730: keys 1-8 press task-force buttons 0xad02-0xad09;
   // F1-F12 only move the camera (FUN_005c2990 mode 0xb).
   await page.keyboard.press("Digit1");
@@ -4231,6 +4249,16 @@ async function probeTacticalGroupPresentation(
   probes.push({ type: "task-force-1-hotkey", ...verifyTacticalBitmap(
     viewport, taskOneHotkey, 1006, 60, 2, [], labelMask,
   ) });
+  // Space (0x20, slot +0x1c, FUN_005aa970): the selection targets its
+  // nearest enemy.
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(80);
+  const nearestLog = consoleLines.find(({ text }) =>
+    text.includes("[tactical_navigation] event=nearest_target"));
+  assert.match(nearestLog?.text || "", /members=[1-9]/,
+    "Space did not target the selection's nearest enemy");
+  probes.push({ type: "source-space-nearest-target", executable_function: "FUN_005aa970",
+    log: nearestLog.text });
   await page.keyboard.press("F12");
   await page.waitForTimeout(80);
   const followHotkey = await capture("camera-follow-f12-hotkey");
