@@ -3264,6 +3264,89 @@ fn assign_selected_fighter_group_target(
     members.len()
 }
 
+/// A capital selection's route voice (`0x005a1f30`, `0x005a3f00`): a task
+/// force's line (`0x22`/`0x9c` plus its slot, `FUN_005a0300`), else the
+/// generic one (`0x21`/`0x9b`). Without Ctrl it always plays; with Ctrl only
+/// for a point not yet on the route. hyp: the original's further test of
+/// the force's `+0x80` slot `+0xc` on a Ctrl click is not traced, and
+/// several selected ships use the generic line.
+fn queue_capital_route_voice(
+    session: &mut BattleSession,
+    point: TacticalWorldPosition,
+    control: bool,
+) {
+    let player_is_attacker = session.player_is_attacker;
+    let selected = session
+        .ships
+        .iter()
+        .filter(|ship| ship.selected && ship.alive && ship.is_attacker == player_is_attacker)
+        .collect::<Vec<_>>();
+    let Some(first) = selected.first() else {
+        return;
+    };
+    if control && first.navigation_route.contains(&point) {
+        return;
+    }
+    let group = session
+        .task_force_selection
+        .unwrap_or(TACTICAL_UNGROUPED_TASK_FORCE);
+    let faction = session.player_voice_faction();
+    session
+        .pending_voice_cues
+        .push(TacticalVoiceCue::capital_maneuver(faction, group));
+}
+
+/// The fighter group state's slot `+0x10` (`0x005a4e50`) for a navigation
+/// point. Without Ctrl, the group's line (`0x2a`/`0xa4` plus its slot),
+/// order 0 and the point as its whole route (`FUN_005a8f70`). With Ctrl, a
+/// point already on the route (`FUN_005ca330`) is dropped (`FUN_005a8ed0`)
+/// and another one added (`FUN_005a8f20`) with the line. hyp: as for the
+/// capital ships, the further `+0x80` test is not traced. Returns the
+/// members it changed.
+fn assign_selected_fighter_group_route(
+    session: &mut BattleSession,
+    point: TacticalWorldPosition,
+    append: bool,
+) -> usize {
+    let Some(group) = session.selected_fighter_group else {
+        return 0;
+    };
+    let player_is_attacker = session.player_is_attacker;
+    let members = (0..session.fighters.len())
+        .filter(|&index| {
+            let fighter = &session.fighters[index];
+            fighter.alive
+                && fighter.squad_count > 0
+                && fighter.is_attacker == player_is_attacker
+                && fighter.fighter_group == group
+        })
+        .collect::<Vec<_>>();
+    let Some(&first) = members.first() else {
+        return 0;
+    };
+    let held = append && session.fighters[first].navigation_route.contains(&point);
+    for &index in &members {
+        let fighter = &mut session.fighters[index];
+        if held {
+            fighter.navigation_route.retain(|each| *each != point);
+        } else if append {
+            fighter.navigation_route.push(point);
+        } else {
+            fighter.order = TacticalOrder::None;
+            fighter.escort_target = None;
+            fighter.navigation_route.clear();
+            fighter.navigation_route.push(point);
+        }
+    }
+    if !held {
+        let faction = session.player_voice_faction();
+        session
+            .pending_voice_cues
+            .push(TacticalVoiceCue::fighter_maneuver(faction, group));
+    }
+    members.len()
+}
+
 /// `assign_selected_capital_focus_target` for a capital ship or a squadron.
 fn assign_selected_focus_target(
     session: &mut BattleSession,
@@ -9067,18 +9150,43 @@ fn tactical_navigation_projections(
         .collect()
 }
 
+/// The route points of the player's selected ships and squadrons, drawn
+/// larger on the navigation display.
+fn selected_route_points(session: &BattleSession) -> Vec<TacticalWorldPosition> {
+    session
+        .ships
+        .iter()
+        .filter(|ship| ship.selected && ship.is_attacker == session.player_is_attacker)
+        .flat_map(|ship| ship.navigation_route.iter().copied())
+        .chain(
+            session
+                .fighters
+                .iter()
+                .filter(|fighter| fighter.selected && fighter.is_attacker == session.player_is_attacker)
+                .flat_map(|fighter| fighter.navigation_route.iter().copied()),
+        )
+        .collect()
+}
+
+/// `FUN_005ca330`: a point already on the route is dropped (`FUN_005a8ed0`),
+/// another one added (`FUN_005a8f20`). Returns whether it dropped one.
+fn toggle_route_point(route: &mut Vec<TacticalWorldPosition>, point: TacticalWorldPosition) -> bool {
+    if let Some(at) = route.iter().position(|each| *each == point) {
+        route.remove(at);
+        true
+    } else {
+        route.push(point);
+        false
+    }
+}
+
 fn draw_tactical_navigation_points(
     session: &BattleSession,
     projections: &[TacticalNavigationProjection],
     canvas_scale: f32,
 ) {
     let colors = [RED, GREEN, BLUE, YELLOW];
-    let selected_routes = session
-        .ships
-        .iter()
-        .filter(|ship| ship.selected && ship.is_attacker == session.player_is_attacker)
-        .flat_map(|ship| ship.navigation_route.iter().copied())
-        .collect::<Vec<_>>();
+    let selected_routes = selected_route_points(session);
     for projection in projections {
         let assigned = selected_routes.contains(&projection.position);
         let color = colors[usize::from(projection.set.min(3))];
@@ -9268,6 +9376,19 @@ fn handle_combat_input(
     // Right-click: assign an armed Death Star superlaser or issue focus fire.
     if inside_battle && is_mouse_button_pressed(MouseButton::Right) {
         if let Some(navigation) = navigation_hit {
+            if session.selected_fighter_group.is_some() {
+                let members =
+                    assign_selected_fighter_group_route(session, navigation.position, control);
+                macroquad::logging::info!(
+                    "[tactical_navigation] event=fighter_route_assign set={} point={} append={} members={}",
+                    navigation.set + 1,
+                    navigation.point + 1,
+                    control,
+                    members,
+                );
+                return;
+            }
+            queue_capital_route_voice(session, navigation.position, control);
             let mut assigned = 0;
             let mut longest_route = 0;
             for ship in &mut session.ships {
@@ -9277,9 +9398,7 @@ fn handle_combat_input(
                 ship.order = TacticalOrder::None;
                 ship.escort_target = None;
                 if control {
-                    if !ship.navigation_route.contains(&navigation.position) {
-                        ship.navigation_route.push(navigation.position);
-                    }
+                    toggle_route_point(&mut ship.navigation_route, navigation.position);
                 } else {
                     ship.navigation_route.clear();
                     ship.navigation_route.push(navigation.position);
@@ -9685,6 +9804,7 @@ mod tests {
             escort_target: None,
             recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
             recovery_target: None,
+            navigation_route: Vec::new(),
             home_carrier: None,
             in_hangar: false,
             retreating: false,
@@ -14733,6 +14853,120 @@ mod tests {
         assert!(attack_nearest_enemy(&mut session).is_some());
         assert_eq!(session.fighters[0].attack_target, Some(TacticalAttackTarget::CapitalShip(1)));
         assert_eq!(session.fighters[1].attack_target, Some(TacticalAttackTarget::CapitalShip(1)));
+    }
+
+    // 0x66bbf8 slot +0x10 (0x005a4e50): a navigation point becomes the
+    // group's whole route with order 0 and the group's line (0x2a plus
+    // the slot); with Ctrl a new point is added and a held one dropped.
+    #[test]
+    fn a_fighter_group_takes_navigation_points_as_its_route() {
+        let mut escorting = test_fighter(5, true);
+        escorting.order = TacticalOrder::Escort;
+        escorting.escort_target = Some(0);
+        let mut session = test_session(Vec::new(), vec![escorting, test_fighter(6, true)], true);
+        assert!(select_fighter_group(&mut session, 0));
+        let (a, b) = (at(1.0, 0.0, 0.0), at(2.0, 0.0, 0.0));
+        let faction = session.player_voice_faction();
+        let cues = session.pending_voice_cues.len();
+        assert_eq!(assign_selected_fighter_group_route(&mut session, a, false), 2);
+        assert_eq!(session.fighters[0].navigation_route, vec![a]);
+        assert_eq!(session.fighters[1].navigation_route, vec![a]);
+        assert_eq!(session.fighters[0].order, TacticalOrder::None);
+        assert_eq!(session.fighters[0].escort_target, None);
+        assert_eq!(session.pending_voice_cues[cues], TacticalVoiceCue::fighter_maneuver(faction, 0));
+        assign_selected_fighter_group_route(&mut session, b, true);
+        assert_eq!(session.fighters[0].navigation_route, vec![a, b]);
+        assert_eq!(session.pending_voice_cues.len(), cues + 2);
+        assign_selected_fighter_group_route(&mut session, a, true);
+        assert_eq!(session.fighters[1].navigation_route, vec![b]);
+        assert_eq!(session.pending_voice_cues.len(), cues + 2);
+        assign_selected_fighter_group_route(&mut session, a, false);
+        assert_eq!(session.fighters[1].navigation_route, vec![a]);
+    }
+
+    // FUN_005ca330 / FUN_005a8ed0 / FUN_005a8f20.
+    #[test]
+    fn a_ctrl_route_click_drops_a_held_point_and_adds_another() {
+        let (a, b) = (at(1.0, 0.0, 0.0), at(2.0, 0.0, 0.0));
+        let mut route = vec![a];
+        assert!(!toggle_route_point(&mut route, b));
+        assert_eq!(route, vec![a, b]);
+        assert!(toggle_route_point(&mut route, a));
+        assert_eq!(route, vec![b]);
+    }
+
+    // The display marks the routes of our selected ships and squadrons only.
+    #[test]
+    fn the_display_marks_only_our_selected_routes() {
+        let (a, b, c, d) = (at(1.0, 0.0, 0.0), at(2.0, 0.0, 0.0), at(3.0, 0.0, 0.0), at(4.0, 0.0, 0.0));
+        let mut ship = test_ship(1, 0, true, true);
+        ship.selected = true;
+        ship.navigation_route = vec![a];
+        let mut idle = test_ship(3, 1, true, true);
+        idle.navigation_route = vec![b];
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.selected = true;
+        enemy.navigation_route = vec![b];
+        let mut squadron = test_fighter(5, true);
+        squadron.selected = true;
+        squadron.navigation_route = vec![c];
+        let mut enemy_squadron = test_fighter(6, false);
+        enemy_squadron.selected = true;
+        enemy_squadron.navigation_route = vec![d];
+        let mut resting = test_fighter(7, true);
+        resting.navigation_route = vec![d];
+        let session =
+            test_session(vec![ship, idle, enemy], vec![squadron, enemy_squadron, resting], true);
+        assert_eq!(selected_route_points(&session), vec![a, c]);
+    }
+
+    // Only the group's flying squadrons take its route.
+    #[test]
+    fn a_fighter_group_route_skips_lost_squadrons_and_other_groups() {
+        let mut lost = test_fighter(6, true);
+        lost.alive = false;
+        let mut spent = test_fighter(7, true);
+        spent.squad_count = 0;
+        let mut other = test_fighter(8, true);
+        other.fighter_group = 1;
+        let enemy = test_fighter(9, false);
+        let mut session =
+            test_session(Vec::new(), vec![test_fighter(5, true), lost, spent, other, enemy], true);
+        assert!(select_fighter_group(&mut session, 0));
+        let point = at(1.0, 0.0, 0.0);
+        assert_eq!(assign_selected_fighter_group_route(&mut session, point, false), 1);
+        for index in 1..5 {
+            assert!(session.fighters[index].navigation_route.is_empty(), "{index}");
+        }
+    }
+
+    // 0x005a3f00: a task force's route line is 0x22 plus its slot; the
+    // one-unit state's (0x005a1f30) the generic 0x21. A Ctrl click on a
+    // held point plays nothing.
+    #[test]
+    fn a_capital_route_plays_its_task_forces_line() {
+        let mut ship = test_ship(1, 0, true, true);
+        ship.task_force = 2;
+        let mut session = test_session(vec![ship], Vec::new(), true);
+        let faction = session.player_voice_faction();
+        let point = at(1.0, 0.0, 0.0);
+        queue_capital_route_voice(&mut session, point, false);
+        assert!(session.pending_voice_cues.is_empty());
+        assert!(select_task_force(&mut session, 2) > 0);
+        let cues = session.pending_voice_cues.len();
+        queue_capital_route_voice(&mut session, point, false);
+        assert_eq!(session.pending_voice_cues[cues], TacticalVoiceCue::capital_maneuver(faction, 2));
+        session.ships[0].navigation_route.push(point);
+        queue_capital_route_voice(&mut session, point, true);
+        assert_eq!(session.pending_voice_cues.len(), cues + 1);
+        queue_capital_route_voice(&mut session, at(5.0, 0.0, 0.0), true);
+        assert_eq!(session.pending_voice_cues.len(), cues + 2);
+        select_clicked_ship(&mut session, 0, false);
+        queue_capital_route_voice(&mut session, point, false);
+        assert_eq!(
+            session.pending_voice_cues[cues + 2],
+            TacticalVoiceCue::capital_maneuver(faction, TACTICAL_UNGROUPED_TASK_FORCE)
+        );
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.

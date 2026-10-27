@@ -1249,6 +1249,9 @@ pub struct TacticalFighter {
     pub recovery_state: TacticalFighterRecoveryState,
     /// Capital-ship index reserved as this squadron's recovery carrier.
     pub recovery_target: Option<usize>,
+    /// The force's route (`+0x74`): the navigation points a right click
+    /// gives the group (`FUN_005a8f70`, `FUN_005a8f20`), first to last.
+    pub navigation_route: Vec<TacticalWorldPosition>,
     /// `+0x164`: the carrier it launched from, or rides on (`FUN_005b8c70`,
     /// `FUN_005b8570`); a recovery tries it first (`FUN_005cf980`).
     pub home_carrier: Option<usize>,
@@ -3476,6 +3479,9 @@ pub fn turn_original_vector(
 pub const ORIGINAL_SURROUND_BAND_MAX: f32 = 2.5;
 /// Surround's step toward the target (slot `+0xc`, `DAT_0066cc94`).
 pub const ORIGINAL_SURROUND_APPROACH_STEP: f32 = 5.0;
+/// `FUN_005c6610` flies a fighter force to its route's next point until
+/// it is within 1.0 (`0x3f800000`).
+pub const ORIGINAL_FIGHTER_ROUTE_RADIUS: f32 = 1.0;
 /// `FUN_005cc300` compares `r - DAT_0066d008` (-2.0) with the band.
 pub const ORIGINAL_ENGAGEMENT_MARGIN: f32 = 2.0;
 /// Stand Off's smallest step (`DAT_0066d018`) and the mover's radius.
@@ -5563,6 +5569,7 @@ impl BattleSession {
                     escort_target: None,
                     recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
                     recovery_target: None,
+                    navigation_route: Vec::new(),
                     home_carrier: None,
                     in_hangar: false,
                     retreating: false,
@@ -9097,6 +9104,11 @@ impl BattleSession {
             else {
                 continue;
             };
+            // `FUN_005c6610`: a route (`+0x74`) comes before the targets.
+            if let Some(&point) = self.fighters[lead].navigation_route.first() {
+                self.advance_fighter_route(at, lead, point, &free);
+                continue;
+            }
             let Some(target) = self.fighter_force_target(lead) else {
                 continue;
             };
@@ -9173,6 +9185,66 @@ impl BattleSession {
                         ORIGINAL_TACTICAL_STEP_MILLISECONDS,
                     );
                 }
+            }
+        }
+    }
+
+    /// `FUN_005c6610`'s route branch for one fighter force: the mover flies
+    /// to the point (slot `+0xc`, radius 1.0). There the point becomes its
+    /// anchor (`+0x3c`) and leaves the route (`FUN_005c6200`); when the
+    /// player's route ends, the group's "maneuver complete" line plays
+    /// (`0x37`/`0xb1` plus its slot). hyp: the line's further tests of the
+    /// force's `+0x60` and `+0x98` are not traced. The members fly to their
+    /// places in the frame meanwhile.
+    fn advance_fighter_route(
+        &mut self,
+        at: usize,
+        lead: usize,
+        point: TacticalWorldPosition,
+        free: &[usize],
+    ) {
+        let moved = step_fighter_anchor(
+            &mut self.fighter_movers[at],
+            point,
+            ORIGINAL_FIGHTER_ROUTE_RADIUS,
+            ORIGINAL_TACTICAL_STEP_MILLISECONDS,
+        );
+        if !moved {
+            self.fighter_movers[at].anchor = point;
+            let members = self.fighter_movers[at]
+                .slots
+                .iter()
+                .map(|(member, _)| *member)
+                .collect::<Vec<_>>();
+            for member in members {
+                let route = &mut self.fighters[member].navigation_route;
+                if route.first() == Some(&point) {
+                    route.remove(0);
+                }
+            }
+            let fighter = &self.fighters[lead];
+            if fighter.navigation_route.is_empty()
+                && fighter.is_attacker == self.player_is_attacker
+                && !self.player_observing
+            {
+                let cue = TacticalVoiceCue::fighter_maneuver_complete(
+                    self.player_voice_faction(),
+                    fighter.fighter_group,
+                );
+                self.pending_voice_cues.push(cue);
+            }
+        }
+        let mover = self.fighter_movers[at].clone();
+        for (member, _) in &mover.slots {
+            if free.contains(member) {
+                let delta = self.fighter_place_delta(&mover, *member);
+                self.fly_fighter_squadron(
+                    *member,
+                    delta,
+                    None,
+                    mover.forward,
+                    ORIGINAL_TACTICAL_STEP_MILLISECONDS,
+                );
             }
         }
     }

@@ -1930,6 +1930,7 @@ mod tests {
             escort_target: None,
             recovery_state: TacticalFighterRecoveryState::AwaitingCarrier,
             recovery_target: None,
+            navigation_route: Vec::new(),
             home_carrier: None,
             in_hangar: false,
             retreating: false,
@@ -8304,6 +8305,45 @@ mod tests {
             z: -50.0,
         };
         session(vec![target], vec![wing])
+    }
+
+    // FUN_005c6610: a route (+0x74) comes before the target; the mover
+    // flies to the first point (slot +0xc) at its speed.
+    #[test]
+    fn a_fighter_route_comes_before_its_target() {
+        use crate::tactical::TacticalWorldPosition;
+        let mut tactical = dogfight();
+        let point = TacticalWorldPosition { x: 40.0, y: 0.0, z: -50.0 };
+        tactical.fighters[0].navigation_route = vec![point];
+        tactical.advance_fighter_approach();
+        let anchor = tactical.fighter_mover_of(0).expect("a mover").anchor;
+        assert!(anchor.x > 0.0, "{anchor:?}");
+        assert!((anchor.z + 50.0).abs() < 1e-5, "{anchor:?}");
+        assert_eq!(tactical.fighters[0].navigation_route, vec![point]);
+    }
+
+    // FUN_005c6610: within 1.0 (0x3f800000) the point becomes the anchor
+    // (+0x3c) and leaves the route (FUN_005c6200); the player's group hears
+    // its maneuver-complete line (0x37 plus the slot). The target follows.
+    #[test]
+    fn a_fighter_force_takes_its_route_point_and_then_its_target() {
+        use crate::tactical::TacticalWorldPosition;
+        let mut tactical = dogfight();
+        tactical.sync_fighter_movers();
+        let start = tactical.fighter_mover_of(0).expect("a mover").anchor;
+        let near = TacticalWorldPosition { x: start.x + 0.9, ..start };
+        let far = TacticalWorldPosition { x: start.x + 30.0, ..start };
+        tactical.fighters[0].navigation_route = vec![near, far];
+        let cues = tactical.pending_voice_cues.len();
+        tactical.advance_fighter_approach();
+        assert_eq!(tactical.fighter_mover_of(0).expect("a mover").anchor, near);
+        assert_eq!(tactical.fighters[0].navigation_route, vec![far]);
+        // The route goes on, so no line yet.
+        assert_eq!(tactical.pending_voice_cues.len(), cues);
+        tactical.fighters[0].navigation_route = vec![near];
+        tactical.advance_fighter_approach();
+        assert!(tactical.fighters[0].navigation_route.is_empty());
+        assert_eq!(tactical.pending_voice_cues.len(), cues + 1);
     }
 
     // FUN_005c6610: a fighter force heads one +0xc step toward its target
