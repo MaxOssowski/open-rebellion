@@ -564,7 +564,9 @@ pub(crate) fn apply(
             1
         };
         let fighter_count = if request.battle_results_presentation {
-            3
+            // Four squadrons stay operational: the Fighters page's list
+            // then outgrows its 166 pixels and shows its scroll bar.
+            5
         } else if request.command_assignment_presentation
             || request.command_progression_presentation
             || request.attack_targeting_presentation

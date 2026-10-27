@@ -600,8 +600,11 @@ pub struct TacticalState {
     pub battle_result_tab: BattleResultTab,
     /// Active force family in the Alliance or Imperial result tab.
     pub battle_result_category: BattleResultCategory,
-    /// The first row the forces page's list shows (the wheel scrolls it).
+    /// The forces page's list's first visible pixel (its scroll bar's
+    /// `+0xe0`, `FUN_0060a490`).
     battle_result_scroll: usize,
+    /// A press held on the forces list's scroll bar.
+    battle_result_scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// The original strategic Battle Alert owns entry until the player takes
     /// command, simulates, or attempts to retreat.
     battle_alert_open: bool,
@@ -739,6 +742,7 @@ impl Default for TacticalState {
             battle_result_tab: BattleResultTab::Summary,
             battle_result_category: BattleResultCategory::CapitalShips,
             battle_result_scroll: 0,
+            battle_result_scroll_hold: None,
             battle_alert_open: false,
             battle_alert_tab: BattleAlertTab::Summary,
             battle_alert_scroll: 0,
@@ -6984,11 +6988,12 @@ fn draw_battle_result_force_details(
     alliance: bool,
     category: BattleResultCategory,
     scroll: usize,
+    pressed: Option<crate::list_scroll_bar::Part>,
     player_alliance: bool,
     text_color: Color,
-) -> usize {
+) {
     let entries = battle_result_entries(session, world, troop_transport, alliance, category);
-    let ops = battle_force_page(
+    let mut ops = battle_force_page(
         &session.system_name,
         &entries,
         alliance,
@@ -6998,8 +7003,57 @@ fn draw_battle_result_force_details(
         text_color,
         |source, id| cache.original_resource_size(source, id),
     );
+    let content = battle_result_content(&entries, category);
+    ops.extend(battle_result_bar_ops(&battle_result_bar(content, scroll), pressed));
     draw_page_ops(cache, canvas, ops);
-    battle_result_list_length(&entries, category)
+}
+
+/// The forces list's content height in pixels: its longest column's rows.
+fn battle_result_content(entries: &[BattleResultEntry], category: BattleResultCategory) -> f32 {
+    battle_result_list_length(entries, category) as f32 * battle_result_row_height(category)
+}
+
+/// A forces list row's height (`FUN_004714e0` -> `FUN_006082c0`): 70, or
+/// 50 for Personnel.
+fn battle_result_row_height(category: BattleResultCategory) -> f32 {
+    if category == BattleResultCategory::Personnel {
+        50.0
+    } else {
+        70.0
+    }
+}
+
+/// The forces list's scroll bar (`FUN_0046f360` at 0x4704be:
+/// `FUN_0060a490(.., list, 7, 0x299d, ..)`) in window coordinates.
+fn battle_result_bar(content: f32, scroll: usize) -> crate::list_scroll_bar::ScrollBar {
+    crate::list_scroll_bar::ScrollBar::new(
+        37.0,
+        136.0,
+        347.0,
+        BATTLE_RESULT_LIST_HEIGHT,
+        content,
+        scroll as f32,
+    )
+}
+
+/// The bar's bitmaps (STRATEGY.DLL), clipped to the bar.
+fn battle_result_bar_ops(
+    bar: &crate::list_scroll_bar::ScrollBar,
+    pressed: Option<crate::list_scroll_bar::Part>,
+) -> Vec<PageOp> {
+    let pieces = bar.pieces(pressed);
+    if pieces.is_empty() {
+        return Vec::new();
+    }
+    std::iter::once(PageOp::Clip(Some(bar.rect())))
+        .chain(pieces.into_iter().map(|piece| PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: piece.id,
+            x: piece.x,
+            y: piece.y,
+        }))
+        .chain(std::iter::once(PageOp::Clip(None)))
+        .collect()
 }
 
 /// The forces list's rows: its longest column.
@@ -7025,14 +7079,15 @@ fn result_list_rows(category: BattleResultCategory) -> usize {
     (BATTLE_RESULT_LIST_HEIGHT / height) as usize
 }
 
-/// The forces list's first row after the wheel turns `wheel` with the
+/// The forces list's first pixel after the wheel turns `wheel` with the
 /// pointer at `pointer` (logical coordinates): only over the list at (37,
-/// 136) in the window, 347 by 166.
+/// 136) in the window, 347 by 166. port: the original has no wheel; a
+/// notch moves a row, within the bar's range.
 fn result_list_scroll(
     scroll: usize,
     pointer: (f32, f32),
     wheel: f32,
-    rows: usize,
+    content: f32,
     category: BattleResultCategory,
 ) -> usize {
     let (x, y) = (
@@ -7041,9 +7096,93 @@ fn result_list_scroll(
     );
     let over = (37.0..37.0 + 347.0).contains(&x)
         && (136.0..136.0 + BATTLE_RESULT_LIST_HEIGHT).contains(&y);
-    over.then(|| crate::assault_summary::scrolled(scroll, wheel, rows, result_list_rows(category)))
-        .flatten()
-        .unwrap_or(scroll)
+    if !over {
+        return scroll;
+    }
+    let max = crate::list_scroll_bar::max_first(content, BATTLE_RESULT_LIST_HEIGHT);
+    let row = battle_result_row_height(category);
+    let moved = if wheel > 0.0 {
+        scroll as f32 - row
+    } else if wheel < 0.0 {
+        scroll as f32 + row
+    } else {
+        scroll as f32
+    };
+    moved.clamp(0.0, max) as usize
+}
+
+/// The forces list's scroll bar for one frame: the pointer's press, hold
+/// and release on it ([`crate::list_scroll_bar::update`], the list's step
+/// `+0xc0` 10, `FUN_0046f360`), then the wheel.
+fn battle_result_list_input(state: &mut TacticalState, content: f32, mouse: (f32, f32)) {
+    let buttons = (
+        is_mouse_button_pressed(MouseButton::Left),
+        is_mouse_button_down(MouseButton::Left),
+        is_mouse_button_released(MouseButton::Left),
+    );
+    battle_result_list_step(state, content, mouse, buttons, mouse_wheel().1, get_time());
+}
+
+/// [`battle_result_list_input`] for the pointer at `mouse` (logical),
+/// the left button's `(pressed, down, released)`, the wheel and the time.
+fn battle_result_list_step(
+    state: &mut TacticalState,
+    content: f32,
+    mouse: (f32, f32),
+    (pressed, down, released): (bool, bool, bool),
+    wheel: f32,
+    now: f64,
+) {
+    let pointer = crate::list_scroll_bar::Pointer {
+        at: battle_window_local(mouse),
+        pressed,
+        down,
+        released,
+    };
+    let bar = battle_result_bar(content, state.battle_result_scroll);
+    let first = crate::list_scroll_bar::update(
+        &bar,
+        &mut state.battle_result_scroll_hold,
+        pointer,
+        BATTLE_RESULT_LIST_STEP,
+        now,
+    );
+    state.battle_result_scroll = result_list_scroll(
+        first as usize,
+        mouse,
+        wheel,
+        content,
+        state.battle_result_category,
+    );
+}
+
+/// A logical point in the Battle Results window's coordinates.
+fn battle_window_local(point: (f32, f32)) -> (f32, f32) {
+    (
+        point.0 - battle_window_origin().0,
+        point.1 - battle_window_origin().1,
+    )
+}
+
+/// The forces list's arrow step, `FUN_00607ea0`'s stack argument `0x3c`
+/// (10, `FUN_0046f360`).
+const BATTLE_RESULT_LIST_STEP: f32 = 10.0;
+
+/// The arrow of the forces list's bar drawn pressed: the held arrow while
+/// the pointer stays on it.
+fn battle_result_pressed_arrow(
+    state: &TacticalState,
+    content: f32,
+    mouse: (f32, f32),
+    down: bool,
+) -> Option<crate::list_scroll_bar::Part> {
+    let held = state.battle_result_scroll_hold?.part;
+    let over =
+        battle_result_bar(content, state.battle_result_scroll).part_at(battle_window_local(mouse));
+    (matches!(held, crate::list_scroll_bar::Part::Up | crate::list_scroll_bar::Part::Down)
+        && over == Some(held)
+        && down)
+        .then_some(held)
 }
 
 /// Draw a results page's steps in the Battle Results window.
@@ -7100,8 +7239,23 @@ fn draw_page_ops_at(
                 (size, bold),
                 color,
             ),
+            PageOp::Clip(rect) => set_tactical_aperture_clip(
+                rect.map(|rect| page_clip_on_screen(canvas, (origin_x, origin_y), rect)),
+            ),
         }
     }
+    set_tactical_aperture_clip(None);
+}
+
+/// A page's clip rectangle (window coordinates under `origin`) on the
+/// screen.
+fn page_clip_on_screen(
+    canvas: TacticalCanvas,
+    (origin_x, origin_y): (f32, f32),
+    (x, y, width, height): (f32, f32, f32, f32),
+) -> NativeRect {
+    let (left, top) = canvas.point(origin_x + x, origin_y + y);
+    NativeRect::new(left, top, width * canvas.scale, height * canvas.scale)
 }
 
 /// One drawing step of a results page, in window coordinates.
@@ -7133,6 +7287,9 @@ enum PageOp {
         color: Color,
         bold: bool,
     },
+    /// Clip the steps that follow to a rectangle (x, y, width, height),
+    /// or stop clipping.
+    Clip(Option<(f32, f32, f32, f32)>),
 }
 
 /// The Battle Summary's forces page as drawing steps (see
@@ -7255,8 +7412,8 @@ fn battle_force_page(
 
     let columns = battle_result_columns(entries, personnel);
     let (cell_w, cell_h) = if personnel { (110.0, 50.0) } else { (165.0, 70.0) };
-    let rows = result_list_rows(category);
     let empty = battle_result_empty_labels(&columns);
+    ops.push(PageOp::Clip(Some((37.0, 136.0, 347.0, BATTLE_RESULT_LIST_HEIGHT))));
     for (column, units) in columns.iter().enumerate() {
         let left = 37.0 + column as f32 * cell_w;
         if let Some(label) = empty[column] {
@@ -7269,8 +7426,12 @@ fn battle_force_page(
                 true,
             ));
         }
-        for (row, entry) in units.iter().skip(scroll).take(rows).enumerate() {
-            let top = 136.0 + row as f32 * cell_h;
+        for (row, entry) in units.iter().enumerate() {
+            let top = 136.0 + row as f32 * cell_h - scroll as f32;
+            // The list window (37, 136), 347 by 166, clips its cells.
+            if top + cell_h <= 136.0 || top >= 136.0 + BATTLE_RESULT_LIST_HEIGHT {
+                continue;
+            }
             // FUN_004724a0: the picture centred over the name.
             if let Some(picture) = entry.picture {
                 for (source, id) in entry.backdrop.into_iter().chain(std::iter::once(picture)) {
@@ -7294,6 +7455,7 @@ fn battle_force_page(
             ));
         }
     }
+    ops.push(PageOp::Clip(None));
     ops
 }
 
@@ -8146,7 +8308,16 @@ fn draw_original_battle_results(
             TacticalAction::None
         }
         BattleResultTab::AllianceForces => {
-            let rows = draw_battle_result_force_details(
+            let entries = battle_result_entries(
+                session,
+                world,
+                troop_transport,
+                true,
+                state.battle_result_category,
+            );
+            let content = battle_result_content(&entries, state.battle_result_category);
+            let pressed = battle_result_pressed_arrow(state, content, mouse, mouse_down);
+            draw_battle_result_force_details(
                 cache,
                 canvas,
                 session,
@@ -8155,22 +8326,24 @@ fn draw_original_battle_results(
                 true,
                 state.battle_result_category,
                 state.battle_result_scroll,
+                pressed,
                 player_alliance,
                 text_color,
             );
-            // port: the list's scroll bar is not drawn; the wheel over the
-            // list scrolls it a row at a time, as the port's other lists.
-            state.battle_result_scroll = result_list_scroll(
-                state.battle_result_scroll,
-                mouse,
-                mouse_wheel().1,
-                rows,
-                state.battle_result_category,
-            );
+            battle_result_list_input(state, content, mouse);
             TacticalAction::None
         }
         BattleResultTab::ImperialForces => {
-            let rows = draw_battle_result_force_details(
+            let entries = battle_result_entries(
+                session,
+                world,
+                troop_transport,
+                false,
+                state.battle_result_category,
+            );
+            let content = battle_result_content(&entries, state.battle_result_category);
+            let pressed = battle_result_pressed_arrow(state, content, mouse, mouse_down);
+            draw_battle_result_force_details(
                 cache,
                 canvas,
                 session,
@@ -8179,18 +8352,11 @@ fn draw_original_battle_results(
                 false,
                 state.battle_result_category,
                 state.battle_result_scroll,
+                pressed,
                 player_alliance,
                 text_color,
             );
-            // port: the list's scroll bar is not drawn; the wheel over the
-            // list scrolls it a row at a time, as the port's other lists.
-            state.battle_result_scroll = result_list_scroll(
-                state.battle_result_scroll,
-                mouse,
-                mouse_wheel().1,
-                rows,
-                state.battle_result_category,
-            );
+            battle_result_list_input(state, content, mouse);
             TacticalAction::None
         }
         BattleResultTab::GoDirectlyTo => draw_battle_result_destinations(
@@ -10454,9 +10620,11 @@ mod tests {
     }
 
     #[test]
-    fn a_ships_picture_is_its_classs_portrait_and_two_rows_fit() {
+    fn a_ships_picture_is_its_classs_portrait_and_two_rows_and_a_part_fit() {
         // FUN_0042c3b0(.., 1, 1): the mini less 0x4000; the list's 166
-        // fits two 70-high rows (FUN_004714e0's 165 by 70 cells).
+        // (FUN_00607ea0 at 0x47041f: 347 by 166) holds two 70-high rows
+        // (FUN_004714e0's 165 by 70 cells) and the top 26 pixels of a
+        // third, which the list window clips.
         let mut world = GameWorld::default();
         let class = world.capital_ship_classes.insert(rebellion_core::world::CapitalShipClass {
             dat_id: DatId::new(0x1400_0040),
@@ -10495,7 +10663,7 @@ mod tests {
             .iter()
             .filter(|op| matches!(op, PageOp::Bitmap { id, .. } if *id == mini - 0x4000))
             .count();
-        assert_eq!(pictures, 2);
+        assert_eq!(pictures, 3);
     }
 
     #[test]
@@ -10529,7 +10697,7 @@ mod tests {
                 PageOp::Text { text, x, baseline, size, centered, .. } => {
                     Some((text.clone(), *x, *baseline, *size, *centered))
                 }
-                PageOp::Bitmap { .. } | PageOp::Wrapped { .. } => None,
+                PageOp::Bitmap { .. } | PageOp::Wrapped { .. } | PageOp::Clip(_) => None,
             })
             .collect();
         let find = |name: &str| texts.iter().find(|entry| entry.0 == name).cloned().unwrap();
@@ -10571,7 +10739,7 @@ mod tests {
             .iter()
             .filter_map(|op| match op {
                 PageOp::Bitmap { id, x, y, .. } => Some((*id, *x, *y)),
-                PageOp::Text { .. } | PageOp::Wrapped { .. } => None,
+                PageOp::Text { .. } | PageOp::Wrapped { .. } | PageOp::Clip(_) => None,
             })
             .collect();
         // The two-column art, the pressed Trooper Regiments button.
@@ -11366,39 +11534,41 @@ mod tests {
     }
 
     #[test]
-    fn the_wheel_scrolls_the_forces_list_a_row_at_a_time() {
-        // port: the list (37, 136), 347 by 166, draws no scroll bar; two
-        // 70-high rows show, or three 50-high for Personnel.
-        assert_eq!(result_list_rows(BattleResultCategory::CapitalShips), 2);
-        assert_eq!(result_list_rows(BattleResultCategory::Personnel), 3);
-        // The Alliance window at (62, 49) (A0 TAC-07-C001).
+    fn the_forces_list_scrolls_by_pixels_under_its_bar() {
+        // FUN_0046f360: the list (37, 136), 347 by 166, of 70-high rows
+        // (50 for Personnel, FUN_004714e0), and its bar (FUN_0060a490)
+        // whose range is in pixels (FUN_00609ae0: content + 5 - 166).
+        assert_eq!(battle_result_row_height(BattleResultCategory::CapitalShips), 70.0);
+        assert_eq!(battle_result_row_height(BattleResultCategory::Personnel), 50.0);
+        let bar = battle_result_bar(210.0, 0);
+        assert_eq!((bar.x, bar.y, bar.view, bar.max), (372.0, 136.0, 166.0, 49.0));
+        // The bar's art from STRATEGY.DLL, clipped to its 12 by 166.
+        let ops = battle_result_bar_ops(&bar, None);
+        assert_eq!(ops.first(), Some(&PageOp::Clip(Some((372.0, 136.0, 12.0, 166.0)))));
+        assert_eq!(ops.last(), Some(&PageOp::Clip(None)));
+        assert!(ops.contains(&PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: crate::list_scroll_bar::UP_ARROW[0],
+            x: 372.0,
+            y: 136.0,
+        }));
+        // Two rows fit: no bar (FUN_0060b5d0).
+        assert!(battle_result_bar_ops(&battle_result_bar(140.0, 0), None).is_empty());
+        // The Alliance window at (62, 49) (A0 TAC-07-C001). port: a wheel
+        // notch over the list moves a row, within the bar's range.
         let at = |x: f32, y: f32| (62.0 + x, 49.0 + y);
-        let scroll = |from, (x, y), wheel, rows, category| {
-            result_list_scroll(from, at(x, y), wheel, rows, category)
+        let scroll = |from, (x, y), wheel, content, category| {
+            result_list_scroll(from, at(x, y), wheel, content, category)
         };
-        assert_eq!(
-            scroll(0, (37.0, 136.0), -1.0, 3, BattleResultCategory::Fighters),
-            1
-        );
-        assert_eq!(
-            scroll(1, (37.0, 136.0), -1.0, 3, BattleResultCategory::Fighters),
-            1
-        );
-        assert_eq!(
-            scroll(0, (37.0, 136.0), -1.0, 3, BattleResultCategory::Personnel),
-            0
-        );
-        assert_eq!(
-            scroll(1, (383.5, 301.5), 1.0, 3, BattleResultCategory::Troops),
-            0
-        );
-        for point in [
-            (36.5, 200.0),
-            (384.0, 200.0),
-            (100.0, 135.5),
-            (100.0, 302.0),
-        ] {
-            assert_eq!(scroll(0, point, -1.0, 9, BattleResultCategory::Troops), 0);
+        let fighters = BattleResultCategory::Fighters;
+        assert_eq!(scroll(0, (37.0, 136.0), -1.0, 280.0, fighters), 70);
+        assert_eq!(scroll(70, (37.0, 136.0), -1.0, 280.0, fighters), 119);
+        assert_eq!(scroll(0, (37.0, 136.0), -1.0, 140.0, fighters), 0);
+        assert_eq!(scroll(30, (383.5, 301.5), 1.0, 280.0, fighters), 0);
+        assert_eq!(scroll(119, (100.0, 200.0), 1.0, 280.0, fighters), 49);
+        assert_eq!(scroll(70, (100.0, 200.0), 0.0, 280.0, fighters), 70);
+        for point in [(36.5, 200.0), (384.0, 200.0), (100.0, 135.5), (100.0, 302.0)] {
+            assert_eq!(scroll(0, point, -1.0, 630.0, BattleResultCategory::Troops), 0);
         }
         // The rows are the longest column's: three operational, one
         // destroyed.
@@ -11419,16 +11589,22 @@ mod tests {
             3
         );
         assert_eq!(
+            battle_result_content(&mixed, BattleResultCategory::CapitalShips),
+            210.0
+        );
+        assert_eq!(
             battle_result_list_length(&[], BattleResultCategory::CapitalShips),
             0
         );
         // A new tab or category starts at the top; the same keeps it.
-        let (mut shown, mut at_row) = (BattleResultCategory::Fighters, 2);
-        select_resetting_scroll(&mut shown, &mut at_row, BattleResultCategory::Fighters);
-        assert_eq!(at_row, 2);
-        select_resetting_scroll(&mut shown, &mut at_row, BattleResultCategory::Troops);
-        assert_eq!((shown, at_row), (BattleResultCategory::Troops, 0));
-        // A scrolled page starts its first row at the list's top.
+        let (mut shown, mut at_pixel) = (BattleResultCategory::Fighters, 20);
+        select_resetting_scroll(&mut shown, &mut at_pixel, BattleResultCategory::Fighters);
+        assert_eq!(at_pixel, 20);
+        select_resetting_scroll(&mut shown, &mut at_pixel, BattleResultCategory::Troops);
+        assert_eq!((shown, at_pixel), (BattleResultCategory::Troops, 0));
+        // The list clips its cells to the 166-high window: at 0 the third
+        // row's top 26 pixels show; scrolled 70, the rows move up 70 and the
+        // fourth comes in.
         let entries: Vec<BattleResultEntry> = (0..4)
             .map(|index| BattleResultEntry {
                 name: format!("Ship {index}"),
@@ -11437,7 +11613,7 @@ mod tests {
                 backdrop: None,
             })
             .collect();
-        let names = |scroll| {
+        let page = |scroll| {
             battle_force_page(
                 "Hoth",
                 &entries,
@@ -11448,25 +11624,69 @@ mod tests {
                 WHITE,
                 |_, _| None,
             )
-            .into_iter()
-            .filter_map(|op| match op {
-                PageOp::Text { text, baseline, .. } if text.starts_with("Ship") => {
-                    Some((text, baseline))
-                }
-                _ => None,
-            })
-            .collect::<Vec<_>>()
         };
-        assert_eq!(names(0).len(), 2);
-        assert_eq!(
-            names(2),
-            names(0)
+        let names = |scroll| {
+            page(scroll)
                 .into_iter()
-                .map(|(_, baseline)| baseline)
-                .zip(["Ship 2", "Ship 3"])
-                .map(|(baseline, text)| (text.to_owned(), baseline))
+                .filter_map(|op| match op {
+                    PageOp::Text { text, baseline, .. } if text.starts_with("Ship") => {
+                        Some((text, baseline))
+                    }
+                    _ => None,
+                })
                 .collect::<Vec<_>>()
+        };
+        let first = names(0);
+        assert_eq!(
+            first.iter().map(|(text, _)| text.as_str()).collect::<Vec<_>>(),
+            ["Ship 0", "Ship 1", "Ship 2"]
         );
+        let scrolled = names(70);
+        assert_eq!(scrolled[0], ("Ship 1".to_owned(), first[0].1));
+        assert_eq!(scrolled[2].0, "Ship 3");
+        let ops = page(0);
+        assert!(ops.contains(&PageOp::Clip(Some((37.0, 136.0, 347.0, 166.0)))));
+        assert_eq!(ops.last(), Some(&PageOp::Clip(None)));
+    }
+
+    #[test]
+    fn the_forces_lists_bar_takes_the_pointer_in_window_coordinates() {
+        // FUN_0046f360: the bar at window (372, 136); a click on its down
+        // arrow (window y 293..302) steps the list's 10 pixels
+        // (FUN_00607ea0's step), drawn pressed while held; a wheel notch
+        // over the list moves a row (port).
+        let origin = battle_window_origin();
+        let window = |x: f32, y: f32| (origin.0 + x, origin.1 + y);
+        let mut state = TacticalState::default();
+        let content = 280.0;
+        let arrow = window(378.0, 297.0);
+        battle_result_list_step(&mut state, content, arrow, (true, true, false), 0.0, 0.0);
+        assert_eq!(
+            battle_result_pressed_arrow(&state, content, arrow, true),
+            Some(crate::list_scroll_bar::Part::Down)
+        );
+        assert_eq!(battle_result_pressed_arrow(&state, content, arrow, false), None);
+        assert_eq!(
+            battle_result_pressed_arrow(&state, content, window(378.0, 200.0), true),
+            None
+        );
+        battle_result_list_step(&mut state, content, arrow, (false, false, true), 0.0, 0.1);
+        assert_eq!(state.battle_result_scroll, 10);
+        // The wheel over the list.
+        battle_result_list_step(&mut state, content, window(100.0, 200.0), (false, false, false), -1.0, 0.2);
+        assert_eq!(state.battle_result_scroll, 80);
+        // A held thumb is not an arrow.
+        battle_result_list_step(&mut state, content, window(378.0, 200.0), (true, true, false), 0.0, 0.3);
+        assert_eq!(battle_result_pressed_arrow(&state, content, window(378.0, 200.0), true), None);
+        // The clip maps window coordinates through the letterboxed canvas.
+        let canvas = TacticalCanvas::new(1280.0, 800.0);
+        let clip = page_clip_on_screen(canvas, (62.0, 49.0), (372.0, 136.0, 12.0, 166.0));
+        let (left, top) = canvas.point(434.0, 185.0);
+        assert_eq!(
+            (clip.x, clip.y, clip.width, clip.height),
+            (left, top, 12.0 * canvas.scale, 166.0 * canvas.scale)
+        );
+        assert!(canvas.scale > 1.0);
     }
 
     #[test]

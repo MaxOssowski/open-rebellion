@@ -3464,6 +3464,29 @@ async function probeTacticalBattleResultsPresentation(
       category: ["capital-ships", "fighters", "troops", "personnel"][category],
       screenshot_sha256: sha256(capture),
     });
+    if (category === 1) {
+      // FUN_0046f360 -> FUN_0060a490: four operational squadrons (280
+      // pixels) outgrow the 166-high list, so its bar shows at the list's
+      // right edge, window (372, 136), with the RCDATA 10653 art clipped
+      // to 12 wide. The thumb's top cap starts at the track's top (145).
+      const clipped = [{ x: 12, y: 0, width: 1, height: 13 }];
+      probes.push({
+        type: "battle-results-scroll-bar",
+        up_arrow: verifyStrategyBitmap(viewport, capture, 10685, 85 + dx + 372, 74 + dy + 136, clipped),
+        down_arrow: verifyStrategyBitmap(viewport, capture, 10687, 85 + dx + 372, 74 + dy + 293, clipped),
+        thumb_top: verifyStrategyBitmap(viewport, capture, 10689, 85 + dx + 372, 74 + dy + 145, clipped),
+      });
+      // A click on the down arrow steps the list's 10 pixels
+      // (FUN_00607ea0's step): the range is 280 + 5 - 166 = 119 and the
+      // 86-high thumb travels 62, so its top moves to 145 + 5.
+      const arrow = point(85 + dx + 378, 74 + dy + 297);
+      await page.mouse.click(arrow.x, arrow.y);
+      const stepped = await stableInteractionFrame(page, folder, "results-fighters-scrolled");
+      probes.push({
+        type: "battle-results-scroll-step",
+        thumb_top: verifyStrategyBitmap(viewport, stepped, 10689, 85 + dx + 372, 74 + dy + 150, clipped),
+      });
+    }
     if (category === 3) {
       probes.push({
         type: "battle-results-personnel-detail",
@@ -3539,9 +3562,11 @@ async function probeTacticalBattleResultsPresentation(
     `${faction}: destroyed attacker capital was not removed from strategic state`);
   assert.match(persistence.text, /defender_capitals=3->2/,
     `${faction}: destroyed defender capital was not removed from strategic state`);
-  assert.match(persistence.text, /attacker_fighters=3->2/,
+  // Five squadrons a side (four operational, so the Fighters list
+  // scrolls); one is destroyed.
+  assert.match(persistence.text, /attacker_fighters=5->4/,
     `${faction}: destroyed attacker fighter was not removed from strategic state`);
-  assert.match(persistence.text, /defender_fighters=3->2/,
+  assert.match(persistence.text, /defender_fighters=5->4/,
     `${faction}: destroyed defender fighter was not removed from strategic state`);
   probes.push({ type: "battle-results-route", destination: route,
     screenshot_sha256: sha256(routed) });
@@ -4843,13 +4868,15 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         inner_negative_z: -34.5,
         inner_positive_z: 34.5,
       } : scenario.battle_results_presentation ? {
-        first_active_objects: 6,
-        second_active_objects: 6,
-        battle_extent: 118,
-        outer_positive_z: 59,
-        outer_negative_z: -59,
-        inner_negative_z: -39,
-        inner_positive_z: 39,
+        // Three ships and five squadrons a side (the Fighters list
+        // outgrows its height and scrolls).
+        first_active_objects: 8,
+        second_active_objects: 8,
+        battle_extent: 124,
+        outer_positive_z: 62,
+        outer_negative_z: -62,
+        inner_negative_z: -42,
+        inner_positive_z: 42,
       } : scenario.death_star_presentation ? {
         // The Imperial fleet brings no fighter group: FUN_005ad930 enables
         // Attack Death Star only while fewer Imperial than Alliance groups
@@ -4887,7 +4914,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
               || scenario.attack_target_lifecycle_presentation ? 10
               : scenario.command_assignment_presentation
                 || scenario.battle_options_withdrawal ? 6
-                : scenario.battle_results_presentation ? 12
+                : scenario.battle_results_presentation ? 16
                   : scenario.death_star_presentation ? 3
                     : scenario.hull_scale_presentation ? 2 : 4);
       const expectedParticipantLanes = new Map([
@@ -5065,8 +5092,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           participant.kind === "fighter-group" && participant.faction === "empire");
         assert.equal(allianceShips.length, 3);
         assert.equal(empireShips.length, 3);
-        assert.equal(allianceFighters.length, 3);
-        assert.equal(empireFighters.length, 3);
+        assert.equal(allianceFighters.length, 5);
+        assert.equal(empireFighters.length, 5);
         assert.ok(allianceShips.every(({ source_position: position }) =>
           position[2] === ready.source_layout.outer_negative_z));
         assert.ok(empireShips.every(({ source_position: position }) =>
