@@ -310,8 +310,11 @@ fn entries_mut(world: &mut GameWorld, place: SquadronPlace) -> Option<&mut Vec<F
 
 /// Whether a squadron's pop-up menu enables Move for the side `alliance`:
 /// its own squadron of `class` at `place`, on a planet or aboard a fleet in
-/// orbit (`FUN_004f9860`'s side and en-route rules). hyp: the object check's
-/// other rules are untraced for a squadron.
+/// orbit (`FUN_004f9860`'s side and en-route rules). That check is the
+/// squadron's only one (its slots `+0x5c`/`+0x6c` are the combat unit's
+/// `FUN_005575f0`/`FUN_005576a0`): its order-kind set (`FUN_00503000`,
+/// `0x200`..`0x204`, which a Move is in), the side, not complete, destroyed
+/// and en route; the port's squadrons are always complete and alive.
 #[must_use]
 pub fn move_enabled(
     world: &GameWorld,
@@ -372,7 +375,7 @@ fn check_route(
 /// in-transit bit, the destination and the arrival day).
 ///
 /// The original moves the squadron into its new container at once and marks
-/// it en route. hyp: as for regiments and deliveries, the port holds it here
+/// it en route. port: as for regiments and deliveries, the port holds it here
 /// and places it on arrival, so no walk of the destination sees it early.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SquadronTransit {

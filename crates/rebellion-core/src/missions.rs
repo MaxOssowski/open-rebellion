@@ -1394,11 +1394,11 @@ fn landing(
 
 /// Seat `fleet`'s characters that ride on none of its ships aboard its
 /// first living ship; a seat on a ship still in the fleet is kept, so a
-/// lost ship's passengers are found before it is removed. hyp: the leg builder (`FUN_00552300`) weighs the
-/// fleet's ships in order (`FUN_00552b10`) and a later one wins only when
-/// strictly better (`FUN_0054fbb0`); every ship has room for a character
-/// (`FUN_00500b40`), so the first is kept. The weighed fields are
-/// untraced.
+/// lost ship's passengers are found before it is removed. The leg builder
+/// (`FUN_00552300`) weighs the fleet's ships in order (`FUN_00552b10`) and
+/// a later one wins only when strictly better (`FUN_0054fbb0`: no refusal,
+/// then unlimited room, then more room left); every ship gives a character
+/// unlimited room (`FUN_00500b40`), so they tie and the first is kept.
 pub fn seat_characters(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
     let Some(value) = world.fleets.get(fleet) else {
         return;
