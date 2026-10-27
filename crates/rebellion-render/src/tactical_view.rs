@@ -5443,6 +5443,14 @@ fn handle_original_tactical_controls(
             );
         }
     }
+    // Tab goes to the panel window (`FUN_0059b730` case 9, `+0x10c`); the
+    // capital panel (`0x66d6e0`, `0x005e45a0`) presses its next button
+    // `0xdd04` on Tab and its previous one `0xdd03` on Shift+Tab.
+    if is_key_pressed(KeyCode::Tab) {
+        if let Some(control) = tab_panel_control(state, is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift)) {
+            activate_tactical_command(state, control);
+        }
+    }
     if is_key_pressed(KeyCode::Space) {
         if let Some(session) = state.session.as_mut() {
             if let Some(TacticalFocusAssignment::Assigned { object_ids, .. }) = attack_nearest_enemy(session) {
@@ -5502,6 +5510,22 @@ fn camera_follow_for_key(session: &BattleSession, index: usize) -> Option<Tactic
     } else {
         fighter_group_exists(session, group).then_some(TacticalCameraFollow::FighterGroup(group))
     }
+}
+
+/// The capital panel's button Tab presses, when that panel is shown. port:
+/// the squadron panel (`0x66d750`, `0x005e74e0`) has the same Tab keys,
+/// but the port's squadron panel has no previous and next buttons.
+fn tab_panel_control(state: &TacticalState, shift: bool) -> Option<TacticalCommandControl> {
+    let session = state.session.as_ref()?;
+    let shown = state.command_panel == TacticalCommandPanel::Display
+        && !state.battle_options_open
+        && !state.withdraw_confirmation_open
+        && TacticalGroupHud::from_session(session).panel_ship_name().is_some();
+    shown.then_some(if shift {
+        TacticalCommandControl::PreviousCapital
+    } else {
+        TacticalCommandControl::NextCapital
+    })
 }
 
 /// A player's task force with a member left. port: `FUN_00595ba0`'s list
@@ -5591,19 +5615,12 @@ fn activate_tactical_hud_control(
         }
         TacticalHudControl::CameraTarget => {
             state.camera_follow = None;
-            let selected = state.session.as_ref().and_then(|session| {
-                session.selected_ship.and_then(|index| {
-                    session.ships.get(index).map(|ship| {
-                        (index, ship.x, ship.y, ship.source_position.rendered())
-                    })
-                })
-            });
-            if let Some((_index, x, y, _source_position)) = selected {
+            let selected = state.session.as_ref().and_then(camera_target_of_selection);
+            if let Some((object_id, x, y, source_position)) = selected {
                 (state.camera_x, state.camera_y) = camera_offset_for_target(x, y);
-                state.asset_renderer.focus_target(
-                    u32::try_from(_index).unwrap_or(u32::MAX).saturating_add(1),
-                    _source_position,
-                );
+                state
+                    .asset_renderer
+                    .focus_target(object_id, source_position.rendered());
             }
         }
         TacticalHudControl::CameraLeft => {
@@ -5674,6 +5691,31 @@ fn activate_tactical_hud_control(
         }
     }
     None
+}
+
+/// The camera target button (`0xad21`, `FUN_005c2990` mode 9): the free
+/// camera looks at the selection state's unit (its slot `+4` through
+/// `FUN_00599c80`). A ship selection gives its ship (`0x005a5910`,
+/// `0x005a5680`); a fighter group its current squadron, the first that
+/// still flies (`0x005a4710`, `FUN_005c6070`). Squadron objects count from
+/// 1001, as the fighter projections do.
+fn camera_target_of_selection(
+    session: &BattleSession,
+) -> Option<(u32, f32, f32, TacticalWorldPosition)> {
+    if let Some(group) = session.selected_fighter_group {
+        let (index, fighter) = session.fighters.iter().enumerate().find(|(_, fighter)| {
+            fighter.alive
+                && fighter.squad_count > 0
+                && fighter.is_attacker == session.player_is_attacker
+                && fighter.fighter_group == group
+        })?;
+        let object_id = u32::try_from(index).ok()?.checked_add(1001)?;
+        return Some((object_id, fighter.x, fighter.y, fighter.source_position));
+    }
+    let index = session.selected_ship?;
+    let ship = session.ships.get(index)?;
+    let object_id = u32::try_from(index).ok()?.checked_add(1)?;
+    Some((object_id, ship.x, ship.y, ship.source_position))
 }
 
 fn camera_offset_for_target(x: f32, y: f32) -> (f32, f32) {
@@ -15302,6 +15344,53 @@ mod tests {
         assert!(select_task_force(&mut session, 0) > 0);
         assert_eq!(ctrl_click_ship(&mut session, 2), "joined_task_force");
         assert_eq!(session.ships[1].escort_target, Some(2));
+    }
+
+    // 0x005e45a0: Tab presses the capital panel's next button (0xdd04),
+    // Shift+Tab its previous one (0xdd03), only while that panel shows.
+    #[test]
+    fn tab_steps_through_the_capital_panel_only_while_it_shows() {
+        let mut state = TacticalState::default();
+        assert_eq!(tab_panel_control(&state, false), None);
+        let mut first = test_ship(1, 0, true, true);
+        first.task_force = 0;
+        let mut session = test_session(vec![first], Vec::new(), true);
+        assert!(select_task_force(&mut session, 0) > 0);
+        state.session = Some(session);
+        assert_eq!(tab_panel_control(&state, false), Some(TacticalCommandControl::NextCapital));
+        assert_eq!(tab_panel_control(&state, true), Some(TacticalCommandControl::PreviousCapital));
+        state.battle_options_open = true;
+        assert_eq!(tab_panel_control(&state, false), None);
+        state.battle_options_open = false;
+        state.withdraw_confirmation_open = true;
+        assert_eq!(tab_panel_control(&state, false), None);
+        state.withdraw_confirmation_open = false;
+        state.command_panel = TacticalCommandPanel::Missions { pending_order: TacticalOrder::None };
+        assert_eq!(tab_panel_control(&state, false), None);
+    }
+
+    // FUN_005c2990 mode 9 looks at the selection's unit: a ship, or a
+    // fighter group's first flying squadron (0x005a4710), id 1001 + index.
+    #[test]
+    fn the_camera_target_is_the_selected_ship_or_the_groups_squadron() {
+        let mut lost = test_fighter(5, true);
+        lost.alive = false;
+        let mut spent = test_fighter(6, true);
+        spent.squad_count = 0;
+        let mut other = test_fighter(7, true);
+        other.fighter_group = 1;
+        let enemy = test_fighter(8, false);
+        let mut flying = test_fighter(9, true);
+        flying.source_position = at(1.0, 2.0, 3.0);
+        let mut ship = test_ship(1, 0, true, true);
+        ship.source_position = at(4.0, 5.0, 6.0);
+        let mut session =
+            test_session(vec![test_ship(2, 0, false, true), ship], vec![lost, spent, other, enemy, flying], true);
+        assert_eq!(camera_target_of_selection(&session), None);
+        select_clicked_ship(&mut session, 1, false);
+        assert_eq!(camera_target_of_selection(&session).map(|(id, _, _, at)| (id, at)), Some((2, at(4.0, 5.0, 6.0))));
+        assert!(select_fighter_group(&mut session, 0));
+        assert_eq!(camera_target_of_selection(&session).map(|(id, _, _, at)| (id, at)), Some((1005, at(1.0, 2.0, 3.0))));
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.
