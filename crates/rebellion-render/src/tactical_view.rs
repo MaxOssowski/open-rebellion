@@ -9860,8 +9860,10 @@ fn toggle_route_point(route: &mut Vec<TacticalWorldPosition>, point: TacticalWor
 /// A navigation point's colour by its grid layer (`FUN_0059f800` stores the
 /// layer, y index + 1, at `+0x54`): A0 VM 2026-10-27 shows the top layer
 /// white, the middle one dark red (148, 6, 0) and the bottom one blue (0,
-/// 46, 178). hyp: that `+0x54` picks the colour is inferred; its reader is
-/// not traced.
+/// 46, 178). The layer picks the marker: `FUN_0059fb30` hands each point's
+/// `+0x54` to the display (`FUN_005c10d0` -> `FUN_005c1e80`), whose marker
+/// `FUN_005d90b0` switches on it (`0x5d913b`..`0x5d9179`) among its
+/// variants (`0x5d9230`, `0x5d92d0`, `0x5d9310`).
 fn navigation_layer_color(y: f32) -> Color {
     if y > 0.0 {
         WHITE

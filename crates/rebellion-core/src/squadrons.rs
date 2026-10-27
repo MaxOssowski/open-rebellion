@@ -87,12 +87,14 @@ pub fn aboard(entries: &[FighterEntry], ship: u64) -> u32 {
 }
 
 /// Seat `fleet`'s squadrons that ride on none of its living ships: each
-/// goes aboard the first living ship, in fleet order, with room for it
-/// (fighter capacity `+0x26c` less the squadrons aboard, `FUN_00500b40`).
-/// Entries of a class on one ship are merged. hyp: the order the ships are
-/// filled in; the original's order names its ship. port: squadrons left
-/// over when no ship has room stay in the fleet on no ship, as the port's
-/// seeding and sorties can put them there.
+/// goes aboard the living ship with the most room left (fighter capacity
+/// `+0x26c` less the squadrons aboard, `FUN_00500b40`), the earlier one on
+/// a tie. The leg builder (`FUN_00552300`) weighs each ship of the fleet
+/// (`FUN_00552b10`) and a later one wins only when strictly better
+/// (`FUN_0054fbb0`: no refusal, then more room left, `+8`). Entries of a
+/// class on one ship are merged. port: squadrons left over when no ship has
+/// room stay in the fleet on no ship, as the port's seeding and sorties can
+/// put them there (a Move with no room is refused, `0x14`/1).
 pub fn seat_squadrons(world: &mut GameWorld, fleet: FleetKey) {
     let Some(value) = world.fleets.get(fleet) else {
         return;
@@ -121,17 +123,20 @@ pub fn seat_squadrons(world: &mut GameWorld, fleet: FleetKey) {
     let (mut kept, loose): (Vec<_>, Vec<_>) = entries.into_iter().partition(|entry| seated(entry));
     for entry in loose {
         let mut left = entry.count;
-        for &(ship, capacity) in &ships {
-            if left == 0 {
+        while left > 0 {
+            let best = ships
+                .iter()
+                .map(|&(ship, capacity)| (ship, capacity.saturating_sub(aboard(&kept, ship))))
+                .filter(|&(_, room)| room > 0)
+                .fold(None, |best: Option<(u64, u32)>, candidate| match best {
+                    Some(held) if candidate.1 <= held.1 => Some(held),
+                    _ => Some(candidate),
+                });
+            let Some((ship, _)) = best else {
                 break;
-            }
-            let room = capacity.saturating_sub(aboard(&kept, ship));
-            let boarding = room.min(left);
-            if boarding == 0 {
-                continue;
-            }
-            left -= boarding;
-            put(&mut kept, entry.class, boarding, Some(ship));
+            };
+            left -= 1;
+            put(&mut kept, entry.class, 1, Some(ship));
         }
         put(&mut kept, entry.class, left, None);
     }
@@ -223,8 +228,11 @@ pub enum SquadronMoveError {
     InTransit,
     /// The destination fleet is another side's (`FUN_00553410`, `1`/`0x24`).
     OtherSideDestination,
-    /// The destination planet is held by another side. hyp: the regiment's
-    /// rule (`FUN_0053d430`, `1`/`0x28`).
+    /// The destination planet is not the squadron's side's: `FUN_0053d430`
+    /// (the `0x204` sub-order's check) refuses with `1`/`0x28` a system whose
+    /// side bits (`+0x24 >> 6 & 3`) are not the mover's, a neutral or
+    /// unheld one included, since a squadron is neither a fleet nor a
+    /// regiment.
     OtherSidePlanet,
     /// A move onto the place the squadron is at.
     IntoItself,
@@ -351,8 +359,8 @@ fn check_route(
         }
         SquadronPlace::Planet(system) => {
             let side = crate::dat::Faction::of_alliance(alliance);
-            let holder = world.systems.get(system).and_then(crate::uprising::holder);
-            if holder.is_some_and(|holder| holder != side) {
+            let holder = world.systems.get(system).and_then(|value| value.control.faction());
+            if holder != Some(side) {
                 return Err(SquadronMoveError::OtherSidePlanet);
             }
         }
@@ -808,9 +816,11 @@ mod tests {
 
     // FUN_00500b40: a ship holds up to its fighter capacity (+0x26c), and
     // a fleet's squadrons ride on its ships (FUN_004fe160 takes only
-    // capital ships). hyp: the ships fill in fleet order.
+    // capital ships). Each boards the ship with the most room left, the
+    // earlier on a tie (FUN_00552b10 keeps a candidate unless FUN_0054fbb0
+    // finds a later one strictly better, +8 the room left).
     #[test]
-    fn squadrons_board_the_fleets_ships_in_order_up_to_their_room() {
+    fn squadrons_board_the_ship_with_the_most_room_left() {
         let mut setup = setup(2);
         let carrier = setup.world.fleets[setup.fleet].capital_ships[0].class;
         let fleet = &mut setup.world.fleets[setup.fleet];
@@ -828,6 +838,16 @@ mod tests {
             1
         );
         assert_eq!(total(&fleet.fighters), 5);
+        // Two squadrons for two ships of room 3 spread one a ship.
+        let mut roomy = self::setup(3);
+        let carrier = roomy.world.fleets[roomy.fleet].capital_ships[0].class;
+        let fleet = &mut roomy.world.fleets[roomy.fleet];
+        fleet.capital_ships.push(ShipInstance::new(carrier, 100, true));
+        add(&mut fleet.fighters, roomy.x_wing, 2);
+        roomy.world.number_ships();
+        let fleet = &roomy.world.fleets[roomy.fleet];
+        assert_eq!(aboard(&fleet.fighters, fleet.capital_ships[0].id), 1);
+        assert_eq!(aboard(&fleet.fighters, fleet.capital_ships[1].id), 1);
     }
 
     // Two loose entries of one class boarding one ship make one entry.
@@ -847,10 +867,12 @@ mod tests {
         );
     }
 
-    // A squadron whose ship is gone boards another ship with room. hyp: a
-    // destroyed ship takes its docked squadrons with it
-    // (crate::scrap::destroy_ship); this covers the paths not traced to
-    // SetDestroyedReason, the scrap and the battle's commit (FUN_0040d320).
+    // A squadron whose ship is gone boards another ship with room. hyp: the
+    // scrap and the abstract battle's commit, which do not reach this
+    // through SetDestroyedReason in the port (a destroyed ship takes its
+    // docked squadrons, crate::scrap::destroy_ship; the tactical commit
+    // kills a lost carrier's hangar and sends its launched ones to the
+    // planet, FUN_0040d320).
     #[test]
     fn a_lost_ships_squadrons_board_another_ship() {
         let mut setup = setup(2);
@@ -860,7 +882,7 @@ mod tests {
         add(&mut fleet.fighters, setup.x_wing, 2);
         setup.world.number_ships();
         let first = setup.world.fleets[setup.fleet].capital_ships[0].id;
-        assert_eq!(aboard(&setup.world.fleets[setup.fleet].fighters, first), 2);
+        assert_eq!(aboard(&setup.world.fleets[setup.fleet].fighters, first), 1);
         setup.world.fleets[setup.fleet].capital_ships[0].alive = false;
         setup.world.number_ships();
         let fleet = &setup.world.fleets[setup.fleet];
@@ -1046,13 +1068,21 @@ mod tests {
             ),
             Ok(())
         );
-        // hyp: FUN_0053d430's 1/0x28 refuses a planet another side holds.
+        // FUN_0053d430's 1/0x28 refuses a planet whose side bits are not the
+        // mover's: another side's, and a neutral one too.
         s.world.systems[s.here].control = ControlKind::Controlled(Faction::Empire);
         add(&mut s.world.fleets[s.fleet].fighters, s.x_wing, 1);
         assert_eq!(
             check(&s.world, true, s.x_wing, 1, fleet, planet),
             Err(SquadronMoveError::OtherSidePlanet)
         );
+        s.world.systems[s.here].control = ControlKind::Uncontrolled;
+        assert_eq!(
+            check(&s.world, true, s.x_wing, 1, fleet, planet),
+            Err(SquadronMoveError::OtherSidePlanet)
+        );
+        s.world.systems[s.here].control = ControlKind::Controlled(Faction::Alliance);
+        assert_eq!(check(&s.world, true, s.x_wing, 1, fleet, planet), Ok(()));
         assert_eq!(
             check(
                 &s.world,

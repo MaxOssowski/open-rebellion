@@ -191,6 +191,7 @@ pub(crate) fn apply_results(
         }
     }
     let mut stranded = Vec::new();
+    let mut to_planet = Vec::new();
     for fleet_key in fought {
         let is_attacker = world
             .fleets
@@ -227,20 +228,49 @@ pub(crate) fn apply_results(
                 }
             }
 
-            let mut survivors = vec![0_u32; fleet.fighters.len()];
+            // FUN_0040c780's commit, each squadron's count and parent
+            // (FUN_0040d260, FUN_0040d320): one in its carrier's hangar or
+            // docked (state 1 or 5) rides on with it; a lost carrier's such
+            // squadrons died with it (its death, FUN_005b2d20, kills its
+            // hangar's through FUN_005b8d80), and its launched ones go to
+            // the system (the parent `[esi+8]`, 0x40d47c).
+            let lost: Vec<u64> = fleet
+                .capital_ships
+                .iter()
+                .filter(|ship| !ship.alive && ship.id != 0)
+                .map(|ship| ship.id)
+                .collect();
+            let mut survivors = vec![(0_u32, 0_u32); fleet.fighters.len()];
             for fighter in session
                 .fighters
                 .iter()
                 .filter(|fighter| fighter.fleet == fleet_key)
             {
                 if fighter.squad_count > 0 {
+                    let inside = fighter.in_hangar
+                        || fighter.recovery_state
+                            == rebellion_core::tactical::TacticalFighterRecoveryState::Recovered;
                     if let Some(count) = survivors.get_mut(fighter.fleet_fighter_index) {
-                        *count = count.saturating_add(1);
+                        if inside {
+                            count.0 = count.0.saturating_add(1);
+                        } else {
+                            count.1 = count.1.saturating_add(1);
+                        }
                     }
                 }
             }
-            for (entry, surviving_squadrons) in fleet.fighters.iter_mut().zip(survivors) {
-                entry.count = surviving_squadrons;
+            for (entry, (inside, outside)) in fleet.fighters.iter_mut().zip(survivors) {
+                if entry.carrier.is_some_and(|carrier| lost.contains(&carrier)) {
+                    entry.count = 0;
+                    to_planet.push((entry.class, outside));
+                } else {
+                    entry.count = inside + outside;
+                }
+            }
+        }
+        if let Some(system) = world.systems.get_mut(session.system) {
+            for (class, count) in std::mem::take(&mut to_planet) {
+                rebellion_core::squadrons::add(&mut system.fighters, class, count);
             }
         }
 
@@ -868,6 +898,90 @@ mod tests {
             let injury = world.characters[officer].injury;
             assert!((1..130).contains(&injury), "{injury}");
         }
+    }
+
+    #[test]
+    fn a_lost_carriers_hangar_squadrons_die_and_its_launched_ones_go_to_the_planet() {
+        // FUN_0040c780 / FUN_0040d320: a squadron in its carrier's hangar
+        // or docked rides on with it, else its parent is the system; a lost
+        // carrier's death (FUN_005b2d20 -> FUN_005b8d80) kills its hangar's.
+        let (mut world, system, attacker, defender) = opposing_empty_fleets();
+        let carrier = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Carrier".into(),
+            hull: 100,
+            fighter_capacity: 2,
+            ..Default::default()
+        });
+        let wing = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0001),
+            is_alliance: true,
+            squadron_size: 12,
+            sub_light_engine: 10,
+            ..Default::default()
+        });
+        let other = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0002),
+            is_alliance: true,
+            squadron_size: 12,
+            sub_light_engine: 10,
+            ..Default::default()
+        });
+        for _ in 0..2 {
+            world.fleets[attacker]
+                .capital_ships
+                .push(ShipInstance::new(carrier, 100, true));
+        }
+        world.fleets[defender]
+            .capital_ships
+            .push(ShipInstance::new(carrier, 100, false));
+        world.number_ships();
+        let id = world.fleets[attacker].capital_ships[0].id;
+        let kept = world.fleets[attacker].capital_ships[1].id;
+        for (class, count, carrier) in [(wing, 2, id), (other, 1, id), (wing, 1, kept)] {
+            world.fleets[attacker].fighters.push(rebellion_core::world::FighterEntry {
+                class,
+                count,
+                carrier: Some(carrier),
+            });
+        }
+        let mut session =
+            BattleSession::new(&world, system, attacker, defender, true, 23, 0x1111_0009);
+        let ours: Vec<usize> = (0..session.fighters.len())
+            .filter(|&index| session.fighters[index].fleet == attacker)
+            .collect();
+        assert_eq!(ours.len(), 4);
+        // All start in their hangars (no hyperdrive); one of the lost
+        // carrier's launches.
+        assert!(ours.iter().all(|&index| session.fighters[index].in_hangar));
+        let out = ours[1];
+        session.fighters[out].in_hangar = false;
+        session.fighters[out].alive = true;
+        let lost = session
+            .ships
+            .iter_mut()
+            .find(|ship| ship.fleet == attacker && ship.fleet_ship_index == 0)
+            .unwrap();
+        lost.hull_current = 0;
+        lost.alive = false;
+        session.winner = Some(CombatWinner::Defender);
+
+        apply_results(&session, &mut world, &mut TroopTransportState::default());
+
+        // The surviving carrier keeps its squadron aboard; the lost one's
+        // are gone from the fleet, and only its launched one is on the
+        // planet (its other class had none out).
+        let fleet = &world.fleets[attacker];
+        assert_eq!(rebellion_core::squadrons::total(&fleet.fighters), 1);
+        assert_eq!(rebellion_core::squadrons::aboard(&fleet.fighters, kept), 1);
+        assert_eq!(
+            world.systems[system]
+                .fighters
+                .iter()
+                .map(|entry| (entry.class, entry.count))
+                .collect::<Vec<_>>(),
+            [(wing, 1)]
+        );
     }
 
     #[test]
