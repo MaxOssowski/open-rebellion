@@ -591,6 +591,8 @@ pub struct TacticalState {
     memorized_camera: Option<TacticalCameraBookmark>,
     /// Keyboard-driven task-force or fighter-group chase target.
     camera_follow: Option<TacticalCameraFollow>,
+    /// The navigation point a left click selected (state `0x66bb58`).
+    selected_navigation_point: Option<TacticalWorldPosition>,
     /// Original Tactical Display faction-wireframe switches.
     pub highlight_alliance: bool,
     pub highlight_empire: bool,
@@ -729,6 +731,7 @@ impl Default for TacticalState {
             default_camera: None,
             memorized_camera: None,
             camera_follow: None,
+            selected_navigation_point: None,
             // A0 TAC-01-C003 (Alliance) and TAC-01-C002 (Empire): a battle
             // opens with both side highlights off.
             highlight_alliance: false,
@@ -3511,6 +3514,13 @@ fn assign_selected_focus_target(
             maximum_targets: 0,
         };
     };
+    // The one-unit state's target (`0x005a1af0`) first gives the unit a
+    // force of its own (`FUN_005aded0`), out of its numbered group: in the
+    // A0 VM run of 2026-10-27 a right click on the enemy took "Victory
+    // Destroyer 1" from "Task Force # 1" to "Task Force Unassigned".
+    if selected.len() == 1 && session.task_force_selection.is_none() {
+        form_selected_task_force(session, &selected);
+    }
     let task_force = session.ships[first].task_force;
     if selected
         .iter()
@@ -3622,6 +3632,25 @@ fn select_clicked_ship(session: &mut BattleSession, index: usize, control: bool)
     for fighter in &mut session.fighters {
         fighter.selected = false;
     }
+}
+
+/// Select a navigation point: the unit selection ends (`FUN_00595b70(0,
+/// 0)`, the empty state) and the point becomes the selection (`0x66bb58`).
+fn select_navigation_point(
+    session: &mut BattleSession,
+    selected_navigation_point: &mut Option<TacticalWorldPosition>,
+    point: TacticalWorldPosition,
+) {
+    for ship in &mut session.ships {
+        ship.selected = false;
+    }
+    for fighter in &mut session.fighters {
+        fighter.selected = false;
+    }
+    session.selected_ship = None;
+    session.selected_fighter_group = None;
+    session.task_force_selection = None;
+    *selected_navigation_point = Some(point);
 }
 
 fn assign_selected_to_task_force(session: &mut BattleSession, group: u8) -> usize {
@@ -5626,6 +5655,7 @@ fn activate_tactical_hud_control(
             }
         }
         TacticalHudControl::TaskForce(group) => {
+            state.selected_navigation_point = None;
             if let Some(session) = state.session.as_mut() {
                 let control =
                     is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
@@ -5646,6 +5676,7 @@ fn activate_tactical_hud_control(
             }
         }
         TacticalHudControl::FighterGroup(group) => {
+            state.selected_navigation_point = None;
             if let Some(session) = state.session.as_mut() {
                 if select_fighter_group(session, group) {
                     state.command_panel = TacticalCommandPanel::Display;
@@ -5675,9 +5706,16 @@ fn activate_tactical_hud_control(
         }
         TacticalHudControl::CameraTarget => {
             state.camera_follow = None;
-            let selected = state.session.as_ref().and_then(camera_target_of_selection);
+            // The point state's slot +4 (0x005a55f0) gives the point.
+            let selected = state.session.as_ref().and_then(camera_target_of_selection).or_else(|| {
+                state
+                    .selected_navigation_point
+                    .map(|point| (TACTICAL_NAVIGATION_CAMERA_ID, 0.0, 0.0, point))
+            });
             if let Some((object_id, x, y, source_position)) = selected {
-                (state.camera_x, state.camera_y) = camera_offset_for_target(x, y);
+                if object_id != TACTICAL_NAVIGATION_CAMERA_ID {
+                    (state.camera_x, state.camera_y) = camera_offset_for_target(x, y);
+                }
                 state
                     .asset_renderer
                     .focus_target(object_id, source_position.rendered());
@@ -5831,6 +5869,10 @@ fn track_tactical_camera_target(state: &mut TacticalState) {
     );
     state.asset_renderer.focus_target(object_id, drawn.rendered());
 }
+
+/// The camera's object id for a selected navigation point; it does not move,
+/// so it is not tracked.
+const TACTICAL_NAVIGATION_CAMERA_ID: u32 = 30_001;
 
 /// The current position of a camera target object: ships count from 1,
 /// squadrons from 1001 (`camera_target_of_selection`). port: a lost unit
@@ -8561,7 +8603,12 @@ pub fn draw_tactical_view(
     let player_is_attacker = session.player_is_attacker;
     let combat_tick = session.combat_tick;
     let paused = session.paused;
-    draw_tactical_navigation_points(session, &navigation_projections, canvas.scale);
+    draw_tactical_navigation_points(
+        session,
+        &navigation_projections,
+        canvas.scale,
+        state.selected_navigation_point,
+    );
 
     // 3. Draw deployment zones (placement phase only).
     if phase == BattlePhase::Placement {
@@ -9041,6 +9088,7 @@ pub fn draw_tactical_view(
         handle_combat_input(
             session,
             &mut state.death_star_targeting,
+            &mut state.selected_navigation_point,
             scale,
             offset_x,
             offset_y,
@@ -9531,16 +9579,30 @@ fn toggle_route_point(route: &mut Vec<TacticalWorldPosition>, point: TacticalWor
     }
 }
 
+/// A0 VM 2026-10-27: the selected point turns purple (128, 0, 128); the
+/// others keep their set's colour.
+fn navigation_point_color(set_color: Color, selected: bool) -> Color {
+    if selected {
+        Color::from_rgba(128, 0, 128, 255)
+    } else {
+        set_color
+    }
+}
+
 fn draw_tactical_navigation_points(
     session: &BattleSession,
     projections: &[TacticalNavigationProjection],
     canvas_scale: f32,
+    selected_point: Option<TacticalWorldPosition>,
 ) {
     let colors = [RED, GREEN, BLUE, YELLOW];
     let selected_routes = selected_route_points(session);
     for projection in projections {
         let assigned = selected_routes.contains(&projection.position);
-        let color = colors[usize::from(projection.set.min(3))];
+        let color = navigation_point_color(
+            colors[usize::from(projection.set.min(3))],
+            selected_point == Some(projection.position),
+        );
         let radius = if assigned { 7.0 } else { 5.0 } * canvas_scale;
         let top = vec2(projection.screen.x, projection.screen.y - radius);
         let left = vec2(
@@ -9633,6 +9695,7 @@ fn snap_line_to_pixels(point: macroquad::math::Vec2, thickness: f32) -> macroqua
 fn handle_combat_input(
     session: &mut BattleSession,
     death_star_targeting: &mut bool,
+    selected_navigation_point: &mut Option<TacticalWorldPosition>,
     scale: f32,
     offset_x: f32,
     offset_y: f32,
@@ -9658,6 +9721,10 @@ fn handle_combat_input(
             click_navigation_point(session, navigation, true);
             return;
         }
+    }
+
+    if inside_battle && is_mouse_button_pressed(MouseButton::Left) {
+        *selected_navigation_point = None;
     }
 
     // Left-click: select a ship of either side.
@@ -9705,6 +9772,17 @@ fn handle_combat_input(
                 "[tactical_3d] selection object_id={} source_projection={}",
                 idx + 1,
                 projections.contains_key(&idx)
+            );
+        } else if let Some(navigation) = navigation_hit.filter(|_| !control) {
+            // A left click on a navigation point clears the selection
+            // (`FUN_00595b70(0, 0)`) and selects the point (`0x005a0e10`
+            // builds `0x66bb58`, `FUN_005a0e70`). port: a ship under the
+            // pointer is taken first, as the port has no pick depth.
+            select_navigation_point(session, selected_navigation_point, navigation.position);
+            macroquad::logging::info!(
+                "[tactical_navigation] event=point_selected set={} point={}",
+                navigation.set + 1,
+                navigation.point + 1,
             );
         } else if !control {
             // Clicked empty space — deselect all.
@@ -15403,6 +15481,26 @@ mod tests {
         );
     }
 
+    // A0 VM 2026-10-27 and 0x005a1af0 / FUN_005aded0: a target given to one
+    // selected ship takes it out of its numbered group; a task force keeps
+    // its group.
+    #[test]
+    fn a_target_takes_a_single_ship_out_of_its_task_force() {
+        let mut first = test_ship(1, 0, true, true);
+        first.task_force = 0;
+        let mut second = test_ship(3, 1, true, true);
+        second.task_force = 0;
+        let mut session = test_session(vec![first, second, test_ship(2, 0, false, true)], Vec::new(), true);
+        select_clicked_ship(&mut session, 0, false);
+        assign_selected_capital_focus_target(&mut session, 2, false);
+        assert_eq!(session.ships[0].task_force, TACTICAL_UNGROUPED_TASK_FORCE);
+        assert_eq!(session.ships[0].attack_target, Some(TacticalAttackTarget::CapitalShip(2)));
+        assert_eq!(session.ships[1].task_force, 0);
+        assert!(select_task_force(&mut session, 0) > 0);
+        assign_selected_capital_focus_target(&mut session, 2, false);
+        assert_eq!(session.ships[1].task_force, 0);
+    }
+
     // FUN_005c2060 posts a Ctrl click with 1 to slot +0xc: with our ships
     // selected, an enemy ship is a target added, then dropped (0x005a1af0).
     #[test]
@@ -15776,6 +15874,44 @@ mod tests {
         assert_eq!(tracked_target_position(&session, 1002), None);
         // The chase cameras' group ids are not objects.
         assert_eq!(tracked_target_position(&session, 10_001), None);
+    }
+
+    // A0 VM 2026-10-27: the selected navigation point is purple.
+    #[test]
+    fn the_selected_navigation_point_is_purple() {
+        assert_eq!(navigation_point_color(RED, false), RED);
+        assert_eq!(navigation_point_color(RED, true), Color::from_rgba(128, 0, 128, 255));
+    }
+
+    // 0x005a0e10 / FUN_005a0e70 and A0 VM 2026-10-27: a left click on a
+    // navigation point ends the unit selection and selects the point, and
+    // the camera target button then looks at it (0x005a55f0).
+    #[test]
+    fn a_selected_navigation_point_ends_the_unit_selection_and_aims_the_camera() {
+        let mut session = test_session(vec![test_ship(1, 0, true, true)], vec![test_fighter(5, true)], true);
+        select_clicked_ship(&mut session, 0, false);
+        let mut selected = None;
+        let point = at(4.0, 5.0, 6.0);
+        select_navigation_point(&mut session, &mut selected, point);
+        assert_eq!(selected, Some(point));
+        assert!(!session.ships[0].selected);
+        assert_eq!(session.selected_ship, None);
+        let mut state = TacticalState::default();
+        state.session = Some(session);
+        state.selected_navigation_point = selected;
+        state
+            .asset_renderer
+            .restore_camera_state(crate::tactical_assets::OriginalTacticalCamera::new(false, 100.0));
+        let (camera_x, camera_y) = (state.camera_x, state.camera_y);
+        activate_tactical_hud_control(&mut state, TacticalHudControl::CameraTarget);
+        assert_eq!(
+            state.asset_renderer.camera_state().map(|camera| camera.target_point()),
+            Some(point.rendered())
+        );
+        assert_eq!((state.camera_x, state.camera_y), (camera_x, camera_y));
+        // A group button replaces the point selection.
+        activate_tactical_hud_control(&mut state, TacticalHudControl::FighterGroup(0));
+        assert_eq!(state.selected_navigation_point, None);
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.
