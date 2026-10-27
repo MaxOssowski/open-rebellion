@@ -3347,6 +3347,108 @@ fn assign_selected_fighter_group_route(
     members.len()
 }
 
+/// A Ctrl click on a capital ship, left or right (`FUN_005c2060` posts it
+/// with 1): the selection state's slot `+0xc` with Ctrl.
+/// - An enemy ship, while ships or a fighter group of ours are selected:
+///   a target added, or dropped when held (`0x005a1af0`, `0x005a24d0`,
+///   `0x005a3aa0`, `0x005a4bd0`). With no such selection it starts a new
+///   one (`0x005a0d10`, `0x005a1240`).
+/// - One of our ships, with a fighter group selected (`0x005a4bd0`): its
+///   escort dropped when the group escorts it (`FUN_005ca310`, then order
+///   0), else the group escorts it.
+/// - One of our ships, with a task force selected (`0x005a3aa0`): the
+///   force's escort of it dropped; else the ship joins the force
+///   (`FUN_005ade50`) or, as a member, leaves it (`FUN_005a8d30`), and the
+///   selection ends with its last member.
+/// - Otherwise it joins or leaves the selection (`0x005a1af0`,
+///   `0x005a24d0`).
+fn ctrl_click_ship(session: &mut BattleSession, index: usize) -> &'static str {
+    let Some(ship) = session.ships.get(index) else {
+        return "none";
+    };
+    let player_is_attacker = session.player_is_attacker;
+    let enemy = ship.is_attacker != player_is_attacker;
+    let fighter_group = session.selected_fighter_group;
+    let own_ships_selected = session
+        .ships
+        .iter()
+        .any(|ship| ship.alive && ship.selected && ship.is_attacker == player_is_attacker);
+    if enemy {
+        let target = TacticalAttackTarget::CapitalShip(index);
+        if fighter_group.is_some() {
+            assign_selected_fighter_group_target(session, target, true);
+            return "fighter_target";
+        }
+        if own_ships_selected {
+            assign_selected_focus_target(session, target, true);
+            return "target";
+        }
+        select_clicked_ship(session, index, true);
+        return "selected";
+    }
+    if let Some(group) = fighter_group {
+        let members = (0..session.fighters.len())
+            .filter(|&each| {
+                let fighter = &session.fighters[each];
+                fighter.alive
+                    && fighter.squad_count > 0
+                    && fighter.is_attacker == player_is_attacker
+                    && fighter.fighter_group == group
+            })
+            .collect::<Vec<_>>();
+        let held = members
+            .iter()
+            .any(|&each| session.fighters[each].escort_target == Some(index));
+        if held {
+            for each in members {
+                let fighter = &mut session.fighters[each];
+                fighter.escort_target = None;
+                fighter.order = TacticalOrder::None;
+            }
+            return "escort_dropped";
+        }
+        assign_selected_escort(session, index);
+        return "escort";
+    }
+    if let Some(group) = session.task_force_selection {
+        let escorted = session.ships.iter().any(|ship| {
+            ship.alive && ship.task_force == group && ship.escort_target == Some(index)
+        });
+        if escorted {
+            for ship in &mut session.ships {
+                if ship.task_force == group && ship.escort_target == Some(index) {
+                    ship.escort_target = None;
+                    ship.order = TacticalOrder::None;
+                }
+            }
+            return "escort_dropped";
+        }
+        if session.ships[index].task_force == group {
+            let ship = &mut session.ships[index];
+            ship.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+            ship.selected = false;
+            let left = session.ships.iter().any(|ship| {
+                ship.alive && ship.is_attacker == player_is_attacker && ship.task_force == group
+            });
+            if !left {
+                session.task_force_selection = None;
+                session.selected_ship = None;
+            } else if session.selected_ship == Some(index) {
+                session.selected_ship = session.ships.iter().position(|ship| {
+                    ship.alive && ship.selected && ship.is_attacker == player_is_attacker
+                });
+            }
+            return "left_task_force";
+        }
+        let ship = &mut session.ships[index];
+        ship.task_force = group;
+        ship.selected = true;
+        return "joined_task_force";
+    }
+    select_clicked_ship(session, index, true);
+    "toggled"
+}
+
 /// `assign_selected_capital_focus_target` for a capital ship or a squadron.
 fn assign_selected_focus_target(
     session: &mut BattleSession,
@@ -9150,6 +9252,62 @@ fn tactical_navigation_projections(
         .collect()
 }
 
+/// A click on a navigation point, posted to the selection state's slot
+/// `+0x10` with Ctrl (`FUN_005c2060` posts a Ctrl left click and a right
+/// click alike; `0x005a1f30`, `0x005a3f00`, `0x005a4e50`).
+fn click_navigation_point(
+    session: &mut BattleSession,
+    navigation: &TacticalNavigationProjection,
+    control: bool,
+) -> (usize, usize, bool) {
+    if session.selected_fighter_group.is_some() {
+        let members = assign_selected_fighter_group_route(session, navigation.position, control);
+        macroquad::logging::info!(
+            "[tactical_navigation] event=fighter_route_assign set={} point={} append={} members={}",
+            navigation.set + 1,
+            navigation.point + 1,
+            control,
+            members,
+        );
+        return (members, 0, false);
+    }
+    queue_capital_route_voice(session, navigation.position, control);
+    let mut assigned = 0;
+    let mut longest_route = 0;
+    let mut removed = false;
+    for ship in &mut session.ships {
+        if !ship.selected || !ship.alive || ship.is_attacker != session.player_is_attacker {
+            continue;
+        }
+        ship.order = TacticalOrder::None;
+        ship.escort_target = None;
+        if control {
+            removed |= toggle_route_point(&mut ship.navigation_route, navigation.position);
+        } else {
+            ship.navigation_route.clear();
+            ship.navigation_route.push(navigation.position);
+        }
+        ship.source_waypoint = ship.navigation_route.first().copied();
+        ship.source_desired_forward = ship
+            .source_waypoint
+            .map_or(TacticalWorldVector::ZERO, |waypoint| {
+                source_delta(waypoint, ship.source_position).normalized()
+            });
+        assigned += 1;
+        longest_route = longest_route.max(ship.navigation_route.len());
+    }
+    macroquad::logging::info!(
+        "[tactical_navigation] event={} set={} point={} append={} members={} route_len={}",
+        if removed { "route_remove" } else { "route_assign" },
+        navigation.set + 1,
+        navigation.point + 1,
+        control,
+        assigned,
+        longest_route,
+    );
+    (assigned, longest_route, removed)
+}
+
 /// The route points of the player's selected ships and squadrons, drawn
 /// larger on the navigation display.
 fn selected_route_points(session: &BattleSession) -> Vec<TacticalWorldPosition> {
@@ -9304,30 +9462,7 @@ fn handle_combat_input(
 
     if inside_battle && is_mouse_button_pressed(MouseButton::Left) && control {
         if let Some(navigation) = navigation_hit {
-            let mut changed = 0;
-            for ship in &mut session.ships {
-                if !ship.selected || !ship.alive || ship.is_attacker != session.player_is_attacker {
-                    continue;
-                }
-                let before = ship.navigation_route.len();
-                ship.navigation_route
-                    .retain(|point| *point != navigation.position);
-                if before != ship.navigation_route.len() {
-                    changed += 1;
-                    ship.source_waypoint = ship.navigation_route.first().copied();
-                    ship.source_desired_forward = ship
-                        .source_waypoint
-                        .map_or(TacticalWorldVector::ZERO, |waypoint| {
-                            source_delta(waypoint, ship.source_position).normalized()
-                        });
-                }
-            }
-            macroquad::logging::info!(
-                "[tactical_navigation] event=route_remove set={} point={} members={}",
-                navigation.set + 1,
-                navigation.point + 1,
-                changed,
-            );
+            click_navigation_point(session, navigation, true);
             return;
         }
     }
@@ -9352,14 +9487,33 @@ fn handle_combat_input(
             }
         }
 
+        // FUN_005c2060 (`0x201`): a click on a unit posts it with Ctrl to
+        // the selection state's slot `+0xc` (`FUN_00595b70(unit, 1)`), or
+        // without Ctrl clears the selection first; a click on nothing
+        // clears it unless Ctrl is held.
         if let Some(idx) = hit {
+            if control {
+                let outcome = ctrl_click_ship(session, idx);
+                macroquad::logging::info!(
+                    "[tactical_3d] ctrl_click object_id={} outcome={outcome}",
+                    idx + 1,
+                );
+                if matches!(outcome, "toggled" | "selected" | "joined_task_force" | "left_task_force") {
+                    macroquad::logging::info!(
+                        "[tactical_3d] selection object_id={} source_projection={}",
+                        idx + 1,
+                        projections.contains_key(&idx)
+                    );
+                }
+                return;
+            }
             select_clicked_ship(session, idx, control);
             macroquad::logging::info!(
                 "[tactical_3d] selection object_id={} source_projection={}",
                 idx + 1,
                 projections.contains_key(&idx)
             );
-        } else {
+        } else if !control {
             // Clicked empty space — deselect all.
             for s in &mut session.ships {
                 s.selected = false;
@@ -9376,50 +9530,7 @@ fn handle_combat_input(
     // Right-click: assign an armed Death Star superlaser or issue focus fire.
     if inside_battle && is_mouse_button_pressed(MouseButton::Right) {
         if let Some(navigation) = navigation_hit {
-            if session.selected_fighter_group.is_some() {
-                let members =
-                    assign_selected_fighter_group_route(session, navigation.position, control);
-                macroquad::logging::info!(
-                    "[tactical_navigation] event=fighter_route_assign set={} point={} append={} members={}",
-                    navigation.set + 1,
-                    navigation.point + 1,
-                    control,
-                    members,
-                );
-                return;
-            }
-            queue_capital_route_voice(session, navigation.position, control);
-            let mut assigned = 0;
-            let mut longest_route = 0;
-            for ship in &mut session.ships {
-                if !ship.selected || !ship.alive || ship.is_attacker != session.player_is_attacker {
-                    continue;
-                }
-                ship.order = TacticalOrder::None;
-                ship.escort_target = None;
-                if control {
-                    toggle_route_point(&mut ship.navigation_route, navigation.position);
-                } else {
-                    ship.navigation_route.clear();
-                    ship.navigation_route.push(navigation.position);
-                }
-                ship.source_waypoint = ship.navigation_route.first().copied();
-                ship.source_desired_forward = ship
-                    .source_waypoint
-                    .map_or(TacticalWorldVector::ZERO, |waypoint| {
-                        source_delta(waypoint, ship.source_position).normalized()
-                    });
-                assigned += 1;
-                longest_route = longest_route.max(ship.navigation_route.len());
-            }
-            macroquad::logging::info!(
-                "[tactical_navigation] event=route_assign set={} point={} append={} members={} route_len={}",
-                navigation.set + 1,
-                navigation.point + 1,
-                control,
-                assigned,
-                longest_route,
-            );
+            click_navigation_point(session, navigation, control);
             return;
         }
         let mut target_hit = None;
@@ -9469,6 +9580,16 @@ fn handle_combat_input(
                     && dx * dx + dy * dy < hit_radius * hit_radius))
                 .then_some(index)
         });
+        if let Some(target_idx) = friendly_hit.filter(|_| control) {
+            // FUN_005c2060 (`0x204`) posts the unit with Ctrl, as a Ctrl
+            // left click does.
+            let outcome = ctrl_click_ship(session, target_idx);
+            macroquad::logging::info!(
+                "[tactical_3d] ctrl_click object_id={} outcome={outcome}",
+                target_idx + 1,
+            );
+            return;
+        }
         if let Some(target_idx) = friendly_hit {
             let (capital_members, fighter_members) = assign_selected_escort(session, target_idx);
             if capital_members + fighter_members > 0 {
@@ -9555,19 +9676,8 @@ fn handle_combat_input(
                     );
                 }
             }
-        } else {
-            // Right-clicked empty space — clear focus targets for selected ships.
-            for ship in &mut session.ships {
-                if ship.selected && ship.is_attacker == session.player_is_attacker {
-                    ship.attack_target = None;
-                    ship.manual_targets.clear();
-                    ship.escort_target = None;
-                    if ship.order == TacticalOrder::Escort {
-                        ship.order = TacticalOrder::None;
-                    }
-                }
-            }
         }
+        // FUN_005c2060 (`0x204`): a right click on nothing posts nothing.
     }
 
 }
@@ -14967,6 +15077,231 @@ mod tests {
             session.pending_voice_cues[cues + 2],
             TacticalVoiceCue::capital_maneuver(faction, TACTICAL_UNGROUPED_TASK_FORCE)
         );
+    }
+
+    // FUN_005c2060 posts a Ctrl click with 1 to slot +0xc: with our ships
+    // selected, an enemy ship is a target added, then dropped (0x005a1af0).
+    #[test]
+    fn a_ctrl_click_on_an_enemy_adds_and_drops_a_target_of_our_ships() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true), test_ship(3, 1, false, true)],
+            Vec::new(),
+            true,
+        );
+        select_clicked_ship(&mut session, 0, false);
+        assert_eq!(ctrl_click_ship(&mut session, 1), "target");
+        assert_eq!(ctrl_click_ship(&mut session, 2), "target");
+        assert_eq!(
+            session.ships[0].manual_targets,
+            vec![TacticalAttackTarget::CapitalShip(1), TacticalAttackTarget::CapitalShip(2)]
+        );
+        ctrl_click_ship(&mut session, 1);
+        assert_eq!(session.ships[0].manual_targets, vec![TacticalAttackTarget::CapitalShip(2)]);
+        assert!(session.ships[0].selected && !session.ships[1].selected);
+    }
+
+    // 0x005a4bd0 with 1: a fighter group adds the enemy as its target.
+    #[test]
+    fn a_ctrl_click_on_an_enemy_targets_it_for_the_fighter_group() {
+        let mut session =
+            test_session(vec![test_ship(2, 0, false, true)], vec![test_fighter(5, true)], true);
+        assert!(select_fighter_group(&mut session, 0));
+        assert_eq!(ctrl_click_ship(&mut session, 0), "fighter_target");
+        assert_eq!(session.fighters[0].attack_target, Some(TacticalAttackTarget::CapitalShip(0)));
+    }
+
+    // 0x005a0d10 / 0x005a1240: with none of ours selected, a Ctrl click on
+    // an enemy selects it.
+    #[test]
+    fn a_ctrl_click_on_an_enemy_without_our_selection_selects_it() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        assert_eq!(ctrl_click_ship(&mut session, 1), "selected");
+        assert!(session.ships[1].selected);
+        assert_eq!(session.selected_ship, Some(1));
+    }
+
+    // 0x005a3aa0 with 1: a ship joins the selected task force
+    // (FUN_005ade50) or leaves it (FUN_005a8d30); the last one ends it.
+    #[test]
+    fn a_ctrl_click_with_a_task_force_moves_ships_in_and_out_of_it() {
+        let mut first = test_ship(1, 0, true, true);
+        first.task_force = 0;
+        let mut other = test_ship(3, 1, true, true);
+        other.task_force = 1;
+        let mut session = test_session(vec![first, other], Vec::new(), true);
+        assert!(select_task_force(&mut session, 0) > 0);
+        assert_eq!(ctrl_click_ship(&mut session, 1), "joined_task_force");
+        assert_eq!(session.ships[1].task_force, 0);
+        assert!(session.ships[1].selected);
+        assert_eq!(ctrl_click_ship(&mut session, 0), "left_task_force");
+        assert_eq!(session.ships[0].task_force, TACTICAL_UNGROUPED_TASK_FORCE);
+        assert!(!session.ships[0].selected);
+        assert_eq!(session.task_force_selection, Some(0));
+        assert_eq!(session.selected_ship, Some(1));
+        assert_eq!(ctrl_click_ship(&mut session, 1), "left_task_force");
+        assert_eq!(session.task_force_selection, None);
+        assert_eq!(session.selected_ship, None);
+    }
+
+    // 0x005a3aa0 with 1 and FUN_005ca310: the force's escort of that ship
+    // is dropped (order 0).
+    #[test]
+    fn a_ctrl_click_with_a_task_force_drops_its_escort_of_the_ship() {
+        let mut first = test_ship(1, 0, true, true);
+        first.task_force = 0;
+        first.order = TacticalOrder::Escort;
+        first.escort_target = Some(1);
+        let mut guarded = test_ship(3, 1, true, true);
+        guarded.task_force = 1;
+        let mut attacking = test_ship(4, 2, true, true);
+        attacking.task_force = 0;
+        attacking.order = TacticalOrder::AttackCapitalShips;
+        let mut outsider = test_ship(5, 3, true, true);
+        outsider.task_force = 2;
+        outsider.order = TacticalOrder::Escort;
+        outsider.escort_target = Some(1);
+        let mut session = test_session(vec![first, guarded, attacking, outsider], Vec::new(), true);
+        assert!(select_task_force(&mut session, 0) > 0);
+        assert_eq!(ctrl_click_ship(&mut session, 1), "escort_dropped");
+        assert_eq!(session.ships[0].escort_target, None);
+        assert_eq!(session.ships[0].order, TacticalOrder::None);
+        assert_eq!(session.ships[1].task_force, 1);
+        // Only the force's escorts of that ship change.
+        assert_eq!(session.ships[2].order, TacticalOrder::AttackCapitalShips);
+        assert_eq!(session.ships[3].order, TacticalOrder::Escort);
+        assert_eq!(session.ships[3].escort_target, Some(1));
+    }
+
+    // 0x005a4bd0 with 1 on our ship: a fighter group escorts it, or drops
+    // the escort it holds.
+    #[test]
+    fn a_ctrl_click_with_a_fighter_group_toggles_its_escort() {
+        let mut session =
+            test_session(vec![test_ship(1, 0, true, true)], vec![test_fighter(5, true)], true);
+        assert!(select_fighter_group(&mut session, 0));
+        assert_eq!(ctrl_click_ship(&mut session, 0), "escort");
+        assert_eq!(session.fighters[0].escort_target, Some(0));
+        assert_eq!(session.fighters[0].order, TacticalOrder::Escort);
+        assert_eq!(ctrl_click_ship(&mut session, 0), "escort_dropped");
+        assert_eq!(session.fighters[0].escort_target, None);
+        assert_eq!(session.fighters[0].order, TacticalOrder::None);
+    }
+
+    // 0x005a1af0 / 0x005a24d0 with 1: our ship joins or leaves the
+    // selection.
+    #[test]
+    fn a_ctrl_click_on_our_ship_toggles_it_in_the_selection() {
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(3, 1, true, true)],
+            Vec::new(),
+            true,
+        );
+        select_clicked_ship(&mut session, 0, false);
+        assert_eq!(ctrl_click_ship(&mut session, 1), "toggled");
+        assert!(session.ships[0].selected && session.ships[1].selected);
+        ctrl_click_ship(&mut session, 1);
+        assert!(!session.ships[1].selected);
+    }
+
+    fn navigation_at(position: TacticalWorldPosition) -> TacticalNavigationProjection {
+        TacticalNavigationProjection {
+            set: 0,
+            point: 0,
+            position,
+            screen: macroquad::math::Vec2::ZERO,
+        }
+    }
+
+    // 0x005a1f30 / 0x005a3f00: a point replaces the route of our selected
+    // living ships with order 0; with Ctrl it toggles (FUN_005ca330).
+    #[test]
+    fn a_navigation_click_routes_only_our_selected_ships() {
+        let mut first = test_ship(1, 0, true, true);
+        first.selected = true;
+        first.order = TacticalOrder::Escort;
+        first.escort_target = Some(1);
+        let mut second = test_ship(3, 1, true, true);
+        second.selected = true;
+        let mut lost = test_ship(4, 2, true, false);
+        lost.selected = true;
+        let idle = test_ship(5, 3, true, true);
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.selected = true;
+        let mut session = test_session(vec![first, second, lost, idle, enemy], Vec::new(), true);
+        let (a, b) = (at(1.0, 0.0, 0.0), at(2.0, 0.0, 0.0));
+        assert_eq!(click_navigation_point(&mut session, &navigation_at(a), false), (2, 1, false));
+        assert_eq!(session.ships[0].navigation_route, vec![a]);
+        assert_eq!(session.ships[0].order, TacticalOrder::None);
+        assert_eq!(session.ships[0].escort_target, None);
+        assert_eq!(session.ships[0].source_waypoint, Some(a));
+        for index in 2..5 {
+            assert!(session.ships[index].navigation_route.is_empty(), "{index}");
+        }
+        assert_eq!(click_navigation_point(&mut session, &navigation_at(b), true), (2, 2, false));
+        assert_eq!(click_navigation_point(&mut session, &navigation_at(a), true), (2, 1, true));
+        assert_eq!(session.ships[1].navigation_route, vec![b]);
+        assert_eq!(session.ships[1].source_waypoint, Some(b));
+    }
+
+    // 0x005a4e50: with a fighter group selected, the group takes the point.
+    #[test]
+    fn a_navigation_click_with_a_fighter_group_routes_the_group() {
+        let mut session = test_session(vec![test_ship(1, 0, true, true)], vec![test_fighter(5, true)], true);
+        assert!(select_fighter_group(&mut session, 0));
+        let point = at(1.0, 0.0, 0.0);
+        assert_eq!(click_navigation_point(&mut session, &navigation_at(point), false), (1, 0, false));
+        assert_eq!(session.fighters[0].navigation_route, vec![point]);
+        assert!(session.ships[0].navigation_route.is_empty());
+    }
+
+    // 0x005a4bd0's escort toggle counts only the group's flying squadrons;
+    // 0x005a3aa0's escort test only the force's members.
+    #[test]
+    fn a_ctrl_click_escort_counts_only_the_selection() {
+        let mut member = test_fighter(5, true);
+        member.order = TacticalOrder::Escort;
+        member.escort_target = Some(0);
+        let escorting = |mut fighter: TacticalFighter| {
+            fighter.order = TacticalOrder::Escort;
+            fighter.escort_target = Some(0);
+            fighter
+        };
+        let mut lost = escorting(test_fighter(6, true));
+        lost.alive = false;
+        let mut spent = escorting(test_fighter(7, true));
+        spent.squad_count = 0;
+        let mut other = escorting(test_fighter(8, true));
+        other.fighter_group = 1;
+        let enemy = escorting(test_fighter(9, false));
+        let mut session =
+            test_session(vec![test_ship(1, 0, true, true)], vec![member, lost, spent, other, enemy], true);
+        assert!(select_fighter_group(&mut session, 0));
+        assert_eq!(ctrl_click_ship(&mut session, 0), "escort_dropped");
+        assert_eq!(session.fighters[0].order, TacticalOrder::None);
+        for index in 1..5 {
+            assert_eq!(session.fighters[index].order, TacticalOrder::Escort, "{index}");
+            assert_eq!(session.fighters[index].escort_target, Some(0), "{index}");
+        }
+        // A ship of another force escorting it does not count.
+        let mut first = test_ship(1, 0, true, true);
+        first.task_force = 0;
+        let mut outsider = test_ship(3, 1, true, true);
+        outsider.task_force = 1;
+        outsider.order = TacticalOrder::Escort;
+        outsider.escort_target = Some(2);
+        let mut lost_escort = test_ship(4, 2, true, false);
+        lost_escort.task_force = 0;
+        lost_escort.escort_target = Some(2);
+        let mut guarded = test_ship(5, 3, true, true);
+        guarded.task_force = 2;
+        let mut session = test_session(vec![first, outsider, guarded, lost_escort], Vec::new(), true);
+        assert!(select_task_force(&mut session, 0) > 0);
+        assert_eq!(ctrl_click_ship(&mut session, 2), "joined_task_force");
+        assert_eq!(session.ships[1].escort_target, Some(2));
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.
