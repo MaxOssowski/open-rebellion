@@ -234,6 +234,26 @@ pub(crate) fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, in
     disband_if_empty(world, fleet);
 }
 
+/// Destroy the ship at `index` of `fleet` (`SetDestroyedReason`,
+/// `FUN_004f71d0`, through slot `+0xac`). Its destroyed bit (`Flags50`
+/// `0x8`, `FUN_004f7560`) runs `GameObj_vt11c` (`FUN_004fb520`), which hands
+/// the reason to each child that is Completed and not en route
+/// (`FUN_004f8710`, `FUN_004f7ed0`): the squadrons docked on the ship are
+/// destroyed with it. The ship then leaves its fleet as [`remove_ship`].
+pub(crate) fn destroy_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, index: usize) {
+    let Some(value) = world.fleets.get_mut(fleet) else {
+        return;
+    };
+    let Some(ship) = value.capital_ships.get(index) else {
+        return;
+    };
+    let id = ship.id;
+    if id != 0 {
+        value.fighters.retain(|entry| entry.carrier != Some(id));
+    }
+    remove_ship(world, fleet, index);
+}
+
 /// Disband `fleet` when it holds no ship, squadron, character or special
 /// force (`FUN_004fe630`).
 pub(crate) fn disband_if_empty(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
@@ -454,6 +474,50 @@ mod tests {
             ),
             Err(ScrapRefusal::Unresolved)
         );
+    }
+
+    // GameObj_vt11c (FUN_004fb520) -> FUN_004f8710 -> FUN_004f7ed0: the
+    // squadrons docked on a destroyed ship go with it; the fleet's other
+    // ships keep theirs, and a fleet left empty disbands.
+    #[test]
+    fn a_destroyed_ships_docked_squadrons_are_destroyed_with_it() {
+        let mut f = fixture();
+        let class = f.world.capital_ship_classes.insert(crate::world::CapitalShipClass::default());
+        let fighter = f.world.fighter_classes.insert(crate::world::FighterClass::default());
+        let mut ships = crate::world::ShipInstance::make(class, 10, true, 2);
+        ships[0].id = 7;
+        ships[1].id = 8;
+        let key = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: ships,
+            fighters: vec![
+                crate::world::FighterEntry { class: fighter, count: 2, carrier: Some(7) },
+                crate::world::FighterEntry { class: fighter, count: 1, carrier: Some(8) },
+                crate::world::FighterEntry { class: fighter, count: 1, carrier: None },
+            ],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        f.world.systems[f.system].fleets.push(key);
+        destroy_ship(&mut f.world, key, 0);
+        let fleet = &f.world.fleets[key];
+        assert_eq!(fleet.capital_ships.len(), 1);
+        assert_eq!(
+            fleet.fighters.iter().map(|entry| (entry.count, entry.carrier)).collect::<Vec<_>>(),
+            [(1, Some(8)), (1, None)]
+        );
+        // An unnumbered ship (id 0) takes no squadron with it.
+        f.world.fleets[key].capital_ships[0].id = 0;
+        f.world.fleets[key].fighters[0].carrier = Some(0);
+        destroy_ship(&mut f.world, key, 0);
+        assert_eq!(f.world.fleets[key].fighters.len(), 2);
+        // A fleet left with nothing disbands.
+        f.world.fleets[key].fighters.clear();
+        f.world.fleets[key].capital_ships = crate::world::ShipInstance::make(class, 10, true, 1);
+        destroy_ship(&mut f.world, key, 0);
+        assert!(!f.world.fleets.contains_key(key));
     }
 
     #[test]

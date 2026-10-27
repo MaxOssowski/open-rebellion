@@ -625,8 +625,9 @@ impl MissionTarget {
 
 /// Destroy a sabotaged target (slot `+0xac(6)`, `FUN_005746e0`).
 ///
-/// A capital ship or the Death Star leaves its fleet as any lost ship does
-/// ([`crate::scrap::remove_ship`]): the fleet's ship change
+/// A capital ship or the Death Star is destroyed with the squadrons docked
+/// on it ([`crate::scrap::destroy_ship`]) and leaves its fleet as any lost
+/// ship does: the fleet's ship change
 /// (`FUN_004fe870` -> `FUN_004fe630`) disbands a fleet left without one. A
 /// squadron's fleet follows the port's same rule
 /// ([`crate::scrap::disband_if_empty`]).
@@ -675,7 +676,7 @@ pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
             }) else {
                 return;
             };
-            crate::scrap::remove_ship(world, key, index);
+            crate::scrap::destroy_ship(world, key, index);
             let still_one = world.fleets.get(key).map(|fleet| {
                 fleet
                     .capital_ships
@@ -693,7 +694,7 @@ pub fn destroy_target(world: &mut GameWorld, target: MissionTarget) {
                     .iter()
                     .position(|ship| ship.alive && ship.class == class)
             }) {
-                crate::scrap::remove_ship(world, fleet, index);
+                crate::scrap::destroy_ship(world, fleet, index);
             }
         }
         MissionTarget::Fighter { fleet: key, class } => {

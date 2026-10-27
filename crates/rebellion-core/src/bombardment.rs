@@ -750,7 +750,7 @@ pub fn apply(world: &mut GameWorld, req: &BombardRequest, outcome: &BombardmentO
     }
     lost.sort_by_key(|&(_, index)| std::cmp::Reverse(index));
     for (fleet, index) in lost {
-        crate::scrap::remove_ship(world, fleet, index);
+        crate::scrap::destroy_ship(world, fleet, index);
     }
     for &target in &outcome.destroyed {
         match target {

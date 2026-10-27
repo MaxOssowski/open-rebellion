@@ -847,8 +847,10 @@ mod tests {
         );
     }
 
-    // A squadron whose ship is lost boards another ship with room.
-    // hyp: the original's rule for a lost carrier's squadrons is untraced.
+    // A squadron whose ship is gone boards another ship with room. hyp: a
+    // destroyed ship takes its docked squadrons with it
+    // (crate::scrap::destroy_ship); this covers the paths not traced to
+    // SetDestroyedReason, the scrap and the battle's commit (FUN_0040d320).
     #[test]
     fn a_lost_ships_squadrons_board_another_ship() {
         let mut setup = setup(2);
