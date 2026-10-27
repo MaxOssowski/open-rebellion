@@ -4506,10 +4506,12 @@ impl BattleSession {
             }
             let (speed, turn_rate) = self.force_mover_rates(members);
             let lead = &self.ships[leader];
-            // `FUN_005ea030`: forward (0, 0, 1) for a lead id below
-            // 1,000,000, else (0, 0, -1). hyp: the Empire's units carry the
-            // high ids, so the forward is the lead's side vector, as each
-            // unit's at placement (`FUN_005ab650`).
+            // `FUN_005ea030`: forward (0, 0, 1) for an id below 1,000,000,
+            // else (0, 0, -1). The battle's ids count per side index
+            // (`+0x168`, `FUN_005a6660` -> `FUN_005a6620`) from 0 for side 0
+            // and from 1,000,000 for side 1 (`FUN_005a6290`); side 1 is the
+            // Empire (`FUN_005afe40`'s Death Star try), so the forward is
+            // the lead's side vector.
             let forward = original_side_vector(lead.identity.is_alliance);
             let mover = TacticalForceMover {
                 force: key,
@@ -8818,7 +8820,9 @@ impl BattleSession {
 
     /// Keep one mover per side and group with squadrons in the fight
     /// (`FUN_005adfa0`, `FUN_005c62b0`): a new one starts on its first
-    /// member, facing its side (hyp, as the capital movers); a member that
+    /// member, facing its side (`FUN_005c72b0` builds it with
+    /// `FUN_005ea030`, whose forward follows the id's side, as the capital
+    /// movers'); a member that
     /// joins takes the slot of the count it makes (`0x5ebee0`), one that
     /// leaves frees the count (`0x5ea630`). A tactic does not rebuild it
     /// (`FUN_005c9c50` rebuilds only class 3).
