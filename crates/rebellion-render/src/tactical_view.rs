@@ -3634,6 +3634,16 @@ fn select_clicked_ship(session: &mut BattleSession, index: usize, control: bool)
     }
 }
 
+/// A click reaches a navigation point only when no unit is under the
+/// pointer (port: the units come first, for want of a pick depth).
+fn no_unit_under_pointer(
+    enemy_ship: Option<usize>,
+    friendly_ship: Option<usize>,
+    enemy_squadron: Option<usize>,
+) -> bool {
+    enemy_ship.is_none() && friendly_ship.is_none() && enemy_squadron.is_none()
+}
+
 /// Select a navigation point: the unit selection ends (`FUN_00595b70(0,
 /// 0)`, the empty state) and the point becomes the selection (`0x66bb58`).
 fn select_navigation_point(
@@ -9579,6 +9589,21 @@ fn toggle_route_point(route: &mut Vec<TacticalWorldPosition>, point: TacticalWor
     }
 }
 
+/// A navigation point's colour by its grid layer (`FUN_0059f800` stores the
+/// layer, y index + 1, at `+0x54`): A0 VM 2026-10-27 shows the top layer
+/// white, the middle one dark red (148, 6, 0) and the bottom one blue (0,
+/// 46, 178). hyp: that `+0x54` picks the colour is inferred; its reader is
+/// not traced.
+fn navigation_layer_color(y: f32) -> Color {
+    if y > 0.0 {
+        WHITE
+    } else if y < 0.0 {
+        Color::from_rgba(0, 46, 178, 255)
+    } else {
+        Color::from_rgba(148, 6, 0, 255)
+    }
+}
+
 /// A0 VM 2026-10-27: the selected point turns purple (128, 0, 128); the
 /// others keep their set's colour.
 fn navigation_point_color(set_color: Color, selected: bool) -> Color {
@@ -9595,12 +9620,11 @@ fn draw_tactical_navigation_points(
     canvas_scale: f32,
     selected_point: Option<TacticalWorldPosition>,
 ) {
-    let colors = [RED, GREEN, BLUE, YELLOW];
     let selected_routes = selected_route_points(session);
     for projection in projections {
         let assigned = selected_routes.contains(&projection.position);
         let color = navigation_point_color(
-            colors[usize::from(projection.set.min(3))],
+            navigation_layer_color(projection.position.y),
             selected_point == Some(projection.position),
         );
         let radius = if assigned { 7.0 } else { 5.0 } * canvas_scale;
@@ -9800,10 +9824,6 @@ fn handle_combat_input(
 
     // Right-click: assign an armed Death Star superlaser or issue focus fire.
     if inside_battle && is_mouse_button_pressed(MouseButton::Right) {
-        if let Some(navigation) = navigation_hit {
-            click_navigation_point(session, navigation, control);
-            return;
-        }
         let mut target_hit = None;
         for (i, ship) in session.ships.iter().enumerate() {
             if !ship.alive {
@@ -9851,6 +9871,21 @@ fn handle_combat_input(
                     && dx * dx + dy * dy < hit_radius * hit_radius))
                 .then_some(index)
         });
+        // port: a unit under the pointer is taken before a navigation point,
+        // as the port has no pick depth (`FUN_005c2d20` takes the first
+        // pickable visual).
+        let squadron_under_pointer = enemy_squadron_hit(
+            session,
+            fighter_projections.iter().map(|(&index, projection)| {
+                (index, projection.contains(screen_pointer, projected_hit_radius))
+            }),
+        );
+        if let Some(navigation) = navigation_hit
+            .filter(|_| no_unit_under_pointer(target_hit, friendly_hit, squadron_under_pointer))
+        {
+            click_navigation_point(session, navigation, control);
+            return;
+        }
         if let Some(target_idx) = friendly_hit.filter(|_| control) {
             // FUN_005c2060 (`0x204`) posts the unit with Ctrl, as a Ctrl
             // left click does.
@@ -15874,6 +15909,42 @@ mod tests {
         assert_eq!(tracked_target_position(&session, 1002), None);
         // The chase cameras' group ids are not objects.
         assert_eq!(tracked_target_position(&session, 10_001), None);
+    }
+
+    // FUN_0059f800: four 3x3x3 grids spaced k x extent x 0.125, the HUD's
+    // leftmost button the widest (k = 4), the rightmost the tightest with
+    // its centre; points run x, then y, then z, from -1 to 1.
+    #[test]
+    fn the_navigation_sets_are_the_originals_grids() {
+        let layout = OriginalTacticalLayout::from_active_counts(0, 0);
+        let sets = original_navigation_point_sets(layout);
+        let base = layout.battle_extent * 0.125;
+        assert_eq!(sets.iter().map(Vec::len).collect::<Vec<_>>(), [26, 26, 26, 27]);
+        for (button, set) in sets.iter().enumerate() {
+            let step = (4 - button) as f32 * base;
+            assert_eq!(set[0], at(-step, -step, -step), "{button}");
+            assert_eq!(set[1], at(-step, -step, 0.0), "{button}");
+            assert_eq!(set[3], at(-step, 0.0, -step), "{button}");
+            assert_eq!(*set.last().unwrap(), at(step, step, step), "{button}");
+        }
+        assert!(sets[3].contains(&at(0.0, 0.0, 0.0)));
+        assert!(!sets[0].contains(&at(0.0, 0.0, 0.0)));
+    }
+
+    // A0 VM 2026-10-27: top layer white, middle dark red, bottom blue.
+    #[test]
+    fn a_navigation_points_colour_follows_its_layer() {
+        assert_eq!(navigation_layer_color(1.0), WHITE);
+        assert_eq!(navigation_layer_color(0.0), Color::from_rgba(148, 6, 0, 255));
+        assert_eq!(navigation_layer_color(-1.0), Color::from_rgba(0, 46, 178, 255));
+    }
+
+    #[test]
+    fn a_unit_under_the_pointer_comes_before_a_navigation_point() {
+        assert!(no_unit_under_pointer(None, None, None));
+        assert!(!no_unit_under_pointer(Some(0), None, None));
+        assert!(!no_unit_under_pointer(None, Some(0), None));
+        assert!(!no_unit_under_pointer(None, None, Some(0)));
     }
 
     // A0 VM 2026-10-27: the selected navigation point is purple.

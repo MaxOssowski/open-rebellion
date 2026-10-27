@@ -4428,9 +4428,19 @@ async function probeTacticalNavigationCameraPresentation(
     });
   }
 
+  // The original's grids (FUN_0059f800) put points under ships too; a click
+  // there picks the ship, so the journey takes points clear of every
+  // participant.
+  const sceneLine = consoleLines.find(({ text }) =>
+    text.includes("[tactical_3d] participant_scene"));
+  const occupied = sceneLine
+    ? [...parseTacticalScenePositions(sceneLine, "navigation participant scene").values()]
+    : [];
   const navigationPoints = parseTacticalNavigationScene(consoleLines)
     .filter(({ x, y }) => x >= offsetX + 16 * scale && x < offsetX + 460 * scale
-      && y >= offsetY + 28 * scale && y < offsetY + 467 * scale);
+      && y >= offsetY + 28 * scale && y < offsetY + 467 * scale)
+    .filter(({ x, y }) => occupied.every((position) =>
+      Math.hypot(position.x - x, position.y - y) > 24 * scale));
   assert.ok(navigationPoints.length >= 2,
     "navigation journey did not project two addressable points inside the aperture");
   await page.mouse.click(navigationPoints[0].x, navigationPoints[0].y, { button: "right" });

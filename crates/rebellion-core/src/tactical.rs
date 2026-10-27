@@ -349,50 +349,43 @@ impl Default for OriginalTacticalLayout {
     }
 }
 
-/// Build the four far-to-clustered navigation sets described by the original
-/// manual. Their interaction contract is authoritative; the deterministic
-/// coordinates are A1 fixtures scaled to the recovered battle envelope until
-/// the executable's point producer and A0 positions can be compared.
+/// `FUN_0059f800`, called from the battle setup (`FUN_005ab650`, `0x5ac5d2`)
+/// with the battle extent (`+0x8cc`): for k = 1 to 4, a 3 × 3 × 3 grid of
+/// points spaced k × extent × 0.125 (`DAT_0066bb4c`), x outermost, then y,
+/// then z, each from -1 to 1. The grids of k 2 to 4 skip their centre, so
+/// they hold 26 points and the first one 27. Set k - 1 goes to list
+/// `ctx + 0x114 + (k - 1) × 0xc`. The HUD's set buttons run from the widest
+/// grid on the left (`0xad12` -> set 3) to the tightest on the right
+/// (`0xad15` -> set 0, `FUN_0059fd40`, `FUN_0059b130`), so index `b` here
+/// is the HUD's button `b`: the grid of k = 4 - b.
 pub fn original_navigation_point_sets(
     layout: OriginalTacticalLayout,
 ) -> [Vec<TacticalWorldPosition>; 4] {
-    let extent = layout.battle_extent.max(ORIGINAL_BATTLE_BASE_EXTENT);
-    let point = |x: f32, y: f32, z: f32, scale: f32| TacticalWorldPosition {
-        x: x * extent * scale,
-        y: y * extent * scale,
-        z: z * extent * scale,
-    };
-    [
-        vec![
-            point(-0.82, 0.22, -0.78, 1.0),
-            point(0.78, -0.18, -0.70, 1.0),
-            point(-0.70, -0.25, 0.75, 1.0),
-            point(0.84, 0.20, 0.68, 1.0),
-            point(0.05, 0.48, -0.92, 1.0),
-            point(-0.12, -0.44, 0.90, 1.0),
-        ],
-        vec![
-            point(-0.72, 0.18, -0.58, 0.82),
-            point(0.66, -0.16, -0.52, 0.82),
-            point(-0.58, -0.22, 0.62, 0.82),
-            point(0.70, 0.20, 0.55, 0.82),
-            point(0.02, 0.36, 0.04, 0.82),
-        ],
-        vec![
-            point(-0.52, 0.15, -0.42, 0.62),
-            point(0.48, -0.12, -0.36, 0.62),
-            point(-0.42, -0.15, 0.44, 0.62),
-            point(0.50, 0.14, 0.40, 0.62),
-            point(0.0, 0.26, 0.0, 0.62),
-        ],
-        vec![
-            point(-0.24, 0.10, -0.20, 0.42),
-            point(0.22, -0.08, -0.18, 0.42),
-            point(-0.18, -0.10, 0.22, 0.42),
-            point(0.24, 0.09, 0.20, 0.42),
-        ],
-    ]
+    let base = layout.battle_extent * ORIGINAL_NAVIGATION_SPACING;
+    std::array::from_fn(|button| {
+        let k = 4 - button;
+        let step = k as f32 * base;
+        let mut points = Vec::with_capacity(27);
+        for x in -1_i8..=1 {
+            for y in -1_i8..=1 {
+                for z in -1_i8..=1 {
+                    if k >= 2 && x == 0 && y == 0 && z == 0 {
+                        continue;
+                    }
+                    points.push(TacticalWorldPosition {
+                        x: f32::from(x) * step,
+                        y: f32::from(y) * step,
+                        z: f32::from(z) * step,
+                    });
+                }
+            }
+        }
+        points
+    })
 }
+
+/// `DAT_0066bb4c`: a navigation grid's spacing per k, of the battle extent.
+pub const ORIGINAL_NAVIGATION_SPACING: f32 = 0.125;
 
 /// Stable production identity for one battle participant. Slotmap keys remain
 /// runtime-only; the original DAT identity and fleet roster index survive any
