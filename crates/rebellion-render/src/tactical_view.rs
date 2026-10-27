@@ -6307,8 +6307,27 @@ fn battle_result_entries(
                 );
                 // FUN_00503340: its losses (slot +0x254) are not 0.
                 let damaged = fighter.hull_current < fighter.hull_max;
-                // A group whose jump ended has left (FUN_005a90c0).
-                let lost = fighter.squad_count == 0 || (!fighter.alive && !fighter.jumping());
+                // A group whose jump ended has left (FUN_005a90c0); one in
+                // its hangar (state 1) or docked (5) is aboard, and lost
+                // only with its carrier.
+                let docked = fighter.recovery_state
+                    == rebellion_core::tactical::TacticalFighterRecoveryState::Recovered;
+                let aboard = (fighter.in_hangar || docked).then(|| {
+                    if docked {
+                        fighter.recovery_target.or(fighter.home_carrier)
+                    } else {
+                        fighter.home_carrier
+                    }
+                });
+                let lost = fighter.squad_count == 0
+                    || match aboard {
+                        Some(carrier) => carrier
+                            .and_then(|carrier| session.ships.get(carrier))
+                            .is_some_and(|ship| {
+                                ship.hull_current <= 0 || (!ship.alive && !ship.retreated)
+                            }),
+                        None => !fighter.alive && !fighter.jumping(),
+                    };
                 BattleResultEntry {
                     name: fighter.name.clone(),
                     condition: condition(lost),
@@ -10895,6 +10914,57 @@ mod tests {
                 (Destroyed, fighter_mark),
                 (Destroyed, fighter_mark),
             ]
+        );
+    }
+
+    #[test]
+    fn a_squadron_still_in_or_back_in_its_carriers_hangar_is_not_destroyed() {
+        // State 1 (in its hangar, FUN_005b69d0) and 5 (docked, FUN_005b8630)
+        // are out of the fight, not destroyed (state 0xb); the commit keeps
+        // them aboard. A lost carrier takes its hangar with it.
+        let carrier = |alive: bool, hull: i32, retreated: bool| {
+            let mut ship = test_ship(64, 1, true, alive);
+            ship.hull_current = hull;
+            ship.retreated = retreated;
+            ship
+        };
+        let ships = vec![
+            carrier(true, 1, false),
+            carrier(false, 0, false),
+            carrier(false, 1, true),
+            // Lost without its hull run out (not escaped).
+            carrier(false, 1, false),
+        ];
+        let squadron = |home: usize, hangar: bool, docked: bool| {
+            let mut fighter = test_fighter(1, true);
+            fighter.alive = false;
+            fighter.home_carrier = Some(home);
+            fighter.in_hangar = hangar;
+            if docked {
+                fighter.recovery_state =
+                    rebellion_core::tactical::TacticalFighterRecoveryState::Recovered;
+            }
+            fighter
+        };
+        let fighters = vec![
+            squadron(0, true, false),
+            squadron(0, false, true),
+            squadron(1, true, false),
+            squadron(1, false, true),
+            squadron(2, true, false),
+            squadron(2, false, true),
+            squadron(3, true, false),
+        ];
+        let session = test_session(ships, fighters, true);
+        let world = GameWorld::default();
+        let transport = TroopTransportState::default();
+        use BattleResultCondition::{Destroyed, Operational};
+        assert_eq!(
+            battle_result_entries(&session, &world, &transport, true, BattleResultCategory::Fighters)
+                .into_iter()
+                .map(|entry| entry.condition)
+                .collect::<Vec<_>>(),
+            [Operational, Operational, Destroyed, Destroyed, Operational, Operational, Destroyed]
         );
     }
 
