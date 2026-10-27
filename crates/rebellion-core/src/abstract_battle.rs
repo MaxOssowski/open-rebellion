@@ -785,10 +785,15 @@ impl AbstractBattle {
                 );
             }
             AbstractUnit::Fighter(index) => {
-                // hyp: the non-virtual `FUN_005b54d0` reads a fighter group's
-                // shield and hull at the capital offsets: shields first,
-                // overflow to hull with at least one point (`_DAT_0066c500`).
-                // Its two draws come from the same stream.
+                // The non-virtual `FUN_005b54d0` reads the shield `+0x3c0`
+                // and hull `+0x3cc`, which a fighter group's constructor
+                // writes at the same offsets as a ship's (`FUN_005b9c60`
+                // `[0xf0]`, `[0xf3]`, over the shared `FUN_005b0f70`):
+                // shields first, overflow to hull of at least one point
+                // (`_DAT_0066c500` = -1.0). Its two draws come from the same
+                // stream; a group's slot `+0xa0` subsystem hit changes
+                // nothing (subsystem events are posted only for slot `+0x20`
+                // = 0, `FUN_005b5100`).
                 let rng = &mut self.session.tactical_rng;
                 let fighter = &mut self.session.fighters[index];
                 let shield_before = fighter.shield;
