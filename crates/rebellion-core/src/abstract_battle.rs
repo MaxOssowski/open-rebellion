@@ -1643,43 +1643,80 @@ fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after
     hull_after != before.hull_current || hits_after != before.subsystem_hits
 }
 
-/// `FUN_005d14d0` step 5, the side leaving: each fighter group and capital
-/// ship with a working hyperdrive escapes (`FUN_005af910`, state 9); the
-/// others are destroyed (`FUN_005af7a0`). hyp: a fighter group without one
-/// escapes when its side has an escaping carrier (`FUN_005afe40` recovers
-/// it), and is destroyed otherwise. The tactical battle has its own
-/// commanders (`FUN_005be160`) and withdraws through `FUN_005c8780`.
+/// `FUN_005d14d0` step 5, the side leaving. First its fighter groups (the
+/// side's list `+0x64`), in order:
+/// - one with a working hyperdrive (`FUN_005b1b70`) escapes
+///   (`FUN_005af910`, state 9);
+/// - one without docks on a carrier (`FUN_005afe40`): its home carrier
+///   (`+0x164`) when that ship is still in the field (state 2,
+///   `FUN_005afc80`) with room in its hangar (`FUN_005b84a0`: `+8` below
+///   `+0x10`), else the first such ship of its side (the list `+0x58`);
+/// - one that finds none is destroyed (`FUN_005af7a0`).
+///
+/// Then its capital ships (`+0x58`): one with a working hyperdrive escapes,
+/// and the squadrons inside it go too; the others are destroyed, and
+/// `FUN_005af7a0` destroys the squadrons inside them (the hangar's lists
+/// `+0x434` and `+0x438`). A ship escapes after the groups dock, so a group
+/// can board a carrier that is then lost.
+///
+/// port: the Empire's Death Star, `FUN_005afe40`'s last try, takes no
+/// squadron (the port's Death Star has no hangar). hyp: a squadron already
+/// inside a hangar (state 1) stays with its carrier; whether the list
+/// `+0x64` holds it is untraced (in it, `FUN_005afe40` would refuse it, as
+/// its state is not 2, and it would be destroyed). The tactical battle has
+/// its own commanders (`FUN_005be160`) and withdraws through
+/// `FUN_005c8780`.
 pub fn leave(session: &mut BattleSession, alliance: bool) {
     let units = units_of(session, alliance);
-    let carrier_escapes = units.iter().any(|&unit| match unit {
-        AbstractUnit::Capital(index) => {
-            session.ships[index].fighter_capacity > 0 && hyperdrive_works(session, unit)
-        }
-        AbstractUnit::Fighter(_) => false,
-    });
-    for unit in units {
-        let escapes = match unit {
-            AbstractUnit::Capital(_) => hyperdrive_works(session, unit),
-            AbstractUnit::Fighter(_) => hyperdrive_works(session, unit) || carrier_escapes,
+    for &unit in &units {
+        let AbstractUnit::Fighter(index) = unit else {
+            continue;
         };
-        match (unit, escapes) {
-            (AbstractUnit::Capital(index), true) => {
-                session.ships[index].retreated = true;
+        if hyperdrive_works(session, unit) {
+            session.fighters[index].alive = false;
+            continue;
+        }
+        let in_field = |session: &BattleSession, carrier: usize| {
+            unit_active(session, AbstractUnit::Capital(carrier))
+                && unit_is_alliance(session, AbstractUnit::Capital(carrier)) == alliance
+                && session.carrier_room(carrier) > 0
+        };
+        let home = session.fighters[index].home_carrier;
+        let carrier = home
+            .into_iter()
+            .chain(0..session.ships.len())
+            .find(|&carrier| in_field(session, carrier));
+        match carrier {
+            Some(carrier) => {
+                let fighter = &mut session.fighters[index];
+                fighter.alive = false;
+                fighter.in_hangar = true;
+                fighter.home_carrier = Some(carrier);
+                session.ships[carrier].hangar.push(index);
             }
-            (AbstractUnit::Fighter(index), true) => {
-                session.fighters[index].alive = false;
-            }
-            (AbstractUnit::Capital(index), false) => {
-                let ship = &mut session.ships[index];
-                ship.hull_current = 0;
-                ship.shield = 0;
-                ship.alive = false;
-            }
-            (AbstractUnit::Fighter(index), false) => {
+            None => {
                 let fighter = &mut session.fighters[index];
                 fighter.hull_current = 0.0;
                 fighter.refresh_craft_count();
             }
+        }
+    }
+    for unit in units {
+        let AbstractUnit::Capital(index) = unit else {
+            continue;
+        };
+        if hyperdrive_works(session, unit) {
+            session.ships[index].retreated = true;
+            continue;
+        }
+        let ship = &mut session.ships[index];
+        ship.hull_current = 0;
+        ship.shield = 0;
+        ship.alive = false;
+        for squadron in std::mem::take(&mut ship.hangar) {
+            let fighter = &mut session.fighters[squadron];
+            fighter.hull_current = 0.0;
+            fighter.refresh_craft_count();
         }
     }
 }
@@ -4469,8 +4506,9 @@ mod tests {
         );
     }
 
-    // hyp (FUN_005afe40): fighters without a hyperdrive leave only with a
-    // carrier that both has room and jumps; otherwise they are destroyed.
+    // FUN_005afe40: a fighter group without a hyperdrive docks on a ship
+    // of its side with room; FUN_005af7a0 destroys a ship that cannot jump
+    // with the squadrons inside it.
     #[test]
     fn fighters_leave_only_with_a_jumping_carrier() {
         let run = |capacity: u32, hyperdrive: u8| {
@@ -4488,6 +4526,70 @@ mod tests {
         assert!(run(1, 1));
         assert!(!run(0, 1));
         assert!(!run(1, 0));
+    }
+
+    // FUN_005afe40: a group tries its home carrier (+0x164) first, then its
+    // side's ships in order (+0x58); FUN_005b84a0 docks it only while the
+    // hangar's +8 is below its +0x10. A group that finds no room is
+    // destroyed (FUN_005af7a0).
+    #[test]
+    fn a_leaving_group_docks_on_its_home_carrier_first_and_needs_room() {
+        let carrier = |capacity: u32| {
+            let mut own = ship(true, TacticalWeaponArc::default(), 0.0);
+            own.fighter_capacity = capacity;
+            own.subsystem_capacity.hyperdrive = 1;
+            own
+        };
+        let mut groups = vec![
+            fighter(true, TacticalWeaponArc::default()),
+            fighter(true, TacticalWeaponArc::default()),
+            fighter(true, TacticalWeaponArc::default()),
+        ];
+        groups[0].home_carrier = Some(1);
+        let mut battle = AbstractBattle::new(session(
+            vec![
+                carrier(1),
+                carrier(1),
+                ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0),
+            ],
+            groups,
+        ));
+        battle.retreat_allowed[0] = true;
+        battle.retreat(true);
+        let session = &battle.session;
+        assert_eq!(session.ships[1].hangar, [0]);
+        assert_eq!(session.ships[0].hangar, [1]);
+        assert!(session.fighters[0].in_hangar && session.fighters[0].squad_count > 0);
+        assert!(session.fighters[1].in_hangar && session.fighters[1].squad_count > 0);
+        // No room left for the third.
+        assert_eq!(session.fighters[2].squad_count, 0);
+        assert!(session.ships[0].retreated && session.ships[1].retreated);
+    }
+
+    // FUN_005af7a0 walks a destroyed ship's hangar lists (+0x434, +0x438)
+    // and destroys the squadrons inside, those there before the side left
+    // as well as those that docked as it left.
+    #[test]
+    fn a_ship_that_cannot_jump_takes_the_squadrons_inside_with_it() {
+        let mut own = ship(true, TacticalWeaponArc::default(), 0.0);
+        own.fighter_capacity = 2;
+        own.subsystem_capacity.hyperdrive = 0;
+        own.hangar = vec![1];
+        let mut inside = fighter(true, TacticalWeaponArc::default());
+        inside.alive = false;
+        inside.in_hangar = true;
+        inside.home_carrier = Some(0);
+        let mut battle = AbstractBattle::new(session(
+            vec![own, ship(false, TacticalWeaponArc::new(0, 0, 1), 1.0)],
+            vec![fighter(true, TacticalWeaponArc::default()), inside],
+        ));
+        battle.retreat_allowed[0] = true;
+        battle.retreat(true);
+        let session = &battle.session;
+        assert!(!session.ships[0].alive);
+        assert!(session.ships[0].hangar.is_empty());
+        assert_eq!(session.fighters[0].squad_count, 0);
+        assert_eq!(session.fighters[1].squad_count, 0);
     }
 
     // FUN_005d14d0 step 5 tests each fighter group with FUN_005b1b70 and

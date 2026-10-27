@@ -5189,7 +5189,7 @@ impl BattleSession {
 
     /// The room left on a carrier (`+0x10` less `+0xc`): its capacity less
     /// the squadrons inside its hangar and those it has reserved or taken in.
-    fn carrier_room(&self, carrier: usize) -> u32 {
+    pub(crate) fn carrier_room(&self, carrier: usize) -> u32 {
         let taken = self
             .fighters
             .iter()
