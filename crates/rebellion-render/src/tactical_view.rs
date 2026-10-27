@@ -4980,6 +4980,19 @@ fn draw_original_tactical_hud(
     );
 }
 
+/// A maneuver button (`0xdd10`..`0xdd14`) has style 8 (`FUN_006030c0(8)`),
+/// so each click flips its pressed state (`FUN_00604170`); the others are
+/// released (`FUN_005dd140`). The commit (`FUN_005dd3a0`) takes the pressed
+/// one, or order 0 with none: clicking the chosen maneuver again cancels it,
+/// as the manual's "deselect any selected orders and confirm" does.
+fn toggled_maneuver(pending: TacticalOrder, clicked: TacticalOrder) -> TacticalOrder {
+    if pending == clicked {
+        TacticalOrder::None
+    } else {
+        clicked
+    }
+}
+
 fn activate_tactical_command(state: &mut TacticalState, control: TacticalCommandControl) {
     match control {
         TacticalCommandControl::PreviousCapital | TacticalCommandControl::NextCapital => {
@@ -5020,31 +5033,31 @@ fn activate_tactical_command(state: &mut TacticalState, control: TacticalCommand
         TacticalCommandControl::LeftHook => {
             if let TacticalCommandPanel::Maneuvers { pending_order, .. } = &mut state.command_panel
             {
-                *pending_order = TacticalOrder::LeftHook;
+                *pending_order = toggled_maneuver(*pending_order, TacticalOrder::LeftHook);
             }
         }
         TacticalCommandControl::RightHook => {
             if let TacticalCommandPanel::Maneuvers { pending_order, .. } = &mut state.command_panel
             {
-                *pending_order = TacticalOrder::RightHook;
+                *pending_order = toggled_maneuver(*pending_order, TacticalOrder::RightHook);
             }
         }
         TacticalCommandControl::Hammer => {
             if let TacticalCommandPanel::Maneuvers { pending_order, .. } = &mut state.command_panel
             {
-                *pending_order = TacticalOrder::Hammer;
+                *pending_order = toggled_maneuver(*pending_order, TacticalOrder::Hammer);
             }
         }
         TacticalCommandControl::Anvil => {
             if let TacticalCommandPanel::Maneuvers { pending_order, .. } = &mut state.command_panel
             {
-                *pending_order = TacticalOrder::Anvil;
+                *pending_order = toggled_maneuver(*pending_order, TacticalOrder::Anvil);
             }
         }
         TacticalCommandControl::HoldPosition => {
             if let TacticalCommandPanel::Maneuvers { pending_order, .. } = &mut state.command_panel
             {
-                *pending_order = TacticalOrder::HoldPosition;
+                *pending_order = toggled_maneuver(*pending_order, TacticalOrder::HoldPosition);
             }
         }
         TacticalCommandControl::ToggleTactic => {
@@ -15391,6 +15404,34 @@ mod tests {
         assert_eq!(camera_target_of_selection(&session).map(|(id, _, _, at)| (id, at)), Some((2, at(4.0, 5.0, 6.0))));
         assert!(select_fighter_group(&mut session, 0));
         assert_eq!(camera_target_of_selection(&session).map(|(id, _, _, at)| (id, at)), Some((1005, at(1.0, 2.0, 3.0))));
+    }
+
+    // FUN_006030c0(8) / FUN_00604170 / FUN_005dd3a0: a second click on the
+    // chosen maneuver releases it, and confirming then gives order 0.
+    #[test]
+    fn a_second_click_on_the_chosen_maneuver_cancels_it() {
+        assert_eq!(toggled_maneuver(TacticalOrder::None, TacticalOrder::Hammer), TacticalOrder::Hammer);
+        assert_eq!(toggled_maneuver(TacticalOrder::Anvil, TacticalOrder::Hammer), TacticalOrder::Hammer);
+        assert_eq!(toggled_maneuver(TacticalOrder::Hammer, TacticalOrder::Hammer), TacticalOrder::None);
+        let mut state = TacticalState::default();
+        let mut ship = test_ship(1, 0, true, true);
+        ship.task_force = 0;
+        ship.order = TacticalOrder::HoldPosition;
+        let mut session = test_session(vec![ship], Vec::new(), true);
+        assert!(select_task_force(&mut session, 0) > 0);
+        state.session = Some(session);
+        activate_tactical_command(&mut state, TacticalCommandControl::OpenManeuvers);
+        assert!(matches!(
+            state.command_panel,
+            TacticalCommandPanel::Maneuvers { pending_order: TacticalOrder::HoldPosition, .. }
+        ));
+        activate_tactical_command(&mut state, TacticalCommandControl::HoldPosition);
+        assert!(matches!(
+            state.command_panel,
+            TacticalCommandPanel::Maneuvers { pending_order: TacticalOrder::None, .. }
+        ));
+        activate_tactical_command(&mut state, TacticalCommandControl::Confirm);
+        assert_eq!(state.session.as_ref().unwrap().ships[0].order, TacticalOrder::None);
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.
