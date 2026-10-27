@@ -1392,6 +1392,85 @@ fn landing(
     }
 }
 
+/// Seat `fleet`'s characters that ride on none of its ships aboard its
+/// first living ship; a seat on a ship still in the fleet is kept, so a
+/// lost ship's passengers are found before it is removed. hyp: the leg builder (`FUN_00552300`) weighs the
+/// fleet's ships in order (`FUN_00552b10`) and a later one wins only when
+/// strictly better (`FUN_0054fbb0`); every ship has room for a character
+/// (`FUN_00500b40`), so the first is kept. The weighed fields are
+/// untraced.
+pub fn seat_characters(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
+    let Some(value) = world.fleets.get(fleet) else {
+        return;
+    };
+    let numbered = || value.capital_ships.iter().filter(|ship| ship.id != 0);
+    let first = numbered().find(|ship| ship.alive).map(|ship| ship.id);
+    let ships: Vec<u64> = numbered().map(|ship| ship.id).collect();
+    for &key in &value.characters {
+        if let Some(c) = world.characters.get_mut(key) {
+            if !c.ship.is_some_and(|ship| ships.contains(&ship)) {
+                c.ship = first;
+            }
+        }
+    }
+}
+
+/// The capital ship numbered `ship` of `fleet` was destroyed (a reason
+/// other than `0x14`): `GameObj_vt11c` (`FUN_004fb520`) runs each child's
+/// slot `+0xb4`, and a character's (`FUN_004ef2e0`) on no mission goes
+/// Adrift (`Role_SetAdrift` `FUN_00534790`) where it stands, for
+/// `MissionSystem::send_adrift` to settle or send away. The characters
+/// aboard leave the fleet for its system; the rest stay. Call it before
+/// the ship is removed. Returns the characters that were aboard.
+pub fn strand_passengers(
+    world: &mut GameWorld,
+    fleet: crate::ids::FleetKey,
+    ship: u64,
+) -> Vec<CharacterKey> {
+    if ship == 0 {
+        return Vec::new();
+    }
+    seat_characters(world, fleet);
+    let Some(value) = world.fleets.get_mut(fleet) else {
+        return Vec::new();
+    };
+    let location = value.location;
+    let (aboard, staying): (Vec<_>, Vec<_>) = std::mem::take(&mut value.characters)
+        .into_iter()
+        .partition(|key| world.characters.get(*key).is_some_and(|c| c.ship == Some(ship)));
+    value.characters = staying;
+    for &key in &aboard {
+        if let Some(c) = world.characters.get_mut(key) {
+            c.move_to(None, Some(location));
+            c.ship = None;
+            if !c.is_killed && !c.on_mission {
+                c.adrift = true;
+            }
+        }
+    }
+    aboard
+}
+
+/// [`strand_passengers`] for each numbered ship of `fleet` that is no
+/// longer alive: a battle's losses (`FUN_0040cfc0` -> `FUN_00501ae0`, reason
+/// `0xc`). Call it before the dead ships are removed.
+pub fn strand_lost_ships_passengers(
+    world: &mut GameWorld,
+    fleet: crate::ids::FleetKey,
+) -> Vec<CharacterKey> {
+    let lost: Vec<u64> = world.fleets.get(fleet).map_or_else(Vec::new, |value| {
+        value
+            .capital_ships
+            .iter()
+            .filter(|ship| !ship.alive && ship.id != 0)
+            .map(|ship| ship.id)
+            .collect()
+    });
+    lost.into_iter()
+        .flat_map(|ship| strand_passengers(world, fleet, ship))
+        .collect()
+}
+
 /// A battle destroyed `fleet`: its characters stand at its system, and
 /// each on no mission goes adrift (`FUN_00556710` -> slot `+0xb4`
 /// `FUN_004ef2e0`, `Role_SetAdrift` `FUN_00534790`) for
@@ -1417,6 +1496,7 @@ pub fn cast_adrift(world: &mut GameWorld, fleet: crate::ids::FleetKey) {
     for key in characters {
         if let Some(c) = world.characters.get_mut(key) {
             c.move_to(None, Some(location));
+            c.ship = None;
             if !c.is_killed && !c.on_mission {
                 c.adrift = true;
             }

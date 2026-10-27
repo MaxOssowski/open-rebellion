@@ -239,7 +239,9 @@ pub(crate) fn remove_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, in
 /// `0x8`, `FUN_004f7560`) runs `GameObj_vt11c` (`FUN_004fb520`), which hands
 /// the reason to each child that is Completed and not en route
 /// (`FUN_004f8710`, `FUN_004f7ed0`): the squadrons docked on the ship are
-/// destroyed with it. The ship then leaves its fleet as [`remove_ship`].
+/// destroyed with it, and the characters aboard go adrift
+/// ([`crate::missions::strand_passengers`]). The ship then leaves its fleet
+/// as [`remove_ship`].
 pub(crate) fn destroy_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, index: usize) {
     let Some(value) = world.fleets.get_mut(fleet) else {
         return;
@@ -250,6 +252,7 @@ pub(crate) fn destroy_ship(world: &mut GameWorld, fleet: crate::ids::FleetKey, i
     let id = ship.id;
     if id != 0 {
         value.fighters.retain(|entry| entry.carrier != Some(id));
+        crate::missions::strand_passengers(world, fleet, id);
     }
     remove_ship(world, fleet, index);
 }
@@ -518,6 +521,53 @@ mod tests {
         f.world.fleets[key].capital_ships = crate::world::ShipInstance::make(class, 10, true, 1);
         destroy_ship(&mut f.world, key, 0);
         assert!(!f.world.fleets.contains_key(key));
+    }
+
+    #[test]
+    fn a_destroyed_ships_characters_go_adrift_and_the_others_stay() {
+        // GameObj_vt11c (FUN_004fb520) runs each child's slot +0xb4; a
+        // character's (FUN_004ef2e0) on no mission goes Adrift
+        // (Role_SetAdrift FUN_00534790) where it stands. Characters on the
+        // fleet's other ships are not its children.
+        let mut f = fixture();
+        let class = f.world.capital_ship_classes.insert(crate::world::CapitalShipClass::default());
+        let mut ships = crate::world::ShipInstance::make(class, 10, true, 2);
+        ships[0].id = 7;
+        ships[1].id = 8;
+        let mut character = |ship, on_mission| {
+            f.world.characters.insert(crate::world::Character {
+                ship: Some(ship),
+                on_mission,
+                current_system: Some(f.system),
+                ..Default::default()
+            })
+        };
+        let aboard = character(7, false);
+        let on_mission = character(7, true);
+        let other = character(8, false);
+        let key = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: ships,
+            fighters: vec![],
+            characters: vec![aboard, on_mission, other],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        f.world.systems[f.system].fleets.push(key);
+        for c in [aboard, on_mission, other] {
+            f.world.characters[c].current_fleet = Some(key);
+        }
+        destroy_ship(&mut f.world, key, 0);
+        assert_eq!(f.world.fleets[key].characters, [other]);
+        let c = &f.world.characters[aboard];
+        assert!(c.adrift);
+        assert_eq!((c.current_fleet, c.current_system, c.ship), (None, Some(f.system), None));
+        // A character on a mission is not set Adrift (Flags78 OnMission).
+        assert!(!f.world.characters[on_mission].adrift);
+        assert_eq!(f.world.characters[on_mission].current_fleet, None);
+        assert!(!f.world.characters[other].adrift);
+        assert_eq!(f.world.characters[other].current_fleet, Some(key));
     }
 
     #[test]

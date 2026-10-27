@@ -7,11 +7,13 @@
 //! (`FUN_00580b00`, `FUN_00509b40`).
 //!
 //! The original's fleet holds only capital ships, and fighters, regiments
-//! and characters ride aboard them. The port keeps those on the fleet: a
-//! whole fleet takes them along, and a split leaves them with the fleet the
-//! ships came from unless every ship leaves, except the regiments the ships
-//! that stay have no room for, which go with the ships that leave. port:
-//! which ship carries which fighter or regiment is not modelled.
+//! and characters ride aboard them. The port keeps those on the fleet's
+//! lists: a whole fleet takes them along, and a split moves the squadrons
+//! and characters aboard the ships that leave (each knows its ship). The
+//! regiments stay with the fleet the ships came from unless every ship
+//! leaves, except those the ships that stay have no room for, which go with
+//! the ships that leave. port: which ship carries which regiment is not
+//! modelled.
 
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashSet;
@@ -308,6 +310,22 @@ fn move_ships_into(
         .into_iter()
         .partition(|entry| entry.carrier.is_some_and(|carrier| carriers.contains(&carrier)));
     source.fighters = staying;
+    // So do the characters aboard them (a character's container is its
+    // ship, `FUN_00560d50` moves the commands aboard with it).
+    let characters = std::mem::take(&mut source.characters);
+    let (riding, staying): (Vec<_>, Vec<_>) = characters.into_iter().partition(|key| {
+        world.characters.get(*key).is_some_and(|c| {
+            c.ship.is_some_and(|ship| carriers.contains(&ship))
+        })
+    });
+    world.fleets[from].characters = staying;
+    for &key in &riding {
+        if let Some(c) = world.characters.get_mut(key) {
+            let system = c.current_system;
+            c.move_to(Some(to), system);
+        }
+    }
+    world.fleets[to].characters.extend(riding);
     world.fleets[to].capital_ships.extend(moved);
     world.fleets[to].fighters.extend(going);
     // A Death Star among the ships flies under its own flag; a flag with
@@ -969,6 +987,55 @@ mod tests {
         };
         assert_eq!(carried(target), [(Some(ids[0]), 1)]);
         assert_eq!(carried(mover), [(Some(ids[1]), 2)]);
+    }
+
+    // A character's container is its ship (FUN_00500b40), so the
+    // characters aboard the moved ships go with them and the others stay.
+    #[test]
+    fn moved_ships_take_the_characters_aboard_them() {
+        let mut setup = setup();
+        let here = setup.here;
+        let mover = fleet(&mut setup, here, &[10, 20], true);
+        let target = fleet(&mut setup, here, &[40], true);
+        setup.world.number_ships();
+        let ids = setup.world.fleets[mover]
+            .capital_ships
+            .iter()
+            .map(|ship| ship.id)
+            .collect::<Vec<_>>();
+        let characters = ids
+            .iter()
+            .map(|&ship| {
+                let key = setup.world.characters.insert(Character {
+                    is_alliance: true,
+                    current_fleet: Some(mover),
+                    current_system: Some(here),
+                    ship: Some(ship),
+                    ..Default::default()
+                });
+                setup.world.fleets[mover].characters.push(key);
+                key
+            })
+            .collect::<Vec<_>>();
+        let mut transport = TroopTransportState::default();
+        let chosen = roster(&setup.world, mover).unwrap();
+        let outcome = join_fleet(
+            &mut setup.world,
+            &mut MovementState::new(),
+            &mut transport,
+            &FleetMover::Ships {
+                fleet: mover,
+                ships: vec![0],
+                roster: chosen,
+            },
+            target,
+            true,
+        );
+        assert_eq!(outcome, Ok(FleetOrderOutcome::Joined(target)));
+        assert_eq!(setup.world.fleets[target].characters, [characters[0]]);
+        assert_eq!(setup.world.fleets[mover].characters, [characters[1]]);
+        assert_eq!(setup.world.characters[characters[0]].current_fleet, Some(target));
+        assert_eq!(setup.world.characters[characters[0]].ship, Some(ids[0]));
     }
 
     // A merge keeps each squadron on its ship: entries of one class on

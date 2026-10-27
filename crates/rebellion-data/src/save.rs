@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 106;
+pub const SAVE_VERSION: u32 = 107;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1528,6 +1528,26 @@ mod tests {
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
 
         assert_eq!(loaded.world.fleets[fleet].fighters[0].carrier, Some(7));
+    }
+
+    #[test]
+    fn a_round_trip_keeps_the_ship_a_character_rides_on() {
+        // v107: a character's container is a capital ship (FUN_00500b40,
+        // FUN_004fe160), kept as its ship's id.
+        let saves_dir = tmp_dir("v107_character_ship");
+        let mut state = minimal_save_state();
+        let character = state
+            .world
+            .characters
+            .insert(rebellion_core::world::Character {
+                ship: Some(7),
+                ..Default::default()
+            });
+        save_slot(&saves_dir, 0, "Aboard", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(loaded.world.characters[character].ship, Some(7));
     }
 
     #[test]

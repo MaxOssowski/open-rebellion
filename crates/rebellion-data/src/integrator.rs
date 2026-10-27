@@ -5401,6 +5401,9 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
                     )
                 })
         });
+        // FUN_0040cfc0 -> FUN_00501ae0 (reason 0xc): each lost ship's
+        // characters go adrift before the ship leaves its fleet.
+        rebellion_core::missions::strand_lost_ships_passengers(world, fleet_key);
         if let Some(fleet) = world.fleets.get_mut(fleet_key) {
             fleet.capital_ships.retain(|s| s.alive);
             if let Some((true, death_star_alive)) = death_star_status {
@@ -5714,6 +5717,65 @@ mod combat_application_tests {
         assert!(!world.fleets[defender].has_death_star);
         assert_eq!(world.fleets[defender].capital_ships.len(), 1);
         assert_eq!(world.fleets[defender].capital_ships[0].class, escort_class);
+    }
+
+    // FUN_0040cfc0 -> FUN_00501ae0 (reason 0xc) destroys a lost ship; its
+    // GameObj_vt11c (FUN_004fb520) sets the characters aboard Adrift
+    // (FUN_004ef2e0) where the fleet stands. The others stay aboard theirs.
+    #[test]
+    fn a_lost_ships_characters_go_adrift_and_the_fleet_keeps_the_rest() {
+        let mut world = GameWorld::default();
+        let system = add_combat_system(&mut world);
+        let attacker = add_ship_fleet(&mut world, system, true, 100, 10);
+        let defender = add_ship_fleet(&mut world, system, false, 100, 10);
+        let class = world.fleets[defender].capital_ships[0].class;
+        world.fleets[defender]
+            .capital_ships
+            .push(ShipInstance::new(class, 100, false));
+        world.number_ships();
+        let ids: Vec<u64> = world.fleets[defender]
+            .capital_ships
+            .iter()
+            .map(|ship| ship.id)
+            .collect();
+        let officers: Vec<_> = ids
+            .iter()
+            .map(|&ship| {
+                let key = world.characters.insert(Character {
+                    is_empire: true,
+                    current_fleet: Some(defender),
+                    current_system: Some(system),
+                    ship: Some(ship),
+                    ..Character::default()
+                });
+                world.fleets[defender].characters.push(key);
+                key
+            })
+            .collect();
+        let result = SpaceCombatResult {
+            attacker_fleet: attacker,
+            defender_fleet: defender,
+            system,
+            winner: CombatSide::Attacker,
+            ship_damage: vec![ShipDamageEvent {
+                fleet: defender,
+                ship_index: 0,
+                hull_before: 100,
+                hull_after: 0,
+                hits_after: 0,
+            }],
+            fighter_losses: vec![],
+            tick: 2,
+        };
+
+        apply_space_combat_result_inner(&result, &mut world);
+
+        assert_eq!(world.fleets[defender].capital_ships.len(), 1);
+        assert_eq!(world.fleets[defender].characters, [officers[1]]);
+        let lost = &world.characters[officers[0]];
+        assert!(lost.adrift);
+        assert_eq!((lost.current_fleet, lost.current_system), (None, Some(system)));
+        assert!(!world.characters[officers[1]].adrift);
     }
 
     // FUN_00501c50: a repair fire's hull and subsystem counters reach the

@@ -766,6 +766,13 @@ pub struct Character {
     /// command's hook renames the character to (`FUN_004f17f0`; save v86).
     /// An empty entry keeps the name.
     pub command_names: [String; 4],
+    /// The [`ShipInstance::id`] of the capital ship it rides on in a fleet:
+    /// a character's container is a capital ship, not the fleet
+    /// (`FUN_004fe160` takes only capital ships, `FUN_00500b40` gives
+    /// families `0x30..0x40` room on any). `None` until it is seated
+    /// ([`crate::missions::seat_characters`]); stale once it leaves the
+    /// fleet (save v107).
+    pub ship: Option<u64>,
 }
 
 impl Character {
@@ -981,6 +988,7 @@ impl Default for Character {
             bounty_captured: false,
             command: crate::character_command::CommandKind::None,
             command_names: Default::default(),
+            ship: None,
         }
     }
 }
@@ -2031,6 +2039,7 @@ impl GameWorld {
         let fleets = self.fleets.keys().collect::<Vec<_>>();
         for fleet in fleets {
             crate::squadrons::seat_squadrons(self, fleet);
+            crate::missions::seat_characters(self, fleet);
         }
     }
 
@@ -3082,6 +3091,37 @@ mod tests {
         assert!(!c.is_captive, "is_captive must be cleared");
         assert_eq!(c.captured_by, None, "captured_by must be cleared");
         assert_eq!(c.capture_tick, None, "capture_tick must be cleared");
+    }
+
+    #[test]
+    fn characters_ride_on_the_first_living_ship_of_their_fleet() {
+        // FUN_004fe160 takes only capital ships into a fleet; a character's
+        // container is a ship. hyp: the first ship wins (FUN_00552b10 keeps
+        // the first of equals, FUN_00500b40 gives every ship room).
+        let mut world = GameWorld::default();
+        let class = CapitalShipKey::default();
+        let mut ships = ShipInstance::make(class, 10, true, 3);
+        ships[0].alive = false;
+        let seated = world.characters.insert(Character::default());
+        let loose = world.characters.insert(Character::default());
+        let fleet = world.fleets.insert(Fleet {
+            location: SystemKey::default(),
+            capital_ships: ships,
+            fighters: vec![],
+            characters: vec![seated, loose],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.number_ships();
+        let ids: Vec<u64> = world.fleets[fleet].capital_ships.iter().map(|s| s.id).collect();
+        assert_eq!(world.characters[loose].ship, Some(ids[1]));
+        // A seat on a ship of the fleet is kept, a seat elsewhere is not.
+        world.characters[seated].ship = Some(ids[2]);
+        world.characters[loose].ship = Some(99);
+        world.number_ships();
+        assert_eq!(world.characters[seated].ship, Some(ids[2]));
+        assert_eq!(world.characters[loose].ship, Some(ids[1]));
     }
 
     #[test]

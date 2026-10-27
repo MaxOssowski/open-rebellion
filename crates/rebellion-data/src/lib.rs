@@ -965,6 +965,7 @@ fn convert_character(dat: &CharacterEntry, is_major: bool, name: String) -> Char
         bounty_captured: false,
         command: rebellion_core::character_command::CommandKind::None,
         command_names: Default::default(),
+        ship: None,
     }
 }
 

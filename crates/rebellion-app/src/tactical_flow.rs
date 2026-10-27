@@ -225,7 +225,6 @@ pub(crate) fn apply_results(
                     }
                 }
             }
-            fleet.capital_ships.retain(|ship| ship.alive);
 
             let mut survivors = vec![0_u32; fleet.fighters.len()];
             for fighter in session
@@ -244,6 +243,12 @@ pub(crate) fn apply_results(
             }
         }
 
+        // FUN_0040cfc0 -> FUN_00501ae0 (reason 0xc): each lost ship's
+        // characters go adrift, then the ship leaves its fleet.
+        rebellion_core::missions::strand_lost_ships_passengers(world, fleet_key);
+        if let Some(fleet) = world.fleets.get_mut(fleet_key) {
+            fleet.capital_ships.retain(|ship| ship.alive);
+        }
         let is_empty = world
             .fleets
             .get(fleet_key)
@@ -736,6 +741,67 @@ mod tests {
         let ship = &world.fleets[attacker].capital_ships[0];
         assert!(ship.alive);
         assert_eq!(ship.hull_current, 80);
+    }
+
+    #[test]
+    fn a_ship_lost_in_the_battle_sets_its_characters_adrift() {
+        // FUN_0040cfc0 -> FUN_00501ae0 (reason 0xc) destroys the lost ship;
+        // its GameObj_vt11c (FUN_004fb520) sets the characters aboard
+        // Adrift (FUN_004ef2e0). The fleet keeps the other ship's.
+        let (mut world, system, attacker, defender) = opposing_empty_fleets();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Corvette".into(),
+            hull: 100,
+            ..Default::default()
+        });
+        world.fleets[attacker]
+            .capital_ships
+            .push(ShipInstance::new(class, 100, true));
+        for _ in 0..2 {
+            world.fleets[defender]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, false));
+        }
+        world.number_ships();
+        let ids: Vec<u64> = world.fleets[defender]
+            .capital_ships
+            .iter()
+            .map(|ship| ship.id)
+            .collect();
+        let officers: Vec<_> = ids
+            .iter()
+            .map(|&ship| {
+                let key = world.characters.insert(Character {
+                    is_empire: true,
+                    current_system: Some(system),
+                    current_fleet: Some(defender),
+                    ship: Some(ship),
+                    ..Character::default()
+                });
+                world.fleets[defender].characters.push(key);
+                key
+            })
+            .collect();
+        let mut session =
+            BattleSession::new(&world, system, attacker, defender, true, 23, 0x1111_0007);
+        let lost = session
+            .ships
+            .iter_mut()
+            .find(|ship| ship.fleet == defender && ship.fleet_ship_index == 0)
+            .unwrap();
+        lost.hull_current = 0;
+        lost.alive = false;
+        session.winner = Some(CombatWinner::Attacker);
+
+        apply_results(&session, &mut world, &mut TroopTransportState::default());
+
+        assert_eq!(world.fleets[defender].capital_ships.len(), 1);
+        assert_eq!(world.fleets[defender].characters, [officers[1]]);
+        let officer = &world.characters[officers[0]];
+        assert!(officer.adrift);
+        assert_eq!((officer.current_fleet, officer.current_system), (None, Some(system)));
+        assert!(!world.characters[officers[1]].adrift);
     }
 
     #[test]

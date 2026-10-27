@@ -1133,6 +1133,7 @@ mod tests {
             bounty_captured: false,
             command: rebellion_core::character_command::CommandKind::None,
             command_names: Default::default(),
+            ship: None,
         }
     }
 
