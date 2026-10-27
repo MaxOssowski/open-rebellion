@@ -2935,6 +2935,12 @@ fn tactical_withdraw_enabled(session: &BattleSession) -> bool {
     })
 }
 
+/// A0 VM 2026-10-27: an enemy's selection frame is red (255, 0, 0); ours
+/// keeps the yellow one (`None`).
+fn enemy_selection_frame_color(session: &BattleSession, ship: &TacticalShip) -> Option<Color> {
+    (ship.is_attacker != session.player_is_attacker).then(|| Color::new(1.0, 0.0, 0.0, 1.0))
+}
+
 /// The enemy ship the player has selected, when the selection is one.
 fn selected_enemy_ship(session: &BattleSession) -> Option<&TacticalShip> {
     session
@@ -2950,6 +2956,10 @@ struct TacticalGroupHud<'a> {
     selected_task_force: Option<u8>,
     selected_fighter_group: Option<u8>,
     selected_ship_name: Option<&'a str>,
+    /// The panel's ship is an enemy's (`0x66bba8`).
+    selected_enemy: bool,
+    /// The panel ship's own numbered group (`FUN_005b1480`), ours only.
+    selected_ship_group: Option<u8>,
     selected_ship_hud: Option<u32>,
     selected_ship_hull: Option<(i32, i32)>,
     selected_ship_shield: Option<(i32, i32)>,
@@ -2970,6 +2980,28 @@ impl<'a> TacticalGroupHud<'a> {
     /// only the "Task Force #" caption needs a group.
     fn panel_ship_name(&self) -> Option<&'a str> {
         self.selected_ship_name
+    }
+
+    /// The panel's caption (`FUN_005e4b40` `+0xac`): "Task Force #" and the
+    /// unit's group (`FUN_005b1480`, TEXTTACT `0xdd9c`), or "Task Force
+    /// Unassigned" (`0xdd9f`) for a unit in none, an enemy's included (A0
+    /// VM 2026-10-27: the enemy "Haste" reads "Task Force Unassigned").
+    fn panel_caption(&self) -> String {
+        self.selected_ship_group.map_or_else(
+            || "Task Force Unassigned".to_owned(),
+            tactical_task_force_caption,
+        )
+    }
+
+    /// The panel's order line: ours (`+0x168` the viewer's side) shows its
+    /// order, an enemy's "Orders Unavailable" (`FUN_005e4b40`, TEXTTACT
+    /// `0xddbf`).
+    fn panel_orders_line(&self) -> &'static str {
+        if self.selected_enemy {
+            "Orders Unavailable"
+        } else {
+            self.selected_order.label()
+        }
     }
 
     fn from_session(session: &'a BattleSession) -> Self {
@@ -3024,6 +3056,12 @@ impl<'a> TacticalGroupHud<'a> {
             selected_fighter_group: session.selected_fighter_group,
             selected_fighter_count,
             selected_ship_name: selected_ship.map(|ship| ship.name.as_str()),
+            selected_enemy: selected_ship
+                .is_some_and(|ship| ship.is_attacker != session.player_is_attacker),
+            selected_ship_group: selected_ship
+                .filter(|ship| ship.is_attacker == session.player_is_attacker)
+                .map(|ship| ship.task_force)
+                .filter(|&group| group != TACTICAL_UNGROUPED_TASK_FORCE),
             selected_ship_hud: selected_ship
                 .and_then(|ship| ship.tactical_resource)
                 .map(TacticalCapitalShipResource::hud_resource),
@@ -4710,31 +4748,30 @@ fn draw_original_tactical_hud(
             // A0 TAC-03-C016: capitals from row 37 at x 508, the caption
             // from row 82, the orders from rows 212 and 223 at x 497.
             draw_tactical_panel_text(canvas, name, 508.0, 37.0, TACTICAL_FONT_8);
-            // port: an enemy force fills no group slot, so its ship has
-            // no caption.
-            if let Some(group) = groups.selected_task_force {
-                draw_tactical_panel_text(
-                    canvas,
-                    &tactical_task_force_caption(group),
-                    508.0,
-                    82.0,
-                    TACTICAL_FONT_8,
-                );
-            }
             draw_tactical_panel_text(
                 canvas,
-                groups.selected_order.label(),
+                &groups.panel_caption(),
+                508.0,
+                82.0,
+                TACTICAL_FONT_8,
+            );
+            draw_tactical_panel_text(
+                canvas,
+                groups.panel_orders_line(),
                 497.0,
                 212.0,
                 TACTICAL_FONT_8,
             );
-            draw_tactical_panel_text(
-                canvas,
-                &format!("Tactics: {}", groups.selected_tactic.label()),
-                497.0,
-                223.0,
-                TACTICAL_FONT_8,
-            );
+            // FUN_005e4b40 `+0xb4`: the tactic only for our unit.
+            if !groups.selected_enemy {
+                draw_tactical_panel_text(
+                    canvas,
+                    &format!("Tactics: {}", groups.selected_tactic.label()),
+                    497.0,
+                    223.0,
+                    TACTICAL_FONT_8,
+                );
+            }
         } else if let (Some(_), Some(group), Some(hud_resource)) = (
             groups.selected_fighter_name,
             groups.selected_fighter_group,
@@ -4803,18 +4840,25 @@ fn draw_original_tactical_hud(
                 );
             }
         }
-        for (control, normal, pressed_art) in [
-            (
-                TacticalCommandControl::OpenMissions,
-                art::BTN_MISSIONS_NORMAL,
-                art::BTN_MISSIONS_PRESSED,
-            ),
-            (
-                TacticalCommandControl::OpenManeuvers,
-                art::BTN_MANEUVERS_TACTICS_NORMAL,
-                art::BTN_MANEUVERS_TACTICS_PRESSED,
-            ),
-        ] {
+        // FUN_005e4b40: buttons 0xdd01 and 0xdd02 hide for a unit that
+        // takes no orders (FUN_00596830), an enemy's.
+        let order_buttons: &[(TacticalCommandControl, u32, u32)] = if groups.selected_enemy {
+            &[]
+        } else {
+            &[
+                (
+                    TacticalCommandControl::OpenMissions,
+                    art::BTN_MISSIONS_NORMAL,
+                    art::BTN_MISSIONS_PRESSED,
+                ),
+                (
+                    TacticalCommandControl::OpenManeuvers,
+                    art::BTN_MANEUVERS_TACTICS_NORMAL,
+                    art::BTN_MANEUVERS_TACTICS_PRESSED,
+                ),
+            ]
+        };
+        for &(control, normal, pressed_art) in order_buttons {
             draw_tactical_assignment_button(
                 cache,
                 canvas,
@@ -5721,14 +5765,33 @@ fn camera_target_of_selection(
     session: &BattleSession,
 ) -> Option<(u32, f32, f32, TacticalWorldPosition)> {
     if let Some(group) = session.selected_fighter_group {
-        let (index, fighter) = session.fighters.iter().enumerate().find(|(_, fighter)| {
-            fighter.alive
-                && fighter.squad_count > 0
+        let ours = |fighter: &&TacticalFighter| {
+            fighter.squad_count > 0
                 && fighter.is_attacker == session.player_is_attacker
                 && fighter.fighter_group == group
-        })?;
-        let object_id = u32::try_from(index).ok()?.checked_add(1001)?;
-        return Some((object_id, fighter.x, fighter.y, fighter.source_position));
+        };
+        if let Some((index, fighter)) = session
+            .fighters
+            .iter()
+            .enumerate()
+            .find(|(_, fighter)| fighter.alive && ours(fighter))
+        {
+            let object_id = u32::try_from(index).ok()?.checked_add(1001)?;
+            return Some((object_id, fighter.x, fighter.y, fighter.source_position));
+        }
+        // A group whose squadrons are all inside a hangar: the squadron's
+        // frame rides with its carrier, so the camera looks at the carrier
+        // (A0 VM 2026-10-27, Battle at Yavin: the Red group's camera target
+        // shows its Victory Destroyer before any launch).
+        let carrier = session
+            .fighters
+            .iter()
+            .filter(ours)
+            .find(|fighter| fighter.in_hangar)
+            .and_then(|fighter| fighter.home_carrier)?;
+        let ship = session.ships.get(carrier).filter(|ship| ship.alive)?;
+        let object_id = u32::try_from(carrier).ok()?.checked_add(1)?;
+        return Some((object_id, ship.x, ship.y, ship.source_position));
     }
     let index = session.selected_ship?;
     let ship = session.ships.get(index)?;
@@ -8696,7 +8759,10 @@ pub fn draw_tactical_view(
             continue;
         };
         if ship.alive && ship.selected {
-            draw_projected_selection_frame(*projection, canvas.scale);
+            match enemy_selection_frame_color(session, ship) {
+                None => draw_projected_selection_frame(*projection, canvas.scale),
+                Some(color) => draw_projected_frame(*projection, canvas.scale, color),
+            }
         }
     }
 
@@ -14825,6 +14891,47 @@ mod tests {
         assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_some());
     }
 
+    // A0 VM 2026-10-27: the enemy's frame is red, ours yellow.
+    #[test]
+    fn an_enemy_selection_frame_is_red() {
+        let session = test_session(
+            vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
+            Vec::new(),
+            true,
+        );
+        assert!(enemy_selection_frame_color(&session, &session.ships[0]).is_none());
+        assert_eq!(
+            enemy_selection_frame_color(&session, &session.ships[1]),
+            Some(Color::new(1.0, 0.0, 0.0, 1.0))
+        );
+    }
+
+    // FUN_005e4b40 with A0 VM 2026-10-27: the caption is the unit's group
+    // or "Task Force Unassigned"; an enemy reads "Orders Unavailable".
+    #[test]
+    fn the_panel_caption_and_orders_follow_the_unit_and_its_side() {
+        let mut grouped = test_ship(1, 0, true, true);
+        grouped.task_force = 2;
+        grouped.order = TacticalOrder::HoldPosition;
+        let mut alone = test_ship(3, 1, true, true);
+        alone.task_force = TACTICAL_UNGROUPED_TASK_FORCE;
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.task_force = 0;
+        let mut session = test_session(vec![grouped, alone, enemy], Vec::new(), true);
+        select_clicked_ship(&mut session, 0, false);
+        let hud = TacticalGroupHud::from_session(&session);
+        assert_eq!(hud.panel_caption(), "Task Force # 3");
+        assert_eq!(hud.panel_orders_line(), TacticalOrder::HoldPosition.label());
+        assert!(!hud.selected_enemy);
+        select_clicked_ship(&mut session, 1, false);
+        assert_eq!(TacticalGroupHud::from_session(&session).panel_caption(), "Task Force Unassigned");
+        select_clicked_ship(&mut session, 2, false);
+        let hud = TacticalGroupHud::from_session(&session);
+        assert!(hud.selected_enemy);
+        assert_eq!(hud.panel_caption(), "Task Force Unassigned");
+        assert_eq!(hud.panel_orders_line(), "Orders Unavailable");
+    }
+
     // FUN_0051c9b0: the panel shows the clicked unit of a selection across
     // two forces.
     #[test]
@@ -15627,6 +15734,28 @@ mod tests {
         state.asset_renderer.focus_target(1003, macroquad::math::Vec3::ZERO);
         track_tactical_camera_target(&mut state);
         assert_eq!(target(&state), Some(at(0.0, 0.0, 15.0).rendered()));
+    }
+
+    // A0 VM 2026-10-27: a fighter group still in its hangar gives the
+    // camera its carrier.
+    #[test]
+    fn the_camera_target_of_a_group_in_its_hangar_is_the_carrier() {
+        let mut carrier = test_ship(1, 0, true, true);
+        carrier.source_position = at(7.0, 8.0, 9.0);
+        let mut inside = test_fighter(5, true);
+        inside.alive = false;
+        inside.in_hangar = true;
+        inside.home_carrier = Some(1);
+        let mut session =
+            test_session(vec![test_ship(2, 0, true, true), carrier], vec![inside], true);
+        session.selected_fighter_group = Some(0);
+        assert_eq!(
+            camera_target_of_selection(&session).map(|(id, _, _, at)| (id, at)),
+            Some((2, at(7.0, 8.0, 9.0)))
+        );
+        // A lost carrier gives nothing.
+        session.ships[1].alive = false;
+        assert_eq!(camera_target_of_selection(&session), None);
     }
 
     // 0x005d9640 looks at the target object's current frame each frame.
