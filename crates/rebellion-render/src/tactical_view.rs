@@ -6513,6 +6513,7 @@ fn battle_report<'a>(
         withdrawn,
         destination,
         system_side,
+        last_arrival: battle_alert_sides(world, session.system).1,
     }
 }
 
@@ -6537,6 +6538,9 @@ struct BattleReport<'a> {
     destination: Option<&'a str>,
     /// The system's side bits after the battle; `None` neutral.
     system_side: Option<bool>,
+    /// `+0x5c`: the system's last arrived side (`+0x78` bits 6..7, which
+    /// `FUN_0049c0d0` copies to the battle's `+0x4c` at its start).
+    last_arrival: Option<bool>,
 }
 
 /// The battle report's headline and body (`FUN_0049b0f0`): no winner
@@ -6545,8 +6549,9 @@ struct BattleReport<'a> {
 /// body. The viewer's withdrawn fleet "has withdrawn to {2:1}" (`0x700d`,
 /// its destination `+0x48`); the enemy's "has withdrawn" (`0x700c`). port:
 /// with no destination found the viewer's reads `0x700c` too (the
-/// original writes no body); the blockade-before side (`+0x5c`, `0x7015` /
-/// `0x7016`) is not kept. Missing texts fall back to the port's English.
+/// original writes no body). When the system's side arrived last (`+0x5c`)
+/// the winner "maintained" (`0x7015`) or "broke" (`0x7016`) the blockade.
+/// Missing texts fall back to the port's English.
 fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) -> Vec<String> {
     use crate::story_messages::{fill_message_text, side_parameter, MessageParameter};
     let viewer = side_parameter(report.viewer_alliance, texts);
@@ -6581,8 +6586,17 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
             )
         }
         Some(winner) if winner == report.viewer_alliance => {
+            // The side that arrived last held the system: it broke or
+            // failed to break the blockade (FUN_0049b330).
             let first = match report.system_side {
                 None => say(0x7007, &[system, enemy]),
+                Some(side) if report.last_arrival == Some(side) => {
+                    if side == report.viewer_alliance {
+                        say(0x7016, &[system, viewer])
+                    } else {
+                        say(0x7015, &[system, viewer])
+                    }
+                }
                 Some(side) if side == report.viewer_alliance => say(0x7005, &[system, enemy]),
                 Some(_) => say(0x7006, &[system, viewer]),
             };
@@ -6594,8 +6608,16 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
             (say(0x7002, &[viewer]), vec![first, ending])
         }
         Some(_) => {
+            // FUN_0049b4d0: the enemy maintained or broke the blockade.
             let first = match report.system_side {
                 None => say(0x700a, &[system, enemy]),
+                Some(side) if report.last_arrival == Some(side) => {
+                    if side == report.viewer_alliance {
+                        say(0x7015, &[system, enemy])
+                    } else {
+                        say(0x7016, &[system, enemy])
+                    }
+                }
                 Some(side) if side == report.viewer_alliance => say(0x7008, &[system, enemy]),
                 Some(_) => say(0x7009, &[system, viewer]),
             };
@@ -10637,6 +10659,8 @@ mod tests {
             (0x700d, "The {1:4} fleet has withdrawn to {2:1}. "),
             (0x700e, "There has been no victor.  "),
             (0x700f, "All {1:4} and {2:4} ships have been destroyed. "),
+            (0x7015, "{2:4} forces have maintained the blockade of {1:1}. "),
+            (0x7016, "{2:4} forces have broken the blockade of {1:1}. "),
             (0x4d70, "Alliance"),
             (0x4d71, "Imperial"),
         ]
@@ -10702,6 +10726,7 @@ mod tests {
                     winner_alliance: winner,
                     withdrawn,
                     destination: None,
+                    last_arrival: None,
                     system_side,
                 },
             )
@@ -10766,6 +10791,7 @@ mod tests {
                 winner_alliance: Some(false),
                 withdrawn: Some(true),
                 destination: None,
+                last_arrival: None,
                 system_side: None,
             },
         );
@@ -10779,10 +10805,61 @@ mod tests {
                 winner_alliance: None,
                 withdrawn: None,
                 destination: None,
+                last_arrival: None,
                 system_side: None,
             },
         );
         assert_eq!(none[0], "Neither fleet is victorious.");
+    }
+
+    #[test]
+    fn a_blockade_is_maintained_or_broken_when_the_systems_side_arrived_last() {
+        // FUN_0049b330 / FUN_0049b4d0: with +0x5c (the last arrived side,
+        // FUN_0049c0d0) equal to the system's side, the winner maintained
+        // (0x7015) or broke (0x7016) the blockade. A0 VM run
+        // (results-tactical-withdrawn.png): the Imperial viewer won at
+        // Alliance Yavin after the Alliance fleet arrived and read
+        // "Imperial forces have maintained the blockade of Yavin."
+        let texts = battle_texts();
+        let report = |viewer, winner, system_side, last_arrival| {
+            battle_report_lines(
+                &texts,
+                &BattleReport {
+                    system_name: "Yavin",
+                    viewer_alliance: viewer,
+                    winner_alliance: winner,
+                    withdrawn: Some(!winner.unwrap()),
+                    destination: None,
+                    system_side,
+                    last_arrival,
+                },
+            )[1]
+            .clone()
+        };
+        assert_eq!(
+            report(false, Some(false), Some(true), Some(true)),
+            "Imperial forces have maintained the blockade of Yavin. The Alliance fleet has withdrawn."
+        );
+        assert_eq!(
+            report(true, Some(true), Some(true), Some(true)),
+            "Alliance forces have broken the blockade of Yavin. The Imperial fleet has withdrawn."
+        );
+        // The viewer lost: the viewer arrived last at its own system and
+        // the enemy maintained its blockade; the enemy arrived last at its
+        // own and broke the viewer's.
+        assert_eq!(
+            report(true, Some(false), Some(true), Some(true)),
+            "Imperial forces have maintained the blockade of Yavin. The Alliance fleet has withdrawn."
+        );
+        assert_eq!(
+            report(false, Some(true), Some(true), Some(true)),
+            "Alliance forces have broken the blockade of Yavin. The Imperial fleet has withdrawn."
+        );
+        // The other side arrived last: an attack, not a blockade.
+        assert_eq!(
+            report(false, Some(false), Some(true), Some(false)),
+            "Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn."
+        );
     }
 
     #[test]
@@ -10800,6 +10877,7 @@ mod tests {
                     winner_alliance: winner,
                     withdrawn,
                     destination: Some("Yavin"),
+                    last_arrival: None,
                     system_side: Some(false),
                 },
             )
@@ -11628,6 +11706,7 @@ mod tests {
                     winner_alliance: winner,
                     withdrawn,
                     destination: None,
+                    last_arrival: None,
                     system_side: None,
                 },
             )
@@ -11684,6 +11763,7 @@ mod tests {
                 winner_alliance: Some(true),
                 withdrawn: Some(false),
                 destination: Some("Coruscant"),
+                last_arrival: None,
                 system_side: None,
             },
         );
@@ -11912,6 +11992,7 @@ mod tests {
                 winner_alliance: winner,
                 withdrawn,
                 destination: None,
+                last_arrival: None,
                 system_side: None,
             })
         };
