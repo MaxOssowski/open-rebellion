@@ -226,6 +226,24 @@ impl OriginalTacticalCamera {
         self.target = target;
     }
 
+    /// Camera command 9 with no selection: `FUN_00595be0` gives 0, so the
+    /// camera has no target (`+0x44`, `+0x40`) and looks at its origin.
+    pub(crate) fn clear_target(&mut self) {
+        self.target_object_id = None;
+        self.target = Vec3::ZERO;
+    }
+
+    #[must_use]
+    pub(crate) const fn target_object_id(&self) -> Option<u32> {
+        self.target_object_id
+    }
+
+    /// The point the camera looks at.
+    #[must_use]
+    pub(crate) const fn target_point(&self) -> Vec3 {
+        self.target
+    }
+
     fn update_orbit_step(&mut self) {
         self.orbit_step = self.zoom_step.clamp(1, 5);
     }
@@ -1412,6 +1430,17 @@ impl TacticalAssetRenderer {
         if let Some(camera) = &mut self.source_camera {
             camera.focus_target(target_object_id, target);
         }
+    }
+
+    pub(crate) fn clear_target(&mut self) {
+        if let Some(camera) = &mut self.source_camera {
+            camera.clear_target();
+        }
+    }
+
+    /// The object the camera looks at, if any.
+    pub(crate) fn target_object_id(&self) -> Option<u32> {
+        self.source_camera.and_then(|camera| camera.target_object_id())
     }
 
     /// Capture the complete source camera state for the original memorize and
@@ -4310,6 +4339,28 @@ mod tests {
         assert_near(uneven.battle_extent, 121.0);
         assert_near(uneven.outer_positive_z, 60.5);
         assert_near(uneven.inner_positive_z, 40.5);
+    }
+
+    // 0x005d97c0 command 9 with no selection: FUN_00595be0 gives 0, so the
+    // camera drops its target (+0x44, +0x40) and looks at its origin.
+    #[test]
+    fn camera_command_nine_without_a_selection_drops_the_target() {
+        let mut camera = OriginalTacticalCamera::new(false, 100.0);
+        assert_eq!(camera.target_object_id(), None);
+        camera.focus_target(17, vec3(4.0, 5.0, 6.0));
+        assert_eq!(camera.target_object_id(), Some(17));
+        camera.clear_target();
+        assert_eq!(camera.target_object_id(), None);
+        assert_eq!(camera.pose().target, Vec3::ZERO);
+        let mut renderer = TacticalAssetRenderer::default();
+        assert_eq!(renderer.target_object_id(), None);
+        renderer.restore_camera_state(OriginalTacticalCamera::new(false, 100.0));
+        renderer.focus_target(23, vec3(1.0, 2.0, 3.0));
+        assert_eq!(renderer.target_object_id(), Some(23));
+        renderer.clear_target();
+        assert_eq!(renderer.target_object_id(), None);
+        assert_eq!(renderer.camera_state().map(|camera| camera.target_point()), Some(Vec3::ZERO));
+        assert_eq!(camera.target_point(), Vec3::ZERO);
     }
 
     // Source: command switch at 0x005d97c0 for zoom and orbit steps.

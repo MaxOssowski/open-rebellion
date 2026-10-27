@@ -5378,6 +5378,14 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             // task-force button, which leaves the camera (FUN_0059b450).
             assert.equal(cameraLogs.length, 2,
               "group journey did not preserve its initial and follow-hotkey camera states");
+          } else if (scenario.death_star_presentation) {
+            // The free camera looks at its target's frame each frame
+            // (0x005d9640, LookAt +0x90), and this journey's target is a
+            // squadron on the moving trench run: one target, many states.
+            const targets = new Set(cameraLogs.map(({ text }) =>
+              text.match(/target_object_id=(\d+)/)?.[1]));
+            assert.ok(cameraLogs.length >= 1 && targets.size === 1,
+              "the Death Star journey's camera did not keep following its one target");
           } else {
             assert.equal(cameraLogs.length, scenario.fighter_detail_journey ? 40 : 1,
               "production participants did not use the source tactical camera");

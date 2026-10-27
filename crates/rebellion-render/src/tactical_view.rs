@@ -5634,6 +5634,8 @@ fn activate_tactical_hud_control(
                 state
                     .asset_renderer
                     .focus_target(object_id, source_position.rendered());
+            } else {
+                state.asset_renderer.clear_target();
             }
         }
         TacticalHudControl::CameraLeft => {
@@ -5729,6 +5731,52 @@ fn camera_target_of_selection(
     let ship = session.ships.get(index)?;
     let object_id = u32::try_from(index).ok()?.checked_add(1)?;
     Some((object_id, ship.x, ship.y, ship.source_position))
+}
+
+/// The free camera's frame step (`Class_0066d418` slot `+0xc`, `0x005d9640`)
+/// looks at its target object's frame each frame (`FUN_005c1080`, then the
+/// frame's `LookAt`, `+0x90`), so the view keeps up with a moving target.
+/// The target stays through turns and zooms (`0x005d97c0` changes only
+/// angles and the field) and comes back with a recalled view (`+0x44` is
+/// part of the state, `0x005d9900`).
+fn track_tactical_camera_target(state: &mut TacticalState) {
+    let Some(object_id) = state.asset_renderer.target_object_id() else {
+        return;
+    };
+    let Some(session) = state.session.as_ref() else {
+        return;
+    };
+    let Some(position) = tracked_target_position(session, object_id) else {
+        return;
+    };
+    // The drawn point: the step's pose blended as the scene draws it.
+    let previous = state
+        .previous_poses
+        .as_ref()
+        .and_then(|poses| poses.before_latest_step(session))
+        .and_then(|poses| match usize::try_from(object_id).ok()? {
+            index @ 1001..10_001 => poses.fighters.get(index - 1001).copied(),
+            index => poses.ships.get(index.checked_sub(1)?).map(|(position, _)| *position),
+        });
+    let (drawn, _) = presented_pose(
+        previous.map(|from| (from, TacticalWorldVector::SOURCE_FORWARD)),
+        (position, TacticalWorldVector::SOURCE_FORWARD),
+        session.step_accumulator,
+    );
+    state.asset_renderer.focus_target(object_id, drawn.rendered());
+}
+
+/// The current position of a camera target object: ships count from 1,
+/// squadrons from 1001 (`camera_target_of_selection`). port: a lost unit
+/// keeps its last point.
+fn tracked_target_position(session: &BattleSession, object_id: u32) -> Option<TacticalWorldPosition> {
+    let index = usize::try_from(object_id).ok()?;
+    if (1001..10_001).contains(&index) {
+        let fighter = session.fighters.get(index - 1001)?;
+        return fighter.alive.then_some(fighter.source_position);
+    }
+    let ship = session.ships.get(index.checked_sub(1)?)?;
+    (index < 1001 && ship.alive).then_some(ship.source_position)
 }
 
 fn camera_offset_for_target(x: f32, y: f32) -> (f32, f32) {
@@ -8126,7 +8174,14 @@ pub fn draw_tactical_view(
     set_tactical_aperture_clip(Some(canvas.aperture()));
     let aperture = canvas.aperture();
     let aperture_tuple = (aperture.x, aperture.y, aperture.width, aperture.height);
-    update_tactical_camera_follow(state);
+    // The collision envelopes settle the participants before the camera
+    // looks at one of them.
+    if state.render_original_participants {
+        apply_original_collision_envelopes(state);
+    }
+    if !update_tactical_camera_follow(state) {
+        track_tactical_camera_target(state);
+    }
     if state.render_original_starfield {
         state.asset_renderer.draw_backdrop(aperture_tuple);
     }
@@ -8149,9 +8204,6 @@ pub fn draw_tactical_view(
     let (scale, offset_x, offset_y) =
         canvas.arena_transform(state.zoom, state.camera_x, state.camera_y);
     let render_pyrotechnics = state.render_pyrotechnics;
-    if state.render_original_participants {
-        apply_original_collision_envelopes(state);
-    }
     let previous_poses = state
         .session
         .as_ref()
@@ -15432,6 +15484,59 @@ mod tests {
         ));
         activate_tactical_command(&mut state, TacticalCommandControl::Confirm);
         assert_eq!(state.session.as_ref().unwrap().ships[0].order, TacticalOrder::None);
+    }
+
+    // 0x005d9640 looks at the target's drawn frame: the step's pose blended
+    // the way the scene draws it.
+    #[test]
+    fn the_camera_follows_its_targets_drawn_position() {
+        let mut ship = test_ship(1, 0, true, true);
+        ship.source_position = at(10.0, 0.0, 0.0);
+        let mut squadron = test_fighter(5, true);
+        squadron.source_position = at(0.0, 0.0, 20.0);
+        let mut session =
+            test_session(vec![ship], vec![test_fighter(6, true), test_fighter(7, true), squadron], true);
+        session.combat_tick = 5;
+        session.step_accumulator = 0.5;
+        let mut state = TacticalState::default();
+        state.previous_poses = Some(TacticalPoses {
+            tick: 4,
+            ships: vec![(at(0.0, 0.0, 0.0), TacticalWorldVector::SOURCE_FORWARD)],
+            fighters: vec![at(0.0, 0.0, 0.0), at(0.0, 0.0, 0.0), at(0.0, 0.0, 10.0)],
+        });
+        state.session = Some(session);
+        state
+            .asset_renderer
+            .restore_camera_state(crate::tactical_assets::OriginalTacticalCamera::new(false, 100.0));
+        let target = |state: &TacticalState| {
+            state.asset_renderer.camera_state().map(|camera| camera.target_point())
+        };
+        state.asset_renderer.focus_target(1, macroquad::math::Vec3::ZERO);
+        track_tactical_camera_target(&mut state);
+        assert_eq!(target(&state), Some(at(5.0, 0.0, 0.0).rendered()));
+        state.asset_renderer.focus_target(1003, macroquad::math::Vec3::ZERO);
+        track_tactical_camera_target(&mut state);
+        assert_eq!(target(&state), Some(at(0.0, 0.0, 15.0).rendered()));
+    }
+
+    // 0x005d9640 looks at the target object's current frame each frame.
+    #[test]
+    fn the_camera_target_tracks_its_object_by_id() {
+        let mut ship = test_ship(1, 0, true, true);
+        ship.source_position = at(1.0, 2.0, 3.0);
+        let mut lost = test_ship(2, 0, false, false);
+        lost.source_position = at(9.0, 9.0, 9.0);
+        let mut squadron = test_fighter(5, true);
+        squadron.source_position = at(4.0, 5.0, 6.0);
+        let session = test_session(vec![ship, lost], vec![squadron], true);
+        assert_eq!(tracked_target_position(&session, 1), Some(at(1.0, 2.0, 3.0)));
+        assert_eq!(tracked_target_position(&session, 2), None);
+        assert_eq!(tracked_target_position(&session, 3), None);
+        assert_eq!(tracked_target_position(&session, 0), None);
+        assert_eq!(tracked_target_position(&session, 1001), Some(at(4.0, 5.0, 6.0)));
+        assert_eq!(tracked_target_position(&session, 1002), None);
+        // The chase cameras' group ids are not objects.
+        assert_eq!(tracked_target_position(&session, 10_001), None);
     }
 
     // FUN_0059b730's virtual keys and the button ids they press.
