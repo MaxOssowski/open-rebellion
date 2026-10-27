@@ -5794,7 +5794,8 @@ mod tests {
 
     // 0x5a69b0..0x5a6a7c: each factor carries its unit its distance by the
     // end of its time, 400 by 4000 ms, 575 by 3750, 650 by 3925 and 325 by
-    // 3725 (_DAT_0066c24c less 0, 250, 75, 275). One variant each (hyp).
+    // 3725 (_DAT_0066c24c less 0, 250, 75, 275). The test runs one unit
+    // through each factor.
     #[test]
     fn the_jump_factors_reach_their_distances() {
         use crate::tactical::{TacticalAudioEvent, ORIGINAL_JUMP_ACCELERATIONS};
