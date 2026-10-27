@@ -1428,8 +1428,7 @@ pub fn withdraw_loser(
         .collect();
     let mut withdrawals = Vec::new();
     for fleet in fleets {
-        let Some(destination) = crate::missions::nearest_place(world, side, origin, Some(system))
-        else {
+        let Some(destination) = withdrawal_destination(world, system, loser_is_alliance) else {
             continue;
         };
         let Some(value) = world.fleets.get(fleet) else {
@@ -1471,6 +1470,30 @@ pub fn withdraw_loser(
         );
     }
     withdrawals
+}
+
+/// Where `alliance`'s fleets withdraw to from `system`: [`withdraw_loser`]'s
+/// Autorouting search (`FUN_005545e0`), leaving out the battle's system.
+/// The battle report names it (`+0x48`, set when `FUN_0049b720` builds the
+/// report; RCDATA `0x700d` / `0x7011`).
+#[must_use]
+pub fn withdrawal_destination(
+    world: &GameWorld,
+    system: SystemKey,
+    alliance: bool,
+) -> Option<SystemKey> {
+    let place = world.systems.get(system)?;
+    let side = if alliance {
+        crate::dat::Faction::Alliance
+    } else {
+        crate::dat::Faction::Empire
+    };
+    crate::missions::nearest_place(
+        world,
+        side,
+        (i64::from(place.x), i64::from(place.y)),
+        Some(system),
+    )
 }
 
 /// Whether the player's Battle Alert offers Retreat (`FUN_004865b0` passes

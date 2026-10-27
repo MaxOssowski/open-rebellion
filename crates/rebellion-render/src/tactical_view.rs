@@ -6466,12 +6466,19 @@ fn battle_result_summary_lines(session: &BattleSession, world: &GameWorld) -> Ve
             rebellion_core::dat::Faction::Empire => Some(false),
             rebellion_core::dat::Faction::Neutral => None,
         });
-    battle_report_lines(&loaded_battle_texts(), &battle_report(session, system_side))
+    battle_report_lines(
+        &loaded_battle_texts(),
+        &battle_report(session, world, system_side),
+    )
 }
 
 /// The report's fields for the session's viewer; `system_side` is the
 /// system's side after the battle.
-fn battle_report(session: &BattleSession, system_side: Option<bool>) -> BattleReport<'_> {
+fn battle_report<'a>(
+    session: &'a BattleSession,
+    world: &'a GameWorld,
+    system_side: Option<bool>,
+) -> BattleReport<'a> {
     // +0x54: the side whose fleet withdrew (FUN_0049b060, +0x78 >> 2).
     let withdrew = |alliance: bool| {
         session.ships.iter().any(|ship| {
@@ -6485,11 +6492,26 @@ fn battle_report(session: &BattleSession, system_side: Option<bool>) -> BattleRe
     } else {
         None
     };
+    let viewer_alliance = player_is_alliance(session);
+    // +0x48 (FUN_0049b720): where the viewer's withdrawn fleet went; the
+    // report names no destination for the enemy's.
+    let destination = (withdrawn == Some(viewer_alliance))
+        .then(|| {
+            rebellion_core::abstract_battle::withdrawal_destination(
+                world,
+                session.system,
+                viewer_alliance,
+            )
+        })
+        .flatten()
+        .and_then(|key| world.systems.get(key))
+        .map(|system| system.name.as_str());
     BattleReport {
         system_name: &session.system_name,
-        viewer_alliance: player_is_alliance(session),
+        viewer_alliance,
         winner_alliance: winner_is_alliance(session),
         withdrawn,
+        destination,
         system_side,
     }
 }
@@ -6511,6 +6533,8 @@ struct BattleReport<'a> {
     winner_alliance: Option<bool>,
     /// `+0x54`: the side whose fleet withdrew, `None` for none.
     withdrawn: Option<bool>,
+    /// `+0x48`: the viewer's withdrawn fleet's destination.
+    destination: Option<&'a str>,
     /// The system's side bits after the battle; `None` neutral.
     system_side: Option<bool>,
 }
@@ -6518,10 +6542,11 @@ struct BattleReport<'a> {
 /// The battle report's headline and body (`FUN_0049b0f0`): no winner
 /// (`FUN_0049b150`), the viewer's win (`FUN_0049b330`) or loss
 /// (`FUN_0049b4d0`), each sentence a TEXTSTRA RCDATA record appended to the
-/// body. port: the withdrawn fleet's destination (`+0x48`) is decided after
-/// the report, so "has withdrawn to {2:1}" (`0x700d`) reads "has withdrawn"
-/// (`0x700c`); the blockade-before side (`+0x5c`, `0x7015` / `0x7016`) is not
-/// kept. Missing texts fall back to the port's English.
+/// body. The viewer's withdrawn fleet "has withdrawn to {2:1}" (`0x700d`,
+/// its destination `+0x48`); the enemy's "has withdrawn" (`0x700c`). port:
+/// with no destination found the viewer's reads `0x700c` too (the
+/// original writes no body); the blockade-before side (`+0x5c`, `0x7015` /
+/// `0x7016`) is not kept. Missing texts fall back to the port's English.
 fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) -> Vec<String> {
     use crate::story_messages::{fill_message_text, side_parameter, MessageParameter};
     let viewer = side_parameter(report.viewer_alliance, texts);
@@ -6537,12 +6562,16 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
             .map(|template| fill_message_text(template, parameters))
     };
     let side_word = |alliance: bool| if alliance { "Alliance" } else { "Imperial" };
+    let viewer_withdrew = || match report.destination {
+        Some(name) => say(0x700d, &[viewer, MessageParameter::Unit { name, class: "" }]),
+        None => say(0x700c, &[viewer]),
+    };
     let (headline, body): (Option<String>, Vec<Option<String>>) = match report.winner_alliance {
         None => {
             let ending = match report.withdrawn {
                 None => vec![say(0x700f, &[viewer, enemy])],
                 Some(side) if side == report.viewer_alliance => {
-                    vec![say(0x700c, &[viewer]), say(0x700b, &[enemy])]
+                    vec![viewer_withdrew(), say(0x700b, &[enemy])]
                 }
                 Some(_) => vec![say(0x700b, &[viewer]), say(0x700c, &[enemy])],
             };
@@ -6571,7 +6600,7 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
                 Some(_) => say(0x7009, &[system, viewer]),
             };
             let ending = if report.withdrawn.is_some() {
-                say(0x700c, &[viewer])
+                viewer_withdrew()
             } else {
                 say(0x700b, &[viewer])
             };
@@ -6612,9 +6641,9 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
 /// and whether the viewer's fleet gets a button: the viewer's win reads
 /// `0x7012` and `0x7013` (`FUN_0049b330`); the viewer's withdrawal reads
 /// `0x7011` and `0x7013`; otherwise `0x7010` and `0x7014`, the fleet gone
-/// (`FUN_0049b150`, `FUN_0049b4d0`). port: the withdrawn fleet's
-/// destination (`+0x48`) is decided after the report, so `0x7011` drops
-/// its " to {3:1}", as the body reads `0x700c` for `0x700d`.
+/// (`FUN_0049b150`, `FUN_0049b4d0`), " to {3:1}" the fleet's destination
+/// (`+0x48`). port: with no destination found `0x7011` drops its
+/// " to {3:1}", as the body reads `0x700c`.
 fn battle_display_lines(
     texts: &HashMap<u16, String>,
     report: &BattleReport<'_>,
@@ -6663,9 +6692,15 @@ fn battle_display_lines(
             )
         };
     let message = texts.get(&message).map_or(fallback, |template| {
-        fill_message_text(&template.replace(" to {3:1}", ""), &[viewer, system])
-            .trim_end()
-            .to_owned()
+        match report.destination {
+            Some(name) => fill_message_text(
+                template,
+                &[viewer, system, MessageParameter::Unit { name, class: "" }],
+            ),
+            None => fill_message_text(&template.replace(" to {3:1}", ""), &[viewer, system]),
+        }
+        .trim_end()
+        .to_owned()
     });
     let instruction = texts.get(&instruction).map_or_else(
         || {
@@ -6801,7 +6836,7 @@ fn draw_battle_result_summary(
 ) {
     let ops = battle_summary_page(
         &session.system_name,
-        battle_summary_scene(&battle_report(session, None)),
+        battle_summary_scene(&battle_report(session, world, None)),
         &battle_result_summary_lines(session, world),
         text_color,
     );
@@ -7314,6 +7349,7 @@ fn draw_battle_result_destinations(
     cache: &mut BmpCache,
     canvas: TacticalCanvas,
     session: &BattleSession,
+    world: &GameWorld,
     player_alliance: bool,
     mouse: (f32, f32),
     mouse_down: bool,
@@ -7321,7 +7357,7 @@ fn draw_battle_result_destinations(
     text_color: Color,
 ) -> TacticalAction {
     let (lines, fleet) =
-        battle_display_lines(&loaded_battle_texts(), &battle_report(session, None));
+        battle_display_lines(&loaded_battle_texts(), &battle_report(session, world, None));
     let hovered = display_button_at(
         mouse.0 - battle_window_origin().0,
         mouse.1 - battle_window_origin().1,
@@ -8139,6 +8175,7 @@ fn draw_original_battle_results(
             cache,
             canvas,
             session,
+            world,
             player_alliance,
             mouse,
             mouse_down,
@@ -10597,6 +10634,7 @@ mod tests {
             (0x700a, "The {2:4} fleet was victorious at the neutral world {1:1}. "),
             (0x700b, "The {1:4} fleet has been completely destroyed. "),
             (0x700c, "The {1:4} fleet has withdrawn. "),
+            (0x700d, "The {1:4} fleet has withdrawn to {2:1}. "),
             (0x700e, "There has been no victor.  "),
             (0x700f, "All {1:4} and {2:4} ships have been destroyed. "),
             (0x4d70, "Alliance"),
@@ -10663,6 +10701,7 @@ mod tests {
                     viewer_alliance: viewer,
                     winner_alliance: winner,
                     withdrawn,
+                    destination: None,
                     system_side,
                 },
             )
@@ -10726,6 +10765,7 @@ mod tests {
                 viewer_alliance: true,
                 winner_alliance: Some(false),
                 withdrawn: Some(true),
+                destination: None,
                 system_side: None,
             },
         );
@@ -10738,10 +10778,69 @@ mod tests {
                 viewer_alliance: true,
                 winner_alliance: None,
                 withdrawn: None,
+                destination: None,
                 system_side: None,
             },
         );
         assert_eq!(none[0], "Neither fleet is victorious.");
+    }
+
+    #[test]
+    fn the_viewers_withdrawn_fleet_is_reported_at_its_destination() {
+        // FUN_0049b4d0 / FUN_0049b150: the viewer's withdrawal reads 0x700d
+        // "The {1:4} fleet has withdrawn to {2:1}. " with +0x48 (TEXTSTRA
+        // as shipped); the enemy's reads 0x700c.
+        let texts = battle_texts();
+        let report = |winner, withdrawn| {
+            battle_report_lines(
+                &texts,
+                &BattleReport {
+                    system_name: "Deyer",
+                    viewer_alliance: true,
+                    winner_alliance: winner,
+                    withdrawn,
+                    destination: Some("Yavin"),
+                    system_side: Some(false),
+                },
+            )
+        };
+        assert_eq!(
+            report(Some(false), Some(true))[1],
+            "The Alliance attack on Deyer has failed. The Alliance fleet has withdrawn to Yavin."
+        );
+        assert_eq!(
+            report(None, Some(true))[1],
+            "There has been no victor.  The Alliance fleet has withdrawn to Yavin. The Imperial fleet has been completely destroyed."
+        );
+        assert_eq!(
+            report(None, Some(false))[1],
+            "There has been no victor.  The Alliance fleet has been completely destroyed. The Imperial fleet has withdrawn."
+        );
+    }
+
+    #[test]
+    fn the_report_finds_the_viewers_withdrawal_destination_in_the_world() {
+        // FUN_0049b720 sets +0x48 from the viewer's withdrawn fleet; the
+        // port asks withdraw_loser's search (FUN_005545e0): the nearest
+        // system its side holds. An enemy withdrawal names none.
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::ControlKind;
+        let mut world = GameWorld::default();
+        let battle = test_system(&mut world, ControlKind::Controlled(Faction::Empire), None);
+        let far = test_system(&mut world, ControlKind::Controlled(Faction::Alliance), None);
+        let near = test_system(&mut world, ControlKind::Controlled(Faction::Alliance), None);
+        world.systems[far].name = "Hoth".into();
+        world.systems[far].x = 90;
+        world.systems[near].name = "Yavin".into();
+        world.systems[near].x = 40;
+        let mut fled = test_ship(64, 1, true, true);
+        fled.retreated = true;
+        let mut session = test_session(vec![fled, test_ship(64, 2, false, true)], Vec::new(), true);
+        session.system = battle;
+        assert_eq!(battle_report(&session, &world, None).destination, Some("Yavin"));
+        session.ships[0].retreated = false;
+        session.ships[1].retreated = true;
+        assert_eq!(battle_report(&session, &world, None).destination, None);
     }
 
     #[test]
@@ -11493,7 +11592,7 @@ mod tests {
     fn the_display_page_tells_the_viewer_where_its_fleet_is() {
         // FUN_0049b330 / FUN_0049b4d0 / FUN_0049b150: +0xac reads 0x7012
         // on the viewer's win, 0x7011 on its withdrawal (port: without
-        // the destination), else 0x7010; +0xb8 reads 0x7013 for two
+        // a destination found, no " to {3:1}"), else 0x7010; +0xb8 reads 0x7013 for two
         // buttons, 0x7014 for one. TEXTSTRA as shipped.
         let mut texts = battle_texts();
         for (id, text) in [
@@ -11528,6 +11627,7 @@ mod tests {
                     viewer_alliance: false,
                     winner_alliance: winner,
                     withdrawn,
+                    destination: None,
                     system_side: None,
                 },
             )
@@ -11575,6 +11675,23 @@ mod tests {
             display(&HashMap::new(), None, Some(false)).0[0],
             "The Imperial fleet was defeated at Deyer. Your fleet has withdrawn."
         );
+        // With +0x48 the message names the destination (0x7011's {3:1}).
+        let (lines, fleet) = battle_display_lines(
+            &texts,
+            &BattleReport {
+                system_name: "Deyer",
+                viewer_alliance: false,
+                winner_alliance: Some(true),
+                withdrawn: Some(false),
+                destination: Some("Coruscant"),
+                system_side: None,
+            },
+        );
+        assert_eq!(
+            lines[0],
+            "The Imperial fleet was defeated at Deyer. Your fleet has withdrawn to Coruscant."
+        );
+        assert!(fleet);
     }
 
     #[test]
@@ -11794,6 +11911,7 @@ mod tests {
                 viewer_alliance: viewer,
                 winner_alliance: winner,
                 withdrawn,
+                destination: None,
                 system_side: None,
             })
         };
