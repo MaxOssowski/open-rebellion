@@ -1183,8 +1183,9 @@ impl PerceptionIntegrator {
         world: &mut GameWorld,
         system: SystemKey,
         result: &SpaceCombatResult,
+        passenger_rolls: &[f64],
     ) {
-        apply_space_combat_result_inner(result, world);
+        apply_space_combat_result_inner(result, world, passenger_rolls);
         let winner_str = match result.winner {
             CombatSide::Attacker => "alliance",
             CombatSide::Defender => "empire",
@@ -5300,7 +5301,9 @@ pub fn resolve_system_space_combat(
             tick,
             retreat_allowed,
         );
-        apply_space_combat_result_inner(&round, world);
+        // The abstract battle's seed takes the first roll; the lost ships'
+        // passengers draw from the rest.
+        apply_space_combat_result_inner(&round, world, rng_rolls.get(1..).unwrap_or_default());
         rounds = 1;
         stalemate = outcome.stalemate;
         fought = Some(round.winner);
@@ -5339,7 +5342,14 @@ pub fn resolve_system_space_combat(
     }
 }
 
-pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut GameWorld) {
+///
+/// `passenger_rolls` feed the injury rolls of the lost ships' characters
+/// ([`rebellion_core::missions::injure_passengers`]).
+pub fn apply_space_combat_result_inner(
+    result: &SpaceCombatResult,
+    world: &mut GameWorld,
+    passenger_rolls: &[f64],
+) {
     // Apply hull damage to individual ship instances.
     for evt in &result.ship_damage {
         let fleet_key = evt.fleet;
@@ -5388,6 +5398,7 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
             fleets.push(fleet);
         }
     }
+    let mut stranded = Vec::new();
     for &fleet_key in &fleets {
         let death_star_status = world.fleets.get(fleet_key).map(|fleet| {
             fleet
@@ -5403,7 +5414,9 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
         });
         // FUN_0040cfc0 -> FUN_00501ae0 (reason 0xc): each lost ship's
         // characters go adrift before the ship leaves its fleet.
-        rebellion_core::missions::strand_lost_ships_passengers(world, fleet_key);
+        stranded.extend(rebellion_core::missions::strand_lost_ships_passengers(
+            world, fleet_key,
+        ));
         if let Some(fleet) = world.fleets.get_mut(fleet_key) {
             fleet.capital_ships.retain(|s| s.alive);
             if let Some((true, death_star_alive)) = death_star_status {
@@ -5430,6 +5443,8 @@ pub fn apply_space_combat_result_inner(result: &SpaceCombatResult, world: &mut G
             world.fleets.remove(fleet_key);
         }
     }
+    // CapShip_vt11c's injury step for the characters the losses stranded.
+    rebellion_core::missions::injure_passengers(world, &stranded, passenger_rolls);
 }
 
 #[cfg(test)]
@@ -5562,7 +5577,7 @@ mod combat_application_tests {
             tick: 1,
         };
 
-        apply_space_combat_result_inner(&result, &mut world);
+        apply_space_combat_result_inner(&result, &mut world, &[]);
 
         assert_eq!(world.fleets[attacker].fighters[0].count, 2);
         assert!(!world.fleets.contains_key(defender));
@@ -5640,7 +5655,7 @@ mod combat_application_tests {
             }],
             tick: 4,
         };
-        apply_space_combat_result_inner(&result, &mut world);
+        apply_space_combat_result_inner(&result, &mut world, &[]);
         let mut missions = MissionState::new();
 
         let advance = MissionSystem::advance(
@@ -5711,7 +5726,7 @@ mod combat_application_tests {
             tick: 2,
         };
 
-        apply_space_combat_result_inner(&result, &mut world);
+        apply_space_combat_result_inner(&result, &mut world, &[]);
 
         assert!(world.fleets.contains_key(defender));
         assert!(!world.fleets[defender].has_death_star);
@@ -5768,12 +5783,17 @@ mod combat_application_tests {
             tick: 2,
         };
 
-        apply_space_combat_result_inner(&result, &mut world);
+        // The stranded officer's injury roll: chance 100, 50 + 15 + 1, and
+        // a death roll of 89 that misses GNPRTB 2577 (25).
+        apply_space_combat_result_inner(&result, &mut world, &[0.0, 0.5, 0.5, 0.9]);
 
         assert_eq!(world.fleets[defender].capital_ships.len(), 1);
         assert_eq!(world.fleets[defender].characters, [officers[1]]);
         let lost = &world.characters[officers[0]];
         assert!(lost.adrift);
+        assert_eq!(lost.injury, 66);
+        assert!(!lost.is_killed);
+        assert_eq!(world.characters[officers[1]].injury, 0);
         assert_eq!((lost.current_fleet, lost.current_system), (None, Some(system)));
         assert!(!world.characters[officers[1]].adrift);
     }
@@ -5824,7 +5844,7 @@ mod combat_application_tests {
             fighter_losses: vec![],
             tick: 2,
         };
-        apply_space_combat_result_inner(&result, &mut world);
+        apply_space_combat_result_inner(&result, &mut world, &[]);
         let ship = &world.fleets[fleet].capital_ships[0];
         assert_eq!(ship.hull_current, 60);
         assert_eq!(ship.subsystem_hits, 0x0001_0203);

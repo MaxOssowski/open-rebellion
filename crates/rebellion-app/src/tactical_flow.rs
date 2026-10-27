@@ -190,6 +190,7 @@ pub(crate) fn apply_results(
             fought.push(fleet);
         }
     }
+    let mut stranded = Vec::new();
     for fleet_key in fought {
         let is_attacker = world
             .fleets
@@ -245,7 +246,9 @@ pub(crate) fn apply_results(
 
         // FUN_0040cfc0 -> FUN_00501ae0 (reason 0xc): each lost ship's
         // characters go adrift, then the ship leaves its fleet.
-        rebellion_core::missions::strand_lost_ships_passengers(world, fleet_key);
+        stranded.extend(rebellion_core::missions::strand_lost_ships_passengers(
+            world, fleet_key,
+        ));
         if let Some(fleet) = world.fleets.get_mut(fleet_key) {
             fleet.capital_ships.retain(|ship| ship.alive);
         }
@@ -266,6 +269,14 @@ pub(crate) fn apply_results(
             world.fleets.remove(fleet_key);
         }
     }
+    // CapShip_vt11c's injury step for the characters the losses stranded:
+    // at most four draws each (chance, two spreads, the death roll). port:
+    // they continue the battle's rand stream (FUN_0061a310) as fractions.
+    let mut rng = session.tactical_rng;
+    let rolls: Vec<f64> = (0..4 * stranded.len())
+        .map(|_| f64::from(rng.next_u15()) / 32_768.0)
+        .collect();
+    rebellion_core::missions::injure_passengers(world, &stranded, &rolls);
     troop_transport.destroy_untransportable_cargo(world);
     // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
     let winner = attacker_is_alliance.and_then(|attacker| match session.winner {
@@ -802,6 +813,61 @@ mod tests {
         assert!(officer.adrift);
         assert_eq!((officer.current_fleet, officer.current_system), (None, Some(system)));
         assert!(!world.characters[officers[1]].adrift);
+    }
+
+    #[test]
+    fn each_character_of_the_lost_ships_draws_its_own_injury() {
+        // CapShip_vt11c's injury step (FUN_004ef640 -> FUN_0053ea00) for
+        // three major officers of combat 0, three draws each: chance 100, injury rand(100) +
+        // rand(GNPRTB 2570 (29)) + 1, at most 130. Each draws from the
+        // battle's stream; a short or unscaled stream would give the
+        // highest draws, 130.
+        let (mut world, system, attacker, defender) = opposing_empty_fleets();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0001),
+            name: "Corvette".into(),
+            hull: 100,
+            ..Default::default()
+        });
+        world.fleets[attacker]
+            .capital_ships
+            .push(ShipInstance::new(class, 100, true));
+        world.fleets[defender]
+            .capital_ships
+            .push(ShipInstance::new(class, 100, false));
+        world.number_ships();
+        let ship = world.fleets[defender].capital_ships[0].id;
+        let officers: Vec<_> = (0..3)
+            .map(|_| {
+                let key = world.characters.insert(Character {
+                    is_empire: true,
+                    is_major: true,
+                    current_system: Some(system),
+                    current_fleet: Some(defender),
+                    ship: Some(ship),
+                    ..Character::default()
+                });
+                world.fleets[defender].characters.push(key);
+                key
+            })
+            .collect();
+        let mut session =
+            BattleSession::new(&world, system, attacker, defender, true, 23, 0x1111_0008);
+        let lost = session
+            .ships
+            .iter_mut()
+            .find(|ship| ship.fleet == defender)
+            .unwrap();
+        lost.hull_current = 0;
+        lost.alive = false;
+        session.winner = Some(CombatWinner::Attacker);
+
+        apply_results(&session, &mut world, &mut TroopTransportState::default());
+
+        for officer in officers {
+            let injury = world.characters[officer].injury;
+            assert!((1..130).contains(&injury), "{injury}");
+        }
     }
 
     #[test]

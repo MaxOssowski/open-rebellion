@@ -1471,6 +1471,63 @@ pub fn strand_lost_ships_passengers(
         .collect()
 }
 
+/// GNPRTB 2568 (`Gnprtb_2568`): a lost ship's passenger's least injury
+/// chance (`FUN_0053ea00`).
+const GNPRTB_SHIP_LOSS_INJURY_MIN_CHANCE: u16 = 2568;
+/// GNPRTB 2568 as shipped.
+const SHIPPED_SHIP_LOSS_INJURY_MIN_CHANCE: i64 = 1;
+/// GNPRTB 2569 (`Gnprtb_2569`): the injury's base.
+const GNPRTB_SHIP_LOSS_INJURY_BASE: u16 = 2569;
+/// GNPRTB 2569 as shipped.
+const SHIPPED_SHIP_LOSS_INJURY_BASE: i64 = 1;
+/// GNPRTB 2570 (`Gnprtb_2570`): the injury's second spread.
+const GNPRTB_SHIP_LOSS_INJURY_SPREAD: u16 = 2570;
+/// GNPRTB 2570 as shipped.
+const SHIPPED_SHIP_LOSS_INJURY_SPREAD: i64 = 29;
+
+/// The injury step of a lost ship (`CapShip_vt11c`, `0x00502840`, for a
+/// destruction reason from 1 to `0x10`; a battle's is `0xc`): after the
+/// Adrift step each character aboard takes slot `+0x2e8` (`FUN_004ef640`).
+/// `FUN_0053ea00` rolls, from the effective combat (slot `+0x1f0`), a
+/// chance of `max(GNPRTB 2568, 100 - combat)` percent of an injury of
+/// `rand(chance) + rand(GNPRTB 2570) + GNPRTB 2569`; slot `+0x2f0`
+/// (`FUN_004ef6d0`, reason 10) adds it to `+0x94`, and a minor character
+/// then dies with GNPRTB 2577 (slot `+0x2e0`). `rolls` are drawn in order
+/// (`FUN_0053e290`, `FUN_0053e2f0`).
+pub fn injure_passengers(world: &mut GameWorld, characters: &[CharacterKey], rolls: &[f64]) {
+    let param = |id, shipped| {
+        i32::try_from(crate::movement::gnprtb_or_shipped(world, id, shipped)).unwrap_or(0)
+    };
+    let min_chance = param(
+        GNPRTB_SHIP_LOSS_INJURY_MIN_CHANCE,
+        SHIPPED_SHIP_LOSS_INJURY_MIN_CHANCE,
+    );
+    let spread = param(GNPRTB_SHIP_LOSS_INJURY_SPREAD, SHIPPED_SHIP_LOSS_INJURY_SPREAD);
+    let base = param(GNPRTB_SHIP_LOSS_INJURY_BASE, SHIPPED_SHIP_LOSS_INJURY_BASE);
+    let mut draws = crate::uprising::Rolls::new(rolls);
+    for &key in characters {
+        let Some(combat) = world
+            .characters
+            .get(key)
+            .filter(|c| !c.is_killed)
+            .map(|c| i32::try_from(c.effective_combat()).unwrap_or(i32::MAX))
+        else {
+            continue;
+        };
+        let Some(injury) =
+            crate::uprising::roll_injury(combat, min_chance, spread, base, &mut draws)
+        else {
+            continue;
+        };
+        if let Some(c) = world.characters.get_mut(key) {
+            c.injure(injury);
+        }
+        if injury > 0 && crate::mission_detection::dies_of_injury(world, key, &mut draws) {
+            kill_character(world, key);
+        }
+    }
+}
+
 /// A battle destroyed `fleet`: its characters stand at its system, and
 /// each on no mission goes adrift (`FUN_00556710` -> slot `+0xb4`
 /// `FUN_004ef2e0`, `Role_SetAdrift` `FUN_00534790`) for
@@ -7799,6 +7856,55 @@ mod tests {
 
         let advance = step(&mut state, &world, 21, &[0.0]);
         assert_eq!(advance.ended[0].end_code, 1);
+    }
+
+    #[test]
+    fn a_lost_ships_passengers_take_the_injury_roll_and_a_minor_one_may_die() {
+        // CapShip_vt11c -> slot +0x2e8 (FUN_004ef640) -> FUN_0053ea00:
+        // chance max(GNPRTB 2568 (1), 100 - combat), injury rand(chance) +
+        // rand(GNPRTB 2570 (29)) + GNPRTB 2569 (1), as GNPRTB.DAT ships
+        // them; slot +0x2f0 adds it and a minor character dies with GNPRTB
+        // 2577 (25). A major character draws no death roll.
+        let mut world = GameWorld::default();
+        let minor = world.characters.insert(Character::default());
+        let major = world.characters.insert(Character {
+            is_major: true,
+            ..Default::default()
+        });
+        let veteran = world.characters.insert(Character {
+            combat: SkillPair {
+                base: 100,
+                variance: 0,
+            },
+            ..Default::default()
+        });
+        // The minor one: chance 100, injury 50 + 15 + 1, death roll 0.
+        // The major one: the same injury, no death roll. The veteran:
+        // chance 1, its draw 50 misses.
+        injure_passengers(
+            &mut world,
+            &[minor, major, veteran],
+            &[0.0, 0.5, 0.5, 0.0, 0.0, 0.5, 0.5, 0.5],
+        );
+        assert_eq!(world.characters[minor].injury, 66);
+        assert!(world.characters[minor].is_killed);
+        assert_eq!(world.characters[major].injury, 66);
+        assert!(!world.characters[major].is_killed);
+        assert_eq!(world.characters[veteran].injury, 0);
+    }
+
+    #[test]
+    fn an_injury_of_nothing_draws_no_death_roll() {
+        // FUN_004ef6d0: only an injury above 0 reaches slot +0x2e0. With
+        // GNPRTB 2569 at -1 (a 0 reads as the shipped value) the injury is
+        // 0 + 1 - 1 = 0, so the minor character's death roll (0 here) is
+        // never drawn.
+        let mut world = GameWorld::default();
+        world.gnprtb = crate::world::GnprtbParams::uniform(&[(2569, -1), (2570, 1)]);
+        let minor = world.characters.insert(Character::default());
+        injure_passengers(&mut world, &[minor], &[0.0, 0.0, 0.99, 0.0]);
+        assert_eq!(world.characters[minor].injury, 0);
+        assert!(!world.characters[minor].is_killed);
     }
 
     #[test]

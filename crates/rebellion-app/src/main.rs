@@ -2254,7 +2254,7 @@ async fn main() {
                 );
 
                 // Apply ship damage: reduce counts proportional to destroyed hulls.
-                apply_space_combat_result(&space_result, &mut world);
+                apply_space_combat_result(&space_result, &mut world, &combat_rolls);
                 rebellion_core::squadrons::recover(&mut world, &sorties);
                 // FUN_00517270 -> FUN_00560d00: the winner's loyalty shift.
                 let winner = battle_winner(space_result.winner, attacker_is_alliance);
@@ -6546,7 +6546,7 @@ async fn main() {
                                     session.start_tick,
                                     retreat_allowed,
                                 );
-                            apply_space_combat_result(&space_result, &mut world);
+                            apply_space_combat_result(&space_result, &mut world, &combat_rolls);
                             rebellion_core::squadrons::recover(
                                 &mut world,
                                 &std::mem::take(&mut battle_sorties),
@@ -9358,8 +9358,15 @@ fn battle_winner(
 fn apply_space_combat_result(
     result: &rebellion_core::combat::SpaceCombatResult,
     world: &mut GameWorld,
+    combat_rolls: &[f64],
 ) {
-    rebellion_data::integrator::apply_space_combat_result_inner(result, world);
+    // The abstract battle's seed takes the first roll; the lost ships'
+    // passengers draw their injuries from the rest.
+    rebellion_data::integrator::apply_space_combat_result_inner(
+        result,
+        world,
+        combat_rolls.get(1..).unwrap_or_default(),
+    );
 }
 
 /// The messages a bombardment leaves: what it destroyed, and the Rebel
