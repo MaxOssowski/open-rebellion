@@ -127,6 +127,11 @@ pub struct BombardmentOutcome {
     pub killed: Vec<crate::ids::CharacterKey>,
     /// The bombarding ships the batteries hurt.
     pub ship_losses: Vec<ShipLoss>,
+    /// The injury step of the characters aboard a ship the batteries
+    /// destroy (`FUN_00501ae0` with reason `0xf` -> CapShip_vt11c,
+    /// `FUN_004ef640`): each character, its injury and whether it kills.
+    #[serde(default)]
+    pub passenger_injuries: Vec<(crate::ids::CharacterKey, i32, bool)>,
     /// Firepower less the shields (`FUN_0058df60`).
     pub shots: i32,
     /// The targets destroyed, in order.
@@ -233,8 +238,11 @@ fn bombarding_ships(world: &GameWorld, req: &BombardRequest) -> Vec<(FleetKey, u
 /// manufacturing and production facilities; with `0x222`, `0x223` an energy
 /// and a raw material unit.
 ///
-/// hyp: the system's list holds the manufacturing facilities before the
-/// production ones (`FUN_0053b760` walks families `0x28..0x2f`).
+/// Each walk takes the system's container (`+0x28`) in its tree's order
+/// (`FUN_00584320`): by family (slot `+4`), then by object id (`+0x18`);
+/// `FUN_0053b760` walks families `0x28..0x2f`: shipyards `0x28`, training
+/// `0x29`, construction yards `0x2a`, then mines `0x2c` and refineries
+/// `0x2d`. port: an object's place in its list stands for its id.
 fn targets(world: &GameWorld, req: &BombardRequest) -> Vec<Target> {
     let mut out = Vec::new();
     let (Some(system), Some(side)) = (
@@ -247,24 +255,32 @@ fn targets(world: &GameWorld, req: &BombardRequest) -> Vec<Target> {
     let facilities = matches!(req.kind, TARGET_CIVILIAN | GENERAL | DESTROY_SYSTEM);
     let resources = matches!(req.kind, GENERAL | DESTROY_SYSTEM);
     if ground {
-        for &t in &system.ground_units {
-            if world
-                .troops
-                .get(t)
-                .is_some_and(|u| Faction::of_alliance(u.is_alliance) == side)
-            {
-                out.push(Target::Troop(t));
-            }
-        }
-        for &d in &system.defense_facilities {
-            if world
-                .defense_facilities
-                .get(d)
-                .is_some_and(|f| f.side == side)
-            {
-                out.push(Target::Defense(d));
-            }
-        }
+        let mut troops: Vec<(u8, Target)> = system
+            .ground_units
+            .iter()
+            .filter_map(|&t| {
+                world
+                    .troops
+                    .get(t)
+                    .filter(|u| Faction::of_alliance(u.is_alliance) == side)
+                    .map(|u| (u.class_dat_id.family(), Target::Troop(t)))
+            })
+            .collect();
+        troops.sort_by_key(|&(family, _)| family);
+        out.extend(troops.into_iter().map(|(_, target)| target));
+        let mut defenses: Vec<(u8, Target)> = system
+            .defense_facilities
+            .iter()
+            .filter_map(|&d| {
+                world
+                    .defense_facilities
+                    .get(d)
+                    .filter(|f| f.side == side)
+                    .map(|f| (f.class_dat_id.family(), Target::Defense(d)))
+            })
+            .collect();
+        defenses.sort_by_key(|&(family, _)| family);
+        out.extend(defenses.into_iter().map(|(_, target)| target));
         if system.is_headquarters
             && req.alliance_hq == Some(req.system)
             && side == Faction::Alliance
@@ -292,27 +308,24 @@ fn civilian_facilities(world: &GameWorld, system: SystemKey, side: Faction) -> V
     let Some(sys) = world.systems.get(system) else {
         return Vec::new();
     };
-    let manufacturing = sys
-        .manufacturing_facilities
-        .iter()
-        .filter(|&&k| {
-            world
-                .manufacturing_facilities
-                .get(k)
-                .is_some_and(|f| f.side == side)
-        })
-        .map(|&k| Target::Manufacturing(k));
-    let production = sys
-        .production_facilities
-        .iter()
-        .filter(|&&k| {
-            world
-                .production_facilities
-                .get(k)
-                .is_some_and(|f| f.side == side)
-        })
-        .map(|&k| Target::Production(k));
-    manufacturing.chain(production).collect()
+    let manufacturing = sys.manufacturing_facilities.iter().filter_map(|&k| {
+        world
+            .manufacturing_facilities
+            .get(k)
+            .filter(|f| f.side == side)
+            .map(|f| (f.class_dat_id.family(), Target::Manufacturing(k)))
+    });
+    let production = sys.production_facilities.iter().filter_map(|&k| {
+        world
+            .production_facilities
+            .get(k)
+            .filter(|f| f.side == side)
+            .map(|f| (f.class_dat_id.family(), Target::Production(k)))
+    });
+    let mut all: Vec<(u8, Target)> = manufacturing.chain(production).collect();
+    // FUN_00584320: by family; the stable sort keeps each family's order.
+    all.sort_by_key(|&(family, _)| family);
+    all.into_iter().map(|(_, target)| target).collect()
 }
 
 /// `FUN_0058cf80`: a target's defense: a facility's or the headquarters'
@@ -362,7 +375,8 @@ struct Bombarder {
 /// `FUN_00501160`: a ship's shields: the class's, scaled by GNPRTB `0x800`
 /// less the `+0x64` low nibble over GNPRTB `0x800`, then by its hull left.
 ///
-/// hyp: the port's unset packed word (0) reads as a nibble of 0.
+/// A new ship's word is 0 in the original too (the CapShip constructor
+/// `FUN_005004e0` sets `[0x19]` = 0), so an unset nibble reads 0.
 fn shields(world: &GameWorld, ship: &crate::world::ShipInstance, damage: i32) -> i32 {
     let Some(class) = world.capital_ship_classes.get(ship.class) else {
         return 0;
@@ -416,6 +430,26 @@ fn destruction_hits(
         .collect()
 }
 
+/// `DAT_00661a88`: `FUN_0053e2f0`'s draw spans `0..100`.
+const PERCENT_DRAW_SPAN: i32 = 100;
+
+/// The bombardment's draw (`0..m`) as the injury roll's draws
+/// (`FUN_0053e290(n)`: `0..=n`; `FUN_0053e2f0(p)`: a draw below 100 under
+/// `p`).
+struct DrawFn<'a>(&'a mut dyn FnMut(i32) -> i32);
+
+impl crate::uprising::Draws for DrawFn<'_> {
+    fn draw(&mut self, n: i32) -> i32 {
+        (self.0)(n.saturating_add(1))
+    }
+
+    fn chance(&mut self, percent: i32) -> bool {
+        // FUN_0053e2f0: FUN_0053e290(DAT_00661a88 - 1) below the percent,
+        // DAT_00661a88 being 100.
+        (self.0)(PERCENT_DRAW_SPAN) < percent
+    }
+}
+
 /// Resolve one bombardment (`FUN_0058d770`), drawing with `draw(m)` (0 to
 /// `m - 1`).
 #[expect(
@@ -430,8 +464,11 @@ pub fn resolve(
     let mut out = BombardmentOutcome::default();
     let ships = bombarding_ships(world, req);
     // Phase 1 (FUN_0058d990): a Death Star among the ships destroys the
-    // system; hyp: its objects go with it, so no battery fires and nothing
-    // is left to bombard.
+    // system. Its objects go with it: System_vtac -> SetDestroyedReason
+    // (FUN_004f71d0) -> GameObj_vt11c (FUN_004fb520) hands each ship,
+    // facility and regiment its reason (FUN_004f8710 -> FUN_004f7ed0), so
+    // FUN_0058dc10's battery walk finds none and phase 3 is skipped
+    // (+0x30); a fleet's +0xb4 (FUN_00524fb0) keeps it.
     if req.kind == DESTROY_SYSTEM
         && ships.iter().any(|&(f, i)| {
             world.capital_ship_classes[world.fleets[f].capital_ships[i].class].is_death_star()
@@ -516,6 +553,19 @@ pub fn resolve(
                 index: b.index,
                 hull_damage: dealt,
             });
+            // At full hull damage `FUN_00501ae0` destroys the ship (`+0xac`,
+            // reason `0xf`, `0x58d657`); its passengers' injury rolls come
+            // here, from the bombardment's stream, before phase 3's draws.
+            if b.hull_damage >= hull {
+                let mut draws = DrawFn(&mut *draw);
+                for key in crate::missions::passengers(world, b.fleet, ship.id) {
+                    if let Some((injury, dies)) =
+                        crate::missions::roll_passenger_injury(world, key, &mut draws)
+                    {
+                        out.passenger_injuries.push((key, injury, dies));
+                    }
+                }
+            }
         }
     }
     // No bombarding ship left: the bombardment stops (+0x30).
@@ -621,7 +671,10 @@ pub fn resolve(
 /// `bombardment_modifier` less its share of hull damage (`FUN_00500f00`),
 /// none with ion hits past its shields.
 ///
-/// hyp: the ship's `+0x24 & 0x30` is 0, so the ion hits count.
+/// The ship's `+0x24 & 0x30` is 0, so the ion hits count: bits 4..5 are a
+/// side view's copy index (`FUN_00540650`), 0 on the master objects
+/// (`FUN_00540360`, `FUN_0053f660`) that a bombardment walks; only the
+/// per-side copies (`FUN_004f9190` -> `FUN_0053f760`) carry 1 or 2.
 fn ship_bombardment(world: &GameWorld, b: &Bombarder) -> i32 {
     let ship = &world.fleets[b.fleet].capital_ships[b.index];
     let Some(class) = world.capital_ship_classes.get(ship.class) else {
@@ -751,6 +804,14 @@ pub fn apply(world: &mut GameWorld, req: &BombardRequest, outcome: &BombardmentO
     lost.sort_by_key(|&(_, index)| std::cmp::Reverse(index));
     for (fleet, index) in lost {
         crate::scrap::destroy_ship(world, fleet, index);
+    }
+    for &(key, injury, dies) in &outcome.passenger_injuries {
+        if let Some(c) = world.characters.get_mut(key) {
+            c.injure(injury);
+        }
+        if dies {
+            crate::missions::kill_character(world, key);
+        }
     }
     for &target in &outcome.destroyed {
         match target {
@@ -1108,6 +1169,77 @@ mod tests {
             attack_strength: a,
             ..ClassStats::default()
         }
+    }
+
+    #[test]
+    fn the_targets_come_in_family_order() {
+        // FUN_00584320 orders a system's container by family, then id: a
+        // training centre (0x29) listed before a shipyard (0x28) comes
+        // after it, and a battery (0x23) before an ion cannon (0x22) after
+        // it.
+        use Target::{Defense, Manufacturing};
+        let mut fx = fixture(1);
+        let battery = defense(&mut fx.world, fx.system, BATTERY, attack(10));
+        let ion = defense(&mut fx.world, fx.system, ION, attack(10));
+        let mut facility = |raw: u32| {
+            let class_dat_id = class(&mut fx.world, raw, ClassStats::default());
+            let key = fx.world.manufacturing_facilities.insert(ManufacturingFacilityInstance {
+                class_dat_id,
+                side: Faction::Alliance,
+                is_shipyard: raw >> 24 == 0x28,
+            });
+            fx.world.systems[fx.system].manufacturing_facilities.push(key);
+            key
+        };
+        let training = facility(0x2900_0001);
+        let yard = facility(0x2800_0001);
+        assert_eq!(
+            targets(&fx.world, &request(&fx, TARGET_CIVILIAN)),
+            [Manufacturing(yard), Manufacturing(training)]
+        );
+        assert_eq!(
+            targets(&fx.world, &request(&fx, TARGET_MILITARY)),
+            [Defense(ion), Defense(battery)]
+        );
+    }
+
+    #[test]
+    fn a_ship_the_batteries_destroy_injures_its_passengers() {
+        // FUN_00501ae0 at full hull damage destroys the ship with reason
+        // 0xf (0x58d657); CapShip_vt11c sets its characters adrift and rolls
+        // their injury (FUN_004ef640 -> FUN_0053ea00) from the
+        // bombardment's draws, here all 9: chance 100, 9 + 9 + 1.
+        let mut fx = fixture(1);
+        defense(&mut fx.world, fx.system, BATTERY, attack(500));
+        fx.world.number_ships();
+        let ship = fx.world.fleets[fx.fleet].capital_ships[0].id;
+        let officer = fx.world.characters.insert(crate::world::Character {
+            is_major: true,
+            is_empire: true,
+            ship: Some(ship),
+            current_fleet: Some(fx.fleet),
+            current_system: Some(fx.system),
+            ..Default::default()
+        });
+        fx.world.fleets[fx.fleet].characters.push(officer);
+        // A veteran of combat 91: chance 9, and the draw 9 is not below it.
+        let veteran = fx.world.characters.insert(crate::world::Character {
+            is_major: true,
+            is_empire: true,
+            ship: Some(ship),
+            combat: crate::world::SkillPair { base: 91, variance: 0 },
+            current_fleet: Some(fx.fleet),
+            current_system: Some(fx.system),
+            ..Default::default()
+        });
+        fx.world.fleets[fx.fleet].characters.push(veteran);
+        let req = request(&fx, TARGET_CIVILIAN);
+        let out = resolve(&fx.world, &req, &mut script(&[0], 9));
+        assert_eq!(out.passenger_injuries, [(officer, 19, false)]);
+        apply(&mut fx.world, &req, &out);
+        let c = &fx.world.characters[officer];
+        assert_eq!(c.injury, 19);
+        assert!(c.adrift && !c.is_killed);
     }
 
     #[test]

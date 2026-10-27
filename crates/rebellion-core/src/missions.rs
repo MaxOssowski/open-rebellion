@@ -1495,6 +1495,29 @@ const SHIPPED_SHIP_LOSS_INJURY_SPREAD: i64 = 29;
 /// then dies with GNPRTB 2577 (slot `+0x2e0`). `rolls` are drawn in order
 /// (`FUN_0053e290`, `FUN_0053e2f0`).
 pub fn injure_passengers(world: &mut GameWorld, characters: &[CharacterKey], rolls: &[f64]) {
+    let mut draws = crate::uprising::Rolls::new(rolls);
+    for &key in characters {
+        let Some((injury, dies)) = roll_passenger_injury(world, key, &mut draws) else {
+            continue;
+        };
+        if let Some(c) = world.characters.get_mut(key) {
+            c.injure(injury);
+        }
+        if dies {
+            kill_character(world, key);
+        }
+    }
+}
+
+/// One passenger's injury step ([`injure_passengers`]): the injury and
+/// whether it kills, or `None` when the roll misses or the character is
+/// gone. Draws the chance, the two spreads and, for an injury above 0, the
+/// death roll.
+pub(crate) fn roll_passenger_injury(
+    world: &GameWorld,
+    key: CharacterKey,
+    draws: &mut impl crate::uprising::Draws,
+) -> Option<(i32, bool)> {
     let param = |id, shipped| {
         i32::try_from(crate::movement::gnprtb_or_shipped(world, id, shipped)).unwrap_or(0)
     };
@@ -1504,28 +1527,77 @@ pub fn injure_passengers(world: &mut GameWorld, characters: &[CharacterKey], rol
     );
     let spread = param(GNPRTB_SHIP_LOSS_INJURY_SPREAD, SHIPPED_SHIP_LOSS_INJURY_SPREAD);
     let base = param(GNPRTB_SHIP_LOSS_INJURY_BASE, SHIPPED_SHIP_LOSS_INJURY_BASE);
-    let mut draws = crate::uprising::Rolls::new(rolls);
-    for &key in characters {
-        let Some(combat) = world
-            .characters
-            .get(key)
-            .filter(|c| !c.is_killed)
-            .map(|c| i32::try_from(c.effective_combat()).unwrap_or(i32::MAX))
-        else {
-            continue;
-        };
-        let Some(injury) =
-            crate::uprising::roll_injury(combat, min_chance, spread, base, &mut draws)
-        else {
-            continue;
-        };
-        if let Some(c) = world.characters.get_mut(key) {
-            c.injure(injury);
-        }
-        if injury > 0 && crate::mission_detection::dies_of_injury(world, key, &mut draws) {
-            kill_character(world, key);
-        }
+    let combat = world
+        .characters
+        .get(key)
+        .filter(|c| !c.is_killed)
+        .map(|c| i32::try_from(c.effective_combat()).unwrap_or(i32::MAX))?;
+    let injury = crate::uprising::roll_injury(combat, min_chance, spread, base, draws)?;
+    let dies = injury > 0 && crate::mission_detection::dies_of_injury(world, key, draws);
+    Some((injury, dies))
+}
+
+/// The characters aboard the capital ship a Sabotage destroys
+/// ([`destroy_target`] takes the first living ship of the class, or the
+/// fleet's first Death Star).
+fn sabotaged_ship_passengers(world: &GameWorld, target: MissionTarget) -> Vec<CharacterKey> {
+    let (fleet, ship) = match target {
+        MissionTarget::CapitalShip { fleet, class } => (
+            fleet,
+            world.fleets.get(fleet).and_then(|value| {
+                value
+                    .capital_ships
+                    .iter()
+                    .find(|ship| ship.alive && ship.class == class)
+                    .map(|ship| ship.id)
+            }),
+        ),
+        MissionTarget::DeathStar(fleet) => (
+            fleet,
+            world.fleets.get(fleet).and_then(|value| {
+                value
+                    .capital_ships
+                    .iter()
+                    .find(|ship| {
+                        ship.alive
+                            && world
+                                .capital_ship_classes
+                                .get(ship.class)
+                                .is_some_and(crate::world::CapitalShipClass::is_death_star)
+                    })
+                    .map(|ship| ship.id)
+            }),
+        ),
+        _ => return Vec::new(),
+    };
+    ship.map_or_else(Vec::new, |ship| passengers(world, fleet, ship))
+}
+
+/// The characters aboard the ship numbered `ship` of `fleet`, as
+/// [`seat_characters`] would seat them: a seat on a ship of the fleet is
+/// kept, any other takes the first living ship.
+#[must_use]
+pub fn passengers(world: &GameWorld, fleet: crate::ids::FleetKey, ship: u64) -> Vec<CharacterKey> {
+    let Some(value) = world.fleets.get(fleet) else {
+        return Vec::new();
+    };
+    if ship == 0 {
+        return Vec::new();
     }
+    let numbered = || value.capital_ships.iter().filter(|each| each.id != 0);
+    let first = numbered().find(|each| each.alive).map(|each| each.id);
+    let ships: Vec<u64> = numbered().map(|each| each.id).collect();
+    value
+        .characters
+        .iter()
+        .copied()
+        .filter(|&key| {
+            world.characters.get(key).is_some_and(|c| {
+                let seat = c.ship.filter(|seat| ships.contains(seat)).or(first);
+                seat == Some(ship)
+            })
+        })
+        .collect()
 }
 
 /// A battle destroyed `fleet`: its characters stand at its system, and
@@ -4325,15 +4397,30 @@ impl MissionSystem {
                 // FUN_005746e0: slot +0xac(6) destroys the order's object
                 // (FUN_00521030).
                 MissionKind::Sabotage | MissionKind::DeathStarSabotage => {
-                    effects.extend(
-                        mission
-                            .target_object
-                            .filter(|object| object.state(world).is_some())
-                            .map(|object| MissionEffect::TargetSabotaged {
-                                target: object,
-                                system: target,
-                            }),
-                    );
+                    let object = mission
+                        .target_object
+                        .filter(|object| object.state(world).is_some());
+                    effects.extend(object.map(|object| MissionEffect::TargetSabotaged {
+                        target: object,
+                        system: target,
+                    }));
+                    // `+0xac(6)` on a capital ship runs CapShip_vt11c: the
+                    // characters aboard go adrift and then take the injury
+                    // step (reason 6 is within 1..0x10, `FUN_004ef640`),
+                    // drawn from the mission's stream at the destruction.
+                    for key in object.map_or_else(Vec::new, |object| {
+                        sabotaged_ship_passengers(world, object)
+                    }) {
+                        if let Some((injury, dies)) = roll_passenger_injury(world, key, stream) {
+                            effects.push(MissionEffect::CharacterInjured {
+                                character: key,
+                                injury,
+                            });
+                            if dies {
+                                effects.push(MissionEffect::DiedOfInjury { character: key });
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -8725,6 +8812,102 @@ mod tests {
             vec![(MissionTarget::ManufacturingFacility(yard), here)]
         );
         assert_eq!(result.outcome, MissionOutcome::Success);
+    }
+
+    #[test]
+    fn a_sabotaged_ship_rolls_its_passengers_injuries() {
+        // FUN_005746e0's +0xac(6) runs CapShip_vt11c: reason 6 is within
+        // 1..0x10, so the characters aboard take the injury step
+        // (FUN_004ef640): combat 0 gives chance 100, so it always lands.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        always(&mut world, MissionKind::DeathStarSabotage, 100);
+        let fleet = death_star_fleet(&mut world, here);
+        world.number_ships();
+        let ship = world.fleets[fleet]
+            .capital_ships
+            .iter()
+            .find(|ship| world.capital_ship_classes[ship.class].is_death_star())
+            .map(|ship| ship.id)
+            .unwrap();
+        let officer = world.characters.insert(Character {
+            is_major: true,
+            is_empire: true,
+            ship: Some(ship),
+            current_fleet: Some(fleet),
+            current_system: Some(here),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(officer);
+        let team = (0..2)
+            .map(|_| MissionMember::Character(agent_at(&mut world, here, true)))
+            .collect();
+        let mut mission = ActiveMission::timed(
+            0,
+            MissionKind::DeathStarSabotage,
+            MissionFaction::Alliance,
+            team,
+            here,
+            1,
+        );
+        mission.target_object = Some(MissionTarget::DeathStar(fleet));
+        let mut state = MissionState::new();
+        state.push_timed(mission);
+
+        let result = step(&mut state, &world, 1, &[]).results.remove(0);
+
+        assert!(result
+            .effects
+            .iter()
+            .any(|effect| matches!(effect, MissionEffect::TargetSabotaged { .. })));
+        assert!(result.effects.iter().any(|effect| matches!(
+            effect,
+            MissionEffect::CharacterInjured { character, injury } if *character == officer && *injury > 0
+        )));
+    }
+
+    #[test]
+    fn a_sabotaged_ships_passengers_are_those_of_the_ship_it_destroys() {
+        // destroy_target takes the first living ship of the class: its
+        // passengers, not those of a lost ship of that class or of another
+        // class.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let fleet = death_star_fleet(&mut world, here);
+        let escort = world.fleets[fleet]
+            .capital_ships
+            .iter()
+            .find(|ship| !world.capital_ship_classes[ship.class].is_death_star())
+            .cloned()
+            .unwrap();
+        let class = escort.class;
+        let mut lost = escort.clone();
+        lost.alive = false;
+        world.fleets[fleet].capital_ships.insert(0, lost);
+        world.fleets[fleet].capital_ships.push(escort);
+        world.number_ships();
+        let ids: Vec<u64> = world.fleets[fleet].capital_ships.iter().map(|s| s.id).collect();
+        let seat = |world: &mut GameWorld, ship| {
+            let key = world.characters.insert(Character {
+                ship: Some(ship),
+                current_fleet: Some(fleet),
+                ..Default::default()
+            });
+            world.fleets[fleet].characters.push(key);
+            key
+        };
+        let on_lost = seat(&mut world, ids[0]);
+        let living = world.fleets[fleet]
+            .capital_ships
+            .iter()
+            .position(|ship| ship.alive && ship.class == class)
+            .unwrap();
+        let aboard = seat(&mut world, ids[living]);
+        let target = MissionTarget::CapitalShip { fleet, class };
+        assert_eq!(sabotaged_ship_passengers(&world, target), [aboard]);
+        assert_ne!(on_lost, aboard);
+        assert!(sabotaged_ship_passengers(&world, MissionTarget::Troop(Default::default()))
+            .is_empty());
     }
 
     #[test]

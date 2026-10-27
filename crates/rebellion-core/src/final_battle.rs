@@ -379,7 +379,10 @@ fn move_order(
 ///
 /// port: the winner's freeing also sets Autorouting in the original
 /// (`FUN_004f18e0`); the port moves Luke by the hook's Move order only.
-/// The three moved are hyp: Luke, Vader and the Emperor (`0x54b5b6`).
+/// The three moved are Luke, Vader and the Emperor (`0x54b5bb`..`0x54b630`:
+/// `FUN_005434b0` -> `FUN_00507010`, Luke `0x32000242`; `FUN_00543760` ->
+/// `FUN_00507070`, Vader `0x35000281`; `FUN_00543800` -> `FUN_005070d0`, the
+/// Emperor `0x34000280`).
 fn fight(battle: &FinalBattle, missions: &mut MissionState, world: &mut GameWorld) -> Option<u64> {
     if battle.at_system {
         if let Some(system) = battle.system.and_then(|key| world.systems.get_mut(key)) {
