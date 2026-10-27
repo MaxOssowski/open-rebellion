@@ -278,8 +278,10 @@ pub const ORIGINAL_FORMATION_FOOTPRINT_SCALE: f32 = 1.2;
 pub const TACTICAL_UNGROUPED_TASK_FORCE: u8 = u8::MAX;
 
 /// A completion array's index for a task force: the eight group slots,
-/// then one for the forces without a slot. hyp: their completion lines
-/// take the generic variant, as the destruction lines do.
+/// then one for the forces without a slot, whose lines are the generic
+/// variants: `FUN_005cc300` reads the slot from `FUN_005a0300` and, for -1,
+/// says "maneuver complete" as `0x2e`/`0xa8` and a loss as `0x48`/`0xc2`
+/// in place of the slot's `0x2f`/`0x49` plus the slot.
 pub(crate) fn task_force_slot(task_force: u8) -> usize {
     if task_force == TACTICAL_UNGROUPED_TASK_FORCE {
         8
@@ -580,7 +582,10 @@ pub enum TacticalTactic {
 }
 
 impl TacticalTactic {
-    /// hyp: Surround 1 / Stand Off 2 per the P58F9 evidence (`2026-09-17-tactical-command-assignment.md`); the `+0x38` writer is not re-located.
+    /// Surround 1 / Stand Off 2 (P58F9, `2026-09-17-tactical-command-assignment.md`):
+    /// SetTactic (`FUN_005c9be0`) writes `+0x38` and sets `+0x5c` to 2 only
+    /// for code 2, and a new force (`FUN_005cbf50`) takes 2 at `+0x38` and
+    /// `+0x5c` with the Stand Off mover (`FUN_005ec310`).
     #[must_use]
     pub const fn source_code(self) -> u8 {
         match self {
@@ -4595,19 +4600,26 @@ impl BattleSession {
                 ship.navigation_route.remove(0);
             }
             ship.source_waypoint = ship.navigation_route.first().copied();
-            if ship.source_waypoint.is_none()
-                && matches!(
-                    ship.order,
-                    TacticalOrder::LeftHook
-                        | TacticalOrder::RightHook
-                        | TacticalOrder::Hammer
-                        | TacticalOrder::Anvil
-                )
-            {
+            if ship.source_waypoint.is_some() {
+                continue;
+            }
+            let maneuver = matches!(
+                ship.order,
+                TacticalOrder::LeftHook
+                    | TacticalOrder::RightHook
+                    | TacticalOrder::Hammer
+                    | TacticalOrder::Anvil
+            );
+            if maneuver {
                 ship.order = TacticalOrder::None;
-                if ship.is_attacker == player {
-                    completed_player_task_forces[task_force_slot(ship.task_force)] = true;
-                }
+            }
+            // `FUN_005cc300` at the route's end: the player's force says
+            // "maneuver complete" (`0x2f`/`0xa9` plus its slot, `0x2e`/`0xa8`
+            // with none) only while it holds a target (its `+0x98`, slot
+            // `+0x10` the first item, `FUN_005f5060`).
+            let holds_target = ship.attack_target.is_some() || !ship.manual_targets.is_empty();
+            if ship.is_attacker == player && holds_target {
+                completed_player_task_forces[task_force_slot(ship.task_force)] = true;
             }
         }
     }
@@ -8177,8 +8189,12 @@ impl BattleSession {
             })
     }
 
-    /// Whether a side still has a live fighter group. hyp: the side lists
-    /// `+0x64` that `FUN_005ada10` asks to be non-empty hold its groups.
+    /// Whether a side still has a squadron in the field: `FUN_005ada10` asks
+    /// each commander's (`+8`, `+0xc`) list `+0x64` for its first item. That
+    /// list holds the side's squadrons (`FUN_005d14d0` walks it with the
+    /// fighter fields `+0x164` and `+0x170`, `FUN_005afe40`, and the list
+    /// `+0x58` with the ships). hyp: a squadron inside a hangar is not in
+    /// it (its state is 1, not in the field).
     fn side_has_fighter_groups(&self, player_side: bool) -> bool {
         self.fighters.iter().any(|fighter| {
             fighter.alive && (fighter.is_attacker == self.player_is_attacker) == player_side
@@ -9196,9 +9212,12 @@ impl BattleSession {
     /// to the point (slot `+0xc`, radius 1.0). There the point becomes its
     /// anchor (`+0x3c`) and leaves the route (`FUN_005c6200`); when the
     /// player's route ends, the group's "maneuver complete" line plays
-    /// (`0x37`/`0xb1` plus its slot). hyp: the line's further tests of the
-    /// force's `+0x60` and `+0x98` are not traced. The members fly to their
-    /// places in the frame meanwhile.
+    /// (`0x37`/`0xb1` plus its slot) unless the player's commander only
+    /// observes (`+8` = 1), and only while the force holds a target: at
+    /// `0x5c6a4d` it tests `+0x60` and then its targets (`+0x98`, slot
+    /// `+0x10` the list's first item, `FUN_005f5060`), and either way it
+    /// skips the line when the targets are empty (`0x5c6a65`, `0x5c6a78`).
+    /// The members fly to their places in the frame meanwhile.
     fn advance_fighter_route(
         &mut self,
         at: usize,
@@ -9219,16 +9238,20 @@ impl BattleSession {
                 .iter()
                 .map(|(member, _)| *member)
                 .collect::<Vec<_>>();
-            for member in members {
+            for &member in &members {
                 let route = &mut self.fighters[member].navigation_route;
                 if route.first() == Some(&point) {
                     route.remove(0);
                 }
             }
+            let holds_target = members
+                .iter()
+                .any(|&member| self.fighters[member].attack_target.is_some());
             let fighter = &self.fighters[lead];
             if fighter.navigation_route.is_empty()
                 && fighter.is_attacker == self.player_is_attacker
                 && !self.player_observing
+                && holds_target
             {
                 let cue = TacticalVoiceCue::fighter_maneuver_complete(
                     self.player_voice_faction(),

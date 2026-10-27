@@ -13047,6 +13047,9 @@ mod tests {
             z: 1.0,
         });
         carrier.order = TacticalOrder::Anvil;
+        // A maneuver is run against a target, which the arrival's line asks
+        // for (FUN_005cc300: +0x98 not empty).
+        carrier.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
 
         let mut fighter = test_fighter(1, true);
         // 2.5 behind the carrier, which arrives where it stands, facing it
@@ -15955,6 +15958,35 @@ mod tests {
     }
 
     // Only the group's flying squadrons take its route.
+    // FUN_005c6610's route branch: at the route's end the player's group
+    // says "maneuver complete" (0x37 plus its slot) only while it holds a
+    // target (0x5c6a65 / 0x5c6a78 skip the line on an empty +0x98).
+    #[test]
+    fn a_fighter_route_ends_with_its_line_only_for_a_group_holding_a_target() {
+        let run = |target: bool| {
+            let enemy = test_ship(2, 0, false, true);
+            let mut wing = test_fighter(5, true);
+            wing.fighter_group = 0;
+            if target {
+                wing.attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+            }
+            let mut session = test_session(vec![enemy], vec![wing], true);
+            let here = session.fighters[0].source_position;
+            session.fighters[0].navigation_route = vec![here];
+            session.paused = false;
+            let faction = session.player_voice_faction();
+            let line = TacticalVoiceCue::fighter_maneuver_complete(faction, 0);
+            let mut heard = false;
+            for _ in 0..40 {
+                session.step();
+                heard |= session.take_pending_voice_cues().contains(&line);
+            }
+            (heard, session.fighters[0].navigation_route.is_empty())
+        };
+        assert_eq!(run(true), (true, true));
+        assert_eq!(run(false), (false, true));
+    }
+
     #[test]
     fn a_fighter_group_route_skips_lost_squadrons_and_other_groups() {
         let mut lost = test_fighter(6, true);
@@ -18777,6 +18809,32 @@ mod tests {
         );
     }
 
+    // FUN_005cc300 at a route's end: any route of the player's force, not
+    // only a maneuver's, says "maneuver complete", and only while the force
+    // holds a target (+0x98).
+    #[test]
+    fn a_ships_route_ends_with_its_line_only_while_it_holds_a_target() {
+        let run = |target: bool| {
+            let mut ship = test_ship(64, 0, true, true);
+            ship.subsystem_capacity.engines = true;
+            ship.source_desired_forward = TacticalWorldVector::SOURCE_FORWARD;
+            ship.source_waypoint = Some(TacticalWorldPosition { x: 0.0, y: 0.0, z: 1.0 });
+            if target {
+                ship.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+            }
+            let mut session =
+                test_session(vec![ship, test_ship(65, 0, false, true)], Vec::new(), true);
+            session.ships[1].source_position.x = 300.0;
+            session.advance_original_tactical_movement(250.0);
+            session.take_pending_voice_cues()
+        };
+        assert_eq!(
+            run(true),
+            vec![TacticalVoiceCue::capital_maneuver_complete(TacticalVoiceFaction::Alliance, 0)]
+        );
+        assert!(run(false).is_empty());
+    }
+
     // FUN_005a8f70's arrival voices a force's completion once no member of
     // that force is still on a maneuver; members of other forces and the
     // enemy do not hold it (FUN_005a9530), nor do they for exhausted
@@ -18793,6 +18851,9 @@ mod tests {
                 z: 1.0,
             });
             ship.order = TacticalOrder::Anvil;
+            // FUN_005cc300 voices the arrival only for a force holding a
+            // target (+0x98).
+            ship.attack_target = Some(TacticalAttackTarget::CapitalShip(1));
             ship
         };
         let busy = |alliance: bool, task_force: u8, x: f32| {
