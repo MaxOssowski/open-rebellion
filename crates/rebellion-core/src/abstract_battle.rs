@@ -1672,10 +1672,10 @@ fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after
 /// can board a carrier that is then lost.
 ///
 /// port: the Empire's Death Star, `FUN_005afe40`'s last try, takes no
-/// squadron (the port's Death Star has no hangar). hyp: a squadron already
-/// inside a hangar (state 1) stays with its carrier; whether the list
-/// `+0x64` holds it is untraced (in it, `FUN_005afe40` would refuse it, as
-/// its state is not 2, and it would be destroyed). The tactical battle has
+/// squadron (the port's Death Star has no hangar). A squadron already
+/// inside a hangar (state 1) stays with its carrier: it is not in the list
+/// `+0x64` (the alternate mode's dealing `FUN_005ae460` skips state 1 at
+/// `0x5ae4a8`, as `FUN_005ab650` does). The tactical battle has
 /// its own commanders (`FUN_005be160`) and withdraws through
 /// `FUN_005c8780`.
 pub fn leave(session: &mut BattleSession, alliance: bool) {

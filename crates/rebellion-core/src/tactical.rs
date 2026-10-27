@@ -170,8 +170,12 @@ pub const ORIGINAL_WITHDRAWAL_ARRIVAL_RADIUS: f32 = 1.0;
 pub const ORIGINAL_JUMP_MILLISECONDS: f32 = 4_000.0;
 /// `FUN_005a6b40` picks the jump factor by `(type + id) & 3`: the unit's
 /// vtable `+0x24` (its tactical ordinal, the index `FUN_005ab0e0` uses for
-/// the `+0xa50` resource table) plus its object id `+0x3b`. hyp: the port's
-/// list index stands for the object id.
+/// the `+0xa50` resource table) plus its object id `+0x3b`. The ids count
+/// per side from the setup's creation order (`FUN_0040b0e0`: each fleet's
+/// ships, then ship by ship its squadrons, characters, special forces and
+/// regiments, then the system's squadrons; task forces after). port: the
+/// port's list index stands for the id, since it does not seat regiments
+/// and special forces on ships to count them.
 #[must_use]
 pub const fn original_jump_factor_index(tactical_ordinal: u8, object_index: usize) -> usize {
     (tactical_ordinal as usize + object_index) & 3
@@ -8193,8 +8197,10 @@ impl BattleSession {
     /// each commander's (`+8`, `+0xc`) list `+0x64` for its first item. That
     /// list holds the side's squadrons (`FUN_005d14d0` walks it with the
     /// fighter fields `+0x164` and `+0x170`, `FUN_005afe40`, and the list
-    /// `+0x58` with the ships). hyp: a squadron inside a hangar is not in
-    /// it (its state is 1, not in the field).
+    /// `+0x58` with the ships). A squadron inside a hangar is not in it:
+    /// `FUN_005ab650` deals the units to their commanders after the setup
+    /// and skips state 1 (`0x5ab94b` -> `FUN_005b69f0`), and the launch
+    /// (`FUN_005a9170`, `0x5a91a2`) adds it.
     fn side_has_fighter_groups(&self, player_side: bool) -> bool {
         self.fighters.iter().any(|fighter| {
             fighter.alive && (fighter.is_attacker == self.player_is_attacker) == player_side
