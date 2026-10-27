@@ -52,8 +52,10 @@ Date: 2026-10-27. Three faults the user reported after
     (`FUN_00501c00`);
   - a squadron while its losses (slot `+0x254`, `+0x60`) are not 0
     (`FUN_00503340`).
-- hyp: a lost unit keeps the bit its full damage set, so the Destroyed
-  column shows the mark too.
+- A lost unit keeps the bit its full damage set, so the Destroyed column
+  shows the mark too. This was a hypothesis until 2026-10-28, when the
+  user checked it on the original, together with the turn before the
+  jump and the launches from the hangar.
 - `FUN_005a90c0` (event `0x2e`) ends a jump in state 9; destruction is
   state `0xb`. The port's results counted every unit that was no longer
   alive as Destroyed, so a ship (`retreated`) or a group whose jump had

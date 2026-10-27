@@ -6236,8 +6236,9 @@ fn battle_result_entries(
     // FUN_0042c3b0(.., 1, 1): a craft's or a regiment's portrait, the mini
     // less 0x4000.
     let portrait = |mini: Option<u32>| mini.map(|mini| (DllSource::Gokres, mini - 0x4000));
-    // The damaged object's GOKRES portrait + 0x2000, under the portrait.
-    // hyp: a lost unit keeps the bit its full damage set.
+    // The damaged object's GOKRES portrait + 0x2000, under the portrait
+    // (FUN_0042c3b0). A lost unit wears it too: its full damage keeps the
+    // bit, as the user saw on the original (2026-10-28).
     let mark = |picture: Option<(DllSource, u32)>, damaged: bool| {
         picture
             .filter(|_| damaged)
@@ -6428,10 +6429,6 @@ fn battle_window_text_params(
 }
 
 /// Screen width of a battle-window text.
-fn battle_window_text_width(canvas: TacticalCanvas, text: &str, size: f32) -> f32 {
-    battle_window_text_width_in(canvas, text, size, false)
-}
-
 fn battle_window_text_width_in(canvas: TacticalCanvas, text: &str, size: f32, bold: bool) -> f32 {
     let font = if bold { tactical_arial_bold() } else { tactical_arial() };
     let params = battle_window_text_params(canvas, size, WHITE);
@@ -6442,17 +6439,6 @@ fn battle_window_text_width_in(canvas: TacticalCanvas, text: &str, size: f32, bo
         params.font_scale * params.font_scale_aspect,
     )
     .width
-}
-
-fn draw_result_text(
-    canvas: TacticalCanvas,
-    text: &str,
-    x: f32,
-    baseline_y: f32,
-    size: f32,
-    color: Color,
-) {
-    draw_result_text_in(canvas, text, x, baseline_y, (size, false), color);
 }
 
 fn draw_result_text_in(
@@ -6473,25 +6459,6 @@ fn draw_result_text_in(
             font: font.as_ref(),
             ..battle_window_text_params(canvas, size, color)
         },
-    );
-}
-
-fn draw_result_text_centered(
-    canvas: TacticalCanvas,
-    text: &str,
-    center_x: f32,
-    baseline_y: f32,
-    size: f32,
-    color: Color,
-) {
-    let width = battle_window_text_width(canvas, text, size);
-    draw_result_text(
-        canvas,
-        text,
-        center_x - width * 0.5 / canvas.scale,
-        baseline_y,
-        size,
-        color,
     );
 }
 
@@ -6865,6 +6832,7 @@ fn battle_display_page(
             size: BATTLE_WINDOW_FONT_B,
             color: text_color,
             centered: true,
+            bold: false,
         },
     ];
     // A0 TAC-07-C013: capitals from window rows 43 and 133 at x 24.
@@ -6918,6 +6886,7 @@ fn battle_display_page(
             size: BATTLE_WINDOW_FONT_6,
             color: WHITE,
             centered: true,
+            bold: false,
         });
     }
     ops
@@ -7023,6 +6992,7 @@ fn battle_summary_page(
             size: BATTLE_WINDOW_FONT_B,
             color: text_color,
             centered: true,
+            bold: false,
         },
     ];
     if let Some((headline, rest)) = lines.split_first() {
@@ -7033,6 +7003,7 @@ fn battle_summary_page(
             size: BATTLE_WINDOW_FONT_B,
             color: text_color,
             centered: true,
+            bold: false,
         });
         for (x, cap_top, color) in [(25.0, 259.0, BLACK), (24.0, 258.0, text_color)] {
             ops.push(PageOp::Wrapped {
@@ -7298,13 +7269,15 @@ fn draw_page_ops_at(
                 size,
                 color,
                 centered,
+                bold,
             } => {
                 let (x, y) = (origin_x + x, origin_y + baseline);
-                if centered {
-                    draw_result_text_centered(canvas, &text, x, y, size, color);
+                let x = if centered {
+                    x - battle_window_text_width_in(canvas, &text, size, bold) * 0.5 / canvas.scale
                 } else {
-                    draw_result_text(canvas, &text, x, y, size, color);
-                }
+                    x
+                };
+                draw_result_text_in(canvas, &text, x, y, (size, bold), color);
             }
             PageOp::Wrapped {
                 lines,
@@ -7351,7 +7324,8 @@ enum PageOp {
         x: f32,
         y: f32,
     },
-    /// Text at its baseline; `centered` on `x`, else from it.
+    /// Text at its baseline; `centered` on `x`, else from it; `bold`
+    /// takes the 700-weight face.
     Text {
         text: String,
         x: f32,
@@ -7359,6 +7333,7 @@ enum PageOp {
         size: f32,
         color: Color,
         centered: bool,
+        bold: bool,
     },
     /// Lines word-wrapped at `width` from `x`, the first at `baseline`;
     /// `bold` takes the 700-weight face.
@@ -7405,6 +7380,7 @@ fn battle_force_page(
             size,
             color,
             centered,
+            bold: false,
         }
     };
     let personnel = category == BattleResultCategory::Personnel;
@@ -7793,6 +7769,7 @@ fn battle_alert_scene_text(title: &str, summary: Option<&str>, color: Color) -> 
         size: BATTLE_WINDOW_FONT_B,
         color,
         centered: true,
+        bold: false,
     }];
     if let Some(summary) = summary {
         for (x, cap_top, color) in [(37.0, 220.0, BLACK), (36.0, 219.0, color)] {
@@ -8092,6 +8069,9 @@ const ALERT_LIST_WIDTH: f32 = 256.0;
 const ALERT_LIST_HEIGHT: f32 = 234.0;
 /// `FUN_00607ea0`'s cells at `0x44fcde`: 240 by 40.
 const ALERT_LIST_ROW: f32 = 40.0;
+/// Arial's ascent over its cell (`usWinAscent` 1854 of 2288): GDI draws a
+/// line from its cell's top, so its baseline sits that far down.
+const ARIAL_ASCENT_OF_CELL: f32 = 1854.0 / 2288.0;
 
 /// Show a tab or category; another one's list starts at its top.
 fn select_resetting_scroll<T: PartialEq>(shown: &mut T, scroll: &mut usize, choice: T) {
@@ -8137,12 +8117,16 @@ fn battle_alert_list(rows: &[AlertRow], scroll: usize) -> Vec<PageOp> {
         if top + ROW <= TOP || top >= TOP + HEIGHT {
             continue;
         }
-        let size = if row.font == AlertFont::Heading {
-            18.0
-        } else {
-            14.0
+        // Fonts 0xb (24 px cell), 5 (16 px, bold) and 4 (16 px)
+        // (FUN_0060eed0), drawn from the cell's top (A0
+        // alert-imperial-forces: "Imperial Forces" spans rows 96..113 of
+        // the list's 92..132).
+        let (cell, size, bold) = match row.font {
+            AlertFont::Heading => (24.0, BATTLE_WINDOW_FONT_B, false),
+            AlertFont::Bold => (16.0, BATTLE_WINDOW_FONT_4, true),
+            AlertFont::Plain => (16.0, BATTLE_WINDOW_FONT_4, false),
         };
-        let baseline = top + ROW / 2.0 + size / 2.0 - 2.0;
+        let baseline = top + (cell * ARIAL_ASCENT_OF_CELL).round();
         if row.picture.is_empty() {
             ops.push(PageOp::Text {
                 text: row.text.clone(),
@@ -8151,6 +8135,7 @@ fn battle_alert_list(rows: &[AlertRow], scroll: usize) -> Vec<PageOp> {
                 size,
                 color: WHITE,
                 centered: true,
+                bold,
             });
             continue;
         }
@@ -8170,6 +8155,7 @@ fn battle_alert_list(rows: &[AlertRow], scroll: usize) -> Vec<PageOp> {
             size,
             color: WHITE,
             centered: false,
+            bold,
         });
     }
     ops.push(PageOp::Clip(None));
@@ -11795,6 +11781,7 @@ mod tests {
                     size: BATTLE_WINDOW_FONT_B,
                     color: green,
                     centered: true,
+                    bold: false,
                 },
                 PageOp::Wrapped {
                     lines: vec!["The Imperial fleet".into()],
@@ -12067,7 +12054,8 @@ mod tests {
         // 234 high: five rows and 34 pixels of a sixth.
         assert_eq!(texts(0).len(), 6);
         let scrolled = texts(120);
-        assert_eq!(scrolled[0], ("row 3".to_owned(), 65.0));
+        // Drawn from the cell's top: 13 down for a 16 px cell.
+        assert_eq!(scrolled[0], ("row 3".to_owned(), 53.0));
         // Scrolled 39, the first row's last pixel still shows.
         assert_eq!(texts(39)[0].0, "row 0");
         assert_eq!(texts(40)[0].0, "row 1");
@@ -12164,15 +12152,17 @@ mod tests {
             .into_iter()
             .filter(|op| !matches!(op, PageOp::Clip(_)))
             .collect();
+        // Font 0xb from the cell's top (A0 alert-imperial-forces).
         assert_eq!(
             ops[0],
             PageOp::Text {
                 text: "Alliance Forces".into(),
                 x: 211.0,
-                baseline: 67.0,
-                size: 18.0,
+                baseline: 59.0,
+                size: BATTLE_WINDOW_FONT_B,
                 color: WHITE,
                 centered: true,
+                bold: false,
             }
         );
         assert_eq!(
@@ -12185,7 +12175,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&ops[2], PageOp::Text { x, baseline, centered: false, .. } if *x == 153.0 && *baseline == 105.0)
+            matches!(&ops[2], PageOp::Text { x, baseline, centered: false, bold: false, .. } if *x == 153.0 && *baseline == 93.0)
         );
         assert_eq!(
             ops[3],
@@ -12197,6 +12187,8 @@ mod tests {
             }
         );
         assert!(matches!(&ops[4], PageOp::Text { x, .. } if *x == 173.0));
+        // Font 5 rows are bold.
+        assert!(matches!(&ops[5], PageOp::Text { bold: true, size, .. } if *size == BATTLE_WINDOW_FONT_4));
         // 234 high: the sixth row (top 240, middle 260) is the last whose
         // middle fits; the seventh is cut.
         let texts = ops
@@ -12545,7 +12537,8 @@ mod tests {
                 baseline: 244.0,
                 size: BATTLE_WINDOW_FONT_B,
                 color: green,
-                centered: true
+                centered: true,
+                bold: false,
             }
         );
         assert_eq!(
