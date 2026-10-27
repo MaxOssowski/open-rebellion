@@ -13254,6 +13254,9 @@ mod tests {
             session.step();
         }
         assert!(!session.ships[0].retreated);
+        // In its jump the carrier faces away from the enemy, along its
+        // side's vector reversed (FUN_005a6b40 writes +0x10 each step).
+        assert_eq!(session.ships[0].source_forward.z, -1.0);
         session.step();
         assert_eq!(session.combat_tick, 60);
         assert!(session.ships[0].retreated);

@@ -5746,8 +5746,12 @@ impl BattleSession {
     pub fn assign_original_fighter_groups(fighters: &mut [TacticalFighter]) {
         for is_alliance in [true, false] {
             let mut groups: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
+            // A squadron in its carrier's hangar is one of the battle's
+            // units from the setup (`FUN_005a9470`: the lists `+0x9a0` and
+            // `+0x9c4`) and launches in its force (`FUN_005a9170` reads
+            // `+0x174`), so it takes its group with the others.
             for (index, fighter) in fighters.iter().enumerate().filter(|(_, fighter)| {
-                fighter.alive
+                (fighter.alive || fighter.in_hangar)
                     && fighter.squad_count > 0
                     && fighter.identity.is_alliance == is_alliance
             }) {
@@ -9450,6 +9454,16 @@ impl BattleSession {
                 }
                 let from = ship.retreat_progress;
                 ship.retreat_progress += ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+                // `FUN_005a6b40` sets the unit's forward (`+0x10`) to its
+                // side's vector reversed on each step of the jump, and moves
+                // it along that.
+                let away = TacticalWorldVector {
+                    x: 0.0,
+                    y: 0.0,
+                    z: -side_z,
+                };
+                ship.source_forward = away;
+                ship.source_desired_forward = away;
                 ship.source_position.z -=
                     side_z * original_jump_travel(factor, from, ship.retreat_progress);
                 if ship.retreat_progress >= ORIGINAL_JUMP_MILLISECONDS {

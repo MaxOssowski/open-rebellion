@@ -2987,6 +2987,30 @@ mod tests {
         assert!(!session.fighters[second].alive);
     }
 
+    // FUN_005a9470: a squadron put in a hangar at the setup is one of the
+    // battle's units (lists +0x9a0, +0x9c4) and FUN_005a9170 launches it in
+    // its force (+0x174), so it holds its group from the start, and once out
+    // it flies in that group's mover (FUN_005adfa0, 0x5ebee0).
+    #[test]
+    fn a_squadron_in_a_hangar_holds_its_group_and_flies_with_it_once_out() {
+        let mut session = carrier_battle();
+        let first = session.ships[0].hangar[0];
+        // Its class's group (FUN_005c63f0 starts every squadron at 4,
+        // unassigned, until the groups are dealt).
+        let group = session.fighters[first].fighter_group;
+        assert!(group < 4, "{group}");
+        session.paused = false;
+        step_until(&mut session, |t| t.fighters[first].alive);
+        session.sync_fighter_movers();
+        let group = session.fighters[first].fighter_group;
+        let mover = session
+            .fighter_movers
+            .iter()
+            .find(|mover| mover.alliance && mover.group == group)
+            .expect("the group's mover");
+        assert!(mover.slots.iter().any(|(member, _)| *member == first));
+    }
+
     // FUN_005b8b10: no launch while the squadron's group is recovering
     // (order 2), nor with its carrier out of the fight.
     #[test]
