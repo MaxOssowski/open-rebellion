@@ -101,3 +101,37 @@ The first workspace run had one failure,
 `tactical_space_results_preserve_exact_capital_and_fighter_roster_slots`.
 The stage had added a `retain` that dropped emptied entries, but the
 roster keeps its slots, so the `retain` was removed.
+
+## Correction (2026-10-27, A0 VM)
+
+The Windows VM run of the Battle at Yavin (`save_res1`, the Imperial side
+under the player) showed the following:
+- Before the battle, the Battle Alert listed Fleet 1's Victory Destroyer 2
+  with its TIE Fighter squadron nested under it (`alert-imperial-forces.png`).
+- After the battle, Fleet 1 held only the Death Star among its ships, so
+  the Victory Destroyer was lost. Its TIE Fighter squadron was still in
+  Fleet 1's fighters (`after-yavin-fleet1-ships.png`,
+  `after-yavin-fleet1-fighters.png`), not on Yavin's planet.
+
+So a lost carrier's launched squadron stays with its side's fleet. Either
+`FUN_0040d320`'s system parent is undone later, or it docked elsewhere;
+neither is traced. The port's tactical commit now keeps such squadrons in
+the fleet, where `number_ships` seats them on a ship with room. The hangar
+squadrons still die with their carrier. The rule that would send every
+launched squadron to the system was never applied, and this observation
+argues against it.
+
+| Capture (`.artifacts/a0-vm/2026-10-27-controls/`) | SHA-256 |
+|---|---|
+| `alert-imperial-forces.png` | `ebf1693a1ae0797747727c80e15dc7913e07596a83285d6969c8871a5a33e590` |
+| `yavin-battle-running.png` | `3ca5d4cfdbd3e6434f198439f483e755bc58b9f16af63c2d7f146ac27b4f3a71` |
+| `after-yavin-fleet1-ships.png` | `32dadbc2548c5df8d37b27b57ae094949109f0580bfe70183267cb85f3f6f16c` |
+| `after-yavin-fleet1-fighters.png` | `4e0b9b6635cd6e121c35bfaa814f7e73aa6434a420f16b2261dab5b5a6523e8d` |
+
+Test: `a_lost_carriers_hangar_squadrons_die_and_its_launched_ones_stay_in_the_fleet`
+(renamed from `..._go_to_the_planet`).
+
+Gates after the correction: `cargo test --workspace` 3005 passed; browser
+matrix 148 passed; replay golden unchanged; replay equivalence passed;
+`cargo mutants` on the change, 1 tested, unviable; release WASM
+`6fd1c45021416d1c32a2a149462f8dcf026ea6aa75614b4d34f341e3449e3231`.

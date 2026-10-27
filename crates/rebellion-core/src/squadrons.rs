@@ -874,8 +874,8 @@ mod tests {
     // scrap and the abstract battle's commit, which do not reach this
     // through SetDestroyedReason in the port (a destroyed ship takes its
     // docked squadrons, crate::scrap::destroy_ship; the tactical commit
-    // kills a lost carrier's hangar and sends its launched ones to the
-    // planet, FUN_0040d320).
+    // kills a lost carrier's hangar, and its launched ones stay in the
+    // fleet, as the A0 VM run showed, and are seated here).
     #[test]
     fn a_lost_ships_squadrons_board_another_ship() {
         let mut setup = setup(2);

@@ -89,3 +89,14 @@ Of the 5 missed mutants:
   caught by added cases: the arrow released or the pointer away, and the
   list scrolled 39, which still shows the first row's last pixel. A rerun
   over those two functions misses none.
+
+## A0 evidence
+
+`alert-imperial-forces.png`, from the Windows VM's Battle at Yavin, shows
+the original's alert list with its bar at the list's right edge, a thin
+track between the two arrows. The port draws its bar at the same window
+place (329..339).
+
+| Capture (`.artifacts/a0-vm/2026-10-27-controls/`) | SHA-256 |
+|---|---|
+| `alert-imperial-forces.png` | `ebf1693a1ae0797747727c80e15dc7913e07596a83285d6969c8871a5a33e590` |

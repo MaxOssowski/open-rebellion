@@ -63,3 +63,16 @@ blockade by Imperial forces."
 | Replay equivalence | passed |
 | `cargo mutants` | 12 tested: 11 caught, 1 unviable, 0 missed |
 | Release WASM SHA-256 | `b116dcc16fd34b9c93926e2d48aa85ff7d92b65fd036753d5963a9bbc1b80fca` |
+
+## A second A0 case (2026-10-27)
+
+In the same VM session, the Imperial viewer lost the Battle at Selonia,
+an Alliance-held system where the Alliance had arrived last. The report
+reads: "The Imperial fleet is defeated. Alliance forces have broken the
+blockade of Selonia. The Imperial fleet has been completely destroyed."
+That is `0x7016` with the enemy's side, as the loss branch
+(`FUN_0049b4d0`) gives.
+
+| Capture (`.artifacts/a0-vm/2026-10-27-controls/`) | SHA-256 |
+|---|---|
+| `results-selonia-blockade-broken.png` | `9f7cd791c9e5ab408751aadb4cb879d6cb1af607250c89da4123498922f3f7d3` |

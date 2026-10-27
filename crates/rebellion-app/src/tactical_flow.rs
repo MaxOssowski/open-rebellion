@@ -191,7 +191,6 @@ pub(crate) fn apply_results(
         }
     }
     let mut stranded = Vec::new();
-    let mut to_planet = Vec::new();
     for fleet_key in fought {
         let is_attacker = world
             .fleets
@@ -228,12 +227,15 @@ pub(crate) fn apply_results(
                 }
             }
 
-            // FUN_0040c780's commit, each squadron's count and parent
-            // (FUN_0040d260, FUN_0040d320): one in its carrier's hangar or
-            // docked (state 1 or 5) rides on with it; a lost carrier's such
-            // squadrons died with it (its death, FUN_005b2d20, kills its
-            // hangar's through FUN_005b8d80), and its launched ones go to
-            // the system (the parent `[esi+8]`, 0x40d47c).
+            // FUN_0040c780's commit, each squadron's count (FUN_0040d260):
+            // a lost carrier's squadrons in its hangar or docked died with
+            // it (its death, FUN_005b2d20, kills its hangar's through
+            // FUN_005b8d80). Its launched ones stay with their side's fleet:
+            // A0 VM 2026-10-27 (Battle at Yavin) found the lost Victory
+            // Destroyer's TIE squadron in Fleet 1 after the battle, aboard
+            // the Death Star, though FUN_0040d320 parents a launched one to
+            // the system; what puts it back aboard is untraced, so the port
+            // seats it on a ship with room (number_ships).
             let lost: Vec<u64> = fleet
                 .capital_ships
                 .iter()
@@ -261,16 +263,10 @@ pub(crate) fn apply_results(
             }
             for (entry, (inside, outside)) in fleet.fighters.iter_mut().zip(survivors) {
                 if entry.carrier.is_some_and(|carrier| lost.contains(&carrier)) {
-                    entry.count = 0;
-                    to_planet.push((entry.class, outside));
+                    entry.count = outside;
                 } else {
                     entry.count = inside + outside;
                 }
-            }
-        }
-        if let Some(system) = world.systems.get_mut(session.system) {
-            for (class, count) in std::mem::take(&mut to_planet) {
-                rebellion_core::squadrons::add(&mut system.fighters, class, count);
             }
         }
 
@@ -901,10 +897,11 @@ mod tests {
     }
 
     #[test]
-    fn a_lost_carriers_hangar_squadrons_die_and_its_launched_ones_go_to_the_planet() {
-        // FUN_0040c780 / FUN_0040d320: a squadron in its carrier's hangar
-        // or docked rides on with it, else its parent is the system; a lost
-        // carrier's death (FUN_005b2d20 -> FUN_005b8d80) kills its hangar's.
+    fn a_lost_carriers_hangar_squadrons_die_and_its_launched_ones_stay_in_the_fleet() {
+        // A lost carrier's death (FUN_005b2d20 -> FUN_005b8d80) kills its
+        // hangar's squadrons; its launched ones stay with the fleet (A0 VM
+        // 2026-10-27: the lost Victory Destroyer's TIE in Fleet 1 after
+        // the Battle at Yavin).
         let (mut world, system, attacker, defender) = opposing_empty_fleets();
         let carrier = world.capital_ship_classes.insert(CapitalShipClass {
             dat_id: DatId::new(0x1400_0001),
@@ -968,20 +965,15 @@ mod tests {
 
         apply_results(&session, &mut world, &mut TroopTransportState::default());
 
-        // The surviving carrier keeps its squadron aboard; the lost one's
-        // are gone from the fleet, and only its launched one is on the
-        // planet (its other class had none out).
+        // The surviving carrier keeps its squadron aboard; of the lost
+        // one's, only the launched one is left, and it boards the surviving
+        // ship with room; the planet takes none.
+        world.number_ships();
         let fleet = &world.fleets[attacker];
-        assert_eq!(rebellion_core::squadrons::total(&fleet.fighters), 1);
-        assert_eq!(rebellion_core::squadrons::aboard(&fleet.fighters, kept), 1);
-        assert_eq!(
-            world.systems[system]
-                .fighters
-                .iter()
-                .map(|entry| (entry.class, entry.count))
-                .collect::<Vec<_>>(),
-            [(wing, 1)]
-        );
+        assert_eq!(rebellion_core::squadrons::total(&fleet.fighters), 2);
+        assert_eq!(rebellion_core::squadrons::aboard(&fleet.fighters, kept), 2);
+        assert!(world.systems[system].fighters.is_empty());
+        let _ = (wing, other);
     }
 
     #[test]
