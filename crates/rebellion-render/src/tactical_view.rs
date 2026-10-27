@@ -2950,8 +2950,6 @@ struct TacticalGroupHud<'a> {
     selected_task_force: Option<u8>,
     selected_fighter_group: Option<u8>,
     selected_ship_name: Option<&'a str>,
-    /// The selection is an enemy ship (`0x66bba8`).
-    selected_enemy: bool,
     selected_ship_hud: Option<u32>,
     selected_ship_hull: Option<(i32, i32)>,
     selected_ship_shield: Option<(i32, i32)>,
@@ -2965,11 +2963,13 @@ struct TacticalGroupHud<'a> {
 }
 
 impl<'a> TacticalGroupHud<'a> {
-    /// The ship the selected-ship panel shows: one of a player's task force,
-    /// or an enemy's (`0x66bba8`).
+    /// The ship the selected-ship panel shows. The one-unit, several-unit
+    /// and enemy states all show their unit (`FUN_005a1550`, `FUN_005a2280`,
+    /// `FUN_005a1110`: `FUN_005c5f20`, `FUN_0051c9b0`) with no test of its
+    /// group, so an ungrouped ship or a selection across forces shows too;
+    /// only the "Task Force #" caption needs a group.
     fn panel_ship_name(&self) -> Option<&'a str> {
         self.selected_ship_name
-            .filter(|_| self.selected_task_force.is_some() || self.selected_enemy)
     }
 
     fn from_session(session: &'a BattleSession) -> Self {
@@ -2991,12 +2991,16 @@ impl<'a> TacticalGroupHud<'a> {
         }
         let selected_task_force = selected_player_task_force(session);
         // An enemy selection (`0x66bba8`) shows its ship like one of ours.
+        // The panel's unit (`FUN_0051c9b0`): the clicked one when it is
+        // still selected, else the first selected ship.
+        let own_selected = |ship: &&TacticalShip| {
+            ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker
+        };
         let selected_ship = session
-            .ships
-            .iter()
-            .find(|ship| {
-                ship.alive && ship.selected && ship.is_attacker == session.player_is_attacker
-            })
+            .selected_ship
+            .and_then(|index| session.ships.get(index))
+            .filter(own_selected)
+            .or_else(|| session.ships.iter().find(own_selected))
             .or_else(|| selected_enemy_ship(session));
         let selected_fighter = session.selected_fighter_group.and_then(|group| {
             session.fighters.iter().find(|fighter| {
@@ -3020,7 +3024,6 @@ impl<'a> TacticalGroupHud<'a> {
             selected_fighter_group: session.selected_fighter_group,
             selected_fighter_count,
             selected_ship_name: selected_ship.map(|ship| ship.name.as_str()),
-            selected_enemy: selected_enemy_ship(session).is_some(),
             selected_ship_hud: selected_ship
                 .and_then(|ship| ship.tactical_resource)
                 .map(TacticalCapitalShipResource::hud_resource),
@@ -14695,7 +14698,6 @@ mod tests {
         select_clicked_ship(&mut session, 1, false);
         let hud = TacticalGroupHud::from_session(&session);
         assert_eq!(hud.selected_ship_name, Some("Star Destroyer"));
-        assert!(hud.selected_enemy);
         assert_eq!(hud.selected_task_force, None);
         assert_eq!(hud.selected_ship_hull, Some((session.ships[1].hull_current, session.ships[1].hull_max)));
     }
@@ -14719,10 +14721,10 @@ mod tests {
         assert!(selected_enemy_ship(&session).is_none());
     }
 
-    // The panel shows a task force's ship or an enemy's; a lone own ship in
-    // no group shows none, as before.
+    // FUN_005a1550 / FUN_005a1110 show their unit whatever its group: our
+    // grouped or ungrouped ship and an enemy ship all fill the panel.
     #[test]
-    fn the_panel_shows_a_grouped_or_an_enemy_ship() {
+    fn the_panel_shows_any_selected_ship() {
         let mut session = test_session(
             vec![test_ship(1, 0, true, true), test_ship(2, 0, false, true)],
             Vec::new(),
@@ -14731,9 +14733,32 @@ mod tests {
         select_clicked_ship(&mut session, 0, false);
         assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_some());
         session.ships[0].task_force = TACTICAL_UNGROUPED_TASK_FORCE;
-        assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_none());
+        let hud = TacticalGroupHud::from_session(&session);
+        assert!(hud.panel_ship_name().is_some());
+        assert_eq!(hud.selected_task_force, None);
         select_clicked_ship(&mut session, 1, false);
         assert!(TacticalGroupHud::from_session(&session).panel_ship_name().is_some());
+    }
+
+    // FUN_0051c9b0: the panel shows the clicked unit of a selection across
+    // two forces.
+    #[test]
+    fn the_panel_shows_the_clicked_ship_of_a_mixed_selection() {
+        let mut first = test_ship(1, 0, true, true);
+        first.name = "First".into();
+        first.task_force = 0;
+        let mut second = test_ship(3, 1, true, true);
+        second.name = "Second".into();
+        second.task_force = 1;
+        let mut session = test_session(vec![first, second], Vec::new(), true);
+        select_clicked_ship(&mut session, 0, false);
+        select_clicked_ship(&mut session, 1, true);
+        let hud = TacticalGroupHud::from_session(&session);
+        assert_eq!(hud.selected_task_force, None);
+        assert_eq!(hud.panel_ship_name(), Some("Second"));
+        // Unselected again, the first selected ship stands in.
+        session.ships[1].selected = false;
+        assert_eq!(TacticalGroupHud::from_session(&session).panel_ship_name(), Some("First"));
     }
 
     // 0x66bba8's order and tactic slots +0x20, +0x24 and +0x28 are the
