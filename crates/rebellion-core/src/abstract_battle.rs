@@ -405,8 +405,16 @@ fn target_priority(session: &BattleSession, unit: AbstractUnit) -> f32 {
                 ship.effective_shield_recharge() / ship.shield_recharge_rate
             }
         }
-        // hyp: a fighter group's +0x3e8 base is its full-hull recharge.
-        AbstractUnit::Fighter(_) => hull_ratio(session, unit),
+        // A fighter group's slot +0x64 (0x5b9c30) stores its recharge,
+        // hull × 0.025 / 8, at +0x3e8 and returns it, so FUN_005b1710's
+        // ratio is 1 while it has hull.
+        AbstractUnit::Fighter(index) => {
+            if session.fighters[index].hull_current > 0.0 {
+                1.0
+            } else {
+                0.0
+            }
+        }
     };
     unit_strength(session, unit) * ABSTRACT_PRIORITY_STRENGTH_WEIGHT
         - shield_ratio * ABSTRACT_PRIORITY_RATIO_WEIGHT
@@ -422,14 +430,6 @@ fn position(session: &BattleSession, unit: AbstractUnit) -> (f32, f32, f32) {
     (at.x, at.y, at.z)
 }
 
-/// hyp: the speed (slot `+0x34`) of a task force's object `+0x54`, taken as
-/// its leader's sublight engine power.
-fn engine_speed(session: &BattleSession, unit: AbstractUnit) -> f32 {
-    match unit {
-        AbstractUnit::Capital(index) => session.ships[index].sublight_engine_power,
-        AbstractUnit::Fighter(index) => session.fighters[index].sublight_engine_power,
-    }
-}
 
 /// `FUN_005b1b70`: installed hyperdrives outnumber hyperdrive hits
 /// (`FUN_005b1bc0`) and the engines have power (slot `+0x90`), for a
@@ -660,14 +660,14 @@ impl AbstractBattle {
         let from = position(&self.session, leader);
         let to = position(&self.session, target);
         let (dx, dy, dz) = (to.0 - from.0, to.1 - from.1, to.2 - from.2);
+        // The task force's formation (`+0x54`) reports its speed through
+        // slot `+0x34` (`0x5ec0b0`, `0x5ec3c0`): `+0x124`, which only slot
+        // `+0x40` (`FUN_005ea740`, the tactical manager's turn
+        // `FUN_005a9d40`) sets. The abstract step never runs it, so the
+        // speed is 0.0 and `FUN_005ed170`'s travel term is 0, raised to
+        // 1.0 (`DAT_0066da90`) before its weight.
         if dx != 0.0 || dy != 0.0 || dz != 0.0 {
-            let speed = engine_speed(&self.session, leader);
-            let travel = if speed == 0.0 {
-                0.0
-            } else {
-                dx.hypot(dy).hypot(dz) / speed
-            };
-            score += travel.max(1.0) * ABSTRACT_SCORE_TRAVEL_WEIGHT;
+            score += ABSTRACT_SCORE_TRAVEL_WEIGHT;
         }
         score
     }
@@ -939,8 +939,10 @@ impl AbstractBattle {
     /// Star (`FUN_005ba450`), sends its first fighter task force on the
     /// trench run (`FUN_005aefc0`).
     ///
-    /// hyp: the leader kind 4 the Alliance looks for (slot `+0x04`) is a
-    /// fighter group, as the port's task forces of fighters.
+    /// The kind 4 it looks for is the task force's own class (`0x5d1550`:
+    /// slot `+0x04` of the list's task force): a fighter task force
+    /// (vtable `0x66bee0`, `FUN_005a6700` returns 4; a capital one's
+    /// `FUN_005a6730` returns 3).
     fn death_star_step(&mut self, alliance: bool) {
         let Some(death_star) = self.session.death_star.filter(|ds| !ds.is_alliance) else {
             return;
@@ -1598,8 +1600,11 @@ impl AbstractBattle {
 /// Alliance person against `+0x1c` (an Imperial one against `+0x24`), so
 /// an Imperial pick gives 1.0 too.
 ///
-/// hyp: every character at the battle has a battle person (`FUN_0040c200`'s
-/// caller is not read), so the commander always counts.
+/// `FUN_0040b0e0` gives a battle person (`FUN_0040c200`) only to the
+/// characters aboard a capital ship of a fleet at the system (fleets
+/// `FUN_004ffe70(system, 3)`, ships `FUN_00502db0`, characters
+/// `FUN_004f25c0(ship, 1)`), so a system Commander no fleet's beats has no
+/// person and the term is 1.0.
 #[must_use]
 #[expect(
     clippy::cast_precision_loss,
@@ -1615,6 +1620,7 @@ pub fn trench_commander_term(world: &GameWorld, system: SystemKey) -> f32 {
             .map_or(0, |c| c.effective_skill(crate::world::Skill::Combat))
     };
     let mut held = system_holder(world, system, CommandKind::Commander);
+    let mut aboard = false;
     let fleets = world
         .systems
         .get(system)
@@ -1630,12 +1636,13 @@ pub fn trench_commander_term(world: &GameWorld, system: SystemKey) -> f32 {
         if let Some(candidate) = fleet_holder(world, fleet, CommandKind::Commander) {
             if held.is_none_or(|current| combat(candidate) > combat(current)) {
                 held = Some(candidate);
+                aboard = true;
             }
         }
     }
     // FUN_0040c200 sets +0x58 only on an Alliance person matching +0x1c, so
     // an Imperial pick there leaves the Alliance without a commander.
-    held.filter(|&key| world.characters.get(key).is_some_and(|c| c.is_alliance))
+    held.filter(|&key| aboard && world.characters.get(key).is_some_and(|c| c.is_alliance))
         .map_or(TRENCH_RUN_COMMANDER_FLOOR, |key| {
             (combat(key) as f32 / BATTLE_PERSON_COMBAT_DIVISOR + 1.0)
                 .clamp(TRENCH_RUN_COMMANDER_FLOOR, TRENCH_RUN_COMMANDER_CAP)
@@ -2550,9 +2557,12 @@ mod tests {
     }
 
     // FUN_005ed170: a distant target adds 0.001 × its travel seconds, at
-    // least one.
+    // least one. The abstract battle's formation speed (slot +0x34, +0x124)
+    // is never set (only FUN_005ea740 from the tactical manager's turn
+    // writes it), so the seconds are 0 and the term is 0.001 for any
+    // distance.
     #[test]
-    fn a_distant_target_adds_its_travel_time() {
+    fn a_distant_target_adds_the_least_travel_term() {
         let mut battle = AbstractBattle::new(session(
             vec![
                 ship(true, TacticalWeaponArc::new(0, 0, 4), 30.0),
@@ -2565,8 +2575,7 @@ mod tests {
         let near = battle.score(target, &attackers, &mut 0.0);
         battle.session.ships[1].source_position.z = 40.0;
         let far = battle.score(target, &attackers, &mut 0.0);
-        // 40 units at engine power 2: 20 seconds.
-        assert!((far - near - 20.0 * 0.001).abs() < 1e-5, "{far} {near}");
+        assert!((far - near - 0.001).abs() < 1e-5, "{far} {near}");
         battle.session.ships[1].source_position.z = 1.0;
         let close = battle.score(target, &attackers, &mut 0.0);
         assert!((close - near - 0.001).abs() < 1e-5, "{close} {near}");
@@ -2722,8 +2731,16 @@ mod tests {
         let bare = AbstractUnit::Capital(1);
         let expected = 15.0 * unit_strength(&battle, bare) - 0.01;
         assert!((target_priority(&battle, bare) - expected).abs() < 1e-5);
+        // A squadron's shield ratio is 1 while it has hull: its slot +0x64
+        // (0x5b9c30) writes +0x3e8, which FUN_005b1710 divides by.
         let squadron = AbstractUnit::Fighter(0);
-        let expected = 15.0 * unit_strength(&battle, squadron) - 0.01;
+        let expected = 15.0 * unit_strength(&battle, squadron)
+            - 0.01
+            - 0.01 * hull_ratio(&battle, squadron);
+        assert!((target_priority(&battle, squadron) - expected).abs() < 1e-5);
+        // With no hull left the stored recharge is 0, and so the ratio.
+        battle.fighters[0].hull_current = 0.0;
+        let expected = 15.0 * unit_strength(&battle, squadron) - 0.01 * hull_ratio(&battle, squadron);
         assert!((target_priority(&battle, squadron) - expected).abs() < 1e-5);
         assert!(shield_ratio > 0.0 && shield_ratio < 0.5);
     }
@@ -2777,9 +2794,9 @@ mod tests {
             };
             set(&mut moved.session.ships[0].source_position, 6.0);
             set(&mut moved.session.ships[1].source_position, 10.0);
-            // 4 units at engine power 2: 2 seconds.
+            // Any difference on any axis adds the least term (speed 0).
             let score = moved.score(target, &attackers, &mut 0.0);
-            assert!((score - base - 0.002).abs() < 1e-5, "axis {axis}: {score}");
+            assert!((score - base - 0.001).abs() < 1e-5, "axis {axis}: {score}");
         }
         assert_eq!(ABSTRACT_NO_SCORE, -1.0);
     }
@@ -4495,6 +4512,21 @@ mod tests {
         world.fleets[second].characters.clear();
         world.systems[battle].fleets.push(second);
         officer(&mut world, true, Commander, 320, Some(second), battle);
+        assert_eq!(trench_commander_term(&world, battle), 9.0);
+    }
+
+    // FUN_0040b0e0 gives a battle person only to characters aboard a ship
+    // of a fleet at the system, so an Alliance system Commander standing on
+    // the planet, unbeaten by a fleet's, gives the term 1.
+    #[test]
+    fn a_system_commander_off_the_fleets_has_no_battle_person() {
+        use crate::character_command::CommandKind::Commander;
+        let (mut world, [battle, ..], alliance, _) = withdrawal_world();
+        world.systems[battle].control =
+            crate::world::ControlKind::Controlled(crate::dat::Faction::Alliance);
+        officer(&mut world, true, Commander, 300, None, battle);
+        assert_eq!(trench_commander_term(&world, battle), 1.0);
+        officer(&mut world, true, Commander, 320, Some(alliance), battle);
         assert_eq!(trench_commander_term(&world, battle), 9.0);
     }
 
