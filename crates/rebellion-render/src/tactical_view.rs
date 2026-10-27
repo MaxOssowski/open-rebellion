@@ -13106,8 +13106,11 @@ mod tests {
 
     // FUN_005ad530: the player's fighter groups without a hyperdrive drop
     // their attack and take order 2, the recovery to a carrier
-    // (FUN_005ca6d0, FUN_005cf980); when the side's time ends a group still
-    // bound for an escaped carrier goes with it and keeps its craft (hyp).
+    // (FUN_005ca6d0, FUN_005cf980). When the side's time ends, event 0x2f
+    // (FUN_005b2720) destroys every group of the side still in the fight
+    // without a hyperdrive, one still on its way to an escaped carrier
+    // included; a group that docked first keeps its craft for the commit
+    // (FUN_0040c780, ghidra/notes/planet-squadrons.md).
     #[test]
     fn a_withdrawal_sends_the_fighters_to_their_carriers_and_away() {
         let mut carrier = test_ship(64, 0, true, true);

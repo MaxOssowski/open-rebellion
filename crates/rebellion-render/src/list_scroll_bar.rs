@@ -38,10 +38,12 @@ const MIN_THUMB: f32 = 12.0;
 const CONTENT_MARGIN: f32 = 5.0;
 
 /// An arrow held this long starts repeating (the strobe's threshold
-/// `0xfa / 50` ticks of `FUN_0060f1e0(50, ..)`), seconds.
+/// `0xfa / 50` ticks, `FUN_00602150`'s `+0x104`), seconds.
 const ARROW_REPEAT_DELAY: f64 = 0.25;
-/// The arrow strobe's period, seconds. hyp: 50 ms read from
-/// `FUN_00601f40`'s arguments.
+/// The arrow strobe's period, seconds: the arrows (ids 100 and 101, made at
+/// `0x60b179` and `0x60b24e`) pass 0x32 to `FUN_00602150` (`+0xfc`), whose
+/// strobe `FUN_0060f1e0` starts a periodic `timeSetEvent` of that delay
+/// (`FUN_00601f40(delay, TIME_PERIODIC, 10)`).
 const ARROW_REPEAT_PERIOD: f64 = 0.05;
 /// A held track click pages again on this timer (`SetTimer(.., 0x96)`).
 const PAGE_REPEAT_PERIOD: f64 = 0.15;

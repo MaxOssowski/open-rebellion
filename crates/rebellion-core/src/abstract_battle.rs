@@ -4627,8 +4627,9 @@ mod tests {
         assert!(!battle.can_leave(true));
     }
 
-    // FUN_005b1bc0 counts the installed hyperdrives (+0x3ec); hyp: a fighter
-    // group's are its FIGHTSD primary and backup ratings.
+    // FUN_005b1bc0 counts the installed hyperdrives (+0x3ec); FUN_0040be90
+    // gives a fighter group its FIGHTSD primary and backup ratings, one
+    // each when not 0 (slots +0x1ec and +0x1f0, class +0x6c and +0x70).
     #[test]
     fn a_battle_gives_a_fighter_group_its_class_hyperdrive() {
         let has = |primary: u32, backup: u32| {

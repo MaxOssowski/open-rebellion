@@ -1220,9 +1220,11 @@ pub struct TacticalFighter {
     /// Raw FIGHTSD maneuverability consumed by the fighter damage ratio.
     pub maneuverability: u32,
     /// The group has a hyperdrive: `FUN_005b1bc0` (installed `+0x3ec` less
-    /// hits `+0x374`) is above 0. hyp: installed counts the FIGHTSD primary
-    /// and backup ratings as for a capital ship; port: fighters take no
-    /// hyperdrive hits.
+    /// hits `+0x374`) is above 0. The battle setup (`FUN_0040be90`) passes
+    /// the squadron's slot `+0x1ec` not 0 plus slot `+0x1f0` not 0, the
+    /// class's `+0x6c` and `+0x70` (fighter vtable `0x0065def0`,
+    /// `0x557470` and `0x557480`): FIGHTSD `hyperdrive` and
+    /// `hyperdrive_if_damaged`. port: fighters take no hyperdrive hits.
     pub has_hyperdrive: bool,
     pub is_attacker: bool,
     pub alive: bool,
