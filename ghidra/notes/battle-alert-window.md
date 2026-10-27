@@ -68,8 +68,10 @@ text starts at 70 (`+0x30` = `0x46`). An indented row draws the picture
 20 (`0x14`) further right, and its text starts at 90 (`0x5a`).
 
 Ported in `tactical_view.rs` (`battle_alert_rows`, `battle_alert_list`).
-port: a fleet keeps its squadrons, regiments and personnel, not each
-ship, so they follow all the fleet's ships. Facilities go by kind
+Since save v106 a squadron rides on its ship (`FighterEntry::carrier`),
+so it is listed under that ship (2026-10-27). port: a squadron on no ship
+of the fleet, and the fleet's regiments and personnel, which the port
+keeps on the fleet, follow all the fleet's ships. Facilities go by kind
 (defenses, manufacturing, production). There is no scroll bar: six rows
 (those whose middle fits) are drawn. Since 2026-10-22 the wheel over the
 list scrolls it a row at a time, as in the port's other lists

@@ -7369,9 +7369,11 @@ struct AlertRow {
 /// facilities (`FUN_00539d70`), the regiments (`FUN_00504c40`) and the
 /// personnel (`FUN_00536da0`) on the planet, of either side.
 ///
-/// port: a fleet keeps its squadrons, regiments and personnel, not each
-/// ship, so they follow the fleet's ships. Facilities go by kind
-/// (defenses, manufacturing, production) in the system's order.
+/// A squadron rides on its ship (`FighterEntry::carrier`, save v106), so
+/// it is listed under that ship. port: a squadron on no ship of the fleet,
+/// and the fleet's regiments and personnel, which the port keeps on the
+/// fleet, follow the fleet's ships. Facilities go by kind (defenses,
+/// manufacturing, production) in the system's order.
 fn battle_alert_rows(
     world: &GameWorld,
     troop_transport: &TroopTransportState,
@@ -7480,11 +7482,26 @@ fn battle_alert_rows(
                         crate::status_rows::damaged(ship, class),
                         false,
                     ));
+                    // FUN_005039d0: the squadrons aboard this ship.
+                    rows.extend(
+                        fleet
+                            .fighters
+                            .iter()
+                            .filter(|entry| ship.id != 0 && entry.carrier == Some(ship.id))
+                            .filter_map(|entry| squadron(entry, true))
+                            .flatten(),
+                    );
                 }
+                // port: squadrons on no ship of the fleet follow its ships.
                 rows.extend(
                     fleet
                         .fighters
                         .iter()
+                        .filter(|entry| {
+                            !entry.carrier.is_some_and(|carrier| {
+                                carrier != 0 && fleet.capital_ships.iter().any(|ship| ship.id == carrier)
+                            })
+                        })
                         .filter_map(|entry| squadron(entry, true))
                         .flatten(),
                 );
@@ -10757,6 +10774,74 @@ mod tests {
         assert_eq!(
             texts,
             ["Imperial Forces", name.as_str(), "Deyer", "TIE Fighter"]
+        );
+    }
+
+    // FUN_00450770 lists each ship's own squadrons (FUN_005039d0) right
+    // under it, indented; a squadron on no ship follows the ships (port).
+    #[test]
+    fn the_battle_alert_lists_each_ships_squadrons_under_it() {
+        use rebellion_core::world::{
+            CapitalShipClass, ControlKind, FighterClass, FighterEntry, Fleet, ShipInstance,
+        };
+        let mut world = GameWorld::default();
+        let system = test_system(&mut world, ControlKind::Uncontrolled, None);
+        let cruiser = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0040),
+            name: "Cruiser".into(),
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        let fighter = |world: &mut GameWorld, name: &str| {
+            world.fighter_classes.insert(FighterClass {
+                dat_id: DatId::new(0x1c00_0001),
+                name: name.into(),
+                is_alliance: true,
+                ..FighterClass::default()
+            })
+        };
+        let (xwing, ywing, awing) =
+            (fighter(&mut world, "X-wing"), fighter(&mut world, "Y-wing"), fighter(&mut world, "A-wing"));
+        let mut first = ShipInstance::new(cruiser, 0, false);
+        first.id = 11;
+        let mut second = ShipInstance::new(cruiser, 0, false);
+        second.id = 12;
+        let entry = |class, count, carrier| FighterEntry { class, count, carrier };
+        let rebels = world.fleets.insert(Fleet {
+            location: system,
+            capital_ships: vec![first, second],
+            // The last one's ship is gone from the fleet.
+            fighters: vec![
+                entry(ywing, 1, Some(12)),
+                entry(xwing, 2, Some(11)),
+                entry(awing, 1, None),
+                entry(awing, 1, Some(99)),
+            ],
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[system].fleets = vec![rebels];
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::Forces { alliance: true },
+        );
+        let summary: Vec<(&str, bool)> =
+            rows.iter().skip(2).map(|row| (row.text.as_str(), row.indent)).collect();
+        assert_eq!(
+            summary,
+            [
+                ("Cruiser", false),
+                ("X-wing", true),
+                ("X-wing", true),
+                ("Cruiser", false),
+                ("Y-wing", true),
+                ("A-wing", true),
+                ("A-wing", true),
+            ]
         );
     }
 
