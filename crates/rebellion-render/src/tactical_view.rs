@@ -4168,6 +4168,12 @@ fn draw_original_bitmap(
         return;
     };
     let (screen_x, screen_y) = canvas.point(x, y);
+    // A cut never reaches past the bitmap.
+    let source_rect = source_rect.map(|rect| Rect {
+        w: rect.w.min(texture.width() - rect.x),
+        h: rect.h.min(texture.height() - rect.y),
+        ..rect
+    });
     let source_width = source_rect.map_or_else(|| texture.width(), |rect| rect.w);
     let source_height = source_rect.map_or_else(|| texture.height(), |rect| rect.h);
     draw_texture_ex(
@@ -5934,6 +5940,9 @@ struct BattleResultEntry {
     /// The backdrop under it: a regiment's STRATEGY 11514, personnel's
     /// 11500.
     backdrop: Option<(DllSource, u32)>,
+    /// The damage mark between them (`FUN_0042c3b0`, `+0x50` bit `0x200`):
+    /// a craft's GOKRES portrait + `0x2000`.
+    mark: Option<(DllSource, u32)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -5950,10 +5959,23 @@ struct BattleResultSkin {
 struct BattleAlertSkin {
     frame: u32,
     scene: u32,
+    /// The paler scene under the list tabs (surface `0x33`).
+    list_scene: u32,
     rail: u32,
     tabs: [[u32; 2]; 4],
     tab_rects: [NativeRect; 4],
     buttons: [[u32; 3]; 3],
+}
+
+/// `FUN_0044f860` builds surface `0x32` on the scene `0x29d8`/`0x29d9` and
+/// surface `0x33` on the paler `0x29da`/`0x29db`; `FUN_00450660` shows
+/// `0x32` on the summary tab and `0x33` on the three list tabs.
+fn battle_alert_scene(skin: &BattleAlertSkin, tab: BattleAlertTab) -> u32 {
+    if BattleAlertList::of(tab).is_some() {
+        skin.list_scene
+    } else {
+        skin.scene
+    }
 }
 
 fn battle_alert_skin(player_is_alliance: bool) -> BattleAlertSkin {
@@ -5962,6 +5984,7 @@ fn battle_alert_skin(player_is_alliance: bool) -> BattleAlertSkin {
         BattleAlertSkin {
             frame: art::BATTLE_ALERT_WINDOW_ALLIANCE,
             scene: art::BATTLE_ALERT_SCENE_ALLIANCE,
+            list_scene: art::BATTLE_ALERT_SCENE_ALLIANCE_DISABLED,
             rail: art::BATTLE_RAIL_ALLIANCE,
             tabs: [
                 [
@@ -6009,6 +6032,7 @@ fn battle_alert_skin(player_is_alliance: bool) -> BattleAlertSkin {
         BattleAlertSkin {
             frame: art::BATTLE_ALERT_WINDOW_EMPIRE,
             scene: art::BATTLE_ALERT_SCENE_EMPIRE,
+            list_scene: art::BATTLE_ALERT_SCENE_EMPIRE_DISABLED,
             rail: art::BATTLE_RAIL_EMPIRE,
             tabs: [
                 [
@@ -6212,6 +6236,13 @@ fn battle_result_entries(
     // FUN_0042c3b0(.., 1, 1): a craft's or a regiment's portrait, the mini
     // less 0x4000.
     let portrait = |mini: Option<u32>| mini.map(|mini| (DllSource::Gokres, mini - 0x4000));
+    // The damaged object's GOKRES portrait + 0x2000, under the portrait.
+    // hyp: a lost unit keeps the bit its full damage set.
+    let mark = |picture: Option<(DllSource, u32)>, damaged: bool| {
+        picture
+            .filter(|_| damaged)
+            .map(|(source, id)| (source, id + 0x2000))
+    };
     let condition = |destroyed: bool| {
         if destroyed {
             BattleResultCondition::Destroyed
@@ -6225,16 +6256,26 @@ fn battle_result_entries(
                 .ships
                 .iter()
                 .filter(|ship| ship.identity.is_alliance == alliance)
-                .map(|ship| BattleResultEntry {
-                    name: ship.name.clone(),
-                    condition: condition(!ship.alive || ship.hull_current <= 0),
-                    picture: portrait(
+                .map(|ship| {
+                    let picture = portrait(
                         world
                             .capital_ship_classes
                             .get(ship.class_key)
                             .and_then(|class| crate::minis::capital_ship_mini_id(class.dat_id)),
-                    ),
-                    backdrop: None,
+                    );
+                    // FUN_00501c00: hull damage or a system hit.
+                    let damaged = ship.hull_current < ship.hull_max
+                        || ship.subsystem_damage.total_hits() != 0;
+                    // A ship whose jump ended has left (FUN_005a90c0, state
+                    // 9), not been destroyed (state 0xb).
+                    let lost = ship.hull_current <= 0 || (!ship.alive && !ship.retreated);
+                    BattleResultEntry {
+                        name: ship.name.clone(),
+                        condition: condition(lost),
+                        picture,
+                        backdrop: None,
+                        mark: mark(picture, damaged || lost),
+                    }
                 })
                 .collect::<Vec<_>>();
             if let Some(death_star) = session
@@ -6248,6 +6289,7 @@ fn battle_result_entries(
                         rebellion_core::ids::DatId::new(rebellion_core::world::DEATH_STAR_CLASS_ID),
                     )),
                     backdrop: None,
+                    mark: None,
                 });
             }
             entries
@@ -6256,16 +6298,24 @@ fn battle_result_entries(
             .fighters
             .iter()
             .filter(|fighter| fighter.identity.is_alliance == alliance)
-            .map(|fighter| BattleResultEntry {
-                name: fighter.name.clone(),
-                condition: condition(!fighter.alive || fighter.squad_count == 0),
-                picture: portrait(
+            .map(|fighter| {
+                let picture = portrait(
                     world
                         .fighter_classes
                         .get(fighter.class_key)
                         .and_then(|class| crate::minis::fighter_mini_id(class.dat_id)),
-                ),
-                backdrop: None,
+                );
+                // FUN_00503340: its losses (slot +0x254) are not 0.
+                let damaged = fighter.hull_current < fighter.hull_max;
+                // A group whose jump ended has left (FUN_005a90c0).
+                let lost = fighter.squad_count == 0 || (!fighter.alive && !fighter.jumping());
+                BattleResultEntry {
+                    name: fighter.name.clone(),
+                    condition: condition(lost),
+                    picture,
+                    backdrop: None,
+                    mark: mark(picture, damaged || lost),
+                }
             })
             .collect(),
         BattleResultCategory::Troops => {
@@ -6297,6 +6347,7 @@ fn battle_result_entries(
                             }),
                         ),
                         backdrop: Some((DllSource::Strategy, 11_514)),
+                        mark: None,
                     }
                 })
                 .collect()
@@ -6319,6 +6370,7 @@ fn battle_result_entries(
                     )
                     .map(|mini| (DllSource::Gokres, mini)),
                     backdrop: Some((DllSource::Strategy, 11_500)),
+                    mark: None,
                 })
                 .collect()
         }
@@ -7447,7 +7499,12 @@ fn battle_force_page(
             }
             // FUN_004724a0: the picture centred over the name.
             if let Some(picture) = entry.picture {
-                for (source, id) in entry.backdrop.into_iter().chain(std::iter::once(picture)) {
+                for (source, id) in entry
+                    .backdrop
+                    .into_iter()
+                    .chain(entry.mark)
+                    .chain(std::iter::once(picture))
+                {
                     if let Some([w, h]) = size_of(source, id) {
                         ops.push(PageOp::Bitmap {
                             source,
@@ -8217,12 +8274,16 @@ fn draw_original_battle_alert(
         battle_window_origin().0,
         battle_window_origin().1,
     );
-    draw_strategy_bitmap(
+    // The scene fills the frame's 400-wide aperture at (12, 13); the list
+    // tabs' 410-wide scene is cut there (A0 alert-imperial-forces).
+    draw_original_bitmap(
         cache,
-        skin.scene,
+        DllSource::Strategy,
+        battle_alert_scene(&skin, state.battle_alert_tab),
         canvas,
         battle_window_origin().0 + 12.0,
         battle_window_origin().1 + 13.0,
+        Some(Rect::new(0.0, 0.0, 400.0, 310.0)),
     );
     let rows = draw_battle_alert_text(state, cache, world, troop_transport, canvas, text_color);
     let (screen_x, screen_y) = mouse_position();
@@ -10751,6 +10812,93 @@ mod tests {
     }
 
     #[test]
+    fn an_escaped_unit_is_not_destroyed_and_a_damaged_or_lost_one_wears_its_damage_mark() {
+        // FUN_005a90c0: a unit whose jump ended has left (state 9), not been
+        // destroyed (state 0xb). FUN_004724a0 -> FUN_0042c3b0(.., 1, 1)
+        // puts a damaged object's (+0x50 bit 0x200) GOKRES portrait + 0x2000
+        // under it: a ship's hull damage or system hits (FUN_00501c00), a
+        // squadron's lost craft (FUN_00503340, slot +0x254).
+        let mut world = GameWorld::default();
+        let ship_class = world.capital_ship_classes.insert(rebellion_core::world::CapitalShipClass {
+            dat_id: DatId::new(0x1400_0040),
+            ..Default::default()
+        });
+        let fighter_class = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            dat_id: DatId::new(0x1c00_0001),
+            ..Default::default()
+        });
+        let ship = |hull: i32, alive: bool, retreated: bool, hits: u8| {
+            let mut ship = test_ship(64, 1, true, alive);
+            ship.class_key = ship_class;
+            ship.hull_max = 10;
+            ship.hull_current = hull;
+            ship.retreated = retreated;
+            ship.subsystem_damage.engines = hits;
+            ship
+        };
+        let ships = vec![
+            ship(10, true, false, 0),
+            ship(6, true, false, 0),
+            ship(10, true, false, 1),
+            ship(10, false, true, 0),
+            ship(4, false, true, 0),
+            ship(0, false, false, 0),
+        ];
+        let fighter = |craft: u32, alive: bool, jumped: bool| {
+            let mut fighter = test_fighter(1, true);
+            fighter.class_key = fighter_class;
+            fighter.hull_current = craft as f32 * 8.0;
+            fighter.squad_count = craft;
+            fighter.alive = alive;
+            fighter.retreat_progress = if jumped { 4_000.0 } else { 0.0 };
+            fighter
+        };
+        let fighters = vec![
+            fighter(12, true, false),
+            fighter(7, true, false),
+            fighter(12, false, true),
+            fighter(5, false, true),
+            fighter(0, false, false),
+            fighter(12, false, false),
+        ];
+        let session = test_session(ships, fighters, true);
+        let transport = TroopTransportState::default();
+        let of = |category| {
+            battle_result_entries(&session, &world, &transport, true, category)
+                .into_iter()
+                .map(|entry| (entry.condition, entry.mark))
+                .collect::<Vec<_>>()
+        };
+        use BattleResultCondition::{Destroyed, Operational};
+        let portrait = crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap() - 0x4000;
+        let ship_mark = Some((DllSource::Gokres, portrait + 0x2000));
+        assert_eq!(
+            of(BattleResultCategory::CapitalShips),
+            [
+                (Operational, None),
+                (Operational, ship_mark),
+                (Operational, ship_mark),
+                (Operational, None),
+                (Operational, ship_mark),
+                (Destroyed, ship_mark),
+            ]
+        );
+        let portrait = crate::minis::fighter_mini_id(DatId::new(0x1c00_0001)).unwrap() - 0x4000;
+        let fighter_mark = Some((DllSource::Gokres, portrait + 0x2000));
+        assert_eq!(
+            of(BattleResultCategory::Fighters),
+            [
+                (Operational, None),
+                (Operational, fighter_mark),
+                (Operational, None),
+                (Operational, fighter_mark),
+                (Destroyed, fighter_mark),
+                (Destroyed, fighter_mark),
+            ]
+        );
+    }
+
+    #[test]
     fn a_ships_picture_is_its_classs_portrait_and_two_rows_and_a_part_fit() {
         // FUN_0042c3b0(.., 1, 1): the mini less 0x4000; the list's 166
         // (FUN_00607ea0 at 0x47041f: 347 by 166) holds two 70-high rows
@@ -10805,6 +10953,7 @@ mod tests {
             condition,
             picture: Some((DllSource::Gokres, 0x640)),
             backdrop: Some((DllSource::Strategy, 11_514)),
+            mark: None,
         };
         let entries = [
             entry("Kept", BattleResultCondition::Operational),
@@ -11708,6 +11857,7 @@ mod tests {
             condition,
             picture: None,
             backdrop: None,
+            mark: None,
         };
         let mixed = [
             entry(BattleResultCondition::Operational),
@@ -11742,6 +11892,7 @@ mod tests {
                 condition: BattleResultCondition::Operational,
                 picture: None,
                 backdrop: None,
+                mark: None,
             })
             .collect();
         let page = |scroll| {
@@ -17199,6 +17350,18 @@ mod tests {
         let empire = battle_alert_skin(false);
         assert_eq!(empire.frame, 10_711);
         assert_eq!(empire.scene, 10_713);
+        // FUN_0044f860 / FUN_00450660: the list tabs' paler scene.
+        assert_eq!(empire.list_scene, 10_715);
+        assert_eq!(alliance.list_scene, 10_714);
+        assert_eq!(battle_alert_scene(&alliance, BattleAlertTab::Summary), 10_712);
+        for tab in [
+            BattleAlertTab::AllianceForces,
+            BattleAlertTab::ImperialForces,
+            BattleAlertTab::System,
+        ] {
+            assert_eq!(battle_alert_scene(&empire, tab), 10_715);
+        }
+        assert_eq!(battle_alert_scene(&empire, BattleAlertTab::Summary), 10_713);
         assert_eq!(empire.rail, 10_821);
         assert_eq!(empire.tabs[0], [10_738, 10_739]);
         assert_eq!(empire.tabs[3], [10_744, 10_745]);

@@ -3594,6 +3594,7 @@ async function probeTacticalBattleAlertEntry(
   const resources = alliance ? {
     frame: 10710,
     scene: 10712,
+    listScene: 10714,
     rail: 10820,
     tabs: [10729, 10731, 10733, 10735],
     retreat: [10971, 10972],
@@ -3602,6 +3603,7 @@ async function probeTacticalBattleAlertEntry(
   } : {
     frame: 10711,
     scene: 10713,
+    listScene: 10715,
     rail: 10821,
     tabs: [10739, 10741, 10743, 10745],
     retreat: [10974, 10975],
@@ -3680,6 +3682,19 @@ async function probeTacticalBattleAlertEntry(
       }
       probes.push({ type: "battle-alert-scroll-step", thumb_top_y: moved });
     }
+    probes.push({
+      type: "battle-alert-list-scene",
+      // FUN_00450660 shows surface 0x33, built by FUN_0044f860 on the
+      // paler scene 0x29da / 0x29db, under the title and the list (window
+      // (83, 40), 256 x 234, with its bar).
+      ...verifyStrategyBitmap(viewport, capture, resources.listScene, 77 + dx, 67 + dy, [
+        { x: 0, y: 0, width: 400, height: 48 },
+        { x: 71, y: 27, width: 272, height: 236 },
+        // Its last 10 of 410 columns sit under the frame (A0
+        // alert-imperial-forces).
+        { x: 400, y: 0, width: 10, height: 280 },
+      ]),
+    });
     probes.push({
       type: "battle-alert-tab",
       tab: ["alliance-forces", "imperial-forces", "system-summary"][index - 1],

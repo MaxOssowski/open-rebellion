@@ -705,7 +705,8 @@ pub mod resources {
         /// Faction-authored Battle Alert summary scenes.
         pub const BATTLE_ALERT_SCENE_ALLIANCE: u32 = 10712;
         pub const BATTLE_ALERT_SCENE_EMPIRE: u32 = 10713;
-        /// Disabled Battle Alert summary scenes.
+        /// Paler Battle Alert scenes under the list tabs (`FUN_0044f860`
+        /// surface `0x33`).
         pub const BATTLE_ALERT_SCENE_ALLIANCE_DISABLED: u32 = 10714;
         pub const BATTLE_ALERT_SCENE_EMPIRE_DISABLED: u32 = 10715;
         /// Simulate Battle controls: normal, pressed, and disabled.
