@@ -4896,11 +4896,13 @@ impl BattleSession {
         // The heading (slot `+0x80`, `0x005b4d40`), made level.
         let ship = &self.ships[index];
         let mut wanted = if ship.retreating {
-            let exit = self.withdrawal_exit_z(ship.identity.is_alliance);
+            // Order 3: away from its side (`FUN_005a7490` reversed), also on
+            // and past its exit line, so it turns its bow before the jump.
+            // The side vector lies along z.
             TacticalWorldVector {
                 x: 0.0,
                 y: 0.0,
-                z: exit - ship.source_position.z,
+                z: -original_side_vector(ship.identity.is_alliance).z,
             }
         } else if delta != TacticalWorldVector::ZERO {
             delta

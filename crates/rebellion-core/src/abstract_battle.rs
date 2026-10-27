@@ -9235,6 +9235,17 @@ mod tests {
         nearer.ships[0].source_desired_forward = vector(0.0, 0.0, -1.0);
         nearer.advance_original_tactical_movement(250.0);
         assert!(near(nearer.ships[0].source_desired_forward, vector(0.0, 0.0, -1.0)));
+        // On its exit line and past it, still away from its side: it keeps
+        // turning its bow there before the jump.
+        for z in [exit, exit - 5.0] {
+            let mut there = session(tactical.ships.clone(), Vec::new());
+            there.ships[0].source_position.z = z;
+            there.ships[0].source_forward = vector(1.0, 0.0, 0.0);
+            there.ships[0].source_desired_forward = vector(1.0, 0.0, 0.0);
+            there.advance_original_tactical_movement(250.0);
+            assert!(near(there.ships[0].source_desired_forward, vector(0.0, 0.0, -1.0)));
+            assert!(there.ships[0].source_forward.z < 0.0);
+        }
     }
 
     fn neighbour(y: f32, half_height: f32, id: usize) -> crate::tactical::TacticalHeightNeighbour {
