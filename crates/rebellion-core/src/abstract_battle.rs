@@ -783,6 +783,10 @@ impl AbstractBattle {
                     whole,
                     rolls,
                 );
+                // FUN_005d14d0: a hull of 0 is destroyed (FUN_005af7a0).
+                if self.session.ships[index].hull_current == 0 {
+                    self.destroy(target);
+                }
             }
             AbstractUnit::Fighter(index) => {
                 // The non-virtual `FUN_005b54d0` reads the shield `+0x3c0`
@@ -914,7 +918,8 @@ impl AbstractBattle {
         }
     }
 
-    /// `FUN_005af7a0`: the unit is destroyed (state `0xb`).
+    /// `FUN_005af7a0`: the unit is destroyed (state `0xb`); a capital ship
+    /// takes the squadrons in its hangar lists (`+0x434`, `+0x438`) with it.
     fn destroy(&mut self, unit: AbstractUnit) {
         match unit {
             AbstractUnit::Capital(index) => {
@@ -922,6 +927,9 @@ impl AbstractBattle {
                 ship.hull_current = 0;
                 ship.shield = 0;
                 ship.alive = false;
+                for squadron in std::mem::take(&mut ship.hangar) {
+                    self.destroy(AbstractUnit::Fighter(squadron));
+                }
             }
             AbstractUnit::Fighter(index) => {
                 let fighter = &mut self.session.fighters[index];
@@ -2336,6 +2344,39 @@ mod tests {
         // FUN_005d14d0: side 1 with its Death Star is not beaten.
         assert!(!battle.side_step(false));
         assert!(battle.side_step(true));
+    }
+
+    // FUN_005d14d0: a target whose hull reaches 0 is destroyed
+    // (FUN_005af7a0), which walks its hangar lists (+0x434, +0x438) and
+    // destroys the squadrons inside; one already out stays.
+    #[test]
+    fn a_carrier_lost_in_the_abstract_battle_takes_its_hangar_with_it() {
+        let lost = |kill: &dyn Fn(&mut AbstractBattle)| {
+            let mut carrier = ship(false, TacticalWeaponArc::default(), 0.0);
+            carrier.fighter_capacity = 2;
+            carrier.shield = 0;
+            carrier.hull_current = 5;
+            carrier.hangar = vec![0];
+            let mut inside = fighter(false, TacticalWeaponArc::default());
+            inside.alive = false;
+            inside.in_hangar = true;
+            inside.home_carrier = Some(0);
+            let mut out = fighter(false, TacticalWeaponArc::default());
+            out.home_carrier = Some(0);
+            let mut battle = AbstractBattle::new(session(vec![carrier], vec![inside, out]));
+            kill(&mut battle);
+            let session = &battle.session;
+            (
+                session.ships[0].alive,
+                session.ships[0].hangar.is_empty(),
+                session.fighters[0].squad_count,
+                session.fighters[1].squad_count > 0,
+            )
+        };
+        // By damage.
+        assert_eq!(lost(&|battle| battle.deal(AbstractUnit::Capital(0), 50.0)), (false, true, 0, true));
+        // Outright (the Death Star's shot, a side destroyed).
+        assert_eq!(lost(&|battle| battle.destroy(AbstractUnit::Capital(0))), (false, true, 0, true));
     }
 
     // port: a capital ship keeps integer hull and shields, so a fraction of

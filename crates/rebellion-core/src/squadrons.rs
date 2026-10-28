@@ -870,12 +870,13 @@ mod tests {
         );
     }
 
-    // A squadron whose ship is gone boards another ship with room. hyp: the
-    // scrap and the abstract battle's commit, which do not reach this
-    // through SetDestroyedReason in the port (a destroyed ship takes its
-    // docked squadrons, crate::scrap::destroy_ship; the tactical commit
-    // kills a lost carrier's hangar, and its launched ones stay in the
-    // fleet, as the A0 VM run showed, and are seated here).
+    // A squadron whose ship is gone boards another ship with room. A ship
+    // scrapped or destroyed outside a battle takes its docked squadrons
+    // (crate::scrap::destroy_ship, GameObj_vt11c); in a battle the lost
+    // ship's hangar dies with it (FUN_005af7a0 in the abstract battle, the
+    // tactical commit), and its launched squadrons stay in the fleet, as
+    // the A0 VM run showed. port: what puts those back aboard is untraced,
+    // so they are seated here.
     #[test]
     fn a_lost_ships_squadrons_board_another_ship() {
         let mut setup = setup(2);
