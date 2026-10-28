@@ -701,7 +701,7 @@ In the port, the displayed battle's run (`BattleSession::
 prepare_original_trench_run`, `FUN_005d04e0`) is a different function, with
 its own success rating. Since W2i the abstract battle has both
 (`AbstractBattle::death_star_step`, `trench_run`).
-- `hyp:` the leader kind 4 is a fighter group.
+- The leader kind 4 is a fighter task force (`0x5d1550`: slot `+0x04`, vtable `0x66bee0`, `FUN_005a6700` returns 4; a capital one's `FUN_005a6730` returns 3).
 - The commander term is `trench_commander_term` (see above).
 - `port:` the port's Death Star capital ship carries the hangar and falls
   with it, so the fleet loses the Death Star and the squadrons inside
