@@ -3880,23 +3880,71 @@ pub fn apply_original_capital_damage(
     damage: i32,
     rolls: OriginalTacticalDamageRolls,
 ) -> OriginalTacticalImpactStage {
-    original_capital_damage(ships, field_effects, target, damage, rolls, None)
+    original_capital_damage(ships, field_effects, target, damage, rolls)
 }
 
-/// A tactical hit, the capital ship's slot `+0xe0` (`FUN_005b5f50`): the
-/// shield and hull take the damage at once, but each subsystem hit is posted
-/// through slot `+0x28` as event `0x1e`..`0x22` (`0x005b6151`..
-/// `0x005b6228`), so it is returned here to be queued.
+/// A tactical hit on a capital ship, its damage slot (`FUN_005b5100`
+/// laser, `FUN_005b5f50` turbolaser, `FUN_005b5750` torpedo): the damage
+/// (at least 1) comes off the shield. While the shield holds, a draw of 0
+/// to 100 at most the share of it lost (at least 1) is a shield hit. Past
+/// it, the shield is 0 and the rest comes off the hull. A ship left with
+/// hull is scored by a draw of 0 to 100 plus the hull's change in percent:
+/// above 50, the subsystem bands. A destroyed ship draws nothing. Each
+/// subsystem hit is posted through slot `+0x28` as event `0x1e`..`0x22`
+/// (`0x005b6151`..`0x005b6228`), so it is returned here to be queued. Only
+/// a unit whose `+0x124` is 0 draws; in a single-player battle that is
+/// every unit (see `evidence/2026-10-28-tactical-sound-events/`).
 pub fn apply_original_tactical_capital_hit(
     ships: &mut [TacticalShip],
     field_effects: &mut Vec<TacticalFieldEffect>,
     target: usize,
     damage: i32,
-    rolls: OriginalTacticalDamageRolls,
+    rng: &mut OriginalTacticalRng,
+) -> (OriginalTacticalImpactStage, Vec<TacticalSubsystemKind>) {
+    let stage = original_tactical_capital_hit(ships, target, damage, rng);
+    refresh_original_subsystem_conditions(ships, field_effects);
+    stage
+}
+
+/// `FUN_005b5f50`'s shield and hull steps, without the conditions'
+/// refresh.
+fn original_tactical_capital_hit(
+    ships: &mut [TacticalShip],
+    target: usize,
+    damage: i32,
+    rng: &mut OriginalTacticalRng,
 ) -> (OriginalTacticalImpactStage, Vec<TacticalSubsystemKind>) {
     let mut hits = Vec::new();
-    let stage = original_capital_damage(ships, field_effects, target, damage, rolls, Some(&mut hits));
-    (stage, hits)
+    let Some(ship) = ships.get_mut(target) else {
+        return (OriginalTacticalImpactStage::Hit, hits);
+    };
+    if !ship.alive || ship.hull_current <= 0 {
+        return (OriginalTacticalImpactStage::Hit, hits);
+    }
+    let damage = damage.max(1);
+    let hull_before = ship.hull_current;
+    let shield_before = ship.shield;
+    let shield_after = shield_before - damage;
+    if shield_after >= 0 {
+        ship.shield = shield_after;
+        let lost = ((100.0 / shield_before as f32) * damage as f32).max(1.0);
+        if rng.inclusive(0, 100) as f32 <= lost {
+            hits.push(TacticalSubsystemKind::Shields);
+        }
+        return (OriginalTacticalImpactStage::Hit, hits);
+    }
+    ship.shield = 0;
+    ship.hull_current = (hull_before + shield_after).max(0);
+    if ship.hull_current == 0 {
+        ship.alive = false;
+        return (OriginalTacticalImpactStage::Destroyed, hits);
+    }
+    let score = rng.inclusive(0, 100) as f32
+        + (ship.hull_current - hull_before) as f32 * 100.0 / hull_before as f32;
+    if let Some(kind) = original_hull_subsystem_kind(score) {
+        hits.push(kind);
+    }
+    (OriginalTacticalImpactStage::Damage, hits)
 }
 
 fn original_capital_damage(
@@ -3905,15 +3953,8 @@ fn original_capital_damage(
     target: usize,
     damage: i32,
     rolls: OriginalTacticalDamageRolls,
-    mut deferred: Option<&mut Vec<TacticalSubsystemKind>>,
 ) -> OriginalTacticalImpactStage {
-    let mut hit = |ship: &mut TacticalShip, kind: TacticalSubsystemKind| match deferred.as_mut() {
-        Some(hits) => {
-            hits.push(kind);
-            false
-        }
-        None => ship.add_subsystem_hit(kind),
-    };
+    let hit = |ship: &mut TacticalShip, kind: TacticalSubsystemKind| ship.add_subsystem_hit(kind);
     let (hull_before, hull_after, tractor_disabled) = {
         let Some(ship) = ships.get_mut(target) else {
             return OriginalTacticalImpactStage::Hit;
@@ -7742,15 +7783,13 @@ impl BattleSession {
                 let target_is_attacker = self.ships[index].is_attacker;
                 let target_group = self.ships[index].task_force;
                 let damage = original_tactical_integer_damage(shot.strength);
-                self.queue_impact_sound(shot.kind, self.ships[index].shield - damage >= 0);
-                let rolls =
-                    original_tactical_damage_rolls(&self.ships, index, damage, &mut self.tactical_rng);
+                self.queue_impact_sound(shot.kind, self.ships[index].shield - damage.max(1) >= 0);
                 let (stage, subsystem_hits) = apply_original_tactical_capital_hit(
                     &mut self.ships,
                     &mut self.field_effects,
                     index,
                     damage,
-                    rolls,
+                    &mut self.tactical_rng,
                 );
                 if stage == OriginalTacticalImpactStage::Destroyed {
                     self.release_tractor_of_destroyed(index);

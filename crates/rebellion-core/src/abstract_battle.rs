@@ -7103,6 +7103,99 @@ mod tests {
         assert_eq!(tractor_events(&destroyed), [off]);
     }
 
+    // FUN_005b5f50 (and FUN_005b5100, FUN_005b5750): one draw at most. A
+    // shield that holds draws for its share lost; a shot through it draws
+    // only the hull's score; a destroyed ship draws nothing. The abstract
+    // battle's FUN_005b54d0 drew both on a shot through the shield.
+    #[test]
+    fn a_tactical_capital_hit_draws_once_and_not_when_it_destroys() {
+        use crate::tactical::{apply_original_tactical_capital_hit, OriginalTacticalImpactStage};
+        let target = |shield: i32, hull: i32| {
+            let mut ship = gunship(false, TacticalWeaponArc::default());
+            ship.shield = shield;
+            ship.shield_max = shield.max(1);
+            ship.hull_current = hull;
+            ship.hull_max = 100;
+            vec![ship]
+        };
+        let hit = |mut ships: Vec<TacticalShip>, damage: i32, seed: u32| {
+            let mut rng = OriginalTacticalRng::new(seed);
+            let mut effects = Vec::new();
+            let result = apply_original_tactical_capital_hit(&mut ships, &mut effects, 0, damage, &mut rng);
+            (ships, result, rng)
+        };
+        let after = |seed: u32, draws: usize| {
+            let mut rng = OriginalTacticalRng::new(seed);
+            for _ in 0..draws {
+                rng.inclusive(0, 100);
+            }
+            rng
+        };
+        // The shield holds: one draw; it takes all 10, so a hit (100%).
+        let (ships, (stage, hits), rng) = hit(target(10, 100), 10, 3);
+        assert_eq!((ships[0].shield, ships[0].hull_current, stage), (0, 100, OriginalTacticalImpactStage::Hit));
+        assert_eq!(hits, [crate::tactical::TacticalSubsystemKind::Shields]);
+        assert_eq!(rng, after(3, 1));
+        // Through it: the shield is 0, the hull takes the rest, one draw.
+        let (ships, (stage, _), rng) = hit(target(10, 100), 30, 3);
+        assert_eq!((ships[0].shield, ships[0].hull_current, stage), (0, 80, OriginalTacticalImpactStage::Damage));
+        assert_eq!(rng, after(3, 1));
+        // Destroyed: no draw.
+        let (ships, (stage, hits), rng) = hit(target(10, 15), 30, 3);
+        assert_eq!((ships[0].hull_current, ships[0].alive, stage), (0, false, OriginalTacticalImpactStage::Destroyed));
+        assert!(hits.is_empty());
+        assert_eq!(rng, after(3, 0));
+        // A ship already lost is left alone.
+        let mut lost = target(10, 100);
+        lost[0].alive = false;
+        let (ships, (_, hits), rng) = hit(lost, 30, 3);
+        assert_eq!((ships[0].shield, ships[0].hull_current), (10, 100));
+        assert!(hits.is_empty());
+        assert_eq!(rng, after(3, 0));
+        // A stream whose first draw of 0 to 100 is `value`.
+        let seed = |value: u32| {
+            (0..)
+                .find(|&seed| OriginalTacticalRng::new(seed).inclusive(0, 100) == value)
+                .expect("a stream gives the draw")
+        };
+        use crate::tactical::TacticalSubsystemKind::{Shields, Weapons};
+        // 10 of a shield of 100 is 10%: a draw of 10 hits, 11 misses.
+        assert_eq!(hit(target(100, 100), 10, seed(10)).1 .1, [Shields]);
+        assert!(hit(target(100, 100), 10, seed(11)).1 .1.is_empty());
+        // Through a shield of 10, 30 leaves the hull 80 (-20%): the score is
+        // the draw less 20; above 50 to 65 the shields, to 80 the weapons.
+        assert!(hit(target(10, 100), 30, seed(70)).1 .1.is_empty());
+        assert_eq!(hit(target(10, 100), 30, seed(71)).1 .1, [Shields]);
+        assert_eq!(hit(target(10, 100), 30, seed(85)).1 .1, [Shields]);
+        assert_eq!(hit(target(10, 100), 30, seed(86)).1 .1, [Weapons]);
+    }
+
+    // FUN_005b5f50 sounds the shield's event (0x0c) when what is left of it
+    // is not below 0, else the hull's (0x11).
+    #[test]
+    fn a_capital_hit_sounds_the_shield_while_it_holds() {
+        use crate::tactical::{OriginalFighterTarget, TacticalAudioEvent, TacticalShot, TacticalUnitRef, WeaponKind};
+        let sound = |shield: i32, strength: f32| {
+            let shooter = gunship(true, TacticalWeaponArc::default());
+            let mut target = gunship(false, TacticalWeaponArc::default());
+            target.shield = shield;
+            target.shield_max = shield.max(1);
+            target.hull_current = 100;
+            target.hull_max = 100;
+            let mut tactical = session(vec![shooter, target], Vec::new());
+            tactical.hit_weapon_shot(TacticalShot {
+                source: TacticalUnitRef::Ship(0),
+                target: OriginalFighterTarget::Capital(1),
+                kind: WeaponKind::Turbolaser,
+                strength,
+            });
+            tactical.pending_audio_cues.last().map(|cue| cue.event)
+        };
+        assert_eq!(sound(10, 10.0), Some(TacticalAudioEvent::ShieldHit));
+        assert_eq!(sound(10, 11.0), Some(TacticalAudioEvent::HullHit));
+        assert_eq!(sound(10, 4.0), Some(TacticalAudioEvent::ShieldHit));
+    }
+
     /// An enemy ship with shields `shield` and 100 hull, hit by an ion
     /// shot of `strength` from a stream that yields `draws` as (minimum,
     /// maximum, value) triples, after the hit sound's variant (0 to 2,

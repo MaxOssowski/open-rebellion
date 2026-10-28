@@ -14688,7 +14688,9 @@ mod tests {
         assert!(ship.weapon_recharge_queue.is_empty());
     }
 
-    // Source: FUN_005b3a40 / FUN_005b3f10 / FUN_005b54d0 fire and damage.
+    // Source: FUN_005b3a40 / FUN_005b3f10 fire and FUN_005b5100's damage:
+    // a shield that takes the whole shot loses 100%, so its draw of 0 to
+    // 100 is a shield hit, and the hull is untouched.
     #[test]
     fn live_ship_fire_uses_the_shared_subsystem_damage_path() {
         let mut source = test_ship(64, 0, true, true);
@@ -14712,13 +14714,17 @@ mod tests {
         let mut shots = Vec::new();
         let mut firing = test_session(ships, Vec::new(), true);
         firing.fire_unit_weapons(rebellion_core::tactical::TacticalUnitRef::Ship(0), &mut shots);
+        assert_eq!(shots.len(), 1);
+        let damage = rebellion_core::tactical::original_tactical_integer_damage(shots[0].strength);
+        firing.ships[1].shield = damage;
+        firing.ships[1].shield_max = damage;
         let resolved = resolve_test_shots(firing.ships, &shots);
         let ships = &resolved.ships;
         let projectiles = &resolved.weapon_effects;
         let impacts = &resolved.impact_effects;
         let audio_cues = &resolved.pending_audio_cues;
 
-        assert!(ships[1].hull_current < 1000);
+        assert_eq!((ships[1].shield, ships[1].hull_current), (0, 1000));
         assert_eq!(ships[1].subsystem_damage.shields, 1);
         assert!(ships[1].subsystem_condition.shields < 100);
         assert_eq!(projectiles.len(), 1);
