@@ -959,7 +959,7 @@ fn draw_system_window(
                 logical_rect(local, scale, TITLE.0, TITLE.1 + TITLE.2 / 2.0, 0.0, 0.0).min,
                 egui::Align2::LEFT_CENTER,
                 &system.name,
-                egui::FontId::proportional((11.0 * scale).max(7.0)),
+                crate::theme::original_font(5, scale),
                 egui::Color32::BLACK,
             );
 
@@ -1622,6 +1622,7 @@ mod tests {
     ) -> Run {
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let fog = FogState::new(Faction::Alliance);
         let mut run = Run::default();
@@ -2102,7 +2103,10 @@ mod tests {
         // (5, 1) and (5, 16) and (5, 57); the counts centred in the yard
         // column.
         let title = text(&run, "System 0");
-        assert_eq!((title.1.x, title.3), (at(19.0, 0.0).x, 22.0));
+        assert_eq!(
+            (title.1.x, title.3),
+            (at(19.0, 0.0).x, crate::theme::original_font(5, 2.0).size)
+        );
         let heading = text(&run, "Ship Construction");
         // FUN_00458080: the title keeps the text object's black
         // (FUN_00601930), the lines are white; FUN_00457690's counts keep

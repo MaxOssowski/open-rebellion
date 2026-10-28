@@ -456,3 +456,16 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 - `FUN_00558380`'s base order list; the regiment `0x214` refusal's status
   (native check pending). The leg builders and the full-fleet refusal are
   traced in `regiment-unload.md`.
+
+## Title fonts (read 2026-10-28)
+
+- The Fleet window's title (`FUN_004a4b10`, `0x4a4b10..`): the label
+  `+0x124` (the base dialog's `+0x49`), 16 rows high (`+4` = `0x10`),
+  starts at the sector button's width plus 5, y 2. It holds the system's
+  name in font 5 (16 rows, bold), format `0x24` (one line, left-aligned,
+  vertically centred), `0x2000000` (black).
+- The System window (`FUN_00452fc0`), System Defenses (`FUN_004a8790`) and
+  Missions (`FUN_004a2200`, the `+0x17c` label) titles are the same font 5
+  labels. The port's notes for those windows already said font 5.
+- A0 2026-10-28 (`system-vjun.png`): "Vjun" is bold black, and its capital
+  stands about 11 rows tall, as a 16-row bold Arial cell.

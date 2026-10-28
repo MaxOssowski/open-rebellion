@@ -1025,7 +1025,8 @@ fn draw_missions_window(
                 ui.allocate_exact_size(screen_rect.size(), egui::Sense::click_and_drag());
             let painter = ui.painter().clone();
             let white = egui::Color32::WHITE;
-            let label_font = egui::FontId::proportional((11.0 * scale).max(7.0));
+            // The window's labels are font 5 (16 rows, bold).
+            let label_font = crate::theme::original_font(5, scale);
             let list_font = egui::FontId::proportional((9.0 * scale).max(6.0));
 
             painter.rect_filled(local, 0.0, egui::Color32::BLACK);
@@ -2065,6 +2066,7 @@ mod tests {
         frames: Vec<Vec<egui::Event>>,
     ) -> Run {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let fog = unseen();
         let mut result = Run::default();
@@ -2186,7 +2188,10 @@ mod tests {
             .contains(&(planet_resource_id(DatId::new(100)), at(108.0, 37.0))));
 
         let title = text(&run, "Mission at Sluis Van");
-        assert_eq!((title.pos.x, title.font), (at(21.0, 0.0).x, 22.0));
+        assert_eq!(
+            (title.pos.x, title.font),
+            (at(21.0, 0.0).x, crate::theme::original_font(5, 2.0).size)
+        );
         assert_eq!(title.pos.y + title.size.y / 2.0, at(0.0, 10.0).y);
         let row = text(&run, "Diplomacy");
         assert_eq!((row.pos, row.font, row.wrap), (at(6.0, 24.0), 18.0, 174.0));

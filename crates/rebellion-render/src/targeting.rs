@@ -502,6 +502,8 @@ mod tests {
         cache.set_base_path(&root);
 
         let ctx = egui::Context::default();
+
+        crate::theme::load_fonts(&ctx);
         // A new Area is laid out unseen on its first frame; draw two.
         let mut output = None;
         let mut drawn = false;
@@ -548,6 +550,7 @@ mod tests {
         // FUN_00429320 captures the mouse for the galaxy view.
         let click = |capture: bool| {
             let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
             let mut clicked = false;
             for frame in 0..4 {
                 let pointer = egui::pos2(20.0, 20.0);
@@ -592,6 +595,7 @@ mod tests {
     fn an_unstaged_cursor_draws_nothing_and_says_so() {
         let mut cache = BmpCache::new();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut drawn = true;
         let output = ctx.run(egui::RawInput::default(), |ctx| {
             drawn = draw_targeting_cursor(ctx, &mut cache, layout(1.0), egui::pos2(10.0, 10.0));
@@ -754,6 +758,7 @@ mod tests {
         ) -> R {
             let layout = layout(1.0);
             let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
             let mut cache = BmpCache::new();
             let fog = FogState::new(Faction::Alliance);
             let uprisings = rebellion_core::uprising::UprisingState::default();

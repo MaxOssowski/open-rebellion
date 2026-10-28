@@ -990,7 +990,7 @@ fn draw_defenses_window(
                 logical_rect(local, scale, TITLE.0, TITLE.1 + TITLE.2 / 2.0, 0.0, 0.0).min,
                 egui::Align2::LEFT_CENTER,
                 &system.name,
-                egui::FontId::proportional((11.0 * scale).max(7.0)),
+                crate::theme::original_font(5, scale),
                 egui::Color32::BLACK,
             );
 
@@ -1758,6 +1758,7 @@ mod tests {
         frames: Vec<Vec<egui::Event>>,
     ) -> Run {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let fog = world
             .systems
@@ -1935,7 +1936,10 @@ mod tests {
         assert_eq!(text(&run, "Hidden").color, egui::Color32::WHITE);
         // `+0x49` at (19, 2), 16 high: left-aligned, vertically centred.
         let title = text(&run, "Sluis Van");
-        assert_eq!((title.pos.x, title.font), (at(19.0, 0.0).x, 22.0));
+        assert_eq!(
+            (title.pos.x, title.font),
+            (at(19.0, 0.0).x, crate::theme::original_font(5, 2.0).size)
+        );
         assert_eq!(title.pos.y + title.size.y / 2.0, at(0.0, 10.0).y);
         // `+0x5b` at (2, 51), 231 by 16: centred both ways.
         let name = text(&run, "Personnel");

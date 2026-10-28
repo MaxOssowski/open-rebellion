@@ -1704,12 +1704,13 @@ fn draw_fleet_window(
                 2.0,
             );
             // The title label starts after the restore-sector button: its
-            // width plus 5 (`FUN_004a4b10`).
+            // width plus 5, at y 2, 16 high, in font 5, black, format 0x24
+            // (one line, left-aligned, vertically centred; FUN_004a4b10).
             painter.text(
-                logical_rect(local, scale, 19.0, 3.0, 0.0, 0.0).min,
-                egui::Align2::LEFT_TOP,
+                logical_rect(local, scale, 19.0, 2.0 + 8.0, 0.0, 0.0).min,
+                egui::Align2::LEFT_CENTER,
                 &system.name,
-                egui::FontId::proportional((11.0 * scale).max(7.0)),
+                crate::theme::original_font(5, scale),
                 egui::Color32::BLACK,
             );
 
@@ -2941,6 +2942,7 @@ pub(crate) mod tests {
         /// The top-left corner and size of the laid-out text.
         pos: egui::Pos2,
         width: f32,
+        height: f32,
         size: f32,
         color: egui::Color32,
     }
@@ -3002,6 +3004,7 @@ pub(crate) mod tests {
         frames: Vec<Vec<egui::Event>>,
     ) -> Run {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let fog =
             world
@@ -3047,6 +3050,7 @@ pub(crate) mod tests {
                             text: text.galley.text().to_owned(),
                             pos: text.pos,
                             width: text.galley.size().x,
+                            height: text.galley.size().y,
                             size: format.font_id.size,
                             color: format.color,
                         });
@@ -4094,7 +4098,6 @@ pub(crate) mod tests {
             let white = egui::Color32::WHITE;
             let (left, centre, right) = (egui::Align::Min, egui::Align::Center, egui::Align::Max);
             for (label, anchor, align, size, color) in [
-                ("Sluis Van", at(19.0, 3.0), left, 22.0, egui::Color32::BLACK),
                 ("Fleet 1", at(8.0, 34.0), left, 18.0, white),
                 ("Fleet 1", at(164.0, 29.0), centre, 20.0, color),
                 ("1", at(101.0, 44.0), left, 20.0, white),
@@ -4115,6 +4118,18 @@ pub(crate) mod tests {
                     "{faction:?}: {label} at {anchor:?} in {texts:?}"
                 );
             }
+            // FUN_004a4b10: the title from x 19, centred in rows 2..18, font 5,
+            // black.
+            let title = texts.iter().find(|text| text.text == "Sluis Van").unwrap();
+            assert_eq!(
+                (title.pos.x, title.size, title.color),
+                (
+                    at(19.0, 0.0).x,
+                    crate::theme::original_font(5, 2.0).size,
+                    egui::Color32::BLACK
+                )
+            );
+            assert_eq!(title.pos.y + title.height / 2.0, at(0.0, 10.0).y);
         }
     }
 
