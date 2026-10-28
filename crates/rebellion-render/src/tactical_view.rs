@@ -6390,7 +6390,14 @@ fn battle_result_entries(
                     )
                     .map(|mini| (DllSource::Gokres, mini)),
                     backdrop: Some((DllSource::Strategy, 11_500)),
-                    mark: None,
+                    // FUN_004f7800: an injured character is damaged; its
+                    // mini takes STRATEGY 11502 (FUN_0042c3b0).
+                    mark: (character.injury > 0).then(|| {
+                        crate::fleet_window::damage_mark(
+                            crate::fleet_window::MiniObject::Character,
+                            0,
+                        )
+                    }),
                 })
                 .collect()
         }
@@ -11825,6 +11832,49 @@ mod tests {
         assert_eq!(
             BattleAlertList::of(BattleAlertTab::System),
             Some(BattleAlertList::SystemAssets)
+        );
+    }
+
+    #[test]
+    fn an_injured_character_in_the_results_wears_the_damage_mark() {
+        // FUN_004724a0 passes the personnel page's minis (local_b0 1):
+        // FUN_0042c3b0 puts STRATEGY 11502 over the backdrop 11500 for a
+        // damaged character (FUN_004f7800: injury != 0). The regiments get
+        // no mark: GameObj_SetDamaged has no regiment caller.
+        use rebellion_core::world::Character;
+        let mut world = GameWorld::default();
+        let mut person = |injury| {
+            world.characters.insert(Character {
+                name: "Luke".into(),
+                dat_id: DatId::new(0x3000_0240),
+                is_major: true,
+                injury,
+                ..Default::default()
+            })
+        };
+        let (well, hurt) = (person(0), person(5));
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: SystemKey::default(),
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: vec![well, hurt],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let mut session = test_session(Vec::new(), Vec::new(), true);
+        session.attacker_fleet = fleet;
+        session.defender_fleet = fleet;
+        let entries = battle_result_entries(
+            &session,
+            &world,
+            &TroopTransportState::default(),
+            true,
+            BattleResultCategory::Personnel,
+        );
+        assert_eq!(
+            entries.iter().map(|entry| entry.mark).collect::<Vec<_>>(),
+            [None, Some((DllSource::Strategy, 11_502))]
         );
     }
 
