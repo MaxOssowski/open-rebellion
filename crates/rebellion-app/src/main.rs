@@ -4777,6 +4777,7 @@ async fn main() {
                         commanded
                     };
 
+                    sector_window_state.set_backdrop(cockpit_state.gid_mode);
                     for action in draw_sector_windows(
                         ctx,
                         &world,

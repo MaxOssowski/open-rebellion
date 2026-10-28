@@ -392,7 +392,7 @@ pub fn system_in_revolt(
     matches!(system.control, ControlKind::Uprising(_)) || uprisings.is_uprising(key)
 }
 
-fn gid_backdrop_resource(gid_mode: GidMode) -> u32 {
+pub(crate) fn gid_backdrop_resource(gid_mode: GidMode) -> u32 {
     if gid_mode.is_active() {
         bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM
     } else {
@@ -400,7 +400,7 @@ fn gid_backdrop_resource(gid_mode: GidMode) -> u32 {
     }
 }
 
-fn galaxy_backdrop_destination(
+pub(crate) fn galaxy_backdrop_destination(
     layout: CockpitLayout,
     faction: CockpitFaction,
     source_width: f32,

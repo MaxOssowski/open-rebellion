@@ -502,3 +502,26 @@ system, and its name takes the unheld colour.
   has none.
 - Not read: the bitmap `FUN_0042d860` adds at the planet bitmap's bottom
   left (item `+0x70`).
+
+## The sector window's background (read 2026-10-28)
+
+- `FUN_00459e30` builds a shading table with `FUN_005fddd0(LAB_004ac550)`.
+  `LAB_004ac550` maps each palette colour's channels to `c / 6 + 50`
+  (`imul 0x2aaaaaab`, the sign fix, `add dl, 0x32`). For each entry,
+  `FUN_005fddd0` takes the palette entry nearest that colour by squared
+  RGB distance. The search starts from the entry itself, takes a later
+  entry only when strictly nearer, and stops at an exact match. The table
+  is the bitmap's `+0x24`.
+- WM_PAINT (`FUN_004593e0`, `0x459457..0x4594dc`):
+  1. copies the galaxy view's picture (its `+0x45c`, the whole view's back
+     buffer, `0x422e1c`) under the window, from the window's `+0x28`,
+     `+0x2c`, into the window's surface `+0xa4` (`FUN_005fcc30`);
+  2. maps it through the table (`FUN_005fe050`);
+  3. blits the window's own art `+0xa8` over it.
+- A0 2026-10-28: comparing the same pixels with the window closed
+  (`galaxy-a.png`) and open (`sector-a.png`) gives one colour per source
+  colour. For example, (36, 37, 71) becomes (59, 59, 59), (39, 47, 124)
+  becomes (54, 56, 67), and (83, 84, 128) becomes (69, 67, 68). The table
+  above, computed on STRATEGY 903's palette, gives exactly these.
+- The copy includes whatever the galaxy view drew there, so the GID
+  markers under the window show shaded too.

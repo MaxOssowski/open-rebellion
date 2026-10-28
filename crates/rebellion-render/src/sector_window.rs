@@ -87,6 +87,9 @@ struct OpenSectorWindow {
 pub struct SectorWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenSectorWindow>,
+    /// The galaxy view's starfield (STRATEGY 902 or 903), which the windows
+    /// show shaded under themselves.
+    backdrop: u32,
 }
 
 impl Default for SectorWindowState {
@@ -94,11 +97,18 @@ impl Default for SectorWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
         }
     }
 }
 
 impl SectorWindowState {
+    /// Show `gid_mode`'s starfield under the windows, the one the galaxy view
+    /// paints (`draw_galaxy_backdrop`).
+    pub fn set_backdrop(&mut self, gid_mode: crate::cockpit::GidMode) {
+        self.backdrop = crate::gid_backdrop_resource(gid_mode);
+    }
+
     /// Open the selected system's parent sector (`FUN_00429ce0`;
     /// `ghidra/notes/sector-window-placement.md`). An open window raises
     /// rather than duplicate. At most two are open, one per column: a sector
@@ -493,6 +503,7 @@ pub fn draw_sector_windows(
             cache,
             uprisings,
             missions,
+            state.backdrop,
         );
         if result.focus {
             focused = Some(window.sector);
@@ -586,6 +597,7 @@ fn draw_sector_window(
     cache: &mut BmpCache,
     uprisings: &rebellion_core::uprising::UprisingState,
     missions: &rebellion_core::missions::MissionState,
+    backdrop: u32,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(sector) = world.sectors.get(window.sector) else {
@@ -632,8 +644,25 @@ fn draw_sector_window(
             // The original is a child window (FUN_00459e30 places its items
             // in it), so a planet near its bottom edge is cut off there.
             ui.set_clip_rect(window_rect);
+            // WM_PAINT (FUN_004593e0) copies the galaxy view's picture under
+            // the window (its +0x45c at the window's +0x28, +0x2c) and maps
+            // it through the shading table FUN_00459e30 built
+            // (FUN_005fddd0(LAB_004ac550), FUN_005fe050). port: the copy is
+            // the starfield alone, without the GID markers under the window.
             ui.painter()
                 .rect_filled(window_rect, 0.0, egui::Color32::from_rgb(42, 42, 42));
+            if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, backdrop) {
+                let size = texture.size_vec2();
+                let starfield = crate::galaxy_backdrop_destination(layout, faction, size.x, size.y);
+                let origin = egui::pos2(starfield.x, starfield.y);
+                let extent = egui::vec2(starfield.width, starfield.height);
+                let uv = egui::Rect::from_min_max(
+                    ((window_rect.min - origin) / extent).to_pos2(),
+                    ((window_rect.max - origin) / extent).to_pos2(),
+                );
+                ui.painter()
+                    .image(texture.id(), window_rect, uv, egui::Color32::WHITE);
+            }
             paint_window_border(ui.painter(), ctx, cache, window_rect, layout.scale);
 
             // FUN_00459e30: the sector's name in font 4, 0x200f0f0 (yellow),
@@ -2725,6 +2754,107 @@ mod tests {
             colour(&world.systems[system].name),
             Some(egui::Color32::from_rgb(0, 255, 0)),
             "{texts:?}"
+        );
+    }
+
+    // The galaxy view's starfield is 903 under an active GID mode and 902
+    // with the display off (draw_galaxy_backdrop).
+    #[test]
+    fn the_windows_shade_the_starfield_the_galaxy_view_shows() {
+        let mut state = SectorWindowState::default();
+        assert_eq!(state.backdrop, 903);
+        state.set_backdrop(crate::cockpit::GidMode::DisplayOff);
+        assert_eq!(state.backdrop, 902);
+        state.set_backdrop(crate::cockpit::GidMode::PopularSupport);
+        assert_eq!(state.backdrop, 903);
+    }
+
+    // FUN_004593e0 copies the galaxy view's picture from under the window:
+    // the shaded starfield's texture coordinates are the window's place on
+    // the starfield.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_window_shows_the_shaded_starfield_from_under_itself() {
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-sector-shade-{}",
+            std::process::id()
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("903.bmp"),
+            crate::bmp_cache::tests::indexed_bmp(&[[36, 37, 71], [59, 59, 59]]),
+        )
+        .unwrap();
+        let (world, system, _) = fixture_world();
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let texture = cache
+            .get_shaded(&ctx, DllSource::Strategy, 903)
+            .map(egui::TextureHandle::id)
+            .unwrap();
+        let mut uv = None;
+        for index in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+            uv = output
+                .shapes
+                .iter()
+                .find_map(|clipped| match &clipped.shape {
+                    egui::Shape::Mesh(mesh) if mesh.texture_id == texture => {
+                        let xs = mesh.vertices.iter().map(|vertex| vertex.uv);
+                        let min = xs
+                            .clone()
+                            .fold(egui::pos2(f32::MAX, f32::MAX), egui::Pos2::min);
+                        let max = xs.fold(egui::pos2(f32::MIN, f32::MIN), egui::Pos2::max);
+                        Some((min, max))
+                    }
+                    _ => None,
+                });
+        }
+        std::fs::remove_dir_all(base).unwrap();
+        // The 2 by 1 starfield at the Alliance's content origin (21, 25),
+        // doubled; the window at its column's logical place, doubled.
+        let window = window_screen_rect(CockpitFaction::Alliance, state.windows[0].column, layout);
+        let origin = egui::pos2(10.0 + 21.0 * 2.0, 20.0 + 25.0 * 2.0);
+        let extent = egui::vec2(2.0 * 2.0, 1.0 * 2.0);
+        let (min, max) = uv.unwrap();
+        let expected_min = ((window.min - origin) / extent).to_pos2();
+        let expected_max = ((window.max - origin) / extent).to_pos2();
+        assert!(
+            (min - expected_min).length() < 1e-3,
+            "{min:?} {expected_min:?}"
+        );
+        assert!(
+            (max - expected_max).length() < 1e-3,
+            "{max:?} {expected_max:?}"
         );
     }
 

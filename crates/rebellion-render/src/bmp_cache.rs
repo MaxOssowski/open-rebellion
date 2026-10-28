@@ -1356,6 +1356,9 @@ pub struct BmpCache {
     macroquad_textures: HashMap<(DllSource, u32), Option<Texture2D>>,
     /// Native-style per-pixel hit masks decoded from the original BMPs.
     hit_masks: HashMap<(DllSource, u32), Option<BitmapHitMask>>,
+    /// Original bitmaps through the sector window's shading table
+    /// ([`shade_bitmap`]).
+    shaded_textures: HashMap<(DllSource, u32), Option<TextureHandle>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1448,6 +1451,7 @@ impl BmpCache {
             textures: HashMap::new(),
             macroquad_textures: HashMap::new(),
             hit_masks: HashMap::new(),
+            shaded_textures: HashMap::new(),
         }
     }
 
@@ -1459,6 +1463,7 @@ impl BmpCache {
         self.textures.clear();
         self.macroquad_textures.clear();
         self.hit_masks.clear();
+        self.shaded_textures.clear();
     }
 
     /// Set an optional HD PNG directory.
@@ -1603,6 +1608,31 @@ impl BmpCache {
         }
 
         self.macroquad_textures.get(&key)?.as_ref()
+    }
+
+    /// The original bitmap through the sector window's shading table
+    /// ([`shade_bitmap`]), as an egui texture.
+    pub fn get_shaded(
+        &mut self,
+        ctx: &egui::Context,
+        source: DllSource,
+        resource_id: u32,
+    ) -> Option<&TextureHandle> {
+        let key = (source, resource_id);
+        if !self.shaded_textures.contains_key(&key) {
+            let handle = self
+                .load_original_bytes(source, resource_id)
+                .and_then(|bytes| shade_bitmap(&bytes))
+                .map(|image| {
+                    ctx.load_texture(
+                        format!("{}_{}_shaded", source.texture_prefix(), resource_id),
+                        image,
+                        AssetVariant::Original.texture_options(),
+                    )
+                });
+            self.shaded_textures.insert(key, handle);
+        }
+        self.shaded_textures.get(&key)?.as_ref()
     }
 
     fn ensure_hit_mask(&mut self, source: DllSource, resource_id: u32) {
@@ -1956,6 +1986,96 @@ fn decode_bmp_palette(bytes: &[u8]) -> Option<[[u8; 4]; 256]> {
 
 /// Decode a staged image and apply the original game's palette-blue
 /// transparency to resources whose extracted bitmaps contain that matte.
+/// The sector window's colour transform (`LAB_004ac550`, which
+/// `FUN_00459e30` hands `FUN_005fddd0`): each channel `c` becomes
+/// `c / 6 + 50`.
+#[must_use]
+pub fn sector_shade(rgb: [u8; 3]) -> [u8; 3] {
+    rgb.map(|channel| channel / 6 + 50)
+}
+
+/// `FUN_005fddd0`'s table for a palette: each entry maps to the palette
+/// entry nearest its [`sector_shade`] colour by squared distance. The search
+/// starts from the entry itself and takes a later one only when strictly
+/// nearer, stopping at an exact match.
+#[must_use]
+pub fn sector_shade_table(palette: &[[u8; 3]]) -> Vec<usize> {
+    let distance = |a: [u8; 3], b: [u8; 3]| -> i32 {
+        a.iter()
+            .zip(b)
+            .map(|(&x, y)| (i32::from(x) - i32::from(y)).pow(2))
+            .sum()
+    };
+    palette
+        .iter()
+        .enumerate()
+        .map(|(index, &color)| {
+            let target = sector_shade(color);
+            let mut best = index;
+            let mut best_distance = distance(color, target);
+            if best_distance != 0 {
+                for (candidate, &entry) in palette.iter().enumerate() {
+                    let d = distance(entry, target);
+                    if d < best_distance {
+                        best = candidate;
+                        best_distance = d;
+                    }
+                    if d == 0 {
+                        break;
+                    }
+                }
+            }
+            best
+        })
+        .collect()
+}
+
+/// An 8-bit BMP's palette, as RGB (its `RGBQUAD`s after the info header).
+fn bmp_palette(bytes: &[u8]) -> Option<Vec<[u8; 3]>> {
+    let u32_at = |at: usize| -> Option<u32> {
+        Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?))
+    };
+    let header = usize::try_from(u32_at(14)?).ok()?;
+    let bits = u16::from_le_bytes(bytes.get(28..30)?.try_into().ok()?);
+    if bits != 8 {
+        return None;
+    }
+    let used = usize::try_from(u32_at(46)?).ok()?;
+    let count = if used == 0 { 256 } else { used };
+    let entries = bytes.get(14 + header..)?.chunks_exact(4).take(count);
+    let palette: Vec<[u8; 3]> = entries
+        .map(|entry| [entry[2], entry[1], entry[0]])
+        .collect();
+    (palette.len() == count).then_some(palette)
+}
+
+/// The bitmap with every pixel mapped through [`sector_shade_table`] of its
+/// own palette, as `FUN_005fe050` maps the sector window's copy of the
+/// galaxy view.
+fn shade_bitmap(bytes: &[u8]) -> Option<egui::ColorImage> {
+    let palette = bmp_palette(bytes)?;
+    let table = sector_shade_table(&palette);
+    let mut shaded: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
+    for (index, &color) in palette.iter().enumerate() {
+        shaded.entry(color).or_insert(palette[table[index]]);
+    }
+    let rgba = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let mut pixels = rgba.into_raw();
+    for pixel in pixels.chunks_exact_mut(4) {
+        let color = [pixel[0], pixel[1], pixel[2]];
+        let [r, g, b] = shaded
+            .get(&color)
+            .copied()
+            .unwrap_or_else(|| sector_shade(color));
+        pixel[..3].copy_from_slice(&[r, g, b]);
+    }
+    Some(egui::ColorImage::from_rgba_unmultiplied(
+        [width as usize, height as usize],
+        &pixels,
+    ))
+}
+
 fn decode_color_image(
     bytes: &[u8],
     source: DllSource,
@@ -2055,7 +2175,7 @@ fn load_image_bytes_as_texture(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -2662,6 +2782,114 @@ mod tests {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
         }
+    }
+
+    // LAB_004ac550: each channel c becomes c / 6 + 50 (0x2aaaaaab, then
+    // add dl, 0x32).
+    #[test]
+    fn the_sector_shade_divides_each_channel_by_six_and_adds_fifty() {
+        assert_eq!(sector_shade([36, 37, 71]), [56, 56, 61]);
+        assert_eq!(sector_shade([255, 255, 255]), [92, 92, 92]);
+        assert_eq!(sector_shade([0, 5, 6]), [50, 50, 51]);
+    }
+
+    // FUN_005fddd0: an entry maps to the palette entry nearest its shade by
+    // squared distance, starting from itself, taking a later one only when
+    // strictly nearer, and stopping at an exact match. The A0 sector window
+    // shows the galaxy's (36, 37, 71) as (59, 59, 59).
+    #[test]
+    fn the_shade_table_takes_the_nearest_palette_entry() {
+        let palette = [
+            [36, 37, 71],
+            [59, 59, 59],
+            [0, 0, 0],
+            [56, 56, 61],
+            [56, 56, 61],
+        ];
+        let table = sector_shade_table(&palette);
+        // (56, 56, 61) is in the palette: the first exact match, index 3.
+        assert_eq!(table[0], 3);
+        // (59, 59, 59) shades to (59, 59, 59): itself.
+        assert_eq!(table[1], 1);
+        // (0, 0, 0) shades to (50, 50, 50): (56, 56, 61) at 193 beats
+        // (59, 59, 59) at 243.
+        assert_eq!(table[2], 3);
+        let gray = [[59, 59, 59], [36, 37, 71]];
+        assert_eq!(sector_shade_table(&gray), [0, 0]);
+    }
+
+    /// A 2 by 1, 8-bit BMP with `palette`, pixels 0 and 1.
+    pub(crate) fn indexed_bmp(palette: &[[u8; 3]]) -> Vec<u8> {
+        let colors = u32::try_from(palette.len()).unwrap();
+        let offset = 14 + 40 + 4 * colors;
+        let mut bytes = Vec::new();
+        bytes.extend(b"BM");
+        bytes.extend((offset + 4).to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend(offset.to_le_bytes());
+        bytes.extend(40u32.to_le_bytes());
+        bytes.extend(2i32.to_le_bytes());
+        bytes.extend(1i32.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(8u16.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend(4u32.to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(colors.to_le_bytes());
+        bytes.extend([0; 4]);
+        for [r, g, b] in palette {
+            bytes.extend([*b, *g, *r, 0]);
+        }
+        bytes.extend([0, 1, 0, 0]);
+        bytes
+    }
+
+    // The shaded texture comes from the staged original BMP, once.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_cache_shades_a_staged_bitmap_once() {
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-shaded-{}-{}",
+            std::process::id(),
+            std::thread::current()
+                .name()
+                .unwrap_or("test")
+                .replace("::", "-")
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join("903.bmp"),
+            indexed_bmp(&[[36, 37, 71], [59, 59, 59]]),
+        )
+        .unwrap();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        let first = cache
+            .get_shaded(&ctx, DllSource::Strategy, 903)
+            .map(egui::TextureHandle::id)
+            .unwrap();
+        assert_eq!(
+            cache
+                .get_shaded(&ctx, DllSource::Strategy, 903)
+                .map(egui::TextureHandle::id),
+            Some(first)
+        );
+        assert!(cache.get_shaded(&ctx, DllSource::Strategy, 902).is_none());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    // FUN_005fe050 maps each pixel of the sector window's copy through the
+    // table of the copy's palette.
+    #[test]
+    fn a_shaded_bitmap_maps_each_pixel_through_its_palettes_table() {
+        let bytes = indexed_bmp(&[[36, 37, 71], [59, 59, 59]]);
+        assert_eq!(bmp_palette(&bytes), Some(vec![[36, 37, 71], [59, 59, 59]]));
+        let image = shade_bitmap(&bytes).unwrap();
+        assert_eq!(image.size, [2, 1]);
+        assert_eq!(image.pixels[0], egui::Color32::from_rgb(59, 59, 59));
+        assert_eq!(image.pixels[1], egui::Color32::from_rgb(59, 59, 59));
     }
 
     #[test]
