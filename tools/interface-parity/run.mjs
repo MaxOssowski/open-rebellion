@@ -3563,11 +3563,16 @@ async function probeTacticalBattleResultsPresentation(
   assert.match(persistence.text, /defender_capitals=3->2/,
     `${faction}: destroyed defender capital was not removed from strategic state`);
   // Five squadrons a side (four operational, so the Fighters list
-  // scrolls); one is destroyed.
-  assert.match(persistence.text, /attacker_fighters=5->4/,
-    `${faction}: destroyed attacker fighter was not removed from strategic state`);
-  assert.match(persistence.text, /defender_fighters=5->4/,
-    `${faction}: destroyed defender fighter was not removed from strategic state`);
+  // scrolls); one is destroyed. The four are in the field, not in a hangar,
+  // so they land on the system (FUN_0040d320).
+  assert.match(persistence.text, /attacker_fighters=5->0\s/,
+    `${faction}: attacker squadrons did not leave the fleet`);
+  assert.match(persistence.text, /defender_fighters=5->0\s/,
+    `${faction}: defender squadrons did not leave the fleet`);
+  assert.match(persistence.text, /attacker_landed=0->4\s/,
+    `${faction}: destroyed attacker fighter was not removed, or survivors did not land`);
+  assert.match(persistence.text, /defender_landed=0->4(?:\s|$)/,
+    `${faction}: destroyed defender fighter was not removed, or survivors did not land`);
   probes.push({ type: "battle-results-route", destination: route,
     screenshot_sha256: sha256(routed) });
   probes.push({ type: "strategic-result-persistence", log: persistence.text });

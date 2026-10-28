@@ -144,7 +144,7 @@ pub fn seat_squadrons(world: &mut GameWorld, fleet: FleetKey) {
 }
 
 /// Add `count` squadrons of `class` on `carrier` to `entries`.
-fn put(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32, carrier: Option<u64>) {
+pub fn put(entries: &mut Vec<FighterEntry>, class: FighterKey, count: u32, carrier: Option<u64>) {
     if count == 0 {
         return;
     }
@@ -874,9 +874,9 @@ mod tests {
     // scrapped or destroyed outside a battle takes its docked squadrons
     // (crate::scrap::destroy_ship, GameObj_vt11c); in a battle the lost
     // ship's hangar dies with it (FUN_005af7a0 in the abstract battle, the
-    // tactical commit). port: its launched squadrons stay in the fleet and
-    // are seated here; FUN_0040d320 would put them on the system, and the
-    // A0 VM run that seemed to say otherwise used an edited save.
+    // tactical commit), and the tactical commit puts its launched ones on
+    // the system (FUN_0040d320). port: any squadron still in a fleet on no
+    // living ship is seated here.
     #[test]
     fn a_lost_ships_squadrons_board_another_ship() {
         let mut setup = setup(2);
