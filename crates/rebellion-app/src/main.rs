@@ -975,7 +975,8 @@ async fn main() {
             }
             Err(error) => {
                 macroquad::logging::error!(
-                    "[encyclopedia] source_catalog unavailable error={error}"
+                    "[encyclopedia] source_catalog unavailable error={}",
+                    error
                 );
                 None
             }
@@ -5543,7 +5544,8 @@ async fn main() {
                                 player_faction,
                             );
                             macroquad::logging::info!(
-                                "[interface] command=0x250 missions={missions:?}"
+                                "[interface] command=0x250 missions={:?}",
+                                missions
                             );
                             if !missions.is_empty() {
                                 move_confirmation_state.open(MoveConfirmation {
@@ -6086,7 +6088,9 @@ async fn main() {
                             let aborted = mission_state.abort_allowed(id, player_faction)
                                 && mission_state.abort(id);
                             macroquad::logging::info!(
-                                "[interface] command=0x250 destination=abort mission={id} result={aborted}"
+                                "[interface] command=0x250 destination=abort mission={} result={}",
+                                id,
+                                aborted
                             );
                         }
                     }
@@ -7670,7 +7674,9 @@ fn confirm_special_force_move(
         .get(&value.class_dat_id)
         .map_or_else(String::new, |class| class.name.clone());
     macroquad::logging::info!(
-        "[interface] special_force_move confirm days={days} blockaded={blockaded}"
+        "[interface] special_force_move confirm days={} blockaded={}",
+        days,
+        blockaded
     );
     move_confirmation_state.open(MoveConfirmation {
         order: ConfirmedOrder::Move,
@@ -8650,7 +8656,9 @@ fn apply_panel_action(
                 }
             };
             macroquad::logging::info!(
-                "[interface] command=0x242 destination=retire member={member:?} result={result:?}"
+                "[interface] command=0x242 destination=retire member={:?} result={:?}",
+                member,
+                result
             );
             if result.is_err() {
                 msg_log.push(GameMessage::new(

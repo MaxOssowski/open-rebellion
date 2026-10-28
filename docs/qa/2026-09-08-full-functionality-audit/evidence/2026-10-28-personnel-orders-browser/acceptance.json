@@ -1,0 +1,460 @@
+{
+  "run": "personnel-orders-2026-10-28T20-37-24-103Z-217333",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "wasm_sha256": "c06bca154635134e704869430ebc49c51e9090a12b4738ece19004612c73cdc7",
+  "runtime_pack_sha256": "3f1548f819ecc1e0d658c4e5ca68ee3c0116fc68ab34908101fda805b84fb57f",
+  "results": [
+    {
+      "faction": "alliance",
+      "case": "character-move",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Ok(0)"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "d74d176c7c5995cd73fe089bf7107ee14b6efc4381f8daf87016053aa2c56d77"
+        },
+        {
+          "label": "final",
+          "sha256": "83c9d2e958878a2848a8ed96d5861116d9292fb3ca27892b9fb56805d7a57f1f"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "character-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "0679c3a5602d7fb92360422493f539036a705d30fd1b7405550f81dc95ce4022"
+        },
+        {
+          "label": "final",
+          "sha256": "18f9ae35743b723467e8401ab28b2cb2f889abf8e438655e54eeb0c4bfeccd14"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "special-force-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] special_force_move unit=SpecialForceKey(16v1) to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "b77f3ba81831b6fc2fbe9e636f61c27824465aedfbde5e030bdb0269050f8db3"
+        },
+        {
+          "label": "final",
+          "sha256": "d46fbee1f568c5571bfaaf1eb2615907502eb7b88c11f47518dbc81d3d645dfc"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "character-retire",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] command=0x242 member=Character(CharacterKey(3v1)) result=Some(true)",
+        "[interface] command=0x242 destination=retire member=Character(CharacterKey(3v1)) result=Ok(())"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "d74d176c7c5995cd73fe089bf7107ee14b6efc4381f8daf87016053aa2c56d77"
+        },
+        {
+          "label": "final",
+          "sha256": "c8432dcb794789d3b13883febfe299fd39eef1f65bfcc8df54f5697d3058d715"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "special-force-retire",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] command=0x242 member=SpecialForce(SpecialForceKey(16v1)) result=Some(true)",
+        "[interface] command=0x242 destination=retire member=SpecialForce(SpecialForceKey(16v1)) result=Ok(())"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "b77f3ba81831b6fc2fbe9e636f61c27824465aedfbde5e030bdb0269050f8db3"
+        },
+        {
+          "label": "final",
+          "sha256": "146cec8abcfa834889d1bcb4a03f3175b1cacbdaf6c046d9ac0300ce92b3d151"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "abort",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] command=0x250 missions=[0]",
+        "[interface] command=0x250 destination=abort mission=0 result=true"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "085e32cf7e4811e384da9306d9db6140626dca0cbdc566cb73d7ee9a2b6317eb"
+        },
+        {
+          "label": "final",
+          "sha256": "d08c3daaa57be1f21a16187d8c0f55fc269155e5be8988d341e4ffe9cd322257"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "character-move",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Ok(0)"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "ca153d57f314e5aeb8b0c409fa6bbd142365738683de89259c425b94ee1b797d"
+        },
+        {
+          "label": "final",
+          "sha256": "df1b7b70c7138e7adbb78cb3b34916895e20b83de079256423541f6726da422b"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "character-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "f24c1b961a9ac93c183af7a7f0c09887dade3a8983ffabbcd1a65e87e83c5627"
+        },
+        {
+          "label": "final",
+          "sha256": "3dbc7888578ded7d6aadadf66f724813f91ffc93ced83fc02cab6cb101f134af"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "special-force-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] special_force_move unit=SpecialForceKey(16v1) to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "64c49663f0b91baccdae2808bb7c2d96845c836b7d8a8d906d80cf2af93895ce"
+        },
+        {
+          "label": "final",
+          "sha256": "59e660bb450cf6d4e6b833b8edfe615cf22008d06284f15b60bf869ad0c3d498"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "character-retire",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] command=0x242 member=Character(CharacterKey(3v1)) result=Some(true)",
+        "[interface] command=0x242 destination=retire member=Character(CharacterKey(3v1)) result=Ok(())"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "ca153d57f314e5aeb8b0c409fa6bbd142365738683de89259c425b94ee1b797d"
+        },
+        {
+          "label": "final",
+          "sha256": "f579dcd57639e8e48520c592c7757403fde45f26173ef4302f0201238461cb84"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "special-force-retire",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] command=0x242 member=SpecialForce(SpecialForceKey(16v1)) result=Some(true)",
+        "[interface] command=0x242 destination=retire member=SpecialForce(SpecialForceKey(16v1)) result=Ok(())"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "64c49663f0b91baccdae2808bb7c2d96845c836b7d8a8d906d80cf2af93895ce"
+        },
+        {
+          "label": "final",
+          "sha256": "09b9d86bad71aee3f2c25abde9a26163b065e395e105729ee0ef215a7600609d"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "abort",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] command=0x250 missions=[0]",
+        "[interface] command=0x250 destination=abort mission=0 result=true"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "cd7e54f3c54989a05bd4aa288bcd1983959a01228b248c7e7deae25eea72d009"
+        },
+        {
+          "label": "final",
+          "sha256": "82630c66278a9dfa0cd9a0eb53a6ae06b121a02b1860406638a681c370f93981"
+        }
+      ]
+    }
+  ]
+}

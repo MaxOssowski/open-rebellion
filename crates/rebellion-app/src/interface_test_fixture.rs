@@ -335,6 +335,7 @@ impl Scenario {
             || self == Self::ResearchTargeting
             || self.targets_an_object()
             || self == Self::BuildSelection
+            || self == Self::Quadrants
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
     }
@@ -2035,6 +2036,12 @@ struct FixtureObjectMenu<'a> {
     bombardment_row: Option<usize>,
     assault_row: Option<usize>,
     command_row: Option<usize>,
+    /// Retire (`0x242`) and a mission icon's Abort (`0x250`), each with
+    /// whether its row is enabled.
+    retire_row: Option<usize>,
+    retire_enabled: bool,
+    abort_row: Option<usize>,
+    abort_enabled: bool,
     /// The Planetary Bombardment or Command submenu while it is shown.
     submenu: Option<FixtureSubmenu>,
     target_dat_id: u32,
@@ -2079,7 +2086,6 @@ fn object_menu_report<'a>(
     };
     let target = world.systems.get(key)?;
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
-    // The Build Selection gate targets nothing; its menu reports anyway.
     // The Rescue scenario targets the prisoner in the prison's first cell.
     let prison_cell = match request.scenario {
         Scenario::RescueTargeting => defenses.cell_screen_rect(layout, key, 0),
@@ -2096,7 +2102,15 @@ fn object_menu_report<'a>(
     };
     let planet = match prison_cell.or_else(|| sectors.planet_screen_rect(world, layout, key)) {
         Some(rect) => rect.center(),
-        None if request.scenario == Scenario::BuildSelection => egui_macroquad::egui::Pos2::ZERO,
+        // The Build Selection and mission-icon gates target nothing; their
+        // menus report anyway.
+        None if matches!(
+            request.scenario,
+            Scenario::BuildSelection | Scenario::Quadrants
+        ) =>
+        {
+            egui_macroquad::egui::Pos2::ZERO
+        }
         None => return None,
     };
     let (target_screen_x, target_screen_y) = (planet.x, planet.y);
@@ -2119,6 +2133,14 @@ fn object_menu_report<'a>(
         stop_row: menu.row_of(ObjectMenuCommand::Stop),
         bombardment_row: menu.row_of(ObjectMenuCommand::Bombardment),
         command_row: menu.row_of(ObjectMenuCommand::Command),
+        retire_row: menu.row_of(ObjectMenuCommand::Retire),
+        retire_enabled: menu
+            .row_of(ObjectMenuCommand::Retire)
+            .is_some_and(|row| menu.row_enabled(row)),
+        abort_row: menu.row_of(ObjectMenuCommand::Abort),
+        abort_enabled: menu
+            .row_of(ObjectMenuCommand::Abort)
+            .is_some_and(|row| menu.row_enabled(row)),
         assault_row: menu
             .row_of(ObjectMenuCommand::Assault)
             .filter(|&row| menu.row_enabled(row)),
@@ -2774,6 +2796,8 @@ struct FixtureQuadrantSetup {
     /// player's system in uprising.
     headquarters: Option<[f32; 4]>,
     uprising: Option<[f32; 4]>,
+    /// The day readout's centre, which opens the Game Speed menu.
+    day_readout: (f32, f32),
 }
 
 /// The primary's sector's first two systems other than the primary and the
@@ -2839,6 +2863,7 @@ fn quadrant_setup(
         quadrants,
         headquarters: planet(marks.first()),
         uprising: planet(marks.get(1)),
+        day_readout: day_readout_centre(request.faction, layout),
     })
 }
 
@@ -3107,7 +3132,6 @@ fn fleet_load_setup(
     let target = loading_target(world, primary)?;
     let fleet = world.fleets.keys().next()?;
     let subject = defenses_window_subject(request, world, primary)?;
-    let day = day_readout_rect(request.faction);
     Some(FixtureFleetLoadSetup {
         status: "fleet-load-setup",
         code: request.code,
@@ -3124,13 +3148,22 @@ fn fleet_load_setup(
         defenses_window: screen_center(defenses.screen_rect(layout, subject)?),
         primary_planet: screen_center(sectors.planet_screen_rect(world, layout, primary)?),
         target_planet: screen_center(sectors.planet_screen_rect(world, layout, target)?),
-        day_readout: (
-            layout.canvas.x + (day.x + day.width / 2.0) * layout.scale,
-            layout.canvas.y + (day.y + day.height / 2.0) * layout.scale,
-        ),
+        day_readout: day_readout_centre(request.faction, layout),
         capacity: TroopTransportState::fleet_capacity(world, fleet),
         fighter_room: rebellion_core::squadrons::fleet_room(world, fleet),
     })
+}
+
+/// The day readout's centre on the 640 by 480 canvas (`day_readout_rect`).
+fn day_readout_centre(
+    faction: CockpitFaction,
+    layout: rebellion_render::CockpitLayout,
+) -> (f32, f32) {
+    let day = day_readout_rect(faction);
+    (
+        layout.canvas.x + (day.x + day.width / 2.0) * layout.scale,
+        layout.canvas.y + (day.y + day.height / 2.0) * layout.scale,
+    )
 }
 
 pub fn emit_fleet_load_setup(
@@ -3919,7 +3952,9 @@ impl SpeedMenuWatch {
         request: FixtureRequest,
         rect: Option<egui_macroquad::egui::Rect>,
     ) -> Option<FixtureSpeedMenu> {
-        if !request.scenario.uses_the_fleet_window() || rect == self.last {
+        let watched =
+            request.scenario.uses_the_fleet_window() || request.scenario == Scenario::Quadrants;
+        if !watched || rect == self.last {
             return None;
         }
         self.last = rect;
@@ -4292,6 +4327,56 @@ mod tests {
             (report.target_screen_x, report.target_screen_y),
             (cell.x, cell.y)
         );
+    }
+
+    #[test]
+    fn a_mission_icons_menu_reports_abort_without_a_target_planet() {
+        // The Abort gate's menu has no target: no sector window shows the
+        // second system, which the targeting scenarios need.
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        let second = world.systems[here].clone();
+        world.systems.insert(second);
+        let rect = egui_macroquad::egui::Rect::from_min_size(
+            egui_macroquad::egui::Pos2::ZERO,
+            egui_macroquad::egui::vec2(10.0, 10.0),
+        );
+        let report = |scenario, abort| {
+            let menu = ObjectMenuState::new(
+                Some(MenuObject::SystemIcon {
+                    system: here,
+                    quadrant: Quadrant::Missions,
+                }),
+                OrderGates {
+                    abort,
+                    ..OrderGates::default()
+                },
+                (0, 0),
+            );
+            object_menu_report(
+                request(scenario, CockpitFaction::Alliance),
+                (rect, None),
+                &menu,
+                &world,
+                &SectorWindowState::default(),
+                (
+                    &DefensesWindowState::default(),
+                    &SystemWindowState::default(),
+                    &FleetWindowState::default(),
+                ),
+            )
+            .map(|report| (report.abort_row, report.abort_enabled, report.retire_row))
+        };
+
+        assert_eq!(
+            report(Scenario::Quadrants, true),
+            Some((Some(2), true, None))
+        );
+        assert_eq!(
+            report(Scenario::Quadrants, false),
+            Some((Some(2), false, None))
+        );
+        assert_eq!(report(Scenario::MissionTargeting, true), None);
     }
 
     #[test]
@@ -5732,6 +5817,14 @@ mod tests {
             ..request
         };
         assert_eq!(SpeedMenuWatch::default().next(moving, Some(rect)), None);
+        // The mission icon's gate runs the clock to start its missions.
+        let quadrants = FixtureRequest {
+            scenario: Scenario::Quadrants,
+            ..request
+        };
+        assert!(SpeedMenuWatch::default()
+            .next(quadrants, Some(rect))
+            .is_some());
     }
 
     #[test]
@@ -6390,6 +6483,7 @@ mod tests {
                 Scenario::FleetMoveBlockade,
                 Scenario::FleetLoad,
                 Scenario::FleetLoadFull,
+                Scenario::Quadrants,
                 Scenario::RegimentUnloadRefused,
                 Scenario::FleetJoin,
                 Scenario::ProductionDestination,

@@ -1,0 +1,268 @@
+{
+  "run": "personnel-orders-2026-10-28T20-24-44-874Z-171309",
+  "status": "fail",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "wasm_sha256": "2e4c84e438cedf4b36a25f34d72be80757540644610f0b191478bb898c0c9d84",
+  "runtime_pack_sha256": "3f1548f819ecc1e0d658c4e5ca68ee3c0116fc68ab34908101fda805b84fb57f",
+  "results": [
+    {
+      "faction": "alliance",
+      "case": "character-move",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Ok(0)"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "d74d176c7c5995cd73fe089bf7107ee14b6efc4381f8daf87016053aa2c56d77"
+        },
+        {
+          "label": "final",
+          "sha256": "83c9d2e958878a2848a8ed96d5861116d9292fb3ca27892b9fb56805d7a57f1f"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "character-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "0679c3a5602d7fb92360422493f539036a705d30fd1b7405550f81dc95ce4022"
+        },
+        {
+          "label": "final",
+          "sha256": "18f9ae35743b723467e8401ab28b2cb2f889abf8e438655e54eeb0c4bfeccd14"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "special-force-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] special_force_move unit=SpecialForceKey(16v1) to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "b77f3ba81831b6fc2fbe9e636f61c27824465aedfbde5e030bdb0269050f8db3"
+        },
+        {
+          "label": "final",
+          "sha256": "d46fbee1f568c5571bfaaf1eb2615907502eb7b88c11f47518dbc81d3d645dfc"
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "character-retire",
+      "status": "fail",
+      "error": "Error: the checkmark retires the member: /command=0x242 destination=retire member=Character\\(.*\\) result=Ok\\(\\(\\)\\)$/ not logged; last lines [\"[encyclopedia] topics loaded audience=Empire entries=356 complete=346\",\"[cutscene] opened path=assets/references/ref-videos/000.webm\",\"[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16\",\"[audio] music_volume=0.00 muted=true music_muted=true\",\"[interface] command=0x242 member=Character(CharacterKey(3v1)) result=Some(true)\",\"[interface] command=0x242 destination"
+    },
+    {
+      "faction": "alliance",
+      "case": "special-force-retire",
+      "status": "fail",
+      "error": "Error: the checkmark retires the member: /command=0x242 destination=retire member=SpecialForce\\(.*\\) result=Ok\\(\\(\\)\\)$/ not logged; last lines [\"[encyclopedia] topics loaded audience=Empire entries=356 complete=346\",\"[cutscene] opened path=assets/references/ref-videos/000.webm\",\"[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16\",\"[audio] music_volume=0.00 muted=true music_muted=true\",\"[interface] command=0x242 member=SpecialForce(SpecialForceKey(16v1)) result=Some(true)\",\"[interface] command=0x242 d"
+    },
+    {
+      "faction": "alliance",
+      "case": "abort",
+      "status": "fail",
+      "error": "Error: the Abort validates: /command=0x250 missions=\\[\\d+\\]$/ not logged; last lines [\"[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16\",\"[audio] music_volume=0.00 muted=true music_muted=true\",\"[ai] day=1 speed=Medium passes=12 orders=10 second_orders=0 ms=18.0\",\"[ai] day=2 speed=Medium passes=12 orders=10 second_orders=0 ms=4.0\",\"[interface] command=0x250 missions={missions:?}\",\"[ai] day=3 speed=Medium passes=12 orders=10 second_orders=0 ms=2.0\"]"
+    },
+    {
+      "faction": "empire",
+      "case": "character-move",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Ok(0)"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "ca153d57f314e5aeb8b0c409fa6bbd142365738683de89259c425b94ee1b797d"
+        },
+        {
+          "label": "final",
+          "sha256": "df1b7b70c7138e7adbb78cb3b34916895e20b83de079256423541f6726da422b"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "character-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] character_move character=Some(\"Luke Skywalker\") to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "f24c1b961a9ac93c183af7a7f0c09887dade3a8983ffabbcd1a65e87e83c5627"
+        },
+        {
+          "label": "final",
+          "sha256": "3dbc7888578ded7d6aadadf66f724813f91ffc93ced83fc02cab6cb101f134af"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "special-force-move-refused",
+      "status": "pass",
+      "interface_lines": [
+        "[interface] special_force_move unit=SpecialForceKey(16v1) to=Some(\"F'tral\") fleet=None result=Err(\"1/0x28\")"
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "64c49663f0b91baccdae2808bb7c2d96845c836b7d8a8d906d80cf2af93895ce"
+        },
+        {
+          "label": "final",
+          "sha256": "59e660bb450cf6d4e6b833b8edfe615cf22008d06284f15b60bf869ad0c3d498"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "character-retire",
+      "status": "fail",
+      "error": "Error: the checkmark retires the member: /command=0x242 destination=retire member=Character\\(.*\\) result=Ok\\(\\(\\)\\)$/ not logged; last lines [\"[encyclopedia] topics loaded audience=Empire entries=356 complete=346\",\"[cutscene] opened path=assets/references/ref-videos/000.webm\",\"[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16\",\"[audio] music_volume=0.00 muted=true music_muted=true\",\"[interface] command=0x242 member=Character(CharacterKey(3v1)) result=Some(true)\",\"[interface] command=0x242 destination"
+    },
+    {
+      "faction": "empire",
+      "case": "special-force-retire",
+      "status": "fail",
+      "error": "Error: the checkmark retires the member: /command=0x242 destination=retire member=SpecialForce\\(.*\\) result=Ok\\(\\(\\)\\)$/ not logged; last lines [\"[encyclopedia] topics loaded audience=Empire entries=356 complete=346\",\"[cutscene] opened path=assets/references/ref-videos/000.webm\",\"[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16\",\"[audio] music_volume=0.00 muted=true music_muted=true\",\"[interface] command=0x242 member=SpecialForce(SpecialForceKey(16v1)) result=Some(true)\",\"[interface] command=0x242 d"
+    },
+    {
+      "faction": "empire",
+      "case": "abort",
+      "status": "fail",
+      "error": "Error: the Abort validates: /command=0x250 missions=\\[\\d+\\]$/ not logged; last lines [\"[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16\",\"[audio] music_volume=0.00 muted=true music_muted=true\",\"[ai] day=1 speed=Medium passes=12 orders=10 second_orders=0 ms=19.0\",\"[ai] day=2 speed=Medium passes=12 orders=10 second_orders=0 ms=1.0\",\"[interface] command=0x250 missions={missions:?}\",\"[ai] day=3 speed=Medium passes=12 orders=10 second_orders=0 ms=5.0\"]"
+    }
+  ]
+}
