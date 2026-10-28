@@ -469,3 +469,24 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   labels. The port's notes for those windows already said font 5.
 - A0 2026-10-28 (`system-vjun.png`): "Vjun" is bold black, and its capital
   stands about 11 rows tall, as a 16-row bold Arial cell.
+
+## List and label fonts (read 2026-10-28)
+
+- `FUN_004a4b10`:
+  - both lists (`+0x160` left, `+0x164` right) take font 10 through their
+    slot `+0x18` and white text (`FUN_00609940`, `FUN_00609950` with
+    `0xffffff`);
+  - the count fonts `+0x1a4` and `+0x1a8` are font 10 (`FUN_006002b0(10)`);
+  - the selected label `+0x190` is `FUN_00601880(0, 100, 0x1d, 0x80, 0x19,
+    0, 0x13)`, which `FUN_00601930` reads as x 100, y 29, 128 by 25,
+    format 0 (left, top), in font 5.
+- System Defenses (`FUN_004a8790`): the tab-name labels `+0x16c` (2, 0x33,
+  231 by 16) and `+0x170` (2, 0x3f, 228 by 17) are font 4, white, format
+  `0x25`. The list takes font 10.
+- Missions (`FUN_0049f540`): the mission list `+0x1b8` takes font 10; the
+  member rows draw their names in font 10 into their images
+  (`FUN_004a1ba0`).
+- A0 2026-10-28 (`fleet-selected.png`, Fleet 2 at Averam):
+  - the label "Fleet 2" is red and bold, from x 101 and y 31 in the window;
+  - "Alliance Escort Carrier 1" under its picture has a 9-row capital (font
+    10's cell is 14).

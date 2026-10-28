@@ -1045,7 +1045,7 @@ fn draw_defenses_window(
 
             // `+0x5b` and `+0x5c`: white, font 4, format `0x25`: one line,
             // centred both ways in its rect.
-            let label_font = egui::FontId::proportional((10.0 * scale).max(7.0));
+            let label_font = crate::theme::original_font(4, scale);
             painter.text(
                 logical_rect(
                     local,
@@ -1111,7 +1111,9 @@ fn draw_defenses_window(
                     result.object_menu = Some((None, canvas_point(layout, point)));
                 }
             }
-            let font = egui::FontId::proportional((9.0 * scale).max(6.0));
+            // The list writes in font 10 (FUN_004a8790: its slot +0x18
+            // with 10).
+            let font = crate::theme::original_font(10, scale);
             let frame = if side == 1 {
                 ROW_FRAME[0]
             } else {
@@ -1932,7 +1934,11 @@ mod tests {
         let idle = text(&run, "Idle");
         assert_eq!(idle.pos, at(8.0, 108.0));
         // The cell less 3 (FUN_00609ae0's text rect), at scale 2.
-        assert_eq!((idle.font, idle.wrap), (18.0, 134.0));
+        // Font 10 (FUN_004a8790: the list's slot +0x18 with 10).
+        assert_eq!(
+            (idle.font, idle.wrap),
+            (crate::theme::original_font(10, 2.0).size, 134.0)
+        );
         assert_eq!(text(&run, "Hidden").color, egui::Color32::WHITE);
         // `+0x49` at (19, 2), 16 high: left-aligned, vertically centred.
         let title = text(&run, "Sluis Van");
@@ -1943,7 +1949,8 @@ mod tests {
         assert_eq!(title.pos.y + title.size.y / 2.0, at(0.0, 10.0).y);
         // `+0x5b` at (2, 51), 231 by 16: centred both ways.
         let name = text(&run, "Personnel");
-        assert_eq!(name.font, 20.0);
+        // Font 4 (FUN_004a8790, FUN_00601c60(4)).
+        assert_eq!(name.font, crate::theme::original_font(4, 2.0).size);
         assert_eq!(name.pos + name.size / 2.0, at(117.5, 59.0));
         assert!(!run
             .texts

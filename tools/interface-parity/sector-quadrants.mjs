@@ -382,8 +382,9 @@ function missionsWindow(observation, dat) {
 
 // A mission row's mini below its name: the list draws the name over the
 // picture from (1, 0) (FUN_006083c0's DrawTextA after FUN_00609960), so the
-// first rows hold text in the original as in the port.
-const ROW_TEXT_BAND = 12;
+// first rows hold text in the original as in the port: one line of font 10,
+// a 14-row cell (FUN_0049f540: the list's slot +0x18 with 10).
+const ROW_TEXT_BAND = 14;
 function compareRowMini(screenshot, rect, image, label, directory) {
   const height = image.height - ROW_TEXT_BAND;
   const crop = new PNG({ width: image.width, height });

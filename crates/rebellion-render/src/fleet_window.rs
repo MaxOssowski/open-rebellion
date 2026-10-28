@@ -1752,7 +1752,9 @@ fn draw_fleet_window(
                 LEFT_LIST.3,
             );
             let list_painter = painter.with_clip_rect(list);
-            let font = egui::FontId::proportional((9.0 * scale).max(6.0));
+            // Both lists write in font 10, white (FUN_004a4b10: the list's
+            // slot +0x18 with 10, FUN_00609940/FUN_00609950 with 0xffffff).
+            let font = crate::theme::original_font(10, scale);
             let click = ctx.input(|input| {
                 input
                     .pointer
@@ -1963,12 +1965,15 @@ fn draw_fleet_window(
                     ) {
                         paint(cache, id, picture_x(width), PICTURE_PANEL.1);
                     }
+                    // The label +0x190 (FUN_004a4b10): (100, 29), 128 by 25,
+                    // format 0 (left, top), font 5. The A0 capture shows
+                    // "Fleet 2" red, bold, from x 101.
                     if let Some(label) = fleet_label(world, fleet) {
                         painter.text(
-                            logical_rect(local, scale, 164.0, 29.0, 0.0, 0.0).min,
-                            egui::Align2::CENTER_TOP,
+                            logical_rect(local, scale, 100.0, 29.0, 0.0, 0.0).min,
+                            egui::Align2::LEFT_TOP,
                             label,
-                            egui::FontId::proportional((10.0 * scale).max(7.0)),
+                            crate::theme::original_font(5, scale),
                             label_color(viewer),
                         );
                     }
@@ -2019,7 +2024,9 @@ fn draw_fleet_window(
                 }
                 if let Some((aboard, capacity)) = tab_counts(world, transport, selected, window.tab)
                 {
-                    let count_font = egui::FontId::proportional((10.0 * scale).max(7.0));
+                    // The count fonts +0x1a4 and +0x1a8 are font 10
+                    // (FUN_006002b0(10), FUN_004a4b10).
+                    let count_font = crate::theme::original_font(10, scale);
                     painter.text(
                         logical_rect(
                             local,
@@ -4097,16 +4104,20 @@ pub(crate) mod tests {
             .texts;
             let white = egui::Color32::WHITE;
             let (left, centre, right) = (egui::Align::Min, egui::Align::Center, egui::Align::Max);
+            // FUN_004a4b10: the lists and counts in font 10, the selected
+            // label +0x190 at (100, 29), left and top, in font 5.
+            let font10 = crate::theme::original_font(10, 2.0).size;
+            let font5 = crate::theme::original_font(5, 2.0).size;
             for (label, anchor, align, size, color) in [
-                ("Fleet 1", at(8.0, 34.0), left, 18.0, white),
-                ("Fleet 1", at(164.0, 29.0), centre, 20.0, color),
-                ("1", at(101.0, 44.0), left, 20.0, white),
-                ("2", at(223.0, 44.0), right, 20.0, white),
+                ("Fleet 1", at(8.0, 34.0), left, font10, white),
+                ("Fleet 1", at(100.0, 29.0), left, font5, color),
+                ("1", at(101.0, 44.0), left, font10, white),
+                ("2", at(223.0, 44.0), right, font10, white),
                 (
                     "Alliance Fleet Regiment",
                     at(163.5, 164.0),
                     centre,
-                    18.0,
+                    font10,
                     white,
                 ),
             ] {
@@ -4582,8 +4593,10 @@ pub(crate) mod tests {
                 .filter(|text| text.text.starts_with(prefix) && text.size == size)
                 .count()
         };
-        assert_eq!(count("Fleet ", 18.0), 6);
-        assert_eq!(count("Alliance Fleet Regiment", 18.0), 4);
+        // FUN_004a4b10: both lists write in font 10.
+        let font = crate::theme::original_font(10, 2.0).size;
+        assert_eq!(count("Fleet ", font), 6);
+        assert_eq!(count("Alliance Fleet Regiment", font), 4);
     }
 
     #[test]

@@ -1027,7 +1027,10 @@ fn draw_missions_window(
             let white = egui::Color32::WHITE;
             // The window's labels are font 5 (16 rows, bold).
             let label_font = crate::theme::original_font(5, scale);
-            let list_font = egui::FontId::proportional((9.0 * scale).max(6.0));
+            // The mission list writes in font 10 (FUN_0049f540: its slot
+            // +0x18 with 10); the member rows' names are drawn in font 10
+            // into their images (FUN_004a1ba0).
+            let list_font = crate::theme::original_font(10, scale);
 
             painter.rect_filled(local, 0.0, egui::Color32::BLACK);
             paint_native(
@@ -2194,7 +2197,15 @@ mod tests {
         );
         assert_eq!(title.pos.y + title.size.y / 2.0, at(0.0, 10.0).y);
         let row = text(&run, "Diplomacy");
-        assert_eq!((row.pos, row.font, row.wrap), (at(6.0, 24.0), 18.0, 174.0));
+        // Font 10 (FUN_0049f540: the list's slot +0x18 with 10).
+        assert_eq!(
+            (row.pos, row.font, row.wrap),
+            (
+                at(6.0, 24.0),
+                crate::theme::original_font(10, 2.0).size,
+                174.0
+            )
+        );
         let member = text(&run, "Leia");
         assert_eq!(member.pos.x + member.size.x / 2.0, at(165.5, 0.0).x);
         assert_eq!(member.pos.y, at(0.0, 166.0).y);

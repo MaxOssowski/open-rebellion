@@ -63,7 +63,7 @@ const masks = {
     { x: 5, y: 34, width: 5, height: 3, why: "dotted tree line" },
   ],
   selected: [
-    { x: 100, y: 28, width: 130, height: 13, why: "selected fleet name" },
+    { x: 100, y: 29, width: 128, height: 25, why: "selected fleet name: label +0x190, font 5 (FUN_004a4b10)" },
     { x: 101, y: 127, width: 133, height: 164, why: "right list contents" },
   ],
 };
