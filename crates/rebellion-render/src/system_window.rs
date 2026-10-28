@@ -31,6 +31,7 @@ use crate::manufacturing_window::{
     YARD_COLUMN,
 };
 use crate::object_menu::MenuObject;
+use crate::window_move::{self, MoveAnchor};
 
 pub const SYSTEM_WINDOW_CLIENT_WIDTH: f32 = 226.0;
 /// `FUN_0045aac0` creates type 9 at 226 by 304 (`0xe2` by `0x130`).
@@ -176,6 +177,9 @@ struct OpenSystemWindow {
     /// The overview's selected band (band `+0x30` bit 0). port: one band;
     /// Ctrl's toggle is not ported.
     selected_band: Option<ProductionArea>,
+    /// Where the window was when a press on its surface took it
+    /// (`crate::window_move`).
+    moving: MoveAnchor,
 }
 
 /// A minimized window on the galaxy view's rail.
@@ -270,6 +274,7 @@ impl SystemWindowState {
             tab: SystemWindowTab::Overview,
             selected_item: None,
             selected_band: None,
+            moving: None,
         });
         true
     }
@@ -641,6 +646,8 @@ struct WindowDrawResult {
     item: Option<Option<FacilityItem>>,
     band: Option<ProductionArea>,
     object_menu: Option<(Option<MenuObject>, (i16, i16))>,
+    /// The pointer's travel since a press on the window's surface.
+    travel: Option<egui::Vec2>,
 }
 
 /// What a frame's drawing reads.
@@ -690,7 +697,7 @@ pub fn draw_system_windows(
     let focused_system = windows.last().map(|window| window.system);
     for window in windows {
         let system = window.system;
-        let result = draw_system_window(
+        let mut result = draw_system_window(
             ctx,
             sources,
             window,
@@ -711,6 +718,17 @@ pub fn draw_system_windows(
             actions.push(SystemWindowAction::FocusSector(system));
             state.close(system);
             continue;
+        }
+        if let Some(open) = state.window_mut(system) {
+            if result.travel.is_some() && open.moving.is_none() {
+                result.focus = true;
+            }
+            window_move::follow(
+                &mut open.logical_position,
+                &mut open.moving,
+                result.travel,
+                |position| clamp_to_galaxy(position, layout),
+            );
         }
         if let Some(tab) = result.tab {
             state.select_tab(system, tab);
@@ -914,7 +932,7 @@ fn draw_system_window(
                 )
             });
             let (local, window_response) =
-                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
+                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click_and_drag());
             // The window clips its children: the 231-wide title strip the
             // 235-wide Fleet, Defenses and Missions windows share ends at
             // this window's 226.
@@ -1187,6 +1205,21 @@ fn draw_system_window(
             if window_response.clicked() || clicked.iter().any(|&value| value) {
                 result.focus = true;
             }
+            // The child controls: the title buttons, the tabs, and the
+            // overview's bands or a facility page's list.
+            let mut controls: Vec<egui::Rect> = [SECTOR_X, MINIMIZE_X, CLOSE_X]
+                .into_iter()
+                .map(|x| logical_rect(local, scale, x, 3.0, 14.0, 14.0))
+                .collect();
+            controls.extend(SystemWindowTab::ALL.map(|tab| tab_rect(local, scale, tab)));
+            match window.tab.page() {
+                None => controls.extend(BAND_AREAS.map(|area| band_rect(local, scale, area))),
+                Some(_) => {
+                    controls.push(logical_rect(local, scale, LIST.0, LIST.1, LIST.2, LIST.3))
+                }
+            }
+            result.travel =
+                window_move::held_travel(ui, &window_response, &controls, window.moving, scale);
         });
     if area.response.clicked() {
         result.focus = true;
@@ -2260,6 +2293,63 @@ mod tests {
             state.cell_screen_rect(layout(CockpitFaction::Alliance, 2.0), systems[0], 4),
             Some(egui::Rect::from_min_max(at(77.0, 117.0), at(146.0, 157.0)))
         );
+    }
+
+    /// Press at screen point `from`, move to `to` and hold; then release.
+    /// Returns the window's position while held and after the release.
+    fn move_window(
+        world: &GameWorld,
+        state: &mut SystemWindowState,
+        from: egui::Pos2,
+        to: egui::Pos2,
+    ) -> ((i16, i16), (i16, i16)) {
+        let manufacturing = ManufacturingState::new();
+        let mut frames = hover(from);
+        frames.extend([
+            vec![egui::Event::PointerButton {
+                pos: from,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            }],
+            vec![egui::Event::PointerMoved(to)],
+            vec![egui::Event::PointerMoved(to)],
+        ]);
+        run_with(world, &manufacturing, state, frames);
+        let held = state.windows[0].logical_position;
+        let release = egui::Event::PointerButton {
+            pos: to,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::default(),
+        };
+        run_with(world, &manufacturing, state, vec![vec![release], vec![]]);
+        (held, state.windows[0].logical_position)
+    }
+
+    // FUN_00452fc0 sets the window's +0xb8 bit 4, so a left press on its own
+    // surface holds it (FUN_00606ee0); it follows the pointer unbounded
+    // (FUN_006071e0) and the drop puts it back inside the galaxy view
+    // (FUN_00607010). A press on a band goes to the band.
+    #[test]
+    fn the_window_moves_by_its_surface_and_drops_inside_the_galaxy_view() {
+        let (world, systems) = fixture_world(1);
+        let mut state = opened(&world, systems[0]);
+        // Hovering takes no focus.
+        let manufacturing = ManufacturingState::new();
+        let idle = run_with(&world, &manufacturing, &mut state, hover(at(100.0, 10.0)));
+        assert!(idle.actions.is_empty());
+        let (held, dropped) = move_window(&world, &mut state, at(100.0, 10.0), at(130.0, 30.0));
+        assert_eq!((held, dropped), ((130, 80), (130, 80)));
+        // Past the Alliance galaxy view's left edge (55) while held.
+        let from = at(130.0, 30.0);
+        let to = from - egui::vec2(200.0, 0.0);
+        let (held, dropped) = move_window(&world, &mut state, from, to);
+        assert_eq!((held, dropped), ((30, 80), (55, 80)));
+        let window = window_screen_rect(state.windows[0], layout(CockpitFaction::Alliance, 2.0));
+        let band = band_rect(window, 2.0, BAND_AREAS[0]).center();
+        let (held, dropped) = move_window(&world, &mut state, band, band + egui::vec2(60.0, 60.0));
+        assert_eq!((held, dropped), ((55, 80), (55, 80)));
     }
 
     #[test]

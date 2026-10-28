@@ -31,6 +31,7 @@ use crate::system_window::{
     logical_rect, manufacturing_facility_mini, production_facility_mini, rect_contains,
     special_force_mini, troop_mini,
 };
+use crate::window_move::{self, MoveAnchor};
 
 pub const MISSIONS_WINDOW_WIDTH: f32 = 235.0;
 pub const MISSIONS_WINDOW_HEIGHT: f32 = 304.0;
@@ -173,6 +174,9 @@ struct OpenMissionsWindow {
     /// The selected mission row `+0x1c4`, by mission id.
     selected: Option<u64>,
     tab: MissionsTab,
+    /// Where the window was when a press on its surface took it
+    /// (`crate::window_move`).
+    moving: MoveAnchor,
 }
 
 /// The open Missions windows. The last is focused and paints on top.
@@ -231,6 +235,7 @@ impl MissionsWindowState {
             ),
             selected,
             tab: MissionsTab::Agents,
+            moving: None,
         });
         true
     }
@@ -870,6 +875,8 @@ struct WindowDrawResult {
     open_sector: bool,
     select: Option<u64>,
     tab: Option<MissionsTab>,
+    /// The pointer's travel since a press on the window's surface.
+    travel: Option<egui::Vec2>,
 }
 
 /// Draw every open Missions window.
@@ -908,7 +915,7 @@ pub fn draw_missions_windows(
     let focused_system = windows.last().map(|window| window.system);
     let mut actions = Vec::new();
     for window in &windows {
-        let result = draw_missions_window(
+        let mut result = draw_missions_window(
             ctx,
             world,
             fog,
@@ -937,6 +944,22 @@ pub fn draw_missions_windows(
             actions.push(MissionsWindowAction::OpenSector(system));
         }
         if let Some(open) = state.window_mut(system) {
+            if result.travel.is_some() && open.moving.is_none() {
+                result.focus = true;
+            }
+            window_move::follow(
+                &mut open.logical_position,
+                &mut open.moving,
+                result.travel,
+                |position| {
+                    clamp_window_to_galaxy(
+                        position,
+                        layout,
+                        MISSIONS_WINDOW_WIDTH,
+                        MISSIONS_WINDOW_HEIGHT,
+                    )
+                },
+            );
             // FUN_004a0c60: a different mission refreshes the details and
             // reselects the Agents tab (FUN_004a0ca0).
             if let Some(id) = result.select.filter(|&id| open.selected != Some(id)) {
@@ -999,7 +1022,7 @@ fn draw_missions_window(
                 )
             });
             let (local, window_response) =
-                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
+                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click_and_drag());
             let painter = ui.painter().clone();
             let white = egui::Color32::WHITE;
             let label_font = egui::FontId::proportional((11.0 * scale).max(7.0));
@@ -1296,6 +1319,33 @@ fn draw_missions_window(
             if window_response.clicked() || clicked.iter().any(|&value| value) {
                 result.focus = true;
             }
+            // The child controls: the title buttons, the mission list and,
+            // with a mission selected, the tabs and the member list.
+            let mut controls: Vec<egui::Rect> = [3.0, 204.0, 218.0]
+                .into_iter()
+                .map(|x| logical_rect(local, scale, x, 3.0, 14.0, 14.0))
+                .collect();
+            controls.push(logical_rect(
+                local,
+                scale,
+                MISSION_LIST.0,
+                MISSION_LIST.1,
+                MISSION_LIST.2,
+                MISSION_LIST.3,
+            ));
+            if window.selected.is_some() {
+                controls.extend(MissionsTab::ALL.map(|tab| tab_rect(local, scale, tab)));
+                controls.push(logical_rect(
+                    local,
+                    scale,
+                    MEMBER_LIST.0,
+                    MEMBER_LIST.1,
+                    MEMBER_LIST.2,
+                    MEMBER_LIST.3,
+                ));
+            }
+            result.travel =
+                window_move::held_travel(ui, &window_response, &controls, window.moving, scale);
         });
     if area.response.clicked() {
         result.focus = true;
@@ -2195,6 +2245,58 @@ mod tests {
             .any(|(id, _)| (11560..=11569).contains(id) || MISSION_FRAME.contains(id)));
         assert!(!run.texts.iter().any(|value| value.text == "Target:"));
         assert!(run.painted.contains(&(0x5c13, at(5.0, 24.0))));
+    }
+
+    /// Press at screen point `from`, move to `to` and hold; then release.
+    /// Returns the window's position while held and after the release.
+    fn move_window(
+        world: &GameWorld,
+        missions: &MissionState,
+        state: &mut MissionsWindowState,
+        from: egui::Pos2,
+        to: egui::Pos2,
+    ) -> ((i16, i16), (i16, i16)) {
+        let mut frames = hover(from);
+        frames.extend([
+            vec![press(from, true)],
+            vec![egui::Event::PointerMoved(to)],
+            vec![egui::Event::PointerMoved(to)],
+        ]);
+        run(world, missions, state, frames);
+        let held = state.windows[0].logical_position;
+        run(world, missions, state, vec![vec![press(to, false)], vec![]]);
+        (held, state.windows[0].logical_position)
+    }
+
+    // The window's constructor sets +0xb8 bit 4, so a left press on its own
+    // surface holds it (FUN_00606ee0); it follows the pointer unbounded
+    // (FUN_006071e0) and the drop puts it back inside the galaxy view
+    // (FUN_00607010). A press on the list goes to the list.
+    #[test]
+    fn the_window_moves_by_its_surface_and_drops_inside_the_galaxy_view() {
+        let (world, system, missions, _) = busy();
+        let mut state = opened(&world, &missions, system);
+        let (held, dropped) = move_window(
+            &world,
+            &missions,
+            &mut state,
+            at(100.0, 10.0),
+            at(130.0, 30.0),
+        );
+        assert_eq!((held, dropped), ((50, 50), (50, 50)));
+        let from = at(130.0, 30.0);
+        let to = from - egui::vec2(200.0, 0.0);
+        let (held, dropped) = move_window(&world, &missions, &mut state, from, to);
+        assert_eq!((held, dropped), ((-50, 50), (0, 50)));
+        let list = egui::pos2(10.0 + 40.0 * 2.0, 20.0 + (50.0 + 200.0) * 2.0);
+        let (held, dropped) = move_window(
+            &world,
+            &missions,
+            &mut state,
+            list,
+            list + egui::vec2(60.0, 60.0),
+        );
+        assert_eq!((held, dropped), ((0, 50), (0, 50)));
     }
 
     #[test]

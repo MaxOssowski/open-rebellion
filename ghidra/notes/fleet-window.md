@@ -299,6 +299,32 @@ Missions window draws them (`FUN_004a0e10`).
 - hyp: at the end of the create handler, `FUN_00610b20`/`FUN_00610c30` play
   a sound with id `0x25e` from module 7 unless galaxy `+0xc0` bit 2 is set.
 
+## Moving the window (read 2026-10-28)
+
+- The base handler `FUN_00606650` gives a left press on the window itself
+  (`0x201`) to `FUN_00606ee0`. It holds the window only when `+0xb8` has
+  bit 4. The base dialog `FUN_004ac120` passes 0 (`FUN_00606380`'s
+  `param_13`), and these constructors then set bit 4:
+  - `FUN_004a2630`, the Fleet window, at `0x4a26c4`;
+  - `FUN_00452fc0`, type 9, the System window, at `0x4530da`;
+  - `FUN_004a7790`, type 10, System Defenses, at `0x4a77f9`;
+  - `FUN_0049f130`, type 11, Missions, at `0x49f1cf`;
+  - `FUN_00452090`, the GID legend (`gid-markers.md`).
+- No other window sets the bit. The sector window's handler keeps its
+  press (`FUN_004593e0` case `0x201` returns without the base), and the
+  Status window passes `+0xb8` = 1 (`FUN_00442d70`).
+- Buttons, lists and tabs are child windows: a press on one goes to it,
+  not to the window.
+- `FUN_00606380` sets `+0xf4` to 1, so the window moves live and without
+  bounds while held (`FUN_006071e0`). The drop (`FUN_00607010`) puts it
+  back inside the rect `FUN_006071a0` copied from the galaxy view's
+  `+0xcc` (`0x4a4bf2` for the Fleet window, `0x45ade0`, `0x49f5ac`,
+  `0x4a8810`): to the left edge when left of it, else to `right - width`
+  when past it; the same for the height.
+- Manual p. 63, Fig. 3.1: "Use the bar at the top of the window to move the
+  window around on the screen." The title bar is part of the window's own
+  surface.
+
 ## Hit tests
 
 `+0x70` (`FUN_004a3130`), used by move orders (`0x201`, `0x202`, `0x214`):

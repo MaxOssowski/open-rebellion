@@ -32,6 +32,7 @@ use crate::system_window::{
     exact_clicked, logical_rect, opposing_contents_visible, rect_contains, special_force_mini,
     troop_mini,
 };
+use crate::window_move::{self, MoveAnchor};
 
 pub const DEFENSES_WINDOW_WIDTH: f32 = 235.0;
 pub const DEFENSES_WINDOW_HEIGHT: f32 = 304.0;
@@ -219,6 +220,9 @@ struct OpenDefensesWindow {
     /// port: one selected row; the list's own selection rules
     /// (`FUN_00609410`) are untraced.
     selected: Option<DefensesItem>,
+    /// Where the window was when a press on its surface took it
+    /// (`crate::window_move`).
+    moving: MoveAnchor,
 }
 
 /// `CoolDragList` posts `0x29a` only when the release lies more than this
@@ -281,6 +285,7 @@ impl DefensesWindowState {
             ),
             page: DefensesPage::Personnel,
             selected: None,
+            moving: None,
         });
         true
     }
@@ -812,6 +817,8 @@ struct WindowDrawResult {
     object_menu: Option<(Option<MenuObject>, (i16, i16))>,
     /// A left press on a character's cell, held for a drag.
     drag: Option<DefensesDrag>,
+    /// The pointer's travel since a press on the window's surface.
+    travel: Option<egui::Vec2>,
 }
 
 /// Draw every open Defenses window.
@@ -839,7 +846,7 @@ pub fn draw_defenses_windows(
     let focused_system = windows.last().map(|window| window.system);
     let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
     for window in &windows {
-        let result = draw_defenses_window(
+        let mut result = draw_defenses_window(
             ctx,
             world,
             fog,
@@ -869,6 +876,22 @@ pub fn draw_defenses_windows(
             actions.push(DefensesWindowAction::OpenSector(system));
         }
         if let Some(open) = state.window_mut(system) {
+            if result.travel.is_some() && open.moving.is_none() {
+                result.focus = true;
+            }
+            window_move::follow(
+                &mut open.logical_position,
+                &mut open.moving,
+                result.travel,
+                |position| {
+                    clamp_window_to_galaxy(
+                        position,
+                        layout,
+                        DEFENSES_WINDOW_WIDTH,
+                        DEFENSES_WINDOW_HEIGHT,
+                    )
+                },
+            );
             // FUN_004a90d0 refills only for a different page.
             if let Some(page) = result.page.filter(|&page| page != open.page) {
                 open.page = page;
@@ -941,7 +964,7 @@ fn draw_defenses_window(
                 )
             });
             let (local, window_response) =
-                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
+                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click_and_drag());
             let painter = ui.painter().clone();
             let paint = |cache: &mut BmpCache, id: u32, x: f32, y: f32| {
                 paint_native(
@@ -1190,6 +1213,15 @@ fn draw_defenses_window(
             if window_response.clicked() || clicked.iter().any(|&value| value) {
                 result.focus = true;
             }
+            // The child controls: the title buttons, the tabs and the list.
+            let mut controls: Vec<egui::Rect> = [3.0, 204.0, 218.0]
+                .into_iter()
+                .map(|x| logical_rect(local, scale, x, 3.0, 14.0, 14.0))
+                .collect();
+            controls.extend(DefensesPage::ALL.map(|page| tab_rect(local, scale, page)));
+            controls.push(logical_rect(local, scale, LIST.0, LIST.1, LIST.2, LIST.3));
+            result.travel =
+                window_move::held_travel(ui, &window_response, &controls, window.moving, scale);
         });
     if area.response.clicked() {
         result.focus = true;
@@ -2024,6 +2056,58 @@ mod tests {
         assert_eq!(garrison.pos + garrison.size / 2.0, at(116.0, 71.5));
         assert!(regiments.painted.contains(&(10564, at(64.0, 20.0))));
         assert!(regiments.painted.contains(&(17_473, at(7.0, 81.0))));
+    }
+
+    /// Press at screen point `from`, move to `to` and hold; then release.
+    /// Returns the window's position while held and after the release.
+    fn move_window(
+        world: &GameWorld,
+        missions: &MissionState,
+        state: &mut DefensesWindowState,
+        from: egui::Pos2,
+        to: egui::Pos2,
+    ) -> ((i16, i16), (i16, i16)) {
+        let mut frames = hover(from);
+        frames.extend([
+            vec![press(from, true)],
+            vec![egui::Event::PointerMoved(to)],
+            vec![egui::Event::PointerMoved(to)],
+        ]);
+        run(world, missions, state, frames);
+        let held = state.windows[0].logical_position;
+        run(world, missions, state, vec![vec![press(to, false)], vec![]]);
+        (held, state.windows[0].logical_position)
+    }
+
+    // The window's constructor sets +0xb8 bit 4, so a left press on its own
+    // surface holds it (FUN_00606ee0); it follows the pointer unbounded
+    // (FUN_006071e0) and the drop puts it back inside the galaxy view
+    // (FUN_00607010). A press on the list goes to the list.
+    #[test]
+    fn the_window_moves_by_its_surface_and_drops_inside_the_galaxy_view() {
+        let (world, system, missions) = stocked();
+        let mut state = opened(&world, system);
+        let (held, dropped) = move_window(
+            &world,
+            &missions,
+            &mut state,
+            at(100.0, 10.0),
+            at(130.0, 30.0),
+        );
+        assert_eq!((held, dropped), ((50, 50), (50, 50)));
+        let from = at(130.0, 30.0);
+        let to = from - egui::vec2(200.0, 0.0);
+        let (held, dropped) = move_window(&world, &missions, &mut state, from, to);
+        assert_eq!((held, dropped), ((-50, 50), (0, 50)));
+        let list = egui::pos2(10.0 + 100.0 * 2.0, 20.0 + (50.0 + 200.0) * 2.0);
+        let (held, dropped) = move_window(
+            &world,
+            &missions,
+            &mut state,
+            list,
+            list + egui::vec2(60.0, 60.0),
+        );
+        assert_eq!((held, dropped), ((0, 50), (0, 50)));
     }
 
     #[test]

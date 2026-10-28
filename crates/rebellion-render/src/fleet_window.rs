@@ -29,6 +29,7 @@ use crate::system_window::{
     logical_rect, opposing_contents_visible, rect_contains, troop_mini,
 };
 use crate::targeting::ReleaseTarget;
+use crate::window_move::{self, MoveAnchor};
 
 pub const FLEET_WINDOW_WIDTH: f32 = 235.0;
 pub const FLEET_WINDOW_HEIGHT: f32 = 304.0;
@@ -280,6 +281,9 @@ struct OpenFleetWindow {
     /// double click across widgets, and a third click as a triple, so the
     /// list keeps its own, as the Fleet Finder's does.
     last_click: Option<((i32, i32), f64)>,
+    /// Where the window was when a press on its surface took it
+    /// (`crate::window_move`).
+    moving: MoveAnchor,
 }
 
 /// Whether a click at `now` completes a double click begun at `previous`:
@@ -434,6 +438,7 @@ impl FleetWindowState {
             tab: FleetWindowTab::CapitalShips,
             rename: None,
             last_click: None,
+            moving: None,
         });
         true
     }
@@ -1489,6 +1494,8 @@ struct WindowDrawResult {
     /// A primary click this frame: where and when it landed in the left
     /// list, or `None` outside it or for a double click.
     last_click: Option<Option<((i32, i32), f64)>>,
+    /// The pointer's travel since a press on the window's surface.
+    travel: Option<egui::Vec2>,
 }
 
 /// Draw every open Fleet window.
@@ -1512,7 +1519,7 @@ pub fn draw_fleet_windows(
     let focused_system = windows.last().map(|window| window.system);
     let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
     for window in &windows {
-        let result = draw_fleet_window(
+        let mut result = draw_fleet_window(
             ctx,
             world,
             movement,
@@ -1551,6 +1558,22 @@ pub fn draw_fleet_windows(
             actions.push(FleetWindowAction::OpenSector(system));
         }
         if let Some(open) = state.window_mut(system) {
+            if result.travel.is_some() && open.moving.is_none() {
+                result.focus = true;
+            }
+            window_move::follow(
+                &mut open.logical_position,
+                &mut open.moving,
+                result.travel,
+                |position| {
+                    clamp_window_to_galaxy(
+                        position,
+                        layout,
+                        FLEET_WINDOW_WIDTH,
+                        FLEET_WINDOW_HEIGHT,
+                    )
+                },
+            );
             if let Some(selected) = result.select {
                 open.selected = selected;
                 open.selected_item = None;
@@ -1656,7 +1679,7 @@ fn draw_fleet_window(
                 )
             });
             let (local, window_response) =
-                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
+                ui.allocate_exact_size(screen_rect.size(), egui::Sense::click_and_drag());
             let painter = ui.painter().clone();
             let paint = |cache: &mut BmpCache, id: u32, x: f32, y: f32| {
                 paint_native(
@@ -2184,6 +2207,26 @@ fn draw_fleet_window(
             if window_response.clicked() || clicked.iter().any(|&value| value) {
                 result.focus = true;
             }
+            // The child controls: the title buttons, the left list and,
+            // while something is selected, the tabs and the right list.
+            let mut controls: Vec<egui::Rect> = [3.0, 204.0, 218.0]
+                .into_iter()
+                .map(|x| logical_rect(local, scale, x, 3.0, 14.0, 14.0))
+                .collect();
+            controls.push(list);
+            if selected_side.is_some() {
+                controls.extend(FleetWindowTab::ALL.map(|tab| tab_rect(local, scale, tab)));
+                controls.push(logical_rect(
+                    local,
+                    scale,
+                    RIGHT_LIST.0,
+                    RIGHT_LIST.1,
+                    RIGHT_LIST.2,
+                    RIGHT_LIST.3,
+                ));
+            }
+            result.travel =
+                window_move::held_travel(ui, &window_response, &controls, window.moving, scale);
         });
     if area.response.clicked() {
         result.focus = true;
@@ -2446,6 +2489,7 @@ pub(crate) mod tests {
             tab: FleetWindowTab::CapitalShips,
             rename: None,
             last_click: None,
+            moving: None,
         }
     }
 
@@ -3232,6 +3276,57 @@ pub(crate) mod tests {
         let mut transport = TroopTransportState::default();
         transport.embark(&mut world, fleet, &[troop]).unwrap();
         (world, transport, system, fleet, troop)
+    }
+
+    /// Press at screen point `from`, move to `to` and hold; then release.
+    /// Returns the window's position while held and after the release.
+    fn move_window(
+        world: &GameWorld,
+        state: &mut FleetWindowState,
+        from: egui::Pos2,
+        to: egui::Pos2,
+    ) -> ((i16, i16), (i16, i16)) {
+        let transport = TroopTransportState::default();
+        let mut frames = hover(from);
+        frames.extend([
+            vec![press(from, true)],
+            vec![egui::Event::PointerMoved(to)],
+            vec![egui::Event::PointerMoved(to)],
+        ]);
+        run(world, &transport, state, CockpitFaction::Alliance, frames);
+        let held = state.windows[0].logical_position;
+        run(
+            world,
+            &transport,
+            state,
+            CockpitFaction::Alliance,
+            vec![vec![press(to, false)], vec![]],
+        );
+        (held, state.windows[0].logical_position)
+    }
+
+    // FUN_004a2630 sets the window's +0xb8 bit 4, so a left press on its own
+    // surface holds it (FUN_00606ee0); it follows the pointer unbounded
+    // (FUN_006071e0, +0xf4 = 1) and the drop puts it back inside the galaxy
+    // view (FUN_00607010). A press on a child control, the left list, goes to
+    // the list and moves nothing.
+    #[test]
+    fn the_window_moves_by_its_surface_and_drops_inside_the_galaxy_view() {
+        let (world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let mut state = opened(&world, system);
+        // The title strip between the sector and minimize buttons.
+        let (held, dropped) = move_window(&world, &mut state, at(100.0, 10.0), at(130.0, 30.0));
+        assert_eq!(held, (50, 50));
+        assert_eq!(dropped, (50, 50));
+        // Past the galaxy view's left edge while held; back on the drop.
+        let from = at(130.0, 30.0);
+        let (held, dropped) = move_window(&world, &mut state, from, from - egui::vec2(200.0, 0.0));
+        assert_eq!(held, (-50, 50));
+        assert_eq!(dropped, (0, 50));
+        // The left list.
+        let list = egui::pos2(10.0 + (0.0 + 40.0) * 2.0, 20.0 + (50.0 + 200.0) * 2.0);
+        let (held, dropped) = move_window(&world, &mut state, list, list + egui::vec2(60.0, 60.0));
+        assert_eq!((held, dropped), ((0, 50), (0, 50)));
     }
 
     /// Inside the first right-list item.

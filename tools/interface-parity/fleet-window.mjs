@@ -526,6 +526,41 @@ const cases = [
     },
   },
   {
+    // FUN_004a2630 sets the window's +0xb8 bit 4: a press on its own surface
+    // holds it (FUN_00606ee0) and it follows the pointer (FUN_006071e0); the
+    // drop puts it back inside the galaxy view (FUN_00607010). A press on the
+    // left list goes to the list.
+    name: "move",
+    code: FLEET_LOAD,
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup);
+      const { galaxy } = faction;
+      // FUN_00607010's bounds: the left (top) edge, else right - width.
+      const inside = ([left, top]) => [
+        left < galaxy.x ? galaxy.x : Math.min(left, galaxy.x + galaxy.width - windowSize.width),
+        top < galaxy.y ? galaxy.y : Math.min(top, galaxy.y + galaxy.height - windowSize.height),
+      ];
+      const same = (o, a) => o.origin[0] === a[0] && o.origin[1] === a[1];
+      const [x, y] = opened.origin;
+      // The title strip between the sector and minimize buttons.
+      await dragItem(page, { x: x + 100, y: y + 10 }, { x: x + 60, y: y + 2 });
+      const moved = await until(page, "a press on the title strip moves the window", same,
+        inside([x - 40, y - 8]));
+      await shot(page, directory, "moved");
+      const [mx, my] = moved.origin;
+      await dragItem(page, { x: mx + 100, y: my + 10 }, { x: 5, y: my + 10 });
+      const dropped = await until(page, "the drop puts the window back inside the galaxy view", same,
+        inside([5 - 100, my]));
+      assert.equal(dropped.origin[0], galaxy.x);
+      await shot(page, directory, "dropped");
+      const [dx, dy] = dropped.origin;
+      await dragItem(page, { x: dx + 40, y: dy + 200 }, { x: dx + 140, y: dy + 100 });
+      const listed = await settle(page);
+      assert.deepEqual(listed.origin, dropped.origin, "a press on the left list moves nothing");
+      return { opened, moved, dropped, listed };
+    },
+  },
+  {
     name: "load",
     code: FLEET_LOAD,
     // The regiment stays aboard while the fleet orbits the system it loaded
