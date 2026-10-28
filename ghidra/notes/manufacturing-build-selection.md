@@ -425,8 +425,10 @@ Manufacturing side panel (M) is gone.
 - `FUN_00457690`'s yard counts: the label `+0x19c` (`0x4554e7`), white,
   format 1, 46 by 16 at x 6, rows 0x77, 200 and 0x118. No font is set, so it
   keeps the default (`FUN_00601880` -> `FUN_00603850`, the game root's
-  `+0xb0`). In the A0 Vjun capture its digits stand 10 rows tall, a 16-row
-  cell.
+  `+0xb0`). The default is a 14-row regular cell: the A0 GID caption, also
+  in the default font (`FUN_00425d00`), is 91 pixels wide for "Popular
+  Support", Arial at that cell. (A first reading took the count's 10-row
+  digits for a 16-row cell; corrected the same day.)
 - The progress bar's `0x200f0f0` is yellow in COLORREF order (red `0xf0`,
   green `0xf0`, blue 0). The rail's name in the same colour shows yellow in
   A0.

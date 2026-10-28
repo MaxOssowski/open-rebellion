@@ -64,3 +64,8 @@ stages) is unchanged.
   - GID: 152 of 152 (run `2026-10-28T16-54-44-924Z-3416803`).
 - rustfmt: `system_window.rs` is clean.
 - Release WASM SHA-256 `98a485aa58859018ca22b171ba023817e489d848218903278a4e21f2142d6a66`.
+
+**Correction (2026-10-28, s192).** The default font is a 14-row cell, not
+16: the GID caption, also in the default font, measures 91 pixels for
+"Popular Support" in A0, which is Arial at a 14-row cell. `COUNT_FONT` is
+now `DEFAULT_FONT`, with font 10's cell. See `../2026-10-28-gid-caption/`.
