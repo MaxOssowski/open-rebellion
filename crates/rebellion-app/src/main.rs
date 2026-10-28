@@ -6626,7 +6626,7 @@ async fn main() {
                                 );
                                 let after = tactical_flow::persistence_snapshot(&session, &world);
                                 macroquad::logging::info!(
-                                    "[tactical_results] strategic_persistence applied=true attacker_present={}->{} defender_present={}->{} attacker_capitals={}->{} defender_capitals={}->{} attacker_fighters={}->{} defender_fighters={}->{} attacker_death_star={}->{} defender_death_star={}->{} attacker_landed={}->{} defender_landed={}->{}",
+                                    "[tactical_results] strategic_persistence applied=true attacker_present={}->{} defender_present={}->{} attacker_capitals={}->{} defender_capitals={}->{} attacker_fighters={}->{} defender_fighters={}->{} attacker_death_star={}->{} defender_death_star={}->{}",
                                     before.attacker_present,
                                     after.attacker_present,
                                     before.defender_present,
@@ -6643,20 +6643,13 @@ async fn main() {
                                     after.attacker_has_death_star,
                                     before.defender_has_death_star,
                                     after.defender_has_death_star,
-                                    before.attacker_landed_squadrons,
-                                    after.attacker_landed_squadrons,
-                                    before.defender_landed_squadrons,
-                                    after.defender_landed_squadrons,
                                 );
                                 result
                             };
-                            // The tactical commit (FUN_0040d320) has already
-                            // put each planet squadron on the system or on
-                            // the carrier it docked on.
-                            let sorties = std::mem::take(&mut battle_sorties);
-                            if strategic_results_applied {
-                                rebellion_core::squadrons::recover(&mut world, &sorties);
-                            }
+                            rebellion_core::squadrons::recover(
+                                &mut world,
+                                &std::mem::take(&mut battle_sorties),
+                            );
                             if !strategic_results_applied {
                                 // FUN_00516ef0 (state 9 follows the tactical
                                 // battle too): the loser's fleets leave.
@@ -10344,13 +10337,8 @@ mod tactical_ground_tests {
 
         assert_eq!(world.fleets[attacker].capital_ships.len(), 1);
         assert_eq!(world.fleets[attacker].capital_ships[0].hull_current, 43);
-        // FUN_0040d320: the surviving squadron was in the field, not in a
-        // hangar, so it lands on the system; the lost one is gone.
-        assert!(world.fleets[attacker].fighters.is_empty());
-        assert_eq!(
-            rebellion_core::squadrons::total(&world.systems[system].fighters),
-            1
-        );
+        assert_eq!(world.fleets[attacker].fighters[0].count, 1);
+        assert_eq!(world.fleets[attacker].fighters.len(), 1);
         assert!(!world.fleets[attacker].has_death_star);
         assert_eq!(world.fleets[defender].capital_ships[0].hull_current, 91);
         assert_eq!(

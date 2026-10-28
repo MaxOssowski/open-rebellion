@@ -53,10 +53,6 @@ pub(crate) struct BattlePersistenceSnapshot {
     pub defender_fighter_squadrons: u32,
     pub attacker_has_death_star: bool,
     pub defender_has_death_star: bool,
-    /// Each side's squadrons on the battle's system (`FUN_0040d320` lands
-    /// those not in a hangar or docked there).
-    pub attacker_landed_squadrons: u32,
-    pub defender_landed_squadrons: u32,
 }
 
 /// Read the strategic state owned by a tactical session without mutating it.
@@ -79,24 +75,7 @@ pub(crate) fn persistence_snapshot(
     };
     let attacker = fleet(session.attacker_fleet);
     let defender = fleet(session.defender_fleet);
-    let landed = |alliance: bool| {
-        world.systems.get(session.system).map_or(0, |system| {
-            system
-                .fighters
-                .iter()
-                .filter(|entry| {
-                    world
-                        .fighter_classes
-                        .get(entry.class)
-                        .is_some_and(|class| class.is_alliance == alliance)
-                })
-                .map(|entry| entry.count)
-                .sum::<u32>()
-        })
-    };
     BattlePersistenceSnapshot {
-        attacker_landed_squadrons: landed(session.attacker_is_alliance),
-        defender_landed_squadrons: landed(!session.attacker_is_alliance),
         attacker_present: attacker.is_some(),
         defender_present: defender.is_some(),
         attacker_capital_ships: attacker.map_or(0, |value| value.0),
@@ -297,21 +276,38 @@ pub(crate) fn apply_results(
 }
 
 /// `FUN_0040c780`'s commit of the squadrons: each one's count
-/// (`FUN_0040d260`), then its parent (`FUN_0040d320`). A squadron in a
-/// hangar or docked (`+0x170` 1 or 5) rides on the carrier it last entered
-/// (`+0x164`: `FUN_005b8c70`, `FUN_005b8570`; the port's recovery target),
-/// and dies with it when that carrier was lost (`FUN_005b2d20` ->
-/// `FUN_005b8d80`, the ship's `GameObj_vt11c` cascade). Every other squadron
-/// that survived, launched or jumped out, goes to the battle's system
-/// (`0x40d47c`): to the planet's surface (manual p. 129).
+/// (`FUN_0040d260`), then its parent (`FUN_0040d320`).
+/// - A squadron docked on a carrier (`+0x170` 5) rides on it (`+0x164`,
+///   set by the dock, `FUN_005b8570`).
+/// - Any other survivor, in its hangar or still in the field, rides on the
+///   carrier it launched from (`FUN_005b8c70`). A0 VM 2026-10-28, Battle at
+///   Mon Calamari from the clean `resource turn 14` save: Red Group's seven
+///   TIE squadrons flew around the Imperial Star Destroyer up to the last
+///   frame, and afterwards six were aboard it and one aboard Victory
+///   Destroyer 2, as before the battle (evidence
+///   2026-10-28-squadron-parent-after-battle). The static reading of
+///   `FUN_0040d320` would send them to the system; whatever docks them
+///   first is not traced.
+/// - A squadron whose carrier was lost dies with it when it was inside
+///   (`FUN_005b2d20` -> `FUN_005b8d80`, the `GameObj_vt11c` cascade).
+///   port: one in the field stays in its fleet on no ship, and
+///   `number_ships` seats it; no clean run has shown this case.
+/// - A planet's squadron (no carrier) stays in its sortie's fleet, and
+///   `squadrons::recover` lands it again.
 fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[FleetKey]) {
-    let classes: Vec<Vec<rebellion_core::ids::FighterKey>> = fought
+    let classes: Vec<Vec<(rebellion_core::ids::FighterKey, Option<u64>)>> = fought
         .iter()
         .map(|&key| {
             world
                 .fleets
                 .get(key)
-                .map(|fleet| fleet.fighters.iter().map(|entry| entry.class).collect())
+                .map(|fleet| {
+                    fleet
+                        .fighters
+                        .iter()
+                        .map(|entry| (entry.class, entry.carrier))
+                        .collect()
+                })
                 .unwrap_or_default()
         })
         .collect();
@@ -320,11 +316,22 @@ fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[Fl
             fleet.fighters.clear();
         }
     }
+    let ship_id = |world: &GameWorld, index: usize| {
+        let ship = session.ships.get(index)?;
+        let id = world
+            .fleets
+            .get(ship.fleet)?
+            .capital_ships
+            .get(ship.fleet_ship_index)?
+            .id;
+        Some((ship.fleet, id))
+    };
     for fighter in &session.fighters {
         let Some(position) = fought.iter().position(|&key| key == fighter.fleet) else {
             continue;
         };
-        let Some(&class) = classes[position].get(fighter.fleet_fighter_index) else {
+        let Some(&(class, launched_from)) = classes[position].get(fighter.fleet_fighter_index)
+        else {
             continue;
         };
         if fighter.squad_count == 0 {
@@ -332,29 +339,28 @@ fn commit_squadrons(session: &BattleSession, world: &mut GameWorld, fought: &[Fl
         }
         let docked = fighter.recovery_state
             == rebellion_core::tactical::TacticalFighterRecoveryState::Recovered;
-        let carrier = if docked {
-            fighter.recovery_target.or(fighter.home_carrier)
-        } else if fighter.in_hangar {
-            fighter.home_carrier
-        } else {
-            None
+        let (fleet_key, carrier) = match fighter.recovery_target.filter(|_| docked) {
+            Some(index) => match ship_id(world, index) {
+                Some((fleet, id)) => (fleet, Some(id)),
+                None => continue,
+            },
+            None => (fighter.fleet, launched_from),
         };
-        if let Some(carrier) = carrier.and_then(|index| session.ships.get(index)) {
-            let aboard = world.fleets.get_mut(carrier.fleet).and_then(|fleet| {
-                let id = fleet
-                    .capital_ships
-                    .get(carrier.fleet_ship_index)
-                    .filter(|ship| ship.alive && ship.id != 0)
-                    .map(|ship| ship.id)?;
-                Some((fleet, id))
-            });
-            if let Some((fleet, id)) = aboard {
+        let Some(fleet) = world.fleets.get_mut(fleet_key) else {
+            continue;
+        };
+        let alive = |id: u64| {
+            fleet
+                .capital_ships
+                .iter()
+                .any(|ship| ship.id == id && ship.alive)
+        };
+        match carrier {
+            Some(id) if alive(id) => {
                 rebellion_core::squadrons::put(&mut fleet.fighters, class, 1, Some(id));
             }
-            continue;
-        }
-        if let Some(system) = world.systems.get_mut(session.system) {
-            rebellion_core::squadrons::add(&mut system.fighters, class, 1);
+            Some(_) if docked || fighter.in_hangar => {}
+            _ => rebellion_core::squadrons::put(&mut fleet.fighters, class, 1, None),
         }
     }
 }
@@ -942,10 +948,13 @@ mod tests {
     }
 
     #[test]
-    fn a_squadron_rides_on_the_carrier_it_entered_and_any_other_lands_on_the_system() {
-        // FUN_0040d320: a squadron in a hangar or docked (+0x170 1 or 5)
-        // rides on its +0x164 carrier, and dies with a lost one
-        // (FUN_005b2d20 -> FUN_005b8d80); any other goes to the system.
+    fn a_surviving_squadron_rides_on_its_carrier_and_a_lost_carriers_dies_inside_it() {
+        // A0 VM 2026-10-28 (Battle at Mon Calamari): squadrons still in the
+        // field at the end were back aboard the carriers they launched
+        // from. A docked one rides on the carrier it docked on (+0x164,
+        // FUN_005b8570); a lost carrier's hangar dies with it
+        // (FUN_005b2d20 -> FUN_005b8d80). port: one it launched stays in
+        // the fleet on no ship. The planet takes none.
         let (mut world, system, attacker, defender) = opposing_empty_fleets();
         let carrier = world.capital_ship_classes.insert(CapitalShipClass {
             dat_id: DatId::new(0x1400_0001),
@@ -1004,6 +1013,9 @@ mod tests {
             .iter()
             .position(|ship| ship.fleet == attacker && ship.fleet_ship_index == 1)
             .unwrap();
+        let returning = ours[3];
+        session.fighters[returning].in_hangar = false;
+        session.fighters[returning].alive = true;
         let docked = ours[2];
         session.fighters[docked].in_hangar = false;
         session.fighters[docked].recovery_state =
@@ -1020,24 +1032,22 @@ mod tests {
 
         apply_results(&session, &mut world, &mut TroopTransportState::default());
 
-        // The surviving carrier keeps its own squadron and the one that
-        // docked on it; the lost carrier's hangar squadron died with it;
-        // the launched one is on the system.
+        // The surviving carrier holds its own squadron, back from the
+        // field, and the one that docked on it; the lost carrier's hangar
+        // squadron died with it; its launched one is in the fleet on no
+        // ship, as the carrier it would seat on is full.
         let fleet = &world.fleets[attacker];
-        assert_eq!(rebellion_core::squadrons::total(&fleet.fighters), 2);
+        assert_eq!(rebellion_core::squadrons::total(&fleet.fighters), 3);
         assert_eq!(rebellion_core::squadrons::aboard(&fleet.fighters, kept), 2);
         assert!(fleet
             .fighters
             .iter()
             .any(|entry| entry.class == other && entry.carrier == Some(kept)));
-        let landed = &world.systems[system].fighters;
-        assert_eq!(landed.len(), 1);
-        assert_eq!((landed[0].class, landed[0].count, landed[0].carrier), (wing, 1, None));
-        let snapshot = persistence_snapshot(&session, &world);
-        assert_eq!(
-            (snapshot.attacker_landed_squadrons, snapshot.defender_landed_squadrons),
-            (1, 0)
-        );
+        assert!(fleet
+            .fighters
+            .iter()
+            .any(|entry| entry.class == wing && entry.carrier.is_none() && entry.count == 1));
+        assert!(world.systems[system].fighters.is_empty());
     }
 
     #[test]

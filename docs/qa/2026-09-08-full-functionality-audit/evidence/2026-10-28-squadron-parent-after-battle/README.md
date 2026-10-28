@@ -89,3 +89,7 @@ two tries are recorded in `../2026-10-28-ctrl-clicks-a0/`.
   unchanged.
 - Mutants (`tactical_flow.rs`, 10): 8 caught, 2 unviable.
 - Release WASM SHA-256 `43199375bf3e9183b35879d7ba873d72be7503b045e5fca75fbd7bda6be461c2`.
+
+**Superseded (2026-10-28, s180).** A clean VM battle showed squadrons
+still in the field at the end going back aboard their carriers, not to the
+system. See `../2026-10-28-squadron-parent-after-battle-vm/`.
