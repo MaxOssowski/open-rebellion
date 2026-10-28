@@ -525,3 +525,18 @@ system, and its name takes the unheld colour.
   above, computed on STRATEGY 903's palette, gives exactly these.
 - The copy includes whatever the galaxy view drew there, so the GID
   markers under the window show shaded too.
+
+## The planet's galaxy marker (read 2026-10-28)
+
+- `FUN_0042d860(system)` looks up the system's item in the galaxy view's map
+  (`FUN_0060a860`) and returns its bitmap (`+0x20`), the GID marker the
+  view shows for that system. `FUN_0045bbb0` keeps it in the planet item's
+  `+0x70`. When it changes, the planet bitmap is rebuilt and the marker is
+  blitted at (0, bitmap height - marker height). The planet bitmap is the
+  picture plus 4 rows. The marker is drawn after the uprising mark.
+- A destroyed system's item takes state `0x40` and skips the rest, so it
+  shows no marker.
+- A0 2026-10-28, Popular Support:
+  - Sesswenna: a small cyan diamond at the bottom left of Chandrila and
+    Yaga Minor, and Averam's red sparkle;
+  - Moddell: Vjun's red sparkle.

@@ -90,6 +90,8 @@ pub struct SectorWindowState {
     /// The galaxy view's starfield (STRATEGY 902 or 903), which the windows
     /// show shaded under themselves.
     backdrop: u32,
+    /// Each system's GID marker bitmap in the galaxy view this frame.
+    gid_markers: std::collections::HashMap<SystemKey, u32>,
 }
 
 impl Default for SectorWindowState {
@@ -98,6 +100,7 @@ impl Default for SectorWindowState {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
             backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
+            gid_markers: std::collections::HashMap::new(),
         }
     }
 }
@@ -107,6 +110,12 @@ impl SectorWindowState {
     /// paints (`draw_galaxy_backdrop`).
     pub fn set_backdrop(&mut self, gid_mode: crate::cockpit::GidMode) {
         self.backdrop = crate::gid_backdrop_resource(gid_mode);
+    }
+
+    /// Take the galaxy view's GID markers (`GalaxyMapState::gid_markers`),
+    /// which each planet shows at its bottom left (`FUN_0042d860`).
+    pub fn set_gid_markers(&mut self, markers: &std::collections::HashMap<SystemKey, u32>) {
+        self.gid_markers.clone_from(markers);
     }
 
     /// Open the selected system's parent sector (`FUN_00429ce0`;
@@ -504,6 +513,7 @@ pub fn draw_sector_windows(
             uprisings,
             missions,
             state.backdrop,
+            &state.gid_markers,
         );
         if result.focus {
             focused = Some(window.sector);
@@ -598,6 +608,7 @@ fn draw_sector_window(
     uprisings: &rebellion_core::uprising::UprisingState,
     missions: &rebellion_core::missions::MissionState,
     backdrop: u32,
+    gid_markers: &std::collections::HashMap<SystemKey, u32>,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(sector) = world.sectors.get(window.sector) else {
@@ -823,6 +834,26 @@ fn draw_sector_window(
                         0.0,
                     );
                 }
+                // FUN_0045bbb0 then blits the system's galaxy-view marker
+                // (FUN_0042d860, the map item's bitmap) at the bottom left of
+                // the planet's bitmap, made 4 rows taller than the picture.
+                if let Some(&marker) = gid_markers.get(system_key).filter(|_| !system.is_destroyed)
+                {
+                    let height = cache
+                        .original_resource_size(DllSource::Strategy, marker)
+                        .map_or(0.0, |[_, height]| height as f32);
+                    paint_native(
+                        ui.painter(),
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        marker,
+                        planet_rect,
+                        layout.scale,
+                        0.0,
+                        PLANET_SIZE + 4.0 - height,
+                    );
+                }
                 if shows_alliance_headquarters(world, fog, player, *system_key) {
                     headquarters.push(planet_rect);
                 }
@@ -967,9 +998,13 @@ fn area_id(sector: SectorKey) -> egui::Id {
     egui::Id::new(("original-sector-window", sector))
 }
 
+/// A planet picture's side: every SYSTEMSD picture and the asteroid field
+/// are 37 by 37.
+const PLANET_SIZE: f32 = 37.0;
+
 /// A planet item's picture and hit rectangle: 37 by 37 at its position.
 fn planet_rect(window_rect: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Rect {
-    logical_rect(window_rect, scale, x, y, 37.0, 37.0)
+    logical_rect(window_rect, scale, x, y, PLANET_SIZE, PLANET_SIZE)
 }
 
 /// A quadrant overlay around a planet whose center is (x + 18, y + 18),
@@ -2755,6 +2790,88 @@ mod tests {
             Some(egui::Color32::from_rgb(0, 255, 0)),
             "{texts:?}"
         );
+    }
+
+    /// The bitmaps one frame of `state`'s windows paints, with their places.
+    fn painted(
+        world: &GameWorld,
+        state: &mut SectorWindowState,
+        layout: CockpitLayout,
+        base: Option<&std::path::Path>,
+    ) -> Vec<(u32, egui::Pos2)> {
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        if let Some(base) = base {
+            cache.set_base_path(base);
+        }
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        for index in 0..2 {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+        }
+        crate::fleet_window::tests::PAINTED.with(|painted| painted.take())
+    }
+
+    // FUN_0045bbb0 blits the system's galaxy-view marker (FUN_0042d860) at
+    // the bottom left of the planet's bitmap, which is the picture's 37 rows
+    // plus 4; a destroyed system's item skips it. The staged marker here is
+    // 2 by 1.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn a_planet_shows_its_galaxy_marker_at_its_bitmaps_bottom_left() {
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-sector-marker-{}",
+            std::process::id()
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        let marker = crate::bmp_cache::resources::strategy::GID_UNEXPLORED;
+        std::fs::write(
+            folder.join(format!("{marker}.bmp")),
+            crate::bmp_cache::tests::indexed_bmp(&[[255, 255, 255], [0, 0, 0]]),
+        )
+        .unwrap();
+        let (mut world, system, _) = fixture_world();
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        state.set_gid_markers(&std::collections::HashMap::from([(system, marker)]));
+        let planet = state.planet_screen_rect(&world, layout, system).unwrap();
+        let at = planet.min + egui::vec2(0.0, (37.0 + 4.0 - 1.0) * 2.0);
+        let shown = painted(&world, &mut state, layout, Some(&base));
+        world.systems[system].is_destroyed = true;
+        let destroyed = painted(&world, &mut state, layout, Some(&base));
+        // With the display off the galaxy view draws no marker.
+        state.set_gid_markers(&std::collections::HashMap::new());
+        world.systems[system].is_destroyed = false;
+        let off = painted(&world, &mut state, layout, Some(&base));
+        std::fs::remove_dir_all(base).unwrap();
+        assert!(shown.contains(&(marker, at)), "{shown:?}");
+        assert!(!destroyed.iter().any(|&(id, _)| id == marker));
+        assert!(!off.iter().any(|&(id, _)| id == marker));
     }
 
     // The galaxy view's starfield is 903 under an active GID mode and 902

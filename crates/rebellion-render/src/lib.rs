@@ -293,6 +293,10 @@ pub struct GalaxyMapState {
     pub viewport: Option<(f32, f32, f32, f32)>,
     /// Uniform scale of the original 640×480 strategic canvas.
     pub display_scale: f32,
+    /// Each system's GID marker bitmap this frame, empty with the display
+    /// off. The sector window copies it into its planet's bitmap
+    /// (`FUN_0042d860`).
+    pub gid_markers: std::collections::HashMap<SystemKey, u32>,
 }
 
 /// Simulation views needed to reproduce the original GID filters.
@@ -325,6 +329,7 @@ impl Default for GalaxyMapState {
             show_grid: false,
             viewport: None,
             display_scale: 1.0,
+            gid_markers: std::collections::HashMap::new(),
         }
     }
 }
@@ -466,15 +471,16 @@ pub fn draw_galaxy_map(
     // Draw the native fixed-size marker bitmaps. Selection and hover
     // remain input states, but the replacement circles, glows, and labels are
     // deliberately absent from the parity surface.
+    state.gid_markers.clear();
     if gid_mode.is_active() {
         for (key, system) in &world.systems {
+            let resource_id = gid_marker_for_system(world, key, system, faction, gid_mode, gid);
+            state.gid_markers.insert(key, resource_id);
             let (sx, sy) = cam.to_screen(f32::from(system.x), f32::from(system.y));
             if !cam.contains_with_margin(sx, sy, cam.scale_pixels(20.0)) {
                 continue;
             }
-            draw_gid_marker(
-                cache, world, key, system, faction, gid_mode, gid, cam, sx, sy,
-            );
+            draw_gid_marker(cache, resource_id, cam, sx, sy);
         }
     }
 
@@ -540,23 +546,13 @@ const GID_CAPTION_FONT_HEIGHT: f32 = 15.0;
 const GID_CAPTION_CENTRE_Y: f32 = 8.5;
 const GID_CAPTION_BOLD_OFFSET: f32 = 0.6;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Keep explicit state and rendering inputs at this existing UI boundary."
-)]
 fn draw_gid_marker(
     cache: &mut BmpCache,
-    world: &GameWorld,
-    system_key: SystemKey,
-    system: &System,
-    faction: CockpitFaction,
-    mode: GidMode,
-    gid: &GidOverlayContext<'_>,
+    resource_id: u32,
     cam: CameraView,
     center_x: f32,
     center_y: f32,
 ) {
-    let resource_id = gid_marker_for_system(world, system_key, system, faction, mode, gid);
     let Some(texture) = cache.get_macroquad_original(DllSource::Strategy, resource_id) else {
         return;
     };
