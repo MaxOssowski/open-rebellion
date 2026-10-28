@@ -540,3 +540,18 @@ system, and its name takes the unheld colour.
   - Sesswenna: a small cyan diamond at the bottom left of Chandrila and
     Yaga Minor, and Averam's red sparkle;
   - Moddell: Vjun's red sparkle.
+
+## When the status tracks show (read 2026-10-28)
+
+- `FUN_00459e30` creates each planet's three tracks hidden: it clears bit
+  `0x10000000` of `+0x50`, the visible style.
+- Their refresh shows them:
+  - energy (`FUN_0045c240`, white `0x2ffffff` over blue `0x2ff0000`) and
+    raw materials (`FUN_0045c450`, yellow `0x200ffff` over orange
+    `0x20f5cf9`) when the viewer's record of the system is explored
+    (`+0x88` bit 1);
+  - popular support (`FUN_0045baf0`, the side colours) when the record has
+    a side (`+0x24 & 0xc0`) and is populated (`+0x88` bit 0).
+- A destroyed system (`+0x50` bit 3) hides them.
+- A0 2026-10-28 (Moddell): the unexplored planets show no track. Explored
+  Vjun shows all three, as do Sesswenna's explored systems.

@@ -889,7 +889,10 @@ fn draw_sector_window(
                     planet_y,
                     &StatusTrackValues::of(world, system, player),
                     player,
-                ) {
+                )
+                .into_iter()
+                .filter(|&((_, row, _, _), _)| track_shown(system, row - planet_y))
+                {
                     ui.painter().rect_filled(
                         logical_rect(window_rect, layout.scale, x, y, width, height),
                         0.0,
@@ -1489,6 +1492,30 @@ impl StatusTrackValues {
     }
 }
 
+/// Whether the status track `row` rows below the planet shows. The tracks
+/// are created hidden (`FUN_00459e30` clears their visible bit) and shown
+/// by their refresh:
+/// - energy and raw materials (`FUN_0045c240`, `FUN_0045c450`) for an
+///   explored system (record `+0x88` bit 1);
+/// - popular support (`FUN_0045baf0`) for a populated system (`+0x88` bit
+///   0) with a side (`+0x24 & 0xc0`);
+/// - none for a destroyed system (`+0x50` bit 3), whose refresh hides them.
+///
+/// port: the viewer's record of an unexplored system holds no side, so the
+/// support track also needs the system explored. The A0 Moddell capture
+/// shows its unexplored planets with no track, and explored Vjun with all
+/// three.
+fn track_shown(system: &rebellion_core::world::System, row: f32) -> bool {
+    let explored = system.exploration_status == rebellion_core::dat::ExplorationStatus::Explored;
+    if system.is_destroyed || !explored {
+        return false;
+    }
+    row < SUPPORT_TRACK_ROW || system.is_populated
+}
+
+/// The support track's row below the planet's top.
+const SUPPORT_TRACK_ROW: f32 = 47.0;
+
 /// Where a planet's name starts below its top (the label item's `+0x34`,
 /// set to the bitmap height plus 11 in `FUN_00459e30`).
 const NAME_OFFSET: f32 = 48.0;
@@ -1535,8 +1562,11 @@ fn status_tracks(
     };
     #[expect(clippy::cast_precision_loss, reason = "Support is at most 100.")]
     let filled = (37.0 * values.support.min(100) as f32 / 100.0).round();
-    rects.push(((x, y + 47.0, filled, 3.0), own));
-    rects.push(((x + filled, y + 47.0, 37.0 - filled, 3.0), other));
+    rects.push(((x, y + SUPPORT_TRACK_ROW, filled, 3.0), own));
+    rects.push((
+        (x + filled, y + SUPPORT_TRACK_ROW, 37.0 - filled, 3.0),
+        other,
+    ));
     rects.retain(|((_, _, width, _), _)| *width > 0.0);
     rects
 }
@@ -1611,6 +1641,86 @@ mod tests {
             ),
             egui::Color32::WHITE
         );
+    }
+
+    // FUN_00459e30 creates the tracks hidden; FUN_0045c240 and FUN_0045c450
+    // show energy and raw materials for an explored system, FUN_0045baf0
+    // support for a populated one with a side; a destroyed system shows none.
+    #[test]
+    fn the_tracks_show_only_where_their_refresh_shows_them() {
+        let (mut world, system, _) = fixture_world();
+        let mut shown = |explored, populated, destroyed| {
+            let value = &mut world.systems[system];
+            value.exploration_status = if explored {
+                ExplorationStatus::Explored
+            } else {
+                ExplorationStatus::Unexplored
+            };
+            value.is_populated = populated;
+            value.is_destroyed = destroyed;
+            [39.0, 43.0, 47.0].map(|row| track_shown(&world.systems[system], row))
+        };
+        assert_eq!(shown(true, true, false), [true, true, true]);
+        assert_eq!(shown(true, false, false), [true, true, false]);
+        assert_eq!(shown(false, true, false), [false, false, false]);
+        assert_eq!(shown(true, true, true), [false, false, false]);
+    }
+
+    // The drawn window keeps an explored, unpopulated system's energy and
+    // raw-material tracks and drops its support track.
+    #[test]
+    fn an_unpopulated_planet_draws_its_slots_but_no_support_track() {
+        let (mut world, system, _) = fixture_world();
+        world.systems[system].is_populated = false;
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let planet = state.planet_screen_rect(&world, layout, system).unwrap();
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let mut rows = Vec::new();
+        for index in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+            rows = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Rect(rect)
+                        if rect.rect.height() == 6.0 && rect.rect.min.x >= planet.min.x =>
+                    {
+                        Some(((rect.rect.min.y - planet.min.y) / 2.0).round())
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
+        assert!(rows.contains(&39.0), "{rows:?}");
+        assert!(rows.contains(&43.0), "{rows:?}");
+        assert!(!rows.contains(&47.0), "{rows:?}");
     }
 
     // FUN_0045bbb0: a system in uprising (+0x88 bit 2) takes its side's mark,
