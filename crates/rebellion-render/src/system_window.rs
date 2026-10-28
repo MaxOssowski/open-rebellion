@@ -1145,7 +1145,7 @@ fn draw_system_window(
                         logical_point(local, scale, SYSTEM_WINDOW_WIDTH / 2.0, PAGE_LABEL_Y),
                         egui::Align2::CENTER_TOP,
                         window.tab.name(),
-                        egui::FontId::proportional((10.0 * scale).max(7.0)),
+                        crate::theme::original_font(4, scale),
                         egui::Color32::WHITE,
                     );
                     let cells = pages[SystemWindowTab::ALL
@@ -1167,6 +1167,17 @@ fn draw_system_window(
                     if any_pressed && list_response.is_pointer_button_down_on() {
                         result.item = Some(None);
                         result.focus = true;
+                    }
+                    // FUN_004ac5c0, on the right release, opens the pop-up
+                    // for slot 22's selection (FUN_00453ee0: the list's
+                    // selected objects): over empty space, for nothing.
+                    if list_response.secondary_clicked() {
+                        if let Some(point) = list_response
+                            .interact_pointer_pos()
+                            .filter(|point| rect_contains(list, *point))
+                        {
+                            result.object_menu = Some((None, canvas_point(layout, point)));
+                        }
                     }
                     for (index, cell) in cells.iter().enumerate() {
                         let rect = cell_rect(local, scale, index);
@@ -1198,9 +1209,7 @@ fn draw_system_window(
                             );
                         }
                         // A left or right press selects the item
-                        // (FUN_006083c0). port: a facility's class menu
-                        // (Encyclopedia, Status, Scrap) is not ported, so a
-                        // right release opens none.
+                        // (FUN_006083c0); the right release opens its menu.
                         let response = ui.interact(
                             rect.intersect(list),
                             ui.id().with((window.system, "cell", index)),
@@ -1212,6 +1221,15 @@ fn draw_system_window(
                         {
                             result.item = Some(Some(cell.item));
                             result.focus = true;
+                        }
+                        if response.secondary_clicked() {
+                            if let Some(point) = response
+                                .interact_pointer_pos()
+                                .filter(|point| rect_contains(rect.intersect(list), *point))
+                            {
+                                result.object_menu =
+                                    Some((cell.item.menu_object(), canvas_point(layout, point)));
+                            }
                         }
                     }
                 }
@@ -2281,6 +2299,37 @@ mod tests {
         assert!((clip.right() - window.right()).abs() < 0.01, "{clip:?}");
     }
 
+    // FUN_004ac5c0 opens the pop-up on the right release for slot 22's
+    // selection, the list's selected objects (FUN_00453ee0): a yard's menu.
+    #[test]
+    fn a_right_click_on_a_yard_opens_its_menu() {
+        let (mut world, systems) = fixture_world(1);
+        let yard = add_yard(&mut world, systems[0], 0x2800_0001);
+        let FacilityItem::Manufacturing(key) = yard else {
+            unreachable!()
+        };
+        let mut state = opened(&world, systems[0]);
+        let manufacturing = ManufacturingState::new();
+        let _ = run_with(&world, &manufacturing, &mut state, click(at(50.0, 30.0)));
+        assert_eq!(state.windows[0].tab, SystemWindowTab::Shipyards);
+        let right = run_with(
+            &world,
+            &manufacturing,
+            &mut state,
+            right_click(at(20.0, 90.0)),
+        );
+        assert_eq!(state.windows[0].selected_item, Some(yard));
+        assert!(
+            right.actions.contains(&SystemWindowAction::OpenObjectMenu {
+                system: systems[0],
+                selection: Some(MenuObject::ManufacturingFacility(key)),
+                point: (120, 150),
+            }),
+            "{:?}",
+            right.actions
+        );
+    }
+
     #[test]
     fn a_facility_page_shows_its_label_pictures_and_selected_frame() {
         // FUN_004568a0: the page label at (0, 58), centred; the list at
@@ -2308,13 +2357,19 @@ mod tests {
         assert!(after.painted.contains(&(10_320, at(190.0, 20.0))));
         let label = text(&after, "Mines");
         assert!((label.1.x + label.2 / 2.0 - at(113.0, 0.0).x).abs() < 0.01);
-        assert_eq!((label.1.y, label.3), (at(0.0, 58.0).y, 20.0));
+        // The page label `+0x5f` is font 4.
+        assert_eq!(
+            (label.1.y, label.3),
+            (at(0.0, 58.0).y, crate::theme::original_font(4, 2.0).size)
+        );
         assert!(run
             .actions
             .contains(&SystemWindowAction::SelectSystem(systems[0])));
 
-        // A right press selects too and opens nothing; a press on empty list
-        // space clears the selection.
+        // A right press selects too, and the release opens the menu for the
+        // selection (FUN_004ac5c0, FUN_00453ee0). port: an empty deposit's
+        // object is untraced, so its menu stands for nothing. A press on
+        // empty list space clears the selection.
         let right = run_with(
             &world,
             &manufacturing,
@@ -2325,10 +2380,11 @@ mod tests {
             state.windows[0].selected_item,
             Some(FacilityItem::Deposit(1))
         );
-        assert!(!right
-            .actions
-            .iter()
-            .any(|action| matches!(action, SystemWindowAction::OpenObjectMenu { .. })));
+        assert!(right.actions.contains(&SystemWindowAction::OpenObjectMenu {
+            system: systems[0],
+            selection: None,
+            point: (180, 150),
+        }));
         let _ = run_with(&world, &manufacturing, &mut state, click(at(100.0, 250.0)));
         assert_eq!(state.windows[0].selected_item, None);
         assert_eq!(

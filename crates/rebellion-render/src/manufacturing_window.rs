@@ -281,6 +281,22 @@ pub enum FacilityItem {
     Deposit(usize),
 }
 
+impl FacilityItem {
+    /// The object the item's pop-up menu stands for. port: a pending unit's
+    /// and an empty deposit's objects are untraced, so their menu stands
+    /// for nothing.
+    #[must_use]
+    pub const fn menu_object(self) -> Option<crate::object_menu::MenuObject> {
+        match self {
+            Self::Manufacturing(key) => {
+                Some(crate::object_menu::MenuObject::ManufacturingFacility(key))
+            }
+            Self::Production(key) => Some(crate::object_menu::MenuObject::ProductionFacility(key)),
+            Self::Pending(_) | Self::Deposit(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FacilityCell {
     pub item: FacilityItem,

@@ -435,3 +435,19 @@ Manufacturing side panel (M) is gone.
 - A0 2026-10-28 (`system-vjun.png`): "Ship Construction" is black on the
   red strip, and "No Ships are being built", "Destination: Vjun" and
   "0:0" are white.
+
+## Facility menus (read 2026-10-28)
+
+- The System window (vtable `0x659e68`) keeps the base dialog's slots 7
+  and 8 (`FUN_004ac5c0`, `FUN_004ac730`). Its slot 22 (`FUN_00453ee0`) gives
+  the overview's selected bands' managers, or a facility page's selected
+  objects (`FUN_00609410`, `FUN_0042d170`). So a right release opens the
+  pop-up for the selected facility, or for nothing over empty list space.
+- Order lists, slot `+0x3c`: every facility class keeps the base object's
+  `GameObj_006613a8_vt3c` (`FUN_005399e0`). That covers the defense
+  facilities (vtables `0x65eaf8`, `0x65f640`, `0x65f828`, `0x65fa10` over
+  `0x65f458`), the yards (`0x65fe60`, `0x660280`, `0x660070` over
+  `0x660490`) and the mines and refineries (`0x6606a0`, `0x6608c8` over
+  `0x662778`). Its list, built once by `FUN_00539c20`, holds order `0x200`
+  (Scrap). `FUN_0051d990` adds Encyclopedia and Status.
+- The page label `+0x5f` is font 4.

@@ -12,7 +12,8 @@
 
 use egui_macroquad::egui;
 use rebellion_core::ids::{
-    CharacterKey, DefenseFacilityKey, FighterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey,
+    CharacterKey, DefenseFacilityKey, FighterKey, FleetKey, ManufacturingFacilityKey,
+    ProductionFacilityKey, SpecialForceKey, SystemKey, TroopKey,
 };
 use rebellion_core::manufacturing::ProductionArea;
 use rebellion_core::missions::MissionMember;
@@ -101,6 +102,10 @@ pub enum MenuObject {
     },
     /// A Defenses window facility (`0x20..0x27`).
     DefenseFacility(DefenseFacilityKey),
+    /// A System window yard (`0x28..0x2a`).
+    ManufacturingFacility(ManufacturingFacilityKey),
+    /// A System window mine or refinery (`0x2c..0x2d`).
+    ProductionFacility(ProductionFacilityKey),
 }
 
 impl MenuObject {
@@ -117,7 +122,9 @@ impl MenuObject {
             | Self::Producer { .. }
             | Self::Fighter { .. }
             | Self::PlanetFighter { .. }
-            | Self::DefenseFacility(_) => None,
+            | Self::DefenseFacility(_)
+            | Self::ManufacturingFacility(_)
+            | Self::ProductionFacility(_) => None,
         }
     }
 
@@ -137,6 +144,8 @@ impl MenuObject {
                 Some(StatusObject::PlanetFighter { system, class })
             }
             Self::DefenseFacility(key) => Some(StatusObject::DefenseFacility(key)),
+            Self::ManufacturingFacility(key) => Some(StatusObject::ManufacturingFacility(key)),
+            Self::ProductionFacility(key) => Some(StatusObject::ProductionFacility(key)),
             Self::SystemIcon { .. } => None,
         }
     }
@@ -498,9 +507,16 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         Some(MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. }) => {
             &[MOVE, CONFIRMED_MOVE, SCRAP]
         }
-        // port: a defense facility's class order list (vtable `+0x3c`) is
-        // untraced; FUN_0051d990's Encyclopedia and Status are always added.
-        Some(MenuObject::DefenseFacility(_)) | None => &[],
+        // Every facility class (defenses, yards, mines and refineries)
+        // keeps the base object's order list, slot +0x3c (FUN_005399e0):
+        // the one order 0x200 that FUN_00539c20 puts in it. FUN_0051d990
+        // adds Encyclopedia and Status.
+        Some(
+            MenuObject::DefenseFacility(_)
+            | MenuObject::ManufacturingFacility(_)
+            | MenuObject::ProductionFacility(_),
+        ) => &[SCRAP],
+        None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
         .iter()
@@ -1539,18 +1555,30 @@ mod tests {
     }
 
     #[test]
-    fn a_defense_facility_lists_only_encyclopedia_and_status() {
-        // FUN_0051d990 adds 0x100 and 0x103 to every menu; port: the
-        // facility class's own order list is untraced.
-        let selection = MenuObject::DefenseFacility(DefenseFacilityKey::default());
-        let rows = object_menu_rows(Some(selection), MISSION_GATE);
-        assert_eq!(labels(&rows), ["Encyclopedia", "Status"]);
-        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
-        assert_eq!(selection.mission_member(), None);
-        assert_eq!(
-            selection.status_object(),
-            Some(StatusObject::DefenseFacility(DefenseFacilityKey::default()))
-        );
+    fn a_facility_lists_scrap_encyclopedia_and_status() {
+        // Every facility class keeps the base order list (slot +0x3c,
+        // FUN_005399e0): order 0x200, Scrap (FUN_00539c20). FUN_0051d990
+        // adds 0x100 and 0x103. port: Scrap stays disabled.
+        for (selection, status) in [
+            (
+                MenuObject::DefenseFacility(DefenseFacilityKey::default()),
+                StatusObject::DefenseFacility(DefenseFacilityKey::default()),
+            ),
+            (
+                MenuObject::ManufacturingFacility(ManufacturingFacilityKey::default()),
+                StatusObject::ManufacturingFacility(ManufacturingFacilityKey::default()),
+            ),
+            (
+                MenuObject::ProductionFacility(ProductionFacilityKey::default()),
+                StatusObject::ProductionFacility(ProductionFacilityKey::default()),
+            ),
+        ] {
+            let rows = object_menu_rows(Some(selection), MISSION_GATE);
+            assert_eq!(labels(&rows), ["Encyclopedia", "Status", "Scrap"]);
+            assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+            assert_eq!(selection.mission_member(), None);
+            assert_eq!(selection.status_object(), Some(status));
+        }
     }
 
     #[test]
