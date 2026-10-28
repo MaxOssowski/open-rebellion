@@ -669,18 +669,33 @@ The terms:
     exists or when the pick is the system's Imperial Commander.
   - Ported as `abstract_battle::trench_commander_term`. `hyp:` every
     character at the battle has a battle person.
-- The Death Star's lists `+0x38` and `+0x3c` (read 2026-10-22, partly):
+- The Death Star's lists `+0x38` and `+0x3c` (read 2026-10-22, settled
+  2026-10-28):
   - The battle's Death Star object (0x7c bytes) is built by `FUN_005a9220`
     (the displayed battle, from `FUN_0059a750`) or `FUN_005af4e0`, and
     registered at `DAT_006bc470 + 0x44`.
-  - Its sub-object at `+0x1c` is a unit group (`FUN_005b82a0`, vtable
-    `0x66c698`, then `0x66c3b8`), the same base as a task force. The
-    group's lists at its `+0x1c` and `+0x20` are the object's `+0x38`
-    and `+0x3c`.
-  - Neither constructor adds to them, and no other reader of
-    `FUN_005a66a0` touches them besides the trench run's clean-up. What
-    fills them is still open; calling them "the units it carries" was a
-    guess.
+  - Its sub-object at `+0x1c` (`FUN_005b82a0`, vtable `0x66c3b8`) is a
+    hangar, the same object a capital ship keeps at `+0x418`
+    (`FUN_005b05c0`). Its fields: `+4` carrier, `+8` squadrons inside,
+    `+0xc` taken, `+0x10` capacity; its lists `+0x1c` docked
+    (`FUN_005b8570`), `+0x20` inside (`FUN_005b84a0`, state 1) and `+0x28`
+    landing (`FUN_005b84e0`). So the object's `+0x38` and `+0x3c` are the
+    docked and inside squadrons.
+  - The constructors' last argument is the capacity (`+0x2c`, the
+    hangar's `+0x10`). `FUN_0040bcd0` passes slot `+0x26c` (the class
+    record's `+0xe4`, CAPSHPSD fighter capacity: 24 for the Death Star,
+    id 136) minus slot `+0x23c` (squadrons aboard, iterator mode 3 over
+    families `0x1c..0x1f`) plus those usable (mode 1). The other
+    arguments are reordered by `FUN_00595ef0` (`0x595eff`).
+  - The hangar fills as any carrier's: a squadron aboard at the start,
+    and `FUN_005afe40` docks a leaving squadron there. It tries the home
+    carrier (`+0x164`, the Death Star's hangar on `FUN_005ba420`), then
+    the side's capital ships (`+0x58`), then, for the Empire (`+0x168` =
+    1), the Death Star while `FUN_005ba420` holds.
+  - On a hit the trench run destroys each squadron in both lists
+    (`FUN_005af7a0`, `0x5af38b..0x5af3f4`) and frees them.
+  - The 2026-10-28 note that the Death Star's tactical unit has no
+    hangar (`evidence/2026-10-28-ctrl-clicks-a0`) was wrong.
 
 In the port, the displayed battle's run (`BattleSession::
 prepare_original_trench_run`, `FUN_005d04e0`) is a different function, with
@@ -688,9 +703,9 @@ its own success rating. Since W2i the abstract battle has both
 (`AbstractBattle::death_star_step`, `trench_run`).
 - `hyp:` the leader kind 4 is a fighter group.
 - The commander term is `trench_commander_term` (see above).
-- `port:` the Death Star's carried units are unknown and none falls with
-  it. The port's Death Star capital ship falls with it, so the fleet loses
-  the Death Star.
+- `port:` the port's Death Star capital ship carries the hangar and falls
+  with it, so the fleet loses the Death Star and the squadrons inside
+  (`AbstractBattle::destroy`).
 
 ## The port (2026-10-21)
 

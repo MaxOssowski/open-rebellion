@@ -2444,6 +2444,15 @@ cross-runtime proof remain open
   - The Alliance's best Commander by combat gives combat / 20 + 1, clamped
     to 1..9 (`FUN_005afc00`, `FUN_0040c200`, `FUN_00509530`).
   - Campaigns are unchanged. 3 new tests; mutants 17 caught, 0 missed.
+- 2026-10-28: the Death Star's lists `+0x38` and `+0x3c` are its hangar's
+  docked and inside squadrons (`FUN_005b82a0` at `+0x1c`, the capital
+  ship's `+0x418` hangar; capacity the CAPSHPSD fighter capacity, 24,
+  through `FUN_0040bcd0`; `evidence/2026-10-28-death-star-hangar/`).
+  - A trench-run hit destroys the squadrons inside (`FUN_005aefc0`,
+    `0x5af38b`); the port destroys the Death Star ship's hangar with it.
+  - A leaving Imperial squadron docks on the Death Star last
+    (`FUN_005afe40`), after the side's other ships.
+  - 2 new tests; mutants 9 caught, 0 missed; 24 campaigns unchanged.
 - Acceptance: The four slot handlers and the ground caller are decompiled and
   ported with citations, the 5120 misuse is removed, and each formula has a
   failing-without test.

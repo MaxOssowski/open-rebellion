@@ -167,3 +167,9 @@ evidence came from an edited save.
   `leave_escort`. It is equivalent: a ship of no task force holds 255
   (`TACTICAL_UNGROUPED_TASK_FORCE`), and the slots are 0..7.
 - Release WASM SHA-256 `0f69ad9a441ec48ee498a29f945d4ecf7da9c60fc6be365fbaa749dbf210740b`.
+
+**Correction (2026-10-28, s182).** The Death Star's tactical unit has a
+hangar: its sub-object at `+0x1c` (`FUN_005b82a0`) is the same hangar a
+capital ship keeps at `+0x418`, with the class's fighter capacity (24). The
+explanation above for the retyped save is therefore incomplete. See
+`../2026-10-28-death-star-hangar/`.

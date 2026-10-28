@@ -1018,10 +1018,11 @@ impl AbstractBattle {
     /// (`FUN_005ba8a0`).
     ///
     /// The commander term is [`AbstractBattle::trench_commander`]
-    /// ([`trench_commander_term`]). port: the units the Death Star
-    /// carries (its lists `+0x38`, `+0x3c`) are not known, so none is
-    /// destroyed with it; the port's Death Star capital ship takes the
-    /// Death Star's fall.
+    /// ([`trench_commander_term`]). On a hit the run destroys the squadrons
+    /// inside the Death Star (`FUN_005af7a0` over its hangar's lists, the
+    /// object's `+0x38` docked and `+0x3c` inside, `0x5af38b..0x5af3f4`).
+    /// port: the port's Death Star capital ship, whose hangar holds them,
+    /// takes the Death Star's fall.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -1077,12 +1078,14 @@ impl AbstractBattle {
                     ds.laser_charge = 0.0;
                 }
                 let empire = !self.session.attacker_is_alliance;
-                for ship in &mut self.session.ships {
-                    if ship.death_star_resource.is_some() && ship.is_attacker == empire {
-                        ship.hull_current = 0;
-                        ship.shield = 0;
-                        ship.alive = false;
-                    }
+                let death_stars: Vec<usize> = (0..self.session.ships.len())
+                    .filter(|&index| {
+                        let ship = &self.session.ships[index];
+                        ship.death_star_resource.is_some() && ship.is_attacker == empire
+                    })
+                    .collect();
+                for index in death_stars {
+                    self.destroy(AbstractUnit::Capital(index));
                 }
                 return TrenchRun {
                     visits,
@@ -1679,8 +1682,12 @@ fn ship_changed(before: &crate::world::ShipInstance, hull_after: i32, hits_after
 /// `+0x434` and `+0x438`). A ship escapes after the groups dock, so a group
 /// can board a carrier that is then lost.
 ///
-/// port: the Empire's Death Star, `FUN_005afe40`'s last try, takes no
-/// squadron (the port's Death Star has no hangar). A squadron already
+/// The Empire's Death Star is `FUN_005afe40`'s last try, while it is
+/// operational (`FUN_005ba420`): it is not in the list `+0x58`, and its
+/// hangar (the object's `+0x1c`, `FUN_005b82a0`) holds the fighter capacity
+/// of its class (`FUN_0040bcd0`: slot `+0x26c`, CAPSHPSD `+0xe4`). It is
+/// a home carrier on the same test. port: the port's Death Star capital
+/// ship carries that hangar. A squadron already
 /// inside a hangar (state 1) stays with its carrier: it is not in the list
 /// `+0x64` (the alternate mode's dealing `FUN_005ae460` skips state 1 at
 /// `0x5ae4a8`, as `FUN_005ab650` does). The tactical battle has
@@ -1700,11 +1707,22 @@ pub fn leave(session: &mut BattleSession, alliance: bool) {
             unit_active(session, AbstractUnit::Capital(carrier))
                 && unit_is_alliance(session, AbstractUnit::Capital(carrier)) == alliance
                 && session.carrier_room(carrier) > 0
+                && (session.ships[carrier].death_star_resource.is_none()
+                    || session
+                        .death_star
+                        .is_some_and(|death_star| death_star.operational() && !death_star.is_alliance))
         };
+        let is_death_star =
+            |session: &BattleSession, ship: usize| session.ships[ship].death_star_resource.is_some();
         let home = session.fighters[index].home_carrier;
+        let others = (0..session.ships.len()).filter(|&ship| !is_death_star(session, ship));
+        // The side test of in_field keeps the Death Star to the Empire
+        // (+0x168 = 1).
+        let death_stars = (0..session.ships.len()).filter(|&ship| is_death_star(session, ship));
         let carrier = home
             .into_iter()
-            .chain(0..session.ships.len())
+            .chain(others)
+            .chain(death_stars)
             .find(|&carrier| in_field(session, carrier));
         match carrier {
             Some(carrier) => {
@@ -4283,6 +4301,64 @@ mod tests {
         // Only the Death Star falls.
         assert!(battle.session.ships[1].alive);
         assert!(battle.session.fighters[1..].iter().all(|f| f.alive));
+    }
+
+    // FUN_005aefc0 at 0x5af38b..0x5af3f4: a hit destroys (FUN_005af7a0) each
+    // squadron in the Death Star's hangar lists, the object's +0x38 (docked)
+    // and +0x3c (inside); the hangar is FUN_005b82a0 at its +0x1c.
+    #[test]
+    fn a_trench_run_that_hits_destroys_the_squadrons_inside_the_death_star() {
+        let mut battle = trench_battle(2, 9, 400);
+        battle.session.ships[0].fighter_capacity = 24;
+        let mut inside = fighter(false, TacticalWeaponArc::default());
+        inside.alive = false;
+        inside.in_hangar = true;
+        inside.home_carrier = Some(0);
+        battle.session.fighters.push(inside);
+        battle.session.ships[0].hangar = vec![3];
+        battle.death_star_step(true);
+        assert!(!battle.session.ships[0].alive);
+        assert!(battle.session.ships[0].hangar.is_empty());
+        assert_eq!(battle.session.fighters[3].squad_count, 0);
+        // The Imperial group in the field is not inside it.
+        assert!(battle.session.fighters[0].squad_count > 0);
+    }
+
+    // FUN_005afe40: an Imperial group with no home carrier tries its side's
+    // ships (+0x58) first; the Death Star, not in that list, is the last
+    // try, and only while it is operational (FUN_005ba420).
+    #[test]
+    fn a_leaving_imperial_group_docks_on_the_death_star_last() {
+        let run = |other_capacity: u32, death_star_destroyed: bool| {
+            let mut death_star = ship(false, TacticalWeaponArc::default(), 0.0);
+            death_star.death_star_resource =
+                Some(crate::tactical_resources::DEATH_STAR_TACTICAL_RESOURCE);
+            death_star.fighter_capacity = 24;
+            death_star.subsystem_capacity.hyperdrive = 1;
+            let mut other = ship(false, TacticalWeaponArc::default(), 0.0);
+            other.fighter_capacity = other_capacity;
+            other.subsystem_capacity.hyperdrive = 1;
+            let mut battle = AbstractBattle::new(session(
+                vec![
+                    death_star,
+                    other,
+                    ship(true, TacticalWeaponArc::new(0, 0, 1), 1.0),
+                ],
+                vec![fighter(false, TacticalWeaponArc::default())],
+            ));
+            let mut star = imperial_death_star(false);
+            star.destroyed = death_star_destroyed;
+            battle.session.death_star = Some(star);
+            leave(&mut battle.session, false);
+            (
+                battle.session.ships[0].hangar.clone(),
+                battle.session.ships[1].hangar.clone(),
+                battle.session.fighters[0].squad_count > 0,
+            )
+        };
+        assert_eq!(run(1, false), (vec![], vec![0], true));
+        assert_eq!(run(0, false), (vec![0], vec![], true));
+        assert_eq!(run(0, true), (vec![], vec![], false));
     }
 
     // FUN_005aefc0: with no torpedoes the chance is (0 + 1.0) x 0.5, 0 as an

@@ -1,0 +1,6 @@
+{
+ "command": "rebellion-playtest data/base --seed S --ticks 1500 --dual-ai --output S.jsonl, S = 1..24, release builds",
+ "baseline": "HEAD 50fc2152 (detached worktree)",
+ "changed_seeds": [],
+ "note": "Every JSONL differs only in the wall_ms field; with it removed all 24 are byte-identical."
+}
