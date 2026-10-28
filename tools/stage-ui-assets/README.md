@@ -88,18 +88,23 @@ Each DLL has its own directory, so equal resource IDs in different DLLs do not
 collide. Numeric resource IDs become filenames, for example:
 `data/base/ui/strategy-dll/BMP/900.bmp`.
 
-| Required source file | Standard BMPs | Type-302 frames | Directory under `--output` |
-| --- | ---: | ---: | --- |
-| `COMMON.DLL` | 321 | 0 | `common-dll/` |
-| `GOKRES.DLL` | 580 | 0 | `gokres-dll/` |
-| `STRATEGY.DLL` | 1,042 | 0 | `strategy-dll/` |
-| `TACTICAL.DLL` | 288 | 0 | `tactical-dll/` |
-| `ALSPRITE.DLL` | 38 | 1,640 | `alsprite-dll/` |
-| `EMSPRITE.DLL` | 34 | 2,348 | `emsprite-dll/` |
-| `REBDLOG.DLL` | 23 | 0 | `rebdlog-dll/` |
+| Source file | Standard BMPs | Type-302 frames | RCDATA | WAVE | Directory under `--output` |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `COMMON.DLL` | 321 | 0 | 0 | 0 | `common-dll/` |
+| `GOKRES.DLL` | 580 | 0 | 0 | 0 | `gokres-dll/` |
+| `STRATEGY.DLL` | 1,042 | 0 | 0 | 0 | `strategy-dll/` |
+| `TACTICAL.DLL` | 288 | 0 | 0 | 0 | `tactical-dll/` |
+| `ALSPRITE.DLL` | 38 | 1,640 | 752 | 213 | `alsprite-dll/` |
+| `EMSPRITE.DLL` | 34 | 2,348 | 753 | 216 | `emsprite-dll/` |
+| `ALBRIEF.DLL` (optional) | 20 | 2,684 | 366 | 17 | `albrief-dll/` |
+| `EMBRIEF.DLL` (optional) | 18 | 2,738 | 471 | 22 | `embrief-dll/` |
+| `REBDLOG.DLL` | 23 | 0 | 0 | 0 | `rebdlog-dll/` |
 
-Standard resources are written to `BMP/{id}.bmp`; custom advisor frames are
-written unchanged to `TYPE302/{id}.bin`.
+Standard resources are written to `BMP/{id}.bmp`. Custom advisor frames
+(`TYPE302/{id}.bin`), RCDATA clip records (`RCDATA/{id}.bin`) and WAVE voice
+clips (`WAVE/{id}.wav`) are written unchanged. The optional briefing DLLs are
+skipped when absent. The GOG release ships them as `ALBRIEF.DLL.OLD` and
+`EMBRIEF.DLL.OLD`, and the tool reads those names too.
 
 The tool also maps seven known string-named resources to the numeric filenames
 used by the runtime catalog:

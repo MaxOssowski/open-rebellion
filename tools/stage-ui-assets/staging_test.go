@@ -194,3 +194,76 @@ func TestStageTargetsExtractsDLLIntoRuntimeLayout(t *testing.T) {
 		t.Fatalf("staged runtime asset: %v", err)
 	}
 }
+
+func TestStageTargetsStagesClipRecordsFromAnAliasedDLL(t *testing.T) {
+	// The GOG release ships ALBRIEF.DLL as ALBRIEF.DLL.OLD; its clip
+	// definition 0x103b is [0, 1155, 0xd, 0x89, 0x835] (FUN_00404440).
+	sourceDir := t.TempDir()
+	outputDir := t.TempDir()
+	record := []byte{0, 0, 0x83, 0x04, 0x0d, 0, 0x89, 0, 0x35, 0x08}
+	dll := buildTestPE32WithResource(t, rtRCData, 0x103b, 1033, record)
+	if err := os.WriteFile(filepath.Join(sourceDir, "TEST.DLL.OLD"), dll, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	target := dllTarget{Filename: "TEST.DLL", Aliases: []string{"TEST.DLL.OLD"}, Directory: "test-dll", ExpectedRCData: 1}
+
+	summary, err := stageTargets(sourceDir, outputDir, []dllTarget{target}, nil, false, io.Discard)
+	if err != nil {
+		t.Fatalf("stageTargets() error = %v", err)
+	}
+	if summary.DLLs != 1 || summary.Resources != 1 || summary.Written != 1 {
+		t.Errorf("summary = %+v, want one DLL/resource/write", summary)
+	}
+	staged, err := os.ReadFile(filepath.Join(outputDir, "test-dll", "RCDATA", "4155.bin"))
+	if err != nil || !bytes.Equal(staged, record) {
+		t.Fatalf("staged record = %v, %v; want the source bytes", staged, err)
+	}
+	verified, err := verifyTargets(outputDir, []dllTarget{target}, io.Discard)
+	if err != nil || verified.Resources != 1 {
+		t.Fatalf("verifyTargets() = %+v, %v; want one resource", verified, err)
+	}
+}
+
+func TestStageTargetsStagesVoiceClipsAsWavFiles(t *testing.T) {
+	sourceDir := t.TempDir()
+	outputDir := t.TempDir()
+	writeWaveDLL(t, sourceDir, "TEST.DLL", 1155, 1157)
+	target := dllTarget{Filename: "TEST.DLL", Directory: "test-dll", ExpectedWave: 2}
+
+	if _, err := stageTargets(sourceDir, outputDir, []dllTarget{target}, nil, false, io.Discard); err != nil {
+		t.Fatalf("stageTargets() error = %v", err)
+	}
+	for _, id := range []string{"1155", "1157"} {
+		staged, err := os.ReadFile(filepath.Join(outputDir, "test-dll", "WAVE", id+".wav"))
+		if err != nil || !bytes.Equal(staged, testWAV()) {
+			t.Fatalf("staged WAVE %s = %v, %v; want the source bytes", id, staged, err)
+		}
+	}
+	verified, err := verifyTargets(outputDir, []dllTarget{target}, io.Discard)
+	if err != nil || verified.Resources != 2 {
+		t.Fatalf("verifyTargets() = %+v, %v; want two resources", verified, err)
+	}
+	short := target
+	short.ExpectedWave = 3
+	if _, err := stageTargets(sourceDir, t.TempDir(), []dllTarget{short}, nil, false, io.Discard); err == nil {
+		t.Fatal("stageTargets() accepted a WAVE count other than the expected one")
+	}
+}
+
+func TestOptionalTargetsAbsentFromTheSourceAreSkipped(t *testing.T) {
+	outputDir := t.TempDir()
+	target := dllTarget{Filename: "TEST.DLL", Directory: "test-dll", Expected: 1, Optional: true}
+
+	summary, err := stageTargets(t.TempDir(), outputDir, []dllTarget{target}, nil, false, io.Discard)
+	if err != nil || summary.DLLs != 0 {
+		t.Fatalf("stageTargets() = %+v, %v; want the target skipped", summary, err)
+	}
+	verified, err := verifyTargets(outputDir, []dllTarget{target}, io.Discard)
+	if err != nil || verified.DLLs != 0 {
+		t.Fatalf("verifyTargets() = %+v, %v; want the target skipped", verified, err)
+	}
+	target.Optional = false
+	if _, err := stageTargets(t.TempDir(), outputDir, []dllTarget{target}, nil, false, io.Discard); err == nil {
+		t.Fatal("stageTargets() skipped a required target")
+	}
+}

@@ -60,6 +60,11 @@ func stageBitmapResources(resources []bitmapResource, outputDir string, force bo
 }
 
 func stageRawResources(resources []rawResource, outputDir string, force bool) (stageResult, error) {
+	return stageRawResourcesAs(resources, outputDir, "bin", force)
+}
+
+// stageRawResourcesAs writes each resource unchanged as {id}.{extension}.
+func stageRawResourcesAs(resources []rawResource, outputDir, extension string, force bool) (stageResult, error) {
 	seen := make(map[uint32]uint32, len(resources))
 	for _, resource := range resources {
 		if language, exists := seen[resource.ID]; exists {
@@ -74,7 +79,7 @@ func stageRawResources(resources []rawResource, outputDir string, force bool) (s
 
 	result := stageResult{}
 	for _, resource := range resources {
-		path := filepath.Join(outputDir, fmt.Sprintf("%d.bin", resource.ID))
+		path := filepath.Join(outputDir, fmt.Sprintf("%d.%s", resource.ID, extension))
 		if existing, err := os.ReadFile(path); err == nil {
 			if bytes.Equal(existing, resource.Data) {
 				result.Skipped++
@@ -124,7 +129,11 @@ func writeFileAtomically(path string, data []byte, mode os.FileMode) error {
 func stageTargets(sourceDir, outputDir string, targets []dllTarget, namedIDs map[string]uint32, force bool, stdout io.Writer) (stageSummary, error) {
 	summary := stageSummary{}
 	for _, target := range targets {
-		dllPath := filepath.Join(sourceDir, target.Filename)
+		dllPath, found := targetPath(sourceDir, target)
+		if !found && target.Optional {
+			fmt.Fprintf(stdout, "%s: not in the source, skipped\n", target.Filename)
+			continue
+		}
 		resources, err := readPEBitmapResources(dllPath, namedIDs)
 		if err != nil {
 			return summary, fmt.Errorf("%s: %w", target.Filename, err)
@@ -160,6 +169,55 @@ func stageTargets(sourceDir, outputDir string, targets []dllTarget, namedIDs map
 			summary.Skipped += rawResult.Skipped
 			fmt.Fprintf(stdout, "%s: %d type-302 frames (%d written, %d unchanged)\n", target.Filename, len(rawResources), rawResult.Written, rawResult.Skipped)
 		}
+		if target.ExpectedRCData > 0 {
+			records, err := readPERawResources(dllPath, rtRCData)
+			if err != nil {
+				return summary, fmt.Errorf("%s: %w", target.Filename, err)
+			}
+			if len(records) != target.ExpectedRCData {
+				return summary, fmt.Errorf("%s: found %d RCDATA resources, expected %d", target.Filename, len(records), target.ExpectedRCData)
+			}
+			result, err := stageRawResourcesAs(records, filepath.Join(outputDir, target.Directory, "RCDATA"), "bin", force)
+			if err != nil {
+				return summary, fmt.Errorf("%s: %w", target.Filename, err)
+			}
+			summary.Resources += len(records)
+			summary.Written += result.Written
+			summary.Skipped += result.Skipped
+			fmt.Fprintf(stdout, "%s: %d RCDATA records (%d written, %d unchanged)\n", target.Filename, len(records), result.Written, result.Skipped)
+		}
+		if target.ExpectedWave > 0 {
+			waves, err := readPEWaveResources(dllPath)
+			if err != nil {
+				return summary, fmt.Errorf("%s: %w", target.Filename, err)
+			}
+			if _, err := uniqueWaves(waves); err != nil {
+				return summary, fmt.Errorf("%s: %w", target.Filename, err)
+			}
+			if len(waves) != target.ExpectedWave {
+				return summary, fmt.Errorf("%s: found %d WAVE resources, expected %d", target.Filename, len(waves), target.ExpectedWave)
+			}
+			result, err := stageRawResourcesAs(waves, filepath.Join(outputDir, target.Directory, "WAVE"), "wav", force)
+			if err != nil {
+				return summary, fmt.Errorf("%s: %w", target.Filename, err)
+			}
+			summary.Resources += len(waves)
+			summary.Written += result.Written
+			summary.Skipped += result.Skipped
+			fmt.Fprintf(stdout, "%s: %d WAVE clips (%d written, %d unchanged)\n", target.Filename, len(waves), result.Written, result.Skipped)
+		}
 	}
 	return summary, nil
+}
+
+// targetPath finds the target's DLL under its name or an alias. With none
+// present it returns the primary name, whose read then reports the error.
+func targetPath(sourceDir string, target dllTarget) (string, bool) {
+	for _, name := range append([]string{target.Filename}, target.Aliases...) {
+		path := filepath.Join(sourceDir, name)
+		if _, err := os.Stat(path); err == nil {
+			return path, true
+		}
+	}
+	return filepath.Join(sourceDir, target.Filename), false
 }

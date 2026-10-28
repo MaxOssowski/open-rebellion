@@ -258,10 +258,19 @@ cursor while targeting. Tests: `uv run -q scripts/test_extract_dll_resources.py`
 The same extractor also preserves the full type-302 droid corpus from an owned
 installation:
 
-| DLL | Standard BMP anchors | Type-302 frames | Path |
-|-----|---------------------:|----------------:|------|
-| ALSPRITE | 38 | 1,640 | `data/base/ui/alsprite-dll/` |
-| EMSPRITE | 34 | 2,348 | `data/base/ui/emsprite-dll/` |
+| DLL | Standard BMP anchors | Type-302 frames | RCDATA | WAVE | Path |
+|-----|---------------------:|----------------:|-------:|-----:|------|
+| ALSPRITE | 38 | 1,640 | 752 | 213 | `data/base/ui/alsprite-dll/` |
+| EMSPRITE | 34 | 2,348 | 753 | 216 | `data/base/ui/emsprite-dll/` |
+| ALBRIEF | 20 | 2,684 | 366 | 17 | `data/base/ui/albrief-dll/` |
+| EMBRIEF | 18 | 2,738 | 471 | 22 | `data/base/ui/embrief-dll/` |
+
+RCDATA holds the clip records (`RCDATA/{id}.bin`); WAVE holds the voice
+clips (`WAVE/{id}.wav`). The record format is in
+`ghidra/notes/advisor-briefing.md`. The two briefing DLLs are optional: the
+GOG release ships them as `ALBRIEF.DLL.OLD` and `EMBRIEF.DLL.OLD`, which the
+stager also accepts. They stay out of `runtime.orpk` until the runtime reads
+them (`UNPACKED_UI_DIRS` in `scripts/build-runtime-pack.py`).
 
 Native builds read these ignored files directly. Browser builds place the same
 bytes in `runtime.orpk`; the checked-in repository contains the decoder and

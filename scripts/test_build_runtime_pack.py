@@ -218,6 +218,23 @@ class RuntimePackBuilderTests(unittest.TestCase):
                 [(entry.kind, entry.key) for entry in entries],
             )
 
+    def test_briefing_dlls_stay_out_of_the_pack_until_the_runtime_reads_them(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "base"
+            base.mkdir()
+            (base / "SYSTEMSD.DAT").write_bytes(b"systems")
+            for dll in ("alsprite-dll", "albrief-dll", "embrief-dll"):
+                frames = root / "ui" / dll / "TYPE302"
+                frames.mkdir(parents=True)
+                (frames / "2102.bin").write_bytes(b"sparse frame")
+
+            entries = PACKER.collect_entries(base, root / "ui")
+            self.assertEqual(
+                [entry.key for entry in entries if entry.kind == PACKER.KIND_ADVISOR_FRAME],
+                ["alsprite-dll/2102"],
+            )
+
     def test_edata_artwork_is_validated_and_namespaced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

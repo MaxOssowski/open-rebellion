@@ -1,6 +1,6 @@
 ---
 title: "The opening briefing: what starts it, ALBRIEF/EMBRIEF, and how a clip reaches the galaxy view"
-description: "Read 2026-10-23 for P34. The advisor panel loads the briefing DLL at the start of a game. The advisor messages come from GDATA C3POACT.SPT / IMP22ACT.SPT; the briefing is message 0x29 / 0x4a, an action (FUN_004c0fc0 code) then a voice clip, in turn. Who schedules it is still open."
+description: "Read 2026-10-23 and 2026-10-28 for P34. The clip definition record is settled (FUN_00404440). The advisor panel loads the briefing DLL at the start of a game. The advisor messages come from GDATA C3POACT.SPT / IMP22ACT.SPT; the briefing is message 0x29 / 0x4a, an action (FUN_004c0fc0 code) then a voice clip, in turn. Who schedules it is still open."
 ---
 
 # The opening briefing
@@ -56,6 +56,50 @@ RCDATA records, all little-endian 16-bit words:
 
 No record holds a map action (`kind`, `code`); the action is given when
 the clip is queued.
+
+### The clip classes and the definition record (read 2026-10-28)
+
+A queued record's word 0 is an op. `FUN_00403ed0(op)` clones the prototype
+registered for it (`FUN_00403eb0` stores each by its slot `+0x2c`):
+
+| Op | Prototype | Class (vtable) |
+|---|---|---|
+| 4 | `0x6b0628` | `0x00658520`: a clip definition |
+| 5 | `0x6b0698` | `0x00658550` |
+| `0x11` | `0x6b1328` | `0x00658848`: a frame list (the idle clips) |
+| `0x12` | `0x6b1390` | `0x00658878` |
+| `0x13` | `0x6b13f0` | `0x006588a8` |
+| `0x14` | `0x6b1258` | `0x006587e8` |
+| `0x15` | `0x6b12c0` | `0x00658818` |
+
+The player's slot 8 (`FUN_00472930`) gives the clip its record
+(`slot << 16 | id`) and its action, kind and code (slot `0x14`).
+
+Op 4's loader `FUN_00404440` (vt `+0x1c`) reads the definition record
+from the record's DLL slot, as 16-bit words:
+
+| Word | Meaning |
+|---|---|
+| 0 | a sound in the same slot, started with the clip when not 0 (`FUN_00403f00`) |
+| 1, 2 | a WAVE id and the slot it is in, started when word 1 is not 0 (`FUN_00403f70`) |
+| 3 | the frame count (`+0x4c`) |
+| 4 on | per layer (`+0x48`, from the player), the first frame |
+
+The first frame is a standard bitmap (`FUN_005fbd20(module, id, 2)`).
+Frames 1 to count - 1 are the type-302 deltas `first + 1 .. first +
+count - 1` (`FUN_0041c590`), each added to the frame list
+(`FUN_005f5600`, `FUN_005f5440`).
+
+Checked against both briefing DLLs: every definition the briefing plays
+has its first frame as a bitmap, all its type-302 deltas, and its WAVE in
+slot `0xd`. For example, ALBRIEF `0x103b` is `[0, 1155, 0xd, 137,
+2101]`: WAVE 1155, BMP 2101, then type-302 2102..2237. The definitions
+the briefing does not play are ALBRIEF `0x103c` (WAVE 1156) and `0x1042`
+(WAVE 1162); their WAVEs are absent and 4 and 1 deltas are missing.
+
+`stage-ui-assets` stages each advisor DLL's RCDATA (`RCDATA/{id}.bin`)
+and WAVE (`WAVE/{id}.wav`), and the two briefing DLLs, under their GOG
+names `*.DLL.OLD` too, into `data/base/ui/{al,em}brief-dll/`.
 
 ## How a clip's action reaches the galaxy view
 
@@ -208,6 +252,5 @@ then "Systems Under Military Control", are of the Empire's briefing.
   `0x1620`, `0x1621`, `0x1629`) are drawn; `FUN_004522f0` has no legend
   layout for these displays.
 - How `0x92` / `0x93` find their system (`FUN_004025b0(local_f0)`).
-- The frame-script ops other than 4 and `0x11`, the short records, and
-  the clip definitions' last two words (hyp: frame count and first
-  frame).
+- The frame-script ops other than 4 and `0x11`, and the short records.
+  The definition's words are settled above.

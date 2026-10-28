@@ -1,0 +1,48 @@
+COMMON.DLL: 321 BMPs (0 written, 321 unchanged)
+GOKRES.DLL: 580 BMPs (0 written, 580 unchanged)
+STRATEGY.DLL: 1042 BMPs (0 written, 1042 unchanged)
+TACTICAL.DLL: 288 BMPs (0 written, 288 unchanged)
+ALSPRITE.DLL: 38 BMPs (0 written, 38 unchanged)
+ALSPRITE.DLL: 1640 type-302 frames (0 written, 1640 unchanged)
+ALSPRITE.DLL: 752 RCDATA records (752 written, 0 unchanged)
+ALSPRITE.DLL: 213 WAVE clips (213 written, 0 unchanged)
+EMSPRITE.DLL: 34 BMPs (0 written, 34 unchanged)
+EMSPRITE.DLL: 2348 type-302 frames (0 written, 2348 unchanged)
+EMSPRITE.DLL: 753 RCDATA records (753 written, 0 unchanged)
+EMSPRITE.DLL: 216 WAVE clips (216 written, 0 unchanged)
+ALBRIEF.DLL: 20 BMPs (20 written, 0 unchanged)
+ALBRIEF.DLL: 2684 type-302 frames (2684 written, 0 unchanged)
+ALBRIEF.DLL: 366 RCDATA records (366 written, 0 unchanged)
+ALBRIEF.DLL: 17 WAVE clips (17 written, 0 unchanged)
+EMBRIEF.DLL: 18 BMPs (18 written, 0 unchanged)
+EMBRIEF.DLL: 2738 type-302 frames (2738 written, 0 unchanged)
+EMBRIEF.DLL: 471 RCDATA records (471 written, 0 unchanged)
+EMBRIEF.DLL: 22 WAVE clips (22 written, 0 unchanged)
+REBDLOG.DLL: 23 BMPs (0 written, 23 unchanged)
+Staged 14584 UI resources from 9 DLLs (8270 written, 6314 unchanged)
+common-dll: verified 321 BMPs
+gokres-dll: verified 580 BMPs
+strategy-dll: verified 1042 BMPs
+tactical-dll: verified 288 BMPs
+alsprite-dll: verified 38 BMPs
+alsprite-dll: verified 1640 type-302 frames
+alsprite-dll: verified 752 RCDATA resources
+alsprite-dll: verified 213 WAVE resources
+emsprite-dll: verified 34 BMPs
+emsprite-dll: verified 2348 type-302 frames
+emsprite-dll: verified 753 RCDATA resources
+emsprite-dll: verified 216 WAVE resources
+albrief-dll: verified 20 BMPs
+albrief-dll: verified 2684 type-302 frames
+albrief-dll: verified 366 RCDATA resources
+albrief-dll: verified 17 WAVE resources
+embrief-dll: verified 18 BMPs
+embrief-dll: verified 2738 type-302 frames
+embrief-dll: verified 471 RCDATA resources
+embrief-dll: verified 22 WAVE resources
+rebdlog-dll: verified 23 BMPs
+Verified 14584 UI resources across 9 DLLs
+Staged 310 audio files (0 written, 310 unchanged)
+Verified 310 audio files
+Staged 1347 TEXTSTRA strings
+Verified 1347 TEXTSTRA strings
