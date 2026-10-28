@@ -1783,6 +1783,10 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                     ..=resources::strategy::SECTOR_PLANET_LAST
                 | resources::strategy::SECTOR_PLANET_SPECIAL_FIRST
                     ..=resources::strategy::SECTOR_PLANET_SPECIAL_LAST
+                // The sector window's headquarters and uprising marks,
+                // loaded keyed (`FUN_005fbd20(.., 0x388..0x38a, 2)`,
+                // `FUN_0045bbb0`).
+                | 904..=906
                 // The Fleet window's frames, pictures and indicators, the
                 // Defenses window's tabs and row frames, the Missions
                 // window's row frames and tabs (buttons blit keyed,
@@ -2677,7 +2681,9 @@ mod tests {
                 image::ImageFormat::Png,
             )
             .unwrap();
-        for resource_id in [10550, 10563, 10576, 10578, 10579, 11530, 11532, 11533, 11535] {
+        for resource_id in [
+            10550, 10563, 10576, 10578, 10579, 11530, 11532, 11533, 11535,
+        ] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
         }

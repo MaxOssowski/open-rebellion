@@ -655,7 +655,9 @@ pub fn apply(
         place_support_flip(request, world, primary);
     }
     if request.scenario == Scenario::Quadrants {
-        place_quadrant_contents(request, world, movement, missions, sectors, primary);
+        place_quadrant_contents(
+            request, world, movement, missions, uprisings, sectors, primary,
+        );
     }
     if request.scenario == Scenario::FleetFinder {
         place_finder_fleets(request, world, movement, &system_keys);
@@ -1778,6 +1780,7 @@ fn place_quadrant_contents(
     world: &mut GameWorld,
     movement: &mut MovementState,
     missions: &mut MissionState,
+    uprisings: &mut rebellion_core::uprising::UprisingState,
     sectors: &mut SectorWindowState,
     primary: SystemKey,
 ) {
@@ -1804,6 +1807,27 @@ fn place_quadrant_contents(
         .map(|(key, _)| key);
     world.systems[primary].control = ControlKind::Controlled(player);
     world.systems[second].control = ControlKind::Controlled(enemy);
+    // The sector's next two systems: the Alliance's headquarters, and a
+    // system of the player's in uprising (the sector window's marks).
+    if let [headquarters, revolt] = mark_systems(world, primary)[..] {
+        for system in [headquarters, revolt] {
+            world.systems[system].exploration_status = ExplorationStatus::Explored;
+            world.systems[system].is_destroyed = false;
+        }
+        world.systems[headquarters].is_headquarters = true;
+        world.systems[headquarters].control = ControlKind::Controlled(Faction::Alliance);
+        world.systems[revolt].is_headquarters = false;
+        world.systems[revolt].control = ControlKind::Controlled(player);
+        uprisings.active_uprisings.insert(
+            revolt,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+                next_support_tick: None,
+                side: Some(player),
+            },
+        );
+    }
     for system in [primary, second] {
         let value = &mut world.systems[system];
         value.exploration_status = ExplorationStatus::Explored;
@@ -2746,6 +2770,31 @@ struct FixtureQuadrantSetup {
     second_dat_id: u32,
     scale: f32,
     quadrants: Vec<FixtureQuadrant>,
+    /// The Alliance headquarters' planet rect, and the planet rect of the
+    /// player's system in uprising.
+    headquarters: Option<[f32; 4]>,
+    uprising: Option<[f32; 4]>,
+}
+
+/// The primary's sector's first two systems other than the primary and the
+/// second system: the headquarters and the system in uprising.
+fn mark_systems(world: &GameWorld, primary: SystemKey) -> Vec<SystemKey> {
+    let Some(second) = loading_target(world, primary) else {
+        return Vec::new();
+    };
+    world
+        .sectors
+        .get(world.systems[primary].sector)
+        .map(|sector| {
+            sector
+                .systems
+                .iter()
+                .copied()
+                .filter(|&key| key != primary && key != second)
+                .take(2)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn quadrant_setup(
@@ -2775,6 +2824,12 @@ fn quadrant_setup(
             });
         }
     }
+    let planet = |system: Option<&SystemKey>| {
+        system
+            .and_then(|&system| sectors.planet_screen_rect(world, layout, system))
+            .map(|rect| [rect.min.x, rect.min.y, rect.width(), rect.height()])
+    };
+    let marks = mark_systems(world, primary);
     Some(FixtureQuadrantSetup {
         status: "quadrant-setup",
         code: request.code,
@@ -2782,6 +2837,8 @@ fn quadrant_setup(
         second_dat_id: world.systems[second].dat_id.raw(),
         scale: layout.scale,
         quadrants,
+        headquarters: planet(marks.first()),
+        uprising: planet(marks.get(1)),
     })
 }
 

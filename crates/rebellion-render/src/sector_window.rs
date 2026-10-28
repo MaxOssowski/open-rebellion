@@ -12,7 +12,7 @@ use rebellion_core::dat::Faction;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{DatId, SectorKey, SystemKey};
 use rebellion_core::pictures::planet_picture_id;
-use rebellion_core::world::{ControlKind, GameWorld};
+use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
@@ -636,13 +636,15 @@ fn draw_sector_window(
                 .rect_filled(window_rect, 0.0, egui::Color32::from_rgb(42, 42, 42));
             paint_window_border(ui.painter(), ctx, cache, window_rect, layout.scale);
 
-            let title_color = sector_title_color(world, window.sector, faction);
+            // FUN_00459e30: the sector's name in font 4, 0x200f0f0 (yellow),
+            // centred (0x25: DT_CENTER | DT_VCENTER | DT_SINGLELINE) in the
+            // title from (2, 2), 20 high (the text object's +4, 0x14).
             ui.painter().text(
-                logical_point(window_rect, layout.scale, 117.5, 2.0),
-                egui::Align2::CENTER_TOP,
+                logical_point(window_rect, layout.scale, 117.5, 2.0 + 10.0),
+                egui::Align2::CENTER_CENTER,
                 &sector.name,
-                egui::FontId::proportional((13.0 * layout.scale).max(8.0)),
-                title_color,
+                crate::theme::original_font(4, layout.scale),
+                SECTOR_TITLE_COLOR,
             );
 
             let switch_rect = logical_rect(window_rect, layout.scale, 204.0, 2.0, 14.0, 14.0);
@@ -706,6 +708,7 @@ fn draw_sector_window(
             // WM_PAINT draws the planet list (`+0x164`), then the overlay
             // list (`+0x174`), so every icon lies above every planet.
             let mut overlays: Vec<(SystemKey, Quadrant, egui::Rect, (u32, u32))> = Vec::new();
+            let mut headquarters: Vec<egui::Rect> = Vec::new();
             for system_key in &sector.systems {
                 let Some(system) = world.systems.get(*system_key) else {
                     continue;
@@ -776,6 +779,24 @@ fn draw_sector_window(
                     && planet_clicked
                     && icon_double_clicked.is_none();
                 paint_resource(ui.painter(), ctx, cache, planet_art(system), planet_rect);
+                // FUN_0045bbb0 blits a side's uprising mark (0x389 side 1,
+                // 0x38a side 2) keyed into the planet's bitmap at (0, 0).
+                if let Some(mark) = uprising_mark(world, uprisings, *system_key) {
+                    paint_native(
+                        ui.painter(),
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        mark,
+                        planet_rect,
+                        layout.scale,
+                        0.0,
+                        0.0,
+                    );
+                }
+                if shows_alliance_headquarters(world, fog, player, *system_key) {
+                    headquarters.push(planet_rect);
+                }
                 for ((x, y, width, height), color) in status_tracks(
                     planet_x,
                     planet_y,
@@ -797,15 +818,11 @@ fn draw_sector_window(
                     ),
                     egui::Align2::CENTER_TOP,
                     &system.name,
-                    egui::FontId::proportional((10.0 * layout.scale).max(7.0)),
+                    crate::theme::original_font(10, layout.scale),
                     if system.is_destroyed {
                         DESTROYED_NAME_COLOR
                     } else {
-                        system_name_color(
-                            system.control,
-                            uprisings.is_uprising(*system_key),
-                            player,
-                        )
+                        system_name_color(system)
                     },
                 );
 
@@ -844,6 +861,21 @@ fn draw_sector_window(
             let selected = result
                 .icon_pressed
                 .or(window.selection.filter(|_| !result.selection_lapsed));
+            // FUN_0045bbb0 adds the headquarters overlay (id 0x10000, bitmap
+            // 0x388) on the planet's rect.
+            for rect in headquarters {
+                paint_native(
+                    ui.painter(),
+                    ctx,
+                    cache,
+                    DllSource::Strategy,
+                    HEADQUARTERS_MARK,
+                    rect,
+                    layout.scale,
+                    0.0,
+                    0.0,
+                );
+            }
             for (system, quadrant, rect, (normal, pressed)) in overlays {
                 let chosen =
                     selected.is_some_and(|icon| icon.system == system && icon.quadrant == quadrant);
@@ -1075,47 +1107,73 @@ fn cockpit_faction(faction: CockpitFaction) -> Faction {
     }
 }
 
-fn system_name_color(control: ControlKind, in_revolt: bool, player: Faction) -> egui::Color32 {
-    let control = match control {
-        ControlKind::Controlled(owner) if in_revolt => ControlKind::Uprising(owner),
-        other => other,
-    };
-    match control {
-        ControlKind::Controlled(owner) if owner == player => egui::Color32::from_rgb(0, 255, 64),
-        ControlKind::Uprising(owner) if owner == player => egui::Color32::from_rgb(255, 230, 0),
-        ControlKind::Controlled(_) | ControlKind::Uprising(_) => {
-            egui::Color32::from_rgb(255, 32, 32)
-        }
-        ControlKind::Contested => egui::Color32::from_rgb(255, 230, 0),
-        ControlKind::Uncontrolled => egui::Color32::from_rgb(0, 255, 255),
+/// `FUN_0045bbb0`'s name colour by the system's side bits: `0x20000ff`
+/// (red) for side 1, `0x200ff00` (green) for side 2. Any other side leaves
+/// the item's constructor colour, white (`0xffffff`, `FUN_0060ba00`): the A0
+/// Sesswenna capture shows the neutral systems' names white and the Alliance
+/// and Empire systems' red and green. port: an unexplored system shows no
+/// side, as its overlays do (`quadrant_icons`), so its name stays white
+/// (the A0 Moddell capture).
+fn system_name_color(system: &rebellion_core::world::System) -> egui::Color32 {
+    if system.exploration_status == rebellion_core::dat::ExplorationStatus::Unexplored {
+        return egui::Color32::WHITE;
+    }
+    match crate::fleet_window::control_side(system.control) {
+        1 => egui::Color32::from_rgb(255, 0, 0),
+        2 => egui::Color32::from_rgb(0, 255, 0),
+        _ => egui::Color32::WHITE,
     }
 }
 
-fn sector_title_color(
+/// The headquarters mark, STRATEGY 904 (`0x388`), 37 by 37.
+const HEADQUARTERS_MARK: u32 = 904;
+/// The uprising marks (`0x389` side 1, `0x38a` side 2), 37 by 37.
+const UPRISING_MARKS: [u32; 2] = [905, 906];
+
+/// `FUN_0045bbb0`: a system in uprising (`+0x88` bit 2) held by side 1 or 2
+/// takes that side's mark.
+fn uprising_mark(
     world: &GameWorld,
-    sector_key: SectorKey,
-    faction: CockpitFaction,
-) -> egui::Color32 {
-    let Some(sector) = world.sectors.get(sector_key) else {
-        return egui::Color32::YELLOW;
-    };
-    let player = cockpit_faction(faction);
-    let (friendly, hostile) = sector.systems.iter().fold((0, 0), |counts, key| {
-        let Some(system) = world.systems.get(*key) else {
-            return counts;
-        };
-        match system.control.faction() {
-            Some(owner) if owner == player => (counts.0 + 1, counts.1),
-            Some(_) => (counts.0, counts.1 + 1),
-            None => counts,
-        }
-    });
-    match friendly.cmp(&hostile) {
-        std::cmp::Ordering::Greater => egui::Color32::from_rgb(0, 255, 64),
-        std::cmp::Ordering::Less => egui::Color32::from_rgb(255, 32, 32),
-        std::cmp::Ordering::Equal => egui::Color32::YELLOW,
+    uprisings: &rebellion_core::uprising::UprisingState,
+    system: SystemKey,
+) -> Option<u32> {
+    let value = world.systems.get(system)?;
+    if value.is_destroyed || !uprisings.is_uprising(system) {
+        return None;
+    }
+    match crate::fleet_window::control_side(value.control) {
+        1 => Some(UPRISING_MARKS[0]),
+        2 => Some(UPRISING_MARKS[1]),
+        _ => None,
     }
 }
+
+/// `FUN_0045bbb0`'s item state bit 8: the viewer's record of the system holds
+/// a headquarters object (families `0x20..0x21`, `FUN_00526cf0`), which
+/// serves only the Alliance (`ghidra/notes/facility-ownership.md`). port: the
+/// Alliance's headquarters system is the Alliance-held one marked
+/// `is_headquarters`, which the Alliance always sees (it holds the system)
+/// and the Empire only while its fog shows the system
+/// (`opposing_contents_visible`).
+fn shows_alliance_headquarters(
+    world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
+    system: SystemKey,
+) -> bool {
+    let Some(value) = world.systems.get(system) else {
+        return false;
+    };
+    value.is_headquarters
+        && !value.is_destroyed
+        && value.control.is_controlled_by(Faction::Alliance)
+        && crate::system_window::opposing_contents_visible(world, fog, player, system)
+}
+
+/// The sector window's title colour, `0x200f0f0` (`FUN_00459e30`); the A0
+/// captures show Moddell and Sesswenna titled yellow whatever their systems'
+/// sides.
+const SECTOR_TITLE_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
 
 fn paint_resource(
     painter: &egui::Painter,
@@ -1418,29 +1476,120 @@ mod tests {
     use super::*;
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
-    use rebellion_core::world::{Sector, System};
+    use rebellion_core::world::{ControlKind, Sector, System};
 
+    // FUN_0045bbb0: side 1's names red (0x20000ff), side 2's green
+    // (0x200ff00); any other side keeps the item's white (FUN_0060ba00), as
+    // the A0 Sesswenna capture shows; a revolt does not change the colour.
+    // port: an unexplored system's name stays white (A0 Moddell).
     #[test]
-    fn a_system_in_revolt_takes_the_uprising_name_colour() {
-        // UprisingState, not ControlKind, records a revolt (F-026), so a held
-        // system in revolt must colour like ControlKind::Uprising.
-        let held = ControlKind::Controlled(Faction::Alliance);
+    fn a_name_takes_its_sides_colour_and_a_neutral_or_unexplored_one_stays_white() {
+        let (mut world, system, _) = fixture_world();
+        let mut colour = |control, status| {
+            world.systems[system].control = control;
+            world.systems[system].exploration_status = status;
+            system_name_color(&world.systems[system])
+        };
+        let explored = ExplorationStatus::Explored;
+        let red = egui::Color32::from_rgb(255, 0, 0);
+        let green = egui::Color32::from_rgb(0, 255, 0);
         assert_eq!(
-            system_name_color(held, true, Faction::Alliance),
-            system_name_color(
-                ControlKind::Uprising(Faction::Alliance),
-                false,
-                Faction::Alliance
-            )
-        );
-        assert_ne!(
-            system_name_color(held, true, Faction::Alliance),
-            system_name_color(held, false, Faction::Alliance)
+            colour(ControlKind::Controlled(Faction::Alliance), explored),
+            red
         );
         assert_eq!(
-            system_name_color(ControlKind::Contested, true, Faction::Alliance),
-            system_name_color(ControlKind::Contested, false, Faction::Alliance)
+            colour(ControlKind::Controlled(Faction::Empire), explored),
+            green
         );
+        assert_eq!(
+            colour(ControlKind::Uprising(Faction::Empire), explored),
+            green
+        );
+        assert_eq!(
+            colour(ControlKind::Uncontrolled, explored),
+            egui::Color32::WHITE
+        );
+        assert_eq!(
+            colour(ControlKind::Contested, explored),
+            egui::Color32::WHITE
+        );
+        assert_eq!(
+            colour(
+                ControlKind::Controlled(Faction::Empire),
+                ExplorationStatus::Unexplored
+            ),
+            egui::Color32::WHITE
+        );
+    }
+
+    // FUN_0045bbb0: a system in uprising (+0x88 bit 2) takes its side's mark,
+    // 0x389 for side 1 and 0x38a for side 2, and none while neutral or
+    // calm.
+    #[test]
+    fn a_system_in_uprising_takes_its_sides_mark() {
+        let (mut world, system, _) = fixture_world();
+        let mut uprisings = rebellion_core::uprising::UprisingState::default();
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        assert_eq!(uprising_mark(&world, &uprisings, system), None);
+        uprisings.active_uprisings.insert(
+            system,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 1,
+                next_incident_tick: None,
+                next_support_tick: None,
+                side: None,
+            },
+        );
+        assert_eq!(uprising_mark(&world, &uprisings, system), Some(905));
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        assert_eq!(uprising_mark(&world, &uprisings, system), Some(906));
+        world.systems[system].control = ControlKind::Uncontrolled;
+        assert_eq!(uprising_mark(&world, &uprisings, system), None);
+    }
+
+    // FUN_0045bbb0 state bit 8: the headquarters (families 0x20..0x21, the
+    // Alliance's only) shows on its system; the Empire sees it only with the
+    // Alliance's contents there.
+    #[test]
+    fn the_alliance_headquarters_shows_to_the_alliance_and_to_an_empire_that_sees_it() {
+        let (mut world, system, _) = fixture_world();
+        world.systems[system].is_headquarters = true;
+        world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        let fog = FogState::new(Faction::Empire);
+        assert!(shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Alliance,
+            system
+        ));
+        assert!(!shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Empire,
+            system
+        ));
+        let mut seen = FogState::new(Faction::Empire);
+        seen.reveal(system);
+        assert!(shows_alliance_headquarters(
+            &world,
+            &seen,
+            Faction::Empire,
+            system
+        ));
+        // Coruscant, the Empire's: no mark.
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        assert!(!shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Empire,
+            system
+        ));
+        assert!(!shows_alliance_headquarters(
+            &world,
+            &fog,
+            Faction::Alliance,
+            system
+        ));
     }
 
     fn fixture_world() -> (GameWorld, SystemKey, SystemKey) {
@@ -2503,6 +2652,80 @@ mod tests {
             .into_iter()
             .filter(|(id, _)| (10771..=10790).contains(id))
             .collect()
+    }
+
+    // FUN_00459e30 writes the sector's name in yellow (0x200f0f0) whatever
+    // its systems' sides (A0 Moddell and Sesswenna); FUN_004593e0 writes
+    // each planet's name in its item's colour (FUN_0045bbb0).
+    #[test]
+    fn the_title_is_yellow_and_each_name_takes_its_items_colour() {
+        let (mut world, system, _) = fixture_world();
+        world.systems[system].control = ControlKind::Controlled(Faction::Empire);
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let mut texts = Vec::new();
+        for index in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+            texts = output
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    egui::Shape::Text(text) => Some((
+                        text.galley.text().to_owned(),
+                        text.galley.job.sections[0].format.color,
+                        text.pos.y + text.galley.size().y / 2.0,
+                    )),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+        }
+        let colour = |name: &str| {
+            texts
+                .iter()
+                .find(|(text, _, _)| text == name)
+                .map(|(_, colour, _)| *colour)
+        };
+        let sector = &world.sectors[world.systems[system].sector].name;
+        assert_eq!(colour(sector), Some(SECTOR_TITLE_COLOR), "{texts:?}");
+        // Centred in the title's 20 rows from y 2.
+        let window = window_screen_rect(CockpitFaction::Alliance, state.windows[0].column, layout);
+        let middle = texts
+            .iter()
+            .find(|(text, _, _)| text == sector)
+            .map(|(_, _, middle)| *middle);
+        assert_eq!(middle, Some(window.min.y + 12.0 * 2.0));
+        assert_eq!(
+            colour(&world.systems[system].name),
+            Some(egui::Color32::from_rgb(0, 255, 0)),
+            "{texts:?}"
+        );
     }
 
     #[test]

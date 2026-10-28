@@ -429,7 +429,21 @@ const cases = [
         assert.equal(check.different_pixels, 0,
           `${check.label} (${check.id}): ${check.different_pixels} of ${check.pixels_checked} pixels differ`);
       }
-      return { compares, absent };
+      // FUN_0045bbb0: the Alliance headquarters' mark (0x388) over its planet,
+      // which the Empire does not see here, and a side's uprising mark
+      // (0x389 side 1, 0x38a side 2) keyed into the player's revolting
+      // system's planet.
+      assert.ok(setup.headquarters && setup.uprising, JSON.stringify(setup));
+      const headquarters = { id: 904, ...compareIcon(screenshot, setup.headquarters, resource(source, 904), "headquarters", directory) };
+      const uprisingId = faction.side === 1 ? 905 : 906;
+      const uprising = { id: uprisingId, ...compareIcon(screenshot, setup.uprising, resource(source, uprisingId), "uprising", directory) };
+      assert.equal(uprising.different_pixels, 0, `uprising mark: ${uprising.different_pixels} of ${uprising.pixels_checked} differ`);
+      if (faction.side === 1) {
+        assert.equal(headquarters.different_pixels, 0, `headquarters mark: ${headquarters.different_pixels} of ${headquarters.pixels_checked} differ`);
+      } else {
+        assert.ok(headquarters.different_pixels > headquarters.pixels_checked / 2, "the Empire sees no headquarters mark");
+      }
+      return { compares, absent, headquarters, uprising };
     },
   },
   {

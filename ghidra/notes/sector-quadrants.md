@@ -467,3 +467,38 @@ system, and its name takes the unheld colour.
 - A0 2026-10-28: the VM rail shows a minimized System window (Vjun) as the
   red factory icon with "Vjun" in yellow after it, with no blue behind the
   icon (`.artifacts/a0-vm/2026-10-28-nav/rail-vjun0.png`).
+
+## Names, title and marks in the sector window (read 2026-10-28)
+
+- Title (`FUN_00459e30`): the sector's name in font 4, color `0x200f0f0`
+  (yellow), centred (`0x25`: DT_CENTER, DT_VCENTER, DT_SINGLELINE) in the
+  title text object from (2, 2), 20 high (`+4` = `0x14`). It does not
+  depend on the systems' sides.
+- Planet names (`FUN_004593e0`, WM_PAINT): for each planet item, the name
+  (`FUN_00583c40`) in font 10, in the item's color `+0x60`, centred in a
+  100-wide box under the bitmap (x = item x + width / 2 - 50) at y = item y +
+  `+0x34`, which is the bitmap height plus 11. Then the overlay list is
+  drawn.
+- Item color: the item's constructor sets `+0x60` to `0xffffff`, white
+  (`FUN_0060ba00`). `FUN_0045bbb0` sets `0x20000ff` (red) for side 1 and
+  `0x200ff00` (green) for side 2. It also has a `0x2ffff00` (cyan) branch
+  for any other side, and the destroyed state takes that color.
+- A0 2026-10-28 (Alliance player): in Sesswenna, Averam is red, Coruscant
+  and Bortras are green, and the other systems, explored and neutral, are
+  white, not cyan. In Moddell (mostly unexplored), everything is white but
+  Vjun, which is red. The palette has cyan (3, 251, 251; the GID markers),
+  so the neutral names never took `0x2ffff00`. Why the cyan branch does not
+  fire for them is not traced: the item's `+0x54` state check
+  (`(state ^ +0x54) & 7`).
+- Uprising mark (`FUN_0045bbb0`): a system in uprising (record `+0x88`
+  bit 2) held by side 1 gets STRATEGY 905 (`0x389`), held by side 2 gets 906
+  (`0x38a`). Both are 37 by 37 burning emblems. The mark is loaded keyed and
+  blitted at (0, 0) into the planet's bitmap, which is made 4 rows taller.
+- Headquarters mark (`FUN_0045bbb0`, state bit 8): when the viewer's
+  record of the system holds a headquarters (families `0x20..0x21`,
+  `FUN_00526cf0` mode 3), it adds overlay `0x10000` with STRATEGY 904
+  (`0x388`, the floating headquarters) on the planet's rect (overlay state
+  6, `+0x54` = 1). In the A0 Moddell capture it stands over Vjun. Coruscant
+  has none.
+- Not read: the bitmap `FUN_0042d860` adds at the planet bitmap's bottom
+  left (item `+0x70`).
