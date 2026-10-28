@@ -92,6 +92,8 @@ pub struct SectorWindowState {
     backdrop: u32,
     /// Each system's GID marker bitmap in the galaxy view this frame.
     gid_markers: std::collections::HashMap<SystemKey, u32>,
+    /// The markers the galaxy view drew and their screen centres.
+    drawn_gid_markers: Vec<(u32, [f32; 2])>,
 }
 
 impl Default for SectorWindowState {
@@ -101,6 +103,7 @@ impl Default for SectorWindowState {
             windows: Vec::new(),
             backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
             gid_markers: std::collections::HashMap::new(),
+            drawn_gid_markers: Vec::new(),
         }
     }
 }
@@ -116,6 +119,12 @@ impl SectorWindowState {
     /// which each planet shows at its bottom left (`FUN_0042d860`).
     pub fn set_gid_markers(&mut self, markers: &std::collections::HashMap<SystemKey, u32>) {
         self.gid_markers.clone_from(markers);
+    }
+
+    /// Take the markers the galaxy view drew, which the windows' copy of the
+    /// view shows shaded (`GalaxyMapState::drawn_gid_markers`).
+    pub fn set_drawn_gid_markers(&mut self, markers: &[(u32, [f32; 2])]) {
+        self.drawn_gid_markers = markers.to_vec();
     }
 
     /// Open the selected system's parent sector (`FUN_00429ce0`;
@@ -514,6 +523,7 @@ pub fn draw_sector_windows(
             missions,
             state.backdrop,
             &state.gid_markers,
+            &state.drawn_gid_markers,
         );
         if result.focus {
             focused = Some(window.sector);
@@ -609,6 +619,7 @@ fn draw_sector_window(
     missions: &rebellion_core::missions::MissionState,
     backdrop: u32,
     gid_markers: &std::collections::HashMap<SystemKey, u32>,
+    drawn_gid_markers: &[(u32, [f32; 2])],
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(sector) = world.sectors.get(window.sector) else {
@@ -673,6 +684,22 @@ fn draw_sector_window(
                 );
                 ui.painter()
                     .image(texture.id(), window_rect, uv, egui::Color32::WHITE);
+            }
+            // The view's markers under the window, centred where the view drew
+            // them, shaded with the rest of the copy.
+            for &(marker, [x, y]) in drawn_gid_markers {
+                if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, marker) {
+                    let size = texture.size_vec2() * layout.scale;
+                    let rect = egui::Rect::from_center_size(egui::pos2(x, y), size);
+                    if rect.intersects(window_rect) {
+                        ui.painter().image(
+                            texture.id(),
+                            rect,
+                            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                }
             }
             paint_window_border(ui.painter(), ctx, cache, window_rect, layout.scale);
 
@@ -2872,6 +2899,92 @@ mod tests {
         assert!(shown.contains(&(marker, at)), "{shown:?}");
         assert!(!destroyed.iter().any(|&(id, _)| id == marker));
         assert!(!off.iter().any(|&(id, _)| id == marker));
+    }
+
+    // The window's copy of the galaxy view holds the markers the view drew
+    // under it, shaded (FUN_004593e0, FUN_005fe050).
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_window_shows_the_views_markers_under_it_shaded() {
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-sector-shaded-marker-{}",
+            std::process::id()
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        let marker = crate::bmp_cache::resources::strategy::GID_UNEXPLORED;
+        std::fs::write(
+            folder.join(format!("{marker}.bmp")),
+            crate::bmp_cache::tests::indexed_bmp(&[[255, 255, 255], [0, 0, 0]]),
+        )
+        .unwrap();
+        let (world, system, _) = fixture_world();
+        let layout = layout(2.0);
+        let mut state = SectorWindowState::default();
+        state.open_for_system(&world, system, CockpitFaction::Alliance);
+        let window = window_screen_rect(CockpitFaction::Alliance, state.windows[0].column, layout);
+        let inside = window.center();
+        let outside = egui::pos2(window.max.x + 100.0, inside.y);
+        state.set_drawn_gid_markers(&[
+            (marker, [inside.x, inside.y]),
+            (marker, [outside.x, outside.y]),
+        ]);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        let texture = cache
+            .get_shaded(&ctx, DllSource::Strategy, marker)
+            .map(egui::TextureHandle::id)
+            .unwrap();
+        let fog = FogState::new(Faction::Alliance);
+        let uprisings = rebellion_core::uprising::UprisingState::default();
+        let missions = rebellion_core::missions::MissionState::new();
+        let mut rects = Vec::new();
+        for index in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1040.0),
+                )),
+                time: Some(f64::from(index) * 0.05),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_sector_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                    &uprisings,
+                    &missions,
+                );
+            });
+            rects = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Mesh(mesh) if mesh.texture_id == texture => Some(
+                        mesh.vertices
+                            .iter()
+                            .fold(egui::Rect::NOTHING, |rect, vertex| {
+                                rect.union(egui::Rect::from_min_max(vertex.pos, vertex.pos))
+                            }),
+                    ),
+                    _ => None,
+                })
+                .collect();
+        }
+        std::fs::remove_dir_all(base).unwrap();
+        // The 2 by 1 marker, doubled, centred where the view drew it; the
+        // one outside the window is not drawn.
+        assert_eq!(
+            rects,
+            [egui::Rect::from_center_size(inside, egui::vec2(4.0, 2.0))]
+        );
     }
 
     // The galaxy view's starfield is 903 under an active GID mode and 902

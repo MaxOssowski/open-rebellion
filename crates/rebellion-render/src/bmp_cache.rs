@@ -1622,7 +1622,7 @@ impl BmpCache {
         if !self.shaded_textures.contains_key(&key) {
             let handle = self
                 .load_original_bytes(source, resource_id)
-                .and_then(|bytes| shade_bitmap(&bytes))
+                .and_then(|bytes| shade_bitmap(&bytes, source, resource_id))
                 .map(|image| {
                     ctx.load_texture(
                         format!("{}_{}_shaded", source.texture_prefix(), resource_id),
@@ -2051,15 +2051,16 @@ fn bmp_palette(bytes: &[u8]) -> Option<Vec<[u8; 3]>> {
 
 /// The bitmap with every pixel mapped through [`sector_shade_table`] of its
 /// own palette, as `FUN_005fe050` maps the sector window's copy of the
-/// galaxy view.
-fn shade_bitmap(bytes: &[u8]) -> Option<egui::ColorImage> {
+/// galaxy view. A keyed bitmap keeps its matte transparent: the copy holds
+/// only what the view drew.
+fn shade_bitmap(bytes: &[u8], source: DllSource, resource_id: u32) -> Option<egui::ColorImage> {
     let palette = bmp_palette(bytes)?;
     let table = sector_shade_table(&palette);
     let mut shaded: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
     for (index, &color) in palette.iter().enumerate() {
         shaded.entry(color).or_insert(palette[table[index]]);
     }
-    let rgba = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let rgba = decode_rgba_image(bytes, source, resource_id).ok()?;
     let (width, height) = rgba.dimensions();
     let mut pixels = rgba.into_raw();
     for pixel in pixels.chunks_exact_mut(4) {
@@ -2844,6 +2845,19 @@ pub(crate) mod tests {
         bytes
     }
 
+    // A keyed marker's blue matte stays transparent when shaded: the sector
+    // window's copy holds only what the galaxy view drew.
+    #[test]
+    fn a_shaded_keyed_bitmap_keeps_its_matte_transparent() {
+        let bytes = indexed_bmp(&[[0, 0, 255], [255, 255, 255]]);
+        let marker = resources::strategy::GID_UNEXPLORED;
+        let image = shade_bitmap(&bytes, DllSource::Strategy, marker).unwrap();
+        assert_eq!(image.pixels[0].a(), 0);
+        assert_eq!(image.pixels[1].a(), 255);
+        let opaque = shade_bitmap(&bytes, DllSource::Strategy, 903).unwrap();
+        assert_eq!(opaque.pixels[0].a(), 255);
+    }
+
     // The shaded texture comes from the staged original BMP, once.
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
@@ -2886,7 +2900,7 @@ pub(crate) mod tests {
     fn a_shaded_bitmap_maps_each_pixel_through_its_palettes_table() {
         let bytes = indexed_bmp(&[[36, 37, 71], [59, 59, 59]]);
         assert_eq!(bmp_palette(&bytes), Some(vec![[36, 37, 71], [59, 59, 59]]));
-        let image = shade_bitmap(&bytes).unwrap();
+        let image = shade_bitmap(&bytes, DllSource::Strategy, 903).unwrap();
         assert_eq!(image.size, [2, 1]);
         assert_eq!(image.pixels[0], egui::Color32::from_rgb(59, 59, 59));
         assert_eq!(image.pixels[1], egui::Color32::from_rgb(59, 59, 59));

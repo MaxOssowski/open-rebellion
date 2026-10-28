@@ -297,6 +297,9 @@ pub struct GalaxyMapState {
     /// off. The sector window copies it into its planet's bitmap
     /// (`FUN_0042d860`).
     pub gid_markers: std::collections::HashMap<SystemKey, u32>,
+    /// The markers the galaxy view drew this frame and their screen centres,
+    /// which a sector window's copy of the view shows shaded.
+    pub drawn_gid_markers: Vec<(u32, [f32; 2])>,
 }
 
 /// Simulation views needed to reproduce the original GID filters.
@@ -330,6 +333,7 @@ impl Default for GalaxyMapState {
             viewport: None,
             display_scale: 1.0,
             gid_markers: std::collections::HashMap::new(),
+            drawn_gid_markers: Vec::new(),
         }
     }
 }
@@ -472,6 +476,7 @@ pub fn draw_galaxy_map(
     // remain input states, but the replacement circles, glows, and labels are
     // deliberately absent from the parity surface.
     state.gid_markers.clear();
+    state.drawn_gid_markers.clear();
     if gid_mode.is_active() {
         for (key, system) in &world.systems {
             let resource_id = gid_marker_for_system(world, key, system, faction, gid_mode, gid);
@@ -481,6 +486,7 @@ pub fn draw_galaxy_map(
                 continue;
             }
             draw_gid_marker(cache, resource_id, cam, sx, sy);
+            state.drawn_gid_markers.push((resource_id, [sx, sy]));
         }
     }
 

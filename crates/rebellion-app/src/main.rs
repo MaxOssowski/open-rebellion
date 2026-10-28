@@ -4779,6 +4779,7 @@ async fn main() {
 
                     sector_window_state.set_backdrop(cockpit_state.gid_mode);
                     sector_window_state.set_gid_markers(&map_state.gid_markers);
+                    sector_window_state.set_drawn_gid_markers(&map_state.drawn_gid_markers);
                     for action in draw_sector_windows(
                         ctx,
                         &world,
