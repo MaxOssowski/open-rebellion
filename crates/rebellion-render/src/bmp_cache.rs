@@ -1839,7 +1839,9 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 6208..=6273
                 | 6720..=6811
                 | 11127..=11128
-                | 11533..=11541
+                // The rail icons, which FUN_00428d70 blits keyed: the System
+                // window's (11530..11532, FUN_00458cf0) and the others'.
+                | 11530..=11541
                 | 11560..=11569
                 // The marks `FUN_0042c3b0` draws into an object's bitmap
                 // (personnel en route and damaged, the regiment's backdrop
@@ -2662,9 +2664,10 @@ mod tests {
     fn the_defenses_windows_tabs_frames_and_rail_icons_key_out_their_blue_matte() {
         // STRATEGY 10550..10576 (the tab buttons, blitted keyed by
         // FUN_00602d30 through FUN_005fd0f0), 10578/10579 (the row frames,
-        // keyed over the mini by FUN_004a9ab0) and 11533..11535 (the rail
-        // icons) carry the palette-blue matte; the background 10577 is the
-        // window's surface and stays opaque.
+        // keyed over the mini by FUN_004a9ab0) and 11530..11535 (the rail
+        // icons, which FUN_00428d70 blits keyed; the A0 rail capture of a
+        // System window shows no blue) carry the palette-blue matte; the
+        // background 10577 is the window's surface and stays opaque.
         let mut image = image::RgbaImage::new(1, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         let mut encoded = Vec::new();
@@ -2674,11 +2677,11 @@ mod tests {
                 image::ImageFormat::Png,
             )
             .unwrap();
-        for resource_id in [10550, 10563, 10576, 10578, 10579, 11533, 11535] {
+        for resource_id in [10550, 10563, 10576, 10578, 10579, 11530, 11532, 11533, 11535] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
         }
-        for resource_id in [10549, 10577, 10580, 11532] {
+        for resource_id in [10549, 10577, 10580, 11529] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
         }

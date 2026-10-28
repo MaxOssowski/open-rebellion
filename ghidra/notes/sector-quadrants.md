@@ -437,3 +437,33 @@ own art otherwise comes from its SYSTEMSD record (`FUN_0045c970` of
 Ported 2026-10-20: `sector_window::planet_art` draws 10240 for a destroyed
 system, and its name takes the unheld colour.
 
+
+## The window reference rail (read 2026-10-28)
+
+- Slots: the galaxy view sets twelve rects with `SetRect` at `0x421f3b`
+  for side 1 (x 544..606, tops 61, 83, 105, 127, 149, 171, 193, 214, 236,
+  258, 279, 301) and at `0x42207e` for side 2 (x 21..75, tops 48, 72, 98,
+  122, 147, 172, 196, 221, 245, 270, 295, 319), each 18 rows high. Each
+  slot record is 0x1c bytes at `+0x2d8 + 0x1c * n`: bitmap, icon, rect,
+  window id (`FUN_004291d0` finds the slot by id).
+- Drawing (`FUN_00428d70`, called from `FUN_00428b40`, `FUN_0042a900`,
+  `FUN_0042aaf0`, `FUN_0042abd0`):
+  - The slot redraws only when the window's icon (its slot `+0x74`)
+    changes.
+  - It builds a slot-sized bitmap over the cockpit art (`FUN_005fcc30`).
+  - It blits the icon keyed at (0, 0). The icon is loaded with
+    `FUN_005fbd20(.., icon, 2)` and drawn with `FUN_005fd0f0`.
+  - It writes the object's name (`FUN_00583c40`) in font 10
+    (`FUN_00601c60`), at x = the icon's width and y = 0, in color
+    `0x200f0f0` (yellow, `FUN_00601c90`).
+  - There is no separate active or inactive look.
+- Icons (slot `+0x74`):
+  - System window, type 9: `Class_00659e68_vt74` (`FUN_00458cf0`), by
+    the system's side bits (`+0x24 >> 6 & 3`): 11530 (`0x2d0a`) for side 1,
+    11531 for side 2, 11532 otherwise.
+  - Fleet window: 11536..11538 (`FUN_004a76e0`).
+  - System Defenses: 11533..11535 (`FUN_004aa4a0`).
+  - Missions: 11539..11541 (`FUN_004a21c0`).
+- A0 2026-10-28: the VM rail shows a minimized System window (Vjun) as the
+  red factory icon with "Vjun" in yellow after it, with no blue behind the
+  icon (`.artifacts/a0-vm/2026-10-28-nav/rail-vjun0.png`).

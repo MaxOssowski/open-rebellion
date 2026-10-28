@@ -19,7 +19,7 @@ use rebellion_core::ids::{DatId, FleetKey, SystemKey};
 use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
 use rebellion_core::missions::{MissionState, MissionTarget, MissionTargetPick};
 pub(crate) use rebellion_core::pictures::character_mini_resource_id;
-use rebellion_core::world::{ControlKind, GameWorld};
+use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
@@ -160,11 +160,24 @@ pub const fn tab_resource(tab: SystemWindowTab, side: u8, pressed: bool, empty: 
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Relationship {
-    Friendly,
-    Hostile,
-    Neutral,
+/// A minimized System window's rail icon (`Class_00659e68_vt74`,
+/// `FUN_00458cf0`): 11530 (`0x2d0a`) for side 1, 11531 for side 2, 11532
+/// otherwise, by the system's side bits (`+0x24 >> 6 & 3`).
+const RAIL_ICONS: [u32; 3] = [11530, 11531, 11532];
+
+/// The rail's name color, `0x200f0f0` (`FUN_00428d70`).
+const RAIL_NAME_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
+
+fn rail_icon(world: &GameWorld, system: SystemKey) -> u32 {
+    match world
+        .systems
+        .get(system)
+        .map_or(0, |value| control_side(value.control))
+    {
+        1 => RAIL_ICONS[0],
+        2 => RAIL_ICONS[1],
+        _ => RAIL_ICONS[2],
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -777,67 +790,53 @@ fn draw_reference_rail(
         };
         let logical = rail_slot_rect(faction, index);
         let screen_rect = cockpit_rect(layout, logical);
-        let color = relationship_color(relationship(system.control, cockpit_faction(faction)));
         egui::Area::new(egui::Id::new(("original-reference-rail", index)))
             .fixed_pos(screen_rect.min)
             .order(egui::Order::Middle)
             .show(ctx, |ui| {
                 let (slot_rect, response) =
                     ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
-                if entry.is_system_window() {
-                    paint_resource(ui.painter(), ctx, cache, WINDOW_BACKGROUND, slot_rect);
-                    ui.painter().rect_filled(
-                        slot_rect,
-                        0.0,
-                        egui::Color32::from_rgba_unmultiplied(0, 0, 12, 122),
-                    );
-                    ui.painter().text(
-                        slot_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        &system.name,
-                        egui::FontId::proportional((7.0 * layout.scale).max(5.0)),
-                        color,
-                    );
-                } else {
-                    // A Fleet window's rail icon (`FUN_004a76e0`) sits at the
-                    // slot's corner with the system's name after it, as the
-                    // reference capture shows. port: a Defenses window's
-                    // (`FUN_004aa4a0`) and a Missions window's
-                    // (`FUN_004a21c0`) are laid out the same way.
-                    let icon = match entry {
-                        RailEntry::Defenses { system, .. } => {
-                            crate::defenses_window::rail_icon(world, *system)
-                        }
-                        RailEntry::Missions { system, .. } => crate::missions_window::rail_icon(
-                            world, fog, missions, faction, *system,
-                        ),
-                        _ => crate::fleet_window::rail_icon(
-                            world,
-                            movement,
-                            fog,
-                            cockpit_faction(faction),
-                            entry.system(),
-                        ),
-                    };
-                    paint_native(
-                        ui.painter(),
-                        ctx,
-                        cache,
-                        DllSource::Strategy,
-                        icon,
-                        slot_rect,
-                        layout.scale,
-                        0.0,
-                        0.0,
-                    );
-                    ui.painter().text(
-                        logical_point(slot_rect, layout.scale, 12.0, 2.0),
-                        egui::Align2::LEFT_TOP,
-                        &system.name,
-                        egui::FontId::proportional((9.0 * layout.scale).max(6.0)),
-                        color,
-                    );
-                }
+                // FUN_00428d70: the window's icon (slot `+0x74`) at the
+                // slot's corner, then its system's name after the icon in
+                // font 10, yellow (`0x200f0f0`), clipped to the slot.
+                let icon = match entry {
+                    RailEntry::System(window) => rail_icon(world, window.system),
+                    RailEntry::Defenses { system, .. } => {
+                        crate::defenses_window::rail_icon(world, *system)
+                    }
+                    RailEntry::Missions { system, .. } => {
+                        crate::missions_window::rail_icon(world, fog, missions, faction, *system)
+                    }
+                    RailEntry::Fleet { system, .. } => crate::fleet_window::rail_icon(
+                        world,
+                        movement,
+                        fog,
+                        cockpit_faction(faction),
+                        *system,
+                    ),
+                };
+                let painter = ui.painter().with_clip_rect(slot_rect);
+                paint_native(
+                    &painter,
+                    ctx,
+                    cache,
+                    DllSource::Strategy,
+                    icon,
+                    slot_rect,
+                    layout.scale,
+                    0.0,
+                    0.0,
+                );
+                let icon_width = cache
+                    .original_resource_size(DllSource::Strategy, icon)
+                    .map_or(0.0, |[width, _]| width as f32);
+                painter.text(
+                    logical_point(slot_rect, layout.scale, icon_width, 0.0),
+                    egui::Align2::LEFT_TOP,
+                    &system.name,
+                    crate::theme::original_font(10, layout.scale),
+                    RAIL_NAME_COLOR,
+                );
                 if exact_clicked(&response, slot_rect) {
                     restored = Some(*entry);
                 }
@@ -1376,22 +1375,6 @@ pub(crate) fn special_force_mini(dat_id: DatId) -> Option<(u32, &'static str)> {
     Some((resource_id, label))
 }
 
-fn relationship(control: ControlKind, player: Faction) -> Relationship {
-    match control.faction() {
-        Some(owner) if owner == player => Relationship::Friendly,
-        Some(_) => Relationship::Hostile,
-        None => Relationship::Neutral,
-    }
-}
-
-fn relationship_color(relationship: Relationship) -> egui::Color32 {
-    match relationship {
-        Relationship::Friendly => egui::Color32::from_rgb(0, 255, 64),
-        Relationship::Hostile => egui::Color32::from_rgb(255, 32, 32),
-        Relationship::Neutral => egui::Color32::from_rgb(0, 240, 240),
-    }
-}
-
 fn cockpit_faction(faction: CockpitFaction) -> Faction {
     match faction {
         CockpitFaction::Alliance => Faction::Alliance,
@@ -1491,27 +1474,6 @@ pub(crate) fn rect_contains(rect: egui::Rect, point: egui::Pos2) -> bool {
     point.x >= rect.min.x && point.x < rect.max.x && point.y >= rect.min.y && point.y < rect.max.y
 }
 
-fn paint_resource(
-    painter: &egui::Painter,
-    ctx: &egui::Context,
-    cache: &mut BmpCache,
-    resource_id: u32,
-    rect: egui::Rect,
-) {
-    let Some(texture_id) = cache
-        .get(ctx, DllSource::Strategy, resource_id)
-        .map(egui_macroquad::egui::TextureHandle::id)
-    else {
-        return;
-    };
-    painter.image(
-        texture_id,
-        rect,
-        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-        egui::Color32::WHITE,
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1519,6 +1481,7 @@ mod tests {
     use crate::fleet_window::tests::PAINTED;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::manufacturing::{BuildableKind, QueueItem};
+    use rebellion_core::world::ControlKind;
     use rebellion_core::world::{
         CapitalShipClass, ManufacturingFacilityInstance, ProductionFacilityInstance, Sector, System,
     };
@@ -2531,34 +2494,38 @@ mod tests {
             ["fleet", "system", "fleet"]
         );
 
-        // The first slot, the Fleet window's: its icon at the corner and the
-        // name at (12, 2), 9 points; a system window's name is 7 points.
+        // FUN_00428d70: each slot draws its window's icon (slot +0x74) at the
+        // corner and the system's name after the icon in font 10; the System
+        // window's icon is 11530 for side 1 (FUN_00458cf0). The fixture has
+        // no bitmaps, so the icon's width is 0 here.
         let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0));
+        let second = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
         let away = egui::pos2(2.0, 2.0);
-        let (_, texts) = run_rail(
+        let run = run_with(
             &world,
+            &ManufacturingState::new(),
             &mut state,
             vec![
                 vec![egui::Event::PointerMoved(away)],
                 vec![egui::Event::PointerMoved(away)],
             ],
         );
-        let name = slot.min + egui::vec2(12.0, 2.0) * 2.0;
-        assert!(
-            texts
-                .iter()
-                .any(|(text, pos, _, size)| text == "System 0" && *pos == name && *size == 18.0),
-            "{texts:?}"
-        );
-        let second = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
-        assert!(
-            texts
-                .iter()
-                .any(|(text, pos, width, size)| text == "System 0"
-                    && (pos.x + width / 2.0 - second.center().x).abs() < 0.01
-                    && *size == 14.0),
-            "{texts:?}"
-        );
+        let font = crate::theme::original_font(10, 2.0).size;
+        for corner in [slot.min, second.min] {
+            assert!(
+                run.texts
+                    .iter()
+                    .any(|(text, pos, _, size)| text == "System 0"
+                        && *pos == corner
+                        && *size == font),
+                "{:?}",
+                run.texts
+            );
+        }
+        assert!(run
+            .painted
+            .iter()
+            .any(|&(id, pos)| id == RAIL_ICONS[0] && pos == second.min));
 
         let point = slot.center();
         let press = |pressed| egui::Event::PointerButton {
@@ -2586,9 +2553,24 @@ mod tests {
         assert_eq!(state.rail[0].system(), systems[0]);
         assert_eq!(state.rail[1].system(), systems[1]);
     }
+    // FUN_00458cf0: a System window's rail icon by its system's side bits.
+    #[test]
+    fn a_system_windows_rail_icon_follows_the_systems_side() {
+        let (mut world, systems) = fixture_world(1);
+        let mut icon = |control| {
+            world.systems[systems[0]].control = control;
+            rail_icon(&world, systems[0])
+        };
+        assert_eq!(icon(ControlKind::Controlled(Faction::Alliance)), 11530);
+        assert_eq!(icon(ControlKind::Controlled(Faction::Empire)), 11531);
+        assert_eq!(icon(ControlKind::Uncontrolled), 11532);
+        assert_eq!(icon(ControlKind::Contested), 11532);
+    }
+
     #[test]
     fn reference_rail_rectangles_differ_by_faction() {
-        // No recovered source: rail slot Y coordinates per faction, kept as a regression pin.
+        // The galaxy view's SetRect calls at 0x421f3b (side 1, 544..606) and
+        // 0x42207e (side 2, 21..75), 18 rows high.
         assert_eq!(
             rail_slot_rect(CockpitFaction::Alliance, 0),
             (544.0, 61.0, 62.0, 18.0)

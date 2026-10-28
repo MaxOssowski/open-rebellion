@@ -464,14 +464,28 @@ const cases = [
     // FUN_004593e0 case 0x203 finds the shown overlay under the point;
     // FUN_0045aac0 maps kind 4 to the System window (type 9). The point lies
     // on the top-left icon, left of the planet's picture.
-    async run(page, faction, setup) {
+    async run(page, faction, setup, directory, source) {
       const [left, top] = quadrant(setup, "primary", "system");
       const at = { x: Math.round(left) + 4, y: Math.round(top) + 9 };
       await doubleClick(page, at);
       const opened = await until(page, "the system icon opens the System window",
         (o, dat) => o.system_windows.some(([system]) => system === dat), setup.primary_dat_id);
       assert.equal(opened.system_windows.length, 1, JSON.stringify(opened));
-      return { at, opened };
+      // Minimize (0x466) sends it to the rail. FUN_00428d70 draws the
+      // window's icon (FUN_00458cf0: 11530 side 1, 11531 side 2) at the
+      // slot's corner, the system's name after it.
+      const dat = setup.primary_dat_id;
+      const [, origin] = opened.system_windows.find(([system]) => system === dat);
+      await click(page, { x: origin[0] + 195 + 7, y: origin[1] + 3 + 7 });
+      const railed = await until(page, "minimize sends the System window to the rail",
+        (o, value) => !o.system_windows.some(([system]) => system === value)
+          && o.rail.some(([system, kind]) => system === value && kind === "system"), dat);
+      const slot = railed.rail.find(([system, kind]) => system === dat && kind === "system")[2];
+      const screenshot = await stableScreen(page, directory, "system-railed");
+      const icon = faction.side === 1 ? 11530 : 11531;
+      const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "system-rail-icon", directory) }];
+      assertExact(railChecks);
+      return { at, opened, railChecks };
     },
   },
   {
