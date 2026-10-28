@@ -39,11 +39,11 @@ pub const BAND_FRAME: u32 = 10_290;
 /// The yard column at (6, 71) (`+0x198`, 46 by 226).
 pub const YARD_COLUMN: (u32, f32, f32) = (10_298, 6.0, 71.0);
 
-/// Each band's "N:M" yard count origin, font 10 (`FUN_00457690`).
+/// Each band's "N:M" yard count origin (`FUN_00457690`).
 pub const COUNT_ORIGINS: [(f32, f32); 3] = [(6.0, 119.0), (6.0, 200.0), (6.0, 280.0)];
 
 /// Each band's progress bar (`FUN_004acec0`, ids `0x6d..0x6f`): 160 by 4,
-/// light gray `0x200f0f0` over black `0x2000000`.
+/// `0x200f0f0` (yellow) over black `0x2000000`.
 pub const PROGRESS_RECTS: [(f32, f32, f32, f32); 3] = [
     (56.0, 127.0, 160.0, 4.0),
     (56.0, 208.0, 160.0, 4.0),

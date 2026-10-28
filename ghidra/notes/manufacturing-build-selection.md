@@ -413,3 +413,23 @@ Manufacturing side panel (M) is gone.
 - Capture every Manufacturing and Build Selection state from an owned English
   640 by 480 installation for A0 comparison.
 
+
+## Band and count text (read 2026-10-28)
+
+- `FUN_00458080`, the band's lines:
+  - the title (TEXTSTRA `0x1831..0x1833` through `FUN_00601700`) at
+    (5, 1) in font 10 keeps the text object's default colour, `0x2000000`
+    (black, `FUN_00601930`);
+  - the status line (5, 0x10), the units line (5, 0x2f) and the
+    destination line (5, 0x39) are font 10, `0x2ffffff` (white).
+- `FUN_00457690`'s yard counts: the label `+0x19c` (`0x4554e7`), white,
+  format 1, 46 by 16 at x 6, rows 0x77, 200 and 0x118. No font is set, so it
+  keeps the default (`FUN_00601880` -> `FUN_00603850`, the game root's
+  `+0xb0`). In the A0 Vjun capture its digits stand 10 rows tall, a 16-row
+  cell.
+- The progress bar's `0x200f0f0` is yellow in COLORREF order (red `0xf0`,
+  green `0xf0`, blue 0). The rail's name in the same colour shows yellow in
+  A0.
+- A0 2026-10-28 (`system-vjun.png`): "Ship Construction" is black on the
+  red strip, and "No Ships are being built", "Destination: Vjun" and
+  "0:0" are white.

@@ -62,6 +62,12 @@ const TAB_SIZE: (f32, f32) = (36.0, 33.0);
 const PAGE_LABEL_Y: f32 = 58.0;
 /// Each yard count label `+0x19c`: format 1, 46 wide from x 6.
 const COUNT_WIDTH: f32 = 46.0;
+/// The count label keeps the default font (`FUN_00601880` ->
+/// `FUN_00603850`, the game root's `+0xb0`). The A0 capture's digits stand
+/// 10 rows tall, a 16-row cell, as the font table's default (index 4).
+const COUNT_FONT: u16 = 4;
+/// A band's progress bar, `0x200f0f0` (`FUN_004acec0`).
+const PROGRESS_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
 /// A facility picture sits 1 by 2 into its 69 by 40 cell.
 const PICTURE_OFFSET: (f32, f32) = (1.0, 2.0);
 
@@ -1011,7 +1017,6 @@ fn draw_system_window(
                 }
             }
 
-            let font = egui::FontId::proportional((9.0 * scale).max(6.0));
             let (any_pressed, right_pressed) = ctx.input(|input| {
                 (
                     input.pointer.button_pressed(egui::PointerButton::Primary)
@@ -1041,7 +1046,7 @@ fn draw_system_window(
                             logical_point(local, scale, x + COUNT_WIDTH / 2.0, y),
                             egui::Align2::CENTER_TOP,
                             yard_count(cells),
-                            font.clone(),
+                            crate::theme::original_font(COUNT_FONT, scale),
                             egui::Color32::WHITE,
                         );
 
@@ -1059,17 +1064,26 @@ fn draw_system_window(
                             bx,
                             by,
                         );
-                        let line = |text: &str, (x, y): (f32, f32)| {
+                        // FUN_00458080: every line in font 10; the title
+                        // keeps the text object's default colour, black
+                        // (0x2000000, FUN_00601930), the others white
+                        // (0x2ffffff).
+                        let line = |text: &str, (x, y): (f32, f32), colour| {
                             painter.text(
                                 logical_point(local, scale, bx + x, by + y),
                                 egui::Align2::LEFT_TOP,
                                 text,
-                                font.clone(),
-                                egui::Color32::WHITE,
+                                crate::theme::original_font(10, scale),
+                                colour,
                             );
                         };
-                        line(crate::manufacturing_window::band_title(area), BAND_TITLE);
-                        line(&shown.status, BAND_STATUS);
+                        let white = egui::Color32::WHITE;
+                        line(
+                            crate::manufacturing_window::band_title(area),
+                            BAND_TITLE,
+                            egui::Color32::BLACK,
+                        );
+                        line(&shown.status, BAND_STATUS, white);
                         if let Some(mini) = shown.mini {
                             paint(
                                 cache,
@@ -1080,19 +1094,21 @@ fn draw_system_window(
                             );
                         }
                         if let Some(units) = &shown.units {
-                            line(units, BAND_UNITS);
+                            line(units, BAND_UNITS, white);
                         }
-                        line(&shown.destination, BAND_DESTINATION);
+                        line(&shown.destination, BAND_DESTINATION, white);
 
-                        // FUN_004acec0: the progress bar, light gray over
-                        // black.
+                        // FUN_004acec0: the progress bar, 0x200f0f0 over
+                        // black. In COLORREF order that is red 0xf0, green
+                        // 0xf0, blue 0: yellow, as the rail's name in the
+                        // same colour shows in A0.
                         let (px, py, width, height) = PROGRESS_RECTS[index];
                         let bar = logical_rect(local, scale, px, py, width, height);
                         painter.rect_filled(bar, 0.0, egui::Color32::BLACK);
                         if let Some(progress) = shown.progress {
                             let mut done = bar;
                             done.set_width(bar.width() * progress.clamp(0.0, 1.0));
-                            painter.rect_filled(done, 0.0, egui::Color32::from_gray(240));
+                            painter.rect_filled(done, 0.0, PROGRESS_COLOR);
                         }
 
                         // A press selects the band; a right release opens
@@ -1589,6 +1605,10 @@ mod tests {
         painted: Vec<(u32, egui::Pos2)>,
         /// Each text's clip rectangle, by its string.
         clips: Vec<(String, egui::Rect)>,
+        /// Each text's colour, by its string.
+        colours: Vec<(String, egui::Color32)>,
+        /// Each filled rectangle and its colour.
+        fills: Vec<(egui::Rect, egui::Color32)>,
     }
 
     /// Draw the windows and rail on the Alliance's layout at scale 2, one
@@ -1638,6 +1658,25 @@ mod tests {
                     egui::Shape::Text(text) => {
                         Some((text.galley.text().to_owned(), clipped.clip_rect))
                     }
+                    _ => None,
+                })
+                .collect();
+            run.colours = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) => Some((
+                        text.galley.text().to_owned(),
+                        text.galley.job.sections[0].format.color,
+                    )),
+                    _ => None,
+                })
+                .collect();
+            run.fills = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Rect(rect) => Some((rect.rect, rect.fill)),
                     _ => None,
                 })
                 .collect();
@@ -2065,7 +2104,26 @@ mod tests {
         let title = text(&run, "System 0");
         assert_eq!((title.1.x, title.3), (at(19.0, 0.0).x, 22.0));
         let heading = text(&run, "Ship Construction");
-        assert_eq!((heading.1, heading.3), (at(60.0, 58.0), 18.0));
+        // FUN_00458080: the title keeps the text object's black
+        // (FUN_00601930), the lines are white; FUN_00457690's counts keep
+        // the default font, a 16-row cell.
+        let colour = |name: &str| {
+            run.colours
+                .iter()
+                .find(|(text, _)| text == name)
+                .map(|(_, colour)| *colour)
+        };
+        assert_eq!(colour("Ship Construction"), Some(egui::Color32::BLACK));
+        assert_eq!(
+            colour("No Ships are being built"),
+            Some(egui::Color32::WHITE)
+        );
+        assert!(run.texts.iter().any(|value| value.0.contains(':')
+            && value.3 == crate::theme::original_font(COUNT_FONT, 2.0).size));
+        assert_eq!(
+            (heading.1, heading.3),
+            (at(60.0, 58.0), crate::theme::original_font(10, 2.0).size)
+        );
         assert_eq!(text(&run, "No Ships are being built").1, at(60.0, 73.0));
         assert_eq!(text(&run, "No Troops in training").1, at(60.0, 154.0));
         assert_eq!(
@@ -2115,6 +2173,23 @@ mod tests {
             run.painted.contains(&(mini, at(95.0, 72.0))),
             "{:?}",
             run.painted
+        );
+        // FUN_004acec0: the progress bar's black, then its 0x200f0f0 part
+        // (yellow) from the bar's left.
+        // The area still fades in, so its colours are premultiplied.
+        let bar = egui::Rect::from_min_size(at(56.0, 127.0), egui::vec2(320.0, 8.0));
+        let yellow =
+            |colour: egui::Color32| colour.r() > 0 && colour.r() == colour.g() && colour.b() == 0;
+        assert!(run
+            .fills
+            .iter()
+            .any(|(rect, colour)| *rect == bar && colour.r() == 0 && colour.b() == 0));
+        assert!(
+            run.fills.iter().any(|(rect, colour)| yellow(*colour)
+                && rect.min == bar.min
+                && rect.width() < bar.width()),
+            "{:?}",
+            run.fills
         );
     }
 
