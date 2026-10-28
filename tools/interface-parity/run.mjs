@@ -3741,9 +3741,11 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
   // FUN_00450540 stops the score at the Battle Alert (FUN_00417640); the
   // tactical battle has none (A0 TAC-01-C012).
   assert.equal(ready.tactical_music_mdata_id, null);
-  assert.equal(ready.tactical_weapon_audio_wave_first, 13033);
-  assert.equal(ready.tactical_weapon_audio_wave_last, 13054);
-  assert.equal(ready.tactical_weapon_audio_variant_count, 22);
+  // FUN_005bae60's weapon sounds: fire 0..5 (13000-13017) and the shield
+  // and hull hits 0x0c..0x0e and 0x11..0x13 (13030-13038, 13045-13053).
+  assert.equal(ready.tactical_weapon_audio_wave_first, 13000);
+  assert.equal(ready.tactical_weapon_audio_wave_last, 13053);
+  assert.equal(ready.tactical_weapon_audio_variant_count, 36);
   assert.equal(ready.tactical_voice_variant_count, 285);
   assert.equal(ready.battle_alert_open, false);
   const music = consoleLines.find(({ text }) =>
@@ -3759,10 +3761,11 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
     assert.match(text, /muted=true/);
     return { event: Number.parseInt(match[1], 16), wave: Number(match[2]) };
   });
+  const span = (first, last) => Array.from({ length: last - first + 1 }, (_, index) => first + index);
   assert.deepEqual(routed.map(({ wave }) => wave),
-    Array.from({ length: 22 }, (_, index) => 13033 + index));
+    [...span(13000, 13017), ...span(13030, 13038), ...span(13045, 13053)]);
   assert.deepEqual([...new Set(routed.map(({ event }) => event))],
-    [0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14]);
+    [0, 1, 2, 3, 4, 5, 0x0c, 0x0d, 0x0e, 0x11, 0x12, 0x13]);
   const voiceLogs = consoleLines.filter(({ text }) =>
     text.includes("[audio] context=combat voice_event=") && text.includes("routed=true"));
   const voices = voiceLogs.map(({ text }) => {
@@ -3787,9 +3790,9 @@ function probeTacticalAudioRouting(folder, stable, consoleLines, ready) {
   return [{
     type: "tactical-audio-routing",
     music_mdata_id: 307,
-    tactical_wave_first: 13033,
-    tactical_wave_last: 13054,
-    tactical_wave_variants: 22,
+    tactical_wave_first: 13000,
+    tactical_wave_last: 13053,
+    tactical_wave_variants: 36,
     tactical_voice_variants: 285,
     music_log: music.text,
     cue_logs: cueLogs.map(({ text }) => text),

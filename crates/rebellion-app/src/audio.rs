@@ -154,23 +154,39 @@ pub const MENU_SFX_ASSETS: &[(SfxKind, &str, u32)] = &[
     (SfxKind::MenuSelect, "sfx/menu_select.wav", 8004),
 ];
 
-/// Exact weapon-event variant table built by `FUN_005bae60`, with the jump
+/// The weapon sounds' variants in `FUN_005bae60`'s table (the fire sounds
+/// 0..5 and the shield and hull hits 0x0c..0x0e and 0x11..0x13), with the jump
 /// events `0x1d` (a fighter group) and `0x1f` (a capital ship) that
 /// `FUN_005a6b40` queues. Each row is `(event_id, variant, runtime_path,
 /// TACTICAL.DLL WAVE resource)`.
 pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
+    (0x00, 0, "sfx/tactical_event_00_0.wav", 13_000),
+    (0x00, 1, "sfx/tactical_event_00_1.wav", 13_001),
+    (0x00, 2, "sfx/tactical_event_00_2.wav", 13_002),
+    (0x00, 3, "sfx/tactical_event_00_3.wav", 13_003),
+    (0x01, 0, "sfx/tactical_event_01_0.wav", 13_004),
+    (0x01, 1, "sfx/tactical_event_01_1.wav", 13_005),
+    (0x01, 2, "sfx/tactical_event_01_2.wav", 13_006),
+    (0x01, 3, "sfx/tactical_event_01_3.wav", 13_007),
+    (0x02, 0, "sfx/tactical_event_02_0.wav", 13_008),
+    (0x02, 1, "sfx/tactical_event_02_1.wav", 13_009),
+    (0x02, 2, "sfx/tactical_event_02_2.wav", 13_010),
+    (0x02, 3, "sfx/tactical_event_02_3.wav", 13_011),
+    (0x03, 0, "sfx/tactical_event_03_0.wav", 13_012),
+    (0x03, 1, "sfx/tactical_event_03_1.wav", 13_013),
+    (0x04, 0, "sfx/tactical_event_04_0.wav", 13_014),
+    (0x04, 1, "sfx/tactical_event_04_1.wav", 13_015),
+    (0x05, 0, "sfx/tactical_event_05_0.wav", 13_016),
+    (0x05, 1, "sfx/tactical_event_05_1.wav", 13_017),
+    (0x0c, 0, "sfx/tactical_event_0c_0.wav", 13_030),
+    (0x0c, 1, "sfx/tactical_event_0c_1.wav", 13_031),
+    (0x0c, 2, "sfx/tactical_event_0c_2.wav", 13_032),
     (0x0d, 0, "sfx/tactical_event_0d_0.wav", 13_033),
     (0x0d, 1, "sfx/tactical_event_0d_1.wav", 13_034),
     (0x0d, 2, "sfx/tactical_event_0d_2.wav", 13_035),
     (0x0e, 0, "sfx/tactical_event_0e_0.wav", 13_036),
     (0x0e, 1, "sfx/tactical_event_0e_1.wav", 13_037),
     (0x0e, 2, "sfx/tactical_event_0e_2.wav", 13_038),
-    (0x0f, 0, "sfx/tactical_event_0f_0.wav", 13_039),
-    (0x0f, 1, "sfx/tactical_event_0f_1.wav", 13_040),
-    (0x0f, 2, "sfx/tactical_event_0f_2.wav", 13_041),
-    (0x10, 0, "sfx/tactical_event_10_0.wav", 13_042),
-    (0x10, 1, "sfx/tactical_event_10_1.wav", 13_043),
-    (0x10, 2, "sfx/tactical_event_10_2.wav", 13_044),
     (0x11, 0, "sfx/tactical_event_11_0.wav", 13_045),
     (0x11, 1, "sfx/tactical_event_11_1.wav", 13_046),
     (0x11, 2, "sfx/tactical_event_11_2.wav", 13_047),
@@ -180,7 +196,6 @@ pub const TACTICAL_SFX_ASSETS: &[(u8, u8, &str, u32)] = &[
     (0x13, 0, "sfx/tactical_event_13_0.wav", 13_051),
     (0x13, 1, "sfx/tactical_event_13_1.wav", 13_052),
     (0x13, 2, "sfx/tactical_event_13_2.wav", 13_053),
-    (0x14, 0, "sfx/tactical_event_14_0.wav", 13_054),
     (0x1d, 0, "sfx/tactical_event_1d_0.wav", 13_063),
     (0x1f, 0, "sfx/tactical_event_1f_0.wav", 13_065),
 ];

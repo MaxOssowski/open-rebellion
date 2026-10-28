@@ -7105,7 +7105,8 @@ mod tests {
 
     /// An enemy ship with shields `shield` and 100 hull, hit by an ion
     /// shot of `strength` from a stream that yields `draws` as (minimum,
-    /// maximum, value) triples.
+    /// maximum, value) triples, after the hit sound's variant (0 to 2,
+    /// FUN_005bad50 when FUN_005b5b60 asks for event 0x0e or 0x13).
     fn ion_hit(shield: i32, strength: f32, draws: &[(u32, u32, u32)]) -> BattleSession {
         use crate::tactical::{OriginalFighterTarget, TacticalShot, TacticalUnitRef, WeaponKind};
         let shooter = gunship(true, TacticalWeaponArc::new(0, 4, 0));
@@ -7119,6 +7120,7 @@ mod tests {
             .map(OriginalTacticalRng::new)
             .find(|rng| {
                 let mut rng = *rng;
+                rng.inclusive(0, 2);
                 draws
                     .iter()
                     .all(|&(minimum, maximum, value)| rng.inclusive(minimum, maximum) == value)
@@ -7536,16 +7538,18 @@ mod tests {
         assert_eq!(tactical.fighters[1].hull_current, 96.0);
         assert_eq!(tactical.fighters[2].hull_current, 96.0);
         // Each sound draws its variant from 0 through its count - 1, fire
-        // then impact (FUN_005bae60's counts).
+        // then impact (FUN_005bae60's counts, FUN_005bad50): a laser at a
+        // fighter group sounds by the group's side (FUN_005ba0f0), and the
+        // shield holds this one (FUN_005b5100: event 0x0d).
         tactical.pending_audio_cues.clear();
         let mut draws = tactical.tactical_rng;
+        let at_fighter = if tactical.fighters[0].identity.is_alliance {
+            crate::tactical::TacticalAudioEvent::LaserAtAllianceFighter
+        } else {
+            crate::tactical::TacticalAudioEvent::LaserAtImperialFighter
+        };
         let expected = (0..3)
-            .flat_map(|_| {
-                [
-                    crate::tactical::TacticalAudioEvent::LaserFire,
-                    crate::tactical::TacticalAudioEvent::LaserImpact,
-                ]
-            })
+            .flat_map(|_| [at_fighter, crate::tactical::TacticalAudioEvent::LaserShieldHit])
             .map(|event| {
                 let variant = draws.inclusive(0, u32::from(event.variant_count() - 1));
                 event.resource_base() + variant
@@ -7598,11 +7602,16 @@ mod tests {
             WeaponKind::FighterAttack,
             30.0,
         );
-        let rng = star.tactical_rng;
+        // Its hull's sound (event 0x11, FUN_005b5750) draws its variant.
+        let mut rng = star.tactical_rng;
         star.hit_weapon_shot(torpedo);
         assert_eq!(star.death_star.unwrap().hull, 70.0);
+        let variant = rng.inclusive(0, 2);
         assert_eq!(star.tactical_rng, rng);
-        assert_eq!(star.pending_audio_cues.last().unwrap().resource_id, crate::tactical::TacticalAudioEvent::TorpedoImpact.resource_base());
+        assert_eq!(
+            star.pending_audio_cues.last().unwrap().resource_id,
+            crate::tactical::TacticalAudioEvent::HullHit.resource_base() + variant
+        );
         star.hit_weapon_shot(TacticalShot { strength: 70.0, ..torpedo });
         assert!(star.death_star.unwrap().destroyed);
         assert_eq!(star.death_star.unwrap().hull, 0.0);

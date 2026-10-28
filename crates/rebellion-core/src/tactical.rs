@@ -1930,19 +1930,41 @@ pub enum WeaponKind {
     FighterAttack,
 }
 
-/// The eight weapon audio events dispatched by `FUN_005a7500` through the
-/// original tactical sound manager. `FUN_005bae60` assigns each event a
-/// contiguous TACTICAL.DLL WAVE family.
+/// The tactical sound manager's weapon and jump events (`FUN_005ba8b0` /
+/// `FUN_005ba980`). A fire event (`FUN_005b1ea0`, `FUN_005b1f60`,
+/// `FUN_005b2080`) sounds through its target's slot `+0xc4`, `+0xc8` or
+/// `+0xcc`; a torpedo (`FUN_005b2c70`) through its firer's `+0xc8`. A
+/// capital ship's (vtable `0x0066c140`) are events 0, 1 and 2; a fighter
+/// group's (`0x0066c028`) are 3 for side 0 or 4 for side 1 (`+0x168`), 1 and
+/// 5. A hit sounds in its damage slot (`+0xd4`..`+0xe0`): the shield's
+/// event when the shield holds, else the hull's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TacticalAudioEvent {
-    LaserFire,
-    TurbolaserFire,
-    IonFire,
-    TorpedoFire,
-    LaserImpact,
-    IonImpact,
-    TurbolaserImpact,
-    TorpedoImpact,
+    /// 0: a laser at a capital ship (`0x005b00a0`).
+    LaserAtCapital,
+    /// 1: a turbolaser at any unit, or a torpedo (`0x005b00c0`).
+    Turbolaser,
+    /// 2: an ion cannon at a capital ship (`0x005b00e0`).
+    IonAtCapital,
+    /// 3: a laser at an Alliance fighter group (`FUN_005ba0f0`).
+    LaserAtAllianceFighter,
+    /// 4: a laser at an Imperial fighter group (`FUN_005ba0f0`).
+    LaserAtImperialFighter,
+    /// 5: an ion cannon at a fighter group (`FUN_005ba0b0`).
+    IonAtFighter,
+    /// 0x0c: a turbolaser or torpedo held by the shield (`FUN_005b5f50`,
+    /// `FUN_005b5750`).
+    ShieldHit,
+    /// 0x0d: a laser held by the shield (`FUN_005b5100`).
+    LaserShieldHit,
+    /// 0x0e: an ion cannon held by the shield (`FUN_005b5b60`).
+    IonShieldHit,
+    /// 0x11: a turbolaser or torpedo through the shield.
+    HullHit,
+    /// 0x12: a laser through the shield.
+    LaserHullHit,
+    /// 0x13: an ion cannon through the shield.
+    IonHullHit,
     /// A fighter group's jump out (`FUN_005a6b40`, slot `+0x20` = 1).
     FighterJump,
     /// A capital ship's jump out (`FUN_005a6b40`, slot `+0x20` = 0).
@@ -1950,18 +1972,23 @@ pub enum TacticalAudioEvent {
 }
 
 impl TacticalAudioEvent {
-    /// `FUN_005ba8b0` weapon events from `FUN_005b5100`, `FUN_005b5750`, `FUN_005b5b60`, `FUN_005b5f50`.
+    /// The sound manager's event number, as `FUN_005ba8b0` /
+    /// `FUN_005ba980` receive it from the slots named on each variant.
     #[must_use]
     pub const fn event_id(self) -> u8 {
         match self {
-            Self::LaserFire => 0x0d,
-            Self::TurbolaserFire => 0x0e,
-            Self::IonFire => 0x0f,
-            Self::TorpedoFire => 0x10,
-            Self::LaserImpact => 0x11,
-            Self::IonImpact => 0x12,
-            Self::TurbolaserImpact => 0x13,
-            Self::TorpedoImpact => 0x14,
+            Self::LaserAtCapital => 0x00,
+            Self::Turbolaser => 0x01,
+            Self::IonAtCapital => 0x02,
+            Self::LaserAtAllianceFighter => 0x03,
+            Self::LaserAtImperialFighter => 0x04,
+            Self::IonAtFighter => 0x05,
+            Self::ShieldHit => 0x0c,
+            Self::LaserShieldHit => 0x0d,
+            Self::IonShieldHit => 0x0e,
+            Self::HullHit => 0x11,
+            Self::LaserHullHit => 0x12,
+            Self::IonHullHit => 0x13,
             Self::FighterJump => 0x1d,
             Self::CapitalJump => 0x1f,
         }
@@ -1970,20 +1997,7 @@ impl TacticalAudioEvent {
     /// `FUN_005bae60` TACTICAL.DLL WAVE bases.
     #[must_use]
     pub const fn resource_base(self) -> u32 {
-        match self {
-            Self::LaserFire => 13_033,
-            Self::TurbolaserFire => 13_036,
-            Self::IonFire => 13_039,
-            Self::TorpedoFire => 13_042,
-            Self::LaserImpact => 13_045,
-            Self::IonImpact => 13_048,
-            Self::TurbolaserImpact => 13_051,
-            Self::TorpedoImpact => 13_054,
-            // The table's event 0 is 13000 at `+0x28e` (two words an
-            // event), so `0x1d` and `0x1f` read 13063 and 13065.
-            Self::FighterJump => 13_063,
-            Self::CapitalJump => 13_065,
-        }
+        original_audio_resource_base(self.event_id())
     }
 
     /// `FUN_005bae60` per-event variant counts (`+0x50` + 4 * event): 1 by
@@ -1994,21 +2008,49 @@ impl TacticalAudioEvent {
         original_audio_variant_count(self.event_id())
     }
 
-    pub const fn fire_for(kind: WeaponKind) -> Self {
-        match kind {
-            WeaponKind::LaserCannon => Self::LaserFire,
-            WeaponKind::Turbolaser => Self::TurbolaserFire,
-            WeaponKind::IonCannon => Self::IonFire,
-            WeaponKind::FighterAttack => Self::TorpedoFire,
+    /// A fire event's sound: the target's slot for a laser, turbolaser or
+    /// ion cannon, the firer's `+0xc8` for a torpedo. `target` is the
+    /// target's side when it is a fighter group, `None` for a capital ship
+    /// or the Death Star: only those two unit vtables carry these slots, so
+    /// the Death Star is a capital ship object.
+    #[must_use]
+    pub const fn fire_for(kind: WeaponKind, fighter_target_is_alliance: Option<bool>) -> Self {
+        match (kind, fighter_target_is_alliance) {
+            (WeaponKind::LaserCannon, None) => Self::LaserAtCapital,
+            (WeaponKind::LaserCannon, Some(true)) => Self::LaserAtAllianceFighter,
+            (WeaponKind::LaserCannon, Some(false)) => Self::LaserAtImperialFighter,
+            (WeaponKind::IonCannon, None) => Self::IonAtCapital,
+            (WeaponKind::IonCannon, Some(_)) => Self::IonAtFighter,
+            (WeaponKind::Turbolaser | WeaponKind::FighterAttack, _) => Self::Turbolaser,
         }
     }
 
-    pub const fn impact_for(kind: WeaponKind) -> Self {
-        match kind {
-            WeaponKind::LaserCannon => Self::LaserImpact,
-            WeaponKind::Turbolaser => Self::TurbolaserImpact,
-            WeaponKind::IonCannon => Self::IonImpact,
-            WeaponKind::FighterAttack => Self::TorpedoImpact,
+    /// A hit's sound in its damage slot (`0x005b2a20`..`0x005b2b10`: a laser
+    /// `+0xd8`, an ion cannon `+0xdc`, a turbolaser `+0xe0`, a torpedo
+    /// `+0xd4`): the shield's when it holds (what is left is not below 0),
+    /// else the hull's.
+    #[must_use]
+    pub const fn impact_for(kind: WeaponKind, shield_holds: bool) -> Self {
+        match (kind, shield_holds) {
+            (WeaponKind::LaserCannon, true) => Self::LaserShieldHit,
+            (WeaponKind::LaserCannon, false) => Self::LaserHullHit,
+            (WeaponKind::IonCannon, true) => Self::IonShieldHit,
+            (WeaponKind::IonCannon, false) => Self::IonHullHit,
+            (WeaponKind::Turbolaser | WeaponKind::FighterAttack, true) => Self::ShieldHit,
+            (WeaponKind::Turbolaser | WeaponKind::FighterAttack, false) => Self::HullHit,
+        }
+    }
+
+    /// `FUN_005bad50`: the sound manager draws an event's variant from the
+    /// tactical stream (`FUN_005a8a70(0, count - 1)`) when the request is
+    /// made, and only for 2 to 4 variants; otherwise it takes the first.
+    /// port: the sound manager is taken as running (`+0x18`).
+    pub fn draw_variant(self, rng: &mut OriginalTacticalRng) -> u8 {
+        let count = self.variant_count();
+        if (2..=4).contains(&count) {
+            u8::try_from(rng.inclusive(0, u32::from(count - 1))).unwrap_or(0)
+        } else {
+            0
         }
     }
 }
@@ -2022,6 +2064,20 @@ pub const fn original_audio_variant_count(event: u8) -> u8 {
         0x09..=0x13 => 3,
         _ => 1,
     }
+}
+
+/// `FUN_005bae60`'s WAVE table (`+0x51c` + 4 * event, a word each): each
+/// event's variants follow the previous event's from 13000, so an event's
+/// first is 13000 plus the variants before it (events up to `0x1f`).
+#[must_use]
+pub const fn original_audio_resource_base(event: u8) -> u32 {
+    let mut base = 13_000;
+    let mut earlier = 0;
+    while earlier < event {
+        base += original_audio_variant_count(earlier) as u32;
+        earlier += 1;
+    }
+    base
 }
 
 /// One concrete source event and selected original WAVE resource.
@@ -6898,6 +6954,7 @@ impl BattleSession {
         let before = ship.shield;
         let after = before - damage;
         let stamp = self.step_event_stamp();
+        self.queue_impact_sound(WeaponKind::IonCannon, after >= 0);
         if after >= 0 {
             self.ships[index].shield = after;
             let lost = ((100.0 / before as f32) * (before - after) as f32).max(1.0);
@@ -7560,7 +7617,7 @@ impl BattleSession {
 
     /// A weapon fire event (`FUN_005b1ea0` and its siblings): with both
     /// units still in the fight (`FUN_005ad870`), the projectile and its
-    /// fire sound. hyp: the sound's variant is drawn here.
+    /// fire sound, whose variant is drawn here (`FUN_005bad50`).
     pub fn fire_weapon_shot(&mut self, shot: TacticalShot) {
         let source = match shot.source {
             TacticalUnitRef::Ship(index) => OriginalFighterTarget::Capital(index),
@@ -7629,19 +7686,29 @@ impl BattleSession {
             (TacticalUnitRef::Ship(_), OriginalFighterTarget::DeathStar) => {}
         }
         self.weapon_effects.extend(effects);
-        let fire_event = TacticalAudioEvent::fire_for(shot.kind);
-        let variant = u8::try_from(
-            self.tactical_rng
-                .inclusive(0, u32::from(fire_event.variant_count() - 1)),
-        )
-        .unwrap_or(0);
+        let fighter_target = match shot.target {
+            OriginalFighterTarget::Fighter(index) => Some(self.fighters[index].identity.is_alliance),
+            OriginalFighterTarget::Capital(_) | OriginalFighterTarget::DeathStar => None,
+        };
+        let fire_event = TacticalAudioEvent::fire_for(shot.kind, fighter_target);
+        let variant = fire_event.draw_variant(&mut self.tactical_rng);
         self.pending_audio_cues
             .push(TacticalAudioCue::from_variant(fire_event, variant));
     }
 
+    /// A hit's sound (`FUN_005ba980` in the damage slot): its variant is
+    /// drawn as it is asked for, before the slot's own rolls.
+    fn queue_impact_sound(&mut self, kind: WeaponKind, shield_holds: bool) {
+        let event = TacticalAudioEvent::impact_for(kind, shield_holds);
+        let variant = event.draw_variant(&mut self.tactical_rng);
+        self.pending_audio_cues
+            .push(TacticalAudioCue::from_variant(event, variant));
+    }
+
     /// A weapon hit event (`0x005b2a20` and its siblings): with the target
     /// still in the fight (`FUN_005ad870`), its damage (slot `+0xe0`), the
-    /// impact and the impact sound. hyp: the sound's variant is drawn here.
+    /// impact and the impact sound, whose variant is drawn when the slot
+    /// asks for it (`FUN_005bad50`), before the slot's rolls.
     pub fn hit_weapon_shot(&mut self, shot: TacticalShot) {
         if !self.unit_in_the_fight(shot.target) {
             return;
@@ -7675,6 +7742,7 @@ impl BattleSession {
                 let target_is_attacker = self.ships[index].is_attacker;
                 let target_group = self.ships[index].task_force;
                 let damage = original_tactical_integer_damage(shot.strength);
+                self.queue_impact_sound(shot.kind, self.ships[index].shield - damage >= 0);
                 let rolls =
                     original_tactical_damage_rolls(&self.ships, index, damage, &mut self.tactical_rng);
                 let (stage, subsystem_hits) = apply_original_tactical_capital_hit(
@@ -7712,6 +7780,9 @@ impl BattleSession {
                     shot.strength,
                     source_maneuverability,
                 );
+                // No roll follows in a fighter group's slot (slot `+0x20`
+                // is 1), so its sound may follow the damage.
+                self.queue_impact_sound(shot.kind, stage == OriginalTacticalImpactStage::Hit);
                 queue_original_destruction_voice(
                     &mut self.pending_voice_cues,
                     player_faction,
@@ -7731,20 +7802,10 @@ impl BattleSession {
                         death_star.action_committed = false;
                     }
                 }
+                // A capital ship object without a shield: its hull sounds.
+                self.queue_impact_sound(shot.kind, false);
             }
         }
-        let impact_event = TacticalAudioEvent::impact_for(shot.kind);
-        let variant = if shot.kind == WeaponKind::FighterAttack {
-            0
-        } else {
-            u8::try_from(
-                self.tactical_rng
-                    .inclusive(0, u32::from(impact_event.variant_count() - 1)),
-            )
-            .unwrap_or(0)
-        };
-        self.pending_audio_cues
-            .push(TacticalAudioCue::from_variant(impact_event, variant));
     }
 
     pub fn has_active_trench_run(&self) -> bool {

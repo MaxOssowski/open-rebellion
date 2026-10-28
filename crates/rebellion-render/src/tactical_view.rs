@@ -1749,7 +1749,7 @@ impl TacticalState {
     }
 
     /// Queue every recovered weapon-event variant so the muted browser journey
-    /// can prove the complete TACTICAL.DLL 13033-13054 runtime bank.
+    /// can prove the TACTICAL.DLL weapon bank: 13000-13017 and 13030-13053.
     #[cfg(feature = "interface-test-fixtures")]
     pub fn configure_tactical_audio_fixture(&mut self) {
         let Some(session) = self.session.as_mut() else {
@@ -1757,14 +1757,18 @@ impl TacticalState {
         };
         session.pending_audio_cues.clear();
         for event in [
-            TacticalAudioEvent::LaserFire,
-            TacticalAudioEvent::TurbolaserFire,
-            TacticalAudioEvent::IonFire,
-            TacticalAudioEvent::TorpedoFire,
-            TacticalAudioEvent::LaserImpact,
-            TacticalAudioEvent::IonImpact,
-            TacticalAudioEvent::TurbolaserImpact,
-            TacticalAudioEvent::TorpedoImpact,
+            TacticalAudioEvent::LaserAtCapital,
+            TacticalAudioEvent::Turbolaser,
+            TacticalAudioEvent::IonAtCapital,
+            TacticalAudioEvent::LaserAtAllianceFighter,
+            TacticalAudioEvent::LaserAtImperialFighter,
+            TacticalAudioEvent::IonAtFighter,
+            TacticalAudioEvent::ShieldHit,
+            TacticalAudioEvent::LaserShieldHit,
+            TacticalAudioEvent::IonShieldHit,
+            TacticalAudioEvent::HullHit,
+            TacticalAudioEvent::LaserHullHit,
+            TacticalAudioEvent::IonHullHit,
         ] {
             for variant in 0..event.variant_count() {
                 session
@@ -14514,13 +14518,15 @@ mod tests {
             audio_cues.iter().map(|cue| cue.event).collect::<Vec<_>>(),
             // The fire events run one turn before the hit events
             // (FUN_005b3f10: +0x87c + 1.0 and + 2.0).
+            // Fired at a capital ship (vtable 0x0066c140: events 2, 0, 1),
+            // and held by its shield (0x0e, 0x0d, 0x0c).
             vec![
-                TacticalAudioEvent::IonFire,
-                TacticalAudioEvent::LaserFire,
-                TacticalAudioEvent::TurbolaserFire,
-                TacticalAudioEvent::IonImpact,
-                TacticalAudioEvent::LaserImpact,
-                TacticalAudioEvent::TurbolaserImpact,
+                TacticalAudioEvent::IonAtCapital,
+                TacticalAudioEvent::LaserAtCapital,
+                TacticalAudioEvent::Turbolaser,
+                TacticalAudioEvent::IonShieldHit,
+                TacticalAudioEvent::LaserShieldHit,
+                TacticalAudioEvent::ShieldHit,
             ]
         );
         assert!(audio_cues.iter().all(|cue| {
@@ -14720,18 +14726,24 @@ mod tests {
         assert_eq!(audio_cues.len(), 2);
     }
 
-    // Source: FUN_005a7500 / FUN_005bae60 audio event bank.
+    // Source: FUN_005bae60's event table (+0x50 counts, +0x51c words) and
+    // the sounds the weapon slots ask for (0x005b00a0..0x005b00e0,
+    // FUN_005ba0f0, FUN_005ba0b0, FUN_005b5100..FUN_005b5f50).
     #[test]
     fn tactical_audio_event_bank_covers_every_recovered_wave_once() {
         let events = [
-            TacticalAudioEvent::LaserFire,
-            TacticalAudioEvent::TurbolaserFire,
-            TacticalAudioEvent::IonFire,
-            TacticalAudioEvent::TorpedoFire,
-            TacticalAudioEvent::LaserImpact,
-            TacticalAudioEvent::IonImpact,
-            TacticalAudioEvent::TurbolaserImpact,
-            TacticalAudioEvent::TorpedoImpact,
+            TacticalAudioEvent::LaserAtCapital,
+            TacticalAudioEvent::Turbolaser,
+            TacticalAudioEvent::IonAtCapital,
+            TacticalAudioEvent::LaserAtAllianceFighter,
+            TacticalAudioEvent::LaserAtImperialFighter,
+            TacticalAudioEvent::IonAtFighter,
+            TacticalAudioEvent::ShieldHit,
+            TacticalAudioEvent::LaserShieldHit,
+            TacticalAudioEvent::IonShieldHit,
+            TacticalAudioEvent::HullHit,
+            TacticalAudioEvent::LaserHullHit,
+            TacticalAudioEvent::IonHullHit,
         ];
         let cues: Vec<_> = events
             .into_iter()
@@ -14746,14 +14758,35 @@ mod tests {
                 .map(|cue| cue.event.event_id())
                 .collect::<Vec<_>>(),
             vec![
-                0x0d, 0x0d, 0x0d, 0x0e, 0x0e, 0x0e, 0x0f, 0x0f, 0x0f, 0x10, 0x10, 0x10, 0x11, 0x11,
-                0x11, 0x12, 0x12, 0x12, 0x13, 0x13, 0x13, 0x14,
+                0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 4, 4, 5, 5, 0x0c, 0x0c, 0x0c, 0x0d, 0x0d,
+                0x0d, 0x0e, 0x0e, 0x0e, 0x11, 0x11, 0x11, 0x12, 0x12, 0x12, 0x13, 0x13, 0x13,
             ]
         );
         assert_eq!(
             cues.iter().map(|cue| cue.resource_id).collect::<Vec<_>>(),
-            (13_033..=13_054).collect::<Vec<_>>()
+            (13_000..=13_017).chain(13_030..=13_038).chain(13_045..=13_053).collect::<Vec<_>>()
         );
+        // The jumps keep 13063 and 13065.
+        assert_eq!(TacticalAudioEvent::FighterJump.resource_base(), 13_063);
+        assert_eq!(TacticalAudioEvent::CapitalJump.resource_base(), 13_065);
+    }
+
+    // Source: FUN_005bad50 draws a variant only for 2 to 4 variants.
+    #[test]
+    fn a_sound_draws_its_variant_only_with_two_to_four_variants() {
+        let mut rng = OriginalTacticalRng::new(7);
+        let untouched = rng;
+        assert_eq!(TacticalAudioEvent::CapitalJump.draw_variant(&mut rng), 0);
+        assert_eq!(rng, untouched);
+        let mut expected = rng;
+        let variant = TacticalAudioEvent::LaserAtCapital.draw_variant(&mut rng);
+        assert_eq!(u32::from(variant), expected.inclusive(0, 3));
+        assert_eq!(rng, expected);
+        let variant = TacticalAudioEvent::LaserAtAllianceFighter.draw_variant(&mut rng);
+        assert_eq!(u32::from(variant), expected.inclusive(0, 1));
+        let variant = TacticalAudioEvent::HullHit.draw_variant(&mut rng);
+        assert_eq!(u32::from(variant), expected.inclusive(0, 2));
+        assert_eq!(rng, expected);
     }
 
     // Source: FUN_0061a310 / FUN_005a8a70 MSVC-compatible global RNG.
@@ -15189,7 +15222,10 @@ mod tests {
                 .into_iter()
                 .map(|cue| cue.resource_id)
                 .collect::<Vec<_>>(),
-            (13_033..=13_054).collect::<Vec<_>>()
+            (13_000..=13_017)
+                .chain(13_030..=13_038)
+                .chain(13_045..=13_053)
+                .collect::<Vec<_>>()
         );
         let voice_resources = session
             .take_pending_voice_cues()
@@ -15630,13 +15666,15 @@ mod tests {
                 .collect::<Vec<_>>(),
             // The fire events run one turn before the hit events
             // (FUN_005b3f10: +0x87c + 1.0 and + 2.0).
+            // At a capital ship (events 2, 0, and the torpedo's 1 from the
+            // firer's +0xc8), through a shield of 0 (0x13, 0x12, 0x11).
             vec![
-                TacticalAudioEvent::IonFire,
-                TacticalAudioEvent::LaserFire,
-                TacticalAudioEvent::TorpedoFire,
-                TacticalAudioEvent::IonImpact,
-                TacticalAudioEvent::LaserImpact,
-                TacticalAudioEvent::TorpedoImpact,
+                TacticalAudioEvent::IonAtCapital,
+                TacticalAudioEvent::LaserAtCapital,
+                TacticalAudioEvent::Turbolaser,
+                TacticalAudioEvent::IonHullHit,
+                TacticalAudioEvent::LaserHullHit,
+                TacticalAudioEvent::HullHit,
             ]
         );
     }
@@ -15703,9 +15741,11 @@ mod tests {
                 .iter()
                 .map(|cue| cue.event)
                 .collect::<Vec<_>>(),
+            // At an Imperial group (FUN_005ba0f0: side 1, event 4) with no
+            // shield (FUN_005b5100: 0x12).
             vec![
-                TacticalAudioEvent::LaserFire,
-                TacticalAudioEvent::LaserImpact
+                TacticalAudioEvent::LaserAtImperialFighter,
+                TacticalAudioEvent::LaserHullHit
             ]
         );
     }
@@ -18179,7 +18219,7 @@ mod tests {
 
     // Source: FUN_005bae60's +0x50 table (4, 4, 4, 2, 2, 2, 1, 1, 1, then 3
     // for events 9..0x13 and 1 for 0x14..0x1f). A0 TAC-01-C012's recording
-    // has turbolaser event 0x0e in variants 0, 1 and 2.
+    // has event 0x0e (an ion hit the shield holds) in variants 0, 1 and 2.
     #[test]
     fn every_tactical_sound_event_has_its_original_number_of_variants() {
         assert_eq!(original_audio_variant_count(0x00), 4);
@@ -18192,8 +18232,9 @@ mod tests {
         assert_eq!(original_audio_variant_count(0x13), 3);
         assert_eq!(original_audio_variant_count(0x14), 1);
         assert_eq!(original_audio_variant_count(0x1f), 1);
-        assert_eq!(TacticalAudioEvent::TurbolaserFire.variant_count(), 3);
-        assert_eq!(TacticalAudioEvent::TorpedoImpact.variant_count(), 1);
+        assert_eq!(TacticalAudioEvent::Turbolaser.variant_count(), 4);
+        assert_eq!(TacticalAudioEvent::IonAtFighter.variant_count(), 2);
+        assert_eq!(TacticalAudioEvent::IonShieldHit.variant_count(), 3);
         assert_eq!(TacticalAudioEvent::FighterJump.variant_count(), 1);
         assert_eq!(TacticalAudioEvent::CapitalJump.variant_count(), 1);
     }

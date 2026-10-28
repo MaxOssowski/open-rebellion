@@ -163,34 +163,11 @@ else
 fi
 TACTICAL_DLL_DIR="$(original_dll_dir TACTICAL.DLL)"
 if [ -n "$TACTICAL_DLL_DIR" ]; then
-    rm -f "$WEB_AUDIO/sfx/tactical_ship_destroyed.wav"
+    # The extractor writes the current weapon bank; drop older names.
+    rm -f "$WEB_AUDIO/sfx/tactical_ship_destroyed.wav" "$WEB_AUDIO"/sfx/tactical_event_*.wav
     "$DAT_DUMPER" --gdata "$TACTICAL_DLL_DIR" --extract-tactical-sfx --output "$WEB_AUDIO/sfx"
 else
-    rm -f "$WEB_AUDIO/sfx/tactical_ship_destroyed.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0d_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0d_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0d_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0e_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0e_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0e_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0f_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0f_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_0f_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_10_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_10_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_10_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_11_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_11_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_11_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_12_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_12_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_12_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_13_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_13_1.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_13_2.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_14_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_1d_0.wav" \
-        "$WEB_AUDIO/sfx/tactical_event_1f_0.wav"
+    rm -f "$WEB_AUDIO/sfx/tactical_ship_destroyed.wav" "$WEB_AUDIO"/sfx/tactical_event_*.wav
     echo "WARNING: TACTICAL.DLL not found in $ORIGINAL_GAME_DIR or $GDATA; tactical event cues will remain silent."
 fi
 
