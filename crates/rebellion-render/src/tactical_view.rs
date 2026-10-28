@@ -3464,6 +3464,7 @@ fn ctrl_click_ship(session: &mut BattleSession, index: usize) -> &'static str {
             .iter()
             .any(|&each| session.fighters[each].escort_target == Some(index));
         if held {
+            session.leave_escort(&[], &members);
             for each in members {
                 let fighter = &mut session.fighters[each];
                 fighter.escort_target = None;
@@ -3479,11 +3480,17 @@ fn ctrl_click_ship(session: &mut BattleSession, index: usize) -> &'static str {
             ship.alive && ship.task_force == group && ship.escort_target == Some(index)
         });
         if escorted {
-            for ship in &mut session.ships {
-                if ship.task_force == group && ship.escort_target == Some(index) {
-                    ship.escort_target = None;
-                    ship.order = TacticalOrder::None;
-                }
+            let escorts = (0..session.ships.len())
+                .filter(|&each| {
+                    let ship = &session.ships[each];
+                    ship.task_force == group && ship.escort_target == Some(index)
+                })
+                .collect::<Vec<_>>();
+            session.leave_escort(&escorts, &[]);
+            for each in escorts {
+                let ship = &mut session.ships[each];
+                ship.escort_target = None;
+                ship.order = TacticalOrder::None;
             }
             return "escort_dropped";
         }
@@ -3819,39 +3826,44 @@ fn assign_selected_escort(session: &mut BattleSession, target: usize) -> (usize,
     if target_side != session.player_is_attacker {
         return (0, 0);
     }
+    let escorting_capitals = (0..session.ships.len())
+        .filter(|&index| {
+            let ship = &session.ships[index];
+            index != target
+                && ship.alive
+                && !ship.retreating
+                && ship.selected
+                && ship.is_attacker == target_side
+        })
+        .collect::<Vec<_>>();
+    let escorting_fighters = (0..session.fighters.len())
+        .filter(|&index| {
+            let fighter = &session.fighters[index];
+            fighter.alive
+                && fighter.squad_count > 0
+                && fighter.selected
+                && fighter.is_attacker == target_side
+        })
+        .collect::<Vec<_>>();
+    session.leave_escort(&escorting_capitals, &escorting_fighters);
 
-    let mut capitals = 0;
-    for (index, ship) in session.ships.iter_mut().enumerate() {
-        if index != target
-            && ship.alive
-            && !ship.retreating
-            && ship.selected
-            && ship.is_attacker == target_side
-        {
-            ship.order = TacticalOrder::Escort;
-            ship.escort_target = Some(target);
-            ship.attack_target = None;
-            ship.manual_targets.clear();
-            ship.navigation_route.clear();
-            capitals += 1;
-        }
+    for &index in &escorting_capitals {
+        let ship = &mut session.ships[index];
+        ship.order = TacticalOrder::Escort;
+        ship.escort_target = Some(target);
+        ship.attack_target = None;
+        ship.manual_targets.clear();
+        ship.navigation_route.clear();
     }
-
-    let mut fighters = 0;
-    for fighter in &mut session.fighters {
-        if fighter.alive
-            && fighter.squad_count > 0
-            && fighter.selected
-            && fighter.is_attacker == target_side
-        {
-            fighter.order = TacticalOrder::Escort;
-            fighter.escort_target = Some(target);
-            fighter.attack_target = None;
-            fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
-            fighter.recovery_target = None;
-            fighters += 1;
-        }
+    for &index in &escorting_fighters {
+        let fighter = &mut session.fighters[index];
+        fighter.order = TacticalOrder::Escort;
+        fighter.escort_target = Some(target);
+        fighter.attack_target = None;
+        fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
+        fighter.recovery_target = None;
     }
+    let (capitals, fighters) = (escorting_capitals.len(), escorting_fighters.len());
     (capitals, fighters)
 }
 
@@ -3908,23 +3920,26 @@ fn assign_selected_command(
     let mut selected_capitals = Vec::new();
     let mut selected_fighters = Vec::new();
     if session.selected_fighter_group.is_some() {
-        for (index, fighter) in session.fighters.iter_mut().enumerate() {
-            if fighter.alive
-                && fighter.selected
-                && fighter.is_attacker == session.player_is_attacker
-            {
-                fighter.order = order;
-                fighter.escort_target = None;
-                if let Some(tactic) = tactic {
-                    fighter.tactic = tactic;
-                }
-                if order != TacticalOrder::Recover {
-                    fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
-                    fighter.recovery_target = None;
-                }
-                selected_fighters.push(index);
-                fighter_members += 1;
+        let ordered = (0..session.fighters.len())
+            .filter(|&index| {
+                let fighter = &session.fighters[index];
+                fighter.alive && fighter.selected && fighter.is_attacker == session.player_is_attacker
+            })
+            .collect::<Vec<_>>();
+        session.leave_escort(&[], &ordered);
+        for &index in &ordered {
+            let fighter = &mut session.fighters[index];
+            fighter.order = order;
+            fighter.escort_target = None;
+            if let Some(tactic) = tactic {
+                fighter.tactic = tactic;
             }
+            if order != TacticalOrder::Recover {
+                fighter.recovery_state = TacticalFighterRecoveryState::AwaitingCarrier;
+                fighter.recovery_target = None;
+            }
+            selected_fighters.push(index);
+            fighter_members += 1;
         }
     } else {
         // The input state's order and tactic slots (`+0x20`, `+0x28`): a
@@ -3948,6 +3963,7 @@ fn assign_selected_command(
         if session.task_force_selection.is_none() {
             form_selected_task_force(session, &members);
         }
+        session.leave_escort(&members, &[]);
         for &index in &members {
             let ship = &mut session.ships[index];
             ship.order = order;
@@ -16674,6 +16690,131 @@ mod tests {
         assert_eq!(ctrl_click_ship(&mut session, 0), "escort_dropped");
         assert_eq!(session.fighters[0].escort_target, None);
         assert_eq!(session.fighters[0].order, TacticalOrder::None);
+    }
+
+    // Only our selected living squadrons take an order: Escort, or one from
+    // the panel. A Recover order keeps the recovery reservation.
+    #[test]
+    fn only_our_selected_living_squadrons_take_an_order() {
+        let squadron = |selected, alive, squad_count, is_attacker| {
+            let mut fighter = test_fighter(5, true);
+            fighter.selected = selected;
+            fighter.alive = alive;
+            fighter.squad_count = squad_count;
+            fighter.is_attacker = is_attacker;
+            fighter.recovery_state = TacticalFighterRecoveryState::Returning;
+            fighter.recovery_target = Some(0);
+            fighter
+        };
+        let fighters = vec![
+            squadron(true, true, 12, true),
+            squadron(false, true, 12, true),
+            squadron(true, false, 12, true),
+            squadron(true, true, 0, true),
+            squadron(true, true, 12, false),
+        ];
+        let mut session = test_session(vec![test_ship(1, 0, true, true)], fighters, true);
+        assert_eq!(assign_selected_escort(&mut session, 0), (0, 1));
+        let escorting = session
+            .fighters
+            .iter()
+            .map(|fighter| fighter.order == TacticalOrder::Escort)
+            .collect::<Vec<_>>();
+        assert_eq!(escorting, [true, false, false, false, false]);
+
+        session.selected_fighter_group = Some(0);
+        session.fighters[0].recovery_target = Some(0);
+        assign_selected_command(&mut session, TacticalOrder::Recover, None);
+        let recovering = session
+            .fighters
+            .iter()
+            .map(|fighter| fighter.order == TacticalOrder::Recover)
+            .collect::<Vec<_>>();
+        assert_eq!(recovering, [true, false, false, true, false]);
+        assert_eq!(session.fighters[0].recovery_target, Some(0));
+        assign_selected_command(&mut session, TacticalOrder::HoldPosition, None);
+        assert_eq!(session.fighters[0].recovery_target, None);
+    }
+
+    // SetOrder (0x005ca530) on a force leaving Escort calls SetTactic(1)
+    // (0x005c9be0). A0 VM 2026-10-28, Battle at Yavin: Red Group on Stand
+    // Off, Escort Victory Destroyer 2, then a Ctrl click on that ship: "No
+    // Orders", "Tactics: Surround".
+    #[test]
+    fn a_force_leaving_escort_takes_surround() {
+        let mut session =
+            test_session(vec![test_ship(1, 0, true, true)], vec![test_fighter(5, true)], true);
+        session.fighters[0].tactic = TacticalTactic::StandOff;
+        assert!(select_fighter_group(&mut session, 0));
+        ctrl_click_ship(&mut session, 0);
+        assert_eq!(session.fighters[0].tactic, TacticalTactic::StandOff);
+        assert_eq!(ctrl_click_ship(&mut session, 0), "escort_dropped");
+        assert_eq!(session.fighters[0].tactic, TacticalTactic::Surround);
+
+        // Any other order, here from the panel, leaves Escort the same way;
+        // a force that was not escorting keeps its tactic.
+        let mut escort = test_ship(3, 1, true, true);
+        escort.selected = true;
+        escort.task_force = 1;
+        escort.order = TacticalOrder::Escort;
+        escort.escort_target = Some(0);
+        escort.tactic = TacticalTactic::StandOff;
+        let mut idle = test_ship(4, 2, true, true);
+        idle.task_force = 2;
+        idle.tactic = TacticalTactic::StandOff;
+        let mut session = test_session(
+            vec![test_ship(1, 0, true, true), escort, idle],
+            Vec::new(),
+            true,
+        );
+        session.task_force_selection = Some(1);
+        assign_selected_command(&mut session, TacticalOrder::HoldPosition, None);
+        assert_eq!(session.ships[1].tactic, TacticalTactic::Surround);
+        assert_eq!(session.ships[2].tactic, TacticalTactic::StandOff);
+        let tactic_of = |task_force| TacticalTurnEvent::TaskForceTactic {
+            attacker: true,
+            task_force,
+            tactic: TacticalTactic::Surround,
+        };
+        assert!(session.turn_events.iter().any(|queued| queued.event == tactic_of(1)));
+        assert!(!session.turn_events.iter().any(|queued| queued.event == tactic_of(2)));
+
+        // A task force's Ctrl click drops the escort of each member: one
+        // 0x3d for the force. A ship of no force posts none.
+        let escort = |id, slot, task_force| {
+            let mut ship = test_ship(id, slot, true, true);
+            ship.task_force = task_force;
+            ship.order = TacticalOrder::Escort;
+            ship.escort_target = Some(0);
+            ship.tactic = TacticalTactic::StandOff;
+            ship
+        };
+        let mut session = test_session(
+            vec![
+                test_ship(1, 0, true, true),
+                escort(3, 1, 1),
+                escort(4, 2, 1),
+                escort(5, 3, TACTICAL_UNGROUPED_TASK_FORCE),
+            ],
+            Vec::new(),
+            true,
+        );
+        session.task_force_selection = Some(1);
+        assert_eq!(ctrl_click_ship(&mut session, 0), "escort_dropped");
+        assert_eq!(session.ships[1].tactic, TacticalTactic::Surround);
+        assert_eq!(session.ships[2].tactic, TacticalTactic::Surround);
+        assert_eq!(session.ships[3].order, TacticalOrder::Escort);
+        let posted = |session: &BattleSession| {
+            session
+                .turn_events
+                .iter()
+                .filter(|queued| matches!(queued.event, TacticalTurnEvent::TaskForceTactic { .. }))
+                .count()
+        };
+        assert_eq!(posted(&session), 1);
+        session.leave_escort(&[3], &[]);
+        assert_eq!(session.ships[3].tactic, TacticalTactic::Surround);
+        assert_eq!(posted(&session), 1);
     }
 
     // 0x005a1af0 / 0x005a24d0 with 1: our ship joins or leaves the

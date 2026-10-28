@@ -230,12 +230,12 @@ pub(crate) fn apply_results(
             // FUN_0040c780's commit, each squadron's count (FUN_0040d260):
             // a lost carrier's squadrons in its hangar or docked died with
             // it (its death, FUN_005b2d20, kills its hangar's through
-            // FUN_005b8d80). Its launched ones stay with their side's fleet:
-            // A0 VM 2026-10-27 (Battle at Yavin) found the lost Victory
-            // Destroyer's TIE squadron in Fleet 1 after the battle, aboard
-            // the Death Star, though FUN_0040d320 parents a launched one to
-            // the system; what puts it back aboard is untraced, so the port
-            // seats it on a ship with room (number_ships).
+            // FUN_005b8d80). port: its launched ones stay with their side's
+            // fleet, seated on a ship with room (number_ships). FUN_0040d320
+            // parents every squadron not in a hangar or docked (+0x170 1 or
+            // 5) to the system; the A0 VM run of 2026-10-27 that seemed to
+            // contradict it used a host-edited save (evidence
+            // 2026-10-28-ctrl-clicks-a0), and no clean run has shown it.
             let lost: Vec<u64> = fleet
                 .capital_ships
                 .iter()
@@ -899,9 +899,9 @@ mod tests {
     #[test]
     fn a_lost_carriers_hangar_squadrons_die_and_its_launched_ones_stay_in_the_fleet() {
         // A lost carrier's death (FUN_005b2d20 -> FUN_005b8d80) kills its
-        // hangar's squadrons; its launched ones stay with the fleet (A0 VM
-        // 2026-10-27: the lost Victory Destroyer's TIE in Fleet 1 after
-        // the Battle at Yavin).
+        // hangar's squadrons. port: its launched ones stay with the fleet
+        // (the A0 VM run of 2026-10-27 that showed it used an edited save;
+        // evidence 2026-10-28-ctrl-clicks-a0).
         let (mut world, system, attacker, defender) = opposing_empty_fleets();
         let carrier = world.capital_ship_classes.insert(CapitalShipClass {
             dat_id: DatId::new(0x1400_0001),

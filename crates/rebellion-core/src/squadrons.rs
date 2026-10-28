@@ -874,9 +874,9 @@ mod tests {
     // scrapped or destroyed outside a battle takes its docked squadrons
     // (crate::scrap::destroy_ship, GameObj_vt11c); in a battle the lost
     // ship's hangar dies with it (FUN_005af7a0 in the abstract battle, the
-    // tactical commit), and its launched squadrons stay in the fleet, as
-    // the A0 VM run showed. port: what puts those back aboard is untraced,
-    // so they are seated here.
+    // tactical commit). port: its launched squadrons stay in the fleet and
+    // are seated here; FUN_0040d320 would put them on the system, and the
+    // A0 VM run that seemed to say otherwise used an edited save.
     #[test]
     fn a_lost_ships_squadrons_board_another_ship() {
         let mut setup = setup(2);

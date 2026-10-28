@@ -6439,6 +6439,49 @@ impl BattleSession {
         self.withdrawal_executors.contains(&unit)
     }
 
+    /// `SetOrder` (`FUN_005ca530`, slot `+0x64` of the capital and fighter
+    /// forces `0x66bf70` and `0x66bee0`) on a force whose order (`+0x68`)
+    /// is Escort (1) stops its escort executor (slot `+0x98`) and calls
+    /// SetTactic(1) (`0x005c9be0`): the force leaves Escort on Surround, and
+    /// a task force's formation follows on event `0x3d`. A0 VM 2026-10-28
+    /// (Battle at Yavin): a Ctrl click that dropped Red Group's escort left
+    /// it on "No Orders" and "Tactics: Surround". Call it before the units
+    /// take their new order.
+    pub fn leave_escort(&mut self, capitals: &[usize], fighters: &[usize]) {
+        let mut task_forces = Vec::new();
+        for &index in capitals {
+            let Some(ship) = self.ships.get_mut(index) else {
+                continue;
+            };
+            if ship.order != TacticalOrder::Escort {
+                continue;
+            }
+            ship.tactic = TacticalTactic::Surround;
+            let key = (ship.is_attacker, ship.task_force);
+            if ship.task_force < 8 && !task_forces.contains(&key) {
+                task_forces.push(key);
+            }
+        }
+        for &index in fighters {
+            if let Some(fighter) = self.fighters.get_mut(index) {
+                if fighter.order == TacticalOrder::Escort {
+                    fighter.tactic = TacticalTactic::Surround;
+                }
+            }
+        }
+        for (attacker, task_force) in task_forces {
+            let stamp = self.command_event_stamp();
+            self.post_turn_event(
+                stamp,
+                TacticalTurnEvent::TaskForceTactic {
+                    attacker,
+                    task_force,
+                    tactic: TacticalTactic::Surround,
+                },
+            );
+        }
+    }
+
     /// `SetOrder` (`0x005ca530`): the order itself (`+0x68`) is already set;
     /// its executor follows on the command stamp (`+0x87c`, event `0xa`).
     pub fn post_order_executor(

@@ -135,3 +135,8 @@ Gates after the correction: `cargo test --workspace` 3005 passed; browser
 matrix 148 passed; replay golden unchanged; replay equivalence passed;
 `cargo mutants` on the change, 1 tested, unviable; release WASM
 `6fd1c45021416d1c32a2a149462f8dcf026ea6aa75614b4d34f341e3449e3231`.
+
+**Correction (2026-10-28).** The VM's `save_res1` used above is the
+host-edited save in which Imperial Star Destroyer 1 was retyped to the
+Death Star. Its result does not show the original's rule. See
+`../2026-10-28-ctrl-clicks-a0/`. The port rule stays `port:`.
