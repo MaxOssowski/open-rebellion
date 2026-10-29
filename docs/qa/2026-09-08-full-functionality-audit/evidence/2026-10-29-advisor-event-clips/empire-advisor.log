@@ -1,0 +1,8 @@
+[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16
+[advisor] reaction event code=0x2
+[advisor] reaction event code=0x1
+[advisor] reaction event code=0x2
+[advisor] reaction event code=0x1
+[advisor] reaction event code=0x2
+[advisor] reaction event code=0x1
+[advisor] clip voice directory=emsprite-dll wave=1806 seconds=3.564 loaded=true muted=true

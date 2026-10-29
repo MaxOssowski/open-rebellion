@@ -1,0 +1,45 @@
+{
+  "status": "pass",
+  "wasm_sha256": "fb3797acef74397a59ed049fd1711e91656b1273c0a860ef12a22e7a9bdc4175",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "advisor": [
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[advisor] reaction event code=0x1",
+        "[advisor] reaction event code=0x1",
+        "[advisor] reaction event code=0x2",
+        "[advisor] reaction event code=0x2",
+        "[advisor] clip voice directory=alsprite-dll wave=1506 seconds=1.128 loaded=true muted=true",
+        "[advisor] reaction event code=0x1"
+      ],
+      "shots": [
+        {
+          "label": "hold",
+          "sha256": "798de102beba5898a9c485687a3cab946c525e04b62902bd46d35fdb72ea6800"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "advisor": [
+        "[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16",
+        "[advisor] reaction event code=0x2",
+        "[advisor] reaction event code=0x1",
+        "[advisor] reaction event code=0x2",
+        "[advisor] reaction event code=0x1",
+        "[advisor] reaction event code=0x2",
+        "[advisor] reaction event code=0x1",
+        "[advisor] clip voice directory=emsprite-dll wave=1806 seconds=3.564 loaded=true muted=true"
+      ],
+      "shots": [
+        {
+          "label": "hold",
+          "sha256": "62e2874c38c826e81e6028057e60a8bace842cbd21aebfdb626ce0dc2d0d6437"
+        }
+      ]
+    }
+  ]
+}

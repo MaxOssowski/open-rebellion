@@ -406,6 +406,24 @@ never reaches the advisor.
 Ported 2026-10-29 (`AdvisorSchedule::event`, `GameMessage::advisor_event`),
 for the classes the port posts. The speaker-mapped ones are not yet coded.
 
+### The hold clips (ops `0x14`, `0x15`)
+
+Most event messages are op-`0x14` records (`Class_006587e8`).
+
+`FUN_00411b80` reads `[count, a frame per layer, a record]`:
+- it shows the frame and clears `DAT_006b12b0`;
+- it queues, from slot 9, the record and then `0x2d37` on the `0xbeef`
+  player (`FUN_0041d690` → `FUN_0042b290`, when `DAT_006b14cc` is set).
+
+`0x2d37` = `[0x15, 0x29a]` (`Class_00658818`). It shows the second droid's
+still for a tick, as op `0x11` does. Its end slot `FUN_00412080` sets
+`DAT_006b12b0`, which op `0x14`'s step `FUN_00411b60` returns. So the agent
+holds a frame while the second droid plays a clip, for example R2-D2's
+beeps.
+
+Neither class has an action (vt `+0x14` `FUN_00403ef0`). Ported
+2026-10-29 (`advisor_clip.rs`).
+
 ## Open
 
 - Action code `0xa`, kind 3, `FUN_0041dbe0` (code `0xb`) and

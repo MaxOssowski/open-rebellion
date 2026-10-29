@@ -683,6 +683,8 @@ pub struct AdvisorState {
     pub clips: crate::advisor_clip::ClipPlayer,
     clip_events: Vec<crate::advisor_clip::ClipEvent>,
     clip_texture: Option<(u64, TextureHandle)>,
+    /// The second droid's clip frame and its serial.
+    second_clip_texture: Option<(u64, TextureHandle)>,
 }
 
 impl AdvisorState {
@@ -714,6 +716,7 @@ impl AdvisorState {
             clips: crate::advisor_clip::ClipPlayer::new(faction, PathBuf::new()),
             clip_events: Vec::new(),
             clip_texture: None,
+            second_clip_texture: None,
         }
     }
 
@@ -734,6 +737,7 @@ impl AdvisorState {
         self.frames_loaded = false; // force reload on next draw
         self.clips.reset(self.faction, &self.sprite_dir);
         self.clip_texture = None;
+        self.second_clip_texture = None;
     }
 
     pub fn set_faction(&mut self, faction: AdvisorFaction) {
@@ -755,6 +759,7 @@ impl AdvisorState {
         self.frames_loaded = false;
         self.clips.reset(faction, &self.sprite_dir);
         self.clip_texture = None;
+        self.second_clip_texture = None;
     }
 
     /// Push a message into the advisor queue.
@@ -1606,24 +1611,23 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
     ));
 
     let clip = state.clips.frame().map(|(frame, serial)| {
-        if state.clip_texture.as_ref().map(|(shown, _)| *shown) != Some(serial) {
-            let image =
-                egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &frame.rgba);
-            match &mut state.clip_texture {
-                Some((shown, texture)) => {
-                    texture.set(image, TextureOptions::NEAREST);
-                    *shown = serial;
-                }
-                None => {
-                    state.clip_texture = Some((
-                        serial,
-                        ctx.load_texture("advisor_clip", image, TextureOptions::NEAREST),
-                    ));
-                }
-            }
-        }
+        refresh_clip_texture(ctx, &mut state.clip_texture, "advisor_clip", frame, serial);
     });
-    let clip_texture = clip.and(state.clip_texture.as_ref()).map(|(_, texture)| texture);
+    let clip_texture = clip
+        .and(state.clip_texture.as_ref())
+        .map(|(_, texture)| texture);
+    let second_clip = state.clips.second_frame().map(|(frame, serial)| {
+        refresh_clip_texture(
+            ctx,
+            &mut state.second_clip_texture,
+            "advisor_second_clip",
+            frame,
+            serial,
+        );
+    });
+    let second_clip_texture = second_clip
+        .and(state.second_clip_texture.as_ref())
+        .map(|(_, texture)| texture);
     if let Some(texture) = clip_texture.or_else(|| {
         (!state.primary_textures.is_empty())
             .then(|| &state.primary_textures[state.primary_frame % state.primary_textures.len()])
@@ -1640,9 +1644,13 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
         );
     }
 
-    if !state.secondary_textures.is_empty() {
-        let texture =
-            &state.secondary_textures[state.secondary_frame % state.secondary_textures.len()];
+    // The second droid's player (0xbeef) shows its clip in place of the
+    // idle frames.
+    if let Some(texture) = second_clip_texture.or_else(|| {
+        (!state.secondary_textures.is_empty()).then(|| {
+            &state.secondary_textures[state.secondary_frame % state.secondary_textures.len()]
+        })
+    }) {
         let (x, y, width, height) = apertures[1];
         painter.image(
             texture.id(),
@@ -1653,6 +1661,32 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
         );
+    }
+}
+
+/// Upload a clip's frame when its serial changed.
+fn refresh_clip_texture(
+    ctx: &egui::Context,
+    slot: &mut Option<(u64, TextureHandle)>,
+    name: &str,
+    frame: &DecodedAdvisorFrame,
+    serial: u64,
+) {
+    if slot.as_ref().map(|(shown, _)| *shown) == Some(serial) {
+        return;
+    }
+    let image = egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &frame.rgba);
+    match slot {
+        Some((shown, texture)) => {
+            texture.set(image, TextureOptions::NEAREST);
+            *shown = serial;
+        }
+        None => {
+            *slot = Some((
+                serial,
+                ctx.load_texture(name, image, TextureOptions::NEAREST),
+            ));
+        }
     }
 }
 

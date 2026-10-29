@@ -12,7 +12,12 @@
 //!   of `FUN_00404440` (`FUN_00412c40`); only its stop differs
 //!   (`FUN_00412b80`);
 //! - op `0x11` (`Class_00658848`): a frame list, which shows its frame for
-//!   one tick (`FUN_00412280`, `FUN_00412260`).
+//!   one tick (`FUN_00412280`, `FUN_00412260`);
+//! - op `0x14` (`Class_006587e8`): the agent holds a frame while the second
+//!   droid's player (`0xbeef`) plays a record and then op `0x15`
+//!   (`FUN_00411b80`, `FUN_00411b60`);
+//! - op `0x15` (`Class_00658818`): a frame for one tick, whose end lets the
+//!   held op `0x14` end (`FUN_00411f00`, `FUN_00412080`).
 //!
 //! When a clip ends, the player hands its action on (`FUN_00412400` ->
 //! `FUN_0041d140`) and loads the next queued clip in the same tick
@@ -48,6 +53,14 @@ pub const OP_DEFINITION: u16 = 4;
 pub const OP_UNSTOPPED_DEFINITION: u16 = 0x13;
 /// The op of a frame list (`Class_00658848`).
 pub const OP_FRAME_LIST: u16 = 0x11;
+/// The op that holds the agent while the second droid plays
+/// (`Class_006587e8`).
+pub const OP_HOLD_FOR_SECOND: u16 = 0x14;
+/// The op whose end releases [`OP_HOLD_FOR_SECOND`] (`Class_00658818`).
+pub const OP_SECOND_DONE: u16 = 0x15;
+/// The record `FUN_00411b80` queues on the second player after the clip's
+/// own: `[0x15, 0x29a]`, the second droid's still frame.
+const SECOND_DONE_RECORD: u16 = 0x2d37;
 
 /// What a clip does when it ends: `FUN_0041d140(kind, code)`, which
 /// `FUN_00439eb0` stores as the pending map action.
@@ -137,7 +150,11 @@ enum Playing {
     },
     Still {
         ticks_left: u32,
+        /// Op `0x15`: its end sets `DAT_006b12b0` (`FUN_00412080`).
+        releases_hold: bool,
     },
+    /// Op `0x14` (`FUN_00411b60`): done once `DAT_006b12b0` is set.
+    Hold,
 }
 
 #[derive(Debug)]
@@ -157,11 +174,37 @@ pub struct ClipPlayer {
     image: Option<DecodedAdvisorFrame>,
     image_serial: u64,
     events: Vec<ClipEvent>,
+    /// The second droid's player (`0xbeef`, `FUN_0042b290`); only the
+    /// agent's player has one.
+    second: Option<Box<ClipPlayer>>,
+    /// `DAT_006b12b0`: an op `0x15` clip ended.
+    second_done: bool,
+    /// Whose clip each [`ClipEvent::Voice`] not yet answered belongs to:
+    /// `true` for the second player's.
+    voice_owners: VecDeque<bool>,
 }
 
 impl ClipPlayer {
     #[must_use]
     pub fn new(faction: AdvisorFaction, asset_root: impl Into<PathBuf>) -> Self {
+        let asset_root: PathBuf = asset_root.into();
+        Self {
+            faction,
+            asset_root: asset_root.clone(),
+            queue: VecDeque::new(),
+            current: None,
+            accumulator: 0.0,
+            image: None,
+            image_serial: 0,
+            events: Vec::new(),
+            second: Some(Box::new(Self::second(faction, asset_root))),
+            second_done: false,
+            voice_owners: VecDeque::new(),
+        }
+    }
+
+    /// The second droid's player, which has no player of its own.
+    fn second(faction: AdvisorFaction, asset_root: impl Into<PathBuf>) -> Self {
         Self {
             faction,
             asset_root: asset_root.into(),
@@ -171,6 +214,9 @@ impl ClipPlayer {
             image: None,
             image_serial: 0,
             events: Vec::new(),
+            second: None,
+            second_done: false,
+            voice_owners: VecDeque::new(),
         }
     }
 
@@ -218,12 +264,19 @@ impl ClipPlayer {
         self.queue.clear();
         self.current = None;
         self.image = None;
+        self.second_done = false;
+        self.voice_owners.clear();
+        if let Some(second) = &mut self.second {
+            second.clear();
+        }
     }
 
     /// Whether a clip is showing or waiting.
     #[must_use]
     pub fn is_busy(&self) -> bool {
-        self.current.is_some() || !self.queue.is_empty()
+        self.current.is_some()
+            || !self.queue.is_empty()
+            || self.second.as_ref().is_some_and(|second| second.is_busy())
     }
 
     /// The frame the agent aperture shows while a clip plays, and a serial
@@ -233,9 +286,21 @@ impl ClipPlayer {
         self.image.as_ref().map(|image| (image, self.image_serial))
     }
 
+    /// The frame the second droid's aperture shows while its player plays.
+    #[must_use]
+    pub fn second_frame(&self) -> Option<(&DecodedAdvisorFrame, u64)> {
+        self.second.as_ref().and_then(|second| second.frame())
+    }
+
     /// The length of the voice the last [`ClipEvent::Voice`] started; the
     /// clip holds its last frame until it ends.
     pub fn voice_started(&mut self, seconds: f32) {
+        if self.voice_owners.pop_front() == Some(true) {
+            if let Some(second) = &mut self.second {
+                second.voice_started(seconds);
+            }
+            return;
+        }
         if let Some(PlayingClip {
             playing: Playing::Definition { voice_left, .. },
             ..
@@ -264,6 +329,26 @@ impl ClipPlayer {
     /// clip that ends hands on its action; with no clip, the next queued
     /// one loads.
     fn tick(&mut self) {
+        self.tick_own();
+        // hyp: the second droid's aperture steps after the agent's in
+        // FUN_00441d70.
+        if let Some(second) = &mut self.second {
+            second.tick();
+            if std::mem::take(&mut second.second_done) {
+                self.second_done = true;
+            }
+            for event in std::mem::take(&mut second.events) {
+                // Its clips take no action (op 4's +0x14 is empty, and op
+                // 0x15's end only sets the flag); its voices play.
+                if let ClipEvent::Voice { .. } = event {
+                    self.voice_owners.push_back(true);
+                    self.events.push(event);
+                }
+            }
+        }
+    }
+
+    fn tick_own(&mut self) {
         if let Some(mut clip) = self.current.take() {
             if self.step(&mut clip) {
                 self.events.push(ClipEvent::Finished(clip.action));
@@ -320,15 +405,24 @@ impl ClipPlayer {
                 // flag bit 5, whose writer is unread).
                 *next_frame > *last_frame && *voice_left <= 0.0
             }
-            // FUN_00412260: one tick (+0x50 = 1, FUN_00412180), then done.
-            Playing::Still { ticks_left } => {
+            // FUN_00412260: one tick (+0x50 = 1, FUN_00412180), then done;
+            // op 0x15's end sets DAT_006b12b0 (FUN_00412080).
+            Playing::Still {
+                ticks_left,
+                releases_hold,
+            } => {
                 if *ticks_left > 0 {
                     *ticks_left -= 1;
                     false
                 } else {
+                    if *releases_hold {
+                        self.second_done = true;
+                    }
                     true
                 }
             }
+            // FUN_00411b60 returns DAT_006b12b0.
+            Playing::Hold => std::mem::take(&mut self.second_done),
         }
     }
 
@@ -348,6 +442,9 @@ impl ClipPlayer {
                 self.show(&base);
                 if definition.wave != 0 {
                     if let Some(voice) = slot_directory(definition.wave_slot, self.faction) {
+                        if self.second.is_some() {
+                            self.voice_owners.push_back(false);
+                        }
                         self.events.push(ClipEvent::Voice {
                             directory: voice,
                             wave: definition.wave,
@@ -362,11 +459,33 @@ impl ClipPlayer {
                     voice_left: 0.0,
                 }
             }
-            OP_FRAME_LIST => {
+            OP_FRAME_LIST | OP_SECOND_DONE => {
                 let first = record.get(0..2)?;
                 let base = self.bitmap(directory, u16::from_le_bytes([first[0], first[1]]))?;
                 self.show(&base);
-                Playing::Still { ticks_left: 1 }
+                Playing::Still {
+                    ticks_left: 1,
+                    releases_hold: clip.op == OP_SECOND_DONE,
+                }
+            }
+            // FUN_00411b80: [count, a frame per layer, the second player's
+            // record]; it shows its frame, clears DAT_006b12b0, and queues
+            // the record and 0x2d37 on the second player (FUN_0041d690 ->
+            // FUN_0042b290, from slot 9).
+            OP_HOLD_FOR_SECOND => {
+                let word = |index: usize| {
+                    record
+                        .get(index * 2..index * 2 + 2)
+                        .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                };
+                let base = self.bitmap(directory, word(1)?)?;
+                let second_record = word(2)?;
+                let second = self.second.as_mut()?;
+                self.second_done = false;
+                second.queue_entry(SPRITE_SLOT, second_record, 0, 0);
+                second.queue_entry(SPRITE_SLOT, SECOND_DONE_RECORD, 0, 0);
+                self.show(&base);
+                Playing::Hold
             }
             _ => return None,
         };
@@ -602,12 +721,75 @@ mod tests {
     }
 
     #[test]
+    fn a_hold_shows_its_frame_until_the_second_droid_has_played_and_shown_its_still() {
+        // FUN_00411b80: op 0x14's record [count, frame, second record]; the
+        // second player (FUN_0042b290, slot 9) plays the record, then 0x2d37
+        // = [0x15, 0x29a], whose end (FUN_00412080) sets DAT_006b12b0, which
+        // ends the hold (FUN_00411b60). Records as ALSPRITE 4412, 10512,
+        // 5012 and 0x29a.
+        let root = staged_root(2);
+        let sprite = root.path().join("alsprite-dll");
+        std::fs::create_dir_all(sprite.join("TYPE302")).unwrap();
+        let write = |id: u16, words: &[u16]| {
+            let bytes: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+            std::fs::write(sprite.join(format!("RCDATA/{id}.bin")), bytes).unwrap();
+        };
+        write(4412, &[0, 2001, 10512]);
+        write(10512, &[OP_DEFINITION, 5012, 0, 0]);
+        write(5012, &[0, 1512, SPRITE_SLOT, 3, 3331]);
+        write(0x2d37, &[OP_SECOND_DONE, 0x29a, 0, 0]);
+        write(0x29a, &[3331]);
+        std::fs::write(sprite.join("BMP/3331.bmp"), indexed_bmp_fixture()).unwrap();
+        for id in 3332..3334 {
+            std::fs::write(sprite.join(format!("TYPE302/{id}.bin")), type302_fixture()).unwrap();
+        }
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        let action = ClipAction { kind: 0, code: 0 };
+        player.queue(QueuedClip {
+            op: OP_HOLD_FOR_SECOND,
+            slot: SPRITE_SLOT,
+            record: 4412,
+            action,
+        });
+
+        // The hold shows its frame; the second player loads its clip and
+        // starts its voice, which is the second player's to time.
+        assert_eq!(
+            ticks(&mut player, 1),
+            [ClipEvent::Voice {
+                directory: "alsprite-dll",
+                wave: 1512
+            }]
+        );
+        player.voice_started(2.0 * CLIP_TICK_SECONDS);
+        assert!(player.frame().is_some());
+        let (_, second_serial) = player.second_frame().unwrap();
+        // Two deltas, then the voice; the agent holds throughout.
+        assert!(ticks(&mut player, 2).is_empty());
+        assert!(player.second_frame().unwrap().1 > second_serial);
+        assert!(player.frame().is_some());
+        // The definition ends with its voice, and 0x2d37 shows the still
+        // for a tick; its end releases the hold the next period.
+        let mut events = Vec::new();
+        for _ in 0..6 {
+            events.extend(ticks(&mut player, 1));
+            if !events.is_empty() {
+                break;
+            }
+        }
+        assert_eq!(events, [ClipEvent::Finished(action)]);
+        assert!(player.frame().is_none());
+        assert!(player.second_frame().is_none());
+        assert!(!player.is_busy());
+    }
+
+    #[test]
     fn an_unplayable_clip_ends_at_once_with_its_action() {
         let root = staged_root(2);
         let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
         let action = ClipAction { kind: 3, code: 1 };
         player.queue(QueuedClip {
-            op: 0x14,
+            op: 0x12,
             slot: SPRITE_SLOT,
             record: 0x18f,
             action,
@@ -740,6 +922,67 @@ mod tests {
                     }
                 );
                 assert_eq!(events[1], ClipEvent::Finished(ClipAction::default()));
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "reads the staged original sprite DLLs under data/base/ui"]
+    fn every_event_messages_hold_ends_after_the_second_droids_clip() {
+        // The op-0x14 entries of C3POACT 0x2a..0x44 and IMP22ACT 0x21..0x41
+        // (FUN_00411b80 with ALSPRITE / EMSPRITE records).
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base/ui");
+        let entries: [(AdvisorFaction, &[u16]); 2] = [
+            (
+                AdvisorFaction::Alliance,
+                &[
+                    9501, 9502, 9503, 9504, 9505, 9506, 9507, 9508, 9509, 9512, 9514, 9515, 9516,
+                    9517, 9519, 9521, 9522, 9523, 9524, 9528, 9529, 9531,
+                ],
+            ),
+            (
+                AdvisorFaction::Empire,
+                &[
+                    12501, 12502, 12503, 12504, 12505, 12506, 12507, 12508, 12510, 12512, 12514,
+                    12515, 12517, 12519, 12520, 12522, 12523, 12526, 12527, 12529,
+                ],
+            ),
+        ];
+        for (faction, entries) in entries {
+            for &entry in entries {
+                let mut player = ClipPlayer::new(faction, &root);
+                player.queue_entry(SPRITE_SLOT, entry, 0, 0);
+                let mut events = Vec::new();
+                let mut second_frames = Vec::new();
+                for _ in 0..1000 {
+                    events.extend(player.update(CLIP_TICK_SECONDS + 1e-4));
+                    if let Some((_, serial)) = player.second_frame() {
+                        second_frames.push(serial);
+                        assert!(
+                            player.frame().is_some(),
+                            "{faction:?} {entry}: the agent holds"
+                        );
+                    }
+                    if events
+                        .iter()
+                        .any(|event| matches!(event, ClipEvent::Finished(_)))
+                    {
+                        break;
+                    }
+                }
+                assert!(
+                    events.iter().any(|event| matches!(event, ClipEvent::Finished(_))),
+                    "{faction:?} {entry} never ends"
+                );
+                assert!(
+                    matches!(events[0], ClipEvent::Voice { .. }),
+                    "{faction:?} {entry}: the second droid's voice"
+                );
+                second_frames.dedup();
+                assert!(
+                    second_frames.len() > 2,
+                    "{faction:?} {entry}: the second droid plays"
+                );
             }
         }
     }

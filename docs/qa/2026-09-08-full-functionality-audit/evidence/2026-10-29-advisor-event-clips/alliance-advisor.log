@@ -1,0 +1,7 @@
+[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16
+[advisor] reaction event code=0x1
+[advisor] reaction event code=0x1
+[advisor] reaction event code=0x2
+[advisor] reaction event code=0x2
+[advisor] clip voice directory=alsprite-dll wave=1506 seconds=1.128 loaded=true muted=true
+[advisor] reaction event code=0x1
