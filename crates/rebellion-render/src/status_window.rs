@@ -41,6 +41,13 @@ const NAME: (f32, f32, f32, f32) = (242.0, 137.0, 130.0, 44.0);
 const LIST: (f32, f32, f32, f32) = (18.0, 47.0, 208.0, 204.0);
 /// `FUN_00449e00`: labels at x 0 and values at x 103, each 103 wide.
 const COLUMN: f32 = 103.0;
+/// The two-column rows' glyphs (`theme::original_font`) and line pitch,
+/// as A0 shows them (see the list's font note in `draw_status_window`).
+const ROW_GLYPHS: u16 = 8;
+const ROW_PITCH: f32 = 14.0;
+/// How far the rows' glyphs sit below their line's top in A0, beyond
+/// egui's placement.
+const ROW_GLYPH_DROP: f32 = 2.0;
 /// The picture is centred on (307, 64) (`FUN_00443130`).
 const PICTURE_CENTRE: (i32, i32) = (307, 64);
 /// The Objectives' list: one column of cells 35 high (`FUN_006073d0(0x67,
@@ -359,18 +366,35 @@ type LaidRow = (
     f32,
 );
 
-/// Lay out the rows' galleys and place them with [`row_tops`].
+/// The rows' glyph drop on the screen at `scale`.
+fn row_glyph_drop(scale: f32) -> f32 {
+    ROW_GLYPH_DROP * scale
+}
+
+/// Lay out the rows' galleys, each line `pitch` high, and place them with
+/// [`row_tops`].
 fn layout_rows(
     painter: &egui::Painter,
     rows: &[StatusRow],
     font: &egui::FontId,
+    pitch: f32,
     column: f32,
 ) -> (Vec<LaidRow>, f32) {
     let galleys: Vec<_> = rows
         .iter()
         .map(|row| {
             let layout = |text: &str| {
-                painter.layout(text.to_owned(), font.clone(), egui::Color32::WHITE, column)
+                let mut job = egui::text::LayoutJob::single_section(
+                    text.to_owned(),
+                    egui::TextFormat {
+                        font_id: font.clone(),
+                        color: egui::Color32::WHITE,
+                        line_height: Some(pitch),
+                        ..Default::default()
+                    },
+                );
+                job.wrap.max_width = column;
+                painter.layout_job(job)
             };
             (layout(&row.label), layout(&row.value))
         })
@@ -427,14 +451,22 @@ pub fn draw_status_window(
 
             // The title and name in font 5, the list in font 10
             // (FUN_00443130, FUN_00449e00). hyp: the production manager's
-            // font 0x11 is not mapped; its title takes font 5.
+            // font 0x11 is not mapped; its title takes font 5. hyp: the
+            // two-column rows' text shows 12-pixel glyphs on 14-pixel
+            // lines in A0 (2026-10-29: "Attached:" 45 wide with caps 8
+            // high, rows 14 apart), unlike font 10 elsewhere ("Coruscant"
+            // 58 wide in the Troop Finder, 49 here); the icon rows keep
+            // font 10, as A0's Galaxy Overview shows.
             let title_font = crate::theme::original_font(5, scale);
             let list_font = crate::theme::original_font(10, scale);
+            let row_font = crate::theme::original_font(ROW_GLYPHS, scale);
 
+            // Format 0x21 centres one line without DT_VCENTER: the text
+            // hangs from the box's top (A0 2026-10-29: caps from y 21).
             let title = at(TITLE);
             painter.text(
-                title.center(),
-                egui::Align2::CENTER_CENTER,
+                title.center_top(),
+                egui::Align2::CENTER_TOP,
                 view.title,
                 title_font.clone(),
                 egui::Color32::WHITE,
@@ -472,12 +504,14 @@ pub fn draw_status_window(
 
             // The list. port: the wheel scrolls it; no scroll bar is drawn.
             let list = at(LIST);
-            let (laid, mut height) =
-                layout_rows(&painter, &view.rows, &list_font, COLUMN * scale);
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "A handful of rows."
-            )]
+            let (laid, mut height) = layout_rows(
+                &painter,
+                &view.rows,
+                &row_font,
+                ROW_PITCH * scale,
+                COLUMN * scale,
+            );
+            #[expect(clippy::cast_precision_loss, reason = "A handful of rows.")]
             if !view.icon_rows.is_empty() {
                 height = view.icon_rows.len() as f32 * ICON_ROW_HEIGHT * scale;
             }
@@ -587,14 +621,17 @@ pub fn draw_status_window(
                     piece.y,
                 );
             }
+            // A0's caps start 3 below a row's top; egui sets the smaller
+            // glyphs at the line's top, 2 higher.
+            let drop = row_glyph_drop(scale);
             for (label, value, label_y, value_y) in laid {
                 list_painter.galley(
-                    egui::pos2(list.min.x, top + label_y),
+                    egui::pos2(list.min.x, top + label_y + drop),
                     label,
                     egui::Color32::WHITE,
                 );
                 list_painter.galley(
-                    egui::pos2(list.min.x + COLUMN * scale, top + value_y),
+                    egui::pos2(list.min.x + COLUMN * scale, top + value_y + drop),
                     value,
                     egui::Color32::WHITE,
                 );
@@ -1504,8 +1541,13 @@ mod tests {
         let at = |x: f32, y: f32| frame + egui::vec2(x, y) * 2.0;
 
         let (_, pos, size, font) = find(&texts, "Character Status");
+        // Format 0x21 has no DT_VCENTER: the title hangs from the box's top
+        // (A0 2026-10-29).
         assert!(
-            near(*pos + *size / 2.0, at(15.0 + 105.5, 18.0 + 9.0)),
+            near(
+                egui::pos2(pos.x + size.x / 2.0, pos.y),
+                at(15.0 + 105.5, 18.0)
+            ),
             "{pos:?} {size:?}"
         );
         assert_eq!(*font, crate::theme::original_font(5, 2.0).size);
@@ -1520,10 +1562,13 @@ mod tests {
         assert_eq!(*font, crate::theme::original_font(5, 2.0).size);
 
         let (_, commanding, row, font) = find(&texts, "Commanding:");
-        assert!(near(*commanding, at(18.0, 47.0)), "{commanding:?}");
-        assert_eq!(*font, crate::theme::original_font(10, 2.0).size);
+        // A0 (2026-10-29, Veers): 12-pixel glyphs on 14-pixel lines, their
+        // caps 3 below the row's top.
+        assert!(near(*commanding, at(18.0, 47.0 + 2.0)), "{commanding:?}");
+        assert_eq!(*font, crate::theme::original_font(8, 2.0).size);
+        assert!((row.y - 28.0).abs() < 0.01, "{row:?}");
         let (_, none, ..) = find(&texts, "None");
-        assert!(near(*none, at(18.0 + 103.0, 47.0)), "{none:?}");
+        assert!(near(*none, at(18.0 + 103.0, 47.0 + 2.0)), "{none:?}");
         let (_, yavin, ..) = find(&texts, "Yavin");
         assert!(near(*yavin, *none + egui::vec2(0.0, row.y)), "{yavin:?}");
         let (_, attached, ..) = find(&texts, "Attached: ");
@@ -1531,6 +1576,42 @@ mod tests {
             near(*attached, *commanding + egui::vec2(0.0, row.y)),
             "{attached:?}"
         );
+    }
+
+    #[test]
+    fn the_rows_are_white_on_their_pitch_and_drop_with_the_scale() {
+        // A0 (2026-10-29): white rows 14 apart, a wrapped cell a line more,
+        // their caps 3 below the row's top.
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let rows = [
+            StatusRow {
+                label: "Attached:".to_owned(),
+                value: "Coruscant".to_owned(),
+            },
+            StatusRow {
+                label: "Possible Command Ranks".to_owned(),
+                value: String::new(),
+            },
+        ];
+        let mut laid = None;
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let painter = ctx.layer_painter(egui::LayerId::background());
+            let font = crate::theme::original_font(ROW_GLYPHS, 1.0);
+            laid = Some(layout_rows(&painter, &rows, &font, ROW_PITCH, COLUMN));
+        });
+        let (laid, height) = laid.unwrap();
+        let colour = |galley: &std::sync::Arc<egui::Galley>| galley.job.sections[0].format.color;
+        assert_eq!(colour(&laid[0].0), egui::Color32::WHITE);
+        assert_eq!(colour(&laid[0].1), egui::Color32::WHITE);
+        assert_eq!(laid[1].2, ROW_PITCH);
+        assert_eq!(
+            height,
+            ROW_PITCH * 3.0,
+            "the second label wraps to two lines"
+        );
+        assert_eq!(row_glyph_drop(1.0), 2.0);
+        assert_eq!(row_glyph_drop(3.0), 6.0);
     }
 
     #[test]
@@ -1547,7 +1628,10 @@ mod tests {
         let frame = window_rect(scaled()).min;
         let (_, commanding, ..) = find(&texts, "Commanding:");
         assert!(
-            near(*commanding, frame + egui::vec2(18.0, 47.0 - 10.0) * 2.0),
+            near(
+                *commanding,
+                frame + egui::vec2(18.0, 47.0 + 2.0 - 10.0) * 2.0
+            ),
             "{commanding:?}"
         );
     }

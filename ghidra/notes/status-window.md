@@ -95,6 +95,10 @@ the player's view of the object `+0x12c` (`FUN_004f2d10`), and GOKRES is
   columns: labels at x 0, values at x 103, each 103 wide, font 10, white,
   format `0x10` (word-wrapped). A row is as tall as its taller cell, and the
   value is pushed down to the label's bottom when the label is taller.
+  A0 (2026-10-30, `evidence/2026-10-30-status-window-text/`): these rows
+  show 12-pixel glyphs ("Attached:" 45 wide) on 14-pixel lines, unlike
+  font 10 elsewhere (the Troop Finder's 58-wide "Coruscant"); the title
+  (format `0x21`, no `DT_VCENTER`) hangs from its box's top, caps from 21.
   `FUN_0044a050` draws them.
 
 ### Controls (slot 16, `FUN_00443020`; slot 18, `FUN_004443a0`)
