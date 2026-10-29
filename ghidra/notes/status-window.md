@@ -332,7 +332,11 @@ w) / 2`, `t + (b - t - h) / 2`, the divisions truncating; the A0 window's
 `StatusObject::Objectives` (`status_rows.rs`, `objective_rows`), opened by
 the Agent menu's Objectives and Alt+H. The background is 11554 for an
 Alliance viewer and 11558 for an Empire one, the Encyclopedia button is
-disabled (11612). port: the scroll bar is not drawn; the wheel scrolls.
+disabled (11612). Since 2026-10-29 the list's scroll bar is drawn and
+works: `FUN_0060a490(.., list, 7, 0x299a, ..)`, RCDATA 10650 (width 12,
+track 10654, arrows 10658/10660 and 10662/10664, thumb 10666/10668/10669),
+arrow step 10; it matches the A0 bar to 2 pixels. port: the wheel also
+scrolls.
 
 ## Galaxy Overview (`FUN_0044a7a0`, `FUN_0044aa20`; read 2026-10-29)
 

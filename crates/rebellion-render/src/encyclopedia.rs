@@ -112,8 +112,11 @@ pub struct EncyclopediaState {
     pub original_category_command: u16,
     /// Stable compound object identity selected in the original index.
     pub original_selected_object_id: Option<u32>,
-    /// First catalog row shown by the original index list.
-    pub original_scroll_row: usize,
+    /// The original index list's first visible pixel (the list scrolls by
+    /// pixels, `FUN_0060a490`).
+    pub original_scroll: usize,
+    /// A press held on the index list's scroll bar.
+    pub original_scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// The original window shows the selected object's topic (command
     /// `0x67`) instead of the index (`0x68`, `FUN_0045f480`).
     pub original_topic_mode: bool,
@@ -172,7 +175,8 @@ impl Default for EncyclopediaState {
             asset_profile: AssetRenderProfile::OriginalParity,
             original_category_command: 0x6f,
             original_selected_object_id: None,
-            original_scroll_row: 0,
+            original_scroll: 0,
+            original_scroll_hold: None,
             original_topic_mode: false,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
@@ -584,6 +588,12 @@ pub const ENCYCLOPEDIA_INDEX_HEIGHT: f32 = 330.0;
 const ORIGINAL_INDEX_VISIBLE_ROWS: usize = 8;
 const ORIGINAL_INDEX_ROW_HEIGHT: f32 = 20.0;
 const ORIGINAL_INDEX_TEXT_X: f32 = 5.0;
+const ORIGINAL_INDEX_ROW_PIXELS: usize = 20;
+const ORIGINAL_INDEX_LIST_PIXELS: usize = 160;
+/// The list's arrow step, `FUN_00607ea0`'s argument 10, as the Battle
+/// Results' list takes it; its bar is RCDATA 10653 (`FUN_0045ddc0`:
+/// `FUN_0060a490(.., list, 7, 0x299d, ..)`), the Battle Results' art.
+const ORIGINAL_INDEX_STEP: f32 = 10.0;
 /// The list's colours from its constructor (`FUN_00607ea0`: `+0xd8 =
 /// 0x787878`, `+0xdc = 0xffffff`): grey rows, the selected one white, with
 /// no other mark (A0 2026-10-29).
@@ -921,7 +931,8 @@ pub fn draw_encyclopedia_index_catalog(
         selected_name,
         entries: &entries,
         selected_object_id: state.original_selected_object_id,
-        scroll_row: state.original_scroll_row,
+        scroll: state.original_scroll,
+        scroll_hold: state.original_scroll_hold,
     };
     let outcome = draw_encyclopedia_index_layers(
         ctx,
@@ -934,7 +945,9 @@ pub fn draw_encyclopedia_index_catalog(
     );
     if let Some(command) = outcome.activated_command {
         if (0x6f..=0x75).contains(&command) && command != state.original_category_command {
+            // FUN_0045f100 rebuilds the list from its top.
             state.original_category_command = command;
+            state.original_scroll = 0;
             reconcile_original_index_state(state, catalog, true);
         }
         // FUN_0045f480: the rail's topic command shows the selected object.
@@ -942,8 +955,9 @@ pub fn draw_encyclopedia_index_catalog(
             state.original_topic_mode = true;
         }
     }
-    if let Some(scroll_row) = outcome.scroll_row {
-        state.original_scroll_row = scroll_row;
+    state.original_scroll_hold = outcome.scroll_hold;
+    if let Some(scroll) = outcome.scroll {
+        state.original_scroll = scroll;
         reconcile_original_index_state(state, catalog, false);
     }
     if let Some(object_id) = outcome.selected_object_id {
@@ -1001,7 +1015,7 @@ pub fn open_original_encyclopedia_at(
     state.original_topic_mode = false;
     state.original_category_command = 0x6f;
     state.original_selected_object_id = None;
-    state.original_scroll_row = 0;
+    state.original_scroll = 0;
     if let Some(object) = object.filter(|object| {
         catalog
             .entries_for(0x6f)
@@ -1274,34 +1288,53 @@ fn reconcile_original_index_state(
         state.original_category_command = 0x6f;
     }
     let entries = catalog.entries_for(state.original_category_command);
-    if !entries
-        .iter()
-        .any(|entry| Some(entry.object_id) == state.original_selected_object_id)
-    {
-        // FUN_0045f100 rebuilds the list with no item selected.
+    if state.original_selected_object_id.is_some_and(|selected| {
+        !entries.iter().any(|entry| entry.object_id == selected)
+    }) {
+        // FUN_0045f100 rebuilds the list with no item selected, from its
+        // top. A list with nothing selected keeps its scroll.
         state.original_selected_object_id = None;
-        state.original_scroll_row = 0;
+        state.original_scroll = 0;
     }
     let selected_index = entries
         .iter()
         .position(|entry| Some(entry.object_id) == state.original_selected_object_id)
         .unwrap_or(0);
-    let max_scroll = entries.len().saturating_sub(ORIGINAL_INDEX_VISIBLE_ROWS);
-    state.original_scroll_row = state.original_scroll_row.min(max_scroll);
+    let max_scroll = original_index_max_scroll(entries.len());
+    state.original_scroll = state.original_scroll.min(max_scroll);
     if reveal_selection {
-        if selected_index < state.original_scroll_row {
-            state.original_scroll_row = selected_index;
-        } else if selected_index >= state.original_scroll_row + ORIGINAL_INDEX_VISIBLE_ROWS {
-            state.original_scroll_row = selected_index + 1 - ORIGINAL_INDEX_VISIBLE_ROWS;
+        // The selected row's pixels, brought into the 160-pixel list.
+        let top = selected_index * ORIGINAL_INDEX_ROW_PIXELS;
+        let bottom = top + ORIGINAL_INDEX_ROW_PIXELS;
+        if top < state.original_scroll {
+            state.original_scroll = top;
+        } else if bottom > state.original_scroll + ORIGINAL_INDEX_LIST_PIXELS {
+            state.original_scroll = (bottom - ORIGINAL_INDEX_LIST_PIXELS).min(max_scroll);
         }
     }
+}
+
+/// The list's scroll range for `rows` entries, in pixels
+/// ([`crate::list_scroll_bar::max_first`]).
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "A few hundred rows of 20 pixels."
+)]
+fn original_index_max_scroll(rows: usize) -> usize {
+    crate::list_scroll_bar::max_first(
+        (rows * ORIGINAL_INDEX_ROW_PIXELS) as f32,
+        ORIGINAL_INDEX_LIST_PIXELS as f32,
+    ) as usize
 }
 
 #[derive(Default)]
 struct OriginalIndexOutcome {
     activated_command: Option<u16>,
     selected_object_id: Option<u32>,
-    scroll_row: Option<usize>,
+    scroll: Option<usize>,
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
 }
 
 struct OriginalIndexContent<'a> {
@@ -1311,7 +1344,8 @@ struct OriginalIndexContent<'a> {
     selected_name: &'a str,
     entries: &'a [&'a OriginalEncyclopediaEntry],
     selected_object_id: Option<u32>,
-    scroll_row: usize,
+    scroll: usize,
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
 }
 
 fn draw_encyclopedia_index_layers(
@@ -1404,7 +1438,7 @@ fn draw_encyclopedia_index_layers(
                 }
             }
             if let Some(content) = content {
-                draw_original_index_content(ui, window_rect, scale, content, &mut outcome);
+                draw_original_index_content(ui, cache, window_rect, scale, content, &mut outcome);
             }
         });
     outcome
@@ -1412,6 +1446,7 @@ fn draw_encyclopedia_index_layers(
 
 fn draw_original_index_content(
     ui: &mut egui::Ui,
+    cache: &mut BmpCache,
     window_rect: egui::Rect,
     scale: f32,
     content: OriginalIndexContent<'_>,
@@ -1455,55 +1490,84 @@ fn draw_original_index_content(
         Color32::WHITE,
     );
 
-    let max_scroll = content
-        .entries
-        .len()
-        .saturating_sub(ORIGINAL_INDEX_VISIBLE_ROWS);
     let list_rect = original_index_list_rect(window_rect, scale);
     let list_painter = painter.with_clip_rect(list_rect);
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "A few hundred rows of 20 pixels."
+    )]
+    let rows_height = (content.entries.len() * ORIGINAL_INDEX_ROW_PIXELS) as f32;
+    let bar_at = |first: f32| {
+        crate::list_scroll_bar::ScrollBar::new(
+            crate::list_scroll_bar::RESULTS_ART,
+            36.0,
+            137.0,
+            350.0,
+            160.0,
+            rows_height,
+            first,
+        )
+    };
+    // The bar: the pointer's press, hold and release on it, then the wheel.
+    let (pointer, pressed, down, released, now) = ui.input(|input| {
+        (
+            input.pointer.interact_pos(),
+            input.pointer.button_pressed(egui::PointerButton::Primary),
+            input.pointer.button_down(egui::PointerButton::Primary),
+            input.pointer.button_released(egui::PointerButton::Primary),
+            input.time,
+        )
+    });
+    let at = pointer.map_or((-1.0, -1.0), |point| {
+        (
+            (point.x - window_rect.min.x) / scale,
+            (point.y - window_rect.min.y) / scale,
+        )
+    });
+    #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+    let bar = bar_at(content.scroll as f32);
+    let mut hold = content.scroll_hold;
+    let mut first = crate::list_scroll_bar::update(
+        &bar,
+        &mut hold,
+        crate::list_scroll_bar::Pointer {
+            at,
+            pressed,
+            down,
+            released,
+        },
+        ORIGINAL_INDEX_STEP,
+        now,
+    );
+    // port: the original has no wheel; a notch moves a row.
     if ui.rect_contains_pointer(list_rect) {
         let wheel = ui.input(|input| input.raw_scroll_delta.y);
         if wheel.abs() > f32::EPSILON {
-            let rows = ((wheel.abs() / 24.0).ceil() as usize).clamp(1, 3);
-            outcome.scroll_row = Some(if wheel < 0.0 {
-                content.scroll_row.saturating_add(rows).min(max_scroll)
-            } else {
-                content.scroll_row.saturating_sub(rows)
-            });
+            #[expect(clippy::cast_precision_loss, reason = "A row's pixels.")]
+            let row = ORIGINAL_INDEX_ROW_PIXELS as f32;
+            first = (first - wheel.signum() * row).clamp(0.0, bar.max);
         }
     }
-    let up_rect = encyclopedia_rect(window_rect, scale, 374.0, 137.0, 12.0, 13.0);
-    let down_rect = encyclopedia_rect(window_rect, scale, 374.0, 284.0, 12.0, 13.0);
-    if ui
-        .interact(
-            up_rect,
-            ui.id().with("encyclopedia-index-scroll-up"),
-            egui::Sense::click(),
-        )
-        .clicked()
-    {
-        outcome.scroll_row = Some(content.scroll_row.saturating_sub(1));
-    }
-    if ui
-        .interact(
-            down_rect,
-            ui.id().with("encyclopedia-index-scroll-down"),
-            egui::Sense::click(),
-        )
-        .clicked()
-    {
-        outcome.scroll_row = Some(content.scroll_row.saturating_add(1).min(max_scroll));
+    outcome.scroll_hold = hold;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "Within 0..=max."
+    )]
+    let scroll = first.max(0.0) as usize;
+    if scroll != content.scroll {
+        outcome.scroll = Some(scroll);
     }
 
-    for (visible_row, entry) in content
-        .entries
-        .iter()
-        .skip(content.scroll_row)
-        .take(ORIGINAL_INDEX_VISIBLE_ROWS)
-        .enumerate()
-    {
-        let y = 137.0 + visible_row as f32 * ORIGINAL_INDEX_ROW_HEIGHT;
-        let row_rect = original_index_row_rect(window_rect, scale, visible_row);
+    #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+    let offset = scroll as f32;
+    for (index, entry) in content.entries.iter().enumerate() {
+        #[expect(clippy::cast_precision_loss, reason = "A few hundred rows.")]
+        let y = 137.0 + index as f32 * ORIGINAL_INDEX_ROW_HEIGHT - offset;
+        if y + ORIGINAL_INDEX_ROW_HEIGHT <= 137.0 || y >= 297.0 {
+            continue;
+        }
+        let row_rect = original_index_row_rect(window_rect, scale, y);
         let selected = Some(entry.object_id) == content.selected_object_id;
         let response = ui.interact(
             row_rect,
@@ -1529,6 +1593,38 @@ fn draw_original_index_content(
         if response.clicked() {
             outcome.selected_object_id = Some(entry.object_id);
         }
+    }
+
+    // The held arrow draws pressed while the pointer stays on it.
+    let bar = bar_at(offset);
+    let held = hold.map(|hold| hold.part).filter(|part| {
+        matches!(
+            part,
+            crate::list_scroll_bar::Part::Up | crate::list_scroll_bar::Part::Down
+        ) && down
+            && bar.part_at(at) == Some(*part)
+    });
+    let (bar_x, bar_y, bar_w, bar_h) = bar.rect();
+    let bar_painter = painter.with_clip_rect(encyclopedia_rect(
+        window_rect,
+        scale,
+        bar_x,
+        bar_y,
+        bar_w,
+        bar_h,
+    ));
+    for piece in bar.pieces(held) {
+        crate::fleet_window::paint_native(
+            &bar_painter,
+            ui.ctx(),
+            cache,
+            DllSource::Strategy,
+            piece.id,
+            window_rect,
+            scale,
+            piece.x,
+            piece.y,
+        );
     }
 }
 
@@ -1648,8 +1744,9 @@ fn original_index_list_rect(parent: egui::Rect, scale: f32) -> egui::Rect {
     encyclopedia_rect(parent, scale, 36.0, 137.0, 350.0, 160.0)
 }
 
-fn original_index_row_rect(parent: egui::Rect, scale: f32, visible_row: usize) -> egui::Rect {
-    let y = 137.0 + visible_row as f32 * ORIGINAL_INDEX_ROW_HEIGHT;
+/// A row's click area at its top `y` (window pixels), left of the bar and
+/// within the list.
+fn original_index_row_rect(parent: egui::Rect, scale: f32, y: f32) -> egui::Rect {
     encyclopedia_rect(
         parent,
         scale,
@@ -2147,7 +2244,7 @@ mod tests {
         state.original_category_command = 0x70;
         reconcile_original_index_state(&mut state, &catalog, true);
         assert_eq!(state.original_selected_object_id, None);
-        assert_eq!(state.original_scroll_row, 0);
+        assert_eq!(state.original_scroll, 0);
     }
 
     #[test]
@@ -2158,14 +2255,14 @@ mod tests {
         let mut state = EncyclopediaState {
             original_category_command: 0x71,
             original_selected_object_id: Some(0x1400_0001),
-            original_scroll_row: 2,
+            original_scroll: 2,
             ..EncyclopediaState::default()
         };
         open_original_encyclopedia_at(&mut state, &catalog, None);
         assert!(state.open && !state.original_topic_mode);
         assert_eq!(state.original_category_command, 0x6f);
         assert_eq!(state.original_selected_object_id, None);
-        assert_eq!(state.original_scroll_row, 0);
+        assert_eq!(state.original_scroll, 0);
     }
 
     #[test]
@@ -2336,6 +2433,184 @@ mod tests {
             run_topic(&mut state, &catalog, 0.0, vec![key(egui::Key::ArrowRight)]);
         assert_eq!(activated, None);
         assert!(shapes.is_empty());
+    }
+
+    /// Twelve systems, E00..E11.
+    fn twelve_entry_catalog() -> OriginalEncyclopediaCatalog {
+        OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            (0..12)
+                .map(|index| OriginalEncyclopediaEntry {
+                    object_id: 0x9000_0000 + index,
+                    name: format!("E{index:02}"),
+                })
+                .collect(),
+        )
+    }
+
+    /// Run the index at scale 1 from (10, 20): two idle frames, then one
+    /// per entry of `frames`, the pointer at window point `pointer`.
+    /// Returns the last frame's texts (name, top-left, size) and the
+    /// bitmaps painted in it.
+    fn run_index(
+        state: &mut EncyclopediaState,
+        catalog: &OriginalEncyclopediaCatalog,
+        pointer: (f32, f32),
+        frames: Vec<Vec<egui::Event>>,
+    ) -> (Vec<(String, egui::Pos2, egui::Vec2)>, Vec<(u32, egui::Pos2)>) {
+        run_index_at(state, catalog, pointer, frames, 1.0)
+    }
+
+    /// [`run_index`] at `scale`.
+    fn run_index_at(
+        state: &mut EncyclopediaState,
+        catalog: &OriginalEncyclopediaCatalog,
+        pointer: (f32, f32),
+        frames: Vec<Vec<egui::Event>>,
+        scale: f32,
+    ) -> (Vec<(String, egui::Pos2, egui::Vec2)>, Vec<(u32, egui::Pos2)>) {
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let pos = egui::pos2(10.0 + pointer.0 * scale, 20.0 + pointer.1 * scale);
+        let mut texts = Vec::new();
+        for extra in [vec![], vec![]].into_iter().chain(frames) {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let mut events = vec![egui::Event::PointerMoved(pos)];
+            events.extend(extra);
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 800.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_encyclopedia_index_catalog(
+                        ctx,
+                        &mut cache,
+                        crate::cockpit::CockpitFaction::Alliance,
+                        egui::pos2(10.0, 20.0),
+                        scale,
+                        state,
+                        catalog,
+                    );
+                },
+            );
+            texts = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) => {
+                        Some((text.galley.text().to_owned(), text.pos, text.galley.size()))
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone());
+        (texts, painted)
+    }
+
+    fn button(pos: (f32, f32), pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos: egui::pos2(10.0 + pos.0, 20.0 + pos.1),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn at_scale_two_the_down_arrow_still_steps_ten_and_a_wheel_notch_a_row() {
+        // The bar reads the pointer in window pixels at any scale. port: the
+        // original has no wheel; a notch moves a 20-pixel row.
+        let catalog = twelve_entry_catalog();
+        let arrow = (380.0, 292.0);
+        let at = |(x, y): (f32, f32)| egui::pos2(10.0 + x * 2.0, 20.0 + y * 2.0);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: at(arrow),
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let mut state = EncyclopediaState::default();
+        let _ = run_index_at(&mut state, &catalog, arrow, vec![vec![press(true)], vec![press(false)]], 2.0);
+        assert_eq!(state.original_scroll, 10);
+
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -40.0),
+            modifiers: egui::Modifiers::NONE,
+        };
+        let mut state = EncyclopediaState::default();
+        let _ = run_index(&mut state, &catalog, (200.0, 200.0), vec![vec![wheel.clone()]]);
+        assert_eq!(state.original_scroll, 20);
+        // Outside the list the wheel does nothing.
+        let mut state = EncyclopediaState::default();
+        let _ = run_index(&mut state, &catalog, (200.0, 20.0), vec![vec![wheel]]);
+        assert_eq!(state.original_scroll, 0);
+    }
+
+    #[test]
+    fn the_index_list_scrolls_by_pixels_and_clips_its_rows() {
+        // The list scrolls by pixels (FUN_0060a490): scrolled 30, E01 sits
+        // at 137 + 20 - 30 = 127, centred on 137; E00 is gone; E09, at
+        // 287, still shows its top; E10 does not.
+        let catalog = twelve_entry_catalog();
+        let mut state = EncyclopediaState {
+            original_scroll: 30,
+            ..EncyclopediaState::default()
+        };
+        let (texts, _) = run_index(&mut state, &catalog, (0.0, 0.0), vec![]);
+        let centre = |name: &str| {
+            texts
+                .iter()
+                .find(|(text, ..)| text == name)
+                .map(|(_, pos, size)| pos.y + size.y / 2.0)
+        };
+        assert_eq!(centre("E00"), None);
+        assert_eq!(centre("E01"), Some(20.0 + 137.0));
+        assert_eq!(centre("E09"), Some(20.0 + 297.0));
+        assert_eq!(centre("E10"), None);
+        assert_eq!(state.original_scroll, 30);
+    }
+
+    #[test]
+    fn the_index_bar_sits_right_of_the_list_and_its_down_arrow_steps_ten() {
+        // FUN_0045ddc0's bar (RCDATA 10653) at the list's right, x 374, from
+        // y 137 to 297; a click on the down arrow scrolls by the list's 10.
+        let catalog = twelve_entry_catalog();
+        let mut state = EncyclopediaState::default();
+        let arrow = (380.0, 292.0);
+        let (_, painted) = run_index(
+            &mut state,
+            &catalog,
+            arrow,
+            vec![vec![button(arrow, true)], vec![button(arrow, false)]],
+        );
+        assert_eq!(state.original_scroll, 10);
+        let at = |x: f32, y: f32| egui::pos2(10.0 + x, 20.0 + y);
+        assert!(painted.contains(&(10_685, at(374.0, 137.0))), "{painted:?}");
+        assert!(painted.contains(&(10_687, at(374.0, 288.0))), "{painted:?}");
+        assert!(painted.contains(&(10_656, at(374.0, 146.0))), "{painted:?}");
+        // Held on the arrow, it draws pressed; off it, not.
+        let mut state = EncyclopediaState::default();
+        let (_, painted) = run_index(&mut state, &catalog, arrow, vec![vec![button(arrow, true)], vec![]]);
+        assert!(painted.iter().any(|(id, _)| *id == 10_688), "{painted:?}");
+        let mut state = EncyclopediaState::default();
+        let (_, painted) =
+            run_index(&mut state, &catalog, (100.0, 100.0), vec![vec![button(arrow, true)], vec![]]);
+        assert!(!painted.iter().any(|(id, _)| *id == 10_688), "{painted:?}");
+        // A row clicked under the bar's column is not selected.
+        let mut state = EncyclopediaState::default();
+        let row = (378.0, 150.0);
+        let _ = run_index(&mut state, &catalog, row, vec![vec![button(row, true)], vec![button(row, false)]]);
+        assert_eq!(state.original_selected_object_id, None);
     }
 
     #[test]
@@ -2555,22 +2830,23 @@ mod tests {
         let mut state = EncyclopediaState {
             original_category_command: 0x70,
             original_selected_object_id: Some(0x9000_000b),
-            original_scroll_row: 0,
+            original_scroll: 0,
             ..EncyclopediaState::default()
         };
 
-        // Twelve entries, eight rows shown (FUN_00607ea0: 20-pixel cells
-        // in the 160-pixel list): the last one shows from row 4.
+        // Twelve entries of 20 pixels in the 160-pixel list (FUN_00607ea0),
+        // scrolled by pixels: the last one shows from pixel 80, and the
+        // range ends at 240 + 5 - 160 (FUN_00609ae0).
         reconcile_original_index_state(&mut state, &catalog, true);
-        assert_eq!(state.original_scroll_row, 4);
+        assert_eq!(state.original_scroll, 80);
 
         state.original_selected_object_id = Some(0x9000_0000);
         reconcile_original_index_state(&mut state, &catalog, true);
-        assert_eq!(state.original_scroll_row, 0);
+        assert_eq!(state.original_scroll, 0);
 
-        state.original_scroll_row = usize::MAX;
+        state.original_scroll = usize::MAX;
         reconcile_original_index_state(&mut state, &catalog, false);
-        assert_eq!(state.original_scroll_row, 4);
+        assert_eq!(state.original_scroll, 85);
 
         // FUN_0045f100 rebuilds the list with nothing selected.
         state.original_category_command = 0xffff;
@@ -2578,7 +2854,7 @@ mod tests {
         reconcile_original_index_state(&mut state, &catalog, false);
         assert_eq!(state.original_category_command, 0x6f);
         assert_eq!(state.original_selected_object_id, None);
-        assert_eq!(state.original_scroll_row, 0);
+        assert_eq!(state.original_scroll, 0);
     }
 
     #[test]
@@ -2590,13 +2866,16 @@ mod tests {
         let list = original_index_list_rect(parent, 1.0);
 
         for row in 0..ORIGINAL_INDEX_VISIBLE_ROWS {
-            let rect = original_index_row_rect(parent, 1.0, row);
+            #[expect(clippy::cast_precision_loss, reason = "Eight rows.")]
+            let rect = original_index_row_rect(parent, 1.0, 137.0 + row as f32 * 20.0);
             assert!(rect.min.y >= list.min.y);
             assert!(rect.max.y <= list.max.y);
             assert_eq!(rect.height(), 20.0);
         }
         assert_eq!(ORIGINAL_INDEX_VISIBLE_ROWS, 8);
-        assert_eq!(original_index_row_rect(parent, 1.0, 7).max.y, list.max.y);
+        assert_eq!(original_index_row_rect(parent, 1.0, 277.0).max.y, list.max.y);
+        // A row scrolled half out is clipped to the list.
+        assert_eq!(original_index_row_rect(parent, 1.0, 127.0).height(), 10.0);
     }
 
     #[test]

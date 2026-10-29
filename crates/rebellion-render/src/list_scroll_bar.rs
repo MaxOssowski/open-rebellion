@@ -231,9 +231,18 @@ impl ScrollBar {
             y += TRACK_TILE_HEIGHT;
         }
         let (top, height) = self.thumb();
+        // The thumb is clipped to its height (A0 2026-10-29: nothing of it
+        // shows below the bottom cap). The middle tiles are uniform down
+        // their height, so the last one moves up to end at the thumb's
+        // bottom instead.
         let mut y = top;
         while y < top + height {
-            pieces.push(Piece { id: art.middle, x, y });
+            let tile = y.min(top + height - THUMB_MIDDLE_HEIGHT).max(top);
+            pieces.push(Piece {
+                id: art.middle,
+                x,
+                y: tile,
+            });
             y += THUMB_MIDDLE_HEIGHT;
         }
         pieces.push(Piece { id: art.top, x, y: top });
@@ -559,5 +568,30 @@ mod tests {
         assert_eq!(update(&bar, &mut hold, held((375.0, 167.0)), 10.0, 0.1), 24.0);
         assert_eq!(update(&bar, &mut hold, held((375.0, 400.0)), 10.0, 0.2), 49.0);
         assert_eq!(update(&bar, &mut hold, held((375.0, 0.0)), 10.0, 0.3), 0.0);
+    }
+
+    #[test]
+    fn the_thumbs_middle_never_reaches_past_its_bottom() {
+        // A0 2026-10-29 (the Status window's bar, RCDATA 10650): a
+        // 176-pixel thumb ends at its bottom cap.
+        for content in [210.0, 300.0, 700.0, 7000.0] {
+            let bar = ScrollBar::new(RESULTS_ART, 0.0, 0.0, 100.0, 204.0, content, 0.0);
+            let (top, height) = bar.thumb();
+            let middles: Vec<f32> = bar
+                .pieces(None)
+                .iter()
+                .filter(|piece| piece.id == RESULTS_ART.middle)
+                .map(|piece| piece.y)
+                .collect();
+            for &y in &middles {
+                assert!(y >= top && y + THUMB_MIDDLE_HEIGHT <= top + height, "{y} {height}");
+            }
+            // They cover the thumb from its top to its bottom, without gaps.
+            assert_eq!(middles.first(), Some(&top));
+            assert_eq!(middles.last().map(|y| y + THUMB_MIDDLE_HEIGHT), Some(top + height));
+            for pair in middles.windows(2) {
+                assert!(pair[1] - pair[0] <= THUMB_MIDDLE_HEIGHT, "{pair:?}");
+            }
+        }
     }
 }

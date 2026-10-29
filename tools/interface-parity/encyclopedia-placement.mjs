@@ -33,6 +33,10 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // menu ends at the release point, on the droid's right for the Empire and
 // on its left for the Alliance. The port's row is at y 307; the A0 capture
 // of the Empire's menu, opened at (46, 401), has it at y 311.
+// Each side's window origin (A0 and the reference captures), for the list's
+// scroll bar: its down arrow at window (380, 292), the list at (36, 137),
+// 338 by 160.
+const ORIGINS = { alliance: [62, 50], empire: [125, 52] };
 const FACTIONS = [
   { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307], overview: [480, 287] },
   { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307], overview: [100, 287] },
@@ -124,6 +128,16 @@ async function run(browser, base, faction) {
       () => log.some((line) => line.includes("destination=encyclopedia status=opened_original")), 5_000);
     await page.waitForTimeout(800);
     await shot("encyclopedia-index");
+    // The bar: three clicks on the down arrow scroll the list.
+    const [ox, oy] = ORIGINS[faction.name];
+    const list = { x: ox + 36, y: oy + 137, width: 338, height: 160 };
+    const before = await page.screenshot({ clip: list });
+    for (let index = 0; index < 3; index += 1) await click(page, [ox + 380, oy + 292]);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    const after = await page.screenshot({ clip: list });
+    assert.ok(!before.equals(after), "the down arrow scrolls the list");
+    await shot("encyclopedia-index-scrolled");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

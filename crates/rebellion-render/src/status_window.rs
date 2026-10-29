@@ -54,6 +54,20 @@ const ICON_TEXT_X: f32 = 40.0;
 /// hyp: the list blits its items one pixel in from its left edge (A0
 /// 2026-10-29: the 25-wide portraits start at list x 7, the text at 42).
 const ICON_ROW_INSET: f32 = 1.0;
+/// The list's scroll bar (`FUN_00443130`: `FUN_0060a490(.., list, 7,
+/// 0x299a, ..)`): STRATEGY RCDATA 10650.
+const BAR_ART: crate::list_scroll_bar::BarArt = crate::list_scroll_bar::BarArt {
+    width: 12,
+    track: 10_654,
+    up: [10_658, 10_660],
+    down: [10_662, 10_664],
+    top: 10_666,
+    middle: 10_668,
+    bottom: 10_669,
+};
+/// The list's arrow step, `FUN_00607ea0`'s argument 10, as the Battle
+/// Results' list takes it.
+const LIST_STEP: f32 = 10.0;
 /// The Encyclopedia button's disabled art (`FUN_00443020`).
 const ENCYCLOPEDIA_DISABLED: u32 = 11_612;
 
@@ -224,6 +238,8 @@ struct OpenStatusWindow {
     object: StatusObject,
     /// The list's scroll offset, in window pixels.
     scroll: f32,
+    /// A press held on the list's scroll bar.
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
 }
 
 /// Whether a Status window is open. There is one at a time: the galaxy view
@@ -237,7 +253,11 @@ impl StatusWindowState {
     /// `FUN_0042a440` → the `0x468` handler: open on an object the player
     /// knows (`FUN_004f2d10`).
     pub fn open(&mut self, object: StatusObject) {
-        self.window = Some(OpenStatusWindow { object, scroll: 0.0 });
+        self.window = Some(OpenStatusWindow {
+            object,
+            scroll: 0.0,
+            scroll_hold: None,
+        });
     }
 
     /// Open on a character.
@@ -318,10 +338,17 @@ fn picture_origin(width: usize, height: usize) -> (f32, f32) {
     )
 }
 
-/// The list's scroll after a wheel `delta` (screen pixels), kept within the
-/// rows' `height` (screen pixels) less the list's own.
+/// The list's scroll after a wheel `delta` (screen pixels), within the
+/// scroll bar's range for rows `height` (screen pixels) high
+/// ([`crate::list_scroll_bar::max_first`]). port: the original has no
+/// wheel.
 fn scrolled(scroll: f32, delta: f32, scale: f32, height: f32) -> f32 {
-    (scroll - delta / scale).clamp(0.0, (height / scale - LIST.3).max(0.0))
+    (scroll - delta / scale).clamp(0.0, crate::list_scroll_bar::max_first(height / scale, LIST.3))
+}
+
+/// The list's scroll bar for rows `content` window pixels high.
+fn list_bar(content: f32, scroll: f32) -> crate::list_scroll_bar::ScrollBar {
+    crate::list_scroll_bar::ScrollBar::new(BAR_ART, LIST.0, LIST.1, LIST.2, LIST.3, content, scroll)
 }
 
 /// One laid-out row: its label and value galleys and their tops.
@@ -461,6 +488,33 @@ pub fn draw_status_window(
             } else {
                 0.0
             };
+            // The bar: the pointer's press, hold and release on it, then the
+            // wheel.
+            let (pointer, pressed, down, released, now) = ui.ctx().input(|input| {
+                (
+                    input.pointer.interact_pos(),
+                    input.pointer.button_pressed(egui::PointerButton::Primary),
+                    input.pointer.button_down(egui::PointerButton::Primary),
+                    input.pointer.button_released(egui::PointerButton::Primary),
+                    input.time,
+                )
+            });
+            let pointer_at = pointer.map_or((-1.0, -1.0), |point| {
+                ((point.x - frame.min.x) / scale, (point.y - frame.min.y) / scale)
+            });
+            let bar = list_bar(height / scale, open.scroll);
+            open.scroll = crate::list_scroll_bar::update(
+                &bar,
+                &mut open.scroll_hold,
+                crate::list_scroll_bar::Pointer {
+                    at: pointer_at,
+                    pressed,
+                    down,
+                    released,
+                },
+                LIST_STEP,
+                now,
+            );
             open.scroll = scrolled(open.scroll, wheel, scale, height);
             let list_painter = painter.with_clip_rect(list);
             let top = list.min.y - open.scroll * scale;
@@ -508,6 +562,30 @@ pub fn draw_status_window(
                     )
                 };
                 list_painter.text(anchor, align, &row.text, list_font.clone(), egui::Color32::WHITE);
+            }
+            // The held arrow draws pressed while the pointer stays on it.
+            let bar = list_bar(height / scale, open.scroll);
+            let held = open.scroll_hold.map(|hold| hold.part).filter(|part| {
+                matches!(
+                    part,
+                    crate::list_scroll_bar::Part::Up | crate::list_scroll_bar::Part::Down
+                ) && down
+                    && bar.part_at(pointer_at) == Some(*part)
+            });
+            let (bar_x, bar_y, bar_w, bar_h) = bar.rect();
+            let bar_painter = painter.with_clip_rect(logical_rect(frame, scale, bar_x, bar_y, bar_w, bar_h));
+            for piece in bar.pieces(held) {
+                paint_native(
+                    &bar_painter,
+                    ctx,
+                    cache,
+                    DllSource::Strategy,
+                    piece.id,
+                    frame,
+                    scale,
+                    piece.x,
+                    piece.y,
+                );
             }
             for (label, value, label_y, value_y) in laid {
                 list_painter.galley(
@@ -957,11 +1035,31 @@ mod tests {
     fn drive(
         world: &GameWorld,
         state: &mut StatusWindowState,
-        (x, y): (f32, f32),
+        point: (f32, f32),
         frames: Vec<Vec<egui::Event>>,
     ) -> Option<StatusWindowAction> {
-        let layout = layout();
-        let pos = window_rect(layout).min + egui::vec2(x, y);
+        drive_with(
+            world,
+            state,
+            point,
+            frames,
+            crate::status_rows::ObjectiveSource::default(),
+            layout(),
+        )
+    }
+
+    /// [`drive`] with the Objectives' source; the bitmaps painted go to
+    /// `PAINTED`, cleared first.
+    fn drive_with(
+        world: &GameWorld,
+        state: &mut StatusWindowState,
+        (x, y): (f32, f32),
+        frames: Vec<Vec<egui::Event>>,
+        objectives: crate::status_rows::ObjectiveSource,
+        layout: CockpitLayout,
+    ) -> Option<StatusWindowAction> {
+        crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+        let pos = window_rect(layout).min + egui::vec2(x, y) * layout.scale;
         let ctx = egui::Context::default();
         crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
@@ -973,7 +1071,7 @@ mod tests {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(700.0, 520.0),
+                    egui::vec2(1400.0, 1100.0),
                 )),
                 events,
                 ..Default::default()
@@ -981,7 +1079,10 @@ mod tests {
             let _ = ctx.run(input, |ctx| {
                 if let Some(action) = draw_status_window(
                     ctx,
-                    empty.sources(world),
+                    StatusSources {
+                        objectives,
+                        ..empty.sources(world)
+                    },
                     state,
                     CockpitFaction::Alliance,
                     layout,
@@ -1109,12 +1210,127 @@ mod tests {
     }
 
     #[test]
+    fn the_list_bar_sits_at_the_lists_right_and_shows_only_when_rows_overflow() {
+        // FUN_0060a490(.., list, 7, 0x299a, ..): RCDATA 10650's 12-wide bar
+        // at the list's right edge (18 + 208 - 12); six 35-pixel Objectives
+        // rows (210) overflow the 204-pixel list, two do not.
+        let bar = list_bar(210.0, 0.0);
+        assert!(bar.visible());
+        assert_eq!(bar.rect(), (214.0, 47.0, 12.0, 204.0));
+        assert_eq!(bar.max, 11.0);
+        let pieces = bar.pieces(None);
+        assert_eq!(pieces.first().map(|piece| piece.id), Some(10_654));
+        assert!(pieces.iter().any(|piece| piece.id == 10_658));
+        assert!(pieces.iter().any(|piece| piece.id == 10_662));
+        assert!(!list_bar(70.0, 0.0).visible());
+    }
+
+    /// The Alliance's six Objectives rows (210 pixels) in the 204-pixel list.
+    fn six_rows() -> crate::status_rows::ObjectiveSource {
+        crate::status_rows::ObjectiveSource {
+            alliance: true,
+            conditions_word: 0,
+            standard: true,
+        }
+    }
+
+    fn painted() -> Vec<(u32, egui::Pos2)> {
+        crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone())
+    }
+
+    #[test]
+    fn a_click_on_the_bars_down_arrow_scrolls_the_list_ten_pixels() {
+        // FUN_0060a490's arrow steps by the list's 10 when released over it.
+        // The bar is at the list's right, (214, 47) to (226, 251): the down
+        // arrow fills its last 9 rows.
+        let world = GameWorld::default();
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        let arrow = (220.0, 246.0);
+        let _ = drive_with(&world, &mut state, arrow, vec![vec![press_at(arrow, true)], vec![press_at(arrow, false)]], six_rows(), layout());
+        assert_eq!(state.window.as_ref().unwrap().scroll, 10.0);
+        // Its pieces: the track, then the up and down arrows.
+        let origin = window_rect(layout()).min;
+        let at = |x: f32, y: f32| origin + egui::vec2(x, y);
+        let pieces = painted();
+        assert!(pieces.contains(&(10_654, at(214.0, 56.0))), "{pieces:?}");
+        assert!(pieces.contains(&(10_658, at(214.0, 47.0))), "{pieces:?}");
+        assert!(pieces.contains(&(10_662, at(214.0, 242.0))), "{pieces:?}");
+    }
+
+    #[test]
+    fn a_held_arrow_draws_pressed_only_while_the_pointer_stays_on_it() {
+        let world = GameWorld::default();
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        let arrow = (220.0, 246.0);
+        // The last frame's down arrow: pressed (10664) or not (10662).
+        let last_arrow = || {
+            painted()
+                .iter()
+                .rev()
+                .find(|(id, _)| matches!(id, 10_662 | 10_664))
+                .map(|(id, _)| *id)
+        };
+        let _ = drive_with(&world, &mut state, arrow, vec![vec![press_at(arrow, true)], vec![]], six_rows(), layout());
+        assert_eq!(last_arrow(), Some(10_664));
+        // Moved off it, the arrow is drawn up again.
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        let _ = drive_with(&world, &mut state, (100.0, 100.0), vec![vec![press_at(arrow, true)], vec![]], six_rows(), layout());
+        assert_eq!(last_arrow(), Some(10_662));
+    }
+
+    #[test]
+    fn at_scale_two_the_bar_reads_the_pointer_in_window_pixels() {
+        let world = GameWorld::default();
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        let arrow = (220.0, 246.0);
+        let press = |pressed| {
+            super::tests::press(window_rect(scaled()).min + egui::vec2(arrow.0, arrow.1) * 2.0, pressed)
+        };
+        let _ = drive_with(&world, &mut state, arrow, vec![vec![press(true)], vec![press(false)]], six_rows(), scaled());
+        assert_eq!(state.window.as_ref().unwrap().scroll, 10.0);
+        // Held there, the arrow draws pressed.
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        let _ = drive_with(&world, &mut state, arrow, vec![vec![press(true)], vec![]], six_rows(), scaled());
+        let last = painted()
+            .iter()
+            .rev()
+            .find(|(id, _)| matches!(id, 10_662 | 10_664))
+            .map(|(id, _)| *id);
+        assert_eq!(last, Some(10_664));
+        // A click on the track under the thumb pages by the list's height,
+        // up to the range's end, 11 (FUN_0060fd50).
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        let track = (220.0, 237.0);
+        let page = |pressed| {
+            super::tests::press(window_rect(scaled()).min + egui::vec2(track.0, track.1) * 2.0, pressed)
+        };
+        let _ = drive_with(&world, &mut state, track, vec![vec![page(true)], vec![page(false)]], six_rows(), scaled());
+        assert_eq!(state.window.as_ref().unwrap().scroll, 11.0);
+        // The thumb is the same at any scale: its bottom cap at window
+        // (214, 56 + 176 - 6).
+        let cap = window_rect(scaled()).min + egui::vec2(214.0, 226.0) * 2.0;
+        assert!(painted().contains(&(10_669, cap)), "{:?}", painted());
+    }
+
+    /// A press or release at a window point (scale 1).
+    fn press_at((x, y): (f32, f32), pressed: bool) -> egui::Event {
+        press(window_rect(layout()).min + egui::vec2(x, y), pressed)
+    }
+
+    #[test]
     fn the_wheel_scrolls_the_list_only_as_far_as_its_rows_reach() {
-        // port: the list's 204 rows of height scroll; at scale 2, 500 screen
-        // pixels of rows overflow it by 46 window pixels.
+        // port: the wheel scrolls within the bar's range: at scale 2, 500
+        // screen pixels of rows overflow the 204-pixel list by 46 window
+        // pixels, and content that fills a list gains 5 (FUN_00609ae0).
         assert_eq!(scrolled(0.0, -20.0, 2.0, 500.0), 10.0);
         assert_eq!(scrolled(10.0, 8.0, 2.0, 500.0), 6.0);
-        assert_eq!(scrolled(40.0, -200.0, 2.0, 500.0), 46.0);
+        assert_eq!(scrolled(40.0, -200.0, 2.0, 500.0), 51.0);
         assert_eq!(scrolled(5.0, 100.0, 2.0, 500.0), 0.0);
         assert_eq!(scrolled(5.0, -100.0, 2.0, 300.0), 0.0);
     }

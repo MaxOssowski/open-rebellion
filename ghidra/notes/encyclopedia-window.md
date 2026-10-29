@@ -176,8 +176,12 @@ Port (2026-10-29): `encyclopedia_origin` places the window;
 or white; the fonts above; no first-row selection
 (`reconcile_original_index_state`); `open_original_encyclopedia_at`
 resets to All Databases; `OriginalEncyclopediaCatalog::set_galaxy_systems`
-limits the systems to the world's. port: the scroll bar (art `0x299d`) is
-not drawn.
+limits the systems to the world's. Since 2026-10-29 (later the same day)
+the list scrolls by pixels with its bar, `FUN_0060a490(.., list, 7,
+0x299d, ..)` (RCDATA 10653, the Battle Results' art), arrow step 10; the
+scroll returns to the top when the category changes (`FUN_0045f100`).
+It matches the A0 bar to 2 pixels. port: the wheel also scrolls, a row
+a notch.
 
 ## Evidence boundary
 
