@@ -1960,6 +1960,16 @@ fn uses_lime_screen_transparency(source: DllSource, resource_id: u32) -> bool {
     source == DllSource::Tactical && (2001..=2029).contains(&resource_id)
 }
 
+/// Return whether a staged resource is blitted keyed on its first pixel,
+/// palette index 0, black: the Message Index rows' category icons
+/// (`FUN_00468ab0` → `FUN_005fd0f0`; STRATEGY 10906..10911, 10916,
+/// 10963..10969), whose black shows nowhere in the A0 Advice list
+/// (2026-10-29).
+fn uses_black_key_transparency(source: DllSource, resource_id: u32) -> bool {
+    source == DllSource::Strategy
+        && matches!(resource_id, 10_906..=10_911 | 10_916 | 10_963..=10_969)
+}
+
 fn decode_macroquad_texture(
     bytes: &[u8],
     source: DllSource,
@@ -2114,6 +2124,12 @@ fn decode_rgba_image(
     } else if uses_lime_screen_transparency(source, resource_id) {
         for pixel in rgba.pixels_mut() {
             if pixel[0] == 0 && pixel[1] == 255 && pixel[2] == 0 {
+                pixel[3] = 0;
+            }
+        }
+    } else if uses_black_key_transparency(source, resource_id) {
+        for pixel in rgba.pixels_mut() {
+            if pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 0 {
                 pixel[3] = 0;
             }
         }
@@ -2716,6 +2732,32 @@ pub(crate) mod tests {
         }
         for opaque in [1042, 1043, 1057] {
             assert_eq!(alpha(opaque), 255, "{opaque}");
+        }
+    }
+
+    #[test]
+    fn message_index_row_icons_key_out_their_black() {
+        // FUN_00468ab0 blits a row's icon keyed on palette index 0 (black);
+        // the chosen bar 10915 stays opaque.
+        let mut image = image::RgbaImage::new(2, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 0, 255]));
+        image.put_pixel(1, 0, image::Rgba([1, 0, 0, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |resource_id| {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            [decoded.pixels[0].a(), decoded.pixels[1].a()]
+        };
+        for keyed in [10906, 10911, 10916, 10963, 10969] {
+            assert_eq!(alpha(keyed), [0, 255], "{keyed}");
+        }
+        for opaque in [10905, 10912, 10915, 10962, 10970] {
+            assert_eq!(alpha(opaque), [255, 255], "{opaque}");
         }
     }
 

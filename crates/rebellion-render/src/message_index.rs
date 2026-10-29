@@ -59,6 +59,21 @@ const ROW_WIDTH: f32 = 346.0;
 const ROW_HEIGHT: f32 = 21.0;
 /// Text offset within a row (`FUN_00468ab0`: `+0x30 = 0x20`).
 const TEXT_INSET: f32 = 32.0;
+/// The list heading's cell in the window (A0 2026-10-29).
+const HEADING_AT: (f32, f32) = (35.0, 91.0);
+/// The row text's cell below the row's top (A0 2026-10-29).
+const ROW_TEXT_Y: f32 = 2.0;
+/// The rows' font (`theme::original_font`): 12-pixel regular, as A0 shows.
+const ROW_FONT: u16 = 8;
+/// An unchosen row's text, the list's grey (`FUN_00607ea0`, as the Finders).
+const ROW_COLOR: Color32 = Color32::from_rgb(0x78, 0x78, 0x78);
+/// A chosen row's bar, STRATEGY `0x2aa2` (Alliance) / `0x2aa3` (Empire)
+/// (`FUN_00468ab0`), 356 by 21, of which A0 shows 352 by 17.
+const ROW_CHOSEN_ALLIANCE: u32 = 0x2aa2;
+const ROW_CHOSEN_EMPIRE: u32 = 0x2aa3;
+const ROW_CHOSEN_SIZE: (f32, f32) = (352.0, 17.0);
+/// A row's category icon, 15 by 15.
+const ROW_ICON_SIZE: f32 = 15.0;
 /// Text area for single-message display (`FUN_00469de0`).
 const TEXT_AREA_X: f32 = 17.0;
 const TEXT_AREA_Y: f32 = 234.0;
@@ -72,7 +87,24 @@ const TEXT_AREA_HEIGHT: f32 = 80.0;
     clippy::cast_sign_loss,
     reason = "Nine whole rows of 21 in a list 194 tall."
 )]
-const VISIBLE_ROWS: usize = (LIST_HEIGHT / ROW_HEIGHT) as usize;
+/// A row in whole pixels.
+const ROW_PIXELS: usize = 21;
+/// The list's bar width (RCDATA `0x299d`, 12) and arrow step. hyp: the
+/// step is the Finders' 10 (`FUN_00607ea0`'s argument there).
+const BAR_WIDTH: f32 = 12.0;
+const LIST_STEP: f32 = 10.0;
+
+/// The list's scroll range for `rows` rows, in pixels
+/// ([`crate::list_scroll_bar::max_first`]).
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "A few hundred rows of 21 pixels."
+)]
+fn max_scroll(rows: usize) -> usize {
+    crate::list_scroll_bar::max_first((rows * ROW_PIXELS) as f32, LIST_HEIGHT) as usize
+}
 
 // ---------------------------------------------------------------------------
 // Category control specs (unchanged)
@@ -543,8 +575,10 @@ pub struct MessageIndexState {
     selected: BTreeSet<MessageId>,
     /// Anchor row index for shift-click range selection (manual pp. 78-80).
     anchor: Option<usize>,
-    /// First visible row (scroll position).
+    /// The list's first pixel (its bar's `+0xe0`).
     scroll_offset: usize,
+    /// A press held on the list's bar.
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// Message being viewed in mode 2.
     viewing: Option<MessageId>,
     /// Last clicked row and when, for double-click detection.
@@ -561,6 +595,7 @@ impl Default for MessageIndexState {
             selected: BTreeSet::new(),
             anchor: None,
             scroll_offset: 0,
+            scroll_hold: None,
             viewing: None,
             last_clicked: None,
         }
@@ -794,10 +829,57 @@ pub const fn category_rail(command: u16) -> Option<MessageRail> {
     }
 }
 
-/// Messages visible in the current category for the player's side.
+/// A row's category icon (`FUN_00468ab0`): the first category bit of the
+/// message's mask, in the order the function tests them, picks a STRATEGY
+/// bitmap, some per side.
+#[must_use]
+pub const fn row_icon(rail: MessageRail, faction: CockpitFaction) -> Option<u32> {
+    let side = match faction {
+        CockpitFaction::Alliance => 0,
+        CockpitFaction::Empire => 1,
+    };
+    Some(match rail {
+        MessageRail::PopularSupport => 0x2a9a + side,
+        MessageRail::Defense => 0x2ad3,
+        MessageRail::Manufacturing => 0x2a9c + side,
+        MessageRail::Mission => 0x2a9e + side,
+        MessageRail::Chat => 0x2aa4,
+        MessageRail::Fleet => 0x2ad4 + side,
+        MessageRail::Resource => 0x2ad6,
+        MessageRail::Conflict => 0x2ad7,
+        MessageRail::Advice => 0x2ad8 + side,
+    })
+}
+
+/// The list's heading: the active category control's label, TEXTSTRA
+/// `0x8010..0x8018` and `0x8032` (`FUN_004665f0` gives each control its
+/// label; `FUN_004697b0` draws the chosen one's over the list).
+#[must_use]
+pub const fn category_heading(command: u16) -> Option<&'static str> {
+    Some(match command {
+        0x79 => "All Messages",
+        0x7a => "Popular Support Messages",
+        0x7b => "Fleet Messages",
+        0x7c => "Mission Messages",
+        0x7d => "Resource Messages",
+        0x7e => "Manufacturing Messages",
+        0x7f => "Defense Messages",
+        0x80 => "Conflict Messages",
+        0x81 => "Chat Messages",
+        0x82 => "Advice Messages",
+        _ => return None,
+    })
+}
+
+/// Messages visible in the current category for the player's side, newest
+/// first.
 ///
-/// `FUN_00468f20`: an item is visible when `(filter & mask) != 0`, or when
-/// the category is All (`0x79`) and the mask is not Advice (`0x200`).
+/// `FUN_00468ab0` walks the player's list from its last node
+/// (`thunk_FUN_005f5080`) back by predecessors (`FUN_005f5c60`), appending
+/// each item, so the newest message heads the list, as the A0 Advice list
+/// shows (`ghidra/notes/message-index-rows.md`). `FUN_00468f20`: an item is
+/// visible when `(filter & mask) != 0`, or when the category is All
+/// (`0x79`) and the mask is not Advice (`0x200`).
 #[must_use]
 pub fn filtered_messages(
     log: &MessageLog,
@@ -807,6 +889,7 @@ pub fn filtered_messages(
     let filter_mask = category_filter_mask(category);
     log.messages()
         .iter()
+        .rev()
         .filter(|msg| {
             let Some(rail) = msg.rail else {
                 return false;
@@ -881,8 +964,7 @@ pub fn draw_message_index(
     }
 
     // Clamp scroll.
-    let max_scroll = rows.len().saturating_sub(VISIBLE_ROWS);
-    state.scroll_offset = state.scroll_offset.min(max_scroll);
+    state.scroll_offset = state.scroll_offset.min(max_scroll(rows.len()));
 
     match state.mode {
         IndexMode::List => {
@@ -911,8 +993,8 @@ pub fn draw_message_index(
 /// Draw the list rows in mode 1 and handle interaction.
 fn draw_list_rows(
     ctx: &egui::Context,
-    _cache: &mut BmpCache,
-    _faction: CockpitFaction,
+    cache: &mut BmpCache,
+    faction: CockpitFaction,
     origin: egui::Pos2,
     scale: f32,
     rows: &[&GameMessage],
@@ -935,55 +1017,102 @@ fn draw_list_rows(
             let (list_rect, _) = ui.allocate_exact_size(list_size, egui::Sense::hover());
             let painter = ui.painter().with_clip_rect(list_rect);
 
-            // hyp: font 13 (unread, bolder) and font 10 (read) are not mapped
-            // to specific typefaces; the port uses proportional at two sizes.
-            let font_unread = egui::FontId::proportional((11.0 * scale).max(7.0));
-            let font_read = egui::FontId::proportional((9.0 * scale).max(6.0));
-
-            for line in 0..VISIBLE_ROWS {
-                let row_index = state.scroll_offset + line;
-                let Some(msg) = rows.get(row_index) else {
-                    break;
-                };
-
-                let row_rect = egui::Rect::from_min_size(
-                    egui::pos2(
-                        list_rect.min.x,
-                        list_rect.min.y + ROW_HEIGHT * scale * line as f32,
-                    ),
-                    egui::vec2(ROW_WIDTH * scale, ROW_HEIGHT * scale),
+            // The chosen category's label heads the list, white in font 10
+            // (A0 2026-10-29: "Advice Messages" from (35, 93) of the window,
+            // 100 wide).
+            if let Some(heading) = category_heading(state.category) {
+                ui.painter().text(
+                    heading_pos(origin, scale),
+                    egui::Align2::LEFT_TOP,
+                    heading,
+                    crate::theme::original_font(10, scale),
+                    Color32::WHITE,
                 );
+            }
+
+            // hyp: the list draws every item in one font. FUN_00468ab0 sets
+            // an item's +0x38 to 13 (unread) or 10 (read), but the A0 rows
+            // of unread advice are 12-pixel regular Arial (font 8's cell:
+            // "Bombardments" 72 wide, caps 7 high), grey, the chosen one
+            // white (A0 2026-10-29, as the Finders' FUN_00607ea0 colours).
+            let font = crate::theme::original_font(ROW_FONT, scale);
+            let chosen_bar = match faction {
+                CockpitFaction::Alliance => ROW_CHOSEN_ALLIANCE,
+                CockpitFaction::Empire => ROW_CHOSEN_EMPIRE,
+            };
+
+            // The bar (RCDATA 0x299d, `+0x94`), then the rows scrolled by
+            // pixels and clipped to the list; a row's click area ends at
+            // the bar.
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "A list's pixels."
+            )]
+            {
+                let frame = egui::Rect::from_min_size(
+                    origin,
+                    egui::vec2(MESSAGE_INDEX_WIDTH * scale, MESSAGE_INDEX_HEIGHT * scale),
+                );
+                state.scroll_offset = crate::list_scroll_bar::ui_bar(
+                    ui,
+                    cache,
+                    frame,
+                    scale,
+                    crate::list_scroll_bar::RESULTS_ART,
+                    (LIST_X, LIST_Y, LIST_WIDTH, LIST_HEIGHT),
+                    rows.len() as f32 * ROW_HEIGHT,
+                    state.scroll_offset as f32,
+                    &mut state.scroll_hold,
+                    LIST_STEP,
+                )
+                .max(0.0) as usize;
+            }
+            for (row_index, msg) in rows.iter().enumerate() {
+                let Some(layout) = row_layout(list_rect, scale, row_index, state.scroll_offset)
+                else {
+                    continue;
+                };
 
                 let is_selected = state.selected.contains(&msg.id);
 
-                // hyp: selected rows use a highlight colour; the original
-                // paints a selected-row background bitmap.
+                // FUN_00468ab0: a chosen item shows the side's bar
+                // (0x2aa2 / 0x2aa3) at its origin, then the category's icon
+                // (15 by 15) at (1, 1) (A0 2026-10-29). hyp: only the bar's
+                // top-left 352 by 17 shows; A0 has neither its 4-pixel
+                // shadow nor its blue corners.
                 if is_selected {
-                    painter.rect_filled(
-                        row_rect,
-                        0.0,
-                        Color32::from_rgba_premultiplied(60, 60, 120, 180),
-                    );
+                    if let Some(texture) = cache.get(ctx, DllSource::Strategy, chosen_bar) {
+                        painter.image(
+                            texture.id(),
+                            layout.bar,
+                            chosen_bar_uv(texture.size()),
+                            Color32::WHITE,
+                        );
+                    }
+                }
+                if let Some(icon) = msg.rail.and_then(|rail| row_icon(rail, faction)) {
+                    paint_strategy_resource(&painter, ctx, cache, icon, layout.icon);
                 }
 
-                // Row text.
-                let font = if msg.unread {
-                    font_unread.clone()
-                } else {
-                    font_read.clone()
-                };
-                let text_pos = egui::pos2(row_rect.min.x + TEXT_INSET * scale, row_rect.center().y);
+                // The text at the item's +0x30 (32), its cell 2 below the
+                // row's top (A0: caps from 4).
                 painter.text(
-                    text_pos,
-                    egui::Align2::LEFT_CENTER,
+                    layout.text,
+                    egui::Align2::LEFT_TOP,
                     msg.title.as_deref().unwrap_or(&msg.text),
-                    font,
-                    Color32::WHITE,
+                    font.clone(),
+                    if is_selected {
+                        Color32::WHITE
+                    } else {
+                        ROW_COLOR
+                    },
                 );
 
                 // Click interaction.
                 let response = ui.interact(
-                    row_rect,
+                    layout.click,
                     ui.id().with(("msg-index-row", row_index)),
                     egui::Sense::click(),
                 );
@@ -1025,17 +1154,75 @@ fn draw_list_rows(
         actions.push(MessageIndexAction::MessageDisplayed(id));
     }
 
-    // Apply scroll.
+    // port: the original has no wheel; a notch moves a row.
     if wheel != 0.0 {
-        let max_scroll = rows.len().saturating_sub(VISIBLE_ROWS);
         state.scroll_offset = if wheel > 0.0 {
-            state.scroll_offset.saturating_sub(1)
+            state.scroll_offset.saturating_sub(ROW_PIXELS)
         } else {
-            (state.scroll_offset + 1).min(max_scroll)
+            (state.scroll_offset + ROW_PIXELS).min(max_scroll(rows.len()))
         };
     }
 
     actions
+}
+
+/// Where one list row draws, in screen points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RowLayout {
+    /// The chosen row's bar, its shown 352 by 17 at the row's origin.
+    bar: egui::Rect,
+    /// The category icon, 15 by 15 at (1, 1).
+    icon: egui::Rect,
+    /// The text's cell, at (32, 2).
+    text: egui::Pos2,
+    /// The click area: the row within the list, short of the scroll bar.
+    click: egui::Rect,
+}
+
+/// Row `index`'s layout in a list at `list_rect`, scrolled to pixel
+/// `scroll`, or `None` when it lies wholly outside the list.
+#[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+fn row_layout(list_rect: egui::Rect, scale: f32, index: usize, scroll: usize) -> Option<RowLayout> {
+    let top = index as f32 * ROW_HEIGHT - scroll as f32;
+    if top + ROW_HEIGHT <= 0.0 || top >= LIST_HEIGHT {
+        return None;
+    }
+    let origin = list_rect.min + egui::vec2(0.0, top * scale);
+    let row = egui::Rect::from_min_size(origin, egui::vec2(ROW_WIDTH * scale, ROW_HEIGHT * scale));
+    let short_of_bar = egui::Rect::from_min_max(
+        list_rect.min,
+        egui::pos2(list_rect.max.x - BAR_WIDTH * scale, list_rect.max.y),
+    );
+    Some(RowLayout {
+        bar: egui::Rect::from_min_size(
+            origin,
+            egui::vec2(ROW_CHOSEN_SIZE.0 * scale, ROW_CHOSEN_SIZE.1 * scale),
+        ),
+        icon: egui::Rect::from_min_size(
+            origin + egui::vec2(scale, scale),
+            egui::vec2(ROW_ICON_SIZE * scale, ROW_ICON_SIZE * scale),
+        ),
+        text: origin + egui::vec2(TEXT_INSET * scale, ROW_TEXT_Y * scale),
+        click: row.intersect(short_of_bar),
+    })
+}
+
+/// The part of the chosen bar's texture that shows: its top-left
+/// [`ROW_CHOSEN_SIZE`].
+#[expect(clippy::cast_precision_loss, reason = "A bitmap's pixels.")]
+fn chosen_bar_uv([width, height]: [usize; 2]) -> egui::Rect {
+    egui::Rect::from_min_max(
+        egui::Pos2::ZERO,
+        egui::pos2(
+            ROW_CHOSEN_SIZE.0 / width as f32,
+            ROW_CHOSEN_SIZE.1 / height as f32,
+        ),
+    )
+}
+
+/// The list heading's cell on the screen.
+fn heading_pos(origin: egui::Pos2, scale: f32) -> egui::Pos2 {
+    origin + egui::vec2(HEADING_AT.0 * scale, HEADING_AT.1 * scale)
 }
 
 /// Apply a click with modifiers to the selection.
@@ -1354,7 +1541,13 @@ mod tests {
         assert_eq!((LIST_X, LIST_Y), (25.0, 108.0));
         assert_eq!((LIST_WIDTH, LIST_HEIGHT), (368.0, 194.0));
         assert_eq!((ROW_WIDTH, ROW_HEIGHT), (346.0, 21.0));
-        assert_eq!(VISIBLE_ROWS, 9);
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "9.2"
+        )]
+        let whole_rows = (LIST_HEIGHT / ROW_HEIGHT) as usize;
+        assert_eq!(whole_rows, 9);
     }
 
     #[test]
@@ -1408,6 +1601,105 @@ mod tests {
     }
 
     #[test]
+    fn the_list_scrolls_by_pixels_up_to_its_last_row_and_margin() {
+        // FUN_00609ae0: content that fills the 194-pixel list gains 5.
+        assert_eq!(max_scroll(0), 0);
+        assert_eq!(max_scroll(9), 0);
+        assert_eq!(max_scroll(10), 10 * 21 + 5 - 194);
+        assert_eq!(max_scroll(31), 31 * 21 + 5 - 194);
+    }
+
+    #[test]
+    fn a_row_lays_out_its_bar_icon_text_and_click_area_scrolled_by_pixels() {
+        // FUN_00468ab0 / A0 2026-10-29: the bar at the row's origin (352
+        // by 17 shown), the icon at (1, 1), the text cell at (32, 2); the
+        // list (25, 108) 368 by 194 ends its click area at the 12-wide bar.
+        let list = egui::Rect::from_min_size(egui::pos2(50.0, 216.0), egui::vec2(736.0, 388.0));
+        let row = row_layout(list, 2.0, 1, 0).unwrap();
+        assert_eq!(
+            row.bar,
+            egui::Rect::from_min_size(egui::pos2(50.0, 258.0), egui::vec2(704.0, 34.0))
+        );
+        assert_eq!(
+            row.icon,
+            egui::Rect::from_min_size(egui::pos2(52.0, 260.0), egui::vec2(30.0, 30.0))
+        );
+        assert_eq!(row.text, egui::pos2(114.0, 262.0));
+        assert_eq!(
+            row.click,
+            egui::Rect::from_min_max(egui::pos2(50.0, 258.0), egui::pos2(742.0, 300.0))
+        );
+        // A row's right end stops at the bar.
+        let wide = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(350.0, 194.0));
+        assert_eq!(row_layout(wide, 1.0, 0, 0).unwrap().click.max.x, 338.0);
+        let wide = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(700.0, 388.0));
+        assert_eq!(row_layout(wide, 2.0, 0, 0).unwrap().click.max.x, 676.0);
+        let thirds = row_layout(list, 3.0, 0, 0).unwrap();
+        assert_eq!(thirds.text, egui::pos2(50.0 + 96.0, 216.0 + 6.0));
+        // Scrolled 10 pixels: the row moves up 10 and the first is cut.
+        let scrolled = row_layout(list, 2.0, 1, 10).unwrap();
+        assert_eq!(scrolled.text, egui::pos2(114.0, 242.0));
+        let cut = row_layout(list, 2.0, 0, 10).unwrap();
+        assert_eq!(cut.click.min.y, 216.0);
+        // Rows wholly above or below the list are skipped; 194 / 21 shows
+        // a tenth row's top.
+        assert!(row_layout(list, 2.0, 0, 21).is_none());
+        assert!(row_layout(list, 2.0, 0, 20).is_some());
+        assert!(row_layout(list, 2.0, 9, 0).is_some());
+        assert!(row_layout(list, 2.0, 10, 0).is_none());
+        assert!(row_layout(list, 2.0, 10, 17).is_some());
+    }
+
+    #[test]
+    fn the_chosen_bar_shows_its_top_left_and_the_heading_its_cell() {
+        assert_eq!(
+            chosen_bar_uv([356, 21]),
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(352.0 / 356.0, 17.0 / 21.0))
+        );
+        assert_eq!(
+            heading_pos(egui::pos2(125.0, 52.0), 1.0),
+            egui::pos2(160.0, 143.0)
+        );
+        assert_eq!(
+            heading_pos(egui::pos2(10.0, 20.0), 2.0),
+            egui::pos2(80.0, 202.0)
+        );
+    }
+
+    #[test]
+    fn each_category_has_its_rows_icon_and_heading() {
+        // FUN_00468ab0's icons (some + 1 for the Empire) and the controls'
+        // labels from FUN_004665f0 (TEXTSTRA 0x8010..0x8018, 0x8032).
+        use CockpitFaction::{Alliance, Empire};
+        let icons: Vec<(Option<u32>, Option<u32>)> = MessageRail::RAIL_ORDER
+            .iter()
+            .map(|&rail| (row_icon(rail, Alliance), row_icon(rail, Empire)))
+            .collect();
+        assert_eq!(
+            icons,
+            [
+                (Some(0x2a9a), Some(0x2a9b)),
+                (Some(0x2ad4), Some(0x2ad5)),
+                (Some(0x2a9e), Some(0x2a9f)),
+                (Some(0x2ad6), Some(0x2ad6)),
+                (Some(0x2a9c), Some(0x2a9d)),
+                (Some(0x2ad3), Some(0x2ad3)),
+                (Some(0x2ad7), Some(0x2ad7)),
+                (Some(0x2ad8), Some(0x2ad9)),
+                (Some(0x2aa4), Some(0x2aa4)),
+            ]
+        );
+        assert_eq!(category_heading(0x79), Some("All Messages"));
+        assert_eq!(category_heading(0x7b), Some("Fleet Messages"));
+        assert_eq!(category_heading(0x7d), Some("Resource Messages"));
+        assert_eq!(category_heading(0x7f), Some("Defense Messages"));
+        assert_eq!(category_heading(0x82), Some("Advice Messages"));
+        assert_eq!(category_heading(0x83), None);
+        let headings: Vec<_> = (0x79..=0x82).filter_map(category_heading).collect();
+        assert_eq!(headings.len(), 10);
+    }
+
+    #[test]
     fn all_messages_shows_everything_except_advice() {
         // FUN_00468f20: when category is 0x79 and mask is 0x200, the item
         // is hidden. All other masks are shown.
@@ -1415,7 +1707,8 @@ mod tests {
         let rows = filtered_messages(&log, 0x79, true);
         let texts: Vec<&str> = rows.iter().map(|m| m.text.as_str()).collect();
 
-        assert_eq!(texts, ["Fleet arrived", "Built ship", "Mission done"]);
+        // Newest first (FUN_00468ab0 from the last node; A0 2026-10-29).
+        assert_eq!(texts, ["Mission done", "Built ship", "Fleet arrived"]);
         assert!(!rows.iter().any(|m| m.rail == Some(MessageRail::Advice)));
     }
 
@@ -1464,15 +1757,16 @@ mod tests {
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
         );
 
+        // Newest first (FUN_00468ab0).
         let alliance = filtered_messages(&log, 0x7b, true);
         assert_eq!(alliance.len(), 2);
-        assert_eq!(alliance[0].text, "For alliance");
-        assert_eq!(alliance[1].text, "For both");
+        assert_eq!(alliance[0].text, "For both");
+        assert_eq!(alliance[1].text, "For alliance");
 
         let empire = filtered_messages(&log, 0x7b, false);
         assert_eq!(empire.len(), 2);
-        assert_eq!(empire[0].text, "For empire");
-        assert_eq!(empire[1].text, "For both");
+        assert_eq!(empire[0].text, "For both");
+        assert_eq!(empire[1].text, "For empire");
     }
 
     // ── Advice speed ────────────────────────────────────────────────────
@@ -1866,8 +2160,9 @@ mod tests {
         assert_eq!(report.category, 0x79);
         assert_eq!(report.rows.len(), 3); // All except Advice and no-rail
         assert_eq!(report.selected, BTreeSet::from([rows[1].id]));
-        assert_eq!(report.rows[0].text, "Fleet arrived");
-        assert_eq!(report.rows[0].rail, MessageRail::Fleet);
+        // Newest first (FUN_00468ab0).
+        assert_eq!(report.rows[0].text, "Mission done");
+        assert_eq!(report.rows[0].rail, MessageRail::Mission);
         assert!(report.rows[0].unread);
     }
 
@@ -1991,6 +2286,42 @@ mod tests {
         DriveResult {
             actions: all_actions,
         }
+    }
+
+    #[test]
+    fn a_wheel_notch_scrolls_a_row_and_a_click_takes_the_row_under_it() {
+        // port: the original list has no wheel; a notch moves 21 pixels,
+        // up to the last row and the 5-pixel margin.
+        let log = scroll_log(12);
+        let mut state = MessageIndexState::new();
+        state.set_category(0x7b);
+        let over = row_center(2);
+        let notch = |dy: f32| egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, dy),
+            modifiers: egui::Modifiers::default(),
+        };
+        drive(&log, &mut state, vec![(over, vec![notch(-1.0)])]);
+        assert_eq!(state.scroll_offset, 21);
+        for _ in 0..5 {
+            drive(&log, &mut state, vec![(over, vec![notch(-1.0)])]);
+        }
+        assert_eq!(state.scroll_offset, max_scroll(12));
+        drive(&log, &mut state, vec![(over, vec![notch(1.0)])]);
+        assert_eq!(state.scroll_offset, max_scroll(12) - 21);
+        state.scroll_offset = 21;
+        drive(&log, &mut state, click_at(row_center(0)));
+        // Newest first, so the second row is message 10.
+        let rows = filtered_messages(&log, 0x7b, true);
+        assert_eq!(state.selected, BTreeSet::from([rows[1].id]));
+        assert_eq!(rows[1].text, "Fleet message 10");
+        // Below the list, the wheel scrolls nothing.
+        drive(
+            &log,
+            &mut state,
+            vec![(egui::pos2(100.0, 320.0), vec![notch(1.0)])],
+        );
+        assert_eq!(state.scroll_offset, 21);
     }
 
     fn click_at(pos: egui::Pos2) -> Vec<(egui::Pos2, Vec<egui::Event>)> {

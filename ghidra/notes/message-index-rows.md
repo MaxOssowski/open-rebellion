@@ -40,7 +40,9 @@ Called when the list rebuilds (category change, message arrival, mode 1 entry).
 3. `FUN_0041d1b0` returns the message manager (`thunk_FUN_00435a40` → the
    singleton at `DAT_006be3b8`). `FUN_00436780` returns the player's message
    list. The loop `thunk_FUN_005f5080 / FUN_005f5c60` iterates every message
-   node in list order (arrival order, oldest first).
+   node from the newest: `FUN_005f5080` returns the tree's last (rightmost)
+   node and `FUN_005f5c60` its predecessor. (Corrected 2026-10-29: this
+   said oldest first; the A0 Advice list shows the newest first.)
 4. For each node, a list item is built (`FUN_004ad6b0(pvVar5, iVar4)`).
    The category mask at message `+0x34` selects a category icon bitmap
    from STRATEGY module 7, side-dependent:
@@ -69,6 +71,21 @@ Called when the list rebuilds (category change, message arrival, mode 1 entry).
 
 6. The item is added to the data list (`FUN_005f59f0`). If the node was in
    the saved selection, it is pre-selected (`FUN_00609500`, bit 1).
+
+## What A0 shows (2026-10-29, `evidence/2026-10-29-message-index-rows/`)
+
+- A chosen row shows its side's bar, `0x2aa2` / `0x2aa3`, at the item's
+  origin. Only its top-left 352 by 17 shows, without the 4-pixel shadow or
+  the blue corners.
+- The category icon is at (1, 1), keyed on palette index 0 (black).
+- The text is at (32, 2) in 12-pixel regular Arial: grey `(117, 114,
+  114)`, the chosen row white. These were unread advice rows, so the
+  item's `+0x38` (13 / 10) does not pick the drawn font. hyp: the list
+  draws every item in one font.
+- The heading is the chosen category control's label
+  (`0x8010..0x8018`, `0x8032`), white, in font 10, from (35, 91) of the
+  window.
+- The bar is RCDATA `0x299d`, the same as the Battle Results list's.
 
 ## Category filter (`FUN_00468f20`)
 
@@ -259,8 +276,8 @@ category that no longer has unread messages. The list rebuilds with
 
 ## Sort order
 
-Messages appear in arrival order (the manager's list, iterated by
-`thunk_FUN_005f5080 / FUN_005f5c60`). New messages are appended at the tail
+Messages appear newest first (the manager's list, iterated from its last
+node by `thunk_FUN_005f5080 / FUN_005f5c60`; corrected 2026-10-29). New messages are appended at the tail
 (`FUN_005f59f0` in `FUN_0048a060`). There is no column sort. The 4 columns
 stored in the data list are layout data (icon, text, font), not sortable
 column headers.
