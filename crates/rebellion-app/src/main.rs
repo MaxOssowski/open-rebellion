@@ -1565,10 +1565,6 @@ async fn main() {
         }
 
         // ── Advisor animation timer ────────────────────────────────────────
-        // The advisor runs while the galaxy view shows (FUN_0041cea0 checks
-        // DAT_006b14e4); the briefing's day is the opening day's 1 (hyp:
-        // the game's +0xc counts from 1; the narration captures play on the
-        // opening day, which FUN_004c0a60's next-free test needs above 0).
         // A window created, not raised, tells the agent (FUN_0045aac0 /
         // FUN_00429ce0 → FUN_0041d2d0 → FUN_0043a0b0), whose first opening
         // of each kind posts its advice.
@@ -1606,9 +1602,11 @@ async fn main() {
             }
         }
 
+        // The advisor runs while the galaxy view shows (FUN_0041cea0 checks
+        // DAT_006b14e4) on the scheduler's sub-tick ([`advisor_now`]).
         if game_mode == GameMode::Galaxy {
             if let Some(schedule) = advisor_schedule.as_mut() {
-                let today = u32::try_from(clock.tick).unwrap_or(u32::MAX).saturating_add(1);
+                let today = advisor_now(&clock);
                 schedule.set_translate(player_agent.translate());
                 // The agent's toggles (FUN_00439d60) reach the advisor's
                 // reactions (FUN_004c2dd0 / FUN_004c0d00).
@@ -7552,9 +7550,7 @@ async fn main() {
                     // messages the port's line stands in.
                     if let Some(refused) = refusal.take() {
                         if let Some(schedule) = advisor_schedule.as_mut() {
-                            let today = u32::try_from(clock.tick)
-                                .unwrap_or(u32::MAX)
-                                .saturating_add(1);
+                            let today = advisor_now(&clock);
                             schedule.refused(refused.status, refused.decoys_without_target, today);
                             macroquad::logging::info!(
                                 "[advisor] reaction refusal status={:#x}/{:#x} decoys={}",
@@ -8122,6 +8118,16 @@ fn advisor_messages(
         })
         .collect();
     Some(messages)
+}
+
+/// The advisor's time, `DAT_006b28cc` (`FUN_004fcee0`): the scheduler's
+/// sub-tick, plus one. hyp: the count starts at 1, as the briefing plays
+/// on a new game's opening, which `FUN_004c0a60`'s next-free test (above
+/// 0) needs.
+fn advisor_now(clock: &GameClock) -> u32 {
+    u32::try_from(clock.sub_tick())
+        .unwrap_or(u32::MAX)
+        .saturating_add(1)
 }
 
 /// Post the agent's advice, each as its message (`FUN_0048a590` →
@@ -8756,6 +8762,24 @@ mod advisor_event_tests {
         // FUN_004960f0.
         assert_eq!(blockade_event(Some(Faction::Alliance), Faction::Alliance), 0xe);
         assert_eq!(blockade_event(Some(Faction::Alliance), Faction::Empire), 0xd);
+    }
+}
+
+#[cfg(test)]
+mod advisor_now_tests {
+    use super::advisor_now;
+    use rebellion_core::tick::{GameClock, GameSpeed};
+
+    #[test]
+    fn the_advisor_counts_sub_ticks_from_one() {
+        // DAT_006b28cc is FUN_004fcee0's sub-tick (FUN_0051dea0): 12 a day
+        // at Medium; hyp: the count starts at 1.
+        let mut clock = GameClock::new();
+        assert_eq!(advisor_now(&clock), 1);
+        clock.set_speed(GameSpeed::Medium);
+        let day = GameSpeed::Medium.seconds_per_day().unwrap();
+        assert_eq!(clock.advance(day * 1.01).len(), 1);
+        assert_eq!(advisor_now(&clock), 13);
     }
 }
 

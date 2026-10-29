@@ -3,8 +3,8 @@
 //!
 //! The side's advisor (`Class_0065c4c8`, `FUN_004c27f0`, for the Alliance;
 //! `Class_0065c4a0`, `FUN_004c0710`, for the Empire) keeps, per message
-//! id, the last day it may play (`+0x168`) and its next free day
-//! (`+0x16c`). A new advisor schedules its side's briefing for 40000 days:
+//! id, the last sub-tick it may play (`+0x168`) and its next free sub-tick
+//! (`+0x16c`). A new advisor schedules its side's briefing for 40000 sub-ticks:
 //! message `0x29` (C3POACT.SPT) or `0x4a` (IMP22ACT.SPT).
 //!
 //! The agent droid's idle clip ends after 15 ticks (`FUN_0042adb0`,
@@ -18,6 +18,11 @@
 //! players are flushed (`FUN_0041da30` -> `FUN_0042d620`) and the short
 //! form, `0x28` / `0x49`, is scheduled instead (`FUN_004c0d00`,
 //! `FUN_004c2dd0`).
+//!
+//! Its times are the scheduler's sub-ticks (`DAT_006b28cc` from
+//! `FUN_004fcee0`, `FUN_0051dea0`), not days: a day has 600 at Very Slow,
+//! 60 Slow, 12 Medium and 4 Fast (`ghidra/notes/agent-advice-list.md`,
+//! "The clock").
 
 use std::collections::HashMap;
 
@@ -38,10 +43,10 @@ pub const EMPIRE_BRIEFING: u32 = 0x4a;
 /// The Empire briefing's short form, after a skip.
 pub const EMPIRE_SHORT_BRIEFING: u32 = 0x49;
 
-/// A schedule entry's "plays for 40000 days" (`FUN_004c27f0`).
+/// A schedule entry's "plays for 40000 sub-ticks" (`FUN_004c27f0`).
 const ALWAYS: u32 = 40_000;
-/// A played message's next free day is 60 days on (`FUN_004c0a60`).
-const REST_DAYS: u32 = 0x3c;
+/// A played message's next free sub-tick is 60 sub-ticks on (`FUN_004c0a60`).
+const REST: u32 = 0x3c;
 /// The idle clip's length in ticks (`FUN_00472b20(0x12, .., 0xf)`).
 const IDLE_TICKS: u32 = 15;
 
@@ -81,7 +86,7 @@ const fn briefings(faction: AdvisorFaction) -> (u32, u32) {
 pub struct AdvisorSchedule {
     faction: AdvisorFaction,
     messages: HashMap<u32, Vec<ScriptEntry>>,
-    last_day: Vec<u32>,
+    last_tick: Vec<u32>,
     next_free: Vec<u32>,
     /// `DAT_006b28bc`: the idle clip has ended since the last update.
     enabled: bool,
@@ -101,7 +106,7 @@ pub struct AdvisorSchedule {
     flags: u32,
     /// `DAT_006b28b8`: the Agent menu's openings since the last answer.
     menu_openings: u32,
-    /// `DAT_006b28d0`: the day the advisor last played a message.
+    /// `DAT_006b28d0`: the sub-tick the advisor last played a message.
     last_played: u32,
     /// The quip's roll (`FUN_005f5700(12)`). hyp: the original's generator
     /// is the interface's; a small xorshift stands in.
@@ -127,21 +132,21 @@ pub mod reaction {
     /// `FUN_00439ed0`: the Agent menu opened (`FUN_0041d160` →
     /// `FUN_00436640` → `FUN_00487c10`).
     pub const MENU: u32 = 0x200_0000;
-    /// `FUN_00439ef0`: the idle clip ended after 50 quiet days.
+    /// `FUN_00439ef0`: the idle clip ended after 50 quiet sub-ticks.
     pub const QUIP: u32 = 0x8000_0000;
 }
 
-/// One side's answer to a reaction bit: the message and how many days it
+/// One side's answer to a reaction bit: the message and how many sub-ticks it
 /// stays due.
 struct Reaction {
     bit: u32,
     message: u32,
-    days: u32,
+    span: u32,
 }
 
-/// The message an event code schedules and for how many days: the cases
+/// The message an event code schedules and for how many sub-ticks: the cases
 /// of `FUN_004c44b0` (Alliance) and `FUN_004c22f0` (Empire), each writing
-/// `+0x168[message] = today + days`.
+/// `+0x168[message] = now + span`.
 const fn event_message(faction: AdvisorFaction, code: u32) -> Option<(u32, u32)> {
     Some(match faction {
         AdvisorFaction::Alliance => match code {
@@ -228,36 +233,80 @@ const fn reactions(faction: AdvisorFaction) -> &'static [Reaction] {
     };
     match faction {
         AdvisorFaction::Alliance => &[
-            Reaction { bit: MOVE_DONE, message: 0x23, days: 10 },
-            Reaction { bit: GARRISONS_ON, message: 0x24, days: 10 },
-            Reaction { bit: PRODUCTION_ON, message: 0x26, days: 10 },
-            Reaction { bit: GARRISONS_OFF, message: 0x25, days: 0x32 },
-            Reaction { bit: PRODUCTION_OFF, message: 0x27, days: 0x32 },
-            Reaction { bit: TOO_MANY_TOGGLES, message: 0x4f, days: 5 },
+            Reaction {
+                bit: MOVE_DONE,
+                message: 0x23,
+                span: 10,
+            },
+            Reaction {
+                bit: GARRISONS_ON,
+                message: 0x24,
+                span: 10,
+            },
+            Reaction {
+                bit: PRODUCTION_ON,
+                message: 0x26,
+                span: 10,
+            },
+            Reaction {
+                bit: GARRISONS_OFF,
+                message: 0x25,
+                span: 0x32,
+            },
+            Reaction {
+                bit: PRODUCTION_OFF,
+                message: 0x27,
+                span: 0x32,
+            },
+            Reaction {
+                bit: TOO_MANY_TOGGLES,
+                message: 0x4f,
+                span: 5,
+            },
         ],
         AdvisorFaction::Empire => &[
-            Reaction { bit: MOVE_DONE, message: 0x1c, days: 10 },
-            Reaction { bit: GARRISONS_ON, message: 0x1d, days: 10 },
-            Reaction { bit: PRODUCTION_ON, message: 0x1f, days: 10 },
-            Reaction { bit: GARRISONS_OFF, message: 0x1e, days: 0x32 },
-            Reaction { bit: PRODUCTION_OFF, message: 0x20, days: 0x32 },
+            Reaction {
+                bit: MOVE_DONE,
+                message: 0x1c,
+                span: 10,
+            },
+            Reaction {
+                bit: GARRISONS_ON,
+                message: 0x1d,
+                span: 10,
+            },
+            Reaction {
+                bit: PRODUCTION_ON,
+                message: 0x1f,
+                span: 10,
+            },
+            Reaction {
+                bit: GARRISONS_OFF,
+                message: 0x1e,
+                span: 0x32,
+            },
+            Reaction {
+                bit: PRODUCTION_OFF,
+                message: 0x20,
+                span: 0x32,
+            },
         ],
     }
 }
 
 impl AdvisorSchedule {
     /// A new game's advisor (`FUN_004c27f0`, `FUN_004c0710`): its side's
-    /// briefing plays for 40000 days.
+    /// briefing plays for 40000 sub-ticks.
     #[must_use]
     pub fn new_game(faction: AdvisorFaction, messages: HashMap<u32, Vec<ScriptEntry>>) -> Self {
         let count = message_count(faction);
-        let mut last_day = vec![0; count];
+        let mut last_tick = vec![0; count];
         let (briefing, _) = briefings(faction);
-        last_day[briefing as usize] = ALWAYS;
+        last_tick[briefing as usize] = ALWAYS;
         Self {
             faction,
             messages,
-            last_day,
+            last_tick,
             next_free: vec![0; count],
             enabled: false,
             idle_seconds: 0.0,
@@ -281,8 +330,8 @@ impl AdvisorSchedule {
     /// (`FUN_004c43d0`, `FUN_004c21d0`). Otherwise a team left empty with
     /// decoys and no target (`0x40`/`0x91`, `decoys_without_target`) has its
     /// own message, and any other refusal one of two at random
-    /// (`FUN_004c4390`, `FUN_004c2230`). Each stays due 10 days.
-    pub fn refused(&mut self, status: (u32, u32), decoys_without_target: bool, today: u32) {
+    /// (`FUN_004c4390`, `FUN_004c2230`). Each stays due 10 sub-ticks.
+    pub fn refused(&mut self, status: (u32, u32), decoys_without_target: bool, now: u32) {
         let (same, decoy, generic) = match self.faction {
             AdvisorFaction::Alliance => ((0x0f, 0x10), 0x14, (0x11, 0x12)),
             AdvisorFaction::Empire => ((0x10, 0x11), 0x15, (0x12, 0x13)),
@@ -307,7 +356,7 @@ impl AdvisorSchedule {
                 generic.1
             }
         };
-        self.last_day[message as usize] = today + 10;
+        self.last_tick[message as usize] = now + 10;
     }
 
     /// A delivered message's event code (`FUN_0048a060` → slot `+0x14`,
@@ -317,25 +366,25 @@ impl AdvisorSchedule {
     /// (`FUN_004c4430`, `FUN_004c2270`); `0x2b` picks one of two
     /// (`FUN_004c4480`, `FUN_004c22c0`). Codes a side does not handle do
     /// nothing.
-    pub fn event(&mut self, code: u32, today: u32) {
+    pub fn event(&mut self, code: u32, now: u32) {
         let (first, count) = match (self.faction, code) {
             (AdvisorFaction::Alliance, 0x2a) => (0x45, 4),
             (AdvisorFaction::Empire, 0x2a) => (0x42, 4),
             (AdvisorFaction::Alliance, 0x2b) => (0x49, 2),
             (AdvisorFaction::Empire, 0x2b) => (0x46, 2),
             _ => {
-                if let Some((message, days)) = event_message(self.faction, code) {
-                    self.last_day[message as usize] = today + days;
+                if let Some((message, span)) = event_message(self.faction, code) {
+                    self.last_tick[message as usize] = now + span;
                 }
                 return;
             }
         };
         let slots = first as usize..(first + count) as usize;
-        if code == 0x2a && self.last_day[slots.clone()].iter().any(|&day| day != 0) {
+        if code == 0x2a && self.last_tick[slots.clone()].iter().any(|&tick| tick != 0) {
             return;
         }
         let pick = self.next_roll() % count;
-        self.last_day[slots.start + pick as usize] = today + 10;
+        self.last_tick[slots.start + pick as usize] = now + 10;
     }
 
     /// The port's stand-in for the interface's generator (xorshift32).
@@ -362,19 +411,19 @@ impl AdvisorSchedule {
     }
 
     /// `FUN_004c2dd0` / `FUN_004c0d00` with the agent active: the first bit
-    /// in the side's order schedules its message, due for its days from
-    /// `today`, and is cleared. The menu's answer counts on: the Alliance's
+    /// in the side's order schedules its message, due for its sub-ticks from
+    /// `now`, and is cleared. The menu's answer counts on: the Alliance's
     /// `0x4a + n`, the Empire's `0x49 + n`, kept within three messages and
     /// starting over past them. The quip rolls one of twelve; six pick a
-    /// message (`0x50..` for 40000 days, `0x4e..` for 5) and it re-arms
+    /// message (`0x50..` for 40000 sub-ticks, `0x4e..` for 5) and it re-arms
     /// the update.
-    fn react(&mut self, today: u32) {
+    fn react(&mut self, now: u32) {
         if let Some(reaction) = reactions(self.faction)
             .iter()
             .find(|reaction| self.flags & reaction.bit != 0)
         {
             self.flags &= !reaction.bit;
-            self.last_day[reaction.message as usize] = today + reaction.days;
+            self.last_tick[reaction.message as usize] = now + reaction.span;
             return;
         }
         if self.flags & reaction::MENU != 0 {
@@ -390,48 +439,48 @@ impl AdvisorSchedule {
                 message = high;
                 self.menu_openings = 0;
             }
-            self.last_day[message as usize] = today + 5;
+            self.last_tick[message as usize] = now + 5;
             return;
         }
         if self.flags & reaction::QUIP != 0 {
             self.flags &= !reaction::QUIP;
             let pick = self.next_roll() % 12;
             if pick < 6 {
-                let (first, days) = match self.faction {
+                let (first, span) = match self.faction {
                     AdvisorFaction::Alliance => (0x50, ALWAYS),
                     AdvisorFaction::Empire => (0x4e, 5),
                 };
-                self.last_day[(first + pick) as usize] = today + days;
+                self.last_tick[(first + pick) as usize] = now + span;
             }
             self.enabled = true;
         }
     }
 
-    /// A loaded game's advisor (`FUN_00439550`): its saved last days and
-    /// update flag; the next free days load as 0. A table of another length
+    /// A loaded game's advisor (`FUN_00439550`): its saved last sub-ticks and
+    /// update flag; the next free sub-ticks load as 0. A table of another length
     /// is fitted to the side's message count.
     #[must_use]
     pub fn from_save(
         faction: AdvisorFaction,
         messages: HashMap<u32, Vec<ScriptEntry>>,
-        last_day: &[u32],
+        last_tick: &[u32],
         enabled: bool,
     ) -> Self {
         let count = message_count(faction);
-        let mut table = last_day.to_vec();
+        let mut table = last_tick.to_vec();
         table.resize(count, 0);
         Self {
-            last_day: table,
+            last_tick: table,
             enabled,
             ..Self::new_game(faction, messages)
         }
     }
 
-    /// What the save keeps (`FUN_004397a0`): the last days and whether the
+    /// What the save keeps (`FUN_004397a0`): the last sub-ticks and whether the
     /// update runs.
     #[must_use]
     pub fn saved(&self) -> (&[u32], bool) {
-        (&self.last_day, self.enabled)
+        (&self.last_tick, self.enabled)
     }
 
     /// Translate Counterpart's bit, from the agent.
@@ -482,11 +531,11 @@ impl AdvisorSchedule {
         }
     }
 
-    /// Advance by `dt` seconds of panel time on day `today`: the idle clip,
+    /// Advance by `dt` seconds of panel time on sub-tick `now`: the idle clip,
     /// a skip, and the advisor's update.
-    pub fn update(&mut self, dt: f32, today: u32, player: &mut ClipPlayer) {
+    pub fn update(&mut self, dt: f32, now: u32, player: &mut ClipPlayer) {
         if self.skip_requested {
-            self.skip(today, player);
+            self.skip(now, player);
         }
         if player.is_busy() {
             self.idle_seconds = 0.0;
@@ -499,32 +548,32 @@ impl AdvisorSchedule {
             let idle_length = IDLE_TICKS as f32 * CLIP_TICK_SECONDS;
             if self.idle_seconds >= idle_length {
                 // FUN_00439ef0: the update runs again, and after 50 quiet
-                // days the advisor has a quip.
+                // sub-ticks the advisor has a quip.
                 self.idle_seconds -= idle_length;
                 self.enabled = true;
-                if self.last_played + 0x32 < today {
+                if self.last_played + 0x32 < now {
                     self.flags |= reaction::QUIP;
                 }
             }
         }
         if self.enabled {
-            self.play_due(today, player);
+            self.play_due(now, player);
         }
     }
 
     /// `FUN_004c0a60`: the first message still due whose rest is over
     /// plays; with none, the advisor waits for the next idle end
     /// (`FUN_004c0d00`).
-    fn play_due(&mut self, today: u32, player: &mut ClipPlayer) {
-        for id in 1..self.last_day.len() {
-            let last = self.last_day[id];
-            self.last_day[id] = 0;
-            if last == 0 || last < today {
+    fn play_due(&mut self, now: u32, player: &mut ClipPlayer) {
+        for id in 1..self.last_tick.len() {
+            let last = self.last_tick[id];
+            self.last_tick[id] = 0;
+            if last == 0 || last < now {
                 continue;
             }
-            if self.next_free[id] < today {
-                self.next_free[id] = today + REST_DAYS;
-                self.last_played = today;
+            if self.next_free[id] < now {
+                self.next_free[id] = now + REST;
+                self.last_played = now;
                 self.queue_message(id as u32, player);
                 return;
             }
@@ -532,7 +581,7 @@ impl AdvisorSchedule {
         // FUN_004c0d00: nothing due; the update stops and a pending
         // reaction is scheduled.
         self.enabled = false;
-        self.react(today);
+        self.react(now);
     }
 
     /// `FUN_0041d660` -> `FUN_0042b1d0` for each entry: the record comes
@@ -559,10 +608,10 @@ impl AdvisorSchedule {
 
     /// `FUN_004c0d00` with `0x2000`: the short form is due, and the first
     /// skip flushes the players (`FUN_0041da30`).
-    fn skip(&mut self, today: u32, player: &mut ClipPlayer) {
+    fn skip(&mut self, now: u32, player: &mut ClipPlayer) {
         self.skip_requested = false;
         let (_, short) = briefings(self.faction);
-        self.last_day[short as usize] = today + ALWAYS;
+        self.last_tick[short as usize] = now + ALWAYS;
         if !self.flushed {
             player.flush();
             self.flushed = true;
@@ -736,13 +785,13 @@ mod tests {
         schedule: &mut AdvisorSchedule,
         player: &mut ClipPlayer,
         seconds: f32,
-        today: u32,
+        now: u32,
     ) -> Vec<ClipEvent> {
         let mut events = Vec::new();
         let mut left = seconds;
         while left > 0.0 {
             let dt = CLIP_TICK_SECONDS.min(left);
-            schedule.update(dt, today, player);
+            schedule.update(dt, now, player);
             events.extend(player.update(dt));
             for event in &events {
                 if let ClipEvent::Finished(action) = event {
@@ -759,15 +808,18 @@ mod tests {
     }
 
     #[test]
-    fn a_new_game_schedules_its_sides_briefing_for_40000_days() {
+    fn a_new_game_schedules_its_sides_briefing_for_40000_sub_ticks() {
         // FUN_004c27f0 (+0xa4) and FUN_004c0710 (+0x128).
         let alliance = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
-        assert_eq!(alliance.last_day.len(), 0x58);
-        assert_eq!(alliance.last_day[0x29], 40_000);
-        assert_eq!(alliance.last_day.iter().filter(|&&day| day != 0).count(), 1);
+        assert_eq!(alliance.last_tick.len(), 0x58);
+        assert_eq!(alliance.last_tick[0x29], 40_000);
+        assert_eq!(
+            alliance.last_tick.iter().filter(|&&tick| tick != 0).count(),
+            1
+        );
         let empire = AdvisorSchedule::new_game(AdvisorFaction::Empire, HashMap::new());
-        assert_eq!(empire.last_day.len(), 0x56);
-        assert_eq!(empire.last_day[0x4a], 40_000);
+        assert_eq!(empire.last_tick.len(), 0x56);
+        assert_eq!(empire.last_tick[0x4a], 40_000);
     }
 
     #[test]
@@ -780,8 +832,8 @@ mod tests {
         assert!(!player.is_busy(), "the idle clip still runs");
         run(&mut schedule, &mut player, 1.5 * CLIP_TICK_SECONDS, 1);
         assert!(player.is_busy());
-        // The briefing has played; the schedule holds it for 60 days.
-        assert_eq!(schedule.last_day[ALLIANCE_BRIEFING as usize], 0);
+        // The briefing has played; the schedule holds it for 60 sub-ticks.
+        assert_eq!(schedule.last_tick[ALLIANCE_BRIEFING as usize], 0);
         assert_eq!(schedule.next_free[ALLIANCE_BRIEFING as usize], 61);
     }
 
@@ -841,29 +893,29 @@ mod tests {
 
     #[test]
     fn a_skip_schedules_the_short_form_until_today_plus_40000() {
-        // FUN_004c2dd0: +0xa0 (message 0x28) = today + 40000.
-        let root = staged_root("skip-day");
+        // FUN_004c2dd0: +0xa0 (message 0x28) = now + 40000.
+        let root = staged_root("skip-tick");
         let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
         let mut player = player(&root.0);
         run(&mut schedule, &mut player, 18.0 * CLIP_TICK_SECONDS, 3);
         schedule.request_skip();
         schedule.update(0.0, 3, &mut player);
-        assert_eq!(schedule.last_day[ALLIANCE_SHORT_BRIEFING as usize], 40_003);
+        assert_eq!(schedule.last_tick[ALLIANCE_SHORT_BRIEFING as usize], 40_003);
     }
 
     #[test]
     fn a_message_past_its_last_day_is_dropped_and_one_due_today_plays() {
-        // FUN_004c0a60 zeroes a last day under today and moves on.
-        let root = staged_root("last-day");
+        // FUN_004c0a60 zeroes a last sub-tick under now and moves on.
+        let root = staged_root("last-tick");
         let mut late = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
-        late.last_day[ALLIANCE_BRIEFING as usize] = 5;
+        late.last_tick[ALLIANCE_BRIEFING as usize] = 5;
         let mut player = player(&root.0);
         run(&mut late, &mut player, 16.0 * CLIP_TICK_SECONDS, 6);
         assert!(!player.is_busy());
-        assert_eq!(late.last_day[ALLIANCE_BRIEFING as usize], 0);
+        assert_eq!(late.last_tick[ALLIANCE_BRIEFING as usize], 0);
 
         let mut due = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
-        due.last_day[ALLIANCE_BRIEFING as usize] = 6;
+        due.last_tick[ALLIANCE_BRIEFING as usize] = 6;
         run(&mut due, &mut player, 16.0 * CLIP_TICK_SECONDS, 6);
         assert!(player.is_busy());
     }
@@ -875,11 +927,11 @@ mod tests {
         let root = staged_root("next-idle");
         let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
         let mut player = player(&root.0);
-        schedule.last_day[ALLIANCE_BRIEFING as usize] = 0;
+        schedule.last_tick[ALLIANCE_BRIEFING as usize] = 0;
         run(&mut schedule, &mut player, 15.5 * CLIP_TICK_SECONDS, 1);
         assert!(!schedule.enabled);
 
-        schedule.last_day[ALLIANCE_BRIEFING as usize] = 40_000;
+        schedule.last_tick[ALLIANCE_BRIEFING as usize] = 40_000;
         run(&mut schedule, &mut player, 2.0 * CLIP_TICK_SECONDS, 1);
         assert!(!player.is_busy(), "the briefing waits for the idle clip");
         run(&mut schedule, &mut player, 14.0 * CLIP_TICK_SECONDS, 1);
@@ -909,41 +961,41 @@ mod tests {
     }
 
     #[test]
-    fn a_loaded_advisor_keeps_its_last_days_and_flag_and_frees_its_days() {
+    fn a_loaded_advisor_keeps_its_last_sub_ticks_and_flag_and_frees_the_rest() {
         // FUN_004397a0 saves DAT_006b28bc and +0x168; FUN_00439550 loads
         // them and zeroes +0x16c.
         let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
         schedule.next_free[3] = 99;
         schedule.enabled = true;
-        let (last_day, enabled) = schedule.saved();
+        let (last_tick, enabled) = schedule.saved();
         let loaded = AdvisorSchedule::from_save(
             AdvisorFaction::Alliance,
             briefing_messages(),
-            last_day,
+            last_tick,
             enabled,
         );
-        assert_eq!(loaded.saved(), (&schedule.last_day[..], true));
+        assert_eq!(loaded.saved(), (&schedule.last_tick[..], true));
         assert_eq!(loaded.next_free, vec![0; 0x58]);
         // A short table is fitted to the side's count.
         let short = AdvisorSchedule::from_save(AdvisorFaction::Empire, HashMap::new(), &[5], false);
-        assert_eq!(short.last_day.len(), 0x56);
-        assert_eq!(short.last_day[0], 5);
+        assert_eq!(short.last_tick.len(), 0x56);
+        assert_eq!(short.last_tick[0], 5);
         assert!(!short.saved().1);
     }
 
     #[test]
     fn each_sides_toggle_reactions_follow_its_table_one_per_call() {
         // FUN_004c2dd0 (C3POACT) and FUN_004c0d00 (IMP22ACT): one bit a
-        // call, in order; the message stays due its days from today.
+        // call, in order; the message stays due its sub-ticks from now.
         let mut alliance = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
         alliance.add_flags(reaction::GARRISONS_OFF | reaction::GARRISONS_ON);
         alliance.react(5);
-        assert_eq!(alliance.last_day[0x24], 15, "0x10 before 0x100");
-        assert_eq!(alliance.last_day[0x25], 0);
+        assert_eq!(alliance.last_tick[0x24], 15, "0x10 before 0x100");
+        assert_eq!(alliance.last_tick[0x25], 0);
         alliance.react(5);
-        assert_eq!(alliance.last_day[0x25], 55);
+        assert_eq!(alliance.last_tick[0x25], 55);
         assert_eq!(alliance.pending_flags(), 0);
-        for (bit, message, days) in [
+        for (bit, message, span) in [
             (reaction::MOVE_DONE, 0x23, 10),
             (reaction::PRODUCTION_ON, 0x26, 10),
             (reaction::PRODUCTION_OFF, 0x27, 50),
@@ -951,11 +1003,11 @@ mod tests {
         ] {
             alliance.add_flags(bit);
             alliance.react(7);
-            assert_eq!(alliance.last_day[message], 7 + days, "{bit:#x}");
+            assert_eq!(alliance.last_tick[message], 7 + span, "{bit:#x}");
         }
 
         let mut empire = AdvisorSchedule::new_game(AdvisorFaction::Empire, HashMap::new());
-        for (bit, message, days) in [
+        for (bit, message, span) in [
             (reaction::MOVE_DONE, 0x1c, 10),
             (reaction::GARRISONS_ON, 0x1d, 10),
             (reaction::PRODUCTION_ON, 0x1f, 10),
@@ -964,7 +1016,7 @@ mod tests {
         ] {
             empire.add_flags(bit);
             empire.react(3);
-            assert_eq!(empire.last_day[message], 3 + days, "{bit:#x}");
+            assert_eq!(empire.last_tick[message], 3 + span, "{bit:#x}");
         }
         // FUN_004c0d00 has no answer for 0x1000000: it stays.
         empire.add_flags(reaction::TOO_MANY_TOGGLES);
@@ -992,21 +1044,27 @@ mod tests {
     fn the_quips_draws_follow_the_ports_generator() {
         // port: a xorshift32 from 0x2545f491 stands in for FUN_005f5700(12);
         // its draws 6, 7, 4, 2, 3, 3, ... pick messages 0x50 + n below 6
-        // (Alliance, 40000 days) and 0x4e + n (Empire, 5 days).
-        for (faction, first, days) in [
+        // (Alliance, 40000 sub-ticks) and 0x4e + n (Empire, 5 sub-ticks).
+        for (faction, first, span) in [
             (AdvisorFaction::Alliance, 0x50, 40_000),
             (AdvisorFaction::Empire, 0x4e, 5),
         ] {
             let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
             let mut picked = Vec::new();
             for _ in 0..6 {
-                schedule.last_day.iter_mut().for_each(|day| *day = 0);
+                schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
                 schedule.add_flags(reaction::QUIP);
                 schedule.react(10);
-                picked.push(schedule.last_day.iter().position(|&day| day != 0).map(|index| {
-                    assert_eq!(schedule.last_day[index], 10 + days);
-                    index - first
-                }));
+                picked.push(
+                    schedule
+                        .last_tick
+                        .iter()
+                        .position(|&tick| tick != 0)
+                        .map(|index| {
+                            assert_eq!(schedule.last_tick[index], 10 + span);
+                            index - first
+                        }),
+                );
             }
             assert_eq!(picked, [None, None, Some(4), Some(2), Some(3), Some(3)], "{faction:?}");
         }
@@ -1024,50 +1082,59 @@ mod tests {
             let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
             for (opening, message) in expected.into_iter().enumerate() {
                 schedule.add_flags(reaction::MENU);
-                schedule.last_day.iter_mut().for_each(|day| *day = 0);
+                schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
                 schedule.react(9);
-                assert_eq!(schedule.last_day[message], 14, "{faction:?} opening {}", opening + 1);
+                assert_eq!(
+                    schedule.last_tick[message],
+                    14,
+                    "{faction:?} opening {}",
+                    opening + 1
+                );
             }
         }
     }
 
     #[test]
     fn after_fifty_quiet_days_an_idle_end_brings_a_quip() {
-        // FUN_00439ef0: DAT_006b28d0 + 0x32 < today sets 0x80000000; the
+        // FUN_00439ef0: DAT_006b28d0 + 0x32 < now sets 0x80000000; the
         // answer picks one of twelve, six with a message, and re-arms the
         // update (DAT_006b28bc = 1).
         let root = staged_root("quip");
         let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
-        schedule.last_day.iter_mut().for_each(|day| *day = 0);
+        schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
         let mut player = player(&root.0);
         run(&mut schedule, &mut player, 16.0 * CLIP_TICK_SECONDS, 50);
-        assert_eq!(schedule.pending_flags() & reaction::QUIP, 0, "day 50 is not past 50");
+        assert_eq!(
+            schedule.pending_flags() & reaction::QUIP,
+            0,
+            "tick 50 is not past 50"
+        );
         let mut picked = 0;
         for _ in 0..40 {
             schedule.add_flags(reaction::QUIP);
             schedule.enabled = false;
             schedule.react(60);
             assert!(schedule.enabled);
-            if let Some(index) = (0x50..0x56).find(|&index| schedule.last_day[index] != 0) {
-                assert_eq!(schedule.last_day[index], 60 + 40_000);
-                schedule.last_day[index] = 0;
+            if let Some(index) = (0x50..0x56).find(|&index| schedule.last_tick[index] != 0) {
+                assert_eq!(schedule.last_tick[index], 60 + 40_000);
+                schedule.last_tick[index] = 0;
                 picked += 1;
             }
         }
         assert!(picked > 0 && picked < 40, "{picked}");
-        // From the idle end: some rolls play a quip on day 51, none on 50.
-        let quips = |day| {
+        // From the idle end: some rolls play a quip on sub-tick 51, none on 50.
+        let quips = |tick| {
             (1..=12)
                 .filter(|&seed| {
                     let mut quiet = AdvisorSchedule::new_game(
                         AdvisorFaction::Alliance,
                         HashMap::from([(0x50 + seed % 6, vec![])]),
                     );
-                    quiet.last_day.iter_mut().for_each(|day| *day = 0);
+                    quiet.last_tick.iter_mut().for_each(|tick| *tick = 0);
                     quiet.roll = seed * 7919;
                     let mut clips = super::tests::player(&root.0);
-                    run(&mut quiet, &mut clips, 17.0 * CLIP_TICK_SECONDS, day);
-                    quiet.last_played == day
+                    run(&mut quiet, &mut clips, 17.0 * CLIP_TICK_SECONDS, tick);
+                    quiet.last_played == tick
                 })
                 .count()
         };
@@ -1090,7 +1157,7 @@ mod tests {
             AdvisorFaction::Alliance,
             HashMap::from([(0x24, vec![action(0x77)])]),
         );
-        schedule.last_day.iter_mut().for_each(|day| *day = 0);
+        schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
         schedule.last_played = 1;
         schedule.add_flags(reaction::GARRISONS_ON);
         let mut player = player(&root.0);
@@ -1108,24 +1175,27 @@ mod tests {
         // the first of +0x3c/+0x40 (Alliance) or +0x40/+0x44 (Empire), then
         // the second and forgets it; an empty team with decoys and no target
         // +0x50 / +0x54; any other refusal one of +0x44/+0x48 or
-        // +0x48/+0x4c. Ten days each.
+        // +0x48/+0x4c. Ten sub-ticks each.
         for (faction, same, decoy, generic) in [
             (AdvisorFaction::Alliance, (0x0f, 0x10), 0x14, [0x11, 0x12]),
             (AdvisorFaction::Empire, (0x10, 0x11), 0x15, [0x12, 0x13]),
         ] {
             let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
             let due = |schedule: &AdvisorSchedule| {
-                schedule.last_day.iter().position(|&day| day != 0 && day != ALWAYS)
+                schedule
+                    .last_tick
+                    .iter()
+                    .position(|&tick| tick != 0 && tick != ALWAYS)
             };
             let clear = |schedule: &mut AdvisorSchedule| {
-                schedule.last_day.iter_mut().for_each(|day| *day = 0);
+                schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
             };
             clear(&mut schedule);
             schedule.refused((0x40, 0x01), false, 4);
             let first = due(&schedule).unwrap();
             // The port's generator's first roll from its seed is even.
             assert_eq!(first, generic[0], "{faction:?} {first:#x}");
-            assert_eq!(schedule.last_day[first], 14);
+            assert_eq!(schedule.last_tick[first], 14);
             clear(&mut schedule);
             schedule.refused((0x40, 0x01), false, 4);
             assert_eq!(due(&schedule), Some(same.0));
@@ -1148,9 +1218,15 @@ mod tests {
         let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
         let mut seen = std::collections::BTreeSet::new();
         for code in 0..8 {
-            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
             schedule.refused((0x40, code), false, 1);
-            seen.insert(schedule.last_day.iter().position(|&day| day != 0).unwrap());
+            seen.insert(
+                schedule
+                    .last_tick
+                    .iter()
+                    .position(|&tick| tick != 0)
+                    .unwrap(),
+            );
         }
         assert_eq!(seen.into_iter().collect::<Vec<_>>(), [0x11, 0x12]);
     }
@@ -1158,9 +1234,9 @@ mod tests {
     #[test]
     fn each_sides_events_schedule_their_messages() {
         // FUN_004c44b0 (Alliance) / FUN_004c22f0 (Empire): +0x168[offset / 4]
-        // = today + days.
+        // = now + span.
         // Every case, as the byte offsets the decompiles write.
-        for (faction, code, message, days) in [
+        for (faction, code, message, span) in [
             (AdvisorFaction::Alliance, 0x1, 0xd0 / 4, 10),
             (AdvisorFaction::Alliance, 0x2, 0xd4 / 4, 10),
             (AdvisorFaction::Alliance, 0x3, 0xe0 / 4, 5),
@@ -1233,12 +1309,13 @@ mod tests {
             (AdvisorFaction::Empire, 0x2f, 0x90 / 4, 10),
         ] {
             let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
-            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
             schedule.event(code, 7);
-            let due: Vec<usize> =
-                (0..schedule.last_day.len()).filter(|&id| schedule.last_day[id] != 0).collect();
+            let due: Vec<usize> = (0..schedule.last_tick.len())
+                .filter(|&id| schedule.last_tick[id] != 0)
+                .collect();
             assert_eq!(due, [message as usize], "{faction:?} {code:#x}");
-            assert_eq!(schedule.last_day[message as usize], 7 + days);
+            assert_eq!(schedule.last_tick[message as usize], 7 + span);
         }
         // Codes a side has no case for: 0x2d on the Alliance, 0x2c and 0x10
         // on the Empire.
@@ -1248,9 +1325,12 @@ mod tests {
             (AdvisorFaction::Empire, 0x10),
         ] {
             let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
-            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
             schedule.event(code, 7);
-            assert!(schedule.last_day.iter().all(|&day| day == 0), "{faction:?} {code:#x}");
+            assert!(
+                schedule.last_tick.iter().all(|&tick| tick == 0),
+                "{faction:?} {code:#x}"
+            );
         }
     }
 
@@ -1264,27 +1344,36 @@ mod tests {
             (AdvisorFaction::Empire, 0x42, 0x46),
         ] {
             let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
-            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
             schedule.event(0x2a, 3);
-            let set: Vec<usize> = (advice..advice + 4).filter(|&id| schedule.last_day[id] != 0).collect();
+            let set: Vec<usize> = (advice..advice + 4)
+                .filter(|&id| schedule.last_tick[id] != 0)
+                .collect();
             assert_eq!(set.len(), 1, "{faction:?}");
-            assert_eq!(schedule.last_day[set[0]], 13);
+            assert_eq!(schedule.last_tick[set[0]], 13);
             schedule.event(0x2a, 3);
             assert_eq!(
-                (advice..advice + 4).filter(|&id| schedule.last_day[id] != 0).count(),
+                (advice..advice + 4)
+                    .filter(|&id| schedule.last_tick[id] != 0)
+                    .count(),
                 1,
                 "{faction:?}: one still waits"
             );
             schedule.event(0x2b, 3);
             assert_eq!(
-                (other..other + 2).filter(|&id| schedule.last_day[id] != 0).count(),
+                (other..other + 2)
+                    .filter(|&id| schedule.last_tick[id] != 0)
+                    .count(),
                 1,
                 "{faction:?}"
             );
             schedule.event(0x2b, 3);
             schedule.event(0x2b, 3);
             schedule.event(0x2b, 3);
-            assert!((other..other + 2).all(|id| schedule.last_day[id] == 13), "{faction:?}");
+            assert!(
+                (other..other + 2).all(|id| schedule.last_tick[id] == 13),
+                "{faction:?}"
+            );
         }
     }
 
@@ -1296,10 +1385,10 @@ mod tests {
     }
 
     #[test]
-    fn the_briefing_waits_for_a_day_after_its_next_free_day() {
-        // FUN_004c0a60 plays a message only when its next free day (0 in a
-        // new schedule) is below today.
-        let root = staged_root("day");
+    fn the_briefing_waits_for_a_sub_tick_after_its_next_free_one() {
+        // FUN_004c0a60 plays a message only when its next free sub-tick (0 in a
+        // new schedule) is below now.
+        let root = staged_root("tick");
         let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
         let mut player = player(&root.0);
         run(&mut schedule, &mut player, 16.0 * CLIP_TICK_SECONDS, 0);

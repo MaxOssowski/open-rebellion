@@ -257,6 +257,14 @@ captions are under "The briefing" above.)
 
 ## Scheduling (read 2026-10-23 and 2026-10-28)
 
+> **Correction (2026-10-29).** `DAT_006b28cc` (`FUN_004fcee0`) is the
+> scheduler's sub-tick, not the day: `FUN_0051dea0` raises it once a
+> sub-tick, and a day has the speed's rate of them (600 Very Slow, 60
+> Slow, 12 Medium, 4 Fast; `agent-advice-list.md`, "The clock"). Every
+> "day" below (the last days, next free days, 40000, `0x3c`, the reactions'
+> spans, the quip's 50) counts sub-ticks. The port's schedule runs on
+> `GameClock::sub_tick` since then.
+
 - The schedule `+0x168` is indexed by message id: `table[id]` is the last
   day the message may still play (`FUN_004c0a60` drops a value under the
   day `DAT_006b28cc`, from `FUN_004fcee0`), and `+0x16c[id]` its next

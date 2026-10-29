@@ -1,0 +1,30 @@
+[advisor] reaction event code=0x2a
+[advisor] reaction event code=0x2a
+[advisor] reaction menu_opened count=1
+[advisor] clip voice directory=alsprite-dll wave=1219 seconds=2.956 loaded=true muted=false
+[advisor] reaction menu_opened count=1
+[advisor] reaction menu_opened count=1
+[advisor] reaction flags=0x10
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=false
+[advisor] clip voice directory=alsprite-dll wave=1174 seconds=1.321 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=false
+[advisor] clip voice directory=alsprite-dll wave=1137 seconds=3.218 loaded=true muted=false
+[ai] day=1 speed=Fast passes=4 orders=4 second_orders=0 ms=17.0
+[ai] day=2 speed=Fast passes=4 orders=4 second_orders=0 ms=1.0
+[ai] day=3 speed=Fast passes=4 orders=4 second_orders=0 ms=5.0
+[ai] day=4 speed=Fast passes=4 orders=3 second_orders=0 ms=2.0
+[ai] day=5 speed=Fast passes=4 orders=2 second_orders=0 ms=1.0
+[ai] day=6 speed=Fast passes=4 orders=0 second_orders=0 ms=1.0
+[ai] day=7 speed=Fast passes=4 orders=1 second_orders=0 ms=1.0
+[ai] day=8 speed=Fast passes=4 orders=0 second_orders=0 ms=1.0
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=false
+[ai] day=9 speed=Fast passes=4 orders=1 second_orders=0 ms=1.0
+[ai] day=10 speed=Fast passes=4 orders=0 second_orders=0 ms=2.0
+[ai] day=11 speed=Fast passes=4 orders=0 second_orders=0 ms=1.0
+[ai] day=12 speed=Fast passes=4 orders=1 second_orders=0 ms=0.0
+[ai] day=13 speed=Fast passes=4 orders=0 second_orders=0 ms=1.0
+[ai] day=14 speed=Fast passes=4 orders=0 second_orders=0 ms=1.0
+[ai] day=15 speed=Fast passes=4 orders=2 second_orders=0 ms=1.0
+[advisor] clip voice directory=alsprite-dll wave=1291 seconds=0.100 loaded=true muted=false
+[ai] day=16 speed=Fast passes=4 orders=0 second_orders=0 ms=1.0
+[ai] day=17 speed=Fast passes=4 orders=0 second_orders=0 ms=0.0

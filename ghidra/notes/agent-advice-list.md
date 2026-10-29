@@ -106,8 +106,9 @@ So the period is 300 sub-ticks: half a day at Very Slow, 25 days at
 Medium, 75 at Fast.
 
 The advisor's own times (`DAT_006b28cc` in `FUN_004c2dd0`, `FUN_004c0d00`,
-`FUN_004c0a60`, `FUN_004c2b20`) are the same sub-ticks; the port's
-advisor schedule counts them as days, which is wrong and open.
+`FUN_004c0a60`, `FUN_004c2b20`) are the same sub-ticks. The port's
+advisor schedule counted them as days until 2026-10-29
+(`evidence/2026-10-29-advisor-sub-ticks/`).
 
 ## Saved
 

@@ -240,7 +240,8 @@ pub struct PlayerAgent {
     /// ends, `FUN_00439ef0`). Saved with the agent (`FUN_004397a0`).
     advisor_enabled: bool,
     /// The advisor's schedule, the class's `+0x168`: per message id, the
-    /// last day it may still play. Saved with its count (`FUN_004397a0`);
+    /// last sub-tick it may still play (`FUN_004fcee0`'s count, which the
+    /// field's name predates). Saved with its count (`FUN_004397a0`);
     /// the next free days (`+0x16c`) are not, and load as 0
     /// (`FUN_00439550`). Empty for an agent without an advisor.
     advisor_last_day: Vec<u32>,
@@ -298,7 +299,7 @@ impl PlayerAgent {
         self.translate
     }
 
-    /// The advisor's saved state: its schedule's last days and whether its
+    /// The advisor's saved state: its schedule's last sub-ticks and whether its
     /// update runs.
     #[must_use]
     pub fn advisor_state(&self) -> (&[u32], bool) {

@@ -9,7 +9,8 @@
 // - "key": Alt+H opens the same window;
 // - the menu's Galaxy Overview row and Alt+O open the Status window on the
 //   galaxy;
-// - Alt+G's reaction plays, then at Fast speed fifty quiet days bring a
+// - Alt+G's reaction plays, then at Fast speed fifty quiet sub-ticks
+//   (FUN_004fcee0; 4 a day at Fast, about 13 days) bring a
 //   quip, an op-0x13 clip (FUN_00412c40).
 //
 // Screenshots of the menu and the window are kept for comparison with the
@@ -213,7 +214,7 @@ async function run(browser, base, faction) {
     await waitFor(page, log, "the droid answers the garrisons",
       () => log.some((line) => line.includes(`[advisor] clip voice ${faction.garrisonsVoice}`)), 30_000);
 
-    // A quip: once fifty days pass without a message, each idle end sets
+    // A quip: once fifty sub-ticks pass without a message, each idle end sets
     // 0x80000000 (FUN_00439ef0) and the advisor rolls FUN_005f5700(12)
     // below 6. The port's generator rolls 6, 7, then 4 from its seed, so
     // the third idle end plays message 0x54 / 0x52, record 905 (op 0x13).
@@ -228,7 +229,7 @@ async function run(browser, base, faction) {
     const deadline = Date.now() + 240_000;
     let handled = 0;
     while (!quip()) {
-      if (Date.now() > deadline) throw new Error(`fifty quiet days bring a quip: ${JSON.stringify(log.slice(-8))}`);
+      if (Date.now() > deadline) throw new Error(`fifty quiet sub-ticks bring a quip: ${JSON.stringify(log.slice(-8))}`);
       if (battles() > handled) {
         handled = battles();
         // The Battle Alert's Simulate, then the results' close box
