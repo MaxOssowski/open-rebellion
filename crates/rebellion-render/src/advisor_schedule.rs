@@ -96,6 +96,69 @@ pub struct AdvisorSchedule {
     /// `DAT_006b28b0` bit `0x1000`, Translate Counterpart: entries with flag
     /// bit 0 play only while it is set (`FUN_004c0a60`).
     translate: bool,
+    /// The reaction bits of `DAT_006b28b0` not yet answered
+    /// ([`Self::add_flags`]).
+    flags: u32,
+    /// `DAT_006b28b8`: the Agent menu's openings since the last answer.
+    menu_openings: u32,
+    /// `DAT_006b28d0`: the day the advisor last played a message.
+    last_played: u32,
+    /// The quip's roll (`FUN_005f5700(12)`). hyp: the original's generator
+    /// is the interface's; a small xorshift stands in.
+    roll: u32,
+}
+
+/// The reaction bits of `DAT_006b28b0` the advisor answers
+/// (`FUN_004c2dd0`, `FUN_004c0d00`).
+pub mod reaction {
+    /// `FUN_0043a2a0`: a ship move the agent ordered arrived.
+    pub const MOVE_DONE: u32 = 0x1;
+    /// `FUN_00439d60`: Manage Garrisons on, Production on, Garrisons off,
+    /// Production off, and the toggle counter past 3.
+    pub const GARRISONS_ON: u32 = 0x10;
+    pub const PRODUCTION_ON: u32 = 0x20;
+    pub const GARRISONS_OFF: u32 = 0x100;
+    pub const PRODUCTION_OFF: u32 = 0x200;
+    pub const TOO_MANY_TOGGLES: u32 = 0x100_0000;
+    /// `FUN_00439ed0`: the Agent menu opened (`FUN_0041d160` →
+    /// `FUN_00436640` → `FUN_00487c10`).
+    pub const MENU: u32 = 0x200_0000;
+    /// `FUN_00439ef0`: the idle clip ended after 50 quiet days.
+    pub const QUIP: u32 = 0x8000_0000;
+}
+
+/// One side's answer to a reaction bit: the message and how many days it
+/// stays due.
+struct Reaction {
+    bit: u32,
+    message: u32,
+    days: u32,
+}
+
+/// `FUN_004c2dd0` (Alliance, C3POACT) and `FUN_004c0d00` (Empire,
+/// IMP22ACT), in their order: one bit answered a call. The menu's and the
+/// quip's messages are picked apart ([`AdvisorSchedule::react`]).
+const fn reactions(faction: AdvisorFaction) -> &'static [Reaction] {
+    use reaction::{
+        GARRISONS_OFF, GARRISONS_ON, MOVE_DONE, PRODUCTION_OFF, PRODUCTION_ON, TOO_MANY_TOGGLES,
+    };
+    match faction {
+        AdvisorFaction::Alliance => &[
+            Reaction { bit: MOVE_DONE, message: 0x23, days: 10 },
+            Reaction { bit: GARRISONS_ON, message: 0x24, days: 10 },
+            Reaction { bit: PRODUCTION_ON, message: 0x26, days: 10 },
+            Reaction { bit: GARRISONS_OFF, message: 0x25, days: 0x32 },
+            Reaction { bit: PRODUCTION_OFF, message: 0x27, days: 0x32 },
+            Reaction { bit: TOO_MANY_TOGGLES, message: 0x4f, days: 5 },
+        ],
+        AdvisorFaction::Empire => &[
+            Reaction { bit: MOVE_DONE, message: 0x1c, days: 10 },
+            Reaction { bit: GARRISONS_ON, message: 0x1d, days: 10 },
+            Reaction { bit: PRODUCTION_ON, message: 0x1f, days: 10 },
+            Reaction { bit: GARRISONS_OFF, message: 0x1e, days: 0x32 },
+            Reaction { bit: PRODUCTION_OFF, message: 0x20, days: 0x32 },
+        ],
+    }
 }
 
 impl AdvisorSchedule {
@@ -118,6 +181,75 @@ impl AdvisorSchedule {
             flushed: false,
             holding_input: false,
             translate: true,
+            flags: 0,
+            menu_openings: 0,
+            last_played: 0,
+            roll: 0x2545_f491,
+        }
+    }
+
+    /// Reaction bits to answer ([`reaction`]): the agent's toggles, or the
+    /// Agent menu's opening, which also counts (`FUN_00439ed0`).
+    pub fn add_flags(&mut self, bits: u32) {
+        if bits & reaction::MENU != 0 {
+            self.menu_openings += 1;
+        }
+        self.flags |= bits;
+    }
+
+    /// The bits not yet answered.
+    #[must_use]
+    pub const fn pending_flags(&self) -> u32 {
+        self.flags
+    }
+
+    /// `FUN_004c2dd0` / `FUN_004c0d00` with the agent active: the first bit
+    /// in the side's order schedules its message, due for its days from
+    /// `today`, and is cleared. The menu's answer counts on: the Alliance's
+    /// `0x4a + n`, the Empire's `0x49 + n`, kept within three messages and
+    /// starting over past them. The quip rolls one of twelve; six pick a
+    /// message (`0x50..` for 40000 days, `0x4e..` for 5) and it re-arms
+    /// the update.
+    fn react(&mut self, today: u32) {
+        if let Some(reaction) = reactions(self.faction)
+            .iter()
+            .find(|reaction| self.flags & reaction.bit != 0)
+        {
+            self.flags &= !reaction.bit;
+            self.last_day[reaction.message as usize] = today + reaction.days;
+            return;
+        }
+        if self.flags & reaction::MENU != 0 {
+            self.flags &= !reaction::MENU;
+            let (base, low, high) = match self.faction {
+                AdvisorFaction::Alliance => (0x4a, 0x4c, 0x4e),
+                AdvisorFaction::Empire => (0x49, 0x4b, 0x4d),
+            };
+            let mut message = base + self.menu_openings;
+            if message < low {
+                message = low;
+            } else if message > high {
+                message = high;
+                self.menu_openings = 0;
+            }
+            self.last_day[message as usize] = today + 5;
+            return;
+        }
+        if self.flags & reaction::QUIP != 0 {
+            self.flags &= !reaction::QUIP;
+            // xorshift32.
+            self.roll ^= self.roll << 13;
+            self.roll ^= self.roll >> 17;
+            self.roll ^= self.roll << 5;
+            let pick = self.roll % 12;
+            if pick < 6 {
+                let (first, days) = match self.faction {
+                    AdvisorFaction::Alliance => (0x50, ALWAYS),
+                    AdvisorFaction::Empire => (0x4e, 5),
+                };
+                self.last_day[(first + pick) as usize] = today + days;
+            }
+            self.enabled = true;
         }
     }
 
@@ -212,8 +344,13 @@ impl AdvisorSchedule {
             )]
             let idle_length = IDLE_TICKS as f32 * CLIP_TICK_SECONDS;
             if self.idle_seconds >= idle_length {
+                // FUN_00439ef0: the update runs again, and after 50 quiet
+                // days the advisor has a quip.
                 self.idle_seconds -= idle_length;
                 self.enabled = true;
+                if self.last_played + 0x32 < today {
+                    self.flags |= reaction::QUIP;
+                }
             }
         }
         if self.enabled {
@@ -233,11 +370,15 @@ impl AdvisorSchedule {
             }
             if self.next_free[id] < today {
                 self.next_free[id] = today + REST_DAYS;
+                self.last_played = today;
                 self.queue_message(id as u32, player);
                 return;
             }
         }
+        // FUN_004c0d00: nothing due; the update stops and a pending
+        // reaction is scheduled.
         self.enabled = false;
+        self.react(today);
     }
 
     /// `FUN_0041d660` -> `FUN_0042b1d0` for each entry: the record comes
@@ -634,6 +775,177 @@ mod tests {
         assert_eq!(short.last_day.len(), 0x56);
         assert_eq!(short.last_day[0], 5);
         assert!(!short.saved().1);
+    }
+
+    #[test]
+    fn each_sides_toggle_reactions_follow_its_table_one_per_call() {
+        // FUN_004c2dd0 (C3POACT) and FUN_004c0d00 (IMP22ACT): one bit a
+        // call, in order; the message stays due its days from today.
+        let mut alliance = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
+        alliance.add_flags(reaction::GARRISONS_OFF | reaction::GARRISONS_ON);
+        alliance.react(5);
+        assert_eq!(alliance.last_day[0x24], 15, "0x10 before 0x100");
+        assert_eq!(alliance.last_day[0x25], 0);
+        alliance.react(5);
+        assert_eq!(alliance.last_day[0x25], 55);
+        assert_eq!(alliance.pending_flags(), 0);
+        for (bit, message, days) in [
+            (reaction::MOVE_DONE, 0x23, 10),
+            (reaction::PRODUCTION_ON, 0x26, 10),
+            (reaction::PRODUCTION_OFF, 0x27, 50),
+            (reaction::TOO_MANY_TOGGLES, 0x4f, 5),
+        ] {
+            alliance.add_flags(bit);
+            alliance.react(7);
+            assert_eq!(alliance.last_day[message], 7 + days, "{bit:#x}");
+        }
+
+        let mut empire = AdvisorSchedule::new_game(AdvisorFaction::Empire, HashMap::new());
+        for (bit, message, days) in [
+            (reaction::MOVE_DONE, 0x1c, 10),
+            (reaction::GARRISONS_ON, 0x1d, 10),
+            (reaction::PRODUCTION_ON, 0x1f, 10),
+            (reaction::GARRISONS_OFF, 0x1e, 50),
+            (reaction::PRODUCTION_OFF, 0x20, 50),
+        ] {
+            empire.add_flags(bit);
+            empire.react(3);
+            assert_eq!(empire.last_day[message], 3 + days, "{bit:#x}");
+        }
+        // FUN_004c0d00 has no answer for 0x1000000: it stays.
+        empire.add_flags(reaction::TOO_MANY_TOGGLES);
+        empire.react(3);
+        assert_eq!(empire.pending_flags(), reaction::TOO_MANY_TOGGLES);
+    }
+
+    #[test]
+    fn only_the_menus_bit_counts_an_opening_and_answered_bits_clear() {
+        // FUN_00439ed0 counts the menu's openings alone; FUN_004c2dd0
+        // clears each bit it answers.
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
+        schedule.add_flags(reaction::GARRISONS_ON);
+        assert_eq!(schedule.menu_openings, 0);
+        schedule.add_flags(reaction::MENU | reaction::QUIP);
+        assert_eq!(schedule.menu_openings, 1);
+        schedule.react(1);
+        schedule.react(1);
+        assert_eq!(schedule.pending_flags(), reaction::QUIP);
+        schedule.react(1);
+        assert_eq!(schedule.pending_flags(), 0);
+    }
+
+    #[test]
+    fn the_quips_draws_follow_the_ports_generator() {
+        // port: a xorshift32 from 0x2545f491 stands in for FUN_005f5700(12);
+        // its draws 6, 7, 4, 2, 3, 3, ... pick messages 0x50 + n below 6
+        // (Alliance, 40000 days) and 0x4e + n (Empire, 5 days).
+        for (faction, first, days) in [
+            (AdvisorFaction::Alliance, 0x50, 40_000),
+            (AdvisorFaction::Empire, 0x4e, 5),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            let mut picked = Vec::new();
+            for _ in 0..6 {
+                schedule.last_day.iter_mut().for_each(|day| *day = 0);
+                schedule.add_flags(reaction::QUIP);
+                schedule.react(10);
+                picked.push(schedule.last_day.iter().position(|&day| day != 0).map(|index| {
+                    assert_eq!(schedule.last_day[index], 10 + days);
+                    index - first
+                }));
+            }
+            assert_eq!(picked, [None, None, Some(4), Some(2), Some(3), Some(3)], "{faction:?}");
+        }
+    }
+
+    #[test]
+    fn the_agent_menus_answers_count_on_within_three_messages() {
+        // FUN_00439ed0 counts DAT_006b28b8; the answer is 0x4a + n kept in
+        // 0x4c..0x4e (Alliance), 0x49 + n in 0x4b..0x4d (Empire), and the
+        // count starts over past the last.
+        for (faction, expected) in [
+            (AdvisorFaction::Alliance, [0x4c, 0x4c, 0x4d, 0x4e, 0x4e, 0x4c]),
+            (AdvisorFaction::Empire, [0x4b, 0x4b, 0x4c, 0x4d, 0x4d, 0x4b]),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            for (opening, message) in expected.into_iter().enumerate() {
+                schedule.add_flags(reaction::MENU);
+                schedule.last_day.iter_mut().for_each(|day| *day = 0);
+                schedule.react(9);
+                assert_eq!(schedule.last_day[message], 14, "{faction:?} opening {}", opening + 1);
+            }
+        }
+    }
+
+    #[test]
+    fn after_fifty_quiet_days_an_idle_end_brings_a_quip() {
+        // FUN_00439ef0: DAT_006b28d0 + 0x32 < today sets 0x80000000; the
+        // answer picks one of twelve, six with a message, and re-arms the
+        // update (DAT_006b28bc = 1).
+        let root = staged_root("quip");
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
+        schedule.last_day.iter_mut().for_each(|day| *day = 0);
+        let mut player = player(&root.0);
+        run(&mut schedule, &mut player, 16.0 * CLIP_TICK_SECONDS, 50);
+        assert_eq!(schedule.pending_flags() & reaction::QUIP, 0, "day 50 is not past 50");
+        let mut picked = 0;
+        for _ in 0..40 {
+            schedule.add_flags(reaction::QUIP);
+            schedule.enabled = false;
+            schedule.react(60);
+            assert!(schedule.enabled);
+            if let Some(index) = (0x50..0x56).find(|&index| schedule.last_day[index] != 0) {
+                assert_eq!(schedule.last_day[index], 60 + 40_000);
+                schedule.last_day[index] = 0;
+                picked += 1;
+            }
+        }
+        assert!(picked > 0 && picked < 40, "{picked}");
+        // From the idle end: some rolls play a quip on day 51, none on 50.
+        let quips = |day| {
+            (1..=12)
+                .filter(|&seed| {
+                    let mut quiet = AdvisorSchedule::new_game(
+                        AdvisorFaction::Alliance,
+                        HashMap::from([(0x50 + seed % 6, vec![])]),
+                    );
+                    quiet.last_day.iter_mut().for_each(|day| *day = 0);
+                    quiet.roll = seed * 7919;
+                    let mut clips = super::tests::player(&root.0);
+                    run(&mut quiet, &mut clips, 17.0 * CLIP_TICK_SECONDS, day);
+                    quiet.last_played == day
+                })
+                .count()
+        };
+        assert_eq!(quips(50), 0);
+        assert!(quips(51) > 0);
+    }
+
+    #[test]
+    fn a_toggles_reaction_plays_after_the_next_idle_end() {
+        // FUN_004c0a60 finds nothing due, FUN_004c2dd0 schedules 0x24; the
+        // next idle end plays it.
+        let root = staged_root("toggle");
+        let action = |code| ScriptEntry {
+            record: 0x2710,
+            flags: 0,
+            a: 2,
+            b: code,
+        };
+        let mut schedule = AdvisorSchedule::new_game(
+            AdvisorFaction::Alliance,
+            HashMap::from([(0x24, vec![action(0x77)])]),
+        );
+        schedule.last_day.iter_mut().for_each(|day| *day = 0);
+        schedule.last_played = 1;
+        schedule.add_flags(reaction::GARRISONS_ON);
+        let mut player = player(&root.0);
+        let events = run(&mut schedule, &mut player, 34.0 * CLIP_TICK_SECONDS, 2);
+        assert!(
+            events.iter().any(|event| matches!(event, ClipEvent::Finished(ClipAction { kind: 2, code: 0x77 }))),
+            "{events:?}"
+        );
+        assert_eq!(schedule.last_played, 2);
     }
 
     #[test]

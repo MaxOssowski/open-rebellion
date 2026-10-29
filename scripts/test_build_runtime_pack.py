@@ -236,10 +236,10 @@ class RuntimePackBuilderTests(unittest.TestCase):
                 (PACKER.KIND_ADVISOR_FRAME, "albrief-dll/rcdata/4155"),
                 (PACKER.KIND_ADVISOR_FRAME, "alsprite-dll/rcdata/4155"),
                 (PACKER.KIND_AUDIO, "advisor/albrief-dll/1155.wav"),
+                # The reactions' voices come from the sprite DLL.
+                (PACKER.KIND_AUDIO, "advisor/alsprite-dll/1155.wav"),
             ):
                 self.assertIn(expected, entries)
-            # Only the briefing's voices are played so far.
-            self.assertNotIn((PACKER.KIND_AUDIO, "advisor/alsprite-dll/1155.wav"), entries)
 
     def test_edata_artwork_is_validated_and_namespaced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

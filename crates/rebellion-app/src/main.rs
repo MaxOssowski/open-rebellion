@@ -1544,6 +1544,13 @@ async fn main() {
             if let Some(schedule) = advisor_schedule.as_mut() {
                 let today = u32::try_from(clock.tick).unwrap_or(u32::MAX).saturating_add(1);
                 schedule.set_translate(player_agent.translate());
+                // The agent's toggles (FUN_00439d60) reach the advisor's
+                // reactions (FUN_004c2dd0 / FUN_004c0d00).
+                let toggles = player_agent.advisor_flags.take();
+                if toggles != 0 {
+                    macroquad::logging::info!("[advisor] reaction flags={:#x}", toggles);
+                    schedule.add_flags(toggles);
+                }
                 schedule.update(dt, today, &mut advisor_state.clips);
                 // The agent carries the advisor's state into the save
                 // (FUN_004397a0).
@@ -4620,13 +4627,20 @@ async fn main() {
                     }
                     // A right click on the agent's droid opens the Agent
                     // menu (list 0xdead, FUN_00487900).
-                    if speed_input {
-                        rebellion_render::agent_menu::open_agent_menu_on_right_click(
+                    if speed_input
+                        && rebellion_render::agent_menu::open_agent_menu_on_right_click(
                             ctx,
                             &mut agent_menu_state,
                             cockpit_layout,
                             cockpit_state.faction,
-                        );
+                        )
+                    {
+                        // FUN_0041d160 → FUN_00436640 → FUN_00439ed0: the
+                        // droid answers the menu's opening.
+                        if let Some(schedule) = advisor_schedule.as_mut() {
+                            schedule.add_flags(rebellion_render::advisor_schedule::reaction::MENU);
+                        }
+                        macroquad::logging::info!("[advisor] reaction menu_opened count=1");
                     }
                     let agent_view = rebellion_render::agent_menu::AgentMenuView {
                         garrisons: player_agent.is_running(AutomationModule::Garrisons),

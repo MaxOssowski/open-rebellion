@@ -1,0 +1,76 @@
+{
+  "status": "pass",
+  "wasm_sha256": "4c0c0cf066ec9b369e2972ee99252d9ab322e621344f771d9684686e6c0e9ea5",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator",
+        "[agent] command=manage_garrisons status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "586deaa7fd69f96cedcca85ef9584b0261be7b3747e5fcc6532be6c4e136c53e"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "6958a9ad78bb3a2468e4ad40c030825a3933df9ffbf0af35ddc0dce51ae78e77"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "4e0febfd91fc74042a371633b0f150b5f634827d908d58a6e1b8b477d4fce758"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "1fc05d91525a1c60d96d98708b913575aecbea2ac3fe56cfe89c221f82779564"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "8e61897d22b856db235fd9a60b65c77db36b6ef07ae040810f9f29a9bc957e68"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator",
+        "[agent] command=manage_garrisons status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "e49ce7db355c0cd05c5a8ca5db922e7965b76e87fa4a017e45f254ef12083703"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "a0c8a542561aa07afa5e600bc54987c9e4b5d838936f78178cb5f0883882edf5"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "30a4b0909ba11aec060a927bd27f9c5e1ce60b121abddda34d8f576fab3accaf"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "5ca8703080aec8cff049e2a2e59a5ccef88582c965af37074b27835efa9dcb37"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "6e741707635ef1d1825d7aae2ab1a322a53a238fdedb2461cd6b03d260cb22b7"
+        }
+      ]
+    }
+  ]
+}

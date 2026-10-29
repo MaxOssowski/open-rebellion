@@ -39,8 +39,10 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // on its left for the Alliance. The port's row is at y 307; the A0 capture
 // of the Empire's menu, opened at (46, 401), has it at y 311.
 const FACTIONS = [
-  { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307], overview: [480, 287] },
-  { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307], overview: [100, 287] },
+  { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307], overview: [480, 287],
+    garrisonsVoice: "directory=alsprite-dll wave=1137" },
+  { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307], overview: [100, 287],
+    garrisonsVoice: "directory=emsprite-dll wave=1135" },
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
@@ -192,6 +194,20 @@ async function run(browser, base, faction) {
     await page.waitForTimeout(400);
     await shot("agent-menu-translate");
     await page.keyboard.press("Escape");
+
+    // A reaction: Alt+G turns Manage Garrisons on (FUN_00439d60, 0x10);
+    // once nothing is due, FUN_004c2dd0 / FUN_004c0d00 schedule message
+    // 0x24 / 0x1d, which plays its sprite-DLL voice at the next idle end.
+    await page.keyboard.down("Alt");
+    await frames(page);
+    await page.keyboard.down("KeyG");
+    await frames(page);
+    await page.keyboard.up("KeyG");
+    await page.keyboard.up("Alt");
+    await waitFor(page, log, "the flags reach the advisor",
+      () => log.some((line) => line.includes("[advisor] reaction flags=0x10")), 5_000);
+    await waitFor(page, log, "the droid answers the garrisons",
+      () => log.some((line) => line.includes(`[advisor] clip voice ${faction.garrisonsVoice}`)), 30_000);
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

@@ -49,6 +49,10 @@ RAW_TABLES = (
 # The briefing DLLs (FUN_0042d650, DLL slot 0xd), whose voices the advisor's
 # clip player starts (advisor_clip.rs).
 BRIEFING_UI_DIRS = frozenset({"albrief-dll", "embrief-dll"})
+# The DLLs whose WAVE voices the advisor plays: the briefings', and the
+# sprite DLLs' for its reactions (FUN_004c2dd0 / FUN_004c0d00 schedule
+# messages whose records are slot 9's).
+ADVISOR_VOICE_DIRS = BRIEFING_UI_DIRS | {"alsprite-dll", "emsprite-dll"}
 
 def validate_options_resources(ui_dir: Path) -> None:
     """Refuse stale UI staging that would omit the original confirmation controls."""
@@ -114,7 +118,7 @@ def collect_entries(
                 )
 
         wave_dir = dll_dir / "WAVE"
-        if dll_dir.name in BRIEFING_UI_DIRS and wave_dir.is_dir():
+        if dll_dir.name in ADVISOR_VOICE_DIRS and wave_dir.is_dir():
             for path in sorted(wave_dir.glob("*.wav"), key=lambda item: int(item.stem)):
                 int(path.stem)
                 entries.append(

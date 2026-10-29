@@ -301,6 +301,35 @@ captions are under "The briefing" above.)
   `DAT_006b14b4`), so the short form's clip, queued after the flush,
   plays.
 
+## The reactions (read 2026-10-29)
+
+With nothing due, `FUN_004c0a60` calls `FUN_004c2dd0` (Alliance) /
+`FUN_004c0d00` (Empire); with the agent active (`+0x10`, 1 from
+`FUN_00439320`) they answer one bit of `DAT_006b28b0` a call, writing
+`+0x168[id] = today + days`:
+
+| Bit | Alliance | Empire |
+|---|---|---|
+| `0x4000000` | `0x21` for 40000, the agent inactive, `FUN_0043a230` | `0x1a` for 10, inactive |
+| `0x2000` (skip) | `0x28` for 40000, `FUN_0041da30` | `0x49` for 40000 |
+| `0x1` | `0x23`, 10 | `0x1c`, 10 |
+| `0x10` | `0x24`, 10 | `0x1d`, 10 |
+| `0x20` | `0x26`, 10 | `0x1f`, 10 |
+| `0x100` | `0x25`, 50 | `0x1e`, 50 |
+| `0x200` | `0x27`, 50 | `0x20`, 50 |
+| `0x1000000` | `0x4f`, 5 | none |
+| `0x2000000` | `0x4a + DAT_006b28b8` in `0x4c..0x4e`, 5; past `0x4e` the count restarts | `0x49 + n` in `0x4b..0x4d`, 5 |
+| `0x80000000` | `FUN_005f5700(12)` below 6: `0x50 + n`, 40000; `DAT_006b28bc = 1` | `0x4e + n`, 5 |
+
+With the agent inactive only `0x8000000` is answered (`0x22` / `0x1b`,
+the agent active again) and the bits are masked to `0xc000`.
+`0x2000000` comes from opening the Agent menu (`FUN_0041d160(.., 1)` →
+`FUN_00436640` → `FUN_00487c10` → `FUN_00439ed0`, which also counts
+`DAT_006b28b8`); `0x80000000` from the idle clip's end once
+`DAT_006b28d0 + 0x32 < today` (`FUN_00439ef0`). Each reaction message
+holds one sprite-DLL record. Ported 2026-10-29 but `0x1`, `0x8000000` and
+`0x4000000`.
+
 ## Open
 
 - Action code `0xa`, kind 3, `FUN_0041dbe0` (code `0xb`) and
