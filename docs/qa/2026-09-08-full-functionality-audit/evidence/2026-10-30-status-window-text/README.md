@@ -61,6 +61,36 @@ and "Possible Command Ranks" wrapped where A0 keeps them on one line.
 Regression: `agent-objectives.mjs` (release WASM) passed at
 `…T23-52-44-180Z`.
 
+## Rows' content against A0
+
+The port's rows (`status_rows.rs`) give the same labels, in the same
+order and with the same value formats, as A0 shows:
+
+- **Fighter Squadron Status** (TIE Fighter):
+  - Attached, Maintenance Cost, Squadron Size "12:12", Hyperdrive
+    Rating, Maximum Shield Strength "0:0", Sub-Light Engine Rating,
+    Maneuverability, Detection Rating, Bombardment Value "0:0";
+  - then the Weapons Rating heading over " Laser Rating" "60:60",
+    " Ion Cannon" and " Torpedoes".
+- **Defense Facility Status** (KDY-150): Location, Status "Active",
+  Maintenance Cost, Weapons Rating, "Shield Strength" (no colon, as A0
+  shows), Bombardment Defense Strength.
+- **Manufacturing Status** (Training Facility): Location, Status
+  "Active", Maintenance Cost, Standard Processing Rate, Bombardment Value.
+- **Capital Ship Status**:
+  - the first rows up to Hull Value;
+  - the four Weapons Arc headings, each over Turbo Laser, " Ion Cannon"
+    and Laser Cannon.
+
+  The rows between Hull Value and the arcs (Damage Control Rating ..
+  Bombardment Modifier) fall between the captured pages.
+- **Character Status** (Veers, the Emperor): every row through the
+  command ranks, including Force Ranking "Jedi Master".
+- **Fleet Status** and **Trooper Regiment Status**: every row.
+
+The object menu greys Status for a sector window's icon and for a planet,
+as A0 shows (`object_menu.rs`, `FUN_0051d990`).
+
 ## Open
 
 - **Not covered by the gate.** The Fighter Squadron, Defense Facility and
