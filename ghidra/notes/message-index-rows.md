@@ -87,6 +87,22 @@ Called when the list rebuilds (category change, message arrival, mode 1 entry).
   window.
 - The bar is RCDATA `0x299d`, the same as the Battle Results list's.
 
+## Posting options and Select All (2026-10-29)
+
+- **Select All.** `0x90`, at (`0x11a`, `0x57`), sets the selection bit on
+  every shown item (`FUN_00467f10`).
+- **The posting toggle.** `0x66`, on the rail (`0x1a7`/`0x1aa`,
+  `0x93`/`0x94`).
+  - **On a category** it flips bit 4 of that category's option node
+    (`FUN_0048a210`).
+  - **On All Messages** it flips the default and clears every node
+    (`FUN_0048a1f0`).
+  - **Reading.** `FUN_0048a1c0` reads a category's node, or the default.
+  - **Art.** It shows `0x2a78` / `0x2a7a` while alerting and `0x2ac7` /
+    `0x2ac9` while silent.
+  - **Effect.** `FUN_0048a060` skips the advisor's event for a silent
+    category.
+
 ## Category filter (`FUN_00468f20`)
 
 After fill, `FUN_00468f20` shows or hides each item by its mask:

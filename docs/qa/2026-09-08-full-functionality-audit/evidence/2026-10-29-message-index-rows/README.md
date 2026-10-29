@@ -77,9 +77,9 @@ Measured on the Empire's Advice list, window at (125, 52):
 
 ## Open
 
-The heading's "Post Messages" control (`0x66`, bitmaps `0x2a78..0x2a7b`)
-is not drawn: A0 shows it left of Delete. It switches a category between
-silent and alerted posting.
+This said the heading's striped control was "Post Messages" (`0x66`); it
+is Select All (`0x90`), and `0x66` sits on the rail. Both are drawn since
+`../2026-10-29-message-index-posting/`.
 
 ## Tests
 

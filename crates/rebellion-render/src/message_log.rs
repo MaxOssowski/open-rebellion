@@ -343,7 +343,14 @@ pub struct MessageLog {
     /// Event codes delivered to each side's advisor and not yet taken:
     /// `(is_alliance, code)`.
     advisor_events: Vec<(bool, u32)>,
+    /// The categories' posting options (`FUN_0048a1c0`): a default and
+    /// per-category values by mask; bit [`SILENT`] posts silently.
+    posting: (u32, std::collections::BTreeMap<u16, u32>),
 }
+
+/// A category's posting option bit 4: its messages post silently, without
+/// telling the advisor (`FUN_0048a060`, the Message Index's `0x66`).
+pub const SILENT: u32 = 4;
 
 impl Default for MessageLog {
     fn default() -> Self {
@@ -360,6 +367,7 @@ impl MessageLog {
             capacity,
             next_id: 1,
             advisor_events: Vec::new(),
+            posting: (0, std::collections::BTreeMap::new()),
         }
     }
 
@@ -372,10 +380,12 @@ impl MessageLog {
         self.next_id += 1;
         msg.id = id;
         // FUN_0048a060: a delivered message (port: one filed on a side's
-        // rail) hands its event code to that side's advisor. port: the
-        // per-category option that silences it (flag 4, menu items
-        // 0x171..0x179) is not ported, so every category is on.
-        if msg.rail.is_some() {
+        // rail) hands its event code to that side's advisor unless its
+        // category posts silently (FUN_0048a1c0 bit 4).
+        if msg
+            .rail
+            .is_some_and(|rail| self.posting_option(Some(rail.mask())) & SILENT == 0)
+        {
             for (index, alliance) in [(0, true), (1, false)] {
                 let code = msg.advisor_event[index];
                 if code != 0 && msg.audience.includes(alliance) {
@@ -398,6 +408,31 @@ impl MessageLog {
             .filter(|&(alliance, _)| alliance == player_is_alliance)
             .map(|(_, code)| code)
             .collect()
+    }
+
+    /// The posting option of the category `mask`, or the default for
+    /// `None` (All Messages): `FUN_0048a1c0` falls back to the default
+    /// (`FUN_005f4960`) for a category without its own.
+    #[must_use]
+    pub fn posting_option(&self, mask: Option<u16>) -> u32 {
+        mask.and_then(|mask| self.posting.1.get(&mask).copied())
+            .unwrap_or(self.posting.0)
+    }
+
+    /// The Message Index's `0x66` (`FUN_00467f10`): flip a category's
+    /// [`SILENT`] bit; on All Messages, flip the default and drop every
+    /// category's own value (`FUN_0048a1f0`).
+    pub fn toggle_silent(&mut self, mask: Option<u16>) {
+        match mask {
+            Some(mask) => {
+                let option = self.posting_option(Some(mask)) ^ SILENT;
+                self.posting.1.insert(mask, option);
+            }
+            None => {
+                self.posting.0 ^= SILENT;
+                self.posting.1.clear();
+            }
+        }
     }
 
     /// Remove all messages.
@@ -783,6 +818,44 @@ mod tests {
         assert_eq!(
             MessageRail::RAIL_ORDER.map(MessageRail::mask),
             [0x001, 0x080, 0x010, 0x004, 0x008, 0x040, 0x100, 0x200, 0x020]
+        );
+    }
+
+    #[test]
+    fn a_silent_category_keeps_its_messages_from_the_advisor() {
+        // FUN_0048a060 calls the advisor only when FUN_0048a1c0's option
+        // has bit 4 clear; FUN_00467f10 flips a category's own option, and
+        // All Messages the default, dropping every category's (FUN_0048a1f0).
+        let advice = |code| {
+            GameMessage::new(1, "advice", MessageCategory::Event)
+                .on_rail(MessageRail::Advice, RailAudience::Alliance)
+                .with_advisor_event(code)
+        };
+        let mut log = MessageLog::default();
+        assert_eq!(log.posting_option(None), 0);
+        log.toggle_silent(Some(0x200));
+        log.push(advice(0x2a));
+        assert!(log.take_advisor_events(true).is_empty());
+        assert_eq!(log.messages().len(), 1, "a silent message is still filed");
+        log.push(
+            GameMessage::new(2, "fleet", MessageCategory::Event)
+                .on_rail(MessageRail::Fleet, RailAudience::Alliance)
+                .with_advisor_event(5),
+        );
+        assert_eq!(log.take_advisor_events(true), [5]);
+        log.toggle_silent(Some(0x200));
+        log.push(advice(0x2a));
+        assert_eq!(log.take_advisor_events(true), [0x2a]);
+
+        log.toggle_silent(Some(0x200));
+        log.toggle_silent(None);
+        assert_eq!(log.posting_option(None), SILENT);
+        assert_eq!(log.posting_option(Some(0x80)), SILENT);
+        log.toggle_silent(None);
+        assert_eq!(
+            log.posting_option(Some(0x200)),
+            0,
+            "All drops the category's own"
         );
     }
 

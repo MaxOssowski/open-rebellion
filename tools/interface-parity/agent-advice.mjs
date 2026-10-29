@@ -32,9 +32,15 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // The main menu's entries (galaxy-map-visual-check.mjs) and the index's
 // first row (the list child at (22, 108) of the galaxy-centred 470 by 331
 // window, message_index.rs).
+// The window sits centred in the galaxy view (Alliance (62, 49), Empire
+// (125, 52)); Select All (0x90) at (0x11a, 0x57) 56 by 20 and the posting
+// toggle (0x66) on the rail at (0x1a7, 0x93) 32 by 31 / (0x1aa, 0x94) 44 by
+// 41 (FUN_004665f0).
 const FACTIONS = [
-  { name: "alliance", menuIndex: 9, firstRow: [args.alliance_row_x ?? 260, args.alliance_row_y ?? 160] },
-  { name: "empire", menuIndex: 8, firstRow: [args.empire_row_x ?? 330, args.empire_row_y ?? 160] },
+  { name: "alliance", menuIndex: 9, firstRow: [args.alliance_row_x ?? 260, args.alliance_row_y ?? 160],
+    selectAll: [62 + 0x11a + 28, 49 + 0x57 + 10], post: [62 + 0x1a7 + 16, 49 + 0x93 + 15] },
+  { name: "empire", menuIndex: 8, firstRow: [args.empire_row_x ?? 330, args.empire_row_y ?? 160],
+    selectAll: [125 + 0x11a + 28, 52 + 0x57 + 10], post: [125 + 0x1aa + 22, 52 + 0x94 + 20] },
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
@@ -129,6 +135,22 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(500);
     await shot("advice-index");
+    // Select All (0x90) chooses every row; the posting toggle (0x66,
+    // FUN_00467f10) silences Advice (mask 0x200), then turns it back.
+    await click(page, faction.selectAll);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    await shot("select-all");
+    const posting = () => log.filter((line) => line.includes("[interface] message_index posting"));
+    await click(page, faction.post);
+    await waitFor(page, log, "the toggle silences Advice", () => posting().length === 1, 5_000);
+    assert.match(posting()[0], /mask=Some\(512\) silent=true/);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    await shot("posting-silent");
+    await click(page, faction.post);
+    await waitFor(page, log, "the toggle turns the alerts back on", () => posting().length === 2, 5_000);
+    assert.match(posting()[1], /mask=Some\(512\) silent=false/);
     // The newest advice (9, "Advice Available") heads the list.
     await click(page, faction.firstRow);
     await click(page, faction.firstRow);

@@ -8635,6 +8635,14 @@ fn apply_message_index_actions(
             MessageIndexAction::MarkCategoryRead(None) => log.mark_all_read(),
             MessageIndexAction::DeleteSelected(ids) => log.delete_by_ids(&ids),
             MessageIndexAction::MessageDisplayed(id) => log.mark_message_read(id),
+            MessageIndexAction::ToggleSilent(mask) => {
+                log.toggle_silent(mask);
+                macroquad::logging::info!(
+                    "[interface] message_index posting mask={:?} silent={}",
+                    mask,
+                    log.posting_option(mask) & rebellion_render::message_log::SILENT != 0
+                );
+            }
             MessageIndexAction::Close => {}
         }
     }

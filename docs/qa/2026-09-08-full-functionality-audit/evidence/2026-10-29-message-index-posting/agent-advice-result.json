@@ -1,0 +1,190 @@
+{
+  "status": "pass",
+  "wasm_sha256": "18d159ef5741c0f586a21b320ecf7f89ed2613081d745dec889a7e49663b28cf",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "posted": [
+        {
+          "number": 1,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 2,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 3,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 4,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 5,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 6,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 7,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 8,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 9,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        }
+      ],
+      "shots": [
+        {
+          "label": "advice-index",
+          "sha256": "6c847656cd839a0fed42323118d688a8c8d75f4377c63c870e7caab01e4a53ec"
+        },
+        {
+          "label": "select-all",
+          "sha256": "bc364f8d38826b323b9f40dd9a1d6b5844edf55806d08f8d6ce227e6f8ea83ac"
+        },
+        {
+          "label": "posting-silent",
+          "sha256": "d8239311630710366e34bc89e08cdb947dfbfcb3359f471ba69aad5e0aa11ce6"
+        },
+        {
+          "label": "advice-message",
+          "sha256": "84a8f044e703c50a7d2d99d1031bbd2eee0c770b28bdf956e55ba8d8c807fbfc"
+        }
+      ],
+      "agent": [
+        "[agent] advice posted number=1 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=2 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=3 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=4 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=5 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=6 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=7 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=8 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=9 kind=7 reason=briefing titled=true",
+        "[interface] destination=message_index category=0x82 status=opened_by_briefing",
+        "[interface] message_index posting mask=Some(512) silent=true",
+        "[interface] message_index posting mask=Some(512) silent=false"
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "posted": [
+        {
+          "number": 1,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 2,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 3,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 4,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 5,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 6,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 7,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 8,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        },
+        {
+          "number": 9,
+          "kind": 7,
+          "reason": "briefing",
+          "titled": true
+        }
+      ],
+      "shots": [
+        {
+          "label": "advice-index",
+          "sha256": "e4b85f1670b0da8e2be51fb4ff07b636da140f37b32d9df7b9c59bc93164519d"
+        },
+        {
+          "label": "select-all",
+          "sha256": "6ab71b3f4e810d728938ee09a4d300c352751e127c3818f254ccf0d006c94e87"
+        },
+        {
+          "label": "posting-silent",
+          "sha256": "1cb48d62cd6a82158f7c791384c1a154b519bf59272d15050dd82e16a6cbfa31"
+        },
+        {
+          "label": "advice-message",
+          "sha256": "0f62644fd83dd51d413a91a5750c3fb9dafa97dc3a03ffade4c56fcd9e0ee000"
+        }
+      ],
+      "agent": [
+        "[agent] advice posted number=1 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=2 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=3 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=4 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=5 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=6 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=7 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=8 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=9 kind=7 reason=briefing titled=true",
+        "[interface] destination=message_index category=0x82 status=opened_by_briefing",
+        "[interface] message_index posting mask=Some(512) silent=true",
+        "[interface] message_index posting mask=Some(512) silent=false"
+      ]
+    }
+  ]
+}

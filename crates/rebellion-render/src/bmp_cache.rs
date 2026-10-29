@@ -1845,6 +1845,13 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // whose blue shows nowhere in A0 TAC-07-C005.
                 | 10345..=10364
                 | 10370..=10377
+                // The Message Index's rail buttons: the Empire's Display
+                // Message (0x288a / 0x288b) and the posting toggle
+                // (0x2a78..0x2a7b, 0x2ac7..0x2ac9), button art blitted
+                // keyed (`FUN_00602d30`); A0 2026-10-29 shows no blue.
+                | 10378..=10379
+                | 10872..=10875
+                | 10951..=10953
                 | 10716..=10745
                 | 10766
                 | 10792
@@ -2731,6 +2738,33 @@ pub(crate) mod tests {
             assert_eq!(alpha(keyed), 0, "{keyed}");
         }
         for opaque in [1042, 1043, 1057] {
+            assert_eq!(alpha(opaque), 255, "{opaque}");
+        }
+    }
+
+    #[test]
+    fn message_index_rail_buttons_key_out_their_blue() {
+        // FUN_00602d30 blits button art keyed: the Empire's Display Message
+        // 10378 / 10379 and the posting toggle 10872..10875, 10951..10953.
+        let mut image = image::RgbaImage::new(1, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let alpha = |resource_id| {
+            decode_color_image(&encoded, DllSource::Strategy, resource_id)
+                .unwrap()
+                .pixels[0]
+                .a()
+        };
+        for keyed in [10378, 10379, 10872, 10875, 10951, 10953] {
+            assert_eq!(alpha(keyed), 0, "{keyed}");
+        }
+        for opaque in [10380, 10871, 10876, 10950, 10954] {
             assert_eq!(alpha(opaque), 255, "{opaque}");
         }
     }

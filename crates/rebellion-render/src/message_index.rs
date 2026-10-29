@@ -251,17 +251,46 @@ pub struct WindowButtonSpec {
     pub pressed_resource: u32,
 }
 
-/// Close (`0x28`, `0x2882`/`0x2888`) and Display Message (`0x65`,
-/// `0x2884`/`0x288a`) on the right rail, and Delete (`0x91`, `0x2a96`) under
-/// the category row, as `FUN_004665f0` builds them. Delete shows in mode 1
-/// only (`FUN_00468fb0`), the scroll buttons (`0x96`, `0x9a`) in mode 2.
-/// port: Navigate (`0x90`) and the mode-2 Encyclopedia and Detail buttons
-/// are not drawn.
+/// Close (`0x28`, `0x2882`/`0x2888`), Display Message (`0x65`,
+/// `0x2884`/`0x288a`) and the posting toggle (`0x66`) on the right rail,
+/// and Select All (`0x90`, `0x2a94`) and Delete (`0x91`, `0x2a96`) under
+/// the category row, as `FUN_004665f0` builds them. Select All and Delete
+/// show in mode 1 only (`FUN_00468fb0`), the scroll buttons (`0x96`,
+/// `0x9a`) in mode 2. The posting toggle shows `0x2a78` / `0x2a7a` while
+/// the category alerts and `0x2ac7` / `0x2ac9` while it is `silent`
+/// (`FUN_004697b0`, `FUN_00467f10`). port: Display (`0x67`), Compose Chat
+/// (`0x68`) and the mode-2 Encyclopedia and Detail buttons are not drawn.
 #[must_use]
-pub fn window_button_specs(faction: CockpitFaction, mode: IndexMode) -> Vec<WindowButtonSpec> {
-    let (x, size, close, display) = match faction {
-        CockpitFaction::Alliance => (0x1a7, (0x20, 0x1f), (0x19, 0x2882), (0x5d, 0x2884)),
-        CockpitFaction::Empire => (0x1aa, (0x2c, 0x29), (0x15, 0x2888), (0x59, 0x288a)),
+pub fn window_button_specs(
+    faction: CockpitFaction,
+    mode: IndexMode,
+    silent: bool,
+) -> Vec<WindowButtonSpec> {
+    let (x, size, close, display, post_y, post) = match faction {
+        CockpitFaction::Alliance => (
+            0x1a7,
+            (0x20, 0x1f),
+            (0x19, 0x2882),
+            (0x5d, 0x2884),
+            0x93,
+            if silent {
+                (0x2ac7, 0x2a79)
+            } else {
+                (0x2a78, 0x2a79)
+            },
+        ),
+        CockpitFaction::Empire => (
+            0x1aa,
+            (0x2c, 0x29),
+            (0x15, 0x2888),
+            (0x59, 0x288a),
+            0x94,
+            if silent {
+                (0x2ac9, 0x2a7b)
+            } else {
+                (0x2a7a, 0x2a7b)
+            },
+        ),
     };
     let rail = |command_id, (y, normal): (u16, u32)| WindowButtonSpec {
         command_id,
@@ -272,7 +301,17 @@ pub fn window_button_specs(faction: CockpitFaction, mode: IndexMode) -> Vec<Wind
         normal_resource: normal,
         pressed_resource: normal + 1,
     };
-    let mut buttons = vec![rail(0x28, close), rail(0x65, display)];
+    let mut buttons = vec![
+        rail(0x28, close),
+        rail(0x65, display),
+        WindowButtonSpec {
+            command_id: 0x66,
+            y: post_y,
+            normal_resource: post.0,
+            pressed_resource: post.1,
+            ..rail(0x66, (0, 0))
+        },
+    ];
     if mode == IndexMode::SingleMessage {
         // FUN_004665f0 / FUN_00468fb0: the scroll buttons, 19 by 15 in the
         // title strip, shown in mode 2.
@@ -289,6 +328,15 @@ pub fn window_button_specs(faction: CockpitFaction, mode: IndexMode) -> Vec<Wind
         }
     }
     if mode == IndexMode::List {
+        buttons.push(WindowButtonSpec {
+            command_id: 0x90,
+            x: 0x11a,
+            y: 0x57,
+            width: 0x38,
+            height: 0x14,
+            normal_resource: 0x2a94,
+            pressed_resource: 0x2a95,
+        });
         buttons.push(WindowButtonSpec {
             command_id: 0x91,
             x: 0x154,
@@ -310,6 +358,7 @@ fn draw_window_buttons(
     origin: egui::Pos2,
     scale: f32,
     mode: IndexMode,
+    silent: bool,
 ) -> Option<u16> {
     let mut clicked = None;
     egui::Area::new(egui::Id::new("original-message-index-buttons"))
@@ -326,7 +375,7 @@ fn draw_window_buttons(
                     input.pointer.button_down(egui::PointerButton::Primary),
                 )
             });
-            for button in window_button_specs(faction, mode) {
+            for button in window_button_specs(faction, mode, silent) {
                 let rect = message_index_rect(
                     window_rect,
                     scale,
@@ -562,6 +611,10 @@ pub enum MessageIndexAction {
     /// The Close button (`0x28`): the app applies
     /// [`MessageIndexState::close`] and drops the window.
     Close,
+    /// The posting toggle (`0x66`, `FUN_00467f10`): the app flips the
+    /// category's silent bit ([`MessageLog::toggle_silent`]); `None` is All
+    /// Messages' default.
+    ToggleSilent(Option<u16>),
 }
 
 /// Mutable state for the Message Index window.
@@ -630,6 +683,12 @@ impl MessageIndexState {
     #[must_use]
     pub fn selected(&self) -> &BTreeSet<MessageId> {
         &self.selected
+    }
+
+    /// Select All (`0x90`, `FUN_00467f10`): choose every row the list
+    /// shows.
+    pub fn select_all(&mut self, rows: &[&GameMessage]) {
+        self.selected = rows.iter().map(|message| message.id).collect();
     }
 
     /// Switch the category, returning actions the app must handle.
@@ -812,6 +871,23 @@ pub const fn category_filter_mask(command: u16) -> u16 {
     }
 }
 
+/// The posting option a category command reads and the toggle flips
+/// (`FUN_00467f10`: `+0x158`, 0 for All Messages, reads the default).
+#[must_use]
+pub const fn posting_mask(command: u16) -> Option<u16> {
+    match category_filter_mask(command) {
+        0 => None,
+        mask => Some(mask),
+    }
+}
+
+/// Whether the category posts silently, which the toggle's art shows
+/// (`FUN_004697b0`: the option's bit 4).
+#[must_use]
+pub fn posting_silent(log: &MessageLog, command: u16) -> bool {
+    log.posting_option(posting_mask(command)) & crate::message_log::SILENT != 0
+}
+
 /// The [`MessageRail`] for a category command. All (`0x79`) has no single rail.
 #[must_use]
 pub const fn category_rail(command: u16) -> Option<MessageRail> {
@@ -976,7 +1052,11 @@ pub fn draw_message_index(
         }
     }
 
-    match draw_window_buttons(ctx, cache, faction, origin, scale, state.mode) {
+    let posting = posting_mask(state.category);
+    let silent = posting_silent(log, state.category);
+    match draw_window_buttons(ctx, cache, faction, origin, scale, state.mode, silent) {
+        Some(0x66) => actions.push(MessageIndexAction::ToggleSilent(posting)),
+        Some(0x90) => state.select_all(&rows),
         Some(0x28) => actions.push(MessageIndexAction::Close),
         Some(0x65) => actions.extend(state.toggle_display()),
         Some(0x91) => actions.extend(state.delete_selected()),
@@ -1667,6 +1747,88 @@ mod tests {
     }
 
     #[test]
+    fn the_posting_toggle_shows_its_state_and_reads_the_categorys_option() {
+        // FUN_004697b0 / FUN_00467f10: 0x2a78 / 0x2a7a while the category
+        // alerts, 0x2ac7 / 0x2ac9 while it is silent; All reads the default.
+        let post = |faction, silent| {
+            window_button_specs(faction, IndexMode::List, silent)
+                .into_iter()
+                .find(|button| button.command_id == 0x66)
+                .map(|button| (button.y, button.normal_resource, button.pressed_resource))
+        };
+        assert_eq!(
+            post(CockpitFaction::Alliance, false),
+            Some((0x93, 0x2a78, 0x2a79))
+        );
+        assert_eq!(
+            post(CockpitFaction::Alliance, true),
+            Some((0x93, 0x2ac7, 0x2a79))
+        );
+        assert_eq!(
+            post(CockpitFaction::Empire, false),
+            Some((0x94, 0x2a7a, 0x2a7b))
+        );
+        assert_eq!(
+            post(CockpitFaction::Empire, true),
+            Some((0x94, 0x2ac9, 0x2a7b))
+        );
+        assert_eq!(posting_mask(0x79), None);
+        assert_eq!(posting_mask(0x82), Some(0x200));
+        assert_eq!(posting_mask(0x7b), Some(0x80));
+    }
+
+    #[test]
+    fn the_toggle_and_select_all_answer_their_clicks() {
+        // FUN_00467f10: 0x66 flips the shown category's option, 0x90
+        // chooses every row. Origin (0, 0), Alliance: 0x66 at (0x1a7,
+        // 0x93) 32 by 31, 0x90 at (0x11a, 0x57) 56 by 20.
+        let log = test_log();
+        let mut state = MessageIndexState::new();
+        state.set_category(0x7b);
+        let post = egui::pos2(f32::from(0x1a7_u16) + 16.0, f32::from(0x93_u16) + 15.0);
+        let result = drive(&log, &mut state, click_at(post));
+        assert!(
+            result
+                .actions
+                .contains(&MessageIndexAction::ToggleSilent(Some(0x80)))
+        );
+        let all = egui::pos2(f32::from(0x11a_u16) + 28.0, f32::from(0x57_u16) + 10.0);
+        let mut everything = MessageIndexState::new();
+        drive(&log, &mut everything, click_at(all));
+        assert_eq!(everything.selected.len(), 3);
+        let result = drive(&log, &mut everything, click_at(post));
+        assert!(
+            result
+                .actions
+                .contains(&MessageIndexAction::ToggleSilent(None))
+        );
+    }
+
+    #[test]
+    fn the_toggle_reads_the_shown_categorys_silence() {
+        let mut log = test_log();
+        assert!(!posting_silent(&log, 0x82));
+        log.toggle_silent(Some(0x200));
+        assert!(posting_silent(&log, 0x82));
+        assert!(!posting_silent(&log, 0x7b));
+        assert!(!posting_silent(&log, 0x79));
+        log.toggle_silent(None);
+        assert!(posting_silent(&log, 0x79));
+        assert!(posting_silent(&log, 0x7b));
+    }
+
+    #[test]
+    fn select_all_chooses_every_row_the_list_shows() {
+        // FUN_00467f10 case 0x90: every shown item gets +0x3c bit 0.
+        let log = test_log();
+        let rows = filtered_messages(&log, 0x79, true);
+        let mut state = MessageIndexState::new();
+        state.select_all(&rows);
+        assert_eq!(state.selected, rows.iter().map(|m| m.id).collect());
+        assert_eq!(state.selected.len(), 3);
+    }
+
+    #[test]
     fn each_category_has_its_rows_icon_and_heading() {
         // FUN_00468ab0's icons (some + 1 for the Empire) and the controls'
         // labels from FUN_004665f0 (TEXTSTRA 0x8010..0x8018, 0x8032).
@@ -2028,9 +2190,10 @@ mod tests {
 
     #[test]
     fn close_and_display_sit_on_the_rail_and_delete_shows_in_the_list_only() {
-        // FUN_004665f0: 0x28 and 0x65 at x 0x1a7 (Alliance) / 0x1aa (Empire);
-        // 0x91 at (0x154, 0x57), shown in mode 1 (FUN_00468fb0).
-        let list = window_button_specs(CockpitFaction::Alliance, IndexMode::List);
+        // FUN_004665f0: 0x28, 0x65 and 0x66 at x 0x1a7 (Alliance) / 0x1aa
+        // (Empire); 0x90 at (0x11a, 0x57) and 0x91 at (0x154, 0x57), shown
+        // in mode 1 (FUN_00468fb0).
+        let list = window_button_specs(CockpitFaction::Alliance, IndexMode::List, false);
         assert_eq!(
             list.iter()
                 .map(|button| (
@@ -2043,10 +2206,12 @@ mod tests {
             [
                 (0x28, 0x1a7, 0x19, 0x2882),
                 (0x65, 0x1a7, 0x5d, 0x2884),
+                (0x66, 0x1a7, 0x93, 0x2a78),
+                (0x90, 0x11a, 0x57, 0x2a94),
                 (0x91, 0x154, 0x57, 0x2a96)
             ]
         );
-        let empire = window_button_specs(CockpitFaction::Empire, IndexMode::SingleMessage);
+        let empire = window_button_specs(CockpitFaction::Empire, IndexMode::SingleMessage, true);
         assert_eq!(
             empire
                 .iter()
@@ -2060,6 +2225,7 @@ mod tests {
             [
                 (0x28, 0x1aa, 0x2c, 0x2889),
                 (0x65, 0x1aa, 0x2c, 0x288b),
+                (0x66, 0x1aa, 0x2c, 0x2a7b),
                 // FUN_00468fb0 shows the scroll buttons in mode 2.
                 (0x96, 390, 19, 10_920),
                 (0x9a, 367, 19, 10_949)

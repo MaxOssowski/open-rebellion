@@ -1,0 +1,4 @@
+[interface] message_index posting mask=Some(512) silent=true
+[interface] message_index posting mask=Some(512) silent=false
+[interface] message_index posting mask=Some(512) silent=true
+[interface] message_index posting mask=Some(512) silent=false
