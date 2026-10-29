@@ -981,6 +981,16 @@ pub fn unit_message_rail(
     }
 }
 
+/// The advisor event a unit's arrival hands on (`FUN_004981c0`): 5 with the
+/// ships' texts (`0x7076`), 6 with the units' (`0x707a`).
+#[must_use]
+pub fn arrival_event(kind: rebellion_core::manufacturing::BuildableKind) -> u32 {
+    match kind {
+        rebellion_core::manufacturing::BuildableKind::CapitalShip(_) => 5,
+        _ => 6,
+    }
+}
+
 /// Unit Arrival (`FUN_004981c0`): `GameObjEnrouteActiveNotif` (`0x105`)
 /// clearing, a unit arriving where it was bound, to the unit's side. A
 /// capital ship takes TEXTSTRA `0x7076` "Ships arrive at {2:1}" and
@@ -1656,6 +1666,19 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_ships_arrival_hands_on_5_and_any_other_units_6() {
+        // FUN_004981c0: +0x28 = 5 with texts 0x7076 / 0x7077, 6 with
+        // 0x707a / 0x707b.
+        use rebellion_core::manufacturing::BuildableKind;
+        assert_eq!(
+            arrival_event(BuildableKind::CapitalShip(Default::default())),
+            5
+        );
+        assert_eq!(arrival_event(BuildableKind::Fighter(Default::default())), 6);
+    }
+
     use super::*;
 
     // FUN_00497940 and FUN_004981c0 set their category mask (+0x34) by the

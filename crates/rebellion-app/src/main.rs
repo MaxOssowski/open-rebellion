@@ -1551,12 +1551,23 @@ async fn main() {
                     macroquad::logging::info!("[advisor] reaction flags={:#x}", toggles);
                     schedule.add_flags(toggles);
                 }
+                // Delivered messages hand their codes to the advisor's
+                // event slot (FUN_0048a060 → +0x14).
+                for code in msg_log.take_advisor_events(player_faction == MissionFaction::Alliance)
+                {
+                    macroquad::logging::info!("[advisor] reaction event code={:#x}", code);
+                    schedule.event(code, today);
+                }
                 schedule.update(dt, today, &mut advisor_state.clips);
                 // The agent carries the advisor's state into the save
                 // (FUN_004397a0).
                 let (last_day, enabled) = schedule.saved();
                 player_agent.set_advisor_state(last_day, enabled);
             }
+        }
+        if advisor_schedule.is_none() {
+            // Without the advisor's messages the codes have no reader.
+            let _ = msg_log.take_advisor_events(player_faction == MissionFaction::Alliance);
         }
         if !interface_fixture_active || advisor_schedule.is_some() {
             advisor_state.update(dt);
@@ -1934,7 +1945,11 @@ async fn main() {
                                             *system,
                                         )
                                         .with_title(title)
-                                        .with_picture_if(Some(pictures::loyalty_change())),
+                                        .with_picture_if(Some(pictures::loyalty_change()))
+                                        .with_advisor_events(
+                                            joins_event(new_control.faction(), Faction::Alliance),
+                                            joins_event(new_control.faction(), Faction::Empire),
+                                        ),
                                         MessageRail::PopularSupport,
                                         Some(RailAudience::side(
                                             player_faction == MissionFaction::Alliance,
@@ -2041,7 +2056,9 @@ async fn main() {
                     MessageCategory::Manufacturing,
                     completion.system,
                 )
-                .with_picture_if(pictures::deployed(&world, completion.kind));
+                .with_picture_if(pictures::deployed(&world, completion.kind))
+                // FUN_00497940 writes code 3 (advisor-briefing.md, "The events").
+                .with_advisor_event(3);
                 if let Some(title) = title {
                     message = message.with_title(title);
                 }
@@ -2084,7 +2101,8 @@ async fn main() {
                     MessageCategory::Manufacturing,
                     departure.destination,
                 )
-                .with_picture_if(pictures::deployed(&world, departure.kind));
+                .with_picture_if(pictures::deployed(&world, departure.kind))
+                .with_advisor_event(3);
                 if let Some(title) = title {
                     message = message.with_title(title);
                 }
@@ -2118,7 +2136,10 @@ async fn main() {
                     MessageCategory::Manufacturing,
                     completion.system,
                 )
-                .with_picture_if(pictures::deployed(&world, completion.kind));
+                .with_picture_if(pictures::deployed(&world, completion.kind))
+                .with_advisor_event(
+                    rebellion_render::story_messages::arrival_event(completion.kind),
+                );
                 if let Some(title) = title {
                     message = message.with_title(title);
                 }
@@ -2144,7 +2165,9 @@ async fn main() {
                             MessageCategory::Manufacturing,
                             lost.origin,
                         )
-                        .with_title(title),
+                        .with_title(title)
+                        // FUN_00497690 writes code 3.
+                        .with_advisor_event(3),
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(lost.side == Faction::Alliance)),
                     ));
@@ -2180,7 +2203,9 @@ async fn main() {
                             system,
                         )
                         .with_title(title)
-                        .with_picture_if(picture),
+                        .with_picture_if(picture)
+                        // FUN_0048be60 writes code 3.
+                        .with_advisor_event(3),
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(player_faction == MissionFaction::Alliance)),
                     ));
@@ -2213,7 +2238,9 @@ async fn main() {
                     .with_picture_if(pictures::arrival(
                         pictures::Arrival::Fleet,
                         pictures::reader(applied.is_alliance),
-                    )),
+                    ))
+                    // hyp: FUN_004981c0's fleet case (1), code 5.
+                    .with_advisor_event(5),
                     MessageRail::Fleet,
                     Some(RailAudience::side(applied.is_alliance)),
                 ));
@@ -2252,7 +2279,9 @@ async fn main() {
                                 pictures::reader(troop.is_alliance),
                             )
                         },
-                    )),
+                    ))
+                    // FUN_004981c0's units case (3), code 6.
+                    .with_advisor_event(6),
                     MessageRail::Fleet,
                     audience,
                 ));
@@ -2290,7 +2319,8 @@ async fn main() {
                     )
                     .with_picture_if(alliance.and_then(|alliance| {
                         pictures::arrival(pictures::Arrival::Units, pictures::reader(alliance))
-                    })),
+                    }))
+                    .with_advisor_event(6),
                     MessageRail::Fleet,
                     alliance.map(RailAudience::side),
                 ));
@@ -2813,7 +2843,11 @@ async fn main() {
                         )
                         .with_picture_if(pictures::uprising_ends(pictures::system_side(
                             &world, system,
-                        )));
+                        )))
+                        .with_advisor_events(
+                            uprising_event(holder, Faction::Alliance, false),
+                            uprising_event(holder, Faction::Empire, false),
+                        );
                         if let Some(title) = title {
                             message = message.with_title(title);
                         }
@@ -3174,7 +3208,12 @@ async fn main() {
                         )
                         .with_picture_if(pictures::blockade(pictures::system_side(
                             &world, *system,
-                        )));
+                        )))
+                        // FUN_004960f0: 0xe for the holder, 0xd for the other side.
+                        .with_advisor_events(
+                            blockade_event(holder, Faction::Alliance),
+                            blockade_event(holder, Faction::Empire),
+                        );
                         if let Some(title) = title {
                             message = message.with_title(title);
                         }
@@ -3251,7 +3290,10 @@ async fn main() {
                             GameMessage::at_system(*tick, text, MessageCategory::Combat, *system)
                                 .with_picture_if(Some(pictures::evacuation_losses(
                                     cockpit_state.faction,
-                                )));
+                                )))
+                                // FUN_00495e90 writes 0x10, which no side's
+                                // advisor answers.
+                                .with_advisor_event(0x10);
                         if let Some(title) = title {
                             message = message.with_title(title);
                         }
@@ -3327,8 +3369,10 @@ async fn main() {
                         ),
                         None => continue,
                     };
+                    // FUN_00499aa0 writes code 4.
                     let mut message = GameMessage::new(tick, text, MessageCategory::Event)
-                        .with_picture_if(Some(pictures::research()));
+                        .with_picture_if(Some(pictures::research()))
+                        .with_advisor_event(4);
                     if let Some(title) = title {
                         message = message.with_title(title);
                     }
@@ -3354,7 +3398,9 @@ async fn main() {
                             MessageCategory::Event,
                         )
                         .with_title(title)
-                        .with_picture_if(Some(pictures::research())),
+                        .with_picture_if(Some(pictures::research()))
+                        // FUN_0048abc0 (kind 8) writes code 4.
+                        .with_advisor_event(4),
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(alliance)),
                     ));
@@ -3401,9 +3447,13 @@ async fn main() {
                     None => GameMessage::new(scrap.tick, text, MessageCategory::Event),
                 };
                 msg_log.push(filed(
-                    message.with_title(title).with_picture_if(Some(pictures::units_destroyed(
-                        pictures::reader(alliance),
-                    ))),
+                    message
+                        .with_title(title)
+                        .with_picture_if(Some(pictures::units_destroyed(pictures::reader(
+                            alliance,
+                        ))))
+                        // FUN_00498970 writes 0xc.
+                        .with_advisor_event(0xc),
                     MessageRail::Manufacturing,
                     Some(RailAudience::side(alliance)),
                 ));
@@ -3509,7 +3559,9 @@ async fn main() {
                             report.system,
                         )
                         .with_title(title)
-                        .with_picture_if(Some(pictures::informants())),
+                        .with_picture_if(Some(pictures::informants()))
+                        // FUN_00491060 writes 0x1c.
+                        .with_advisor_event(0x1c),
                         MessageRail::PopularSupport,
                         Some(RailAudience::side(recipient_is_alliance)),
                     ));
@@ -3539,7 +3591,9 @@ async fn main() {
                         msg_log.push(filed(
                             GameMessage::at_system(*tick, text, MessageCategory::Event, *system)
                                 .with_title(title)
-                                .with_picture_if(Some(pictures::system_incident(false))),
+                                .with_picture_if(Some(pictures::system_incident(false)))
+                                // FUN_0048e940 writes 0x1c.
+                                .with_advisor_event(0x1c),
                             MessageRail::Resource,
                             system_audience(&world, *system),
                         ));
@@ -3662,9 +3716,22 @@ async fn main() {
                     title = Some(original_title);
                     text = body;
                 }
+                // FUN_00499460's code by reader; FUN_0048e940 writes 0x1c.
+                let events = match evt {
+                    UprisingEvent::UprisingBegan { .. } | UprisingEvent::UprisingEnded { .. } => {
+                        let begins = matches!(evt, UprisingEvent::UprisingBegan { .. });
+                        [
+                            uprising_event(holder, Faction::Alliance, begins),
+                            uprising_event(holder, Faction::Empire, begins),
+                        ]
+                    }
+                    UprisingEvent::Disaster { .. } => [0x1c; 2],
+                    _ => [0; 2],
+                };
                 // Notification 3, Uprising Message.
-                let mut message =
-                    GameMessage::at_system(tick, text, category, system).with_picture_if(picture);
+                let mut message = GameMessage::at_system(tick, text, category, system)
+                    .with_picture_if(picture)
+                    .with_advisor_events(events[0], events[1]);
                 if let Some(title) = title {
                     message = message.with_title(title);
                 }
@@ -8510,6 +8577,42 @@ fn refusal_status(
 }
 
 #[cfg(test)]
+mod advisor_event_tests {
+    use super::{blockade_event, joins_event, uprising_event};
+    use rebellion_core::dat::Faction;
+
+    #[test]
+    fn a_system_joining_one_side_is_1_to_it_and_2_to_the_other() {
+        // FUN_00499760: +0x28 = 1 when the new side is the reader, else 2;
+        // neutrality writes none.
+        assert_eq!(joins_event(Some(Faction::Alliance), Faction::Alliance), 1);
+        assert_eq!(joins_event(Some(Faction::Alliance), Faction::Empire), 2);
+        assert_eq!(joins_event(Some(Faction::Empire), Faction::Empire), 1);
+        assert_eq!(joins_event(Some(Faction::Neutral), Faction::Empire), 0);
+        assert_eq!(joins_event(None, Faction::Alliance), 0);
+    }
+
+    #[test]
+    fn an_uprising_is_1_when_holding_differs_from_beginning() {
+        // FUN_00499460: local_4 (reader holds) against +100 (begins).
+        let held = Some(Faction::Empire);
+        assert_eq!(uprising_event(held, Faction::Empire, true), 2);
+        assert_eq!(uprising_event(held, Faction::Alliance, true), 1);
+        assert_eq!(uprising_event(held, Faction::Empire, false), 1);
+        assert_eq!(uprising_event(held, Faction::Alliance, false), 2);
+        assert_eq!(uprising_event(Some(Faction::Neutral), Faction::Alliance, true), 0);
+        assert_eq!(uprising_event(None, Faction::Alliance, false), 0);
+    }
+
+    #[test]
+    fn a_blockade_is_0xe_to_the_holder_and_0xd_to_the_blockader() {
+        // FUN_004960f0.
+        assert_eq!(blockade_event(Some(Faction::Alliance), Faction::Alliance), 0xe);
+        assert_eq!(blockade_event(Some(Faction::Alliance), Faction::Empire), 0xd);
+    }
+}
+
+#[cfg(test)]
 mod refusal_status_tests {
     use super::refusal_status;
     use rebellion_core::missions::{MissionMember, MissionRefusal};
@@ -9609,8 +9712,10 @@ fn apply_mission_result(
                         ),
                         None => continue,
                     };
+                    // FUN_00499aa0 writes code 4.
                     let mut message = GameMessage::new(result.tick, text, MessageCategory::Event)
-                        .with_picture_if(Some(pictures::research()));
+                        .with_picture_if(Some(pictures::research()))
+                        .with_advisor_event(4);
                     if let Some(title) = title {
                         message = message.with_title(title);
                     }
@@ -9629,7 +9734,9 @@ fn apply_mission_result(
                         log.push(filed(
                             GameMessage::new(result.tick, text, MessageCategory::Event)
                                 .with_title(title)
-                                .with_picture_if(Some(pictures::research())),
+                                .with_picture_if(Some(pictures::research()))
+                                // FUN_0048abc0 (kind 8) writes code 4.
+                                .with_advisor_event(4),
                             MessageRail::Manufacturing,
                             Some(RailAudience::side(is_alliance)),
                         ));
@@ -10437,6 +10544,37 @@ fn draw_fullscreen_texture(texture: &Texture2D) {
             ..Default::default()
         },
     );
+}
+
+/// FUN_00499760's event code for `reader` when a system joins `new`: 1 when
+/// it joins the reader, 2 when it joins the other side, none for neutrality.
+fn joins_event(new: Option<Faction>, reader: Faction) -> u32 {
+    match new {
+        Some(Faction::Neutral) | None => 0,
+        Some(side) if side == reader => 1,
+        Some(_) => 2,
+    }
+}
+
+/// FUN_00499460's event code for `reader`: 1 when (the reader holds the
+/// system) differs from (the uprising begins), else 2; none without a
+/// holding side.
+fn uprising_event(holder: Option<Faction>, reader: Faction, begins: bool) -> u32 {
+    match holder {
+        Some(Faction::Alliance | Faction::Empire) if (holder == Some(reader)) != begins => 1,
+        Some(Faction::Alliance | Faction::Empire) => 2,
+        _ => 0,
+    }
+}
+
+/// FUN_004960f0's event code for `reader`: 0xe when its system is
+/// blockaded, 0xd when its side's fleet blockades.
+fn blockade_event(holder: Option<Faction>, reader: Faction) -> u32 {
+    if holder == Some(reader) {
+        0xe
+    } else {
+        0xd
+    }
 }
 
 /// File a report on the Message Index rail when some side receives it.

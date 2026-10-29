@@ -219,6 +219,10 @@ pub struct GameMessage {
     /// opens in place of its text (`FUN_00469de0` -> `FUN_0042a410`).
     #[serde(skip)]
     pub assault_report: Option<Box<rebellion_core::assault_report::AssaultReport>>,
+    /// The event code (`+0x28`) its delivery hands each side's advisor
+    /// (`FUN_0048a060` → slot `+0x14`), Alliance then Empire; 0 for none.
+    #[serde(skip)]
+    pub advisor_event: [u32; 2],
 }
 
 impl GameMessage {
@@ -237,6 +241,7 @@ impl GameMessage {
             picture: None,
             title: None,
             assault_report: None,
+            advisor_event: [0; 2],
         }
     }
 
@@ -260,6 +265,7 @@ impl GameMessage {
             picture: None,
             title: None,
             assault_report: None,
+            advisor_event: [0; 2],
         }
     }
 
@@ -297,6 +303,22 @@ impl GameMessage {
         self
     }
 
+    /// Hand both sides' advisors event `code` on delivery.
+    #[must_use]
+    pub fn with_advisor_event(self, code: u32) -> Self {
+        self.with_advisor_events(code, code)
+    }
+
+    /// Hand the Alliance's advisor `alliance` and the Empire's `empire`
+    /// (0 for none), for a class whose code depends on the reader, such as
+    /// a system joining one side (`FUN_00499760`: 1 for the gaining side,
+    /// 2 for the other).
+    #[must_use]
+    pub fn with_advisor_events(mut self, alliance: u32, empire: u32) -> Self {
+        self.advisor_event = [alliance, empire];
+        self
+    }
+
     /// Show `picture`, when the message's class has one.
     #[must_use]
     pub fn with_picture_if(mut self, picture: Option<MessagePicture>) -> Self {
@@ -318,6 +340,9 @@ pub struct MessageLog {
     messages: Vec<GameMessage>,
     capacity: usize,
     next_id: MessageId,
+    /// Event codes delivered to each side's advisor and not yet taken:
+    /// `(is_alliance, code)`.
+    advisor_events: Vec<(bool, u32)>,
 }
 
 impl Default for MessageLog {
@@ -334,6 +359,7 @@ impl MessageLog {
             messages: Vec::with_capacity(capacity.min(512)),
             capacity,
             next_id: 1,
+            advisor_events: Vec::new(),
         }
     }
 
@@ -345,11 +371,33 @@ impl MessageLog {
         let id = self.next_id;
         self.next_id += 1;
         msg.id = id;
+        // FUN_0048a060: a delivered message (port: one filed on a side's
+        // rail) hands its event code to that side's advisor. port: the
+        // per-category option that silences it (flag 4, menu items
+        // 0x171..0x179) is not ported, so every category is on.
+        if msg.rail.is_some() {
+            for (index, alliance) in [(0, true), (1, false)] {
+                let code = msg.advisor_event[index];
+                if code != 0 && msg.audience.includes(alliance) {
+                    self.advisor_events.push((alliance, code));
+                }
+            }
+        }
         if self.messages.len() >= self.capacity {
             self.messages.remove(0);
         }
         self.messages.push(msg);
         id
+    }
+
+    /// The event codes delivered to the side's advisor since the last call,
+    /// in order; the other side's are dropped.
+    pub fn take_advisor_events(&mut self, player_is_alliance: bool) -> Vec<u32> {
+        std::mem::take(&mut self.advisor_events)
+            .into_iter()
+            .filter(|&(alliance, _)| alliance == player_is_alliance)
+            .map(|(_, code)| code)
+            .collect()
     }
 
     /// Remove all messages.
@@ -691,6 +739,41 @@ mod tests {
             message.with_picture_if(Some(picture)).picture,
             Some(picture)
         );
+    }
+
+    #[test]
+    fn a_filed_message_hands_each_reading_side_its_advisor_event() {
+        // FUN_0048a060 calls the reader's advisor (+0x14) with the
+        // message's +0x28 when it is not 0.
+        let mut log = MessageLog::default();
+        log.push(
+            GameMessage::new(1, "joins", MessageCategory::Diplomacy)
+                .with_advisor_events(1, 2)
+                .on_rail(MessageRail::PopularSupport, RailAudience::Both),
+        );
+        log.push(
+            GameMessage::new(2, "yard idle", MessageCategory::Manufacturing)
+                .with_advisor_event(3)
+                .on_rail(MessageRail::Manufacturing, RailAudience::Empire),
+        );
+        // Not filed: no delivery. No code: nothing.
+        log.push(GameMessage::new(3, "log only", MessageCategory::Event).with_advisor_event(5));
+        log.push(
+            GameMessage::new(4, "silent", MessageCategory::Event)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+
+        assert_eq!(log.take_advisor_events(true), [1]);
+        assert!(
+            log.take_advisor_events(false).is_empty(),
+            "taken with the first call"
+        );
+        log.push(
+            GameMessage::new(5, "joins", MessageCategory::Diplomacy)
+                .with_advisor_events(1, 2)
+                .on_rail(MessageRail::PopularSupport, RailAudience::Both),
+        );
+        assert_eq!(log.take_advisor_events(false), [2]);
     }
 
     #[test]

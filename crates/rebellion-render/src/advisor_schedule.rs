@@ -139,6 +139,86 @@ struct Reaction {
     days: u32,
 }
 
+/// The message an event code schedules and for how many days: the cases
+/// of `FUN_004c44b0` (Alliance) and `FUN_004c22f0` (Empire), each writing
+/// `+0x168[message] = today + days`.
+const fn event_message(faction: AdvisorFaction, code: u32) -> Option<(u32, u32)> {
+    Some(match faction {
+        AdvisorFaction::Alliance => match code {
+            1 => (0x34, 10),
+            2 => (0x35, 10),
+            3 => (0x38, 5),
+            4 => (0x3a, 10),
+            5 => (0x3b, 10),
+            6 => (0x3d, 10),
+            8 => (0x3c, 10),
+            9 => (0x3e, 10),
+            0xc => (0x39, 10),
+            0xd => (0x41, 10),
+            0xe => (0x43, 10),
+            0x14 => (0x2a, 10),
+            0x15 => (0x42, 10),
+            0x16 => (0x2d, ALWAYS),
+            0x17 => (0x2b, ALWAYS),
+            0x18 => (0x2c, ALWAYS),
+            0x19 => (0x2e, ALWAYS),
+            0x1a | 0x1b => (0x2a, ALWAYS),
+            0x1c => (0x37, 10),
+            0x1e => (0x1c, ALWAYS),
+            0x1f => (0x1b, ALWAYS),
+            0x20 => (0x1d, ALWAYS),
+            0x21 => (0x1e, ALWAYS),
+            0x22 => (0x20, ALWAYS),
+            0x23 => (0x1f, ALWAYS),
+            0x24 => (0x33, ALWAYS),
+            0x25 => (0x30, ALWAYS),
+            0x26 => (0x2f, ALWAYS),
+            0x27 => (0x32, ALWAYS),
+            0x28 => (0x31, ALWAYS),
+            0x29 => (0x44, 0x32),
+            0x2c => (0x4b, 10),
+            0x2e => (0x19, 10),
+            0x2f => (0x1a, 10),
+            _ => return None,
+        },
+        AdvisorFaction::Empire => match code {
+            1 => (0x30, 10),
+            2 => (0x31, 10),
+            3 => (0x34, 10),
+            4 => (0x36, 10),
+            5 => (0x37, 10),
+            6 => (0x39, 10),
+            8 => (0x38, 10),
+            9 => (0x3a, 10),
+            0xc => (0x35, 10),
+            0xd => (0x3d, 10),
+            0xe => (0x3e, 5),
+            0x14 => (0x40, 10),
+            0x15 => (0x3f, 10),
+            0x16..=0x19 => (0x40, ALWAYS),
+            0x1a => (0x22, ALWAYS),
+            0x1b => (0x21, ALWAYS),
+            0x1c => (0x33, ALWAYS),
+            0x1e => (0x2a, ALWAYS),
+            0x1f => (0x29, ALWAYS),
+            0x20 => (0x2b, ALWAYS),
+            0x21 => (0x2c, ALWAYS),
+            0x22 => (0x2e, ALWAYS),
+            0x23 => (0x2d, ALWAYS),
+            0x24 => (0x2f, ALWAYS),
+            0x25 => (0x26, ALWAYS),
+            0x26 => (0x25, ALWAYS),
+            0x27 => (0x28, ALWAYS),
+            0x28 => (0x27, ALWAYS),
+            0x29 => (0x41, 0x32),
+            0x2d => (0x48, 10),
+            0x2e => (0x23, 10),
+            0x2f => (0x24, 10),
+            _ => return None,
+        },
+    })
+}
+
 /// `FUN_004c2dd0` (Alliance, C3POACT) and `FUN_004c0d00` (Empire,
 /// IMP22ACT), in their order: one bit answered a call. The menu's and the
 /// quip's messages are picked apart ([`AdvisorSchedule::react`]).
@@ -228,6 +308,34 @@ impl AdvisorSchedule {
             }
         };
         self.last_day[message as usize] = today + 10;
+    }
+
+    /// A delivered message's event code (`FUN_0048a060` → slot `+0x14`,
+    /// `FUN_004c44b0` Alliance, `FUN_004c22f0` Empire), which schedules the
+    /// side's message for it (`advisor-briefing.md`, "The events"). The
+    /// advice (`0x2a`) picks one of four only while none of them waits
+    /// (`FUN_004c4430`, `FUN_004c2270`); `0x2b` picks one of two
+    /// (`FUN_004c4480`, `FUN_004c22c0`). Codes a side does not handle do
+    /// nothing.
+    pub fn event(&mut self, code: u32, today: u32) {
+        let (first, count) = match (self.faction, code) {
+            (AdvisorFaction::Alliance, 0x2a) => (0x45, 4),
+            (AdvisorFaction::Empire, 0x2a) => (0x42, 4),
+            (AdvisorFaction::Alliance, 0x2b) => (0x49, 2),
+            (AdvisorFaction::Empire, 0x2b) => (0x46, 2),
+            _ => {
+                if let Some((message, days)) = event_message(self.faction, code) {
+                    self.last_day[message as usize] = today + days;
+                }
+                return;
+            }
+        };
+        let slots = first as usize..(first + count) as usize;
+        if code == 0x2a && self.last_day[slots.clone()].iter().any(|&day| day != 0) {
+            return;
+        }
+        let pick = self.next_roll() % count;
+        self.last_day[slots.start + pick as usize] = today + 10;
     }
 
     /// The port's stand-in for the interface's generator (xorshift32).
@@ -1045,6 +1153,139 @@ mod tests {
             seen.insert(schedule.last_day.iter().position(|&day| day != 0).unwrap());
         }
         assert_eq!(seen.into_iter().collect::<Vec<_>>(), [0x11, 0x12]);
+    }
+
+    #[test]
+    fn each_sides_events_schedule_their_messages() {
+        // FUN_004c44b0 (Alliance) / FUN_004c22f0 (Empire): +0x168[offset / 4]
+        // = today + days.
+        // Every case, as the byte offsets the decompiles write.
+        for (faction, code, message, days) in [
+            (AdvisorFaction::Alliance, 0x1, 0xd0 / 4, 10),
+            (AdvisorFaction::Alliance, 0x2, 0xd4 / 4, 10),
+            (AdvisorFaction::Alliance, 0x3, 0xe0 / 4, 5),
+            (AdvisorFaction::Alliance, 0x4, 0xe8 / 4, 10),
+            (AdvisorFaction::Alliance, 0x5, 0xec / 4, 10),
+            (AdvisorFaction::Alliance, 0x6, 0xf4 / 4, 10),
+            (AdvisorFaction::Alliance, 0x8, 0xf0 / 4, 10),
+            (AdvisorFaction::Alliance, 0x9, 0xf8 / 4, 10),
+            (AdvisorFaction::Alliance, 0xc, 0xe4 / 4, 10),
+            (AdvisorFaction::Alliance, 0xd, 0x104 / 4, 10),
+            (AdvisorFaction::Alliance, 0xe, 0x10c / 4, 10),
+            (AdvisorFaction::Alliance, 0x14, 0xa8 / 4, 10),
+            (AdvisorFaction::Alliance, 0x15, 0x108 / 4, 10),
+            (AdvisorFaction::Alliance, 0x16, 0xb4 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x17, 0xac / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x18, 0xb0 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x19, 0xb8 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x1a, 0xa8 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x1b, 0xa8 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x1c, 0xdc / 4, 10),
+            (AdvisorFaction::Alliance, 0x1e, 0x70 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x1f, 0x6c / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x20, 0x74 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x21, 0x78 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x22, 0x80 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x23, 0x7c / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x24, 0xcc / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x25, 0xc0 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x26, 0xbc / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x27, 0xc8 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x28, 0xc4 / 4, ALWAYS),
+            (AdvisorFaction::Alliance, 0x29, 0x110 / 4, 0x32),
+            (AdvisorFaction::Alliance, 0x2c, 0x12c / 4, 10),
+            (AdvisorFaction::Alliance, 0x2e, 0x64 / 4, 10),
+            (AdvisorFaction::Alliance, 0x2f, 0x68 / 4, 10),
+            (AdvisorFaction::Empire, 0x1, 0xc0 / 4, 10),
+            (AdvisorFaction::Empire, 0x2, 0xc4 / 4, 10),
+            (AdvisorFaction::Empire, 0x3, 0xd0 / 4, 10),
+            (AdvisorFaction::Empire, 0x4, 0xd8 / 4, 10),
+            (AdvisorFaction::Empire, 0x5, 0xdc / 4, 10),
+            (AdvisorFaction::Empire, 0x6, 0xe4 / 4, 10),
+            (AdvisorFaction::Empire, 0x8, 0xe0 / 4, 10),
+            (AdvisorFaction::Empire, 0x9, 0xe8 / 4, 10),
+            (AdvisorFaction::Empire, 0xc, 0xd4 / 4, 10),
+            (AdvisorFaction::Empire, 0xd, 0xf4 / 4, 10),
+            (AdvisorFaction::Empire, 0xe, 0xf8 / 4, 5),
+            (AdvisorFaction::Empire, 0x14, 0x100 / 4, 10),
+            (AdvisorFaction::Empire, 0x15, 0xfc / 4, 10),
+            (AdvisorFaction::Empire, 0x16, 0x100 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x17, 0x100 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x18, 0x100 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x19, 0x100 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x1a, 0x88 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x1b, 0x84 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x1c, 0xcc / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x1e, 0xa8 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x1f, 0xa4 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x20, 0xac / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x21, 0xb0 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x22, 0xb8 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x23, 0xb4 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x24, 0xbc / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x25, 0x98 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x26, 0x94 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x27, 0xa0 / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x28, 0x9c / 4, ALWAYS),
+            (AdvisorFaction::Empire, 0x29, 0x104 / 4, 0x32),
+            (AdvisorFaction::Empire, 0x2d, 0x120 / 4, 10),
+            (AdvisorFaction::Empire, 0x2e, 0x8c / 4, 10),
+            (AdvisorFaction::Empire, 0x2f, 0x90 / 4, 10),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.event(code, 7);
+            let due: Vec<usize> =
+                (0..schedule.last_day.len()).filter(|&id| schedule.last_day[id] != 0).collect();
+            assert_eq!(due, [message as usize], "{faction:?} {code:#x}");
+            assert_eq!(schedule.last_day[message as usize], 7 + days);
+        }
+        // Codes a side has no case for: 0x2d on the Alliance, 0x2c and 0x10
+        // on the Empire.
+        for (faction, code) in [
+            (AdvisorFaction::Alliance, 0x2d),
+            (AdvisorFaction::Empire, 0x2c),
+            (AdvisorFaction::Empire, 0x10),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.event(code, 7);
+            assert!(schedule.last_day.iter().all(|&day| day == 0), "{faction:?} {code:#x}");
+        }
+    }
+
+    #[test]
+    fn the_advice_picks_one_of_four_only_while_none_waits() {
+        // FUN_004c4430 / FUN_004c2270: none of +0x114..+0x120 (Alliance) or
+        // +0x108..+0x114 (Empire) set, then FUN_0041cd80(4); 0x2b
+        // (FUN_004c4480 / FUN_004c22c0) one of two, always.
+        for (faction, advice, other) in [
+            (AdvisorFaction::Alliance, 0x45_usize, 0x49_usize),
+            (AdvisorFaction::Empire, 0x42, 0x46),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.event(0x2a, 3);
+            let set: Vec<usize> = (advice..advice + 4).filter(|&id| schedule.last_day[id] != 0).collect();
+            assert_eq!(set.len(), 1, "{faction:?}");
+            assert_eq!(schedule.last_day[set[0]], 13);
+            schedule.event(0x2a, 3);
+            assert_eq!(
+                (advice..advice + 4).filter(|&id| schedule.last_day[id] != 0).count(),
+                1,
+                "{faction:?}: one still waits"
+            );
+            schedule.event(0x2b, 3);
+            assert_eq!(
+                (other..other + 2).filter(|&id| schedule.last_day[id] != 0).count(),
+                1,
+                "{faction:?}"
+            );
+            schedule.event(0x2b, 3);
+            schedule.event(0x2b, 3);
+            schedule.event(0x2b, 3);
+            assert!((other..other + 2).all(|id| schedule.last_day[id] == 13), "{faction:?}");
+        }
     }
 
     #[test]

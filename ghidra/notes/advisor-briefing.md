@@ -343,6 +343,69 @@ A refused order reaches the same table through slot `+0xc`
 (Alliance) or `0x10`..`0x15` (Empire), in `mission-dialog.md`, "Refusal".
 Ported 2026-10-29.
 
+## The events (read 2026-10-29)
+
+The advisor's slot `+0x14` (Alliance `FUN_004c44b0`, Empire
+`FUN_004c22f0`) takes an event code and schedules its message
+(`+0x168[id] = today + days`). Most of these messages are op-`0x14`
+records: the agent droid holds a frame while the second droid (the
+`0xbeef` player, `FUN_0042b290`) plays a clip.
+
+It has one call site, the message delivery `FUN_0048a060`. Its `this` is
+the panel's `+0x6c` pair: the side, then the advisor at `+0x70`. It calls
+the slot when all of these hold:
+- the message's kind (its vt `+0x10`) is 3, 4, 5 or 8;
+- `FUN_00583c40()` is not 0;
+- the message's category has flag 4 clear (the options at menu items
+  `0x171..0x179`, `FUN_00487a60`).
+
+The code passed is the message's `+0x28`.
+
+Callers of `FUN_0048a060`:
+- **Game notifications:** `Class_0065ad70_vt28` (`FUN_00486520`) →
+  `FUN_00488b50` → `FUN_00488de0` → `FUN_00489740`.
+- **The droid's advice:** `FUN_0043a0b0`, `FUN_00439f20` and
+  `FUN_00439fb0` → `FUN_0048a590` → `FUN_0048b2e0` (code `0x2a`).
+- **The other side's message:** `FUN_004864d0` and `FUN_00487f40` →
+  `FUN_0048a3b0` → `FUN_00498e90` (code `0x29`).
+
+The notification pump above `vt28` is not traced.
+
+Codes, by the message builder (class) that writes `+0x28`:
+
+| Code | Builder | Situation |
+|---|---|---|
+| 1 / 2 | `FUN_00499760` | a system joins us / the enemy |
+| 1 / 2 | `FUN_00499460` | an uprising begins or ends, by side |
+| 2 | `FUN_00498cb0` | near uprising |
+| 3 | `FUN_0048be60`, `FUN_00497940`, `FUN_00497690` | yard idle; new unit deployed; facility lost |
+| 4 | `FUN_00499aa0` (kind 4), `FUN_0048abc0` (kind 8) | research complete; research exhausted |
+| 5 / 6 | `FUN_004981c0` | ships or fleet arrive / units or HQ arrive |
+| 8 / 9 | `FUN_00499de0` | capital ship repaired / squadron at full strength |
+| `0xc` | `FUN_0048b9a0`, `FUN_00498970` | saboteurs strike (`0x305`); maintenance shortfall (`0x304`) |
+| `0xd` / `0xe` | `FUN_004960f0` | our fleet blockades / our system is blockaded |
+| `0x10` | `FUN_00495e90` | evacuation losses; neither side handles it |
+| `0x14` | `FUN_00495bf0`, `FUN_00492330`, `FUN_00494d20` | personnel arrive; mission reports (hyp: merged) |
+| `0x15..0x1b` | the speaker map `FUN_0048db30` (and its copies in mission reports, `FUN_004927c0`, `FUN_00491500`, `FUN_004955b0`, encounters `FUN_0048d7f0`) | `0x15` anyone, `0x16` Luke, `0x17` Mon Mothma, `0x18` Leia, `0x19` Han, `0x1a` Emperor, `0x1b` Vader |
+| `0x15` | `FUN_0048b050` | killed by Imperial assassins |
+| `0x16` | `FUN_0048d190`, `FUN_0048d0f0` | Luke to or from Dagobah |
+| `0x19` / `0x2d` / `0x21` | `FUN_0048fa00` | bounty hunters |
+| `0x1a` | `FUN_0048ce80` | the Emperor reaches Coruscant |
+| `0x1b` | `FUN_0048b6e0` | Jabba delivers prisoners |
+| `0x1c` | `FUN_0048e940`, `FUN_00491060` | disaster or resource change; informants |
+| `0x1e..0x23` | `FUN_00490340` | captured: Luke, Mon Mothma, Leia, Han, Emperor, Vader (others `0x15`) |
+| `0x24..0x28`, `0x18`, `0x19` | `FUN_00490340` | escaped |
+| `0x29` | `FUN_00498e90` | a message from the other side |
+| `0x2a` | `FUN_0048b2e0` | the droid's advice (Alliance `FUN_004c4430`) |
+| `0x2e` / `0x2f` | `FUN_00496770` | the other side's bombardment / assault (kind 3 only then) |
+
+No writer for 7, `0xa`, `0xb`, `0xf`, `0x12`, `0x13`, `0x1d`, `0x2b`, `0x2c`.
+`0x11`, Coruscant's capture and the Death Star's sabotage are kind 6, which
+never reaches the advisor.
+
+Ported 2026-10-29 (`AdvisorSchedule::event`, `GameMessage::advisor_event`),
+for the classes the port posts. The speaker-mapped ones are not yet coded.
+
 ## Open
 
 - Action code `0xa`, kind 3, `FUN_0041dbe0` (code `0xb`) and

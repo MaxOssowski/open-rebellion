@@ -1,0 +1,100 @@
+{
+  "status": "pass",
+  "wasm_sha256": "f0842b60a5d5b116ee1e9e7429cca5c66a4d662a4a38f16e25d1011e7fe5056d",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator",
+        "[agent] command=manage_garrisons status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "586deaa7fd69f96cedcca85ef9584b0261be7b3747e5fcc6532be6c4e136c53e"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "6958a9ad78bb3a2468e4ad40c030825a3933df9ffbf0af35ddc0dce51ae78e77"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "4e0febfd91fc74042a371633b0f150b5f634827d908d58a6e1b8b477d4fce758"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "1fc05d91525a1c60d96d98708b913575aecbea2ac3fe56cfe89c221f82779564"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "8e61897d22b856db235fd9a60b65c77db36b6ef07ae040810f9f29a9bc957e68"
+        },
+        {
+          "label": "speed-menu",
+          "sha256": "af6675839dd18c77fc8f5579d1c89804297ca0537874e749985dc092ef235ebd"
+        },
+        {
+          "label": "battle-1-result",
+          "sha256": "f9e2a2d1ad636f3f704785e024c5edb72f25c78eb3fd108710d10e79d56e4f59"
+        },
+        {
+          "label": "battle-2-result",
+          "sha256": "a77a16025c24d0fb02b84728a7267d80426cad70cf39573e4ee62e337604cc40"
+        },
+        {
+          "label": "quip",
+          "sha256": "864f21b9602f82ac1f863f0217fec71a4980125de04b4d0606d3a9280ea701a6"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator",
+        "[agent] command=manage_garrisons status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "e49ce7db355c0cd05c5a8ca5db922e7965b76e87fa4a017e45f254ef12083703"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "a0c8a542561aa07afa5e600bc54987c9e4b5d838936f78178cb5f0883882edf5"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "30a4b0909ba11aec060a927bd27f9c5e1ce60b121abddda34d8f576fab3accaf"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "5ca8703080aec8cff049e2a2e59a5ccef88582c965af37074b27835efa9dcb37"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "6e741707635ef1d1825d7aae2ab1a322a53a238fdedb2461cd6b03d260cb22b7"
+        },
+        {
+          "label": "speed-menu",
+          "sha256": "06ca01c593b4eae2570ab8c6ba9f61a9aac8cd2b2b82a48170711a3aafecee92"
+        },
+        {
+          "label": "quip",
+          "sha256": "7bed191a4aaac8d2071d29769d38699788a5fd3bbb4075fd625169195bf4bc1b"
+        }
+      ]
+    }
+  ]
+}
