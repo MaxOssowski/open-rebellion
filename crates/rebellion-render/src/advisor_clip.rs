@@ -137,6 +137,9 @@ pub enum ClipEvent {
     Voice { directory: &'static str, wave: u16 },
     /// A clip ended; run its action.
     Finished(ClipAction),
+    /// A stopped op-4 clip cuts its voice (`FUN_00404360` with `+0x64`:
+    /// `FUN_00404020(1)`, `FUN_00404040(1)`).
+    StopVoice { directory: &'static str, wave: u16 },
 }
 
 #[derive(Debug)]
@@ -147,6 +150,14 @@ enum Playing {
         next_frame: u16,
         last_frame: u16,
         voice_left: f32,
+        /// The voice it started, which a stop cuts.
+        voice: Option<(&'static str, u16)>,
+        /// Op 4 ends at once when stopped and cuts its voice
+        /// (`FUN_00404360`); op `0x13` runs out its frames first, then ends
+        /// without waiting for its voice (`FUN_00412b80`).
+        stops_at_once: bool,
+        /// `+0x64`, set by the class's stop (vt `+0x24`, `FUN_00404740`).
+        stopped: bool,
     },
     Still {
         ticks_left: u32,
@@ -226,9 +237,39 @@ impl ClipPlayer {
         *self = Self::new(faction, asset_root);
     }
 
-    /// Queue a clip behind those already waiting.
+    /// Queue a clip behind those already waiting. As the player's slot 8
+    /// does (`FUN_00472930`), a clip still playing is asked to stop (its vt
+    /// `+0x24`).
     pub fn queue(&mut self, clip: QueuedClip) {
         self.queue.push_back(clip);
+        self.stop_current();
+    }
+
+    /// The current clip's stop (vt `+0x24`): op 4 and op `0x13` set `+0x64`
+    /// (`FUN_00404740`), a frame list or op `0x15` zeroes its ticks
+    /// (`FUN_00412090`), and op `0x14` sets a flag its step never reads
+    /// (`FUN_00411d30`).
+    fn stop_current(&mut self) {
+        let Some(clip) = &mut self.current else {
+            return;
+        };
+        match &mut clip.playing {
+            Playing::Definition { stopped, .. } => *stopped = true,
+            Playing::Still { ticks_left, .. } => *ticks_left = 0,
+            Playing::Hold => {}
+        }
+    }
+
+    /// Flush the player as a skip does (`FUN_0042d620` -> `FUN_00472ba0`
+    /// for both players): the queue empties and the current clip is asked
+    /// to stop, so it ends at its next step (running its action, as its end
+    /// slot does) or, as op `0x13` does, once its frames run out.
+    pub fn flush(&mut self) {
+        self.queue.clear();
+        self.stop_current();
+        if let Some(second) = &mut self.second {
+            second.flush();
+        }
     }
 
     /// Queue a message entry's record from DLL `slot` (`FUN_0042b1d0`): the
@@ -340,9 +381,13 @@ impl ClipPlayer {
             for event in std::mem::take(&mut second.events) {
                 // Its clips take no action (op 4's +0x14 is empty, and op
                 // 0x15's end only sets the flag); its voices play.
-                if let ClipEvent::Voice { .. } = event {
-                    self.voice_owners.push_back(true);
-                    self.events.push(event);
+                match event {
+                    ClipEvent::Voice { .. } => {
+                        self.voice_owners.push_back(true);
+                        self.events.push(event);
+                    }
+                    ClipEvent::StopVoice { .. } => self.events.push(event),
+                    ClipEvent::Finished(_) => {}
                 }
             }
         }
@@ -381,7 +426,16 @@ impl ClipPlayer {
                 next_frame,
                 last_frame,
                 voice_left,
+                voice,
+                stops_at_once,
+                stopped,
             } => {
+                if *stopped && *stops_at_once {
+                    if let Some((directory, wave)) = *voice {
+                        self.events.push(ClipEvent::StopVoice { directory, wave });
+                    }
+                    return true;
+                }
                 *voice_left = (*voice_left - CLIP_TICK_SECONDS).max(0.0);
                 if *next_frame <= *last_frame {
                     let id = *next_frame;
@@ -402,8 +456,9 @@ impl ClipPlayer {
                     self.show(base);
                 }
                 // hyp: the clip waits for its voice (FUN_00403fe0 with
-                // flag bit 5, whose writer is unread).
-                *next_frame > *last_frame && *voice_left <= 0.0
+                // flag bit 5, whose writer is unread); a stopped op 0x13
+                // does not (FUN_00412b80 returns +0x64).
+                *next_frame > *last_frame && (*voice_left <= 0.0 || *stopped)
             }
             // FUN_00412260: one tick (+0x50 = 1, FUN_00412180), then done;
             // op 0x15's end sets DAT_006b12b0 (FUN_00412080).
@@ -440,15 +495,19 @@ impl ClipPlayer {
                 let definition = ClipDefinition::parse(&record)?;
                 let base = self.bitmap(directory, definition.first_frame)?;
                 self.show(&base);
+                let mut voice = None;
                 if definition.wave != 0 {
-                    if let Some(voice) = slot_directory(definition.wave_slot, self.faction) {
+                    if let Some(voice_directory) =
+                        slot_directory(definition.wave_slot, self.faction)
+                    {
                         if self.second.is_some() {
                             self.voice_owners.push_back(false);
                         }
                         self.events.push(ClipEvent::Voice {
-                            directory: voice,
+                            directory: voice_directory,
                             wave: definition.wave,
                         });
+                        voice = Some((voice_directory, definition.wave));
                     }
                 }
                 Playing::Definition {
@@ -457,6 +516,9 @@ impl ClipPlayer {
                     next_frame: definition.first_frame + 1,
                     last_frame: definition.first_frame + definition.frame_count.max(1) - 1,
                     voice_left: 0.0,
+                    voice,
+                    stops_at_once: clip.op == OP_DEFINITION,
+                    stopped: false,
                 }
             }
             OP_FRAME_LIST | OP_SECOND_DONE => {
@@ -1024,6 +1086,111 @@ mod tests {
         assert_eq!(ticks(&mut player, 1).len(), 1);
         assert!(ticks(&mut player, 1).is_empty());
         assert_eq!(ticks(&mut player, 1), [ClipEvent::Finished(action)]);
+    }
+
+    #[test]
+    fn a_new_clip_stops_the_playing_one_each_class_its_own_way() {
+        // FUN_00472930 (the player's slot 8) asks the current clip to stop
+        // (vt +0x24) when another is queued. Op 4 (FUN_00404740 ->
+        // FUN_00404360) ends at its next step and cuts its voice; op 0x13
+        // (FUN_00412b80) runs out its frames and ends without its voice; a
+        // frame list (FUN_00412090) ends at its next step.
+        let root = staged_root(4);
+        let action = ClipAction { kind: 2, code: 7 };
+        let next = QueuedClip {
+            op: OP_FRAME_LIST,
+            slot: SPRITE_SLOT,
+            record: 399,
+            action: ClipAction::default(),
+        };
+
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        player.queue(QueuedClip {
+            op: OP_DEFINITION,
+            slot: BRIEFING_SLOT,
+            record: 0x103b,
+            action,
+        });
+        ticks(&mut player, 1);
+        player.voice_started(10.0);
+        player.queue(next);
+        assert_eq!(
+            ticks(&mut player, 1),
+            [
+                ClipEvent::StopVoice {
+                    directory: "albrief-dll",
+                    wave: 1155
+                },
+                ClipEvent::Finished(action),
+            ]
+        );
+
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        player.queue(QueuedClip {
+            op: OP_UNSTOPPED_DEFINITION,
+            slot: BRIEFING_SLOT,
+            record: 0x103b,
+            action,
+        });
+        ticks(&mut player, 1);
+        player.voice_started(10.0);
+        player.queue(next);
+        // Three deltas still to add; it ends with the last, its voice
+        // untouched.
+        assert!(ticks(&mut player, 2).is_empty());
+        assert_eq!(ticks(&mut player, 1), [ClipEvent::Finished(action)]);
+
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        player.queue(QueuedClip {
+            op: OP_FRAME_LIST,
+            slot: SPRITE_SLOT,
+            record: 399,
+            action,
+        });
+        ticks(&mut player, 1);
+        player.queue(next);
+        assert_eq!(ticks(&mut player, 1), [ClipEvent::Finished(action)]);
+    }
+
+    #[test]
+    fn a_flush_empties_the_queue_and_stops_the_playing_clip() {
+        // FUN_0042d620 -> FUN_00472ba0: the queue empties (FUN_005f5ee0)
+        // and the current clip is asked to stop; it ends at its next step,
+        // its action run by its end slot.
+        let root = staged_root(4);
+        let action = ClipAction { kind: 2, code: 7 };
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        player.queue(QueuedClip {
+            op: OP_DEFINITION,
+            slot: BRIEFING_SLOT,
+            record: 0x103b,
+            action,
+        });
+        player.queue(QueuedClip {
+            op: OP_DEFINITION,
+            slot: BRIEFING_SLOT,
+            record: 0x103b,
+            action: ClipAction::default(),
+        });
+        ticks(&mut player, 1);
+        player.voice_started(10.0);
+        player.flush();
+        assert!(
+            player.frame().is_some(),
+            "the stopped clip shows until its step"
+        );
+        assert_eq!(
+            ticks(&mut player, 1),
+            [
+                ClipEvent::StopVoice {
+                    directory: "albrief-dll",
+                    wave: 1155
+                },
+                ClipEvent::Finished(action),
+            ]
+        );
+        assert!(!player.is_busy());
+        assert!(ticks(&mut player, 2).is_empty());
     }
 
     #[test]

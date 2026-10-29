@@ -1,0 +1,10 @@
+[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16
+[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1147 seconds=11.571 loaded=true muted=false
+[advisor] briefing skip requested
+[advisor] clip voice stopped directory=embrief-dll wave=1147 loaded=true
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1157 seconds=1.323 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false

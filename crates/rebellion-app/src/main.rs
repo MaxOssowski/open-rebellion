@@ -1625,6 +1625,20 @@ async fn main() {
                         audio_vol.muted
                     );
                 }
+                rebellion_render::advisor_clip::ClipEvent::StopVoice { directory, wave } => {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let stopped = audio_engine.stop_advisor_voice(directory, wave);
+                    #[cfg(target_arch = "wasm32")]
+                    let stopped = browser_menu_audio
+                        .as_mut()
+                        .is_some_and(|engine| engine.stop_advisor_voice(directory, wave));
+                    macroquad::logging::info!(
+                        "[advisor] clip voice stopped directory={} wave={} loaded={}",
+                        directory,
+                        wave,
+                        stopped
+                    );
+                }
                 rebellion_render::advisor_clip::ClipEvent::Finished(action) => {
                     if let Some(schedule) = advisor_schedule.as_mut() {
                         schedule.clip_finished(action);

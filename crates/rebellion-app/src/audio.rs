@@ -555,6 +555,16 @@ impl AudioEngine {
         true
     }
 
+    /// Stop an advisor clip voice that a stopped clip cuts
+    /// (`FUN_00404020(1)`, `FUN_00404040(1)`). Returns whether it was loaded.
+    pub fn stop_advisor_voice(&mut self, directory: &str, wave: u16) -> bool {
+        let Some(sound) = self.advisor_voice.get(&(directory.to_owned(), wave)) else {
+            return false;
+        };
+        sound.stop(&self.ctx);
+        true
+    }
+
     /// Begin decoding a music track supplied by the browser runtime pack.
     ///
     /// WebAudio decoding is asynchronous. Call `try_play_loaded_music` on

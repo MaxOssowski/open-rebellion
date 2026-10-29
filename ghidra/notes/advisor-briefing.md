@@ -343,6 +343,23 @@ A refused order reaches the same table through slot `+0xc`
 (Alliance) or `0x10`..`0x15` (Empire), in `mission-dialog.md`, "Refusal".
 Ported 2026-10-29.
 
+## Stopping clips (read 2026-10-29)
+
+The player's slot 8 (`FUN_00472930`) queues a clip and, when one is
+playing (`+0x1c`), calls its stop (vt `+0x24`). A skip's flush
+(`FUN_0042d620` → `FUN_00472ba0` for both players) empties the queue and
+stops the current clip.
+
+The stops:
+- op 4 and op `0x13`: `FUN_00404740` sets `+0x64`. Op 4's step then stops
+  its sounds (`FUN_00404020(1)`, `FUN_00404040(1)`) and ends. Op `0x13`'s
+  runs out its frames, then ends without waiting for its voice.
+- op `0x11` and op `0x15`: `FUN_00412090` zeroes `+0x50`, so the clip ends
+  at its next step, through its end slot.
+- op `0x14`: `FUN_00411d30` sets `+0x54`, which its step does not read.
+
+Ported 2026-10-29 (`ClipPlayer::queue`, `ClipPlayer::flush`).
+
 ## The events (read 2026-10-29)
 
 The advisor's slot `+0x14` (Alliance `FUN_004c44b0`, Empire

@@ -564,7 +564,7 @@ impl AdvisorSchedule {
         let (_, short) = briefings(self.faction);
         self.last_day[short as usize] = today + ALWAYS;
         if !self.flushed {
-            player.clear();
+            player.flush();
             self.flushed = true;
         }
     }
@@ -796,7 +796,7 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 ClipEvent::Finished(action) => Some(*action),
-                ClipEvent::Voice { .. } => None,
+                ClipEvent::Voice { .. } | ClipEvent::StopVoice { .. } => None,
             })
             .collect();
         // The frame lists carry kind 2 and the entry's code; the definition
@@ -832,7 +832,7 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 ClipEvent::Finished(action) => Some(action.code),
-                ClipEvent::Voice { .. } => None,
+                ClipEvent::Voice { .. } | ClipEvent::StopVoice { .. } => None,
             })
             .collect();
         assert_eq!(finished, [0xb, 0xd]);
@@ -902,7 +902,7 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 ClipEvent::Finished(action) => Some(action.code),
-                ClipEvent::Voice { .. } => None,
+                ClipEvent::Voice { .. } | ClipEvent::StopVoice { .. } => None,
             })
             .collect();
         assert_eq!(codes, [0, 1]);

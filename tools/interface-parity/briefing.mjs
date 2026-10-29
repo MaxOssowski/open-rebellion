@@ -8,7 +8,7 @@
 //   is the briefing DLL's, and a screenshot is taken after each map action
 //   for comparison with the SquakeNet narration frames;
 // - "skip": a click while the first voice plays skips to the short form
-//   (0x28 / 0x49: actions 0xb and 0xd around one clip).
+//   (0x28 / 0x49: actions 0xb and 0xd around one clip) and cuts that voice.
 //
 // Build first: scripts/build-wasm.sh (with the briefing DLLs staged).
 // Run:         node briefing.mjs [--out=DIR] [--faction=alliance|empire] [--case=full|skip]
@@ -134,6 +134,11 @@ async function run(browser, base, faction, name) {
       await shot("after-short-form");
       assert.deepEqual(actions(), [0xc, 0xb, 0xd], "the short form follows the skip");
       assert.deepEqual(voices().map(({ wave }) => wave), [FULL_WAVES[faction.name][0], faction.shortWave]);
+      // The skip flushes the players (FUN_0042d620 -> FUN_00472ba0): the
+      // first voice's clip is stopped, which cuts its voice (FUN_00404360).
+      const stopped = log.filter((line) => line.includes("[advisor] clip voice stopped"));
+      assert.equal(stopped.length, 1, JSON.stringify(stopped));
+      assert.ok(stopped[0].includes(`wave=${FULL_WAVES[faction.name][0]} `), stopped[0]);
     } else {
       // A screenshot after each map action, for the narration frames.
       let seen = 0;

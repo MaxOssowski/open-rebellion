@@ -1,0 +1,653 @@
+{
+  "status": "pass",
+  "wasm_sha256": "be6d83cb74f41a73d0757ea6b95c71a778805bc3fb83817267f06188fc7dbd09",
+  "results": [
+    {
+      "faction": "alliance",
+      "case": "full",
+      "status": "pass",
+      "actions": [
+        12,
+        1,
+        14,
+        15,
+        16,
+        17,
+        18,
+        3,
+        4,
+        5,
+        6,
+        7,
+        19,
+        20,
+        9,
+        10,
+        11,
+        13
+      ],
+      "voices": [
+        {
+          "directory": "albrief-dll",
+          "wave": 1155,
+          "seconds": 9.431
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1220,
+          "seconds": 5.062
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1221,
+          "seconds": 5.138
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1222,
+          "seconds": 4.6
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1223,
+          "seconds": 11
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1224,
+          "seconds": 8.607
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1157,
+          "seconds": 25.248
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1158,
+          "seconds": 20.398
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1159,
+          "seconds": 15.044
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1160,
+          "seconds": 8.821
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1161,
+          "seconds": 9.198
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1225,
+          "seconds": 11.533
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1226,
+          "seconds": 14
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1163,
+          "seconds": 10.503
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1164,
+          "seconds": 3.269
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1168,
+          "seconds": 5.29
+        }
+      ],
+      "marks": {
+        "yavin": "0x121",
+        "headquarters": "0x7b",
+        "coruscant": "0x109"
+      },
+      "advisor": [
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1155 seconds=9.431 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x1 gid=Some(17) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1220 seconds=5.062 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xe gid=Some(19) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1221 seconds=5.138 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xf gid=Some(21) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1222 seconds=4.600 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x10 gid=Some(22) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1223 seconds=11.000 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x11 gid=Some(23) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1224 seconds=8.607 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x12 gid=Some(147) caption=Some(5666) marked=0x121 holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1157 seconds=25.248 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5666) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x3 gid=Some(147) caption=Some(5667) marked=0x7b holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1158 seconds=20.398 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5667) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x4 gid=Some(146) caption=Some(5668) marked=0x109 holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1159 seconds=15.044 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5668) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x5 gid=Some(32) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1160 seconds=8.821 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x6 gid=Some(145) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1161 seconds=9.198 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x7 gid=Some(147) caption=Some(5669) marked=0x7b holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1225 seconds=11.533 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5669) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x13 gid=Some(147) caption=Some(5670) marked=0x121 holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1226 seconds=14.000 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5670) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x14 gid=Some(146) caption=Some(5668) marked=0x109 holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1163 seconds=10.503 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5668) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x9 gid=Some(128) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1164 seconds=3.269 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xa gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1168 seconds=5.290 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true",
+        "[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false"
+      ],
+      "shots": [
+        {
+          "label": "first-voice",
+          "sha256": "3ba040d6bc92c4a51e27a9816b507590ea8ad7bc908f0894a26ceecd5dcf5d60"
+        },
+        {
+          "label": "action-01-0xc",
+          "sha256": "a76422ce97cf766ec4d9e035b82b4efe9cd0198ee3768c199e815c723e6e8c3c"
+        },
+        {
+          "label": "action-02-0x1",
+          "sha256": "b4c4c409d595997899f8087d337d9ae98aa1d44a4105d228725ebc516c41f72b"
+        },
+        {
+          "label": "action-03-0xe",
+          "sha256": "97d4ef454e6688df18edcc68dc718163a170c3aed9aa6e0f8a7c17b36afb040b"
+        },
+        {
+          "label": "action-04-0xf",
+          "sha256": "f1469464a682460a9b68dbb1855f30f16fd0b1c28d7fa7d5de75684bf28d798e"
+        },
+        {
+          "label": "action-05-0x10",
+          "sha256": "7cafb555372233348cd173aaf8af2063211ad1468ca7c081ed0d41864fa870cc"
+        },
+        {
+          "label": "action-06-0x11",
+          "sha256": "08c0e16e25e4047b609ecb6aa21033e745c215407e759d2e5539407535ab727c"
+        },
+        {
+          "label": "action-07-0x12",
+          "sha256": "06c4f952e3103e95a1a19e150dfe087c4ef2634ca0f57cf5fba4e6c5ea20a8d4"
+        },
+        {
+          "label": "action-08-0x3",
+          "sha256": "e6cf523b7d051d521268804b4d6b1de6e927fb243b48805071be3d0def4bbb56"
+        },
+        {
+          "label": "action-09-0x4",
+          "sha256": "1c7fe8b87ad19c2ed601e618b4ec0a7ddf92a08d7e17d13cfab992f456d24b93"
+        },
+        {
+          "label": "action-10-0x5",
+          "sha256": "73c30fa31ae91a79ec53807a58042fd830bdf1cd18c82395314cb426ef8b1d90"
+        },
+        {
+          "label": "action-11-0x6",
+          "sha256": "3a82ce3f901096ea5d615f139fd0a61dbd76b2fd606b9810bf7d084bd03392bc"
+        },
+        {
+          "label": "action-12-0x7",
+          "sha256": "8a6deef10d6f5c0db535eb0266d4d27dd0761850eda9faee8b65ae60e07bf3a3"
+        },
+        {
+          "label": "action-13-0x13",
+          "sha256": "5d7fac4c2d846b0eecd3a53d4bb484a054c3fa04c24fe375e1636e0004e62346"
+        },
+        {
+          "label": "action-14-0x14",
+          "sha256": "38434226341dd1fe598a0db734041fabd0f28f0c0a73f764d6693539d21870ea"
+        },
+        {
+          "label": "action-15-0x9",
+          "sha256": "17f238deb57a76c0cdec07463dcdc8d1d684438d98965f3971517abf721a18f4"
+        },
+        {
+          "label": "action-16-0xa",
+          "sha256": "efae0efbc0fe06e726bf525332a56e443eea4c2f5f80dc07c75b3f31a52cb315"
+        },
+        {
+          "label": "action-17-0xb",
+          "sha256": "dacdf0e1337a331052f0c484cf8c2a3394701e9c0e58c4daf545a14f356933c3"
+        },
+        {
+          "label": "after-briefing",
+          "sha256": "3d9e19a19b40d2ad818c130b4ace666eb3fbaa2ffead437f74f7f57c2f74bc97"
+        }
+      ],
+      "network": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "faction": "alliance",
+      "case": "skip",
+      "status": "pass",
+      "actions": [
+        12,
+        11,
+        13
+      ],
+      "voices": [
+        {
+          "directory": "albrief-dll",
+          "wave": 1155,
+          "seconds": 9.431
+        },
+        {
+          "directory": "albrief-dll",
+          "wave": 1165,
+          "seconds": 4.338
+        }
+      ],
+      "marks": {},
+      "advisor": [
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1155 seconds=9.431 loaded=true muted=false",
+        "[advisor] briefing skip requested",
+        "[advisor] clip voice stopped directory=albrief-dll wave=1155 loaded=true",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=albrief-dll wave=1165 seconds=4.338 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false"
+      ],
+      "shots": [
+        {
+          "label": "first-voice",
+          "sha256": "3ba040d6bc92c4a51e27a9816b507590ea8ad7bc908f0894a26ceecd5dcf5d60"
+        },
+        {
+          "label": "after-short-form",
+          "sha256": "4a46fc32ff6e10711f372f3bef6fbc1e4d3aef6253eb8f7c49efe89eb7db94f3"
+        }
+      ],
+      "network": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "full",
+      "status": "pass",
+      "actions": [
+        12,
+        1,
+        14,
+        15,
+        16,
+        17,
+        18,
+        3,
+        4,
+        5,
+        6,
+        7,
+        19,
+        20,
+        9,
+        10,
+        11,
+        13
+      ],
+      "voices": [
+        {
+          "directory": "embrief-dll",
+          "wave": 1147,
+          "seconds": 11.571
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1220,
+          "seconds": 5.294
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1221,
+          "seconds": 3.53
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1222,
+          "seconds": 6.333
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1223,
+          "seconds": 7.802
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1224,
+          "seconds": 12.422
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1149,
+          "seconds": 18.938
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1150,
+          "seconds": 20.329
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1151,
+          "seconds": 27.899
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1152,
+          "seconds": 10.586
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1153,
+          "seconds": 7.631
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1225,
+          "seconds": 3.019
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1226,
+          "seconds": 16.556
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1155,
+          "seconds": 26.517
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1156,
+          "seconds": 2.159
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1160,
+          "seconds": 3.019
+        }
+      ],
+      "marks": {
+        "coruscant": "0x109",
+        "yavin": "0x121"
+      },
+      "advisor": [
+        "[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16",
+        "[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1147 seconds=11.571 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x1 gid=Some(17) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1220 seconds=5.294 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xe gid=Some(19) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1221 seconds=3.530 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xf gid=Some(21) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1222 seconds=6.333 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x10 gid=Some(20) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1223 seconds=7.802 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x11 gid=Some(23) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1224 seconds=12.422 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x12 gid=Some(146) caption=Some(5668) marked=0x109 holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1149 seconds=18.938 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5668) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x3 gid=Some(147) caption=Some(5666) marked=0x121 holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1150 seconds=20.329 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5666) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x4 gid=Some(23) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1151 seconds=27.899 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x5 gid=Some(32) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1152 seconds=10.586 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x6 gid=Some(145) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1153 seconds=7.631 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x7 gid=Some(146) caption=Some(5671) marked=0x109 holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1225 seconds=3.019 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5671) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x13 gid=Some(146) caption=Some(5672) marked=0x109 holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1226 seconds=16.556 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5672) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x14 gid=Some(147) caption=Some(5666) marked=0x121 holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1155 seconds=26.517 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5666) marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0x9 gid=Some(128) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1156 seconds=2.159 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xa gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1160 seconds=3.019 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true",
+        "[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false"
+      ],
+      "shots": [
+        {
+          "label": "first-voice",
+          "sha256": "7384cad5895d3028cf3fe0c6d8e3f4cc355d36f2e2255b6dfe53b63418ec80a1"
+        },
+        {
+          "label": "action-01-0xc",
+          "sha256": "5046d8fc66d16d02163828ec24ae7564936cfa478f03fbf3167ca1cd6a332d76"
+        },
+        {
+          "label": "action-02-0x1",
+          "sha256": "2ee190b5bca72ec956cb596a6ffd318ed7268cc578fbc90c56d540da79f442e6"
+        },
+        {
+          "label": "action-03-0xe",
+          "sha256": "53365576ae9bfe81556646adb4ed01c2cfe7a5207029d6385c21a7252fb3b8b5"
+        },
+        {
+          "label": "action-04-0xf",
+          "sha256": "f19eae0f75bf6763b964c2339ef8fcf2463c84fccf139f2d3d2a2a6f87872814"
+        },
+        {
+          "label": "action-05-0x10",
+          "sha256": "bc67b7420ffacb4ab273b3e35983f05c226864288cfcfbd6b95354db0cd84dd0"
+        },
+        {
+          "label": "action-06-0x11",
+          "sha256": "8f238b352392eef8bcea994421667e5519a87db9b1f8340a4a526853b3e92c3f"
+        },
+        {
+          "label": "action-07-0x12",
+          "sha256": "5d4140cad530a4a24d9ed305267a8065ebfe2be75dd7357d3a7d652683d4fe42"
+        },
+        {
+          "label": "action-08-0x3",
+          "sha256": "60c814e069ccc8592414e0113ba840081bf5dd0064caf171e6e9d7d13b608ae9"
+        },
+        {
+          "label": "action-09-0x4",
+          "sha256": "35877eee224349b6985516d7b03a3fab792b821f902c962bffd35ff1507c4f11"
+        },
+        {
+          "label": "action-10-0x5",
+          "sha256": "8858825d1fbb3b520dd9a53570147c7dd38152ef803f22f989f11e15504650ed"
+        },
+        {
+          "label": "action-11-0x6",
+          "sha256": "e76385becd5a4be36746ae0926dbabd49b61be4324161baa231bfa0f1444a0fc"
+        },
+        {
+          "label": "action-12-0x7",
+          "sha256": "ad0bfce9444b08ab3d75579f5001726a77b477a0bb21daf8ffdab5d711da21cd"
+        },
+        {
+          "label": "action-13-0x13",
+          "sha256": "a4d0513dfa049d80276786e1ab7d2694e7bf19b12533433085e5b41fde372f84"
+        },
+        {
+          "label": "action-14-0x14",
+          "sha256": "fb5812b7edf85f7c2fe46acee3343b514e3f244fd1bc05db4d1de82f4249e4c2"
+        },
+        {
+          "label": "action-15-0x9",
+          "sha256": "5795eee126a316a475890af5b3ee275d2cd481a430778a99d99a1e95b5835085"
+        },
+        {
+          "label": "action-16-0xa",
+          "sha256": "906e7ef313cc245f9153819fd32e96b4830535be2b0aad81c55901427a53f9b5"
+        },
+        {
+          "label": "action-17-0xb",
+          "sha256": "2ace02b1ee77fb8ee77adcb8553cc94c1d456480daf8fcc8424383067d04a437"
+        },
+        {
+          "label": "after-briefing",
+          "sha256": "264ca0a60edb908dedb72ff3923fa33ffc1a9e907602016dc69a681801e75a9f"
+        }
+      ],
+      "network": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "case": "skip",
+      "status": "pass",
+      "actions": [
+        12,
+        11,
+        13
+      ],
+      "voices": [
+        {
+          "directory": "embrief-dll",
+          "wave": 1147,
+          "seconds": 11.571
+        },
+        {
+          "directory": "embrief-dll",
+          "wave": 1157,
+          "seconds": 1.323
+        }
+      ],
+      "marks": {},
+      "advisor": [
+        "[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16",
+        "[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1147 seconds=11.571 loaded=true muted=false",
+        "[advisor] briefing skip requested",
+        "[advisor] clip voice stopped directory=embrief-dll wave=1147 loaded=true",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true",
+        "[advisor] clip voice directory=embrief-dll wave=1157 seconds=1.323 loaded=true muted=false",
+        "[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true",
+        "[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false"
+      ],
+      "shots": [
+        {
+          "label": "first-voice",
+          "sha256": "7384cad5895d3028cf3fe0c6d8e3f4cc355d36f2e2255b6dfe53b63418ec80a1"
+        },
+        {
+          "label": "after-short-form",
+          "sha256": "e090a996ac4abcb38422b1350dfc0349b1d5b58cf151912062144f6f1aeca6c4"
+        }
+      ],
+      "network": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ]
+    }
+  ]
+}
