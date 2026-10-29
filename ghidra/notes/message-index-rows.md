@@ -103,6 +103,19 @@ Called when the list rebuilds (category change, message arrival, mode 1 entry).
   - **Effect.** `FUN_0048a060` skips the advisor's event for a silent
     category.
 
+## Title, chosen category and rail art (2026-10-29)
+
+- **Title.** Mode 1's paint (`Class_0065a1c0_vt44`) writes `0x8019`
+  "Message Index" in font 11, with its cell at (15, 20). Mode 2 writes
+  the message's title in font 4 at (40, 13); mode 3 writes `0x8022`.
+- **Category controls.** They are a radio group: the chosen one shows its
+  pressed art (A0).
+- **Display Message (`0x65`).** In mode 1 its art is `0x2a76` / `0x29f2`,
+  with `0x2ad1` / `0x2ad2` when disabled for an empty list; in mode 2 it
+  is `0x2884` / `0x288a`, labelled `0x8019` (`FUN_00468fb0`).
+- **Display (`0x67`) and Compose Chat (`0x68`).** A0's Advice list shows
+  both in their disabled art, `0x2ad0` and `0x2a81`.
+
 ## Category filter (`FUN_00468f20`)
 
 After fill, `FUN_00468f20` shows or hides each item by its mask:

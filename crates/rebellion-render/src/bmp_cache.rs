@@ -1852,6 +1852,14 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10378..=10379
                 | 10872..=10875
                 | 10951..=10953
+                // and the disabled Display and Compose Chat (0x2acf,
+                // 0x2ad0, 0x2a7e, 0x2a81).
+                | 10959..=10962
+                | 10878
+                | 10881
+                // and mode 1's Display Message (0x2a76 / 0x2a77, the
+                // Empire's 0x29f2 / 0x29f3 already above).
+                | 10870..=10871
                 | 10716..=10745
                 | 10766
                 | 10792
@@ -2761,10 +2769,14 @@ pub(crate) mod tests {
                 .pixels[0]
                 .a()
         };
-        for keyed in [10378, 10379, 10872, 10875, 10951, 10953] {
+        for keyed in [
+            10378, 10379, 10872, 10875, 10951, 10953, 10959, 10962, 10878, 10881, 10870,
+        ] {
             assert_eq!(alpha(keyed), 0, "{keyed}");
         }
-        for opaque in [10380, 10871, 10876, 10950, 10954] {
+        for opaque in [
+            10380, 10869, 10876, 10877, 10879, 10950, 10954, 10958, 10963,
+        ] {
             assert_eq!(alpha(opaque), 255, "{opaque}");
         }
     }

@@ -251,27 +251,38 @@ pub struct WindowButtonSpec {
     pub pressed_resource: u32,
 }
 
-/// Close (`0x28`, `0x2882`/`0x2888`), Display Message (`0x65`,
-/// `0x2884`/`0x288a`) and the posting toggle (`0x66`) on the right rail,
+/// Close (`0x28`, `0x2882`/`0x2888`), Display Message (`0x65`) and the
+/// posting toggle (`0x66`) on the right rail,
 /// and Select All (`0x90`, `0x2a94`) and Delete (`0x91`, `0x2a96`) under
 /// the category row, as `FUN_004665f0` builds them. Select All and Delete
 /// show in mode 1 only (`FUN_00468fb0`), the scroll buttons (`0x96`,
 /// `0x9a`) in mode 2. The posting toggle shows `0x2a78` / `0x2a7a` while
 /// the category alerts and `0x2ac7` / `0x2ac9` while it is `silent`
-/// (`FUN_004697b0`, `FUN_00467f10`). port: Display (`0x67`), Compose Chat
-/// (`0x68`) and the mode-2 Encyclopedia and Detail buttons are not drawn.
+/// (`FUN_004697b0`, `FUN_00467f10`). Display Message shows `0x2a76` /
+/// `0x29f2` in mode 1 and, as the way back, `0x2884` / `0x288a` in mode 2
+/// (`FUN_00468fb0`); with no row in the list it is disabled
+/// ([`disabled_rail_controls`], `FUN_004697b0`). port: the mode-2
+/// Encyclopedia and Detail buttons are not drawn.
 #[must_use]
 pub fn window_button_specs(
     faction: CockpitFaction,
     mode: IndexMode,
     silent: bool,
+    list_empty: bool,
 ) -> Vec<WindowButtonSpec> {
     let (x, size, close, display, post_y, post) = match faction {
         CockpitFaction::Alliance => (
             0x1a7,
             (0x20, 0x1f),
             (0x19, 0x2882),
-            (0x5d, 0x2884),
+            (
+                0x5d,
+                if mode == IndexMode::List {
+                    0x2a76
+                } else {
+                    0x2884
+                },
+            ),
             0x93,
             if silent {
                 (0x2ac7, 0x2a79)
@@ -283,7 +294,14 @@ pub fn window_button_specs(
             0x1aa,
             (0x2c, 0x29),
             (0x15, 0x2888),
-            (0x59, 0x288a),
+            (
+                0x59,
+                if mode == IndexMode::List {
+                    0x29f2
+                } else {
+                    0x288a
+                },
+            ),
             0x94,
             if silent {
                 (0x2ac9, 0x2a7b)
@@ -301,17 +319,16 @@ pub fn window_button_specs(
         normal_resource: normal,
         pressed_resource: normal + 1,
     };
-    let mut buttons = vec![
-        rail(0x28, close),
-        rail(0x65, display),
-        WindowButtonSpec {
-            command_id: 0x66,
-            y: post_y,
-            normal_resource: post.0,
-            pressed_resource: post.1,
-            ..rail(0x66, (0, 0))
-        },
-    ];
+    let mut buttons = vec![rail(0x28, close)];
+    if mode != IndexMode::List || !list_empty {
+        buttons.push(rail(0x65, display));
+    }
+    buttons.push(WindowButtonSpec {
+        y: post_y,
+        normal_resource: post.0,
+        pressed_resource: post.1,
+        ..rail(0x66, (0, 0))
+    });
     if mode == IndexMode::SingleMessage {
         // FUN_004665f0 / FUN_00468fb0: the scroll buttons, 19 by 15 in the
         // title strip, shown in mode 2.
@@ -350,6 +367,43 @@ pub fn window_button_specs(
     buttons
 }
 
+/// The rail's disabled controls in their disabled art (`FUN_004665f0`'s
+/// and `FUN_00468fb0`'s third bitmap, `FUN_00603150(2, ..)`): window
+/// point, size and resource. Display (`0x67`) and Compose Chat (`0x68`)
+/// always; A0 (2026-10-29, the Empire's Advice list) shows both so, 0x2ad0
+/// and 0x2a81 exactly. Display Message (`0x65`) in mode 1 while the list is
+/// empty (`FUN_004697b0`: 0x2ad1 / 0x2ad2). port: Display is never enabled,
+/// as the port's messages do not carry the kinds (3 and 5 with a target, 4)
+/// that `FUN_004697b0` enables it for; hyp: Compose Chat stays disabled
+/// without a multiplayer session.
+#[must_use]
+pub fn disabled_rail_controls(
+    faction: CockpitFaction,
+    mode: IndexMode,
+    list_empty: bool,
+) -> Vec<(u16, u16, u16, u16, u32)> {
+    let (mut controls, display) = match faction {
+        CockpitFaction::Alliance => (
+            vec![
+                (0x1a7, 0xc9, 0x20, 0x1f, 0x2acf),
+                (0x1a7, 0xff, 0x20, 0x1f, 0x2a7e),
+            ],
+            (0x1a7, 0x5d, 0x20, 0x1f, 0x2ad1),
+        ),
+        CockpitFaction::Empire => (
+            vec![
+                (0x1aa, 0xcf, 0x2c, 0x29, 0x2ad0),
+                (0x1aa, 0x10a, 0x2c, 0x29, 0x2a81),
+            ],
+            (0x1aa, 0x59, 0x2c, 0x29, 0x2ad2),
+        ),
+    };
+    if mode == IndexMode::List && list_empty {
+        controls.push(display);
+    }
+    controls
+}
+
 /// Paint the window's buttons and return the one clicked.
 fn draw_window_buttons(
     ctx: &egui::Context,
@@ -359,6 +413,7 @@ fn draw_window_buttons(
     scale: f32,
     mode: IndexMode,
     silent: bool,
+    list_empty: bool,
 ) -> Option<u16> {
     let mut clicked = None;
     egui::Area::new(egui::Id::new("original-message-index-buttons"))
@@ -375,7 +430,24 @@ fn draw_window_buttons(
                     input.pointer.button_down(egui::PointerButton::Primary),
                 )
             });
-            for button in window_button_specs(faction, mode, silent) {
+            for (x, y, width, height, resource) in disabled_rail_controls(faction, mode, list_empty)
+            {
+                paint_strategy_resource(
+                    ui.painter(),
+                    ctx,
+                    cache,
+                    resource,
+                    message_index_rect(
+                        window_rect,
+                        scale,
+                        f32::from(x),
+                        f32::from(y),
+                        f32::from(width),
+                        f32::from(height),
+                    ),
+                );
+            }
+            for button in window_button_specs(faction, mode, silent, list_empty) {
                 let rect = message_index_rect(
                     window_rect,
                     scale,
@@ -427,7 +499,15 @@ pub fn draw_message_index_shell(
     origin: egui::Pos2,
     scale: f32,
 ) -> Option<u16> {
-    draw_shell(ctx, cache, faction, origin, scale, IndexMode::List)
+    draw_shell(ctx, cache, faction, origin, scale, IndexMode::List, None)
+}
+
+/// Whether a category control shows its pressed art. The controls are a
+/// radio group (`+0x160`): the chosen category stays pressed, as A0 shows
+/// (2026-10-29, the Empire's Advice control matches 10849 exactly), and a
+/// held press shows on any.
+const fn category_pressed(chosen: Option<u16>, command: u16, held: bool) -> bool {
+    held || matches!(chosen, Some(chosen) if chosen == command)
 }
 
 /// The window's background layers, resource and window rectangle: the
@@ -467,6 +547,7 @@ fn draw_shell(
     origin: egui::Pos2,
     scale: f32,
     mode: IndexMode,
+    chosen: Option<u16>,
 ) -> Option<u16> {
     if scale <= 0.0 {
         return None;
@@ -511,8 +592,12 @@ fn draw_shell(
                     ui.id().with(("message-index-category", control.command_id)),
                     egui::Sense::click(),
                 );
-                let pressed = primary_down
-                    && pointer.is_some_and(|point| message_index_rect_contains(rect, point));
+                let pressed = category_pressed(
+                    chosen,
+                    control.command_id,
+                    primary_down
+                        && pointer.is_some_and(|point| message_index_rect_contains(rect, point)),
+                );
                 paint_strategy_resource(
                     ui.painter(),
                     ctx,
@@ -1021,7 +1106,15 @@ pub fn draw_message_index(
     }
 
     // Paint the shell and handle category clicks.
-    if let Some(command) = draw_shell(ctx, cache, faction, origin, scale, state.mode) {
+    if let Some(command) = draw_shell(
+        ctx,
+        cache,
+        faction,
+        origin,
+        scale,
+        state.mode,
+        Some(state.category),
+    ) {
         actions.extend(state.set_category(command));
     }
 
@@ -1054,7 +1147,16 @@ pub fn draw_message_index(
 
     let posting = posting_mask(state.category);
     let silent = posting_silent(log, state.category);
-    match draw_window_buttons(ctx, cache, faction, origin, scale, state.mode, silent) {
+    match draw_window_buttons(
+        ctx,
+        cache,
+        faction,
+        origin,
+        scale,
+        state.mode,
+        silent,
+        rows.is_empty(),
+    ) {
         Some(0x66) => actions.push(MessageIndexAction::ToggleSilent(posting)),
         Some(0x90) => state.select_all(&rows),
         Some(0x28) => actions.push(MessageIndexAction::Close),
@@ -1100,6 +1202,17 @@ fn draw_list_rows(
             // The chosen category's label heads the list, white in font 10
             // (A0 2026-10-29: "Advice Messages" from (35, 93) of the window,
             // 100 wide).
+            // Mode 1's title (`Class_0065a1c0_vt44`): TEXTSTRA 0x8019 in
+            // font 11 at (15, 20). A0 shows it white, from x 141 with
+            // caps from y 76 (its width, 155, is GDI's hinted Arial; the
+            // port's is 142).
+            ui.painter().text(
+                title_pos(origin, scale),
+                egui::Align2::LEFT_TOP,
+                "Message Index",
+                crate::theme::original_font(11, scale),
+                Color32::WHITE,
+            );
             if let Some(heading) = category_heading(state.category) {
                 ui.painter().text(
                     heading_pos(origin, scale),
@@ -1298,6 +1411,11 @@ fn chosen_bar_uv([width, height]: [usize; 2]) -> egui::Rect {
             ROW_CHOSEN_SIZE.1 / height as f32,
         ),
     )
+}
+
+/// Mode 1's title cell on the screen (`FUN_00601b30(0xf, 0x14)`).
+fn title_pos(origin: egui::Pos2, scale: f32) -> egui::Pos2 {
+    origin + egui::vec2(15.0 * scale, 20.0 * scale)
 }
 
 /// The list heading's cell on the screen.
@@ -1744,6 +1862,15 @@ mod tests {
             heading_pos(egui::pos2(10.0, 20.0), 2.0),
             egui::pos2(80.0, 202.0)
         );
+        // Class_0065a1c0_vt44: the title's cell at (15, 20).
+        assert_eq!(
+            title_pos(egui::pos2(125.0, 52.0), 1.0),
+            egui::pos2(140.0, 72.0)
+        );
+        assert_eq!(
+            title_pos(egui::pos2(10.0, 20.0), 3.0),
+            egui::pos2(55.0, 80.0)
+        );
     }
 
     #[test]
@@ -1751,7 +1878,7 @@ mod tests {
         // FUN_004697b0 / FUN_00467f10: 0x2a78 / 0x2a7a while the category
         // alerts, 0x2ac7 / 0x2ac9 while it is silent; All reads the default.
         let post = |faction, silent| {
-            window_button_specs(faction, IndexMode::List, silent)
+            window_button_specs(faction, IndexMode::List, silent, false)
                 .into_iter()
                 .find(|button| button.command_id == 0x66)
                 .map(|button| (button.y, button.normal_resource, button.pressed_resource))
@@ -1802,6 +1929,108 @@ mod tests {
                 .actions
                 .contains(&MessageIndexAction::ToggleSilent(None))
         );
+    }
+
+    #[test]
+    fn display_and_compose_chat_sit_disabled_under_the_toggle() {
+        // FUN_004665f0: 0x67 at y 0xc9 / 0xcf and 0x68 at 0xff / 0x10a,
+        // disabled art 0x2acf / 0x2ad0 and 0x2a7e / 0x2a81 (A0 2026-10-29).
+        assert_eq!(
+            disabled_rail_controls(CockpitFaction::Alliance, IndexMode::List, false),
+            [
+                (0x1a7, 0xc9, 0x20, 0x1f, 0x2acf),
+                (0x1a7, 0xff, 0x20, 0x1f, 0x2a7e)
+            ]
+        );
+        assert_eq!(
+            disabled_rail_controls(CockpitFaction::Empire, IndexMode::SingleMessage, true),
+            [
+                (0x1aa, 0xcf, 0x2c, 0x29, 0x2ad0),
+                (0x1aa, 0x10a, 0x2c, 0x29, 0x2a81)
+            ]
+        );
+        // FUN_004697b0: an empty list disables Display Message (0x2ad1 /
+        // 0x2ad2), which then answers no click.
+        assert_eq!(
+            disabled_rail_controls(CockpitFaction::Empire, IndexMode::List, true).last(),
+            Some(&(0x1aa, 0x59, 0x2c, 0x29, 0x2ad2))
+        );
+        assert_eq!(
+            disabled_rail_controls(CockpitFaction::Alliance, IndexMode::List, true).last(),
+            Some(&(0x1a7, 0x5d, 0x20, 0x1f, 0x2ad1))
+        );
+        let clickable = |empty| {
+            window_button_specs(CockpitFaction::Alliance, IndexMode::List, false, empty)
+                .iter()
+                .any(|button| button.command_id == 0x65)
+        };
+        assert!(clickable(false));
+        assert!(!clickable(true));
+        assert!(
+            window_button_specs(
+                CockpitFaction::Empire,
+                IndexMode::SingleMessage,
+                false,
+                true
+            )
+            .iter()
+            .any(|button| button.command_id == 0x65 && button.normal_resource == 0x288a)
+        );
+    }
+
+    #[test]
+    fn the_chosen_category_stays_pressed_and_a_click_chooses_another() {
+        assert!(category_pressed(Some(0x82), 0x82, false));
+        assert!(!category_pressed(Some(0x82), 0x79, false));
+        assert!(category_pressed(Some(0x82), 0x79, true));
+        assert!(!category_pressed(None, 0x79, false));
+        // FUN_004665f0: Fleet (0x7b) at (22 + 0x4c, 46), 36 by 41.
+        let log = test_log();
+        let mut state = MessageIndexState::new();
+        let fleet = egui::pos2(22.0 + f32::from(0x4c_u16) + 18.0, 46.0 + 20.0);
+        drive(&log, &mut state, click_at(fleet));
+        assert_eq!(state.category(), 0x7b);
+    }
+
+    #[test]
+    fn the_bare_shell_reports_a_clicked_category() {
+        // The interface fixture's shell (draw_message_index_shell): a click
+        // on Fleet (0x7b) returns it.
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let fleet = egui::pos2(22.0 + f32::from(0x4c_u16) + 18.0, 46.0 + 20.0);
+        let mut clicked = None;
+        for (index, events) in [
+            vec![egui::Event::PointerMoved(fleet)],
+            vec![egui::Event::PointerMoved(fleet)],
+            vec![press(fleet, true)],
+            vec![press(fleet, false)],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(640.0, 480.0),
+                )),
+                time: Some(index as f64 * 0.05),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                if let Some(command) = draw_message_index_shell(
+                    ctx,
+                    &mut cache,
+                    CockpitFaction::Alliance,
+                    egui::Pos2::ZERO,
+                    1.0,
+                ) {
+                    clicked = Some(command);
+                }
+            });
+        }
+        assert_eq!(clicked, Some(0x7b));
     }
 
     #[test]
@@ -2193,7 +2422,7 @@ mod tests {
         // FUN_004665f0: 0x28, 0x65 and 0x66 at x 0x1a7 (Alliance) / 0x1aa
         // (Empire); 0x90 at (0x11a, 0x57) and 0x91 at (0x154, 0x57), shown
         // in mode 1 (FUN_00468fb0).
-        let list = window_button_specs(CockpitFaction::Alliance, IndexMode::List, false);
+        let list = window_button_specs(CockpitFaction::Alliance, IndexMode::List, false, false);
         assert_eq!(
             list.iter()
                 .map(|button| (
@@ -2205,13 +2434,16 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 (0x28, 0x1a7, 0x19, 0x2882),
-                (0x65, 0x1a7, 0x5d, 0x2884),
+                // FUN_00468fb0: mode 1's Display Message art (A0: the
+                // Empire's 0x29f2 exactly).
+                (0x65, 0x1a7, 0x5d, 0x2a76),
                 (0x66, 0x1a7, 0x93, 0x2a78),
                 (0x90, 0x11a, 0x57, 0x2a94),
                 (0x91, 0x154, 0x57, 0x2a96)
             ]
         );
-        let empire = window_button_specs(CockpitFaction::Empire, IndexMode::SingleMessage, true);
+        let empire =
+            window_button_specs(CockpitFaction::Empire, IndexMode::SingleMessage, true, true);
         assert_eq!(
             empire
                 .iter()
