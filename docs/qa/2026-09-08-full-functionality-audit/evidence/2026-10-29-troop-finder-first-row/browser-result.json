@@ -1,0 +1,50 @@
+{
+  "status": "pass",
+  "wasm_sha256": "49dd43b61fec01c41f224ee0fa292f6557194a2fbfa89be35e631cd7e136e8f1",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "fleet-finder",
+          "sha256": "d6d092cfb7a315b5dc112f4a0688d76159b9ed5e23fbb72ffd6a01e657266494"
+        },
+        {
+          "label": "troop-finder",
+          "sha256": "5dfb20f437bf800f8f8f9a0e1e55d0193366a4345bc5407ba1f62c04afc7b4cf"
+        },
+        {
+          "label": "personnel-finder",
+          "sha256": "ace51299306a5d02cb012f09fdf033b7583374c77af4af3fea66762dbf5800c0"
+        },
+        {
+          "label": "fleet-window",
+          "sha256": "91d9d3b07396fe608c70f473ad40d8aa2399b72a53a1b16843aa1af72ec694c8"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "fleet-finder",
+          "sha256": "4c56a9fd57eaf385f23265664b9b88f4834742e34ffa3d23499eaff3961088af"
+        },
+        {
+          "label": "troop-finder",
+          "sha256": "add7748a1809c7bd024fbb26cd6f7c80968a6b3dec570931b7919a5f54ee80da"
+        },
+        {
+          "label": "personnel-finder",
+          "sha256": "38df113d15b821d5f891426a963d2e290af35d4416a6655aab2233b0dfddcadf"
+        },
+        {
+          "label": "fleet-window",
+          "sha256": "baee5a970806130280b457add72e0380321506f81daf4c5080aa873a556c9fb1"
+        }
+      ]
+    }
+  ]
+}

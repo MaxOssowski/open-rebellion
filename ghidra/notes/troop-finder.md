@@ -61,10 +61,29 @@ Both Close and Display play sound `0x260`. Every side shares:
   `FUN_0046ce40` sets `+0xe4 = 0x20` (`DT_SINGLELINE`, no `DT_VCENTER`:
   the text from the row's top) and `+0xe8 = 5`; the colours stay grey
   `0x787878` and white for the chosen row. A0 2026-10-29 (Empire, F4)
-  agrees, and shows the first row (Coruscant) white at opening, untraced.
+  agrees, and shows the first row (Coruscant) white at opening: the tab's
+  notification (below) chooses it.
 
 It opens with the player's side tab selected (`FUN_0060d7e0(+0x144, side,
-1)`) and the focus in the name box.
+1)`) and the focus in the name box. The 1 sends the tab's notification,
+case `100` of `FUN_0046df90`. That case rebuilds the list (`FUN_0046ea10`)
+and calls `FUN_00609650` with the name box's text (`0x46e22f`). With an
+empty name box, it chooses and scrolls to the first row, on opening and on
+every tab click. A0 (VM, 2026-10-29) shows the same:
+- the choice does not carry over a close and reopen;
+- the Alliance tab's first row is chosen too;
+- opening from the cockpit button chooses it too.
+
+`FUN_00609650` (disassembly at `0x609650`) chooses as follows:
+- The best row starts as the first (`0x609676`).
+- Its guard `FUN_005f3040` measures the text: its length plus one, 0 only
+  without a buffer.
+- A row whose first letter matches (`FUN_005f3430`, without case) counts
+  the letters it shares, through the terminator.
+- A longer count takes over, an equal one keeps the earlier row, and a
+  shorter one ends the loop.
+- So an empty text, or one no row begins, chooses the first row. The port
+  has this rule in `list_prefix::best_prefix_row`.
 
 ## The list (`FUN_0046ea10`)
 

@@ -241,26 +241,14 @@ pub fn rows(
     rows
 }
 
-/// The row a typed name chooses (`FUN_00609650`): the first, in list order,
-/// with the longest prefix in common with `text`, ignoring case
-/// (`FUN_005f3430` flag 0); none when no row shares the first letter.
+/// The row a typed name chooses (`FUN_00609650`, [`best_prefix_row`]):
+/// the first with the longest prefix in common with `text`, ignoring case;
+/// the first row when none shares the first letter.
+///
+/// [`best_prefix_row`]: crate::list_prefix::best_prefix_row
 #[must_use]
 pub fn prefix_choice(rows: &[FinderRow], text: &str) -> Option<usize> {
-    let typed: Vec<char> = text.chars().map(|c| c.to_ascii_lowercase()).collect();
-    let mut best: Option<(usize, usize)> = None;
-    for (index, row) in rows.iter().enumerate() {
-        let common = row
-            .name
-            .chars()
-            .map(|c| c.to_ascii_lowercase())
-            .zip(&typed)
-            .take_while(|(a, b)| a == *b)
-            .count();
-        if common > 0 && best.is_none_or(|(_, length)| common > length) {
-            best = Some((index, common));
-        }
-    }
-    best.map(|(index, _)| index)
+    crate::list_prefix::best_prefix_row(rows.iter().map(|row| row.name.as_str()), text)
 }
 
 /// What the Finder asks of the galaxy view.
@@ -292,6 +280,11 @@ struct OpenFinder {
     /// click across widgets, and a third click as a triple, so the list
     /// keeps its own.
     last_clicked: Option<(usize, f64)>,
+    /// A tab's notification (case `100`, `FUN_00462770`) is due: once the
+    /// list is built, the name box's text chooses its row (`FUN_00609650`),
+    /// the first when none matches. The window opens without it
+    /// (`FUN_00461960` fills the list with `FUN_00462be0` directly).
+    rematch: bool,
 }
 
 /// What the open Finder shows, for the interface fixture.
@@ -328,6 +321,7 @@ impl FleetFinderState {
             scroll_hold: None,
             focus_name: true,
             last_clicked: None,
+            rematch: false,
         });
         true
     }
@@ -408,8 +402,8 @@ impl FleetFinderState {
         self.window.as_ref().map(|_| window_rect(layout))
     }
 
-    /// Show `tab` (group `100`): the list rebuilds and the choice clears
-    /// (`FUN_00462be0`).
+    /// Show `tab` (group `100`, `FUN_00462770`): the list rebuilds
+    /// (`FUN_00462be0`), then the name box's text chooses a row.
     pub fn set_tab(&mut self, tab: FinderTab) {
         if let Some(window) = &mut self.window {
             if window.tab != tab {
@@ -417,6 +411,7 @@ impl FleetFinderState {
                 window.chosen = None;
                 window.scroll = 0;
                 window.last_clicked = None;
+                window.rematch = true;
             }
         }
     }
@@ -499,7 +494,7 @@ pub fn draw_fleet_finder(
     layout: CockpitLayout,
     cache: &mut BmpCache,
 ) -> Option<FleetFinderAction> {
-    let window = state.window.clone()?;
+    let mut window = state.window.clone()?;
     let side = side(window.faction);
     let controls = &CONTROLS[side];
     let scale = layout.scale;
@@ -512,6 +507,16 @@ pub fn draw_fleet_finder(
         window.mode,
         window.tab,
     );
+    if window.rematch {
+        // FUN_00462770 case 100: FUN_00609650 chooses and scrolls to it.
+        window.rematch = false;
+        let choice = prefix_choice(&list, &window.name);
+        window.chosen = choice.map(|index| list[index].object);
+        if let Some(index) = choice {
+            window.scroll = scrolled_to(window.scroll, index, list.len());
+        }
+        state.window.clone_from(&Some(window.clone()));
+    }
     let chosen_row = window
         .chosen
         .and_then(|object| list.iter().position(|row| row.object == object));
@@ -1185,11 +1190,15 @@ mod tests {
     }
 
     #[test]
-    fn a_name_no_row_begins_with_chooses_nothing() {
-        let rows = [row("Calamari Cruiser")];
+    fn a_name_no_row_begins_with_chooses_the_first_row() {
+        // FUN_00609650 starts its best row at the first (0x609676); the A0
+        // Troop Finder opens with its first row chosen under an empty name
+        // box (VM, 2026-10-29).
+        let rows = [row("Calamari Cruiser"), row("Corellian Corvette")];
 
-        assert_eq!(prefix_choice(&rows, "Nebulon"), None);
-        assert_eq!(prefix_choice(&rows, ""), None);
+        assert_eq!(prefix_choice(&rows, "Nebulon"), Some(0));
+        assert_eq!(prefix_choice(&rows, ""), Some(0));
+        assert_eq!(prefix_choice(&[], ""), None);
     }
 
     #[test]
@@ -1203,6 +1212,33 @@ mod tests {
         assert_eq!(scrolled_to(0, 19, 20), 235);
         assert_eq!(max_scroll(20), 240);
         assert_eq!(max_scroll(8), 0);
+    }
+
+    #[test]
+    fn the_opening_chooses_nothing_and_a_new_tab_chooses_the_rows_first() {
+        // FUN_00461960 fills the list itself (FUN_00462be0(1, 1)) and
+        // selects its tab without a notification (FUN_0060d7e0(1, 0)), as
+        // the A0 capture's grey rows show; a tab's notification
+        // (FUN_00462770 case 100) lets the empty name box choose the first
+        // row (FUN_00609650).
+        let galaxy = galaxy();
+        let mut state = FleetFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        drive(&galaxy, &mut state, (0.0, 0.0), vec![]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
+
+        state.set_tab(FinderTab::Alliance);
+        drive(&galaxy, &mut state, (0.0, 0.0), vec![]);
+        let list = rows(
+            &galaxy.world,
+            &rebellion_core::movement::MovementState::default(),
+            &galaxy.fog,
+            player_side(CockpitFaction::Alliance),
+            FinderMode::Fleets,
+            FinderTab::Alliance,
+        );
+        assert!(!list.is_empty());
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(list[0].object));
     }
 
     #[test]

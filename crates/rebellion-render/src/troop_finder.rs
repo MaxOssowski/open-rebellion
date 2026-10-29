@@ -177,24 +177,11 @@ pub struct TroopFinderRow {
     pub counts: [TroopCount; 5],
 }
 
-/// A typed name chooses the first row it best begins (FUN_00609650).
+/// A typed name chooses the first row it best begins, or the first row
+/// (FUN_00609650, [`crate::list_prefix::best_prefix_row`]).
 #[must_use]
 pub fn prefix_choice(rows: &[TroopFinderRow], text: &str) -> Option<usize> {
-    let typed: Vec<char> = text.chars().map(|c| c.to_ascii_lowercase()).collect();
-    let mut best: Option<(usize, usize)> = None;
-    for (index, row) in rows.iter().enumerate() {
-        let common = row
-            .name
-            .chars()
-            .map(|c| c.to_ascii_lowercase())
-            .zip(&typed)
-            .take_while(|(a, b)| a == *b)
-            .count();
-        if common > 0 && best.is_none_or(|(_, length)| common > length) {
-            best = Some((index, common));
-        }
-    }
-    best.map(|(index, _)| index)
+    crate::list_prefix::best_prefix_row(rows.iter().map(|row| row.name.as_str()), text)
 }
 
 /// Count regiments of each class among the given troop keys.
@@ -324,6 +311,10 @@ struct OpenFinder {
     focus_name: bool,
     /// The row the last click chose and when.
     last_clicked: Option<(usize, f64)>,
+    /// The tab's notification (case `100`, `FUN_0046df90`) is due: once
+    /// the list is built, the name box's text chooses its row
+    /// (`FUN_00609650`), the first when none matches.
+    rematch: bool,
 }
 
 /// The Troop Finder, one at most (FUN_0042a4d0).
@@ -352,6 +343,8 @@ impl TroopFinderState {
             scroll_hold: None,
             focus_name: true,
             last_clicked: None,
+            // FUN_0060d7e0(side, 1) notifies the tab as the window opens.
+            rematch: true,
         });
         true
     }
@@ -371,8 +364,8 @@ impl TroopFinderState {
         self.window.is_some() && rect_contains(window_rect(layout), egui::pos2(point.0, point.1))
     }
 
-    /// Show `tab` (group `100`): the list rebuilds and the choice clears
-    /// (FUN_0046ea10).
+    /// Show `tab` (group `100`, `FUN_0046df90`): the list rebuilds
+    /// (`FUN_0046ea10`), then the name box's text chooses a row.
     pub fn set_tab(&mut self, tab: TroopTab) {
         if let Some(window) = &mut self.window {
             if window.tab != tab {
@@ -380,6 +373,7 @@ impl TroopFinderState {
                 window.chosen = None;
                 window.scroll = 0;
                 window.last_clicked = None;
+                window.rematch = true;
             }
         }
     }
@@ -471,12 +465,21 @@ pub fn draw_troop_finder(
     cache: &mut BmpCache,
     transport: &TroopTransportState,
 ) -> Option<TroopFinderAction> {
-    let window = state.window.clone()?;
+    let mut window = state.window.clone()?;
     let side_idx = side(window.faction);
     let controls = &CONTROLS[side_idx];
     let scale = layout.scale;
     let rect = window_rect(layout);
     let list = rows(world, window.tab, transport);
+    if window.rematch {
+        // FUN_0046df90 case 100: FUN_00609650 chooses and scrolls to it.
+        window.rematch = false;
+        window.chosen = prefix_choice(&list, &window.name);
+        if let Some(index) = window.chosen {
+            window.scroll = scrolled_to(window.scroll, index, list.len());
+        }
+        state.window.clone_from(&Some(window.clone()));
+    }
 
     let mut close = false;
     let mut open_action: Option<TroopFinderAction> = None;
@@ -1013,8 +1016,9 @@ mod tests {
 
         assert_eq!(prefix_choice(&rows, "ya"), Some(1));
         assert_eq!(prefix_choice(&rows, "cor"), Some(0));
-        assert_eq!(prefix_choice(&rows, "z"), None);
-        assert_eq!(prefix_choice(&rows, ""), None);
+        // FUN_00609650: with no row sharing the first letter, the first.
+        assert_eq!(prefix_choice(&rows, "z"), Some(0));
+        assert_eq!(prefix_choice(&rows, ""), Some(0));
     }
 
     #[test]
@@ -1128,6 +1132,45 @@ mod tests {
     }
 
     #[test]
+    fn the_opening_and_a_new_tab_choose_the_row_the_name_begins_or_the_first() {
+        // FUN_0046ce40 opens with FUN_0060d7e0(side, 1), whose notification
+        // (FUN_0046df90 case 100) rebuilds the list and lets the name box's
+        // text choose a row (FUN_00609650): the A0 Troop Finder opens with
+        // its first row white under an empty name box, on either tab (VM,
+        // 2026-10-29).
+        let mut world = GameWorld::default();
+        for name in ["Alpha", "Beta"] {
+            let system = add_system(&mut world, name, ControlKind::Controlled(Faction::Alliance));
+            add_troop(&mut world, system, 0x1000_0002, true);
+        }
+        let coruscant = add_system(
+            &mut world,
+            "Coruscant",
+            ControlKind::Controlled(Faction::Empire),
+        );
+        add_troop(&mut world, coruscant, 0x1000_0008, false);
+        let mut state = TroopFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
+
+        texts(&world, &mut state);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(0));
+
+        state.window.as_mut().unwrap().name = "be".into();
+        state.set_tab(TroopTab::Imperial);
+        texts(&world, &mut state);
+        assert_eq!(
+            state.window.as_ref().unwrap().chosen,
+            Some(0),
+            "no row begins with \"be\""
+        );
+        state.set_tab(TroopTab::Alliance);
+        texts(&world, &mut state);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(1), "Beta");
+        assert_eq!(state.window.as_ref().unwrap().name, "be");
+    }
+
+    #[test]
     fn escape_closes_the_finder() {
         let mut state = TroopFinderState::default();
         state.open(CockpitFaction::Alliance);
@@ -1219,10 +1262,11 @@ mod tests {
         let (_, pos, _, font, colour) = find("Yavin");
         assert_eq!(pos, origin + egui::vec2(LIST.0 + 5.0, LIST.1));
         assert_eq!(font, crate::theme::original_font(10, 1.0).size);
-        assert_eq!(colour, ROW_COLOR);
-        state.window.as_mut().unwrap().chosen = Some(0);
+        // The opening chooses the first row (FUN_0046df90 case 100).
+        assert_eq!(colour, egui::Color32::WHITE);
+        state.window.as_mut().unwrap().chosen = None;
         let shown = texts(&galaxy.world, &mut state);
-        assert_eq!(shown.iter().find(|(text, ..)| text == "Yavin").unwrap().4, egui::Color32::WHITE);
+        assert_eq!(shown.iter().find(|(text, ..)| text == "Yavin").unwrap().4, ROW_COLOR);
     }
 
     #[test]

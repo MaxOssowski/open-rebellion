@@ -238,24 +238,11 @@ impl PersonnelFinderRow {
     }
 }
 
-/// A typed name chooses the first row it best begins (FUN_00609650).
+/// A typed name chooses the first row it best begins, or the first row
+/// (FUN_00609650, [`crate::list_prefix::best_prefix_row`]).
 #[must_use]
 pub fn prefix_choice(rows: &[PersonnelFinderRow], text: &str) -> Option<usize> {
-    let typed: Vec<char> = text.chars().map(|c| c.to_ascii_lowercase()).collect();
-    let mut best: Option<(usize, usize)> = None;
-    for (index, row) in rows.iter().enumerate() {
-        let common = row
-            .display_name()
-            .chars()
-            .map(|c| c.to_ascii_lowercase())
-            .zip(&typed)
-            .take_while(|(a, b)| a == *b)
-            .count();
-        if common > 0 && best.is_none_or(|(_, length)| common > length) {
-            best = Some((index, common));
-        }
-    }
-    best.map(|(index, _)| index)
+    crate::list_prefix::best_prefix_row(rows.iter().map(|row| row.display_name()), text)
 }
 
 /// Count special forces of each class among the given keys.
@@ -1519,8 +1506,9 @@ mod tests {
         ];
         assert_eq!(prefix_choice(&rows, "ya"), Some(1));
         assert_eq!(prefix_choice(&rows, "cor"), Some(0));
-        assert_eq!(prefix_choice(&rows, "z"), None);
-        assert_eq!(prefix_choice(&rows, ""), None);
+        // FUN_00609650: with no row sharing the first letter, the first.
+        assert_eq!(prefix_choice(&rows, "z"), Some(0));
+        assert_eq!(prefix_choice(&rows, ""), Some(0));
     }
 
     #[test]

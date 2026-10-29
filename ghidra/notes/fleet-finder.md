@@ -122,8 +122,13 @@ The name box (`FUN_00462a50`): `0x408` (its text changed) picks the first
 row, in list order, with the longest prefix in common with the text,
 ignoring case (`FUN_00609650` → `FUN_005f3430` with case flag 0, which
 compares through `FUN_0061a620`), selects it and scrolls to it, and keeps
-its id; no row shares a first letter, nothing is chosen. `0x407` (Enter)
-opens the chosen row.
+its id. When no row shares a first letter, the first row is chosen
+(`troop-finder.md`, `FUN_00609650`). `0x407` (Enter) opens the chosen row.
+
+A tab click (case `100`, `FUN_00462770`) rebuilds the list and lets the
+name box choose the same way. The window itself opens without that
+notification: `FUN_00461960` calls `FUN_00462be0(1, 1)` and
+`FUN_0060d7e0(1, 0)`. So no row is chosen at opening, as A0 shows.
 
 Keys (`FUN_00463360`): Escape closes; Left and Right walk the tabs; Up
 focuses the name box; Down moves into the list.
