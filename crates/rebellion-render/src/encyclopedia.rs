@@ -589,7 +589,7 @@ const ORIGINAL_INDEX_VISIBLE_ROWS: usize = 8;
 const ORIGINAL_INDEX_ROW_HEIGHT: f32 = 20.0;
 const ORIGINAL_INDEX_TEXT_X: f32 = 5.0;
 const ORIGINAL_INDEX_ROW_PIXELS: usize = 20;
-const ORIGINAL_INDEX_LIST_PIXELS: usize = 160;
+const ORIGINAL_INDEX_LIST_PIXELS: usize = ORIGINAL_INDEX_VISIBLE_ROWS * ORIGINAL_INDEX_ROW_PIXELS;
 /// The list's arrow step, `FUN_00607ea0`'s argument 10, as the Battle
 /// Results' list takes it; its bar is RCDATA 10653 (`FUN_0045ddc0`:
 /// `FUN_0060a490(.., list, 7, 0x299d, ..)`), the Battle Results' art.
@@ -1229,7 +1229,9 @@ pub fn draw_encyclopedia_topic(
                     );
                 }
             }
-            let title_font = egui::FontId::proportional(15.0 * scale);
+            // The title label +0x120 (FUN_0045fa60's FUN_00601aa0), font 5,
+            // as in the index (A0 2026-10-29: bold).
+            let title_font = crate::theme::original_font(5, scale);
             ui.painter()
                 .with_clip_rect(encyclopedia_rect(
                     window_rect,
@@ -1248,12 +1250,21 @@ pub fn draw_encyclopedia_topic(
                 );
             if let Some(body) = &topic.body {
                 let body_rect = encyclopedia_rect(window_rect, scale, 17.0, 231.0, 395.0, 80.0);
-                let galley = ui.painter().layout(
+                // hyp: the body's text object (FUN_0041ecf0) font is not
+                // read. A0 2026-10-29 measures it: lines 16 apart from
+                // (17, 234), the first line 374 wide, which Arial's metrics
+                // give at a 13-pixel em (Liberation Sans: 372).
+                let mut job = egui::text::LayoutJob::single_section(
                     body.clone(),
-                    egui::FontId::proportional(13.0 * scale),
-                    Color32::WHITE,
-                    body_rect.width(),
+                    egui::TextFormat {
+                        font_id: egui::FontId::proportional(13.0 * scale),
+                        color: Color32::WHITE,
+                        line_height: Some(16.0 * scale),
+                        ..egui::TextFormat::default()
+                    },
                 );
+                job.wrap.max_width = body_rect.width();
+                let galley = ui.fonts(|fonts| fonts.layout_job(job));
                 ui.painter().with_clip_rect(body_rect).galley(
                     body_rect.min,
                     galley,
@@ -2340,6 +2351,7 @@ mod tests {
         events: Vec<egui::Event>,
     ) -> (Option<u16>, Vec<egui::epaint::ClippedShape>, egui::Context) {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let topic = OriginalEncyclopediaTopic {
             title: "Ackbar".into(),
@@ -2712,7 +2724,8 @@ mod tests {
                 _ => None,
             })
             .collect();
-        // The port's sizes: 15 for the title, 13 for the body, scaled.
+        // The title in font 5 (the label +0x120); the body at a 13-pixel
+        // em, lines 16 apart (A0 2026-10-29).
         let font_size = |wanted: &str| {
             shapes.iter().find_map(|clipped| match &clipped.shape {
                 egui::Shape::Text(text) if text.galley.text().starts_with(wanted) => {
@@ -2721,8 +2734,20 @@ mod tests {
                 _ => None,
             })
         };
-        assert_eq!(font_size("Ackbar"), Some(30.0));
+        assert_eq!(font_size("Ackbar"), Some(crate::theme::original_font(5, 2.0).size));
         assert_eq!(font_size("A Mon Calamari"), Some(26.0));
+        // The body's lines 16 apart (A0 2026-10-29), white.
+        let body = shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with("A Mon Calamari") => {
+                    Some(text.galley.clone())
+                }
+                _ => None,
+            })
+            .expect("the body");
+        assert_eq!(body.job.sections[0].format.line_height, Some(32.0));
+        assert_eq!(body.job.sections[0].format.color, Color32::WHITE);
         let (_, title_pos, title_clip) = texts
             .iter()
             .find(|(text, _, _)| text == "Ackbar")

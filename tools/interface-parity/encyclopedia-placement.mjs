@@ -138,6 +138,17 @@ async function run(browser, base, faction) {
     const after = await page.screenshot({ clip: list });
     assert.ok(!before.equals(after), "the down arrow scrolls the list");
     await shot("encyclopedia-index-scrolled");
+    // The topic: the list back at its top (three clicks on the up arrow),
+    // Abduction (the second row) selected, then the rail's topic 0x67.
+    const rail = faction.name === "empire" ? [426 + 22, 89 + 20] : [423 + 16, 93 + 15];
+    for (let index = 0; index < 3; index += 1) await click(page, [ox + 380, oy + 137 + 4]);
+    await click(page, [ox + 100, oy + 137 + 30]);
+    await click(page, [ox + rail[0], oy + rail[1]]);
+    await waitFor(page, log, "the rail's topic opens Abduction",
+      () => log.some((line) => /\[encyclopedia\] command=0x67 topic_mode=true/.test(line)), 5_000);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(800);
+    await shot("encyclopedia-topic");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

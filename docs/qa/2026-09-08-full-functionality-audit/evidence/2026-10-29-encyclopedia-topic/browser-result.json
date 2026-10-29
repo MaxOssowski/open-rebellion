@@ -1,0 +1,24 @@
+{
+  "status": "pass",
+  "wasm_sha256": "db32aade7a5079bd42c8c60c6f161a0539e8cc9d4e6269c27c9626c8cfe24c0d",
+  "results": [
+    {
+      "faction": "empire",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "encyclopedia-index",
+          "sha256": "2655b759516af3ace2a69109b7e64152bcd2afd650164751f2514865761e56aa"
+        },
+        {
+          "label": "encyclopedia-index-scrolled",
+          "sha256": "a8438220dcd6fe03906f49aa73b18171695b9a4e79eb677dfe65f69ebdfaa747"
+        },
+        {
+          "label": "encyclopedia-topic",
+          "sha256": "973ad33c3b105d917e59179cb177955b5441c94cfae75c77de7b6ee54ea6131d"
+        }
+      ]
+    }
+  ]
+}

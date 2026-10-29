@@ -108,7 +108,11 @@ classified original capture.
   `rebellion_data::encyclopedia_topics` (P66A) as
   `OriginalEncyclopediaTopic`.
 - The body's font and line spacing are the port's (the original's
-  `FUN_005f35b0` text object is not read).
+  `FUN_005f35b0` text object is not read). Measured 2026-10-29 on A0
+  (Abduction, Empire): lines 16 apart from (17, 234), the first line 374
+  wide, Arial at a 13-pixel em; the port lays it out so (hyp). The title is
+  the label `+0x120` (`FUN_0045fa60`'s `FUN_00601aa0`), font 5, bold in
+  A0; the EDATA picture matches A0 to the pixel.
 
 ## Production routing (2026-10-23)
 
