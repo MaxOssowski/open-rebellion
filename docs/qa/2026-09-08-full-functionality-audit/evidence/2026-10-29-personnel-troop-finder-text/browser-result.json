@@ -1,0 +1,24 @@
+{
+  "status": "pass",
+  "wasm_sha256": "bff470c73c1ef922163ee542d631b9d9d9e8aee59150075ce9ac5dce7af93bcd",
+  "results": [
+    {
+      "faction": "empire",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "fleet-finder",
+          "sha256": "f68b9f31bfd39af2a99a0f8af8809c0cfa346a6e1240cf3fd0b4f544bbeb06b0"
+        },
+        {
+          "label": "troop-finder",
+          "sha256": "7d19bc8e216447b5870aa3518748f0343899fe20581d7ceee0be4fcc50f6de99"
+        },
+        {
+          "label": "personnel-finder",
+          "sha256": "38df113d15b821d5f891426a963d2e290af35d4416a6655aab2233b0dfddcadf"
+        }
+      ]
+    }
+  ]
+}

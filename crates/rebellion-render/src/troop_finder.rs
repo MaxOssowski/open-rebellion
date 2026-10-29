@@ -85,6 +85,9 @@ const TABS: [Control; 2] = [
 
 // Window rectangles (x, y, width, height), FUN_0046ce40.
 const TITLE_AT: (f32, f32) = (36.0, 14.0); // 0x24, 0x0e
+/// The list's text x (`+0xe8 = 5`) and unchosen colour (`0x787878`).
+const ROW_TEXT_X: f32 = 5.0;
+const ROW_COLOR: egui::Color32 = egui::Color32::from_rgb(0x78, 0x78, 0x78);
 const NAME_LABEL_AT: (f32, f32) = (36.0, 48.0); // 0x24, 0x30
 const NAME_BOX: (f32, f32, f32, f32) = (143.0, 45.0, 250.0, 18.0); // 0x8f, 0x2d
 const TAB_LABEL_AT: (f32, f32) = (40.0, 119.0); // 0x28, 0x77
@@ -491,12 +494,15 @@ pub fn draw_troop_finder(
             paint(cache, PANEL[window.tab.panel_index()], PANEL_AT);
             paint(cache, RAIL[side_idx], RAIL_AT);
 
-            // Title (TEXTSTRA 0x1900) and label (0x1901).
-            let title_font = egui::FontId::proportional((12.0 * scale).max(8.0));
-            let font = egui::FontId::proportional((10.0 * scale).max(7.0));
+            // Title (TEXTSTRA 0x1900) centred in its 350 in font 5, label
+            // (0x1901) in font 4, the tab's label in font 5; the list and
+            // the name box in font 10 (A0 2026-10-29).
+            let title_font = crate::theme::original_font(5, scale);
+            let label_font = crate::theme::original_font(4, scale);
+            let font = crate::theme::original_font(10, scale);
             painter.text(
-                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
+                egui::Align2::CENTER_TOP,
                 "Troop Finder",
                 title_font.clone(),
                 egui::Color32::WHITE,
@@ -505,7 +511,7 @@ pub fn draw_troop_finder(
                 at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
                 egui::Align2::LEFT_TOP,
                 "Troop Location",
-                font.clone(),
+                label_font,
                 egui::Color32::WHITE,
             );
             painter.text(
@@ -596,14 +602,18 @@ pub fn draw_troop_finder(
                     scale,
                     (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2, ROW_HEIGHT),
                 );
+                // FUN_0046ce40: the text at x 5 (+0xe8) from the row's top
+                // (+0xe4 = 0x20, DT_SINGLELINE without DT_VCENTER), grey
+                // 0x787878 and the chosen row white (FUN_00607ea0's
+                // colours; A0 2026-10-29).
                 let name_colour = if window.chosen == Some(offset) {
-                    egui::Color32::YELLOW
-                } else {
                     egui::Color32::WHITE
+                } else {
+                    ROW_COLOR
                 };
                 list_painter.text(
-                    row_rect.left_center() + egui::vec2(4.0 * scale, 0.0),
-                    egui::Align2::LEFT_CENTER,
+                    row_rect.left_top() + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                    egui::Align2::LEFT_TOP,
                     &row.name,
                     font.clone(),
                     name_colour,
@@ -1071,6 +1081,7 @@ mod tests {
         let galaxy = galaxy();
         let transport = TroopTransportState::default();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let layout = layout();
 
@@ -1101,6 +1112,113 @@ mod tests {
         });
 
         assert!(!state.is_open());
+    }
+
+    /// Two frames of the Finder; the last frame's texts as (text, top-left,
+    /// size, font size, colour).
+    fn texts(world: &GameWorld, state: &mut TroopFinderState) -> Vec<(String, egui::Pos2, egui::Vec2, f32, egui::Color32)> {
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let transport = TroopTransportState::default();
+        let mut shapes = Vec::new();
+        for _ in 0..2 {
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_troop_finder(ctx, world, state, layout(), &mut cache, &transport);
+                },
+            );
+            shapes = output.shapes;
+        }
+        shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) => {
+                    let format = &text.galley.job.sections[0].format;
+                    Some((text.galley.text().to_owned(), text.pos, text.galley.size(), format.font_id.size, format.color))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_title_labels_and_rows_take_the_originals_fonts_and_places() {
+        // FUN_0046ce40: the title centred in (36, 14, 350) in font 5, the
+        // label in font 4; the list's text at x 5 from the row's top
+        // (+0xe4 = 0x20), grey 0x787878 and the chosen row white (A0
+        // 2026-10-29).
+        let galaxy = galaxy();
+        let mut state = TroopFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        state.set_tab(TroopTab::Alliance);
+        let origin = window_rect(layout()).min;
+        let shown = texts(&galaxy.world, &mut state);
+        let find = |name: &str| shown.iter().find(|(text, ..)| text == name).cloned().unwrap();
+        let (_, pos, size, font, _) = find("Troop Finder");
+        assert!((pos.x + size.x / 2.0 - origin.x - 211.0).abs() < 0.01, "{pos:?}");
+        assert_eq!(font, crate::theme::original_font(5, 1.0).size);
+        assert_eq!(find("Troop Location").3, crate::theme::original_font(4, 1.0).size);
+        let (_, pos, _, font, colour) = find("Yavin");
+        assert_eq!(pos, origin + egui::vec2(LIST.0 + 5.0, LIST.1));
+        assert_eq!(font, crate::theme::original_font(10, 1.0).size);
+        assert_eq!(colour, ROW_COLOR);
+        state.window.as_mut().unwrap().chosen = Some(0);
+        let shown = texts(&galaxy.world, &mut state);
+        assert_eq!(shown.iter().find(|(text, ..)| text == "Yavin").unwrap().4, egui::Color32::WHITE);
+    }
+
+    #[test]
+    fn at_scale_two_the_row_text_keeps_its_window_place() {
+        let galaxy = galaxy();
+        let layout = CockpitLayout {
+            scale: 2.0,
+            canvas: CockpitViewport {
+                x: 0.0,
+                y: 0.0,
+                width: 1280.0,
+                height: 960.0,
+            },
+            galaxy: CockpitViewport {
+                x: 130.0,
+                y: 120.0,
+                width: 970.0,
+                height: 700.0,
+            },
+        };
+        let mut state = TroopFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        state.set_tab(TroopTab::Alliance);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let transport = TroopTransportState::default();
+        let mut shapes = Vec::new();
+        for _ in 0..2 {
+            shapes = ctx
+                .run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 1100.0))),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        let _ = draw_troop_finder(ctx, &galaxy.world, &mut state, layout, &mut cache, &transport);
+                    },
+                )
+                .shapes;
+        }
+        let yavin = shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Yavin" => Some(text.pos),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(yavin, window_rect(layout).min + egui::vec2(LIST.0 + 5.0, LIST.1) * 2.0);
     }
 
     #[test]

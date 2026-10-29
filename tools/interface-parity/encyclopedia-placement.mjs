@@ -123,12 +123,17 @@ async function run(browser, base, faction) {
     await page.waitForTimeout(300);
     await page.mouse.move(2, 2);
     if (args.window === "finders") {
-      // F3, the Fleet Finder (FUN_00422ce0 0x72 -> 0x12e).
-      await page.keyboard.down("F3");
-      await frames(page);
-      await page.keyboard.up("F3");
-      await page.waitForTimeout(800);
-      await shot("fleet-finder");
+      // F3 the Fleet Finder, F4 the Troop Finder, F5 the Personnel Finder
+      // (FUN_00422ce0; A0 2026-10-29 opens them so), each closed by Escape.
+      for (const [key, label] of [["F3", "fleet-finder"], ["F4", "troop-finder"], ["F5", "personnel-finder"]]) {
+        await page.keyboard.down(key);
+        await frames(page);
+        await page.keyboard.up(key);
+        await page.waitForTimeout(800);
+        await shot(label);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(400);
+      }
       return { faction: faction.name, status: "pass", shots };
     }
     await page.keyboard.down("F7");

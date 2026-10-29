@@ -91,7 +91,7 @@ label y is `0x77` for view 2, else `0x73`.
 Every side shares:
 
 - the title, TEXTSTRA `0x1890` "Personnel Finder", at `(0x24,0xe)`, font 5;
-- the name label, TEXTSTRA `0x1891` "Name", at `(0x24,0x30)`, font 4;
+- the name label, TEXTSTRA `0x1891` "Name", at `(0x24,0x30)`, font 4 (the port had "Character Name" until 2026-10-29);
 - the name box (`0xcb`, `FUN_00604cf0`) at `(0x8f,0x2d)`, 250 by 18, white
   text (`0xffffff`);
 - the tab's label (`+0x158`) at `(0x28,0x73)` Alliance / `(0x28,0x77)`

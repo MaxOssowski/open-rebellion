@@ -58,6 +58,10 @@ Both Close and Display play sound `0x260`. Every side shares:
   selected tab's text;
 - the list (`0xca`, `FUN_00607ea0`) at `(0x25,0x90)`, 349 by 159, rows 330
   by 25 (`0x15e` wide, `0x19` tall), scroll bar art 10653 (`0x299d`).
+  `FUN_0046ce40` sets `+0xe4 = 0x20` (`DT_SINGLELINE`, no `DT_VCENTER`:
+  the text from the row's top) and `+0xe8 = 5`; the colours stay grey
+  `0x787878` and white for the chosen row. A0 2026-10-29 (Empire, F4)
+  agrees, and shows the first row (Coruscant) white at opening, untraced.
 
 It opens with the player's side tab selected (`FUN_0060d7e0(+0x144, side,
 1)`) and the focus in the name box.

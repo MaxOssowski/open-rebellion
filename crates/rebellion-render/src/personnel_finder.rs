@@ -182,6 +182,9 @@ const SIDE_TABS: [Control; 2] = [
 ];
 
 const TITLE_AT: (f32, f32) = (36.0, 14.0);
+/// The list's text x (`+0xe8 = 5`) and unchosen colour (`0x787878`).
+const ROW_TEXT_X: f32 = 5.0;
+const ROW_COLOR: egui::Color32 = egui::Color32::from_rgb(0x78, 0x78, 0x78);
 const NAME_LABEL_AT: (f32, f32) = (36.0, 48.0);
 const NAME_BOX: (f32, f32, f32, f32) = (143.0, 45.0, 250.0, 18.0);
 const LIST: (f32, f32, f32, f32) = (37.0, 143.0, 349.0, 161.0);
@@ -702,12 +705,15 @@ pub fn draw_personnel_finder(
             );
             paint(cache, RAIL[side_idx], RAIL_AT);
 
-            // Title (0x1890) and label (0x1891).
-            let title_font = egui::FontId::proportional((12.0 * scale).max(8.0));
-            let font = egui::FontId::proportional((10.0 * scale).max(7.0));
+            // Title (0x1890) centred in its 350 in font 5, label (0x1891
+            // "Name") in font 4, the tab's label in font 5; the list and the
+            // name box in font 10 (A0 2026-10-29).
+            let title_font = crate::theme::original_font(5, scale);
+            let label_font = crate::theme::original_font(4, scale);
+            let font = crate::theme::original_font(10, scale);
             painter.text(
-                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
+                egui::Align2::CENTER_TOP,
                 "Personnel Finder",
                 title_font.clone(),
                 egui::Color32::WHITE,
@@ -715,8 +721,8 @@ pub fn draw_personnel_finder(
             painter.text(
                 at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
                 egui::Align2::LEFT_TOP,
-                "Character Name",
-                font.clone(),
+                "Name",
+                label_font,
                 egui::Color32::WHITE,
             );
             let label_y = window.view.label_y();
@@ -831,16 +837,19 @@ pub fn draw_personnel_finder(
                     scale,
                     (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2, ROW_HEIGHT),
                 );
+                // FUN_004637a0: the text at x 5 (+0xe8) centred on the row
+                // (+0xe4 = 0x24), grey 0x787878 and the chosen row white
+                // (FUN_00607ea0's colours; A0 2026-10-29).
                 let name_colour = if window.chosen == Some(offset) {
-                    egui::Color32::YELLOW
-                } else {
                     egui::Color32::WHITE
+                } else {
+                    ROW_COLOR
                 };
 
                 match row {
                     PersonnelFinderRow::Character { name, .. } => {
                         list_painter.text(
-                            row_rect.left_center() + egui::vec2(4.0 * scale, 0.0),
+                            row_rect.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
                             egui::Align2::LEFT_CENTER,
                             name,
                             font.clone(),
@@ -849,7 +858,7 @@ pub fn draw_personnel_finder(
                     }
                     PersonnelFinderRow::SpecForces { name, counts, .. } => {
                         list_painter.text(
-                            row_rect.left_center() + egui::vec2(4.0 * scale, 0.0),
+                            row_rect.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
                             egui::Align2::LEFT_CENTER,
                             name,
                             font.clone(),
@@ -1607,6 +1616,7 @@ mod tests {
         let mut cache = BmpCache::new();
         let layout = layout();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
 
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -1627,6 +1637,134 @@ mod tests {
         });
 
         assert!(!state.is_open());
+    }
+
+    #[test]
+    fn the_title_and_label_take_the_originals_text_fonts_and_places() {
+        // FUN_004637a0: the title centred in (36, 14, 350) in font 5, the
+        // label TEXTSTRA 0x1891 "Name" in font 4 (A0 2026-10-29).
+        let mut state = PersonnelFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        let world = GameWorld::default();
+        let fog = FogState::new(Faction::Alliance);
+        let mut cache = BmpCache::new();
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut shapes = Vec::new();
+        for _ in 0..2 {
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_personnel_finder(ctx, &world, &fog, &mut state, layout(), &mut cache);
+                },
+            );
+            shapes = output.shapes;
+        }
+        let find = |wanted: &str| {
+            shapes.iter().find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text() == wanted => Some((
+                    text.pos,
+                    text.galley.size(),
+                    text.galley.job.sections[0].format.font_id.size,
+                )),
+                _ => None,
+            })
+        };
+        let origin = window_rect(layout()).min;
+        let (pos, size, font) = find("Personnel Finder").unwrap();
+        assert!((pos.x + size.x / 2.0 - origin.x - 211.0).abs() < 0.01, "{pos:?}");
+        assert_eq!(font, crate::theme::original_font(5, 1.0).size);
+        let (pos, _, font) = find("Name").unwrap();
+        assert_eq!(pos, origin + egui::vec2(36.0, 48.0));
+        assert_eq!(font, crate::theme::original_font(4, 1.0).size);
+        assert!(find("Character Name").is_none());
+    }
+
+    #[test]
+    fn rows_sit_at_x_five_centred_grey_and_the_chosen_one_white_at_any_scale() {
+        // FUN_004637a0: +0xe8 = 5, +0xe4 = 0x24; FUN_00607ea0's colours.
+        // At scale 2: Luke's row and, in the special forces view, Yavin's.
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        let mut luke = default_character();
+        luke.name = "Luke Skywalker".into();
+        luke.is_alliance = true;
+        luke.current_system = Some(yavin);
+        luke.recruited = true;
+        world.characters.insert(luke);
+        add_sf(&mut world, yavin, 0x3c00_0001, true);
+        let fog = FogState::new(Faction::Alliance);
+        let layout = CockpitLayout {
+            scale: 2.0,
+            canvas: crate::cockpit::CockpitViewport {
+                x: 0.0,
+                y: 0.0,
+                width: 1280.0,
+                height: 960.0,
+            },
+            galaxy: crate::cockpit::CockpitViewport {
+                x: 130.0,
+                y: 120.0,
+                width: 970.0,
+                height: 700.0,
+            },
+        };
+        let origin = window_rect(layout).min;
+        let mut state = PersonnelFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        let row = |state: &mut PersonnelFinderState| {
+            let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
+            let mut cache = BmpCache::new();
+            let mut shapes = Vec::new();
+            for _ in 0..2 {
+                shapes = ctx
+                    .run(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(1400.0, 1100.0),
+                            )),
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            let _ = draw_personnel_finder(ctx, &world, &fog, state, layout, &mut cache);
+                        },
+                    )
+                    .shapes;
+            }
+            shapes
+                .iter()
+                .find_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text)
+                        if (text.pos.x - origin.x - (LIST.0 + 5.0) * 2.0).abs() < 0.01 =>
+                    {
+                        Some((
+                            text.galley.text().to_owned(),
+                            text.pos.y + text.galley.size().y / 2.0 - origin.y,
+                            text.galley.job.sections[0].format.color,
+                        ))
+                    }
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let (text, middle, colour) = row(&mut state);
+        assert!(text.starts_with("Luke Skywalker"), "{text}");
+        assert!((middle - (LIST.1 + 10.0) * 2.0).abs() < 0.01, "{middle}");
+        assert_eq!(colour, ROW_COLOR);
+        state.window.as_mut().unwrap().chosen = Some(0);
+        assert_eq!(row(&mut state).2, egui::Color32::WHITE);
+        let window = state.window.as_mut().unwrap();
+        window.view = PersonnelView::SpecForces;
+        window.chosen = None;
+        let (text, middle, colour) = row(&mut state);
+        assert!(text.starts_with("Yavin"), "{text}");
+        assert!((middle - (LIST.1 + 10.0) * 2.0).abs() < 0.01, "{middle}");
+        assert_eq!(colour, ROW_COLOR);
     }
 
     #[test]
