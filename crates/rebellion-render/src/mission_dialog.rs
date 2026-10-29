@@ -566,16 +566,30 @@ fn dialog_rect(layout: CockpitLayout) -> egui::Rect {
     galaxy_centered_rect(layout, MISSION_DIALOG_WIDTH, MISSION_DIALOG_HEIGHT)
 }
 
-/// A `width` by `height` window of the galaxy view. hyp: `FUN_00606980`
-/// places it in the galaxy view's rectangle (parent `+0xcc..+0xd8`); the port
-/// centers it, on whole pixels so its bitmaps are not resampled.
+/// A `width` by `height` window of the galaxy view, placed as
+/// `FUN_00606980` places it in the galaxy view's rectangle (parent
+/// `+0xcc..+0xd8`): `left + (right - left - width) / 2`, the division
+/// truncating, in the 640 by 480 canvas (A0 2026-10-29: the Objectives
+/// window at (169, 81)); on whole screen pixels so its bitmaps are not
+/// resampled.
 pub(crate) fn galaxy_centered_rect(layout: CockpitLayout, width: f32, height: f32) -> egui::Rect {
-    let size = egui::vec2(width * layout.scale, height * layout.scale);
-    let center = egui::pos2(
-        layout.galaxy.x + layout.galaxy.width / 2.0,
-        layout.galaxy.y + layout.galaxy.height / 2.0,
-    );
-    egui::Rect::from_min_size((center - size / 2.0).round(), size)
+    let scale = layout.scale;
+    let size = egui::vec2(width * scale, height * scale);
+    if scale <= 0.0 {
+        return egui::Rect::from_min_size(egui::pos2(layout.galaxy.x, layout.galaxy.y), size);
+    }
+    let place = |start: f32, extent: f32, origin: f32, own: f32| {
+        let start = ((start - origin) / scale).round();
+        let extent = (extent / scale).round();
+        (origin + (start + ((extent - own) / 2.0).trunc()) * scale).round()
+    };
+    egui::Rect::from_min_size(
+        egui::pos2(
+            place(layout.galaxy.x, layout.galaxy.width, layout.canvas.x, width),
+            place(layout.galaxy.y, layout.galaxy.height, layout.canvas.y, height),
+        ),
+        size,
+    )
 }
 
 /// Draw the open dialog, if any, and report what the player asked for.
@@ -1315,6 +1329,19 @@ mod tests {
             },
             scale,
         }
+    }
+
+    #[test]
+    fn a_galaxy_window_is_placed_with_truncated_halves() {
+        // FUN_00606980: left + (right - left - width) / 2, truncating. In a
+        // 485 by 350 galaxy view at (55, 40), a 379 by 272 window sits at
+        // 55 + 53 and 40 + 39; a 380 by 271 one at 55 + 52 and 40 + 39,
+        // where rounding the centre gives 108 and 80.
+        let rect = galaxy_centered_rect(layout(2.0), 379.0, 272.0);
+        assert_eq!(rect.min, egui::pos2(10.0 + 108.0 * 2.0, 20.0 + 79.0 * 2.0));
+        assert_eq!(rect.size(), egui::vec2(758.0, 544.0));
+        let rect = galaxy_centered_rect(layout(1.0), 380.0, 271.0);
+        assert_eq!(rect.min, egui::pos2(10.0 + 107.0, 20.0 + 79.0));
     }
 
     fn press(pos: egui::Pos2, pressed: bool) -> egui::Event {

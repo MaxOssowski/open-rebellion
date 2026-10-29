@@ -3,7 +3,7 @@ title: "Agent Menu — Popup, Items, Advice Flag, Automation Bits"
 description: "Full trace of the Agent popup menu: trigger path, TEXTSTRA labels, accelerator routing, DAT_006b28b0 bit semantics, difficulty default, save/load, and module 0x17 build commands"
 category: "ghidra"
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-10-29
 sources:
   - type: "ghidra"
     files:
@@ -112,8 +112,8 @@ TEXTSTRA IDs are at command_id + 0x3000 (confirmed: 0x110 → 0x3110 =
 | 0x110  | 12560    | Build Ships          | B    | 0xbc1   | FUN_00439d10 → FUN_0049e360(+0x184, 2) | Build ships via module 0x17 |
 | 0x111  | 12561    | Build Troops         | T    | 0xbc2   | FUN_00439d10 → FUN_0049e360(+0x184, 3) | Build troops via module 0x17 |
 | 0x112  | 12562    | Build Facilities     | F    | 0xbc3   | FUN_00439d10 → FUN_0049e360(+0x184, 1) | Build facilities via module 0x17 |
-| 0x113  | 12563    | Galaxy Overview      | O    | 0xbc4   | FUN_0041d7f0(target)                   | Open encyclopedia for galaxy target |
-| 0x114  | 12564    | Objectives           | H    | 0xbd7   | FUN_0041d7f0 + FUN_004ece30            | Open objectives/help encyclopedia |
+| 0x113  | 12563    | Galaxy Overview      | O    | 0xbc4   | FUN_0041d7f0(galaxy 0xf1000004)        | Status window on the galaxy (`status-window.md`) |
+| 0x114  | 12564    | Objectives           | H    | 0xbd7   | FUN_0041d7f0(FUN_004ece30: empty id)   | Status window on the empty id: the Objectives |
 | 0x115  | 12565    | Manage Garrisons     | G    | 0xbc5   | FUN_00439d60(agent, 0x115)             | Toggle module 0x15 state |
 | 0x116  | 12566    | Manage Production    | U    | 0xbc6   | FUN_00439d60(agent, 0x116)             | Toggle module 0x14 state |
 | 0x117  | 12567    | Manage Maintenance   | —    | —       | FUN_00439d60(agent, 0x117)             | No-op: no module mapping |
@@ -134,6 +134,21 @@ table at all. 0x117 and 0x118 reach FUN_00439d60 but match no module
 index, so they are also no-ops. TEXTSTRA labels "Not An Operation" (0x118)
 and "Deactivate"/"Reactivate" (0x119/0x11a) suggest these were
 planned features that shipped as dead menu entries.
+
+### Which items show (read 2026-10-29)
+
+Correction: `FUN_00487900` does not only enable items. Each
+`FUN_00520690(cmd, enabled)` adds the item to the menu list
+(`FUN_00520620` finds it, else a new `0x24`-byte item takes the command
+`+0x18` and the enabled flag `+0x1c`, `FUN_005f6470`). `FUN_0042d050`
+then shows the list's items, and only those. So the menu holds the nine
+items it adds: `0x110`, `0x111`, `0x112`, `0x115`, `0x116`, `0x113`,
+`0x11b`, `0x114`, `0x11e`, in their records' sort order. Manage
+Maintenance, Not An Operation, Deactivate, Reactivate and Messages never
+show. The A0 capture of the Empire's menu (Windows 10 VM, 2026-10-29,
+day 137, `.artifacts/a0-vm/agent-menu/empire-agent-menu-day137.png`,
+sha256 `dfb69444…`) shows these nine, Translate Counterpart and Agent
+Advice checked.
 
 ### Enable/disable logic (FUN_00487900)
 

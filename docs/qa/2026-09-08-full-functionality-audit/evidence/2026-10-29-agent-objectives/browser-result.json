@@ -1,0 +1,50 @@
+{
+  "status": "pass",
+  "wasm_sha256": "efb36faab40a9f47a8e947b7fd26b21cd502a7522a30cad2613d6293de9b86ba",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "16fb3c1ab0dab7c8b113cec1a90e69d966b4380c827d393e7e9c2502a941072a"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "d1aeb9f2dc60ec62e3d3f4bd796981293b4bc85c5f6153debfa5d385c99ed0e0"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "adb807a8f4eb47842d0c0f90fd1f70d34f551ca617f2833aaa556e84198aed1d"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "3f80dc4485905c4b0bbfe9be944a3ebacc7bab4e060c45d9688405c2deb9ab65"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "d5465f740bfe9ba720d29985b546d2bea2ce653f604591224c63db5f3888cc5b"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "0ff8db3482e6f440c18bc734d93fdcdf7b599ec3bdeff8da9c928aaf34bb4c7f"
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,9 @@ pub enum AgentCommand {
     ManageProduction,
     /// 0x11e, Alt+A: flip bit `0x8000` (`FUN_00439e80`).
     AgentAdvice,
+    /// 0x114, Alt+H: the Status window on the empty id, the Objectives
+    /// (`FUN_00486fb0` → `FUN_0041d7f0(FUN_004ece30())`).
+    Objectives,
 }
 
 /// One record of list `0xdead`: its command, sort key (word 2) and TEXTSTRA
@@ -128,19 +131,26 @@ pub struct AgentMenuItem {
     pub command: Option<AgentCommand>,
 }
 
-/// The items `FUN_00487900` enables and checks. Manage Garrisons and Manage
-/// Production are checked while they run (`FUN_00439e30`), Agent Advice
-/// while bit `0x8000` is clear. port: the Build orders (module 0x17), the
-/// encyclopedia views, Translate Counterpart and Messages are not ported, so
-/// they stay disabled, as are the items `FUN_00487900` leaves alone.
+/// The items `FUN_00487900` puts in the menu (`FUN_00520690` adds each
+/// one), in their records' sort order: the other records of list `0xdead`
+/// never show (A0 2026-10-29, nine items).
+const MENU_COMMANDS: [u16; 9] = [0x110, 0x111, 0x112, 0x115, 0x116, 0x113, 0x11b, 0x114, 0x11e];
+
+/// The items `FUN_00487900` adds, enables and checks. Manage Garrisons and
+/// Manage Production are checked while they run (`FUN_00439e30`), Agent
+/// Advice while bit `0x8000` is clear. port: the Build orders (module
+/// 0x17), the Galaxy Overview and Translate Counterpart are not ported, so
+/// they stay disabled.
 #[must_use]
 pub fn agent_menu_items(view: AgentMenuView) -> Vec<AgentMenuItem> {
     AGENT_MENU_RECORDS
         .iter()
+        .filter(|record| MENU_COMMANDS.contains(&record.command))
         .map(|&record| {
             let (command, checked) = match record.command {
                 0x115 => (Some(AgentCommand::ManageGarrisons), view.garrisons),
                 0x116 => (Some(AgentCommand::ManageProduction), view.production),
+                0x114 => (Some(AgentCommand::Objectives), false),
                 0x11e => (Some(AgentCommand::AgentAdvice), view.advice),
                 _ => (None, false),
             };
@@ -291,6 +301,32 @@ mod tests {
         assert!(item(&on, 0x11e).checked);
         assert_eq!(item(&on, 0x11e).command, Some(AgentCommand::AgentAdvice));
         assert!(!item(&on, 0x110).enabled, "port: Build Ships is not ported");
+        assert_eq!(item(&on, 0x114).command, Some(AgentCommand::Objectives));
+        assert!(item(&off, 0x114).enabled, "FUN_00487900 enables 0x114 always");
+    }
+
+    #[test]
+    fn the_menu_holds_the_nine_items_fun_00487900_adds_in_sort_order() {
+        // FUN_00487900 adds 0x110..0x116 but 0x117/0x118, 0x11b, 0x114 and
+        // 0x11e; the A0 capture of the Empire's menu shows these nine.
+        let labels: Vec<_> = agent_menu_items(AgentMenuView::default())
+            .iter()
+            .map(|item| item.record.label)
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Build Ships",
+                "Build Troops",
+                "Build Facilities",
+                "Galaxy Overview",
+                "Objectives",
+                "Manage Garrisons",
+                "Manage Production",
+                "Translate Counterpart",
+                "Agent Advice",
+            ]
+        );
     }
 
     #[test]

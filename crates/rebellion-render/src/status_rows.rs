@@ -37,6 +37,19 @@ pub struct StatusSources<'a> {
     pub manufacturing: &'a ManufacturingState,
     /// Today's day number (`FUN_004fd340`).
     pub today: u64,
+    /// What the Objectives read.
+    pub objectives: ObjectiveSource,
+}
+
+/// What the Objectives filler reads: the viewing side (the galaxy view's
+/// `+0x9c`), its copy of the victory conditions word (side `+0xbc`,
+/// `rebellion_core::victory::conditions_word`), and whether the game is
+/// the standard one (game settings `+8 == 0`, `FUN_004fce50`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ObjectiveSource {
+    pub alliance: bool,
+    pub conditions_word: u32,
+    pub standard: bool,
 }
 
 /// The object a Status window shows, by the id families `FUN_00443130`
@@ -70,6 +83,9 @@ pub enum StatusObject {
     ProductionFacility(ProductionFacilityKey),
     /// `0x50..0x7f`, `FUN_00445c60`: an active mission by its id.
     Mission(u64),
+    /// The empty id, `FUN_004ece30` (Agent menu `0x114`): the Objectives,
+    /// `FUN_0044b2d0` for side 1, else `FUN_0044bb70`.
+    Objectives,
     /// `0xa0..0xaf`, `FUN_0044acd0`: a system's manager for one area.
     Producer {
         system: SystemKey,
@@ -94,6 +110,105 @@ pub struct StatusView {
     /// `FUN_0044a210`: the object's name.
     pub name: String,
     pub rows: Vec<StatusRow>,
+    /// The Objectives' rows, in place of `rows`.
+    pub icon_rows: Vec<StatusIconRow>,
+    /// The Encyclopedia button `0x66`, disabled (STRATEGY 11612) for the
+    /// galaxy and the empty id (`FUN_00443020`).
+    pub encyclopedia: bool,
+}
+
+/// One row of the Objectives list: a STRATEGY icon, keyed and centred in a
+/// cell of the first icon's size, and its TEXTSTRA text (`FUN_0044b2d0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusIconRow {
+    pub icon: u32,
+    pub text: &'static str,
+}
+
+/// One victory condition of `FUN_0044b2d0` (Alliance) and `FUN_0044bb70`
+/// (Empire): its icon, the bits of the conditions word that meet it,
+/// whether only the standard game shows it, and per side the list key
+/// (`FUN_0060ba00(key)`, inserted in key order) and the TEXTSTRA text while
+/// the bits are clear and once one is set.
+struct Objective {
+    icon: u32,
+    bits: u32,
+    standard_only: bool,
+    alliance: (u8, &'static str, &'static str),
+    empire: (u8, &'static str, &'static str),
+}
+
+const OBJECTIVES: [Objective; 6] = [
+    Objective {
+        icon: 10_234,
+        bits: 0x300,
+        standard_only: false,
+        alliance: (1, "Control Coruscant", "Coruscant Taken"),
+        empire: (4, "Defend Coruscant", "Coruscant Lost"),
+    },
+    Objective {
+        icon: 11_013,
+        bits: 0x2000,
+        standard_only: true,
+        alliance: (2, "Capture Palpatine", "Emperor Captive"),
+        empire: (5, "Defend the Emperor", "Emperor Captured"),
+    },
+    Objective {
+        icon: 11_055,
+        bits: 0x1000,
+        standard_only: true,
+        alliance: (3, "Capture Vader", "Vader Captive"),
+        empire: (6, "Defend Vader", "Vader Captured"),
+    },
+    Objective {
+        icon: 904,
+        bits: 0x1,
+        standard_only: false,
+        alliance: (4, "Defend Headquarters", "Headquarters Lost"),
+        empire: (1, "Destroy Rebel HQ", "Rebel HQ Destroyed"),
+    },
+    Objective {
+        icon: 11_028,
+        bits: 0x10,
+        standard_only: true,
+        alliance: (5, "Defend Luke", "Luke Captured"),
+        empire: (2, "Capture Skywalker", "Skywalker Captive"),
+    },
+    Objective {
+        icon: 11_032,
+        bits: 0x20,
+        standard_only: true,
+        alliance: (6, "Defend Mon Mothma", "Mon Mothma Captured"),
+        empire: (3, "Capture Mothma", "Mon Mothma Captive"),
+    },
+];
+
+/// The Objectives rows (TEXTSTRA `0x8780..0x8797`): each side's own
+/// conditions first, the leaders' only in the standard game.
+#[must_use]
+pub fn objective_rows(source: ObjectiveSource) -> Vec<StatusIconRow> {
+    let mut rows: Vec<_> = OBJECTIVES
+        .iter()
+        .filter(|objective| source.standard || !objective.standard_only)
+        .map(|objective| {
+            let (key, open, met) = if source.alliance {
+                objective.alliance
+            } else {
+                objective.empire
+            };
+            let text = if source.conditions_word & objective.bits == 0 {
+                open
+            } else {
+                met
+            };
+            (key, StatusIconRow {
+                icon: objective.icon,
+                text,
+            })
+        })
+        .collect();
+    rows.sort_by_key(|&(key, _)| key);
+    rows.into_iter().map(|(_, row)| row).collect()
 }
 
 fn row(label: &str, value: impl Into<String>) -> StatusRow {
@@ -930,8 +1045,23 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         marks: Vec::new(),
         name,
         rows,
+        icon_rows: Vec::new(),
+        encyclopedia: true,
     };
     Some(match object {
+        // FUN_00443130: the background as for the galaxy (11554 for a side-1
+        // viewer, 11558 otherwise), STRATEGY 11590, the name TEXTSTRA 12564.
+        StatusObject::Objectives => StatusView {
+            icon_rows: objective_rows(sources.objectives),
+            encyclopedia: false,
+            ..view(
+                "",
+                usize::from(!sources.objectives.alliance),
+                Some((DllSource::Strategy, 11_590)),
+                "Objectives".to_owned(),
+                Vec::new(),
+            )
+        },
         StatusObject::Character(key) => {
             let character = world.characters.get(key)?;
             let side = if character.is_alliance {
@@ -1170,6 +1300,7 @@ mod tests {
                 transport: &self.transport,
                 manufacturing: &self.manufacturing,
                 today: 7,
+                objectives: ObjectiveSource::default(),
             }
         }
     }
@@ -2239,5 +2370,129 @@ mod tests {
             panic!("a mission has a GOKRES picture");
         };
         assert_eq!(theirs.picture, Some((DllSource::Gokres, base + 0x1000)));
+    }
+
+    fn texts(source: ObjectiveSource) -> Vec<&'static str> {
+        objective_rows(source).iter().map(|row| row.text).collect()
+    }
+
+    #[test]
+    fn each_side_lists_its_own_objectives_first() {
+        // FUN_0044b2d0 keys Coruscant, Emperor, Vader, HQ, Luke, Mon Mothma
+        // 1..6; FUN_0044bb70 keys them 4, 5, 6, 1, 2, 3. A0 2026-10-29 shows
+        // the Empire's order.
+        let alliance = ObjectiveSource {
+            alliance: true,
+            conditions_word: 0,
+            standard: true,
+        };
+        assert_eq!(
+            texts(alliance),
+            [
+                "Control Coruscant",
+                "Capture Palpatine",
+                "Capture Vader",
+                "Defend Headquarters",
+                "Defend Luke",
+                "Defend Mon Mothma",
+            ]
+        );
+        assert_eq!(
+            texts(ObjectiveSource {
+                alliance: false,
+                ..alliance
+            }),
+            [
+                "Destroy Rebel HQ",
+                "Capture Skywalker",
+                "Capture Mothma",
+                "Defend Coruscant",
+                "Defend the Emperor",
+                "Defend Vader",
+            ]
+        );
+        let icons: Vec<_> = objective_rows(alliance).iter().map(|row| row.icon).collect();
+        assert_eq!(icons, [10_234, 11_013, 11_055, 904, 11_028, 11_032]);
+    }
+
+    #[test]
+    fn a_met_condition_changes_its_text_on_both_sides() {
+        // FUN_0044b2d0 / FUN_0044bb70 test the word's bits 0x300, 0x2000,
+        // 0x1000, 1, 0x10 and 0x20.
+        let word = 0x200 | 0x2000 | 0x1 | 0x20;
+        assert_eq!(
+            texts(ObjectiveSource {
+                alliance: true,
+                conditions_word: word,
+                standard: true,
+            }),
+            [
+                "Coruscant Taken",
+                "Emperor Captive",
+                "Capture Vader",
+                "Headquarters Lost",
+                "Defend Luke",
+                "Mon Mothma Captured",
+            ]
+        );
+        assert_eq!(
+            texts(ObjectiveSource {
+                alliance: false,
+                conditions_word: 0x100 | 0x1000 | 0x10,
+                standard: true,
+            }),
+            [
+                "Destroy Rebel HQ",
+                "Skywalker Captive",
+                "Capture Mothma",
+                "Coruscant Lost",
+                "Defend the Emperor",
+                "Vader Captured",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_headquarters_only_game_lists_no_leaders() {
+        // The leader rows sit under `local_30` (game settings +8 == 0).
+        let source = |alliance| ObjectiveSource {
+            alliance,
+            conditions_word: 0,
+            standard: false,
+        };
+        assert_eq!(texts(source(true)), ["Control Coruscant", "Defend Headquarters"]);
+        assert_eq!(texts(source(false)), ["Destroy Rebel HQ", "Defend Coruscant"]);
+    }
+
+    #[test]
+    fn the_objectives_window_shows_the_galaxy_picture_and_no_encyclopedia() {
+        // FUN_00443130 on the empty id: STRATEGY 11590, TEXTSTRA 12564, the
+        // background row of a side-1 viewer (11554) or another (11558), and
+        // FUN_00443020 disables 0x66.
+        let world = GameWorld::default();
+        let states = States::new();
+        let mut sources = states.sources(&world);
+        sources.objectives = ObjectiveSource {
+            alliance: false,
+            conditions_word: 0,
+            standard: true,
+        };
+        let view = status_view(sources, StatusObject::Objectives).unwrap();
+        assert_eq!(view.picture, Some((DllSource::Strategy, 11_590)));
+        assert_eq!(view.name, "Objectives");
+        assert_eq!(view.title, "");
+        assert!(!view.encyclopedia);
+        assert!(view.rows.is_empty());
+        assert_eq!(view.icon_rows.len(), 6);
+        assert_eq!(
+            crate::status_window::background(view.side, crate::cockpit::CockpitFaction::Empire),
+            11_558
+        );
+        sources.objectives.alliance = true;
+        let view = status_view(sources, StatusObject::Objectives).unwrap();
+        assert_eq!(
+            crate::status_window::background(view.side, crate::cockpit::CockpitFaction::Alliance),
+            11_554
+        );
     }
 }

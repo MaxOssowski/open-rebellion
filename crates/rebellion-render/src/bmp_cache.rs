@@ -1884,6 +1884,14 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 11500..=11502
                 | 11513..=11516
                 | 11520
+                // The Objectives' portraits (`FUN_0044b2d0`), composed on
+                // the first icon's key colour and blitted keyed by the list
+                // (A0 2026-10-29); its planet 10234 is a sector planet and
+                // its headquarters 904, both keyed above.
+                | 11013
+                | 11028
+                | 11032
+                | 11055
         ),
         // The unit and facility pictures (`0x001..0x584`, all 122 by 50 on
         // a blue matte), which the Status window blits keyed through

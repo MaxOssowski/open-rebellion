@@ -43,6 +43,19 @@ const LIST: (f32, f32, f32, f32) = (18.0, 47.0, 208.0, 204.0);
 const COLUMN: f32 = 103.0;
 /// The picture is centred on (307, 64) (`FUN_00443130`).
 const PICTURE_CENTRE: (i32, i32) = (307, 64);
+/// The Objectives' list: one column of cells 35 high (`FUN_006073d0(0x67,
+/// 0xd0, 0x23, ..)`; the scroll bar leaves too little width for a second
+/// 103-wide cell, `FUN_00609ae0`), each icon composed into a canvas of the
+/// first icon's size, 37 by 37 (STRATEGY 10234), and the text at x 40
+/// (`+0xe8 = 0x28`), centred on the row's height (`+0xe4 = 0x24`).
+const ICON_ROW_HEIGHT: f32 = 35.0;
+const ICON_CELL: i32 = 37;
+const ICON_TEXT_X: f32 = 40.0;
+/// hyp: the list blits its items one pixel in from its left edge (A0
+/// 2026-10-29: the 25-wide portraits start at list x 7, the text at 42).
+const ICON_ROW_INSET: f32 = 1.0;
+/// The Encyclopedia button's disabled art (`FUN_00443020`).
+const ENCYCLOPEDIA_DISABLED: u32 = 11_612;
 
 /// One list row: `FUN_0044b1d0` appends the label to one list and the value
 /// to the other.
@@ -255,6 +268,21 @@ pub fn window_rect(layout: CockpitLayout) -> egui::Rect {
 /// `FUN_00449e00`'s row placement from each row's (label, value) height: a
 /// row is as tall as its taller cell, and a shorter value moves down to the
 /// label's bottom. Returns each row's (label, value) top and the total.
+/// An icon's top-left in its row's cell: centred in the 37 by 37 canvas
+/// with integer halves (`FUN_005fcc30(.., (w0 - w) / 2, (h0 - h) / 2)`).
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "Bitmap sizes are small integers."
+)]
+fn icon_offset(width: usize, height: usize) -> (f32, f32) {
+    (
+        ((ICON_CELL - width as i32) / 2) as f32,
+        ((ICON_CELL - height as i32) / 2) as f32,
+    )
+}
+
 fn row_tops(heights: &[(f32, f32)]) -> (Vec<(f32, f32)>, f32) {
     let mut tops = Vec::with_capacity(heights.len());
     let mut y = 0.0;
@@ -370,12 +398,11 @@ pub fn draw_status_window(
                 scale,
             );
 
-            // hyp: fonts 5 and 10 are not mapped; the Missions window's
-            // sizes stand in.
-            // hyp: the production manager's font 0x11 is not mapped
-            // either; its title takes font 5's size.
-            let title_font = egui::FontId::proportional((11.0 * scale).max(7.0));
-            let list_font = egui::FontId::proportional((9.0 * scale).max(6.0));
+            // The title and name in font 5, the list in font 10
+            // (FUN_00443130, FUN_00449e00). hyp: the production manager's
+            // font 0x11 is not mapped; its title takes font 5.
+            let title_font = crate::theme::original_font(5, scale);
+            let list_font = crate::theme::original_font(10, scale);
 
             let title = at(TITLE);
             painter.text(
@@ -409,17 +436,24 @@ pub fn draw_status_window(
                 egui::Color32::WHITE,
                 name.width(),
             );
-            let name_at = egui::pos2(
-                name.center().x - galley.size().x / 2.0,
-                name.center().y - galley.size().y / 2.0,
-            );
+            // Format 0x11 (DT_CENTER | DT_WORDBREAK): centred across, from
+            // the box's top (A0 2026-10-29: "Objectives" at y 218 + 3).
+            let name_at = egui::pos2(name.center().x - galley.size().x / 2.0, name.min.y);
             painter
                 .with_clip_rect(name)
                 .galley(name_at, galley, egui::Color32::WHITE);
 
             // The list. port: the wheel scrolls it; no scroll bar is drawn.
             let list = at(LIST);
-            let (laid, height) = layout_rows(&painter, &view.rows, &list_font, COLUMN * scale);
+            let (laid, mut height) =
+                layout_rows(&painter, &view.rows, &list_font, COLUMN * scale);
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "A handful of rows."
+            )]
+            if !view.icon_rows.is_empty() {
+                height = view.icon_rows.len() as f32 * ICON_ROW_HEIGHT * scale;
+            }
             let list_response =
                 ui.interact(list, ui.id().with("status-list"), egui::Sense::hover());
             let wheel = if list_response.hovered() {
@@ -430,6 +464,39 @@ pub fn draw_status_window(
             open.scroll = scrolled(open.scroll, wheel, scale, height);
             let list_painter = painter.with_clip_rect(list);
             let top = list.min.y - open.scroll * scale;
+            for (index, row) in view.icon_rows.iter().enumerate() {
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "A handful of rows."
+                )]
+                let top = LIST.1 - open.scroll + index as f32 * ICON_ROW_HEIGHT;
+                if let Some([width, height]) =
+                    cache.original_resource_size(DllSource::Strategy, row.icon)
+                {
+                    let (dx, dy) = icon_offset(width, height);
+                    paint_native(
+                        &list_painter,
+                        ctx,
+                        cache,
+                        DllSource::Strategy,
+                        row.icon,
+                        frame,
+                        scale,
+                        LIST.0 + ICON_ROW_INSET + dx,
+                        top + dy,
+                    );
+                }
+                list_painter.text(
+                    egui::pos2(
+                        list.min.x + (ICON_ROW_INSET + ICON_TEXT_X) * scale,
+                        frame.min.y + (top + ICON_ROW_HEIGHT / 2.0) * scale,
+                    ),
+                    egui::Align2::LEFT_CENTER,
+                    row.text,
+                    list_font.clone(),
+                    egui::Color32::WHITE,
+                );
+            }
             for (label, value, label_y, value_y) in laid {
                 list_painter.galley(
                     egui::pos2(list.min.x, top + label_y),
@@ -443,7 +510,16 @@ pub fn draw_status_window(
                 );
             }
 
-            if button(
+            if !view.encyclopedia {
+                paint(
+                    ui.painter(),
+                    ctx,
+                    cache,
+                    ENCYCLOPEDIA_DISABLED,
+                    at(ENCYCLOPEDIA_RECT),
+                    scale,
+                );
+            } else if button(
                 ui,
                 cache,
                 at(ENCYCLOPEDIA_RECT),
@@ -824,6 +900,7 @@ mod tests {
                 transport: &self.transport,
                 manufacturing: &self.manufacturing,
                 today: 0,
+                objectives: crate::status_rows::ObjectiveSource::default(),
             }
         }
 
@@ -874,6 +951,7 @@ mod tests {
         let layout = layout();
         let pos = window_rect(layout).min + egui::vec2(x, y);
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let empty = Empty::new();
         let mut emitted = None;
@@ -1011,6 +1089,14 @@ mod tests {
     }
 
     #[test]
+    fn an_objective_icon_is_centred_in_the_first_icons_37_pixel_canvas() {
+        // FUN_0044b2d0: FUN_005fcc30(canvas, (w0 - w) / 2, (h0 - h) / 2).
+        assert_eq!(icon_offset(37, 37), (0.0, 0.0));
+        assert_eq!(icon_offset(25, 25), (6.0, 6.0));
+        assert_eq!(icon_offset(24, 26), (6.0, 5.0));
+    }
+
+    #[test]
     fn the_wheel_scrolls_the_list_only_as_far_as_its_rows_reach() {
         // port: the list's 204 rows of height scroll; at scale 2, 500 screen
         // pixels of rows overflow it by 46 window pixels.
@@ -1054,7 +1140,17 @@ mod tests {
         world: &GameWorld,
         state: &mut StatusWindowState,
     ) -> (Vec<Text>, Vec<(u32, egui::Pos2)>) {
+        render_with(world, state, crate::status_rows::ObjectiveSource::default())
+    }
+
+    /// [`render`] with the Objectives' source.
+    fn render_with(
+        world: &GameWorld,
+        state: &mut StatusWindowState,
+        objectives: crate::status_rows::ObjectiveSource,
+    ) -> (Vec<Text>, Vec<(u32, egui::Pos2)>) {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         cache.set_base_path(staged_portrait());
         let empty = Empty::new();
@@ -1071,7 +1167,10 @@ mod tests {
             output = Some(ctx.run(input, |ctx| {
                 let _ = draw_status_window(
                     ctx,
-                    empty.sources(world),
+                    StatusSources {
+                        objectives,
+                        ..empty.sources(world)
+                    },
                     state,
                     CockpitFaction::Alliance,
                     scaled(),
@@ -1125,7 +1224,29 @@ mod tests {
         bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
         bmp[30..54].fill(0);
         std::fs::write(dir.join("2114.bmp"), bmp).unwrap();
+        // The Objectives' icons: the 37 by 37 planet and 25 by 25 portraits.
+        let strategy = root.join("strategy-dll/BMP");
+        std::fs::create_dir_all(&strategy).unwrap();
+        for (id, side) in [(10_234, 37), (11_013, 25), (11_055, 25), (904, 37), (11_028, 25), (11_032, 25)] {
+            std::fs::write(strategy.join(format!("{id}.bmp")), indexed_bmp(side)).unwrap();
+        }
         root
+    }
+
+    /// A `side` by `side` 8-bit indexed BMP.
+    fn indexed_bmp(side: usize) -> Vec<u8> {
+        let stride = side.div_ceil(4) * 4;
+        let offset = 54usize + 1024;
+        let mut bmp = vec![1_u8; offset + stride * side];
+        bmp[..2].copy_from_slice(b"BM");
+        bmp[10..14].copy_from_slice(&u32::try_from(offset).unwrap().to_le_bytes());
+        bmp[14..18].copy_from_slice(&40u32.to_le_bytes());
+        bmp[18..22].copy_from_slice(&i32::try_from(side).unwrap().to_le_bytes());
+        bmp[22..26].copy_from_slice(&i32::try_from(side).unwrap().to_le_bytes());
+        bmp[26..28].copy_from_slice(&1u16.to_le_bytes());
+        bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
+        bmp[30..54].fill(0);
+        bmp
     }
 
     fn find<'a>(texts: &'a [Text], text: &str) -> &'a Text {
@@ -1141,9 +1262,10 @@ mod tests {
 
     #[test]
     fn the_title_name_and_rows_sit_where_the_window_lays_them_out() {
-        // FUN_00443130 at scale 2: the title centred in (15, 18, 211, 18),
-        // the name centred in (242, 137, 130, 44), labels at the list's
-        // (18, 47) and values 103 to their right (FUN_00449e00).
+        // FUN_00443130 at scale 2: the title centred in (15, 18, 211, 18)
+        // in font 5, the name centred across (242, 137, 130, 44) from its
+        // top (format 0x11) in font 5, labels at the list's (18, 47) and
+        // values 103 to their right (FUN_00449e00) in font 10.
         let (world, key, ..) = world_with_luke();
         let mut state = StatusWindowState::default();
         state.open_character(key);
@@ -1156,17 +1278,20 @@ mod tests {
             near(*pos + *size / 2.0, at(15.0 + 105.5, 18.0 + 9.0)),
             "{pos:?} {size:?}"
         );
-        assert_eq!(*font, 22.0);
+        assert_eq!(*font, crate::theme::original_font(5, 2.0).size);
         let (_, pos, size, font) = find(&texts, "Luke Skywalker");
         assert!(
-            near(*pos + *size / 2.0, at(242.0 + 65.0, 137.0 + 22.0)),
+            near(
+                egui::pos2(pos.x + size.x / 2.0, pos.y),
+                at(242.0 + 65.0, 137.0)
+            ),
             "{pos:?} {size:?}"
         );
-        assert_eq!(*font, 22.0);
+        assert_eq!(*font, crate::theme::original_font(5, 2.0).size);
 
         let (_, commanding, row, font) = find(&texts, "Commanding:");
         assert!(near(*commanding, at(18.0, 47.0)), "{commanding:?}");
-        assert_eq!(*font, 18.0);
+        assert_eq!(*font, crate::theme::original_font(10, 2.0).size);
         let (_, none, ..) = find(&texts, "None");
         assert!(near(*none, at(18.0 + 103.0, 47.0)), "{none:?}");
         let (_, yavin, ..) = find(&texts, "Yavin");
@@ -1250,6 +1375,42 @@ mod tests {
         assert!(picture.is_some(), "{painted:?}");
         // A character's portrait has no mark (FUN_0042c3b0: 0x2ced wraps).
         assert!(!painted.iter().any(|(id, at)| *at == origin && *id != 2_114));
+    }
+
+    #[test]
+    fn the_objectives_rows_stack_35_apart_with_centred_icons_and_text_at_40() {
+        // FUN_0044b2d0 rows in the list at (18, 47): each icon centred in a
+        // 37 by 37 cell one pixel in (A0 2026-10-29), the text at x 40 from
+        // that cell, centred on the 35-pixel row; scrolled by 3.
+        let world = GameWorld::default();
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::Objectives);
+        if let Some(open) = state.window.as_mut() {
+            open.scroll = 3.0;
+        }
+        let source = crate::status_rows::ObjectiveSource {
+            alliance: true,
+            conditions_word: 0,
+            standard: true,
+        };
+        let (texts, painted) = render_with(&world, &mut state, source);
+        let frame = window_rect(scaled()).min;
+        let at = |x: f32, y: f32| frame + egui::vec2(x, y) * 2.0;
+        assert!(painted.contains(&(10_234, at(19.0, 44.0))), "{painted:?}");
+        assert!(painted.contains(&(11_013, at(25.0, 85.0))), "{painted:?}");
+        assert!(painted.contains(&(11_032, at(25.0, 225.0))), "{painted:?}");
+        for (index, text) in ["Control Coruscant", "Capture Palpatine"].iter().enumerate() {
+            let (_, pos, size, font) = find(&texts, text);
+            #[expect(clippy::cast_precision_loss, reason = "Two rows.")]
+            let middle = at(59.0, 44.0 + 17.5 + 35.0 * index as f32);
+            assert!(near(egui::pos2(pos.x, pos.y + size.y / 2.0), middle), "{pos:?} {size:?}");
+            assert_eq!(*font, crate::theme::original_font(10, 2.0).size);
+        }
+        // FUN_00443020: no Encyclopedia for the empty id; the name from the
+        // box's top.
+        assert!(painted.contains(&(11_612, at(258.0, 218.0))), "{painted:?}");
+        let (_, pos, ..) = find(&texts, "Objectives");
+        assert!((pos.y - at(0.0, 137.0).y).abs() < 0.01, "{pos:?}");
     }
 
     #[test]

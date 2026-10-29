@@ -87,7 +87,8 @@ the player's view of the object `+0x12c` (`FUN_004f2d10`), and GOKRES is
   | `0x50..0x7f` mission, not hidden (`FUN_00520b70`) | `FUN_00445c60` |
   | `0x3c..0x3f` special force | `FUN_00445780` |
   | `0xa0..0xaf` production manager | `FUN_0044acd0` |
-  | `0xf1` galaxy, or the empty id | lists, `FUN_0044b2d0` (side 1) / `FUN_0044bb70` |
+  | the empty id (`FUN_004ece60` true) | the Objectives, `FUN_0044b2d0` (viewer side 1) / `FUN_0044bb70` |
+  | `0xf1` galaxy | the Galaxy Overview: fifteen family ranges, `FUN_0044a7a0` + `FUN_0044aa20` each |
 
   Each filler appends a label to one list and a value to the other
   (`FUN_0044b1d0(row, text, list)`). `FUN_00449e00` lays them out in two
@@ -278,6 +279,60 @@ shipped game it is unreachable.
   `manufacturing_facilities` by class family, its `defense_facilities` by
   class family, its `ground_units`, and the fighter squadrons of its
   fleets. The holder filter needs each object's side.
+
+## Objectives (`FUN_0044b2d0`, `FUN_0044bb70`; read 2026-10-29)
+
+Correction to the table above: `FUN_00443130` takes the empty id
+(`FUN_004ece60`) and the galaxy (`0xf1`) down different branches. Both
+replace the list's container with a sorted one (`FUN_0060a790(1)`), load
+STRATEGY 11590 (`0x2d46`) as the picture and set the list's `+0xe4 =
+0x24` (`DT_VCENTER | DT_SINGLELINE`) and `+0xe8 = 0x28` (text at x 40).
+The empty id then calls `FUN_0044b2d0` for a side-1 viewer, else
+`FUN_0044bb70`.
+
+Each filler reads the viewer's side (`FUN_004f3dd0`) `VictoryConditions`
+(`+0xbc`, the galaxy's conditions word) and the game settings
+(`FUN_004fce50`; `local_30` = field `+8 == 0`, the standard game). Each
+row is a `FUN_0060ba00(key)` item, inserted in key order, whose image is a
+canvas of the first icon's size (STRATEGY 10234, 37 by 37) filled with its
+key colour and the row's icon centred in it (`FUN_005fcc30(.., (w0 - w) /
+2, (h0 - h) / 2)`), and whose text is a TEXTSTRA string:
+
+| Icon | Bits | Standard only | Alliance key, open / met | Empire key, open / met |
+|---|---|---|---|---|
+| 10234 Coruscant | `0x300` | no | 1, 34689 "Control Coruscant" / 34690 "Coruscant Taken" | 4, 34688 "Defend Coruscant" / 34691 "Coruscant Lost" |
+| 11013 Palpatine | `0x2000` | yes | 2, 34697 "Capture Palpatine" / 34698 "Emperor Captive" | 5, 34696 "Defend the Emperor" / 34699 "Emperor Captured" |
+| 11055 Vader | `0x1000` | yes | 3, 34701 "Capture Vader" / 34702 "Vader Captive" | 6, 34700 "Defend Vader" / 34703 "Vader Captured" |
+| 904 headquarters | `0x1` | no | 4, 34692 "Defend Headquarters" / 34695 "Headquarters Lost" | 1, 34693 "Destroy Rebel HQ" / 34694 "Rebel HQ Destroyed" |
+| 11028 Luke | `0x10` | yes | 5, 34708 "Defend Luke" / 34711 "Luke Captured" | 2, 34709 "Capture Skywalker" / 34710 "Skywalker Captive" |
+| 11032 Mon Mothma | `0x20` | yes | 6, 34704 "Defend Mon Mothma" / 34707 "Mon Mothma Captured" | 3, 34705 "Capture Mothma" / 34706 "Mon Mothma Captive" |
+
+The icons' third `FUN_005fbd20` argument (10 or 2) does not key them: the
+list blits every item keyed (`FUN_00609960`), and the A0 capture shows no
+blue around the planet or the headquarters.
+
+The list is a grid of cells 103 by 35 (`FUN_006073d0(0x67, 0xd0, 0x23,
+..)`), but its scroll bar leaves less than two cells' width
+(`FUN_00609ae0`), so the rows stack in one column, 35 apart.
+
+A0 (Windows 10 VM, 2026-10-29, Empire, day 137,
+`.artifacts/a0-vm/agent-menu/empire-objectives-day137.png`, sha256
+`bc7bf4dc…`): the window at (169, 81); the rows Destroy Rebel HQ, Capture
+Skywalker, Capture Mothma, Defend Coruscant, Defend the Emperor, Defend
+Vader; the icons one pixel in from the list's left (hyp: the list's
+client edge), the text from x 41; "Objectives" in the name box from its
+top, as format `0x11` (no `DT_VCENTER`) draws it. The scroll bar shows.
+
+Placement: `FUN_00606980(l, t, r, b)` puts the window at `l + (r - l -
+w) / 2`, `t + (b - t - h) / 2`, the divisions truncating; the A0 window's
+(169, 81) agrees.
+
+### Port
+
+`StatusObject::Objectives` (`status_rows.rs`, `objective_rows`), opened by
+the Agent menu's Objectives and Alt+H. The background is 11554 for an
+Alliance viewer and 11558 for an Empire one, the Encyclopedia button is
+disabled (11612). port: the scroll bar is not drawn; the wheel scrolls.
 
 ## Mission Status (`FUN_00445c60`)
 

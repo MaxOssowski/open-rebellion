@@ -1761,6 +1761,7 @@ async fn main() {
                 // 0x115/0x116, FUN_00422ce0) toggle Manage Garrisons and
                 // Manage Production (FUN_00439d60).
                 // Alt+A (0xbc9 → 0x11e) flips Agent Advice (FUN_00439e80).
+                // Alt+H (0xbd7 → 0x114) shows the Objectives.
                 for (key, command) in [
                     (
                         KeyCode::G,
@@ -1774,9 +1775,18 @@ async fn main() {
                         KeyCode::A,
                         rebellion_render::agent_menu::AgentCommand::AgentAdvice,
                     ),
+                    (
+                        KeyCode::H,
+                        rebellion_render::agent_menu::AgentCommand::Objectives,
+                    ),
                 ] {
                     if is_key_pressed(key) {
-                        apply_agent_command(&mut player_agent, command, "accelerator");
+                        apply_agent_command(
+                            &mut player_agent,
+                            &mut status_window_state,
+                            command,
+                            "accelerator",
+                        );
                     }
                 }
                 // Alt+1..9 pick the GID displays (accelerator table 11).
@@ -4617,7 +4627,12 @@ async fn main() {
                         agent_view,
                         speed_input,
                     ) {
-                        apply_agent_command(&mut player_agent, command, "menu");
+                        apply_agent_command(
+                            &mut player_agent,
+                            &mut status_window_state,
+                            command,
+                            "menu",
+                        );
                     }
                     // A rail light's click (0x136..0x13e) or F6 (0x75) opens
                     // the Message Index on its category; FUN_0042a240 does
@@ -6223,6 +6238,13 @@ async fn main() {
                             transport: &troop_transport_state,
                             manufacturing: &mfg_state,
                             today: clock.tick,
+                            objectives: rebellion_render::status_rows::ObjectiveSource {
+                                alliance: cockpit_state.faction
+                                    == rebellion_render::cockpit::CockpitFaction::Alliance,
+                                conditions_word: victory_state.conditions_word,
+                                standard: campaign_config.victory_conditions
+                                    == VictoryConditions::Standard,
+                            },
                         },
                         &mut status_window_state,
                         cockpit_state.faction,
@@ -8296,11 +8318,22 @@ fn apply_message_index_actions(
 
 fn apply_agent_command(
     agent: &mut PlayerAgent,
+    status: &mut rebellion_render::status_window::StatusWindowState,
     command: rebellion_render::agent_menu::AgentCommand,
     source: &str,
 ) {
     use rebellion_render::agent_menu::AgentCommand;
     let (name, on) = match command {
+        // FUN_0041d7f0 → FUN_0042a440 posts 0x468 type 0x1a with the empty
+        // id, which the galaxy view always opens.
+        AgentCommand::Objectives => {
+            status.open(rebellion_render::status_rows::StatusObject::Objectives);
+            macroquad::logging::info!(
+                "[agent] command=objectives status=opened source={}",
+                source
+            );
+            return;
+        }
         AgentCommand::ManageGarrisons => (
             "manage_garrisons",
             agent.toggle(AutomationModule::Garrisons),
