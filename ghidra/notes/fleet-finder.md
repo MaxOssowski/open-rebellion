@@ -77,7 +77,11 @@ Both buttons play sound `0x260` (`FUN_00602840`). Every side shares:
 - the tab's label (`+0x15c`) at `(40,119)`, 283 by 16, font 5: the selected
   tab's text, such as "All Fleets";
 - the list (`0xcc`, `FUN_00607ea0`) at `(36,138)`, 350 by 165, rows 350 by
-  20, scroll bar art 10653 (`0x299d`).
+  20, scroll bar art 10653 (`0x299d`). `FUN_00461960` sets `+0xe4 = 0x24`
+  and `+0xe8 = 5` (text at x 5, centred on the row) and keeps the
+  constructor's colours, grey `0x787878` and the chosen row white, as the
+  Encyclopedia's list; A0 2026-10-29 (Empire, day 167) shows the grey rows
+  20 apart at x 41, the title centred and bold. Ported the same day.
 
 It opens in mode 1 with All selected (`FUN_00462be0(.., 1)`) and the focus
 in the name box. Slot `+0x30` closes it.

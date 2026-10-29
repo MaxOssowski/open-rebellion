@@ -1,0 +1,16 @@
+{
+  "status": "pass",
+  "wasm_sha256": "bf68ea74d544e663aec798d985dc8fb143f3e4df30a32b47190c14110a474888",
+  "results": [
+    {
+      "faction": "empire",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "fleet-finder",
+          "sha256": "f68b9f31bfd39af2a99a0f8af8809c0cfa346a6e1240cf3fd0b4f544bbeb06b0"
+        }
+      ]
+    }
+  ]
+}

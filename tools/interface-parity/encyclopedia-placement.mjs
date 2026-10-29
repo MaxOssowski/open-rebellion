@@ -10,6 +10,7 @@
 //
 // Build first: scripts/build-wasm.sh
 // Run:         node encyclopedia-placement.mjs [--out=DIR] [--faction=alliance|empire]
+//              [--window=finders]: F3's Fleet Finder instead, for comparison
 // Env:         CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -121,6 +122,15 @@ async function run(browser, base, faction) {
       () => log.some((line) => /clip finished kind=2 code=0xd /.test(line)), 60_000);
     await page.waitForTimeout(300);
     await page.mouse.move(2, 2);
+    if (args.window === "finders") {
+      // F3, the Fleet Finder (FUN_00422ce0 0x72 -> 0x12e).
+      await page.keyboard.down("F3");
+      await frames(page);
+      await page.keyboard.up("F3");
+      await page.waitForTimeout(800);
+      await shot("fleet-finder");
+      return { faction: faction.name, status: "pass", shots };
+    }
     await page.keyboard.down("F7");
     await frames(page);
     await page.keyboard.up("F7");

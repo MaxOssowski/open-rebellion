@@ -110,6 +110,15 @@ const TAB_LABEL_AT: (f32, f32) = (40.0, 119.0);
 const LIST: (f32, f32, f32, f32) = (36.0, 138.0, 350.0, 165.0);
 /// `FUN_00607ea0(.., 0xcc, 350, 20)`: each row is 350 by 20.
 const ROW_HEIGHT: f32 = 20.0;
+const ROW_PIXELS: usize = 20;
+/// `FUN_00461960`: the list's text at x 5 (`+0xe8`), centred on its row
+/// (`+0xe4 = 0x24`), in font 10, grey `0x787878` and the chosen row white
+/// (`FUN_00607ea0`'s colours), as the Encyclopedia's list (A0 2026-10-29).
+const ROW_TEXT_X: f32 = 5.0;
+const ROW_COLOR: egui::Color32 = egui::Color32::from_rgb(0x78, 0x78, 0x78);
+/// The list's arrow step, `FUN_00607ea0`'s argument 10, and its bar,
+/// `FUN_0060a490(.., list, 7, 0x299d, ..)`: RCDATA 10653.
+const LIST_STEP: f32 = 10.0;
 
 /// Fleets (mode 1) or capital ships (mode 2, the Ship Finder).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -271,8 +280,11 @@ struct OpenFinder {
     name: String,
     /// `+0x16c`: the chosen row's object.
     chosen: Option<FleetWindowEntry>,
-    /// The first row the list shows.
-    first_row: usize,
+    /// The list's first visible pixel (it scrolls by pixels,
+    /// `FUN_0060a490`).
+    scroll: usize,
+    /// A press held on the list's scroll bar.
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// The name box takes the focus when the window opens.
     focus_name: bool,
     /// The row the last click chose and when: a second click on it soon
@@ -312,7 +324,8 @@ impl FleetFinderState {
             tab: FinderTab::All,
             name: String::new(),
             chosen: None,
-            first_row: 0,
+            scroll: 0,
+            scroll_hold: None,
             focus_name: true,
             last_clicked: None,
         });
@@ -354,7 +367,7 @@ impl FleetFinderState {
             name: window.name.clone(),
             rows,
             chosen,
-            first_row: window.first_row,
+            first_row: window.scroll / ROW_PIXELS,
         })
     }
 
@@ -377,15 +390,13 @@ impl FleetFinderState {
             FinderControl::FleetFinder => side.fleet_finder.rect,
             FinderControl::NameBox => NAME_BOX,
             FinderControl::Row(row) => {
-                let line = row
-                    .checked_sub(window.first_row)
-                    .filter(|&line| line < VISIBLE_ROWS)?;
-                (
-                    LIST.0,
-                    LIST.1 + ROW_HEIGHT * line as f32,
-                    LIST.2,
-                    ROW_HEIGHT,
-                )
+                // A row wholly in view.
+                let top = row * ROW_PIXELS;
+                (top >= window.scroll && top + ROW_PIXELS <= window.scroll + LIST_PIXELS)
+                    .then_some(())?;
+                #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+                let y = LIST.1 + (top - window.scroll) as f32;
+                (LIST.0, y, LIST.2 - BAR_WIDTH, ROW_HEIGHT)
             }
         };
         Some(at(window_rect(layout), layout.scale, rect))
@@ -404,7 +415,7 @@ impl FleetFinderState {
             if window.tab != tab {
                 window.tab = tab;
                 window.chosen = None;
-                window.first_row = 0;
+                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
@@ -418,7 +429,7 @@ impl FleetFinderState {
                 window.mode = mode;
                 window.name.clear();
                 window.chosen = None;
-                window.first_row = 0;
+                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
@@ -470,12 +481,9 @@ fn at(frame: egui::Rect, scale: f32, (x, y, w, h): (f32, f32, f32, f32)) -> egui
 }
 
 /// Rows the list shows at once.
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "Eight whole rows of 20 in a list 165 tall."
-)]
-const VISIBLE_ROWS: usize = (LIST.3 / ROW_HEIGHT) as usize;
+/// The list's height in pixels, and the bar's width (RCDATA 10653).
+const LIST_PIXELS: usize = 165;
+const BAR_WIDTH: f32 = 12.0;
 
 /// Draw the open Finder, if any, and report an Open.
 #[expect(
@@ -517,6 +525,8 @@ pub fn draw_fleet_finder(
     let mut name_changed = false;
     let mut enter = false;
     let mut wheel = 0.0;
+    let mut scroll = window.scroll;
+    let mut scroll_hold = window.scroll_hold;
 
     // FUN_0042a0c0 opens the Finder above the galaxy view's modeless child
     // windows. Those windows share Foreground and raise the focused one each
@@ -553,14 +563,16 @@ pub fn draw_fleet_finder(
             paint(cache, panel, PANEL_AT);
             paint(cache, RAIL[side], RAIL_AT);
 
-            // hyp: fonts 5 and 4 (FUN_00420550) are not mapped; the port's
-            // own sizes stand in. Their colour is white (0x2ffffff).
+            // The title in font 5, centred in its 350 (A0 2026-10-29), the
+            // name label in font 4, the tab's label in font 5, all white
+            // (0x2ffffff); the list and the name box in font 10.
             let (title, label) = window.mode.titles();
-            let title_font = egui::FontId::proportional((12.0 * scale).max(8.0));
-            let font = egui::FontId::proportional((10.0 * scale).max(7.0));
+            let title_font = crate::theme::original_font(5, scale);
+            let label_font = crate::theme::original_font(4, scale);
+            let font = crate::theme::original_font(10, scale);
             painter.text(
-                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
+                egui::Align2::CENTER_TOP,
                 title,
                 title_font.clone(),
                 egui::Color32::WHITE,
@@ -569,7 +581,7 @@ pub fn draw_fleet_finder(
                 at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
                 egui::Align2::LEFT_TOP,
                 label,
-                font.clone(),
+                label_font,
                 egui::Color32::WHITE,
             );
             painter.text(
@@ -654,30 +666,77 @@ pub fn draw_fleet_finder(
             name_changed = edit.changed();
             enter = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
 
-            // The list (0xcc). port: no scroll bar (art 10653); the wheel
-            // scrolls it. hyp: the selected row's look (FUN_004c7e10) is
-            // untraced; it is drawn yellow.
+            // The list (0xcc), scrolled by pixels with its bar.
             let list_rect = at(frame, scale, LIST);
             let list_painter = painter.with_clip_rect(list_rect);
-            for (offset, row) in list
-                .iter()
-                .enumerate()
-                .skip(window.first_row)
-                .take(VISIBLE_ROWS)
+            #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+            let content = (list.len() * ROW_PIXELS) as f32;
+            let bar_at = |first: f32| {
+                crate::list_scroll_bar::ScrollBar::new(
+                    crate::list_scroll_bar::RESULTS_ART,
+                    LIST.0,
+                    LIST.1,
+                    LIST.2,
+                    LIST.3,
+                    content,
+                    first,
+                )
+            };
+            let (pointer, pressed, down, released, now) = ui.input(|input| {
+                (
+                    input.pointer.interact_pos(),
+                    input.pointer.button_pressed(egui::PointerButton::Primary),
+                    input.pointer.button_down(egui::PointerButton::Primary),
+                    input.pointer.button_released(egui::PointerButton::Primary),
+                    input.time,
+                )
+            });
+            let pointer_at = pointer.map_or((-1.0, -1.0), |point| {
+                ((point.x - frame.min.x) / scale, (point.y - frame.min.y) / scale)
+            });
+            #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+            let first = crate::list_scroll_bar::update(
+                &bar_at(scroll as f32),
+                &mut scroll_hold,
+                crate::list_scroll_bar::Pointer {
+                    at: pointer_at,
+                    pressed,
+                    down,
+                    released,
+                },
+                LIST_STEP,
+                now,
+            );
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "Within the bar's range."
+            )]
             {
-                let line = (offset - window.first_row) as f32;
-                let row_rect = at(
-                    frame,
-                    scale,
-                    (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2, ROW_HEIGHT),
-                );
+                scroll = first.max(0.0) as usize;
+            }
+            #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+            let offset_px = scroll as f32;
+            for (offset, row) in list.iter().enumerate() {
+                #[expect(clippy::cast_precision_loss, reason = "A few hundred rows.")]
+                let y = LIST.1 + offset as f32 * ROW_HEIGHT - offset_px;
+                if y + ROW_HEIGHT <= LIST.1 || y >= LIST.1 + LIST.3 {
+                    continue;
+                }
+                let row_rect = at(frame, scale, (LIST.0, y, LIST.2 - BAR_WIDTH, ROW_HEIGHT))
+                    .intersect(list_rect);
                 let colour = if chosen_row == Some(offset) {
-                    egui::Color32::YELLOW
-                } else {
                     egui::Color32::WHITE
+                } else {
+                    ROW_COLOR
                 };
                 list_painter.text(
-                    row_rect.left_center() + egui::vec2(4.0 * scale, 0.0),
+                    at(
+                        frame,
+                        scale,
+                        (LIST.0 + ROW_TEXT_X, y + ROW_HEIGHT / 2.0, 0.0, 0.0),
+                    )
+                    .min,
                     egui::Align2::LEFT_CENTER,
                     &row.name,
                     font.clone(),
@@ -703,6 +762,30 @@ pub fn draw_fleet_finder(
                     }
                 }
             }
+            // The bar, the held arrow pressed while the pointer stays on it.
+            let bar = bar_at(offset_px);
+            let held = scroll_hold.map(|hold| hold.part).filter(|part| {
+                matches!(
+                    part,
+                    crate::list_scroll_bar::Part::Up | crate::list_scroll_bar::Part::Down
+                ) && down
+                    && bar.part_at(pointer_at) == Some(*part)
+            });
+            let (bar_x, bar_y, bar_w, bar_h) = bar.rect();
+            let bar_painter = painter.with_clip_rect(at(frame, scale, (bar_x, bar_y, bar_w, bar_h)));
+            for piece in bar.pieces(held) {
+                paint_native(
+                    &bar_painter,
+                    ctx,
+                    cache,
+                    DllSource::Strategy,
+                    piece.id,
+                    frame,
+                    scale,
+                    piece.x,
+                    piece.y,
+                );
+            }
             let pointer = ui.input(|input| input.pointer.hover_pos());
             if pointer.is_some_and(|point| rect_contains(list_rect, point)) {
                 wheel = ui.input(|input| input.raw_scroll_delta.y);
@@ -712,13 +795,15 @@ pub fn draw_fleet_finder(
     let escape = ctx.input(|input| input.key_pressed(egui::Key::Escape));
     let open_window = state.window.as_mut()?;
     open_window.focus_name = false;
+    open_window.scroll = scroll;
+    open_window.scroll_hold = scroll_hold;
     if name_changed {
         // FUN_00462a50 0x408: the best prefix match is chosen and shown.
         open_window.name.clone_from(&name);
         let choice = prefix_choice(&list, &name);
         open_window.chosen = choice.map(|index| list[index].object);
         if let Some(index) = choice {
-            open_window.first_row = scrolled_to(open_window.first_row, index);
+            open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
     }
     if let Some((row, at)) = clicked_row {
@@ -730,12 +815,12 @@ pub fn draw_fleet_finder(
     if enter {
         open = open.or(open_window.chosen);
     }
+    // port: the original has no wheel; a notch moves a row.
     if wheel != 0.0 {
-        let last = list.len().saturating_sub(VISIBLE_ROWS);
-        open_window.first_row = if wheel > 0.0 {
-            open_window.first_row.saturating_sub(1)
+        open_window.scroll = if wheel > 0.0 {
+            open_window.scroll.saturating_sub(ROW_PIXELS)
         } else {
-            (open_window.first_row + 1).min(last)
+            (open_window.scroll + ROW_PIXELS).min(max_scroll(list.len()))
         };
     }
     if let Some(tab) = tab {
@@ -754,15 +839,30 @@ pub fn draw_fleet_finder(
     None
 }
 
-/// The first row that shows `row`, moving the list as little as possible.
-fn scrolled_to(first_row: usize, row: usize) -> usize {
-    if row < first_row {
-        row
-    } else if row >= first_row + VISIBLE_ROWS {
-        row + 1 - VISIBLE_ROWS
+/// The scroll that shows `row` whole, moving the list as little as
+/// possible, within the range of `rows` rows.
+fn scrolled_to(scroll: usize, row: usize, rows: usize) -> usize {
+    let top = row * ROW_PIXELS;
+    let bottom = top + ROW_PIXELS;
+    if top < scroll {
+        top
+    } else if bottom > scroll + LIST_PIXELS {
+        (bottom - LIST_PIXELS).min(max_scroll(rows))
     } else {
-        first_row
+        scroll
     }
+}
+
+/// The list's scroll range for `rows` rows, in pixels
+/// ([`crate::list_scroll_bar::max_first`]).
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "A few hundred rows of 20 pixels."
+)]
+fn max_scroll(rows: usize) -> usize {
+    crate::list_scroll_bar::max_first((rows * ROW_PIXELS) as f32, LIST.3) as usize
 }
 
 #[cfg(test)]
@@ -1094,11 +1194,15 @@ mod tests {
 
     #[test]
     fn the_list_scrolls_as_little_as_it_must_to_show_a_row() {
-        assert_eq!(VISIBLE_ROWS, 8);
-        assert_eq!(scrolled_to(0, 7), 0);
-        assert_eq!(scrolled_to(0, 8), 1);
-        assert_eq!(scrolled_to(5, 2), 2);
-        assert_eq!(scrolled_to(5, 12), 5);
+        // By pixels in the 165-pixel list (FUN_0060a490): row 8 (160..180)
+        // needs 15; twenty rows reach 400 + 5 - 165 = 240 (FUN_00609ae0).
+        assert_eq!(scrolled_to(0, 7, 20), 0);
+        assert_eq!(scrolled_to(0, 8, 20), 15);
+        assert_eq!(scrolled_to(100, 2, 20), 40);
+        assert_eq!(scrolled_to(100, 12, 20), 100);
+        assert_eq!(scrolled_to(0, 19, 20), 235);
+        assert_eq!(max_scroll(20), 240);
+        assert_eq!(max_scroll(8), 0);
     }
 
     #[test]
@@ -1177,6 +1281,7 @@ mod tests {
     ) -> Option<FleetFinderAction> {
         let layout = layout();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut emitted = None;
         let first = frames.first().map_or((0.0, 0.0), |(at, _)| *at);
@@ -1471,6 +1576,7 @@ mod tests {
     struct Text {
         text: String,
         pos: egui::Pos2,
+        width: f32,
         height: f32,
         size: f32,
         color: egui::Color32,
@@ -1502,6 +1608,7 @@ mod tests {
     ) -> Run {
         let layout = scaled();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut result = Run::default();
         let first = frames.first().map_or((0.0, 0.0), |(at, _)| *at);
@@ -1546,6 +1653,7 @@ mod tests {
                         Some(Text {
                             text: text.galley.text().to_owned(),
                             pos: text.pos,
+                            width: text.galley.size().x,
                             height: text.galley.size().y,
                             size: format.font_id.size,
                             color: format.color,
@@ -1641,8 +1749,9 @@ mod tests {
 
     #[test]
     fn the_title_label_and_tab_name_follow_the_mode_and_tab() {
-        // TEXTSTRA 0x1880/0x1885 at (36, 14), 0x1881/0x1886 at (36, 48) and
-        // the tab's 0x1882..0x1889 at (40, 119), white (0x2ffffff).
+        // TEXTSTRA 0x1880/0x1885 centred in (36, 14, 350) in font 5 (A0
+        // 2026-10-29), 0x1881/0x1886 at (36, 48) in font 4 and the tab's
+        // 0x1882..0x1889 at (40, 119) in font 5, white (0x2ffffff).
         let galaxy = galaxy();
         let mut state = opened(CockpitFaction::Empire);
         let origin = window_rect(scaled()).min;
@@ -1656,17 +1765,21 @@ mod tests {
         let drawn = idle(&galaxy, &mut state);
 
         let white = egui::Color32::WHITE;
-        assert_eq!(
-            shown(&drawn, "Fleet Finder"),
-            Some((egui::vec2(72.0, 28.0), 24.0, white))
+        let font = |id| crate::theme::original_font(id, 2.0).size;
+        let title = drawn.texts.iter().find(|shown| shown.text == "Fleet Finder").unwrap();
+        assert!(
+            (title.pos.x + title.width / 2.0 - origin.x - (36.0 + 175.0) * 2.0).abs() < 0.01,
+            "{:?}",
+            title.pos
         );
+        assert_eq!((title.pos.y - origin.y, title.size, title.color), (28.0, font(5), white));
         assert_eq!(
             shown(&drawn, "Fleet Name"),
-            Some((egui::vec2(72.0, 96.0), 20.0, white))
+            Some((egui::vec2(72.0, 96.0), font(4), white))
         );
         assert_eq!(
             shown(&drawn, "All Fleets"),
-            Some((egui::vec2(80.0, 238.0), 24.0, white))
+            Some((egui::vec2(80.0, 238.0), font(5), white))
         );
 
         state.set_mode(FinderMode::Ships);
@@ -1695,9 +1808,11 @@ mod tests {
     }
 
     #[test]
-    fn the_list_shows_eight_rows_from_its_first_and_the_chosen_one_in_yellow() {
-        // FUN_00607ea0: rows 350 by 20 from (36, 138). hyp: the chosen row's
-        // look is untraced.
+    fn the_list_shows_its_rows_from_the_scroll_grey_and_the_chosen_one_white() {
+        // FUN_00607ea0: rows 350 by 20 from (36, 138), the text at x 5 in
+        // font 10, grey 0x787878 and the chosen one white (the
+        // constructor's colours; A0 2026-10-29). Scrolled two rows, the
+        // 165-pixel list shows eight whole rows and the top of a ninth.
         let galaxy = crowded(9);
         let list = rows(
             &galaxy.world,
@@ -1710,7 +1825,7 @@ mod tests {
         assert_eq!(list.len(), 11);
         let mut state = opened(CockpitFaction::Alliance);
         let window = state.window.as_mut().unwrap();
-        window.first_row = 2;
+        window.scroll = 40;
         window.chosen = Some(list[3].object);
         let origin = window_rect(scaled()).min;
 
@@ -1720,9 +1835,9 @@ mod tests {
             .texts
             .iter()
             // The rows, below the tab's label at the same x.
-            .filter(|text| (text.pos.x - origin.x - 80.0).abs() < 0.01 && text.pos.y > origin.y + 276.0)
+            .filter(|text| (text.pos.x - origin.x - 82.0).abs() < 0.01 && text.pos.y > origin.y + 260.0)
             .collect();
-        assert_eq!(shown.len(), 8);
+        assert_eq!(shown.len(), 9);
         for (line, text) in shown.iter().enumerate() {
             assert_eq!(text.text, list[2 + line].name);
             let middle = text.pos.y + text.height / 2.0 - origin.y;
@@ -1731,12 +1846,88 @@ mod tests {
                 "{line}: {middle}"
             );
             let colour = if line == 1 {
-                egui::Color32::YELLOW
-            } else {
                 egui::Color32::WHITE
+            } else {
+                ROW_COLOR
             };
             assert_eq!(text.color, colour, "{line}");
         }
+    }
+
+    #[test]
+    fn the_bars_down_arrow_scrolls_ten_and_the_report_counts_whole_rows() {
+        // FUN_0060a490 (RCDATA 10653) right of the list, x 374: its down
+        // arrow at y 294..303 steps the list's 10 when released over it.
+        let galaxy = crowded(9);
+        let mut state = opened(CockpitFaction::Alliance);
+        let arrow = (380.0, 299.0);
+        let click = vec![(arrow, vec![press(egui::Pos2::ZERO, true)]), (arrow, vec![press(egui::Pos2::ZERO, false)])];
+        let drawn = run(&galaxy, &mut state, click.clone());
+        assert_eq!(state.window.as_ref().unwrap().scroll, 10);
+        let report = |state: &FleetFinderState| {
+            state
+                .report(
+                    &galaxy.world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &galaxy.fog,
+                    Faction::Alliance,
+                )
+                .unwrap()
+                .first_row
+        };
+        assert_eq!(report(&state), 0);
+        let _ = run(&galaxy, &mut state, [click.clone(), click].concat());
+        assert_eq!(state.window.as_ref().unwrap().scroll, 30);
+        assert_eq!(report(&state), 1, "30 pixels: the second row is the first");
+        let origin = window_rect(scaled()).min;
+        assert_eq!(drawn.painted_at(10_685), Some(origin + egui::vec2(374.0, 138.0) * 2.0));
+        // Held on it, the arrow draws pressed.
+        let mut state = opened(CockpitFaction::Alliance);
+        let held = run(&galaxy, &mut state, vec![(arrow, vec![press(egui::Pos2::ZERO, true)]), (arrow, vec![])]);
+        assert!(held.painted_at(10_688).is_some());
+        let mut state = opened(CockpitFaction::Alliance);
+        let off = run(
+            &galaxy,
+            &mut state,
+            vec![(arrow, vec![press(egui::Pos2::ZERO, true)]), ((200.0, 200.0), vec![])],
+        );
+        assert!(off.painted_at(10_688).is_none());
+    }
+
+    #[test]
+    fn scrolled_rows_clip_to_the_list_and_the_bars_column_chooses_nothing() {
+        // Scrolled 30 pixels, row 0 (108..128) is gone, row 1 shows its
+        // lower half, row 9 (288..308) its upper part, row 10 nothing.
+        let galaxy = crowded(9);
+        let list = rows(
+            &galaxy.world,
+            &rebellion_core::movement::MovementState::default(),
+            &galaxy.fog,
+            Faction::Alliance,
+            FinderMode::Fleets,
+            FinderTab::All,
+        );
+        let mut state = opened(CockpitFaction::Alliance);
+        state.window.as_mut().unwrap().scroll = 30;
+        let origin = window_rect(scaled()).min;
+        let drawn = idle(&galaxy, &mut state);
+        let shown: Vec<_> = drawn
+            .texts
+            .iter()
+            .filter(|text| (text.pos.x - origin.x - 82.0).abs() < 0.01 && text.pos.y > origin.y + 200.0)
+            .map(|text| text.text.clone())
+            .collect();
+        let names: Vec<_> = list[1..10].iter().map(|row| row.name.clone()).collect();
+        assert_eq!(shown, names);
+        // A click on row 2's height in the bar's column (x 374..386).
+        let mut state = opened(CockpitFaction::Alliance);
+        let at = (380.0, 138.0 + 50.0);
+        let _ = run(
+            &galaxy,
+            &mut state,
+            vec![(at, vec![press(egui::Pos2::ZERO, true)]), (at, vec![press(egui::Pos2::ZERO, false)])],
+        );
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
     }
 
     fn wheel(delta: f32) -> egui::Event {
@@ -1749,10 +1940,11 @@ mod tests {
 
     #[test]
     fn the_wheel_over_the_list_scrolls_it_a_row_at_a_time_within_its_rows() {
-        // port: the list has no scroll bar (art 10653 is not drawn).
+        // port: the original has no wheel; a notch moves a 20-pixel row,
+        // within the bar's range (11 rows: 60 pixels, three rows).
         let galaxy = crowded(9);
         let mut state = opened(CockpitFaction::Alliance);
-        let first_row = |state: &FleetFinderState| state.window.as_ref().unwrap().first_row;
+        let first_row = |state: &FleetFinderState| state.window.as_ref().unwrap().scroll / ROW_PIXELS;
         let over = list_row(3);
 
         run(&galaxy, &mut state, vec![(over, vec![wheel(-1.0)])]);
@@ -1819,7 +2011,7 @@ mod tests {
             None
         );
         state.open(CockpitFaction::Empire);
-        state.window.as_mut().unwrap().first_row = 1;
+        state.window.as_mut().unwrap().scroll = 20;
         let origin = window_rect(layout).min;
         let rect = |(x, y, w, h): (f32, f32, f32, f32)| {
             Some(egui::Rect::from_min_size(
@@ -1842,7 +2034,7 @@ mod tests {
         );
         assert_eq!(
             state.control_screen_rect(layout, FinderControl::Row(3)),
-            rect((36.0, 178.0, 350.0, 20.0))
+            rect((36.0, 178.0, 338.0, 20.0))
         );
         assert_eq!(
             state.control_screen_rect(layout, FinderControl::Close),
@@ -1878,6 +2070,7 @@ mod tests {
         let galaxy = galaxy();
         let layout = layout();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut state = opened(CockpitFaction::Alliance);
         let modeless = egui::Id::new("raising-fleet-window");
