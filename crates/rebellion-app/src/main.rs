@@ -9530,7 +9530,13 @@ fn push_character_health(
         )
     };
     log.push(filed(
-        GameMessage::new(tick, text, MessageCategory::Event).with_picture_if(Some(picture)),
+        GameMessage::new(tick, text, MessageCategory::Event)
+            .with_picture_if(Some(picture))
+            // FUN_0048fdf0's speaker map on the character.
+            .with_advisor_event(rebellion_render::story_messages::speaker_event(
+                world,
+                Some(character),
+            )),
         MessageRail::Mission,
         character_audience(world, character),
     ));
@@ -9673,7 +9679,12 @@ fn apply_mission_result(
             category,
             result.target_system,
         )
-        .with_picture(picture),
+        .with_picture(picture)
+        // FUN_004927c0's speaker map on the report's leader (+0x74).
+        .with_advisor_event(rebellion_render::story_messages::speaker_event(
+            world,
+            result.character,
+        )),
         MessageRail::Mission,
         Some(RailAudience::side(
             result.faction == MissionFaction::Alliance,

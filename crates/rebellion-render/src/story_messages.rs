@@ -155,10 +155,21 @@ pub fn story_message(
         message.text = body;
         message = message.with_title(title);
     }
-    message.with_picture(class.picture(
-        side,
-        subject.map(|character| (character.dat_id, character.is_major)),
-    ))
+    // The classes' +0x28 (advisor-briefing.md, "The events"): Luke's
+    // Dagobah 0x16 (FUN_0048d190), the speaker map for Force Growth and
+    // Leia (FUN_0048ed80, FUN_0048f1e0), the capture's for Jabba's
+    // (FUN_00490340).
+    let event = match class {
+        StoryClass::LukeGoesToDagobah => 0x16,
+        StoryClass::ForceGrowth | StoryClass::LeiaUsesForce => character_speaker_event(subject),
+        StoryClass::JabbaCaptures => subject.map_or(0x15, captured_event),
+    };
+    message
+        .with_picture(class.picture(
+            side,
+            subject.map(|character| (character.dat_id, character.is_major)),
+        ))
+        .with_advisor_event(event)
 }
 
 /// Notification `0x221`, Luke Goes to Dagobah (`FUN_0048d190`): built for
@@ -172,7 +183,9 @@ pub fn luke_goes_to_dagobah(tick: u64, texts: &HashMap<u16, String>) -> Option<G
         GameMessage::new(tick, body, MessageCategory::Event)
             .on_rail(STORY_RAIL, RailAudience::Alliance)
             .with_title(title)
-            .with_picture(StoryClass::LukeGoesToDagobah.picture(CockpitFaction::Alliance, None)),
+            .with_picture(StoryClass::LukeGoesToDagobah.picture(CockpitFaction::Alliance, None))
+            // FUN_0048d190 writes 0x16.
+            .with_advisor_event(0x16),
     )
 }
 
@@ -197,7 +210,9 @@ pub fn luke_leaves_dagobah(
             .with_picture(MessagePicture {
                 background: 0x412,
                 foreground: character_portrait(luke.dat_id, luke.is_major),
-            }),
+            })
+            // FUN_0048d0f0 writes 0x16.
+            .with_advisor_event(0x16),
     )
 }
 
@@ -278,7 +293,9 @@ pub fn force_user_discovered(
             .with_picture(MessagePicture {
                 background: side_background(side),
                 foreground: character_portrait(speaker.dat_id, speaker.is_major),
-            }),
+            })
+            // FUN_0048f1e0's speaker map on the same character.
+            .with_advisor_event(character_speaker_event(Some(speaker))),
     )
 }
 
@@ -453,7 +470,8 @@ pub fn jabba_captures_message(
         )
         .on_rail(STORY_RAIL, RailAudience::Both)
         .with_title(fill_message_text(texts.get(&title)?, &parameters))
-        .with_picture(class.picture(CockpitFaction::Alliance, None)),
+        .with_picture(class.picture(CockpitFaction::Alliance, None))
+        .with_advisor_event(captured_event(character)),
     )
 }
 
@@ -497,7 +515,9 @@ pub fn discovers_traitor_message(
         .with_picture(MessagePicture {
             background: side_background(side),
             foreground: character_portrait(discoverer.dat_id, discoverer.is_major),
-        }),
+        })
+        // FUN_0048c9c0's speaker map on the discoverer.
+        .with_advisor_event(character_speaker_event(Some(discoverer))),
     )
 }
 
@@ -529,7 +549,9 @@ pub fn rescue_attempt_message(
         .with_picture(MessagePicture {
             background: side_background(CockpitFaction::Alliance),
             foreground: character_portrait(rescuer.dat_id, rescuer.is_major),
-        }),
+        })
+        // FUN_0048c4c0's speaker map on the rescuer (+0x68).
+        .with_advisor_event(character_speaker_event(Some(rescuer))),
     )
 }
 
@@ -581,7 +603,9 @@ pub fn emperor_arrives_message(tick: u64, texts: &HashMap<u16, String>) -> Optio
             .with_picture(MessagePicture {
                 background: 0x42c,
                 foreground: None,
-            }),
+            })
+            // FUN_0048ce80 writes 0x1a.
+            .with_advisor_event(0x1a),
     )
 }
 
@@ -618,7 +642,9 @@ pub fn assassins_message(
         .with_picture(MessagePicture {
             background: 0x42e,
             foreground: None,
-        }),
+        })
+        // FUN_0048b050 writes 0x15.
+        .with_advisor_event(0x15),
     )
 }
 
@@ -981,6 +1007,59 @@ pub fn unit_message_rail(
     }
 }
 
+/// The advisor event a message names its speaker by (`FUN_0048db30`, and
+/// the same switch in the mission report `FUN_004927c0` on its `+0x74`):
+/// the major characters' own codes, Mon Mothma `0x17`, Leia `0x18`, Luke
+/// `0x16`, Han `0x19`, the Emperor `0x1a`, Vader `0x1b`; a speaker that is no
+/// character (a special force) `0x15`; any other character none.
+#[must_use]
+pub fn speaker_event(world: &GameWorld, character: Option<CharacterKey>) -> u32 {
+    character_speaker_event(character.and_then(|key| world.characters.get(key)))
+}
+
+/// [`speaker_event`] for a character in hand.
+#[must_use]
+pub fn character_speaker_event(character: Option<&rebellion_core::world::Character>) -> u32 {
+    let Some(character) = character else {
+        return 0x15;
+    };
+    if !character.is_major {
+        return 0;
+    }
+    // The loader keeps the record index without the family byte.
+    match character.dat_id.index() {
+        0x240 => 0x17,
+        0x241 => 0x18,
+        0x242 => 0x16,
+        0x243 => 0x19,
+        0x280 => 0x1a,
+        0x281 => 0x1b,
+        _ => 0,
+    }
+}
+
+/// The advisor event of a capture (`FUN_00490340`, notification `0x1e0`
+/// cases 3..5): Luke `0x1e`, Mon Mothma `0x1f`, Leia `0x20`, Han `0x21`, the
+/// Emperor `0x22`, Vader `0x23`, anyone else `0x15`.
+///
+/// hyp: case 5's Han branch leaves the switch for its default, which may
+/// drop the message; the port keeps Han's `0x21`.
+#[must_use]
+pub fn captured_event(character: &rebellion_core::world::Character) -> u32 {
+    if !character.is_major {
+        return 0x15;
+    }
+    match character.dat_id.index() {
+        0x242 => 0x1e,
+        0x240 => 0x1f,
+        0x241 => 0x20,
+        0x243 => 0x21,
+        0x280 => 0x22,
+        0x281 => 0x23,
+        _ => 0x15,
+    }
+}
+
 /// The advisor event a unit's arrival hands on (`FUN_004981c0`): 5 with the
 /// ships' texts (`0x7076`), 6 with the units' (`0x707a`).
 #[must_use]
@@ -1310,7 +1389,9 @@ pub fn jabba_delivers_message(tick: u64, texts: &HashMap<u16, String>) -> Option
             .with_picture(MessagePicture {
                 background: 0x42a,
                 foreground: None,
-            }),
+            })
+            // FUN_0048b6e0 writes 0x1b.
+            .with_advisor_event(0x1b),
     )
 }
 
@@ -1352,8 +1433,11 @@ pub fn bounty_messages(
                 }),
             )
         };
+    // FUN_0048fa00's +0x28: 0x21 for the capture, else 0x19 (the Alliance's
+    // attack) and 0x2d (the Empire's location).
     if c.is_captive {
         return message(0x716c, 0x716d, &[], 0x41d, RailAudience::Both)
+            .map(|message| message.with_advisor_event(0x21))
             .into_iter()
             .collect();
     }
@@ -1364,16 +1448,20 @@ pub fn bounty_messages(
         .or(c.current_system)
         .and_then(|key| world.systems.get(key));
     let mut out: Vec<GameMessage> = message(0x7168, 0x7169, &[], 0x41c, RailAudience::Alliance)
+        .map(|message| message.with_advisor_event(0x19))
         .into_iter()
         .collect();
     if let Some(system) = system {
-        out.extend(message(
-            0x716a,
-            0x716b,
-            &[MessageParameter::Named { name: &system.name }],
-            0x41e,
-            RailAudience::Empire,
-        ));
+        out.extend(
+            message(
+                0x716a,
+                0x716b,
+                &[MessageParameter::Named { name: &system.name }],
+                0x41e,
+                RailAudience::Empire,
+            )
+            .map(|message| message.with_advisor_event(0x2d)),
+        );
     }
     out
 }
@@ -3479,6 +3567,8 @@ mod tests {
         );
         assert_eq!(message.audience, RailAudience::Empire);
         assert_eq!(message.picture.map(|p| p.background), Some(0x42c));
+        // FUN_0048ce80's +0x28.
+        assert_eq!(message.advisor_event, [0x1a; 2]);
         assert!(emperor_arrives_message(3, &HashMap::new()).is_none());
     }
 
@@ -3573,6 +3663,8 @@ mod tests {
         );
         assert_eq!(message.picture.map(|p| p.background), Some(0x429));
         assert_eq!(message.tick, 9);
+        // FUN_00490340: no major character, 0x15.
+        assert_eq!(message.advisor_event, [0x15; 2]);
         assert!(jabba_captures_message(&chewbacca, 9, &HashMap::new()).is_none());
     }
 
@@ -3649,12 +3741,56 @@ mod tests {
             "Bounty hunters have reported that Han Solo is located on Tatooine."
         );
         assert_eq!(attacked[1].picture.expect("a picture").background, 0x41e);
+        // FUN_0048fa00's +0x28: 0x19 for the Alliance, 0x2d for the Empire.
+        assert_eq!(attacked[0].advisor_event, [0x19; 2]);
+        assert_eq!(attacked[1].advisor_event, [0x2d; 2]);
 
         world.characters[han].is_captive = true;
         let captured = bounty_messages(&world, han, 3, &texts);
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].audience, RailAudience::Both);
         assert_eq!(captured[0].picture.expect("a picture").background, 0x41d);
+        assert_eq!(captured[0].advisor_event, [0x21; 2]);
+    }
+
+    #[test]
+    fn the_majors_speak_by_their_own_codes_minors_by_none_and_others_by_0x15() {
+        // FUN_0048db30 (and its copies, e.g. the mission report's on +0x74):
+        // 0x240 Mon Mothma 0x17, 0x241 Leia 0x18, 0x242 Luke 0x16, 0x243
+        // Han 0x19, 0x280 the Emperor 0x1a, 0x281 Vader 0x1b; no character
+        // 0x15; another character none. FUN_00490340's capture codes:
+        // Luke 0x1e, Mon Mothma 0x1f, Leia 0x20, Han 0x21, the Emperor 0x22,
+        // Vader 0x23, anyone else 0x15.
+        let person = |index: u32, is_major: bool| rebellion_core::world::Character {
+            dat_id: DatId::new(index),
+            is_major,
+            ..Default::default()
+        };
+        for (index, speaker, captured) in [
+            (0x240, 0x17, 0x1f),
+            (0x241, 0x18, 0x20),
+            (0x242, 0x16, 0x1e),
+            (0x243, 0x19, 0x21),
+            (0x280, 0x1a, 0x22),
+            (0x281, 0x1b, 0x23),
+        ] {
+            let major = person(index, true);
+            assert_eq!(character_speaker_event(Some(&major)), speaker, "{index:#x}");
+            assert_eq!(captured_event(&major), captured, "{index:#x}");
+            // A family byte on the record does not change it.
+            let family = person(0x3000_0000 | index, true);
+            assert_eq!(character_speaker_event(Some(&family)), speaker);
+        }
+        let minor = person(0x340, false);
+        assert_eq!(character_speaker_event(Some(&minor)), 0);
+        assert_eq!(captured_event(&minor), 0x15);
+        assert_eq!(character_speaker_event(Some(&person(0x244, true))), 0);
+        assert_eq!(captured_event(&person(0x244, true)), 0x15);
+        assert_eq!(character_speaker_event(None), 0x15);
+        let mut world = GameWorld::default();
+        let leia = world.characters.insert(person(0x241, true));
+        assert_eq!(speaker_event(&world, Some(leia)), 0x18);
+        assert_eq!(speaker_event(&world, None), 0x15);
     }
 
     #[test]

@@ -404,7 +404,13 @@ No writer for 7, `0xa`, `0xb`, `0xf`, `0x12`, `0x13`, `0x1d`, `0x2b`, `0x2c`.
 never reaches the advisor.
 
 Ported 2026-10-29 (`AdvisorSchedule::event`, `GameMessage::advisor_event`),
-for the classes the port posts. The speaker-mapped ones are not yet coded.
+for the classes the port posts, and the speaker-mapped ones too
+(`story_messages::speaker_event`, `captured_event`). The speaker map
+(`FUN_0048db30` and its copies) gives a major character its own code, a
+speaker that is no character `0x15`, and another character none. Each
+class's kind is its vtable `+0x10`: the generic `0x5a6730` returns 3,
+`0x48ad30` 8, `0x5a6700` 4, and the mission report returns its `+0x84`
+(3 or 5).
 
 ### The hold clips (ops `0x14`, `0x15`)
 
