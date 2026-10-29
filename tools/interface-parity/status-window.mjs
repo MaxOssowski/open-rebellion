@@ -138,16 +138,23 @@ function decodeIndexedBmp(bytes, expectedWidth, expectedHeight) {
 
 const resource = (source, id, width, height) => decodeIndexedBmp(fs.readFileSync(path.join(source, `${id}.bmp`)), width, height);
 
-function blit(destination, image, x, y) {
+// Buttons blit keyed (FUN_00602d30): their pure-blue mat shows the
+// background, as the A0 Character Status shows around Close (2026-10-29,
+// .artifacts/a0-vm/status/15-char-veers.png).
+function blitKeyed(destination, image, x, y) {
   for (let row = 0; row < image.height; row += 1) {
-    const start = row * image.width * 4;
-    destination.data.set(image.data.subarray(start, start + image.width * 4), ((y + row) * destination.width + x) * 4);
+    for (let column = 0; column < image.width; column += 1) {
+      const from = (row * image.width + column) * 4;
+      if (image.data[from] === 0 && image.data[from + 1] === 0 && image.data[from + 2] === 255) continue;
+      const to = ((y + row) * destination.width + x + column) * 4;
+      destination.data.set(image.data.subarray(from, from + 4), to);
+    }
   }
 }
 
 function composeExpected(source, faction) {
   const expected = resource(source, faction.background, dimensions.width, dimensions.height);
-  for (const button of Object.values(buttons)) blit(expected, resource(source, button.id, 32, 31), button.x, button.y);
+  for (const button of Object.values(buttons)) blitKeyed(expected, resource(source, button.id, 32, 31), button.x, button.y);
   return expected;
 }
 
