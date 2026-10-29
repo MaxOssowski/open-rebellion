@@ -1,6 +1,6 @@
 ---
 title: "The opening briefing: what starts it, ALBRIEF/EMBRIEF, and how a clip reaches the galaxy view"
-description: "Read 2026-10-23 and 2026-10-28 for P34. The clip definition record is settled (FUN_00404440). The advisor panel loads the briefing DLL at the start of a game. The advisor messages come from GDATA C3POACT.SPT / IMP22ACT.SPT; the briefing is message 0x29 / 0x4a, an action (FUN_004c0fc0 code) then a voice clip, in turn. Who schedules it is still open."
+description: "Read 2026-10-23 and 2026-10-28 for P34. The clip definition record is settled (FUN_00404440). The advisor panel loads the briefing DLL at the start of a game. The advisor messages come from GDATA C3POACT.SPT / IMP22ACT.SPT; the briefing is message 0x29 / 0x4a, an action (FUN_004c0fc0 code) then a voice clip, in turn. Each side's advisor constructor schedules it (FUN_004c27f0 / FUN_004c0710) and the idle clip's end starts it (FUN_00439ef0); the Alliance runs its own action table FUN_004c30c0; FUN_00425d00 sets the captions by viewer."
 ---
 
 # The opening briefing
@@ -177,6 +177,47 @@ Each action is kind 2, so `FUN_004c0fc0(code)`:
 | 17 | `0xb`: display `0x11`, then `FUN_0041dbe0` | | |
 | 18 | `0xd`: `FUN_0042d760`; with advice on, the Message Index; `FUN_0041da80` | | |
 
+Correction (read 2026-10-28): the action column is the Empire's
+(`FUN_004c0fc0`, run by `FUN_004c0f60` of the Empire's class
+`0x0065c4a0`). The Alliance's class `0x0065c4c8` runs its own table,
+`FUN_004c30c0` (through `FUN_004c3060`), with the same codes:
+
+| Code | Alliance (`FUN_004c30c0`) |
+|---|---|
+| 1, `0xb` | display `0x11` (`0xb` then as the Empire's) |
+| 2, `0xe` | display `0x13` |
+| 3 | select the system of the Alliance headquarters `0x20000005` (`FUN_004f2d10`), display `0x93`, caption `0x1623`; without it, Display Off |
+| 4, 8, `0x14` | select Coruscant (`0x109`), display `0x92`, caption `0x1624` |
+| 5 | display `0x20` |
+| 6 | display `0x91` |
+| 7 | select the system of character `0x30000240` (Mon Mothma), display `0x93`, caption `0x1625` |
+| 9 | Display Off `0x80` |
+| `0xc`, `0xd` | as the Empire's |
+| `0xf` | display `0x15` |
+| `0x10` | display `0x16` |
+| `0x11` | display `0x17` |
+| `0x12` | select Yavin (`0x121`), display `0x93`, caption `0x1622` |
+| `0x13` | select the system of character `0x32000242` (Luke Skywalker), display `0x93`, caption `0x1626` |
+
+So the Alliance's briefing shows Coruscant at row 9 and Yavin at row 7,
+and its own leaders at rows 12 and 13.
+
+The captions of the displays `0x13..0x16` (`FUN_00425d00`, read
+2026-10-28) follow the viewer:
+- `0x13` and `0x15`: `0x161f` "Systems Loyal to the Alliance" when
+  (viewer is the Alliance) equals (display is `0x13`), else `0x1620`
+  "Systems Loyal to the Empire";
+- `0x14` and `0x16`: `0x1621` "Systems Under Military Control" unless
+  (display is `0x14`) differs from (viewer is the Empire); otherwise no
+  caption.
+
+This settles the hyp below the other way. In the Alliance's briefing,
+row 4 (`0xf`, display `0x15`) reads "Systems Loyal to the Empire" and
+row 5 (`0x10`, display `0x16`) "Systems Under Military Control", as
+the captures 0129 and 0139 do. In the Empire's, row 4 (`0x15`) reads
+"Systems Loyal to the Alliance" and row 5 (`0x14`) "Systems Under
+Military Control".
+
 Message `0x28` / `0x49` is a short form: action `0xb`, one clip
 (`0x27b5` -> `0x1045`; `0x2b95`), action `0xd`. Messages `0x56`, `0x57`
 (Alliance) and `0x54`, `0x55` (Empire) end with action kind 3, code 1.
@@ -210,11 +251,11 @@ system as the fleet displays do.
 
 So with the Alliance viewing, the briefing shows its own loyal systems
 (`0x13`), the Empire's loyal ones (`0x15`), its own systems under
-military control (`0x14`), the unexplored ones (`0x17`). hyp: the
-reference captures, whose captions read "Systems Loyal to the Empire"
-then "Systems Under Military Control", are of the Empire's briefing.
+military control (`0x14`), the unexplored ones (`0x17`). (Superseded
+2026-10-28: those are the Empire's codes; the Alliance's table and the
+captions are under "The briefing" above.)
 
-## Scheduling (read 2026-10-23, partial)
+## Scheduling (read 2026-10-23 and 2026-10-28)
 
 - The schedule `+0x168` is indexed by message id: `table[id]` is the last
   day the message may still play (`FUN_004c0a60` drops a value under the
@@ -240,17 +281,34 @@ then "Systems Under Military Control", are of the Empire's briefing.
   `FUN_004c44b0` maps event `0x1f` to `0x1b` (offset `0x6c`); which
   side's map each is, and what sends event `0x1f`, are not read.
 
+- What schedules the full briefing (read 2026-10-28): each side's
+  advisor constructor sets it, not an event. The Alliance's
+  `FUN_004c27f0` (class `0x0065c4c8`, `0x58` messages) and the Empire's
+  `FUN_004c0710` (class `0x0065c4a0`, `0x56` messages) zero both tables,
+  set the advice flag `0x1000`, and store 40000 as the last day of
+  message `0x29` (`+0xa4`) or `0x4a` (`+0x128`).
+- What starts it: `FUN_004c0a60` runs only while `DAT_006b28bc` is set.
+  `FUN_00439ef0` sets it; it is reached through `FUN_004360d0` from
+  `FUN_0041cea0`, which the idle clip (op `0x12`, `Class_00658878`)
+  calls when its 15 ticks end. So the briefing starts after the first
+  idle loop of the droid.
+- The update walks the ids from 1 and plays the first due message whose
+  next free day is under today (`+0x16c[id] = today + 0x3c`); one
+  message per update.
+- The keyboard hook `LAB_0041d8f0` (read 2026-10-28) sets `0x2000` on
+  the release of Escape while the players are not yet flushed.
+  `FUN_0041da30` flushes them once (`FUN_0042d620`, guarded by
+  `DAT_006b14b4`), so the short form's clip, queued after the flush,
+  plays.
+
 ## Open
 
-- What sends event `0x1f` at a new game; how the Empire's full briefing
-  `0x4a` is scheduled; what the panel's `+0xc0` value 8 drives; the
-  keyboard hook `LAB_0041d8f0`.
-- Action code `0xa`, kind 3, and the functions behind codes `0xb`, `0xc`
-  and `0xd` (`FUN_0041dbe0`, `FUN_0041d9d0`, `FUN_0042d760`,
-  `FUN_0041da80`).
-- Where the captions ("Systems Loyal to the Empire", TEXTSTRA
-  `0x1620`, `0x1621`, `0x1629`) are drawn; `FUN_004522f0` has no legend
-  layout for these displays.
+- Action code `0xa`, kind 3, `FUN_0041dbe0` (code `0xb`) and
+  `FUN_0042d760` (code `0xd`). Code `0xc` installs the hooks
+  (`FUN_0041d9d0`) and `0xd` removes them (`FUN_0041da80`).
+- Where the caption `0x1629` "Unexplored Systems" is drawn (the
+  others are `FUN_00425d00`'s, above).
+- Event `0x1f` (`FUN_004c22f0`, `FUN_004c44b0`): what sends it.
 - How `0x92` / `0x93` find their system (`FUN_004025b0(local_f0)`).
 - The frame-script ops other than 4 and `0x11`, and the short records.
   The definition's words are settled above.

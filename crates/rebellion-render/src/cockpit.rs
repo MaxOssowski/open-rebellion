@@ -214,6 +214,23 @@ impl GidMode {
         }
     }
 
+    /// The caption the galaxy view shows for this display to the
+    /// `alliance` viewer or not (`FUN_00425d00`): a loyal display names
+    /// the Alliance when the viewer's side and "own" agree, else the
+    /// Empire; a military-control display is named only when its systems
+    /// are the Empire's (`0x14` for the Empire's viewer, `0x16` for the
+    /// Alliance's).
+    #[must_use]
+    pub const fn caption(self, alliance: bool) -> &'static str {
+        match self {
+            Self::OwnLoyalSystems => Self::loyal_systems_label(alliance),
+            Self::EnemyLoyalSystems => Self::loyal_systems_label(!alliance),
+            Self::OwnMilitaryControl if alliance => "",
+            Self::EnemyMilitaryControl if !alliance => "",
+            _ => self.label(),
+        }
+    }
+
     /// TEXTSTRA `0x161f` "Systems Loyal to the Alliance" or `0x1620`
     /// "Systems Loyal to the Empire", for the side the loyal display shows.
     #[must_use]
@@ -1678,6 +1695,29 @@ mod tests {
             "Systems Loyal to the Empire"
         );
         assert_eq!(GidMode::AllDefenses.command_id(), 0x91);
+    }
+
+    #[test]
+    fn the_loyal_and_military_control_captions_follow_the_viewer() {
+        // FUN_00425d00, cases 0x13/0x15 and 0x14/0x16. The SquakeNet
+        // narration frames 0129 and 0139 (Alliance) show "Systems Loyal to
+        // the Empire" and "Systems Under Military Control"; 0714, 0722 and
+        // 0726 (Empire) the Empire's, the Alliance's and military control.
+        assert_eq!(GidMode::OwnLoyalSystems.caption(true), "Systems Loyal to the Alliance");
+        assert_eq!(GidMode::EnemyLoyalSystems.caption(true), "Systems Loyal to the Empire");
+        assert_eq!(GidMode::OwnLoyalSystems.caption(false), "Systems Loyal to the Empire");
+        assert_eq!(GidMode::EnemyLoyalSystems.caption(false), "Systems Loyal to the Alliance");
+        assert_eq!(GidMode::OwnMilitaryControl.caption(true), "");
+        assert_eq!(
+            GidMode::EnemyMilitaryControl.caption(true),
+            "Systems Under Military Control"
+        );
+        assert_eq!(
+            GidMode::OwnMilitaryControl.caption(false),
+            "Systems Under Military Control"
+        );
+        assert_eq!(GidMode::EnemyMilitaryControl.caption(false), "");
+        assert_eq!(GidMode::PopularSupport.caption(false), "Popular Support");
     }
 
     use super::*;

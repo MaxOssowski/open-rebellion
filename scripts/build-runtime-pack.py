@@ -39,10 +39,16 @@ TEXT_TABLES = ("textstra.json", "textstra-messages.json", "gid-legends.json")
 # The Encyclopedia's topic texts and artwork names (P66A) and their manifest,
 # staged by build-wasm.sh from data/base/encyclopedia/. Packed byte for byte:
 # the manifest's checksum covers the catalog's exact bytes.
-RAW_TABLES = ("encyclopedia-source.json", "encyclopedia-source.manifest.json")
-# Staged for the opening briefing's player (FUN_0042d650, DLL slot 0xd);
-# packed once the runtime reads them.
-UNPACKED_UI_DIRS = frozenset({"albrief-dll", "embrief-dll"})
+RAW_TABLES = (
+    "encyclopedia-source.json",
+    "encyclopedia-source.manifest.json",
+    # The advisor's messages (FUN_004c2c70, FUN_004c0ba0).
+    "C3POACT.SPT",
+    "IMP22ACT.SPT",
+)
+# The briefing DLLs (FUN_0042d650, DLL slot 0xd), whose voices the advisor's
+# clip player starts (advisor_clip.rs).
+BRIEFING_UI_DIRS = frozenset({"albrief-dll", "embrief-dll"})
 
 def validate_options_resources(ui_dir: Path) -> None:
     """Refuse stale UI staging that would omit the original confirmation controls."""
@@ -82,8 +88,6 @@ def collect_entries(
             entries.append(Entry(KIND_GAME_DATA, table.name, table))
 
     for dll_dir in sorted(ui_dir.iterdir(), key=lambda item: item.name):
-        if dll_dir.name in UNPACKED_UI_DIRS:
-            continue
         bmp_dir = dll_dir / "BMP"
         if bmp_dir.is_dir():
             for path in sorted(bmp_dir.glob("*.bmp"), key=lambda item: int(item.stem)):
@@ -98,6 +102,23 @@ def collect_entries(
                 int(path.stem)
                 entries.append(
                     Entry(KIND_ADVISOR_FRAME, f"{dll_dir.name}/{path.stem}", path)
+                )
+
+        # The advisor's clip records ride with its frames under "rcdata/".
+        record_dir = dll_dir / "RCDATA"
+        if record_dir.is_dir():
+            for path in sorted(record_dir.glob("*.bin"), key=lambda item: int(item.stem)):
+                int(path.stem)
+                entries.append(
+                    Entry(KIND_ADVISOR_FRAME, f"{dll_dir.name}/rcdata/{path.stem}", path)
+                )
+
+        wave_dir = dll_dir / "WAVE"
+        if dll_dir.name in BRIEFING_UI_DIRS and wave_dir.is_dir():
+            for path in sorted(wave_dir.glob("*.wav"), key=lambda item: int(item.stem)):
+                int(path.stem)
+                entries.append(
+                    Entry(KIND_AUDIO, f"advisor/{dll_dir.name}/{path.stem}.wav", path)
                 )
 
     if audio_dir is not None and audio_dir.is_dir():

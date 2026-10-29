@@ -7,7 +7,9 @@ const MAGIC: &[u8; 4] = b"ORPK";
 const VERSION: u16 = 3;
 const HEADER_LEN: usize = 12;
 const ENTRY_HEADER_LEN: usize = 7;
-const MAX_ENTRIES: usize = 10_000;
+// The briefing DLLs' frames and the advisor's clip records bring a full
+// pack to about 15,000 entries; the limit only refuses absurd headers.
+const MAX_ENTRIES: usize = 32_768;
 const MAX_KEY_LEN: usize = 512;
 
 const KIND_GAME_DATA: u8 = 0;
@@ -228,6 +230,23 @@ mod tests {
         assert_eq!(parsed.advisor_frames["alsprite-dll/2002"], b"sparse");
         assert_eq!(parsed.tactical_meshes["2560/1033"], b"mesh");
         assert_eq!(parsed.tactical_textures["SDESTI52.BMP/1033"], b"texture");
+    }
+
+    #[test]
+    fn a_pack_of_the_briefings_size_parses_and_an_absurd_count_is_refused() {
+        let keys: Vec<String> = (0..15_100).map(|id| format!("albrief-dll/{id}")).collect();
+        let entries: Vec<(u8, &str, &[u8])> = keys
+            .iter()
+            .map(|key| (KIND_ADVISOR_FRAME, key.as_str(), b"f".as_slice()))
+            .collect();
+        assert_eq!(parse_runtime_pack(&pack(&entries)).unwrap().advisor_frames.len(), 15_100);
+
+        let mut absurd = pack(&[]);
+        absurd[8..12].copy_from_slice(&(MAX_ENTRIES as u32 + 1).to_le_bytes());
+        assert_eq!(
+            parse_runtime_pack(&absurd),
+            Err(PackError::TooManyEntries(MAX_ENTRIES as u32 + 1))
+        );
     }
 
     #[test]

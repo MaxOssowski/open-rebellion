@@ -218,22 +218,28 @@ class RuntimePackBuilderTests(unittest.TestCase):
                 [(entry.kind, entry.key) for entry in entries],
             )
 
-    def test_briefing_dlls_stay_out_of_the_pack_until_the_runtime_reads_them(self) -> None:
+    def test_briefing_clips_pack_their_records_frames_and_voices(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base = root / "base"
             base.mkdir()
             (base / "SYSTEMSD.DAT").write_bytes(b"systems")
-            for dll in ("alsprite-dll", "albrief-dll", "embrief-dll"):
-                frames = root / "ui" / dll / "TYPE302"
-                frames.mkdir(parents=True)
-                (frames / "2102.bin").write_bytes(b"sparse frame")
+            for dll in ("alsprite-dll", "albrief-dll"):
+                for kind, name in (("TYPE302", "2102.bin"), ("RCDATA", "4155.bin"), ("WAVE", "1155.wav")):
+                    folder = root / "ui" / dll / kind
+                    folder.mkdir(parents=True)
+                    (folder / name).write_bytes(kind.encode())
 
-            entries = PACKER.collect_entries(base, root / "ui")
-            self.assertEqual(
-                [entry.key for entry in entries if entry.kind == PACKER.KIND_ADVISOR_FRAME],
-                ["alsprite-dll/2102"],
-            )
+            entries = [(entry.kind, entry.key) for entry in PACKER.collect_entries(base, root / "ui")]
+            for expected in (
+                (PACKER.KIND_ADVISOR_FRAME, "albrief-dll/2102"),
+                (PACKER.KIND_ADVISOR_FRAME, "albrief-dll/rcdata/4155"),
+                (PACKER.KIND_ADVISOR_FRAME, "alsprite-dll/rcdata/4155"),
+                (PACKER.KIND_AUDIO, "advisor/albrief-dll/1155.wav"),
+            ):
+                self.assertIn(expected, entries)
+            # Only the briefing's voices are played so far.
+            self.assertNotIn((PACKER.KIND_AUDIO, "advisor/alsprite-dll/1155.wav"), entries)
 
     def test_edata_artwork_is_validated_and_namespaced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

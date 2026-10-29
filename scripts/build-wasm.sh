@@ -97,6 +97,9 @@ mkdir -p "$WEB_DATA"
 cp "$GDATA"/*.DAT "$WEB_DATA/" 2>/dev/null || true
 # Copy DLL too (for string lookup if native-style loading is ever ported)
 cp "$GDATA"/*.DLL "$WEB_DATA/" 2>/dev/null || true
+# The advisor's messages (C3POACT.SPT, IMP22ACT.SPT), which the opening
+# briefing plays (advisor_schedule.rs).
+cp "$GDATA"/*.SPT "$WEB_DATA/" 2>/dev/null || true
 
 # Extract TEXTSTRA strings to JSON for WASM (pelite can't target WASM)
 echo "Extracting TEXTSTRA.DLL strings to textstra.json…"

@@ -1,6 +1,8 @@
 //! Galaxy map rendering and egui UI panels.
 
 pub mod advisor;
+pub mod advisor_clip;
+pub mod advisor_schedule;
 pub mod agent_menu;
 pub mod assault_summary;
 pub mod audio;
@@ -286,6 +288,9 @@ pub struct GalaxyMapState {
     pub pointer_blocked: bool,
     /// True while a Mission order waits for its target (galaxy view mode 2).
     pub targeting: bool,
+    /// True while the opening briefing holds the mouse buttons
+    /// (`FUN_0041d9d0`'s hook swallows them).
+    pub input_held: bool,
     pub show_sector_labels: bool,
     pub show_grid: bool,
     /// Cockpit viewport bounds for mouse input clamping.
@@ -328,6 +333,7 @@ impl Default for GalaxyMapState {
             press_on_map: false,
             pointer_blocked: false,
             targeting: false,
+            input_held: false,
             show_sector_labels: true,
             show_grid: false,
             viewport: None,
@@ -520,15 +526,17 @@ pub fn draw_gid_caption(
     cam: CameraView,
     faction: CockpitFaction,
     mode: GidMode,
+    caption: Option<&str>,
 ) {
     if !mode.is_active() {
         return;
     }
     let painter = ctx.layer_painter(egui::LayerId::background());
+    // A briefing mark names its system instead (FUN_0041d890).
     painter.text(
         gid_caption_anchor(cam),
         egui::Align2::CENTER_TOP,
-        mode.label(),
+        caption.unwrap_or(mode.caption(faction == CockpitFaction::Alliance)),
         theme::original_font(DEFAULT_FONT, cam.display_scale),
         crate::game_menu::faction_text_color(faction),
     );
@@ -1258,7 +1266,7 @@ fn gid_marker_resource(control: ControlKind, explored: bool, popularity: f32) ->
 /// `FUN_00422ce0` has no `WM_LBUTTONDOWN` case, so the press does nothing;
 /// the release targets.
 fn map_press_selects(state: &GalaxyMapState, in_viewport: bool) -> bool {
-    in_viewport && !state.targeting
+    in_viewport && !state.targeting && !state.input_held
 }
 
 /// The system a left click opens. `FUN_00422ce0` has no `WM_LBUTTONDOWN`
@@ -2023,7 +2031,7 @@ mod interaction_tests {
         let ctx = egui::Context::default();
         let caption = |mode| {
             let output = ctx.run(egui::RawInput::default(), |ctx| {
-                draw_gid_caption(ctx, camera, CockpitFaction::Empire, mode);
+                draw_gid_caption(ctx, camera, CockpitFaction::Empire, mode, None);
             });
             output
                 .shapes

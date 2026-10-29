@@ -126,6 +126,47 @@ pub fn set_advisor_asset_cache(
     *WASM_ADVISOR_ASSETS.lock().unwrap() = WasmAdvisorAssets { frames, bitmaps };
 }
 
+/// A staged advisor resource kind (`stage-ui-assets`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AdvisorResource {
+    Bitmap,
+    Frame,
+    Record,
+}
+
+/// One staged resource of an advisor DLL (`alsprite-dll`, `albrief-dll`,
+/// ...): a native build reads `{root}/{dll}/{BMP,TYPE302,RCDATA}/{id}`, a
+/// browser build the runtime pack (records keyed `{dll}/rcdata/{id}`).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn advisor_resource(
+    asset_root: &Path,
+    dll_dir: &str,
+    kind: AdvisorResource,
+    id: u16,
+) -> Option<Vec<u8>> {
+    let path = match kind {
+        AdvisorResource::Bitmap => format!("BMP/{id}.bmp"),
+        AdvisorResource::Frame => format!("TYPE302/{id}.bin"),
+        AdvisorResource::Record => format!("RCDATA/{id}.bin"),
+    };
+    std::fs::read(asset_root.join(dll_dir).join(path)).ok()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn advisor_resource(
+    _asset_root: &Path,
+    dll_dir: &str,
+    kind: AdvisorResource,
+    id: u16,
+) -> Option<Vec<u8>> {
+    let web = WASM_ADVISOR_ASSETS.lock().unwrap();
+    match kind {
+        AdvisorResource::Bitmap => web.bitmaps.get(&format!("{dll_dir}/{id}")).cloned(),
+        AdvisorResource::Frame => web.frames.get(&format!("{dll_dir}/{id}")).cloned(),
+        AdvisorResource::Record => web.frames.get(&format!("{dll_dir}/rcdata/{id}")).cloned(),
+    }
+}
+
 /// Exact decoded pixels from one original PE type-302 sparse frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DecodedAdvisorFrame {
@@ -199,6 +240,23 @@ pub fn decode_type302_frame(
     bytes: &[u8],
     base: &AdvisorFrameBase,
 ) -> Result<DecodedAdvisorFrame, AdvisorFrameError> {
+    let mut indices = base.indices.clone();
+    add_type302_deltas(bytes, base.width, base.height, &mut indices)?;
+    indexed_frame(base.width, base.height, &indices, &base.palette)
+}
+
+/// Add one type-302 frame's deltas into `indices` in place, as
+/// `FUN_0041c7a0` adds them into a clip's working bitmap: a clip's frames
+/// accumulate (`FUN_00404360`).
+///
+/// # Errors
+/// As [`decode_type302_frame`].
+pub(crate) fn add_type302_deltas(
+    bytes: &[u8],
+    base_width: usize,
+    base_height: usize,
+    indices: &mut [u8],
+) -> Result<(), AdvisorFrameError> {
     if bytes.len() < TYPE302_HEADER_LEN {
         return Err(AdvisorFrameError::TruncatedHeader {
             actual_len: bytes.len(),
@@ -216,12 +274,12 @@ pub fn decode_type302_frame(
     {
         return Err(AdvisorFrameError::InvalidDimensions { width, height });
     }
-    if width != base.width || height != base.height {
+    if width != base_width || height != base_height {
         return Err(AdvisorFrameError::BaseDimensionsMismatch {
             frame_width: width,
             frame_height: height,
-            base_width: base.width,
-            base_height: base.height,
+            base_width,
+            base_height,
         });
     }
 
@@ -248,10 +306,9 @@ pub fn decode_type302_frame(
     let pixel_count = width
         .checked_mul(height)
         .ok_or(AdvisorFrameError::InvalidDimensions { width, height })?;
-    if base.indices.len() != pixel_count {
+    if indices.len() != pixel_count {
         return Err(AdvisorFrameError::InvalidAnchorBitmap);
     }
-    let mut indices = base.indices.clone();
     for row in 0..height {
         let offset_start = TYPE302_HEADER_LEN + row * 4;
         let offset = u32::from_le_bytes([
@@ -290,11 +347,10 @@ pub fn decode_type302_frame(
             literal = !literal;
         }
     }
-
-    indexed_frame(width, height, &indices, &base.palette)
+    Ok(())
 }
 
-fn indexed_frame(
+pub(crate) fn indexed_frame(
     width: usize,
     height: usize,
     indices: &[u8],
@@ -327,7 +383,7 @@ fn indexed_frame(
     clippy::cast_sign_loss,
     reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
 )]
-fn decode_anchor_bitmap(bytes: &[u8]) -> Result<AdvisorFrameBase, AdvisorFrameError> {
+pub(crate) fn decode_anchor_bitmap(bytes: &[u8]) -> Result<AdvisorFrameBase, AdvisorFrameError> {
     if bytes.get(0..2) != Some(b"BM") || bytes.len() < 54 {
         return Err(AdvisorFrameError::InvalidAnchorBitmap);
     }
@@ -621,6 +677,12 @@ pub struct AdvisorState {
 
     /// Path to the staged UI root containing `alsprite-dll` and `emsprite-dll`.
     sprite_dir: PathBuf,
+
+    /// The agent droid's clip player (the `0xdead` player); while it shows
+    /// a clip, the agent aperture draws it instead of the idle frames.
+    pub clips: crate::advisor_clip::ClipPlayer,
+    clip_events: Vec<crate::advisor_clip::ClipEvent>,
+    clip_texture: Option<(u64, TextureHandle)>,
 }
 
 impl AdvisorState {
@@ -649,6 +711,9 @@ impl AdvisorState {
             // WASM resolves this logical root through the installed runtime
             // cache. Native builds replace it with the staged UI directory.
             sprite_dir: PathBuf::new(),
+            clips: crate::advisor_clip::ClipPlayer::new(faction, PathBuf::new()),
+            clip_events: Vec::new(),
+            clip_texture: None,
         }
     }
 
@@ -667,6 +732,8 @@ impl AdvisorState {
         self.secondary_frame = 0;
         self.frame_timer = 0.0;
         self.frames_loaded = false; // force reload on next draw
+        self.clips.reset(self.faction, &self.sprite_dir);
+        self.clip_texture = None;
     }
 
     pub fn set_faction(&mut self, faction: AdvisorFaction) {
@@ -686,6 +753,8 @@ impl AdvisorState {
         self.frame_cursor = 0;
         self.frame_timer = 0.0;
         self.frames_loaded = false;
+        self.clips.reset(faction, &self.sprite_dir);
+        self.clip_texture = None;
     }
 
     /// Push a message into the advisor queue.
@@ -723,6 +792,8 @@ impl AdvisorState {
     /// Advance animation and message timers by `dt` seconds.
     pub fn update(&mut self, dt: f32) {
         self.update_animation(dt);
+        let events = self.clips.update(dt);
+        self.clip_events.extend(events);
 
         // Advance message timer.
         if self.current_message.is_some() {
@@ -739,6 +810,12 @@ impl AdvisorState {
                 }
             }
         }
+    }
+
+    /// What the clip player asks of the app since the last call: voices to
+    /// start and ended clips' actions.
+    pub fn take_clip_events(&mut self) -> Vec<crate::advisor_clip::ClipEvent> {
+        std::mem::take(&mut self.clip_events)
     }
 
     /// Whether the advisor has a message to show.
@@ -1528,8 +1605,29 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
         egui::Id::new("authentic_droid_advisors"),
     ));
 
-    if !state.primary_textures.is_empty() {
-        let texture = &state.primary_textures[state.primary_frame % state.primary_textures.len()];
+    let clip = state.clips.frame().map(|(frame, serial)| {
+        if state.clip_texture.as_ref().map(|(shown, _)| *shown) != Some(serial) {
+            let image =
+                egui::ColorImage::from_rgba_unmultiplied([frame.width, frame.height], &frame.rgba);
+            match &mut state.clip_texture {
+                Some((shown, texture)) => {
+                    texture.set(image, TextureOptions::NEAREST);
+                    *shown = serial;
+                }
+                None => {
+                    state.clip_texture = Some((
+                        serial,
+                        ctx.load_texture("advisor_clip", image, TextureOptions::NEAREST),
+                    ));
+                }
+            }
+        }
+    });
+    let clip_texture = clip.and(state.clip_texture.as_ref()).map(|(_, texture)| texture);
+    if let Some(texture) = clip_texture.or_else(|| {
+        (!state.primary_textures.is_empty())
+            .then(|| &state.primary_textures[state.primary_frame % state.primary_textures.len()])
+    }) {
         let (x, y, width, height) = apertures[0];
         painter.image(
             texture.id(),
@@ -1665,7 +1763,7 @@ pub fn advisor_manufacturing_complete(state: &mut AdvisorState, item_name: &str)
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn assert_close(actual: f32, expected: f32) {
@@ -1695,7 +1793,7 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
     )]
-    fn type302_fixture() -> Vec<u8> {
+    pub(crate) fn type302_fixture() -> Vec<u8> {
         let payload = [
             1, 2, 4, 5, 1, // row 0: skip 1, draw 2, skip 1
             0, 4, 1, 2, 3, 4, // row 1: draw all 4 pixels
@@ -1725,7 +1823,7 @@ mod tests {
         clippy::cast_possible_truncation,
         reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
     )]
-    fn indexed_bmp_fixture() -> Vec<u8> {
+    pub(crate) fn indexed_bmp_fixture() -> Vec<u8> {
         let pixel_offset = 14 + 40 + 256 * 4;
         let mut bytes = vec![0; pixel_offset + 8];
         bytes[0..2].copy_from_slice(b"BM");
@@ -1857,6 +1955,23 @@ mod tests {
             Err(AdvisorFrameError::RowOffsetOutOfBounds {
                 row: 0,
                 offset: 999
+            })
+        );
+    }
+
+    #[test]
+    fn type302_decoder_refuses_a_frame_of_another_height_than_its_anchor() {
+        // FUN_0041c7a0 returns 0 unless width and height both match.
+        let mut base = frame_base();
+        base.height = 1;
+        base.indices.truncate(4);
+        assert_eq!(
+            decode_type302_frame(&type302_fixture(), &base),
+            Err(AdvisorFrameError::BaseDimensionsMismatch {
+                frame_width: 4,
+                frame_height: 2,
+                base_width: 4,
+                base_height: 1,
             })
         );
     }

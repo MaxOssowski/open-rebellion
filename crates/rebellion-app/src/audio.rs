@@ -297,6 +297,9 @@ pub struct AudioEngine {
     /// Source-mapped tactical voices keyed by faction and WAVE ID.
     tactical_voice: HashMap<(TacticalVoiceFaction, u32), Sound>,
 
+    /// The advisor's clip voices keyed by staged DLL directory and WAVE ID.
+    advisor_voice: HashMap<(String, u16), Sound>,
+
     /// Currently loaded music track + which track it is.
     music: Option<(Sound, MusicTrack)>,
 
@@ -315,6 +318,7 @@ impl AudioEngine {
             sfx: HashMap::new(),
             tactical_sfx: HashMap::new(),
             tactical_voice: HashMap::new(),
+            advisor_voice: HashMap::new(),
             music: None,
             music_playing: false,
             missing_music_logged: HashSet::new(),
@@ -516,6 +520,39 @@ impl AudioEngine {
     ) {
         let sound = Sound::load(&self.ctx, bytes);
         self.tactical_voice.insert((faction, resource_id), sound);
+    }
+
+    /// Load one advisor clip voice (a briefing DLL WAVE) from raw bytes.
+    pub fn load_advisor_voice_bytes(&mut self, directory: &str, wave: u16, bytes: &[u8]) {
+        let sound = Sound::load(&self.ctx, bytes);
+        self.advisor_voice.insert((directory.to_owned(), wave), sound);
+    }
+
+    /// Play a loaded advisor clip voice at the current SFX volume.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Audio gains are bounded values; the playback API takes f32."
+    )]
+    pub fn play_advisor_voice(
+        &mut self,
+        directory: &str,
+        wave: u16,
+        vol_state: &AudioVolumeState,
+    ) -> bool {
+        let vol = vol_state.effective_sfx_volume() as f32;
+        let Some(sound) = self.advisor_voice.get(&(directory.to_owned(), wave)) else {
+            return false;
+        };
+        if vol > 0.0 {
+            sound.play(
+                &self.ctx,
+                quad_snd::PlaySoundParams {
+                    looped: false,
+                    volume: vol,
+                },
+            );
+        }
+        true
     }
 
     /// Begin decoding a music track supplied by the browser runtime pack.

@@ -662,7 +662,11 @@ fn install_runtime_pack(
     let advisor_bitmaps = pack
         .bitmaps
         .iter()
-        .filter(|(key, _)| key.starts_with("alsprite-dll/") || key.starts_with("emsprite-dll/"))
+        .filter(|(key, _)| {
+            ["alsprite-dll/", "emsprite-dll/", "albrief-dll/", "embrief-dll/"]
+                .iter()
+                .any(|prefix| key.starts_with(prefix))
+        })
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
 
@@ -1241,6 +1245,12 @@ async fn main() {
 
     // ── Droid advisor ──────────────────────────────────────────────────────
     let mut advisor_state = AdvisorState::new(AdvisorFaction::Alliance);
+    // The side's advisor schedule (advisor_schedule.rs): a new game's plays
+    // the opening briefing. port: a loaded game's is not saved, so it has
+    // none.
+    let mut advisor_schedule: Option<rebellion_render::advisor_schedule::AdvisorSchedule> = None;
+    // The briefing's caption under a marked system (FUN_0041d890).
+    let mut briefing_caption: Option<u16> = None;
     {
         let sprite_dir = gdata_path.join("ui");
         advisor_state.set_sprite_dir(&sprite_dir);
@@ -1318,11 +1328,40 @@ async fn main() {
                 .map(|bytes| (faction, resource_id, bytes))
         })
         .collect();
+    // The briefing DLLs' voices (advisor_clip.rs), keyed by staged DLL
+    // directory and WAVE id, with their lengths.
+    let mut advisor_voice_seconds: std::collections::HashMap<(String, u16), f32> =
+        std::collections::HashMap::new();
+    #[cfg(target_arch = "wasm32")]
+    let browser_advisor_voices: Vec<(String, u16, Vec<u8>)> = {
+        let keys: Vec<String> = browser_audio_files
+            .keys()
+            .filter(|key| key.starts_with("advisor/"))
+            .cloned()
+            .collect();
+        keys.into_iter()
+            .filter_map(|key| {
+                let (directory, file) = key["advisor/".len()..].split_once('/')?;
+                let wave = file.strip_suffix(".wav")?.parse().ok()?;
+                let directory = directory.to_owned();
+                let bytes = browser_audio_files.remove(&key)?;
+                Some((directory, wave, bytes))
+            })
+            .collect()
+    };
+    #[cfg(target_arch = "wasm32")]
+    for (directory, wave, bytes) in &browser_advisor_voices {
+        advisor_voice_seconds.insert(
+            (directory.clone(), *wave),
+            rebellion_render::advisor_clip::wave_seconds(bytes),
+        );
+    }
     #[cfg(target_arch = "wasm32")]
     let mut browser_menu_audio = if browser_main_theme.is_some()
         || !browser_menu_sfx.is_empty()
         || !browser_tactical_sfx.is_empty()
         || !browser_tactical_voice.is_empty()
+        || !browser_advisor_voices.is_empty()
     {
         // Initialise WebAudio and begin decoding before the first interaction.
         // Its resume handlers are then ready for the first user gesture.
@@ -1338,6 +1377,9 @@ async fn main() {
         }
         for (faction, resource_id, bytes) in &browser_tactical_voice {
             engine.load_tactical_voice_bytes(*faction, *resource_id, bytes);
+        }
+        for (directory, wave, bytes) in &browser_advisor_voices {
+            engine.load_advisor_voice_bytes(directory, *wave, bytes);
         }
         Some(engine)
     } else {
@@ -1494,12 +1536,117 @@ async fn main() {
         }
 
         // ── Advisor animation timer ────────────────────────────────────────
-        if !interface_fixture_active {
+        // The advisor runs while the galaxy view shows (FUN_0041cea0 checks
+        // DAT_006b14e4); the briefing's day is the opening day's 1 (hyp:
+        // the game's +0xc counts from 1; the narration captures play on the
+        // opening day, which FUN_004c0a60's next-free test needs above 0).
+        if game_mode == GameMode::Galaxy {
+            if let Some(schedule) = advisor_schedule.as_mut() {
+                let today = u32::try_from(clock.tick).unwrap_or(u32::MAX).saturating_add(1);
+                schedule.update(dt, today, &mut advisor_state.clips);
+            }
+        }
+        if !interface_fixture_active || advisor_schedule.is_some() {
             advisor_state.update(dt);
         }
+        for event in advisor_state.take_clip_events() {
+            match event {
+                rebellion_render::advisor_clip::ClipEvent::Voice { directory, wave } => {
+                    let key = (directory.to_owned(), wave);
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if !advisor_voice_seconds.contains_key(&key) {
+                        let path = gdata_path
+                            .join("ui")
+                            .join(directory)
+                            .join("WAVE")
+                            .join(format!("{wave}.wav"));
+                        if let Ok(bytes) = std::fs::read(path) {
+                            audio_engine.load_advisor_voice_bytes(directory, wave, &bytes);
+                            advisor_voice_seconds.insert(
+                                key.clone(),
+                                rebellion_render::advisor_clip::wave_seconds(&bytes),
+                            );
+                        }
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let loaded = audio_engine.play_advisor_voice(directory, wave, &audio_vol);
+                    #[cfg(target_arch = "wasm32")]
+                    let loaded = browser_menu_audio
+                        .as_mut()
+                        .is_some_and(|engine| engine.play_advisor_voice(directory, wave, &audio_vol));
+                    let seconds = advisor_voice_seconds.get(&key).copied().unwrap_or(0.0);
+                    advisor_state.clips.voice_started(seconds);
+                    macroquad::logging::info!(
+                        "[advisor] clip voice directory={} wave={} seconds={:.3} loaded={} muted={}",
+                        directory,
+                        wave,
+                        seconds,
+                        loaded,
+                        audio_vol.muted
+                    );
+                }
+                rebellion_render::advisor_clip::ClipEvent::Finished(action) => {
+                    if let Some(schedule) = advisor_schedule.as_mut() {
+                        schedule.clip_finished(action);
+                    }
+                    let side = advisor_schedule
+                        .as_ref()
+                        .map_or(advisor_state.faction, |schedule| schedule.faction());
+                    let shown = (action.kind == 2)
+                        .then(|| {
+                            rebellion_render::advisor_schedule::briefing_action(side, action.code)
+                        })
+                        .flatten()
+                        .map(|briefing| {
+                            apply_briefing_action(
+                                briefing,
+                                &world,
+                                &mut cockpit_state,
+                                &mut map_state,
+                                &mut briefing_caption,
+                            )
+                        });
+                    macroquad::logging::info!(
+                        "[advisor] clip finished kind={} code={:#x} gid={:?} caption={:?} marked={} holds_input={}",
+                        action.kind,
+                        action.code,
+                        shown.map(|_| cockpit_state.gid_mode.command_id()),
+                        briefing_caption,
+                        match shown {
+                            Some(Some(system)) => format!("{system:#x}"),
+                            Some(None) => "none".to_owned(),
+                            None => "-".to_owned(),
+                        },
+                        advisor_schedule.as_ref().is_some_and(|schedule| schedule.holds_input())
+                    );
+                }
+            }
+        }
+
+        // The briefing's hooks (FUN_0041d9d0): a left or right press, or
+        // Escape's release, asks to skip; the mouse buttons stay held until
+        // the closing action and the keys until the skip.
+        let briefing_holds_input = advisor_schedule
+            .as_ref()
+            .is_some_and(|schedule| schedule.holds_input());
+        let briefing_holds_keys = advisor_schedule
+            .as_ref()
+            .is_some_and(|schedule| schedule.holds_keys());
+        if briefing_holds_input
+            && (is_mouse_button_pressed(MouseButton::Left)
+                || is_mouse_button_pressed(MouseButton::Right)
+                || (briefing_holds_keys && is_key_released(KeyCode::Escape)))
+        {
+            if let Some(schedule) = advisor_schedule.as_mut() {
+                schedule.request_skip();
+                macroquad::logging::info!("[advisor] briefing skip requested");
+            }
+        }
+        map_state.input_held = briefing_holds_input;
 
         // ── Global keyboard shortcuts ───────────────────────────────────────
-        if matches!(game_mode, GameMode::Cutscene { .. }) {
+        if briefing_holds_keys {
+        } else if matches!(game_mode, GameMode::Cutscene { .. }) {
             if is_key_pressed(KeyCode::Escape) || is_key_pressed(KeyCode::Space) {
                 if let Some(player) = cutscene_player.as_mut() {
                     player.stop();
@@ -1583,6 +1730,7 @@ async fn main() {
         // The open Fleet Finder takes the keys for its name box, and a
         // rename edit for the name it holds.
         if game_mode == GameMode::Galaxy
+            && !briefing_holds_keys
             && !show_save_load
             && !fleet_finder_state.is_open()
             && !troop_finder_state.is_open()
@@ -4166,6 +4314,21 @@ async fn main() {
                                     ai_state = AIState::new(AiFaction::Empire);
                                 }
 
+                                let advisor_side = if faction == MissionFaction::Alliance {
+                                    AdvisorFaction::Alliance
+                                } else {
+                                    AdvisorFaction::Empire
+                                };
+                                advisor_state.set_faction(advisor_side);
+                                advisor_state.clips.clear();
+                                briefing_caption = None;
+                                advisor_schedule = new_advisor_schedule(&gdata_path, advisor_side);
+                                // The galaxy view opens on Display Off; the
+                                // briefing's action 1 or 0xb shows Popular
+                                // Support (gid-markers.md, FUN_004c0fc0).
+                                if advisor_schedule.is_some() {
+                                    cockpit_state.gid_mode = rebellion_render::GidMode::DisplayOff;
+                                }
                                 let faction_name = if faction == MissionFaction::Alliance {
                                     "Rebel Alliance"
                                 } else {
@@ -4377,7 +4540,12 @@ async fn main() {
                         galaxy_camera,
                         cockpit_state.faction,
                         cockpit_state.gid_mode,
+                        briefing_caption
+                            .and_then(rebellion_render::advisor_schedule::caption_text),
                     );
+                    if briefing_holds_input {
+                        rebellion_render::advisor_schedule::draw_input_hold(ctx);
+                    }
                     // The day readout is the Game Speed control; a right
                     // click on it opens the original speed menu.
                     draw_day_readout(ctx, cockpit_layout, cockpit_state.faction, clock.tick);
@@ -6945,6 +7113,9 @@ async fn main() {
                 PanelAction::LoadGame { slot } => {
                     match rebellion_data::save::load_slot(&saves_dir, slot) {
                         Ok((meta, state)) => {
+                            advisor_schedule = None;
+                            advisor_state.clips.clear();
+                            briefing_caption = None;
                             macroquad::logging::info!(
                                 "load_state_fingerprint slot={} tick={} fingerprint={}",
                                 slot,
@@ -7602,6 +7773,115 @@ fn confirm_character_move(
         join: fleet,
         lines: vec![(c.name.clone(), days)],
     });
+}
+
+/// A new game's advisor schedule for `side`, from its GDATA messages
+/// (`FUN_004c27f0`, `FUN_004c0710`); `None` when they cannot be read.
+fn new_advisor_schedule(
+    gdata: &Path,
+    side: AdvisorFaction,
+) -> Option<rebellion_render::advisor_schedule::AdvisorSchedule> {
+    use rebellion_render::advisor_schedule::{AdvisorSchedule, ScriptEntry};
+    let script =
+        match rebellion_data::load_advisor_script(gdata, side == AdvisorFaction::Alliance) {
+            Ok(script) => script,
+            Err(error) => {
+                macroquad::logging::warn!("[advisor] messages unavailable error={:#}", error);
+                return None;
+            }
+        };
+    let messages = script
+        .messages
+        .into_iter()
+        .map(|message| {
+            let entries = message
+                .entries
+                .iter()
+                .map(|entry| ScriptEntry {
+                    record: entry.record,
+                    flags: entry.flags,
+                    a: entry.a,
+                    b: entry.b,
+                })
+                .collect();
+            (message.id, entries)
+        })
+        .collect();
+    Some(AdvisorSchedule::new_game(side, messages))
+}
+
+/// A briefing action on the galaxy view (`FUN_004c0fc0` / `FUN_004c30c0`):
+/// a display, or a marked system with its caption; returns the marked
+/// system's id. A character whose system is gone shows the display and
+/// caption with no system marked (hyp: `FUN_005f5540` clears the view's
+/// system before each case); without the Alliance headquarters the
+/// Alliance's code 3 shows Display Off (`FUN_004c30c0` case 3).
+fn apply_briefing_action(
+    action: rebellion_render::advisor_schedule::BriefingAction,
+    world: &GameWorld,
+    cockpit: &mut CockpitState,
+    map: &mut GalaxyMapState,
+    caption: &mut Option<u16>,
+) -> Option<u32> {
+    use rebellion_render::advisor_schedule::{
+        ALLIANCE_HEADQUARTERS, BriefingAction, MarkTarget,
+    };
+    match action {
+        BriefingAction::Display(mode) => {
+            cockpit.gid_mode = mode;
+            *caption = None;
+            None
+        }
+        BriefingAction::Mark {
+            target,
+            mode,
+            caption: text,
+        } => {
+            let system = match target {
+                MarkTarget::System(index) => world
+                    .systems
+                    .iter()
+                    .find(|(_, system)| system.dat_id.index() == index)
+                    .map(|(key, _)| key),
+                MarkTarget::ObjectSystem(ALLIANCE_HEADQUARTERS) => world
+                    .systems
+                    .iter()
+                    .find(|(_, system)| {
+                        system.is_headquarters
+                            && system.control.is_controlled_by(Faction::Alliance)
+                    })
+                    .map(|(key, _)| key),
+                // port: a major character's DatId holds MJCHARSD's id
+                // without the family byte that REBEXE's object ids carry
+                // (0x30000240 is family 0x30, id 0x240).
+                MarkTarget::ObjectSystem(record) => world
+                    .characters
+                    .values()
+                    .find(|character| {
+                        character.is_major && character.dat_id.raw() == record & 0x00FF_FFFF
+                    })
+                    .and_then(|character| {
+                        character.current_system.or_else(|| {
+                            character
+                                .current_fleet
+                                .and_then(|fleet| world.fleets.get(fleet))
+                                .map(|fleet| fleet.location)
+                        })
+                    }),
+            };
+            if system.is_none() && target == MarkTarget::ObjectSystem(ALLIANCE_HEADQUARTERS) {
+                cockpit.gid_mode = rebellion_render::GidMode::DisplayOff;
+                *caption = None;
+                return None;
+            }
+            map.selected_system = system;
+            cockpit.gid_mode = mode;
+            *caption = Some(text);
+            system
+                .and_then(|key| world.systems.get(key))
+                .map(|system| system.dat_id.raw())
+        }
+    }
 }
 
 /// The missions a mission icon's Abort (`0x250`) acts on, when every one

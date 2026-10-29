@@ -1,0 +1,62 @@
+Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.
+[assets] render_profile=original-parity
+runtime_asset_pack loaded game_files=58 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=373 tactical_meshes=87 tactical_textures=397 bytes=75090379
+[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69
+[encyclopedia] topics loaded audience=Alliance entries=356 complete=346
+[encyclopedia] topics loaded audience=Empire entries=356 complete=346
+[cutscene] opened path=assets/references/ref-videos/000.webm
+[audio] menu_sfx=MenuSelect resource=8004
+[campaign] fleet_naming=Original
+[campaign] faction=Galactic Empire configuration=Easy, Small Galaxy, Standard Game
+[campaign] reset generation=1 tick=0 missions=0 movements=0 cooldowns=0 dual_ai=false second_ai=false event_definitions=0
+[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16
+[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1147 seconds=11.571 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x1 gid=Some(17) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1220 seconds=5.294 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xe gid=Some(19) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1221 seconds=3.530 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xf gid=Some(21) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1222 seconds=6.333 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x10 gid=Some(20) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1223 seconds=7.802 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x11 gid=Some(23) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1224 seconds=12.422 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x12 gid=Some(146) caption=Some(5668) marked=0x109 holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1149 seconds=18.938 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5668) marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x3 gid=Some(147) caption=Some(5666) marked=0x121 holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1150 seconds=20.329 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5666) marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x4 gid=Some(23) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1151 seconds=27.899 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x5 gid=Some(32) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1152 seconds=10.586 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x6 gid=Some(145) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1153 seconds=7.631 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x7 gid=Some(146) caption=Some(5671) marked=0x109 holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1225 seconds=3.019 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5671) marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x13 gid=Some(146) caption=Some(5672) marked=0x109 holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1226 seconds=16.556 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5672) marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x14 gid=Some(147) caption=Some(5666) marked=0x121 holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1155 seconds=26.517 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=Some(5666) marked=- holds_input=true
+[advisor] clip finished kind=2 code=0x9 gid=Some(128) caption=None marked=none holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1156 seconds=2.159 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xa gid=None caption=None marked=- holds_input=true
+[advisor] clip voice directory=embrief-dll wave=1160 seconds=3.019 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true
+[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false

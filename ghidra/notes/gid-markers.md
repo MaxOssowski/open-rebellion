@@ -113,7 +113,9 @@ The advisor's "show me" actions (read 2026-10-22):
 - The advisor's player (`Class_0065a358`, slot 8, `FUN_00472930`) makes
   a clip by id and gives it its action through slot `0x14`
   (`FUN_004124b0`).
-- `FUN_004c0fc0(code)`, for kind 2:
+- `FUN_004c0fc0(code)`, for kind 2 (correction 2026-10-28: this is the
+  Empire's table; the Alliance's is `FUN_004c30c0`, in
+  `advisor-briefing.md`):
 
 | Code | Action |
 |---|---|

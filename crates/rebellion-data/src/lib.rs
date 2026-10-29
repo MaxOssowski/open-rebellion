@@ -1171,6 +1171,24 @@ pub(crate) fn file_available(path: &Path) -> bool {
     }
 }
 
+/// A side's advisor messages: GDATA `C3POACT.SPT` for the Alliance,
+/// `IMP22ACT.SPT` for the Empire (`FUN_004c2c70`, `FUN_004c0ba0`; the
+/// codec is `dat_dumper::types::advisor_script`).
+///
+/// # Errors
+/// Returns an error when the file is missing or malformed.
+pub fn load_advisor_script(
+    gdata: &Path,
+    alliance: bool,
+) -> anyhow::Result<dat_dumper::types::advisor_script::AdvisorScriptFile> {
+    let name = if alliance {
+        "C3POACT.SPT"
+    } else {
+        "IMP22ACT.SPT"
+    };
+    read_dat_file(&gdata.join(name))
+}
+
 /// Parse a DAT file from raw bytes. Platform-independent.
 ///
 /// # Errors
@@ -1183,6 +1201,19 @@ pub fn parse_dat_bytes<T: DatRecord>(data: &[u8], name: &str) -> anyhow::Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[ignore = "reads the original GDATA advisor scripts under data/base"]
+    fn each_sides_advisor_script_holds_its_briefing_and_short_form() {
+        // FUN_004c27f0 schedules 0x29, FUN_004c0710 0x4a; a skip schedules
+        // 0x28 or 0x49 (FUN_004c2dd0, FUN_004c0d00).
+        let gdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        for (alliance, briefing, short) in [(true, 0x29, 0x28), (false, 0x4a, 0x49)] {
+            let script = load_advisor_script(&gdata, alliance).unwrap();
+            assert_eq!(script.message(briefing).unwrap().entries.len(), 34);
+            assert_eq!(script.message(short).unwrap().entries.len(), 3);
+        }
+    }
 
     #[test]
     fn a_legend_reads_its_texts_from_the_string_table() {
