@@ -114,8 +114,13 @@ classified original capture.
 
 - `FUN_00429f30` (command `0x131`, the cockpit button and F7) builds the
   window with `FUN_0045d400(parent, 0, 0, 0x1d6, 0x14a, ..)`: 470 x 330
-  at `(0, 0)` of its parent. Where that puts it in the command centre is
-  not read; hyp: the port centres it in the 640 x 480 canvas.
+  at `(0, 0)` of its parent. Settled 2026-10-29: the layout routine
+  `FUN_0045ddc0` then calls `FUN_00606980` with the galaxy view's
+  rectangle (`+0xcc..+0xd8`), so the window is centred in the galaxy view
+  with truncating halves: the Empire's at (125, 52) (A0, Windows 10 VM,
+  day 143, exact over the frame), the Alliance's at (62, 50) (captures
+  kritikanstvo 281117 and 281123). The port's centring in the 640 x 480
+  canvas was wrong.
 - The app opens the original index / topic whenever the index catalog and
   the side's topics loaded (`rebellion_data::encyclopedia_topics::
   installed_encyclopedia_topics`: native `data/base/encyclopedia/source.json`
@@ -134,6 +139,45 @@ classified original capture.
   replacement's "focus system" action has no original counterpart and is
   gone with it.
 
+
+## The index list (read 2026-10-29)
+
+- `FUN_0045ddc0` makes the list with `FUN_00607ea0(.., 0x24, 0x89, 0x15e,
+  0xa0, .., 0x65, 0x15e, 0x14, 0x287f, 0x2880, 0x287d, 0x287e, 10, 1, 0)`:
+  at (36, 137), 350 by 160, cells 350 by 20, so eight rows; the scroll
+  arrows 10367/10368 and 10365/10366, font 10. It sets `+0xe4 = 0x24`
+  (`DT_VCENTER | DT_SINGLELINE`) and `+0xe8 = 5`: the text at x 5,
+  centred on its row. The list keeps the constructor's colours, `+0xd8 =
+  0x787878` (grey) and `+0xdc = 0xffffff` for the selected row; nothing
+  else marks the selection.
+- Each opening builds a new window, whose list starts with
+  `FUN_0045f100(0x6f, 1)`: All Databases, `+0x148` (the selection)
+  cleared, so nothing is selected and the selector is empty until a click.
+- The labels: the title TEXTSTRA `0x1842` in font 5, centred
+  (`format 1`) in (36, 14, 350); "Topic" `0x1843` in font 4, drawn into
+  the base at (36, 48); the category label in font 5 at (40, 119), 283
+  wide. The selector `FUN_00604cf0` at (143, 45), 245 by 18, takes font
+  id 100 (`+0x24`), not mapped.
+- The objects come from a list the galaxy view builds once
+  (`FUN_00422620`, `+0x474`): every class record of the families
+  `0x08..0x0f`, `0x10..0x13`, `0x14..0x1f`, `0x22..0x27`, `0x28..0x2f`,
+  `0x30..0x3f` and the missions (`0x50..0x7f`) whose record `+0x5c` is 0,
+  then the systems of the viewer's side (`FUN_004f31b0`,
+  `FUN_0053ef50(0x90..0x98, side, 1)`). A smaller galaxy's index so
+  leaves its absent systems out: the A0 game's index has no Abregado or
+  Adrift.
+- A0 (2026-10-29, Empire): the rows A-wing, Abduction, Ackbar, Adar
+  Tallon, Adega, Advanced Construction Yard, Advanced Shipyard, Advanced
+  Training Facility, grey, 20 apart; a click on Abduction turns it white
+  and fills the selector.
+
+Port (2026-10-29): `encyclopedia_origin` places the window;
+`ORIGINAL_INDEX_ROW_HEIGHT` 20, eight rows, the text at x 5 centred, grey
+or white; the fonts above; no first-row selection
+(`reconcile_original_index_state`); `open_original_encyclopedia_at`
+resets to All Databases; `OriginalEncyclopediaCatalog::set_galaxy_systems`
+limits the systems to the world's. port: the scroll bar (art `0x299d`) is
+not drawn.
 
 ## Evidence boundary
 

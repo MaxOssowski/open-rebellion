@@ -577,8 +577,17 @@ pub fn draw_encyclopedia(
 pub const ENCYCLOPEDIA_INDEX_WIDTH: f32 = 470.0;
 pub const ENCYCLOPEDIA_INDEX_HEIGHT: f32 = 330.0;
 
-const ORIGINAL_INDEX_VISIBLE_ROWS: usize = 9;
-const ORIGINAL_INDEX_ROW_HEIGHT: f32 = 18.0;
+/// The list (`FUN_0045ddc0`: `FUN_00607ea0(.., 0x24, 0x89, 0x15e, 0xa0, ..,
+/// 0x15e, 0x14, .., 10, ..)`): cells 350 by 20 in a 160-pixel list, so
+/// eight rows; the text at x 5 (`+0xe8`), centred on the row (`+0xe4 =
+/// 0x24`), in font 10.
+const ORIGINAL_INDEX_VISIBLE_ROWS: usize = 8;
+const ORIGINAL_INDEX_ROW_HEIGHT: f32 = 20.0;
+const ORIGINAL_INDEX_TEXT_X: f32 = 5.0;
+/// The list's colours from its constructor (`FUN_00607ea0`: `+0xd8 =
+/// 0x787878`, `+0xdc = 0xffffff`): grey rows, the selected one white, with
+/// no other mark (A0 2026-10-29).
+const ORIGINAL_INDEX_ROW_COLOR: Color32 = Color32::from_rgb(0x78, 0x78, 0x78);
 
 /// One immutable source object shown by the authentic index list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -601,6 +610,10 @@ pub struct OriginalEncyclopediaCatalog {
     pub topic_label: String,
     category_labels: [String; 7],
     entries: Vec<OriginalEncyclopediaEntry>,
+    /// The game's systems, when one runs: `FUN_00422620` lists the systems
+    /// of the viewer's side (`FUN_004f31b0`), so a smaller galaxy's index
+    /// leaves the others out.
+    systems: Option<std::collections::BTreeSet<u32>>,
 }
 
 impl OriginalEncyclopediaCatalog {
@@ -623,7 +636,13 @@ impl OriginalEncyclopediaCatalog {
             topic_label,
             category_labels,
             entries,
+            systems: None,
         }
+    }
+
+    /// Limit the System entries to the game's systems, by their object id.
+    pub fn set_galaxy_systems(&mut self, systems: impl IntoIterator<Item = u32>) {
+        self.systems = Some(systems.into_iter().collect());
     }
 
     #[must_use]
@@ -640,6 +659,13 @@ impl OriginalEncyclopediaCatalog {
         self.entries
             .iter()
             .filter(|entry| original_category_contains(command_id, entry.family()))
+            .filter(|entry| {
+                !(0x90..0x98).contains(&entry.family())
+                    || self
+                        .systems
+                        .as_ref()
+                        .is_none_or(|systems| systems.contains(&entry.object_id))
+            })
             .collect()
     }
 
@@ -963,7 +989,9 @@ pub fn original_encyclopedia_object(
 
 /// Open the original window at `object`'s topic when the catalog lists it
 /// (All Databases, so the topic steps through every object), else at the
-/// index.
+/// index. Each opening builds a new window (`FUN_0045d400`), whose list
+/// starts at All Databases with nothing selected (`FUN_0045f100(0x6f, 1)`
+/// clears `+0x148`).
 pub fn open_original_encyclopedia_at(
     state: &mut EncyclopediaState,
     catalog: &OriginalEncyclopediaCatalog,
@@ -971,6 +999,9 @@ pub fn open_original_encyclopedia_at(
 ) {
     state.open = true;
     state.original_topic_mode = false;
+    state.original_category_command = 0x6f;
+    state.original_selected_object_id = None;
+    state.original_scroll_row = 0;
     if let Some(object) = object.filter(|object| {
         catalog
             .entries_for(0x6f)
@@ -1247,7 +1278,8 @@ fn reconcile_original_index_state(
         .iter()
         .any(|entry| Some(entry.object_id) == state.original_selected_object_id)
     {
-        state.original_selected_object_id = entries.first().map(|entry| entry.object_id);
+        // FUN_0045f100 rebuilds the list with no item selected.
+        state.original_selected_object_id = None;
         state.original_scroll_row = 0;
     }
     let selected_index = entries
@@ -1386,20 +1418,26 @@ fn draw_original_index_content(
     outcome: &mut OriginalIndexOutcome,
 ) {
     let painter = ui.painter();
-    let title_font = egui::FontId::proportional(15.0 * scale);
-    let list_font = egui::FontId::proportional(14.0 * scale);
+    // FUN_0045ddc0: the title TEXTSTRA 0x1842 in font 5, centred in
+    // (36, 14, 350); "Topic" 0x1843 at (36, 48) in font 4; the category
+    // label at (40, 119) in font 5; the list in font 10. hyp: the
+    // selector's font 100 (FUN_00604cf0, +0x24) is not mapped; font 10
+    // stands in.
+    let title_font = crate::theme::original_font(5, scale);
+    let topic_font = crate::theme::original_font(4, scale);
+    let list_font = crate::theme::original_font(10, scale);
     painter.text(
         encyclopedia_point(window_rect, scale, 211.0, 14.0),
         egui::Align2::CENTER_TOP,
         content.title,
-        title_font,
+        title_font.clone(),
         Color32::WHITE,
     );
     painter.text(
         encyclopedia_point(window_rect, scale, 36.0, 48.0),
         egui::Align2::LEFT_TOP,
         content.topic_label,
-        list_font.clone(),
+        topic_font,
         Color32::WHITE,
     );
     painter.text(
@@ -1410,10 +1448,10 @@ fn draw_original_index_content(
         Color32::WHITE,
     );
     painter.text(
-        encyclopedia_point(window_rect, scale, 40.0, 120.0),
+        encyclopedia_point(window_rect, scale, 40.0, 119.0),
         egui::Align2::LEFT_TOP,
         content.category_label,
-        list_font.clone(),
+        title_font,
         Color32::WHITE,
     );
 
@@ -1467,20 +1505,26 @@ fn draw_original_index_content(
         let y = 137.0 + visible_row as f32 * ORIGINAL_INDEX_ROW_HEIGHT;
         let row_rect = original_index_row_rect(window_rect, scale, visible_row);
         let selected = Some(entry.object_id) == content.selected_object_id;
-        if selected {
-            list_painter.rect_filled(row_rect, 0.0, Color32::from_rgb(0, 0, 96));
-        }
         let response = ui.interact(
             row_rect,
             ui.id().with(("encyclopedia-index-row", entry.object_id)),
             egui::Sense::click(),
         );
         list_painter.text(
-            encyclopedia_point(window_rect, scale, 40.0, y + 1.0),
-            egui::Align2::LEFT_TOP,
+            encyclopedia_point(
+                window_rect,
+                scale,
+                36.0 + ORIGINAL_INDEX_TEXT_X,
+                y + ORIGINAL_INDEX_ROW_HEIGHT / 2.0,
+            ),
+            egui::Align2::LEFT_CENTER,
             &entry.name,
             list_font.clone(),
-            Color32::WHITE,
+            if selected {
+                Color32::WHITE
+            } else {
+                ORIGINAL_INDEX_ROW_COLOR
+            },
         );
         if response.clicked() {
             outcome.selected_object_id = Some(entry.object_id);
@@ -1565,6 +1609,21 @@ fn original_control_contains(
     let x = ((point.x - rect.min.x) / scale).floor() as usize;
     let y = ((point.y - rect.min.y) / scale).floor() as usize;
     cache.is_resource_hit(DllSource::Strategy, resource_id, x, y)
+}
+
+/// The window's top-left on screen: centred in the galaxy view with
+/// truncating halves, as `FUN_00606980` places a window (A0 2026-10-29, the
+/// Empire's at (125, 52); captures 281117 and 281123, the Alliance's at
+/// (62, 50)). `FUN_0045d400` creates it at (0, 0); hyp: it is then placed
+/// as the galaxy view's other windows are.
+#[must_use]
+pub fn encyclopedia_origin(layout: crate::cockpit::CockpitLayout) -> egui::Pos2 {
+    crate::mission_dialog::galaxy_centered_rect(
+        layout,
+        ENCYCLOPEDIA_INDEX_WIDTH,
+        ENCYCLOPEDIA_INDEX_HEIGHT,
+    )
+    .min
 }
 
 fn encyclopedia_point(parent: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Pos2 {
@@ -2069,7 +2128,7 @@ mod tests {
     }
 
     #[test]
-    fn original_catalog_selection_preserves_identity_or_resets_to_first_match() {
+    fn original_catalog_selection_preserves_identity_or_clears() {
         let catalog = original_catalog_fixture();
         let mut state = EncyclopediaState {
             original_selected_object_id: Some(0x1400_0001),
@@ -2083,10 +2142,58 @@ mod tests {
         reconcile_original_index_state(&mut state, &catalog, true);
         assert_eq!(state.original_selected_object_id, Some(0x1400_0001));
 
+        // FUN_0045f100 rebuilds the list with nothing selected: a category
+        // without the object selects none (A0 2026-10-29).
         state.original_category_command = 0x70;
         reconcile_original_index_state(&mut state, &catalog, true);
-        assert_eq!(state.original_selected_object_id, Some(0x9000_0001));
+        assert_eq!(state.original_selected_object_id, None);
         assert_eq!(state.original_scroll_row, 0);
+    }
+
+    #[test]
+    fn opening_starts_at_all_databases_with_nothing_selected() {
+        // Each opening builds a new window (FUN_0045d400), whose list starts
+        // at FUN_0045f100(0x6f, 1).
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState {
+            original_category_command: 0x71,
+            original_selected_object_id: Some(0x1400_0001),
+            original_scroll_row: 2,
+            ..EncyclopediaState::default()
+        };
+        open_original_encyclopedia_at(&mut state, &catalog, None);
+        assert!(state.open && !state.original_topic_mode);
+        assert_eq!(state.original_category_command, 0x6f);
+        assert_eq!(state.original_selected_object_id, None);
+        assert_eq!(state.original_scroll_row, 0);
+    }
+
+    #[test]
+    fn the_index_lists_only_the_games_systems_once_they_are_set() {
+        // FUN_00422620 adds the systems of the viewer's side
+        // (FUN_004f31b0); the other families stay.
+        let entry = |object_id, name: &str| OriginalEncyclopediaEntry {
+            object_id,
+            name: name.into(),
+        };
+        let mut catalog = OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            vec![
+                entry(0x9000_0001, "Abregado"),
+                entry(0x9000_0002, "Coruscant"),
+                entry(0x1400_0001, "Star Destroyer"),
+            ],
+        );
+        let ids = |catalog: &OriginalEncyclopediaCatalog, command| -> Vec<u32> {
+            catalog.entries_for(command).iter().map(|entry| entry.object_id).collect()
+        };
+        assert_eq!(ids(&catalog, 0x70), [0x9000_0001, 0x9000_0002]);
+        catalog.set_galaxy_systems([0x9000_0002]);
+        assert_eq!(ids(&catalog, 0x70), [0x9000_0002]);
+        assert_eq!(ids(&catalog, 0x6f), [0x9000_0002, 0x1400_0001]);
+        assert_eq!(ids(&catalog, 0x71), [0x1400_0001]);
     }
 
     #[test]
@@ -2229,6 +2336,80 @@ mod tests {
             run_topic(&mut state, &catalog, 0.0, vec![key(egui::Key::ArrowRight)]);
         assert_eq!(activated, None);
         assert!(shapes.is_empty());
+    }
+
+    #[test]
+    fn index_rows_are_grey_but_the_selected_white_centred_in_twenty_pixel_rows() {
+        // FUN_0045ddc0's list: text at x 5 of the 350-wide cell, centred on
+        // its 20-pixel row (+0xe4 = 0x24), font 10, grey 0x787878 or white
+        // when selected (FUN_00607ea0); the title and category label in
+        // font 5. At scale 2 from (10, 20).
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x1000_0001),
+            ..EncyclopediaState::default()
+        };
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut shapes = Vec::new();
+        for _ in 0..2 {
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1400.0, 1000.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_encyclopedia_index_catalog(
+                        ctx,
+                        &mut cache,
+                        crate::cockpit::CockpitFaction::Alliance,
+                        egui::pos2(10.0, 20.0),
+                        2.0,
+                        &mut state,
+                        &catalog,
+                    );
+                },
+            );
+            shapes = output.shapes;
+        }
+        // The selector also names the selected object; the rows start at
+        // the cell's x 5.
+        let row_x = 10.0 + 41.0 * 2.0;
+        let text = |wanted: &str| {
+            shapes
+                .iter()
+                .filter(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) => {
+                        !wanted.starts_with("Alliance") || text.pos.x == row_x
+                    }
+                    _ => false,
+                })
+                .find_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) if text.galley.text() == wanted => Some((
+                        text.pos,
+                        text.galley.size(),
+                        text.galley.job.sections[0].format.font_id.size,
+                        text.galley.job.sections[0].format.color,
+                    )),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{wanted} not drawn"))
+        };
+        let (pos, size, font, color) = text("Ackbar");
+        assert_eq!(pos.x, row_x);
+        assert!((pos.y + size.y / 2.0 - (20.0 + 147.0 * 2.0)).abs() < 0.01, "{pos:?}");
+        assert_eq!(font, crate::theme::original_font(10, 2.0).size);
+        assert_eq!(color, ORIGINAL_INDEX_ROW_COLOR);
+        let (pos, size, _, color) = text("Alliance Army Regiment");
+        assert!((pos.y + size.y / 2.0 - (20.0 + 167.0 * 2.0)).abs() < 0.01, "{pos:?}");
+        assert_eq!(color, Color32::WHITE);
+        assert_eq!(text("Galactic Encyclopedia").2, crate::theme::original_font(5, 2.0).size);
+        assert_eq!(text("All Databases").2, crate::theme::original_font(5, 2.0).size);
+        assert_eq!(text("Topic").2, crate::theme::original_font(4, 2.0).size);
     }
 
     #[test]
@@ -2378,8 +2559,10 @@ mod tests {
             ..EncyclopediaState::default()
         };
 
+        // Twelve entries, eight rows shown (FUN_00607ea0: 20-pixel cells
+        // in the 160-pixel list): the last one shows from row 4.
         reconcile_original_index_state(&mut state, &catalog, true);
-        assert_eq!(state.original_scroll_row, 3);
+        assert_eq!(state.original_scroll_row, 4);
 
         state.original_selected_object_id = Some(0x9000_0000);
         reconcile_original_index_state(&mut state, &catalog, true);
@@ -2387,18 +2570,22 @@ mod tests {
 
         state.original_scroll_row = usize::MAX;
         reconcile_original_index_state(&mut state, &catalog, false);
-        assert_eq!(state.original_scroll_row, 3);
+        assert_eq!(state.original_scroll_row, 4);
 
+        // FUN_0045f100 rebuilds the list with nothing selected.
         state.original_category_command = 0xffff;
         state.original_selected_object_id = Some(0xffff_ffff);
         reconcile_original_index_state(&mut state, &catalog, false);
         assert_eq!(state.original_category_command, 0x6f);
-        assert_eq!(state.original_selected_object_id, Some(0x9000_0000));
+        assert_eq!(state.original_selected_object_id, None);
         assert_eq!(state.original_scroll_row, 0);
     }
 
     #[test]
-    fn original_index_ninth_row_is_clipped_to_the_native_list_boundary() {
+    fn eight_twenty_pixel_rows_fill_the_native_list() {
+        // FUN_00607ea0(.., 0x24, 0x89, 0x15e, 0xa0, .., 0x15e, 0x14, ..):
+        // 350 by 20 cells in the 160-pixel list (A0 2026-10-29: eight rows,
+        // 20 apart).
         let parent = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(470.0, 330.0));
         let list = original_index_list_rect(parent, 1.0);
 
@@ -2406,8 +2593,42 @@ mod tests {
             let rect = original_index_row_rect(parent, 1.0, row);
             assert!(rect.min.y >= list.min.y);
             assert!(rect.max.y <= list.max.y);
-            assert!(rect.height() > 0.0);
+            assert_eq!(rect.height(), 20.0);
         }
-        assert_eq!(original_index_row_rect(parent, 1.0, 8).height(), 16.0);
+        assert_eq!(ORIGINAL_INDEX_VISIBLE_ROWS, 8);
+        assert_eq!(original_index_row_rect(parent, 1.0, 7).max.y, list.max.y);
+    }
+
+    #[test]
+    fn the_window_sits_centred_in_each_sides_galaxy_view() {
+        // A0 2026-10-29 (Empire): (125, 52); captures 281117 and 281123
+        // (Alliance): (62, 50). FUN_00606980's truncating halves of the
+        // galaxy view (FUN_00421c70) less 470 by 330.
+        use crate::cockpit::{CockpitFaction, CockpitLayout, CockpitViewport};
+        for (faction, origin) in [
+            (CockpitFaction::Alliance, (62.0, 50.0)),
+            (CockpitFaction::Empire, (125.0, 52.0)),
+        ] {
+            let (x, y, width, height) = crate::cockpit::galaxy_aperture(faction);
+            let layout = CockpitLayout {
+                canvas: CockpitViewport {
+                    x: 10.0,
+                    y: 20.0,
+                    width: 1280.0,
+                    height: 960.0,
+                },
+                galaxy: CockpitViewport {
+                    x: 10.0 + x * 2.0,
+                    y: 20.0 + y * 2.0,
+                    width: width * 2.0,
+                    height: height * 2.0,
+                },
+                scale: 2.0,
+            };
+            assert_eq!(
+                encyclopedia_origin(layout),
+                egui::pos2(10.0 + origin.0 * 2.0, 20.0 + origin.1 * 2.0)
+            );
+        }
     }
 }

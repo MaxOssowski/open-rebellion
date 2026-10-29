@@ -300,7 +300,7 @@ pub enum BriefingAction {
 /// ([`AdvisorSchedule::clip_finished`]); `0xa` is in neither table.
 #[must_use]
 pub const fn briefing_action(faction: AdvisorFaction, code: u32) -> Option<BriefingAction> {
-    use BriefingAction::{Display, Mark};
+    use BriefingAction::Display;
     const fn mark(target: MarkTarget, mode: GidMode, caption: u16) -> BriefingAction {
         BriefingAction::Mark {
             target,

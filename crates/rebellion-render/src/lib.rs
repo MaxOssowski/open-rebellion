@@ -87,7 +87,7 @@ pub use encyclopedia::{
     draw_encyclopedia, draw_encyclopedia_index_catalog, draw_encyclopedia_index_shell,
     draw_encyclopedia_topic, open_original_encyclopedia_at, original_encyclopedia_object,
     EncyclopediaState, EncyclopediaTab, OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry,
-    OriginalEncyclopediaTopic, ENCYCLOPEDIA_INDEX_HEIGHT, ENCYCLOPEDIA_INDEX_WIDTH,
+    OriginalEncyclopediaTopic, ENCYCLOPEDIA_INDEX_HEIGHT, ENCYCLOPEDIA_INDEX_WIDTH, encyclopedia_origin,
 };
 #[cfg(feature = "interface-test-fixtures")]
 pub use encyclopedia::{

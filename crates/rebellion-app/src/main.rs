@@ -941,7 +941,7 @@ async fn main() {
     // The Galactic Encyclopedia is immutable reference data, not campaign
     // state. Rebuild it from the installed DAT/TEXTSTRA source so opening the
     // index after a save/load never changes the serialized world format.
-    let original_encyclopedia_catalog =
+    let mut original_encyclopedia_catalog =
         match rebellion_data::encyclopedia_catalog::load_encyclopedia_catalog(&gdata_path) {
             Ok(source) => {
                 let category_counts: [usize; 7] = std::array::from_fn(|index| {
@@ -4780,22 +4780,22 @@ async fn main() {
                     let original_topics = original_encyclopedia_topics
                         [usize::from(cockpit_state.faction == CockpitFaction::Empire)]
                     .as_ref();
+                    // FUN_00422620 lists the systems of the viewer's side
+                    // (FUN_004f31b0): those of this game's galaxy.
+                    if let (true, Some(catalog)) =
+                        (enc_state.open, original_encyclopedia_catalog.as_mut())
+                    {
+                        catalog.set_galaxy_systems(
+                            world.systems.values().map(|system| system.dat_id.raw()),
+                        );
+                    }
                     if let (true, Some(catalog), Some(topics)) = (
                         enc_state.open,
                         original_encyclopedia_catalog.as_ref(),
                         original_topics,
                     ) {
-                        // hyp: centred in the 640 x 480 command centre;
-                        // FUN_0045d400 is created at (0, 0) of its parent,
-                        // whose placement is not read.
-                        let origin = egui_macroquad::egui::pos2(
-                            cockpit_layout.canvas.x
-                                + (640.0 - rebellion_render::ENCYCLOPEDIA_INDEX_WIDTH) / 2.0
-                                    * cockpit_layout.scale,
-                            cockpit_layout.canvas.y
-                                + (480.0 - rebellion_render::ENCYCLOPEDIA_INDEX_HEIGHT) / 2.0
-                                    * cockpit_layout.scale,
-                        );
+                        // Centred in the galaxy view (A0 2026-10-29).
+                        let origin = rebellion_render::encyclopedia_origin(cockpit_layout);
                         let selected_topic = enc_state
                             .original_selected_object_id
                             .and_then(|object| topics.get(&object))
@@ -6626,8 +6626,16 @@ async fn main() {
                                     )]
                                     .is_some() =>
                             {
-                                enc_state.open = true;
-                                enc_state.original_topic_mode = false;
+                                // A new window each time (FUN_0045d400):
+                                // All Databases, nothing selected
+                                // (FUN_0045f100(0x6f, 1)).
+                                if let Some(catalog) = original_encyclopedia_catalog.as_ref() {
+                                    rebellion_render::open_original_encyclopedia_at(
+                                        &mut enc_state,
+                                        catalog,
+                                        None,
+                                    );
+                                }
                                 macroquad::logging::info!(
                                     "[interface] command=0x131 destination=encyclopedia status=opened_original"
                                 );
