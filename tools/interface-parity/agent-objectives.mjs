@@ -8,7 +8,9 @@
 //   on its Objectives row opens the Status window on the empty id;
 // - "key": Alt+H opens the same window;
 // - the menu's Galaxy Overview row and Alt+O open the Status window on the
-//   galaxy.
+//   galaxy;
+// - Alt+G's reaction plays, then at Fast speed fifty quiet days bring a
+//   quip, an op-0x13 clip (FUN_00412c40).
 //
 // Screenshots of the menu and the window are kept for comparison with the
 // A0 captures (.artifacts/a0-vm/agent-menu/).
@@ -40,9 +42,11 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // of the Empire's menu, opened at (46, 401), has it at y 311.
 const FACTIONS = [
   { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307], overview: [480, 287],
-    garrisonsVoice: "directory=alsprite-dll wave=1137" },
+    garrisonsVoice: "directory=alsprite-dll wave=1137", quipVoice: "directory=alsprite-dll wave=1291",
+    dayReadout: [144, 27], fastRow: [180, 117] },
   { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307], overview: [100, 287],
-    garrisonsVoice: "directory=emsprite-dll wave=1135" },
+    garrisonsVoice: "directory=emsprite-dll wave=1135", quipVoice: "directory=emsprite-dll wave=22005",
+    dayReadout: [539, 25], fastRow: [575, 115] },
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
@@ -208,6 +212,39 @@ async function run(browser, base, faction) {
       () => log.some((line) => line.includes("[advisor] reaction flags=0x10")), 5_000);
     await waitFor(page, log, "the droid answers the garrisons",
       () => log.some((line) => line.includes(`[advisor] clip voice ${faction.garrisonsVoice}`)), 30_000);
+
+    // A quip: once fifty days pass without a message, each idle end sets
+    // 0x80000000 (FUN_00439ef0) and the advisor rolls FUN_005f5700(12)
+    // below 6. The port's generator rolls 6, 7, then 4 from its seed, so
+    // the third idle end plays message 0x54 / 0x52, record 905 (op 0x13).
+    // The game opens paused, so Fast (0.4 s a day) comes from the Game
+    // Speed menu on the day readout (FUN_0042d190, game_speed.rs).
+    await click(page, faction.dayReadout, "right");
+    await page.waitForTimeout(300);
+    await shot("speed-menu");
+    await click(page, faction.fastRow);
+    const quip = () => log.some((line) => line.includes(`[advisor] clip voice ${faction.quipVoice}`));
+    const battles = () => log.filter((line) => line.includes("[audio] context=battle_window")).length;
+    const deadline = Date.now() + 240_000;
+    let handled = 0;
+    while (!quip()) {
+      if (Date.now() > deadline) throw new Error(`fifty quiet days bring a quip: ${JSON.stringify(log.slice(-8))}`);
+      if (battles() > handled) {
+        handled = battles();
+        // The Battle Alert's Simulate, then the results' close box
+        // (tactical_view.rs: Simulate in the bottom bar, the close box
+        // at the rail's top).
+        await page.waitForTimeout(1_000);
+        await click(page, [270, 357]);
+        await page.waitForTimeout(3_000);
+        await shot(`battle-${handled}-result`);
+        await click(page, [500, 82]);
+        await page.waitForTimeout(500);
+      }
+      await page.waitForTimeout(100);
+    }
+    await page.waitForTimeout(300);
+    await shot("quip");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

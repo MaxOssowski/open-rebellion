@@ -330,6 +330,14 @@ the agent active again) and the bits are masked to `0xc000`.
 holds one sprite-DLL record. Ported 2026-10-29 but `0x1`, `0x8000000` and
 `0x4000000`.
 
+The quips' records are op `0x13` (`Class_006588a8`). Its loader
+`FUN_00412c40` is `FUN_00404440` instruction for instruction, the same
+definition record. Its step `FUN_00412b80` differs from `FUN_00404360`
+only once the stop flag `+0x64` is set (vt `+0x24`, `FUN_00404740`): op 4
+then stops its sounds and ends, while op `0x13` runs its frames out first.
+Neither class takes an action (vt `+0x14` is the empty `FUN_00403ef0`). The
+port has played op `0x13` like op 4 since 2026-10-29.
+
 A refused order reaches the same table through slot `+0xc`
 (`FUN_004c2940`, `FUN_004c0870`), ten days ahead: messages `0xf`..`0x14`
 (Alliance) or `0x10`..`0x15` (Empire), in `mission-dialog.md`, "Refusal".

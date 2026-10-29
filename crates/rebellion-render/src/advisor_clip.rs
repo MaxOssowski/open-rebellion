@@ -8,6 +8,9 @@
 //! - op 4 (`Class_00658520`): a clip definition, which starts its voice,
 //!   shows its first frame and adds one type-302 frame a tick
 //!   (`FUN_00404440`, `FUN_00404360`);
+//! - op `0x13` (`Class_006588a8`): the same definition, loaded by a copy
+//!   of `FUN_00404440` (`FUN_00412c40`); only its stop differs
+//!   (`FUN_00412b80`);
 //! - op `0x11` (`Class_00658848`): a frame list, which shows its frame for
 //!   one tick (`FUN_00412280`, `FUN_00412260`).
 //!
@@ -35,6 +38,14 @@ pub const BRIEFING_SLOT: u16 = 0xd;
 
 /// The op of a clip definition (`Class_00658520`).
 pub const OP_DEFINITION: u16 = 4;
+/// The op of a definition whose stop lets its frames run out
+/// (`Class_006588a8`): the quips (C3POACT `0x50..0x55`, IMP22ACT
+/// `0x4e..0x53`). Its loader `FUN_00412c40` is `FUN_00404440` instruction
+/// for instruction, and its step `FUN_00412b80` differs from
+/// `FUN_00404360` only once `+0x64` is set (vt `+0x24`), which ends an op-4
+/// clip and its sounds at once. Neither class takes an action (vt `+0x14`
+/// is the empty `FUN_00403ef0`).
+pub const OP_UNSTOPPED_DEFINITION: u16 = 0x13;
 /// The op of a frame list (`Class_00658848`).
 pub const OP_FRAME_LIST: u16 = 0x11;
 
@@ -330,7 +341,8 @@ impl ClipPlayer {
             clip.record,
         )?;
         let playing = match clip.op {
-            OP_DEFINITION => {
+            // port: the stop (+0x64) is not ported, so both play alike.
+            OP_DEFINITION | OP_UNSTOPPED_DEFINITION => {
                 let definition = ClipDefinition::parse(&record)?;
                 let base = self.bitmap(directory, definition.first_frame)?;
                 self.show(&base);
@@ -495,11 +507,19 @@ mod tests {
 
     #[test]
     fn a_definition_starts_its_voice_adds_a_frame_a_tick_and_ends_after_its_voice() {
+        // FUN_00404440 / FUN_00404360 for op 4, and their copies
+        // FUN_00412c40 / FUN_00412b80 for op 0x13.
+        for op in [OP_DEFINITION, OP_UNSTOPPED_DEFINITION] {
+            a_definition_plays(op);
+        }
+    }
+
+    fn a_definition_plays(op: u16) {
         let root = staged_root(3);
         let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
         let action = ClipAction { kind: 2, code: 1 };
         player.queue(QueuedClip {
-            op: OP_DEFINITION,
+            op,
             slot: BRIEFING_SLOT,
             record: 0x103b,
             action,
@@ -587,7 +607,7 @@ mod tests {
         let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
         let action = ClipAction { kind: 3, code: 1 };
         player.queue(QueuedClip {
-            op: 0x13,
+            op: 0x14,
             slot: SPRITE_SLOT,
             record: 0x18f,
             action,
@@ -672,6 +692,54 @@ mod tests {
                         wave: definition.wave
                     }
                 );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "reads the staged original sprite DLLs under data/base/ui"]
+    fn every_quip_clip_plays_each_of_its_frames_to_the_end() {
+        // The quips' entries (C3POACT 0x50..0x55, IMP22ACT 0x4e..0x53) are
+        // [0x13, definition] records in the sprite DLL (slot 9).
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base/ui");
+        for (faction, first_entry) in
+            [(AdvisorFaction::Alliance, 10301_u16), (AdvisorFaction::Empire, 11301)]
+        {
+            let directory = slot_directory(SPRITE_SLOT, faction).unwrap();
+            for entry in first_entry..first_entry + 6 {
+                let mut player = ClipPlayer::new(faction, &root);
+                player.queue_entry(SPRITE_SLOT, entry, 0, 0);
+                let words = advisor_resource(&root, directory, AdvisorResource::Record, entry)
+                    .unwrap_or_else(|| panic!("{directory} record {entry}"));
+                assert_eq!(u16::from_le_bytes([words[0], words[1]]), OP_UNSTOPPED_DEFINITION);
+                let record = u16::from_le_bytes([words[2], words[3]]);
+                let definition = ClipDefinition::parse(
+                    &advisor_resource(&root, directory, AdvisorResource::Record, record).unwrap(),
+                )
+                .unwrap();
+                let mut serials = Vec::new();
+                let mut events = Vec::new();
+                while !events.iter().any(|event| matches!(event, ClipEvent::Finished(_))) {
+                    events.extend(player.update(CLIP_TICK_SECONDS + 1e-4));
+                    if let Some((_, serial)) = player.frame() {
+                        serials.push(serial);
+                    }
+                    assert!(serials.len() <= 1000, "{directory} {entry} never ends");
+                }
+                serials.dedup();
+                assert_eq!(
+                    serials.len(),
+                    usize::from(definition.frame_count) - 1,
+                    "{directory} {entry}: every frame but the last shows"
+                );
+                assert_eq!(
+                    events[0],
+                    ClipEvent::Voice {
+                        directory,
+                        wave: definition.wave
+                    }
+                );
+                assert_eq!(events[1], ClipEvent::Finished(ClipAction::default()));
             }
         }
     }

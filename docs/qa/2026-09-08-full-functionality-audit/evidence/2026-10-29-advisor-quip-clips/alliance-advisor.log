@@ -1,0 +1,27 @@
+[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16
+[advisor] clip finished kind=2 code=0xc gid=None caption=None marked=- holds_input=true
+[advisor] clip voice directory=albrief-dll wave=1155 seconds=9.431 loaded=true muted=false
+[advisor] briefing skip requested
+[advisor] clip finished kind=2 code=0xb gid=Some(17) caption=None marked=none holds_input=true
+[advisor] clip voice directory=albrief-dll wave=1165 seconds=4.338 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=true
+[advisor] clip finished kind=2 code=0xd gid=None caption=None marked=- holds_input=false
+[advisor] reaction menu_opened count=1
+[agent] command=objectives status=opened source=menu
+[agent] command=objectives status=opened source=accelerator
+[advisor] clip voice directory=alsprite-dll wave=1174 seconds=1.321 loaded=true muted=false
+[advisor] reaction menu_opened count=1
+[agent] command=galaxy_overview status=opened source=menu
+[agent] command=galaxy_overview status=opened source=accelerator
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=false
+[agent] command=translate_counterpart status=off source=accelerator
+[agent] command=translate_counterpart status=on source=accelerator
+[advisor] reaction menu_opened count=1
+[agent] command=manage_garrisons status=on source=accelerator
+[advisor] reaction flags=0x10
+[advisor] clip voice directory=alsprite-dll wave=1175 seconds=0.715 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=false
+[advisor] clip voice directory=alsprite-dll wave=1137 seconds=3.218 loaded=true muted=false
+[advisor] clip finished kind=0 code=0x0 gid=None caption=None marked=- holds_input=false
+[battle_alert] command=simulate resource=10716 status=routed
+[advisor] clip voice directory=alsprite-dll wave=1291 seconds=0.100 loaded=true muted=false
