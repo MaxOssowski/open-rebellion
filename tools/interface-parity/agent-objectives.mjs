@@ -6,7 +6,9 @@
 //
 // - "menu": a right click on the agent droid opens the Agent menu; a click
 //   on its Objectives row opens the Status window on the empty id;
-// - "key": Alt+H opens the same window.
+// - "key": Alt+H opens the same window;
+// - the menu's Galaxy Overview row and Alt+O open the Status window on the
+//   galaxy.
 //
 // Screenshots of the menu and the window are kept for comparison with the
 // A0 captures (.artifacts/a0-vm/agent-menu/).
@@ -37,8 +39,8 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // on its left for the Alliance. The port's row is at y 307; the A0 capture
 // of the Empire's menu, opened at (46, 401), has it at y 311.
 const FACTIONS = [
-  { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307] },
-  { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307] },
+  { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307], overview: [480, 287] },
+  { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307], overview: [100, 287] },
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
@@ -147,6 +149,29 @@ async function run(browser, base, faction) {
     assert.match(opened()[1], /source=accelerator/);
     await page.waitForTimeout(300);
     await shot("objectives-from-alt-h");
+    await page.keyboard.press("Escape");
+    await waitFor(page, log, "Escape closes it", () => closed().length === 2, 5_000);
+
+    // The Galaxy Overview: the menu's fourth row, then Alt+O.
+    const overview = () => log.filter((line) => line.includes("[agent] command=galaxy_overview status=opened"));
+    await click(page, faction.droid, "right");
+    await page.waitForTimeout(400);
+    await click(page, faction.overview);
+    await waitFor(page, log, "the menu's Galaxy Overview opens the window", () => overview().length === 1, 5_000);
+    assert.match(overview()[0], /source=menu/);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    await shot("galaxy-overview-from-menu");
+    await page.keyboard.press("Escape");
+    await waitFor(page, log, "Escape closes it", () => closed().length === 3, 5_000);
+    await page.keyboard.down("Alt");
+    await frames(page);
+    await page.keyboard.down("KeyO");
+    await frames(page);
+    await page.keyboard.up("KeyO");
+    await page.keyboard.up("Alt");
+    await waitFor(page, log, "Alt+O opens the window", () => overview().length === 2, 5_000);
+    assert.match(overview()[1], /source=accelerator/);
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

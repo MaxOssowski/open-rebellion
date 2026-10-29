@@ -1,0 +1,62 @@
+{
+  "status": "pass",
+  "wasm_sha256": "6fee94fee66e962ef6e6d53dd663d7b980e153f6f65445fef38f848472ae8c4a",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "323f37c14629a73b010897cd6a7369b71a0bf1fd765132f81516b9ae9280e12c"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "d1aeb9f2dc60ec62e3d3f4bd796981293b4bc85c5f6153debfa5d385c99ed0e0"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "adb807a8f4eb47842d0c0f90fd1f70d34f551ca617f2833aaa556e84198aed1d"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "aa2503c6981e82ff7f99ff1ff8a0c8cf333b0210239dd903ee3ba7c878ebe330"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "84e39974924d249b67373eb9969b7fa8696a790cfaa6bc19fbbe3f87794fbf17"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "d5465f740bfe9ba720d29985b546d2bea2ce653f604591224c63db5f3888cc5b"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "0ff8db3482e6f440c18bc734d93fdcdf7b599ec3bdeff8da9c928aaf34bb4c7f"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "c3cdcf6a1ff33a66f7bca1c8f9cbad5c81ff7165d85de1ffc778e1629633a98e"
+        }
+      ]
+    }
+  ]
+}

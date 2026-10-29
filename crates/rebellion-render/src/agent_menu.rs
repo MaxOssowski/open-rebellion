@@ -28,6 +28,9 @@ pub enum AgentCommand {
     /// 0x114, Alt+H: the Status window on the empty id, the Objectives
     /// (`FUN_00486fb0` → `FUN_0041d7f0(FUN_004ece30())`).
     Objectives,
+    /// 0x113, Alt+O: the Status window on the galaxy, the Galaxy Overview
+    /// (`FUN_00486fb0` → `FUN_0041d7f0(0xf1000004)`).
+    GalaxyOverview,
 }
 
 /// One record of list `0xdead`: its command, sort key (word 2) and TEXTSTRA
@@ -139,8 +142,7 @@ const MENU_COMMANDS: [u16; 9] = [0x110, 0x111, 0x112, 0x115, 0x116, 0x113, 0x11b
 /// The items `FUN_00487900` adds, enables and checks. Manage Garrisons and
 /// Manage Production are checked while they run (`FUN_00439e30`), Agent
 /// Advice while bit `0x8000` is clear. port: the Build orders (module
-/// 0x17), the Galaxy Overview and Translate Counterpart are not ported, so
-/// they stay disabled.
+/// 0x17) and Translate Counterpart are not ported, so they stay disabled.
 #[must_use]
 pub fn agent_menu_items(view: AgentMenuView) -> Vec<AgentMenuItem> {
     AGENT_MENU_RECORDS
@@ -150,6 +152,7 @@ pub fn agent_menu_items(view: AgentMenuView) -> Vec<AgentMenuItem> {
             let (command, checked) = match record.command {
                 0x115 => (Some(AgentCommand::ManageGarrisons), view.garrisons),
                 0x116 => (Some(AgentCommand::ManageProduction), view.production),
+                0x113 => (Some(AgentCommand::GalaxyOverview), false),
                 0x114 => (Some(AgentCommand::Objectives), false),
                 0x11e => (Some(AgentCommand::AgentAdvice), view.advice),
                 _ => (None, false),
@@ -303,6 +306,8 @@ mod tests {
         assert!(!item(&on, 0x110).enabled, "port: Build Ships is not ported");
         assert_eq!(item(&on, 0x114).command, Some(AgentCommand::Objectives));
         assert!(item(&off, 0x114).enabled, "FUN_00487900 enables 0x114 always");
+        assert_eq!(item(&on, 0x113).command, Some(AgentCommand::GalaxyOverview));
+        assert!(item(&off, 0x113).enabled, "FUN_00487900 enables 0x113 always");
     }
 
     #[test]

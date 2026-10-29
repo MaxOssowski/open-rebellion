@@ -1761,7 +1761,8 @@ async fn main() {
                 // 0x115/0x116, FUN_00422ce0) toggle Manage Garrisons and
                 // Manage Production (FUN_00439d60).
                 // Alt+A (0xbc9 → 0x11e) flips Agent Advice (FUN_00439e80).
-                // Alt+H (0xbd7 → 0x114) shows the Objectives.
+                // Alt+H (0xbd7 → 0x114) shows the Objectives, Alt+O (0xbc4 →
+                // 0x113) the Galaxy Overview.
                 for (key, command) in [
                     (
                         KeyCode::G,
@@ -1778,6 +1779,10 @@ async fn main() {
                     (
                         KeyCode::H,
                         rebellion_render::agent_menu::AgentCommand::Objectives,
+                    ),
+                    (
+                        KeyCode::O,
+                        rebellion_render::agent_menu::AgentCommand::GalaxyOverview,
                     ),
                 ] {
                     if is_key_pressed(key) {
@@ -8330,6 +8335,15 @@ fn apply_agent_command(
             status.open(rebellion_render::status_rows::StatusObject::Objectives);
             macroquad::logging::info!(
                 "[agent] command=objectives status=opened source={}",
+                source
+            );
+            return;
+        }
+        // The same with the galaxy's id 0xf1000004.
+        AgentCommand::GalaxyOverview => {
+            status.open(rebellion_render::status_rows::StatusObject::GalaxyOverview);
+            macroquad::logging::info!(
+                "[agent] command=galaxy_overview status=opened source={}",
                 source
             );
             return;

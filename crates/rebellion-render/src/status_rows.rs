@@ -86,6 +86,9 @@ pub enum StatusObject {
     /// The empty id, `FUN_004ece30` (Agent menu `0x114`): the Objectives,
     /// `FUN_0044b2d0` for side 1, else `FUN_0044bb70`.
     Objectives,
+    /// The galaxy, `0xf1000004` (Agent menu `0x113`): the Galaxy Overview,
+    /// `FUN_0044a7a0` and `FUN_0044aa20` over fifteen family ranges.
+    GalaxyOverview,
     /// `0xa0..0xaf`, `FUN_0044acd0`: a system's manager for one area.
     Producer {
         system: SystemKey,
@@ -110,19 +113,34 @@ pub struct StatusView {
     /// `FUN_0044a210`: the object's name.
     pub name: String,
     pub rows: Vec<StatusRow>,
-    /// The Objectives' rows, in place of `rows`.
+    /// The Objectives' or the Galaxy Overview's rows, in place of `rows`.
     pub icon_rows: Vec<StatusIconRow>,
+    pub icon_layout: IconRowLayout,
     /// The Encyclopedia button `0x66`, disabled (STRATEGY 11612) for the
     /// galaxy and the empty id (`FUN_00443020`).
     pub encyclopedia: bool,
 }
 
-/// One row of the Objectives list: a STRATEGY icon, keyed and centred in a
-/// cell of the first icon's size, and its TEXTSTRA text (`FUN_0044b2d0`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One row of a picture list: an icon and its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatusIconRow {
+    pub source: DllSource,
     pub icon: u32,
-    pub text: &'static str,
+    pub text: String,
+}
+
+/// How a picture list lays its rows out; both are 35-pixel rows of a cell
+/// the list's width (`FUN_006073d0(.., 0xd0, 0x23, ..)`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IconRowLayout {
+    /// The Objectives: each icon centred in a 37 by 37 canvas, the text from
+    /// x 40, centred on the row's height (`+0xe8 = 0x28`, `+0xe4 = 0x24`).
+    #[default]
+    Objectives,
+    /// The Galaxy Overview: each mini at the cell's top-left, the text
+    /// centred across the cell from its top (the list's own format, `+0xe4 =
+    /// 9`, set at creation).
+    Overview,
 }
 
 /// One victory condition of `FUN_0044b2d0` (Alliance) and `FUN_0044bb70`
@@ -202,13 +220,158 @@ pub fn objective_rows(source: ObjectiveSource) -> Vec<StatusIconRow> {
                 met
             };
             (key, StatusIconRow {
+                source: DllSource::Strategy,
                 icon: objective.icon,
-                text,
+                text: text.to_owned(),
             })
         })
         .collect();
     rows.sort_by_key(|&(key, _)| key);
     rows.into_iter().map(|(_, row)| row).collect()
+}
+
+/// The fighters' family (FIGHTSD's records, `0x1c`). port: the fighter
+/// classes' `DatId`s carry no family byte.
+const FIGHTER_FAMILY: u8 = 0x1c;
+
+/// A capital ship class's family: CAPSHPSD gives `0x14` to every record but
+/// the Death Star's (`0x88`), which is `0x18`. port: the classes' `DatId`s
+/// carry no family byte, so one present is taken as it is.
+fn ship_family(dat_id: DatId) -> u8 {
+    match (dat_id.family(), dat_id.index()) {
+        (0, 0x88) => 0x18,
+        (0, _) => 0x14,
+        (family, _) => family,
+    }
+}
+
+/// The Galaxy Overview's rows for the viewing side (`FUN_00443130`, the
+/// galaxy's branch). `FUN_0044a7a0` walks fifteen family ranges (troops
+/// `0x10..0x13`, capital ships `0x14..0x1b`, fighters `0x1c..0x1f`,
+/// headquarters `0x20..0x21`, defenses `0x22..0x25`, yards `0x28..0x2a`,
+/// mines and refineries `0x2c..0x2d`, special forces `0x3c..0x3f`) and
+/// groups the side's existing objects by class: their count, and their
+/// summed maintenance (`FUN_004f2990`) for families `0x10..0x3f`.
+/// `FUN_0044aa20` makes a row of each group: the class's GOKRES list mini
+/// (`(resource & 0xfff) + 0x4000`), the count in three digits, two spaces
+/// (`DAT_006a874c`) and the maintenance in four, keyed by the family so
+/// the list sorts by it. hyp: groups of one family keep their class
+/// resource order (`FUN_005f5440`'s keyed set); A0 2026-10-29 agrees for
+/// the Empire's rows it shows.
+///
+/// port: an object exists in the world only once built, so the objects
+/// under construction (`+0x50` bit 6 clear) are left out as the original
+/// leaves them.
+#[must_use]
+pub fn overview_rows(world: &GameWorld, alliance: bool) -> Vec<StatusIconRow> {
+    use std::collections::BTreeMap;
+    let side = if alliance {
+        Faction::Alliance
+    } else {
+        Faction::Empire
+    };
+    let class_cost = |class: DatId| {
+        world
+            .buildable_classes
+            .get(&class)
+            .map_or(0, |value| value.maintenance_cost)
+    };
+    // (family, mini) -> (count, maintenance).
+    let mut groups: BTreeMap<(u8, u32), (u32, u32)> = BTreeMap::new();
+    let mut add = |family: u8, mini: Option<u32>, count: u32, cost: u32| {
+        if let Some(mini) = mini {
+            let group = groups.entry((family, mini)).or_default();
+            group.0 += count;
+            group.1 += cost * count;
+        }
+    };
+    for troop in world.troops.values().filter(|troop| troop.is_alliance == alliance) {
+        let class = troop.class_dat_id;
+        add(class.family(), troop_mini(class).map(|(mini, _)| mini), 1, class_cost(class));
+    }
+    for fleet in world.fleets.values().filter(|fleet| fleet.is_alliance == alliance) {
+        for ship in fleet.capital_ships.iter().filter(|ship| ship.alive) {
+            if let Some(class) = world.capital_ship_classes.get(ship.class) {
+                add(
+                    ship_family(class.dat_id),
+                    capital_ship_mini_id(class.dat_id),
+                    1,
+                    class.maintenance_cost,
+                );
+            }
+        }
+        for entry in &fleet.fighters {
+            if let Some(class) = world.fighter_classes.get(entry.class) {
+                add(
+                    FIGHTER_FAMILY,
+                    fighter_mini_id(class.dat_id),
+                    entry.count,
+                    class.maintenance_cost,
+                );
+            }
+        }
+    }
+    // The squadrons on the planets (ghidra/notes/planet-squadrons.md).
+    for entry in world.systems.values().flat_map(|system| &system.fighters) {
+        if let Some(class) = world
+            .fighter_classes
+            .get(entry.class)
+            .filter(|class| class.is_alliance == alliance)
+        {
+            add(
+                FIGHTER_FAMILY,
+                fighter_mini_id(class.dat_id),
+                entry.count,
+                class.maintenance_cost,
+            );
+        }
+    }
+    for facility in world.defense_facilities.values().filter(|value| value.side == side) {
+        let class = facility.class_dat_id;
+        add(class.family(), defense_facility_mini(class).map(|(mini, _)| mini), 1, class_cost(class));
+    }
+    for facility in world
+        .manufacturing_facilities
+        .values()
+        .filter(|value| value.side == side)
+    {
+        let class = facility.class_dat_id;
+        add(
+            class.family(),
+            manufacturing_facility_mini(class).map(|(mini, _)| mini),
+            1,
+            class_cost(class),
+        );
+    }
+    for facility in world
+        .production_facilities
+        .values()
+        .filter(|value| value.side == side)
+    {
+        let class = facility.class_dat_id;
+        add(
+            class.family(),
+            production_facility_mini(class).map(|(mini, _)| mini),
+            1,
+            class_cost(class),
+        );
+    }
+    for unit in world
+        .special_forces
+        .values()
+        .filter(|unit| unit.is_alliance == alliance)
+    {
+        let class = unit.class_dat_id;
+        add(class.family(), special_force_mini(class).map(|(mini, _)| mini), 1, class_cost(class));
+    }
+    groups
+        .into_iter()
+        .map(|((_, mini), (count, maintenance))| StatusIconRow {
+            source: DllSource::Gokres,
+            icon: mini,
+            text: format!("{count:03}  {maintenance:04}"),
+        })
+        .collect()
 }
 
 fn row(label: &str, value: impl Into<String>) -> StatusRow {
@@ -1046,6 +1209,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         name,
         rows,
         icon_rows: Vec::new(),
+        icon_layout: IconRowLayout::Objectives,
         encyclopedia: true,
     };
     Some(match object {
@@ -1059,6 +1223,19 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                 usize::from(!sources.objectives.alliance),
                 Some((DllSource::Strategy, 11_590)),
                 "Objectives".to_owned(),
+                Vec::new(),
+            )
+        },
+        // The same frame for the galaxy, the name TEXTSTRA 12563.
+        StatusObject::GalaxyOverview => StatusView {
+            icon_rows: overview_rows(world, sources.objectives.alliance),
+            icon_layout: IconRowLayout::Overview,
+            encyclopedia: false,
+            ..view(
+                "",
+                usize::from(!sources.objectives.alliance),
+                Some((DllSource::Strategy, 11_590)),
+                "Galaxy Overview".to_owned(),
                 Vec::new(),
             )
         },
@@ -2372,8 +2549,125 @@ mod tests {
         assert_eq!(theirs.picture, Some((DllSource::Gokres, base + 0x1000)));
     }
 
-    fn texts(source: ObjectiveSource) -> Vec<&'static str> {
-        objective_rows(source).iter().map(|row| row.text).collect()
+    #[test]
+    fn the_galaxy_overview_groups_the_sides_objects_by_class_in_family_order() {
+        // FUN_0044a7a0 groups the viewer's objects by class with their count
+        // and summed maintenance; FUN_0044aa20 rows them with the list mini,
+        // "%03d" + "  " (DAT_006a874c) + "%04d", keyed by the family.
+        let mut world = GameWorld::default();
+        let here = system(&mut world, "Yavin", ControlKind::Controlled(Faction::Alliance));
+        // Two ships of one class (maintenance 6), four squadrons (2).
+        carrier_fleet(&mut world, here);
+        let x_wing = world.fighter_classes.keys().next().unwrap();
+        // A planet's squadron takes its class's side.
+        world.fighter_classes[x_wing].is_alliance = true;
+        world.systems[here].fighters.push(FighterEntry {
+            class: x_wing,
+            count: 1,
+            carrier: None,
+        });
+        let class = |world: &mut GameWorld, id, maintenance_cost| {
+            catalog(world, id, "Class", BuildableClass {
+                maintenance_cost,
+                ..BuildableClass::default()
+            })
+        };
+        let army = class(&mut world, 0x1000_0002, 1);
+        let fleet_regiment = class(&mut world, 0x1000_0001, 3);
+        let stormtroopers = class(&mut world, 0x1000_0006, 1);
+        for (class_dat_id, is_alliance) in
+            [(army, true), (fleet_regiment, true), (army, true), (stormtroopers, false)]
+        {
+            world.troops.insert(TroopUnit {
+                class_dat_id,
+                is_alliance,
+                regiment_strength: 100,
+            });
+        }
+        // The Alliance's KDY-150 (family 0x22), the Empire's LNR (0x23).
+        let kdy = class(&mut world, 0x2200_0001, 4);
+        let lnr = class(&mut world, 0x2300_0002, 3);
+        for (class_dat_id, side) in [(kdy, Faction::Alliance), (lnr, Faction::Empire)] {
+            world.defense_facilities.insert(DefenseFacilityInstance {
+                class_dat_id,
+                side,
+            });
+        }
+        let yard = class(&mut world, 0x2800_0001, 5);
+        world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: yard,
+                side: Faction::Alliance,
+                is_shipyard: true,
+            });
+        let mine = class(&mut world, 0x2c00_0001, 0);
+        world
+            .production_facilities
+            .insert(rebellion_core::world::ProductionFacilityInstance {
+                class_dat_id: mine,
+                side: Faction::Alliance,
+                is_mine: true,
+            });
+        let guerrillas = class(&mut world, 0x3c00_0001, 2);
+        world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: guerrillas,
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+
+        let rows: Vec<_> = overview_rows(&world, true)
+            .into_iter()
+            .map(|row| (row.source, row.icon, row.text))
+            .collect();
+        let gokres = |icon: u32, text: &str| (DllSource::Gokres, icon, text.to_owned());
+        assert_eq!(
+            rows,
+            [
+                gokres(17_472, "001  0003"),
+                gokres(17_473, "002  0002"),
+                gokres(capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap(), "002  0012"),
+                gokres(fighter_mini_id(DatId::new(0x1c00_0001)).unwrap(), "005  0010"),
+                gokres(16_896, "001  0004"),
+                gokres(16_640, "001  0005"),
+                gokres(16_385, "001  0000"),
+                gokres(17_728, "001  0002"),
+            ]
+        );
+        // The Empire sees its own regiment only.
+        let empire: Vec<_> = overview_rows(&world, false)
+            .into_iter()
+            .map(|row| row.text)
+            .collect();
+        assert_eq!(empire, ["001  0001", "001  0003"]);
+    }
+
+    #[test]
+    fn the_galaxy_overview_window_names_the_galaxy_and_lays_out_minis() {
+        // FUN_00443130 for 0xf1: STRATEGY 11590, TEXTSTRA 12563, no
+        // Encyclopedia, the list's own format.
+        let world = GameWorld::default();
+        let states = States::new();
+        let view = status_view(states.sources(&world), StatusObject::GalaxyOverview).unwrap();
+        assert_eq!(view.name, "Galaxy Overview");
+        assert_eq!(view.picture, Some((DllSource::Strategy, 11_590)));
+        assert_eq!(view.icon_layout, IconRowLayout::Overview);
+        assert!(!view.encyclopedia);
+        // The galaxy's background: 11554 for a side-1 viewer, else 11558.
+        let mut sources = states.sources(&world);
+        for (alliance, faction, background) in [
+            (true, crate::cockpit::CockpitFaction::Alliance, 11_554),
+            (false, crate::cockpit::CockpitFaction::Empire, 11_558),
+        ] {
+            sources.objectives.alliance = alliance;
+            let view = status_view(sources, StatusObject::GalaxyOverview).unwrap();
+            assert_eq!(crate::status_window::background(view.side, faction), background);
+        }
+    }
+
+    fn texts(source: ObjectiveSource) -> Vec<String> {
+        objective_rows(source).into_iter().map(|row| row.text).collect()
     }
 
     #[test]

@@ -334,6 +334,52 @@ the Agent menu's Objectives and Alt+H. The background is 11554 for an
 Alliance viewer and 11558 for an Empire one, the Encyclopedia button is
 disabled (11612). port: the scroll bar is not drawn; the wheel scrolls.
 
+## Galaxy Overview (`FUN_0044a7a0`, `FUN_0044aa20`; read 2026-10-29)
+
+`FUN_00443130`'s branch for the galaxy (`0xf1`) walks fifteen object lists
+of the viewer's side through `FUN_0044a7a0(out, list, family range)`:
+`0x20..0x22` (`FUN_004f32c0`), `0x2a` (`FUN_004f33d0`), `0x18..0x1c`
+(`FUN_004f34b0`), `0x25` (`FUN_004f3440`), `0x1c..0x20` (`FUN_004f3520`),
+`0x22` (`FUN_004f3740`), `0x2c` (`FUN_004f37b0`), `0x24` (`FUN_004f3820`),
+`0x2d` (`FUN_004f3890`), `0x28` (`FUN_004f3a10`), `0x3c..0x40`
+(`FUN_004f3a80`), `0x14..0x18` (`FUN_004f3b90`), `0x29` (`FUN_004f3c00`),
+`0x10..0x14` (`FUN_004f3c70`) and `0x23` (`FUN_004f3ce0`). Characters
+(`0x30..0x3b`) and the families `0x26`, `0x27` and `0x2b` are not walked.
+
+`FUN_0044a7a0` keeps each existing object (`+0x50` bit 6) whose side bits
+are the viewer's, and groups them by their class resource (`ClassRecord
++0x30 & 0xffff`, `FUN_005f5600` / `FUN_005f5440`): a group (vtable
+`0x00659c70`) holds the first object's id `+0x24`, the count `+0x20` and,
+for families `0x10..0x3f`, the summed maintenance `+0x1c`
+(`FUN_004f2990`, the class's slot `0x24`).
+
+`FUN_0044aa20` makes one row of each group: a `FUN_0060ba00` item keyed by
+the id's family byte, so the list sorts by family; its image is the class's
+GOKRES list mini, `(resource & 0xfff) + 0x4000` (61 by 25, loaded keyed);
+its text is the count as `%03d`, two spaces (`DAT_006a874c`) and the
+maintenance as `%04d`.
+
+The branch sets neither `+0xe4` nor `+0xe8`, so the list's own format from
+its creation applies: `+0xe4 = 9` (`DT_CENTER`, `DT_BOTTOM` without
+`DT_SINGLELINE`), so the text is centred across the cell, from its top. The
+cell is the list's width, 208 (`FUN_006073d0(0x67, 0xd0, 0x23, ..)`: 0xd0
+by 0x23), less 3 on the right.
+
+A0 (Empire, days 139 and 141, `.artifacts/a0-vm/agent-menu/`): the rows,
+scrolled through, are three regiment classes, four capital ship classes,
+TIE fighters, two defense classes, two yard classes, mines, refineries and
+one special force class, in family order. The minis sit at the cell's
+(1, 0), the text spans x 77..132 with its glyphs from y 3, as the centred
+format gives. Mines and refineries read maintenance `0000`.
+
+### Port
+
+`StatusObject::GalaxyOverview` (`overview_rows`), opened by the Agent
+menu's Galaxy Overview and Alt+O. Groups of one family keep their mini's
+order (hyp: the keyed set orders by the class resource). port: the ship
+and fighter classes' `DatId`s carry no family, so the rows take CAPSHPSD's
+(`0x14`, the Death Star `0x18`) and FIGHTSD's (`0x1c`).
+
 ## Mission Status (`FUN_00445c60`)
 
 Families `0x50..0x7f`, for a mission not hidden. The title is TEXTSTRA 34422

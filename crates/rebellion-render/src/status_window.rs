@@ -18,7 +18,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::paint_native;
 use crate::mission_dialog::{button, galaxy_centered_rect, paint};
-use crate::status_rows::{status_view, StatusObject, StatusSources};
+use crate::status_rows::{status_view, IconRowLayout, StatusObject, StatusSources};
 use crate::system_window::{fleet_label, logical_rect, rect_contains};
 
 pub const STATUS_WINDOW_WIDTH: f32 = 379.0;
@@ -470,15 +470,18 @@ pub fn draw_status_window(
                     reason = "A handful of rows."
                 )]
                 let top = LIST.1 - open.scroll + index as f32 * ICON_ROW_HEIGHT;
-                if let Some([width, height]) =
-                    cache.original_resource_size(DllSource::Strategy, row.icon)
-                {
-                    let (dx, dy) = icon_offset(width, height);
+                let overview = view.icon_layout == IconRowLayout::Overview;
+                if let Some([width, height]) = cache.original_resource_size(row.source, row.icon) {
+                    let (dx, dy) = if overview {
+                        (0.0, 0.0)
+                    } else {
+                        icon_offset(width, height)
+                    };
                     paint_native(
                         &list_painter,
                         ctx,
                         cache,
-                        DllSource::Strategy,
+                        row.source,
                         row.icon,
                         frame,
                         scale,
@@ -486,16 +489,25 @@ pub fn draw_status_window(
                         top + dy,
                     );
                 }
-                list_painter.text(
-                    egui::pos2(
-                        list.min.x + (ICON_ROW_INSET + ICON_TEXT_X) * scale,
-                        frame.min.y + (top + ICON_ROW_HEIGHT / 2.0) * scale,
-                    ),
-                    egui::Align2::LEFT_CENTER,
-                    row.text,
-                    list_font.clone(),
-                    egui::Color32::WHITE,
-                );
+                let (anchor, align) = if overview {
+                    // Centred across the cell less its 3 trimmed pixels.
+                    (
+                        egui::pos2(
+                            list.min.x + (ICON_ROW_INSET + (LIST.2 - 3.0) / 2.0) * scale,
+                            frame.min.y + top * scale,
+                        ),
+                        egui::Align2::CENTER_TOP,
+                    )
+                } else {
+                    (
+                        egui::pos2(
+                            list.min.x + (ICON_ROW_INSET + ICON_TEXT_X) * scale,
+                            frame.min.y + (top + ICON_ROW_HEIGHT / 2.0) * scale,
+                        ),
+                        egui::Align2::LEFT_CENTER,
+                    )
+                };
+                list_painter.text(anchor, align, &row.text, list_font.clone(), egui::Color32::WHITE);
             }
             for (label, value, label_y, value_y) in laid {
                 list_painter.galley(
@@ -1228,21 +1240,23 @@ mod tests {
         let strategy = root.join("strategy-dll/BMP");
         std::fs::create_dir_all(&strategy).unwrap();
         for (id, side) in [(10_234, 37), (11_013, 25), (11_055, 25), (904, 37), (11_028, 25), (11_032, 25)] {
-            std::fs::write(strategy.join(format!("{id}.bmp")), indexed_bmp(side)).unwrap();
+            std::fs::write(strategy.join(format!("{id}.bmp")), indexed_bmp(side, side)).unwrap();
         }
+        // A regiment's 61 by 25 list mini.
+        std::fs::write(dir.join("17473.bmp"), indexed_bmp(61, 25)).unwrap();
         root
     }
 
-    /// A `side` by `side` 8-bit indexed BMP.
-    fn indexed_bmp(side: usize) -> Vec<u8> {
-        let stride = side.div_ceil(4) * 4;
+    /// A `width` by `height` 8-bit indexed BMP.
+    fn indexed_bmp(width: usize, height: usize) -> Vec<u8> {
+        let stride = width.div_ceil(4) * 4;
         let offset = 54usize + 1024;
-        let mut bmp = vec![1_u8; offset + stride * side];
+        let mut bmp = vec![1_u8; offset + stride * height];
         bmp[..2].copy_from_slice(b"BM");
         bmp[10..14].copy_from_slice(&u32::try_from(offset).unwrap().to_le_bytes());
         bmp[14..18].copy_from_slice(&40u32.to_le_bytes());
-        bmp[18..22].copy_from_slice(&i32::try_from(side).unwrap().to_le_bytes());
-        bmp[22..26].copy_from_slice(&i32::try_from(side).unwrap().to_le_bytes());
+        bmp[18..22].copy_from_slice(&i32::try_from(width).unwrap().to_le_bytes());
+        bmp[22..26].copy_from_slice(&i32::try_from(height).unwrap().to_le_bytes());
         bmp[26..28].copy_from_slice(&1u16.to_le_bytes());
         bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
         bmp[30..54].fill(0);
@@ -1410,6 +1424,45 @@ mod tests {
         // box's top.
         assert!(painted.contains(&(11_612, at(258.0, 218.0))), "{painted:?}");
         let (_, pos, ..) = find(&texts, "Objectives");
+        assert!((pos.y - at(0.0, 137.0).y).abs() < 0.01, "{pos:?}");
+    }
+
+    #[test]
+    fn the_overview_rows_put_the_mini_at_the_cells_corner_and_centre_the_text() {
+        // FUN_0044aa20 rows in the list's own format (+0xe4 = 9): the mini
+        // at the cell's top-left one pixel in, the text centred across the
+        // 208-wide cell less 3, from its top (A0 2026-10-29: text from x 77
+        // to 132, its glyphs from y 3).
+        let mut world = GameWorld::default();
+        world.buildable_classes.insert(
+            DatId::new(0x1000_0002),
+            rebellion_core::world::BuildableClass {
+                maintenance_cost: 1,
+                ..rebellion_core::world::BuildableClass::default()
+            },
+        );
+        world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let mut state = StatusWindowState::default();
+        state.open(StatusObject::GalaxyOverview);
+        let source = crate::status_rows::ObjectiveSource {
+            alliance: true,
+            conditions_word: 0,
+            standard: true,
+        };
+        let (texts, painted) = render_with(&world, &mut state, source);
+        let frame = window_rect(scaled()).min;
+        let at = |x: f32, y: f32| frame + egui::vec2(x, y) * 2.0;
+        assert!(painted.contains(&(17_473, at(19.0, 47.0))), "{painted:?}");
+        let (_, pos, size, _) = find(&texts, "001  0001");
+        assert!(
+            near(egui::pos2(pos.x + size.x / 2.0, pos.y), at(19.0 + 102.5, 47.0)),
+            "{pos:?} {size:?}"
+        );
+        let (_, pos, ..) = find(&texts, "Galaxy Overview");
         assert!((pos.y - at(0.0, 137.0).y).abs() < 0.01, "{pos:?}");
     }
 
