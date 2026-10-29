@@ -516,7 +516,11 @@ struct OpenFinder {
     view: PersonnelView,
     name: String,
     chosen: Option<usize>,
-    first_row: usize,
+    /// The list's first visible pixel (it scrolls by pixels,
+    /// `FUN_0060a490`).
+    scroll: usize,
+    /// A press held on the list's scroll bar.
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
     focus_name: bool,
     last_clicked: Option<(usize, f64)>,
 }
@@ -527,22 +531,38 @@ pub struct PersonnelFinderState {
     window: Option<OpenFinder>,
 }
 
-/// Rows visible at once: 161 / 20 = 8.
+/// The list's height and rows in pixels, its bar's width (RCDATA 10653,
+/// `FUN_004637a0`: `FUN_0060a490(.., list, 7, 0x299d, ..)`) and arrow step
+/// (`FUN_00607ea0`'s argument 10).
+const LIST_PIXELS: usize = 161;
+const ROW_PIXELS: usize = 20;
+const BAR_WIDTH: f32 = 12.0;
+const LIST_STEP: f32 = 10.0;
+
+/// The scroll that shows `row` whole, moving the list as little as
+/// possible, within the range of `rows` rows.
+fn scrolled_to(scroll: usize, row: usize, rows: usize) -> usize {
+    let top = row * ROW_PIXELS;
+    let bottom = top + ROW_PIXELS;
+    if top < scroll {
+        top
+    } else if bottom > scroll + LIST_PIXELS {
+        (bottom - LIST_PIXELS).min(max_scroll(rows))
+    } else {
+        scroll
+    }
+}
+
+/// The list's scroll range for `rows` rows, in pixels
+/// ([`crate::list_scroll_bar::max_first`]).
 #[expect(
+    clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "Eight whole rows of 20 in a list 161 tall."
+    reason = "A few hundred rows of 20 pixels."
 )]
-const VISIBLE_ROWS: usize = (LIST.3 / ROW_HEIGHT) as usize;
-
-fn scrolled_to(first_row: usize, row: usize) -> usize {
-    if row < first_row {
-        row
-    } else if row >= first_row + VISIBLE_ROWS {
-        row + 1 - VISIBLE_ROWS
-    } else {
-        first_row
-    }
+fn max_scroll(rows: usize) -> usize {
+    crate::list_scroll_bar::max_first((rows * ROW_PIXELS) as f32, LIST.3) as usize
 }
 
 const fn side(faction: CockpitFaction) -> usize {
@@ -594,7 +614,8 @@ impl PersonnelFinderState {
             view: PersonnelView::Characters,
             name: String::new(),
             chosen: None,
-            first_row: 0,
+            scroll: 0,
+            scroll_hold: None,
             focus_name: true,
             last_clicked: None,
         });
@@ -620,7 +641,7 @@ impl PersonnelFinderState {
             if window.tab != tab {
                 window.tab = tab;
                 window.chosen = None;
-                window.first_row = 0;
+                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
@@ -631,7 +652,7 @@ impl PersonnelFinderState {
             if window.view != view {
                 window.view = view;
                 window.chosen = None;
-                window.first_row = 0;
+                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
@@ -673,6 +694,8 @@ pub fn draw_personnel_finder(
     let mut name_changed = false;
     let mut enter = false;
     let mut wheel = 0.0;
+    let mut scroll = window.scroll;
+    let mut scroll_hold = window.scroll_hold;
 
     let id = egui::Id::new("original-personnel-finder");
     ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
@@ -825,18 +848,43 @@ pub fn draw_personnel_finder(
             let list_painter = painter.with_clip_rect(list_rect);
             let cell_font = egui::FontId::proportional((10.0 * scale).max(7.0));
 
-            for (offset, row) in list
-                .iter()
-                .enumerate()
-                .skip(window.first_row)
-                .take(VISIBLE_ROWS)
+            // The bar, then the rows scrolled by pixels and clipped to the
+            // list; a row's click area ends at the bar.
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "A list's pixels."
+            )]
             {
-                let line = (offset - window.first_row) as f32;
-                let row_rect = at(
+                scroll = crate::list_scroll_bar::ui_bar(
+                    ui,
+                    cache,
                     frame,
                     scale,
-                    (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2, ROW_HEIGHT),
+                    crate::list_scroll_bar::RESULTS_ART,
+                    LIST,
+                    (list.len() * ROW_PIXELS) as f32,
+                    scroll as f32,
+                    &mut scroll_hold,
+                    LIST_STEP,
+                )
+                .max(0.0) as usize;
+            }
+            for (offset, row) in list.iter().enumerate() {
+                #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+                let line = offset as f32 - scroll as f32 / ROW_HEIGHT;
+                if (line + 1.0) * ROW_HEIGHT <= 0.0 || line * ROW_HEIGHT >= LIST.3 {
+                    continue;
+                }
+                // The text keeps the whole row's place; the click area is
+                // the row's part in the list.
+                let full_row = at(
+                    frame,
+                    scale,
+                    (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2 - BAR_WIDTH, ROW_HEIGHT),
                 );
+                let row_rect = full_row.intersect(list_rect);
                 // FUN_004637a0: the text at x 5 (+0xe8) centred on the row
                 // (+0xe4 = 0x24), grey 0x787878 and the chosen row white
                 // (FUN_00607ea0's colours; A0 2026-10-29).
@@ -849,7 +897,7 @@ pub fn draw_personnel_finder(
                 match row {
                     PersonnelFinderRow::Character { name, .. } => {
                         list_painter.text(
-                            row_rect.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                            full_row.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
                             egui::Align2::LEFT_CENTER,
                             name,
                             font.clone(),
@@ -858,7 +906,7 @@ pub fn draw_personnel_finder(
                     }
                     PersonnelFinderRow::SpecForces { name, counts, .. } => {
                         list_painter.text(
-                            row_rect.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                            full_row.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
                             egui::Align2::LEFT_CENTER,
                             name,
                             font.clone(),
@@ -935,12 +983,14 @@ pub fn draw_personnel_finder(
     let escape = ctx.input(|input| input.key_pressed(egui::Key::Escape));
     let open_window = state.window.as_mut()?;
     open_window.focus_name = false;
+    open_window.scroll = scroll;
+    open_window.scroll_hold = scroll_hold;
     if name_changed {
         open_window.name.clone_from(&name);
         let choice = prefix_choice(&list, &name);
         open_window.chosen = choice;
         if let Some(index) = choice {
-            open_window.first_row = scrolled_to(open_window.first_row, index);
+            open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
     }
     if let Some((row, at_time)) = clicked_row {
@@ -956,12 +1006,12 @@ pub fn draw_personnel_finder(
             }
         }
     }
+    // port: the original has no wheel; a notch moves a row.
     if wheel != 0.0 {
-        let last = list.len().saturating_sub(VISIBLE_ROWS);
-        open_window.first_row = if wheel > 0.0 {
-            open_window.first_row.saturating_sub(1)
+        open_window.scroll = if wheel > 0.0 {
+            open_window.scroll.saturating_sub(ROW_PIXELS)
         } else {
-            (open_window.first_row + 1).min(last)
+            (open_window.scroll + ROW_PIXELS).min(max_scroll(list.len()))
         };
     }
     if let Some(tab) = new_side_tab {
@@ -1507,18 +1557,112 @@ mod tests {
     }
 
     #[test]
-    fn the_visible_rows_count_is_eight() {
-        // FUN_00607ea0: list 161 tall, rows 20 tall → 8 visible.
-        assert_eq!(VISIBLE_ROWS, 8);
+    fn scrolled_rows_clip_to_the_list_and_keep_their_centres() {
+        // Twelve characters scrolled 30 pixels: row 0 (-30..-10) is gone,
+        // row 1 (-10..10) centres on the list's top, row 9 (150..170) shows
+        // its upper part, row 10 (170..) nothing. A press in the bar's
+        // column chooses nothing; one at x 370 chooses row 4; a wheel notch
+        // moves a row (port).
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        for index in 0..12 {
+            let mut character = default_character();
+            character.name = format!("C{index:02}");
+            character.is_alliance = true;
+            character.current_system = Some(yavin);
+            character.recruited = true;
+            world.characters.insert(character);
+        }
+        let fog = FogState::new(Faction::Alliance);
+        let origin = window_rect(layout()).min;
+        let run = |state: &mut PersonnelFinderState, at: egui::Pos2, extra: Vec<egui::Event>| {
+            let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
+            let mut cache = BmpCache::new();
+            let mut shapes = Vec::new();
+            let frames = [vec![], vec![]].into_iter().chain(extra.into_iter().map(|event| vec![event]));
+            for events in frames {
+                let mut input = vec![egui::Event::PointerMoved(at)];
+                input.extend(events);
+                shapes = ctx
+                    .run(
+                        egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
+                            events: input,
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            let _ = draw_personnel_finder(ctx, &world, &fog, state, layout(), &mut cache);
+                        },
+                    )
+                    .shapes;
+            }
+            shapes
+        };
+        let press = |at: egui::Pos2, pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let opened = || {
+            let mut state = PersonnelFinderState::default();
+            state.open(CockpitFaction::Alliance);
+            state.window.as_mut().unwrap().scroll = 30;
+            state
+        };
+
+        let mut state = opened();
+        let in_bar = origin + egui::vec2(380.0, LIST.1 + 50.0);
+        let shapes = run(&mut state, in_bar, vec![press(in_bar, true), press(in_bar, false)]);
+        let centre = |name: &str| {
+            shapes.iter().find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with(name) => {
+                    Some(text.pos.y + text.galley.size().y / 2.0 - origin.y)
+                }
+                _ => None,
+            })
+        };
+        assert_eq!(centre("C00 "), None);
+        assert!((centre("C01 ").unwrap() - LIST.1).abs() < 0.01);
+        assert!((centre("C09 ").unwrap() - (LIST.1 + 160.0)).abs() < 0.01);
+        assert_eq!(centre("C10 "), None);
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
+
+        let mut state = opened();
+        let near_bar = origin + egui::vec2(370.0, LIST.1 + 50.0);
+        let _ = run(&mut state, near_bar, vec![press(near_bar, true), press(near_bar, false)]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(4));
+
+        let wheel = |delta: f32| egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, delta),
+            modifiers: egui::Modifiers::default(),
+        };
+        let mut state = opened();
+        let _ = run(&mut state, near_bar, vec![wheel(-1.0)]);
+        assert_eq!(state.window.as_ref().unwrap().scroll, 50);
+        let _ = run(&mut state, near_bar, vec![wheel(1.0)]);
+        assert_eq!(state.window.as_ref().unwrap().scroll, 30);
+    }
+
+    #[test]
+    fn eight_whole_rows_fit_the_list() {
+        // FUN_00607ea0: list 161 tall, rows 20 tall.
+        assert_eq!(LIST_PIXELS / ROW_PIXELS, 8);
     }
 
     #[test]
     fn the_list_scrolls_as_little_as_it_must_to_show_a_row() {
-        assert_eq!(scrolled_to(0, 7), 0);
-        assert_eq!(scrolled_to(0, 8), 1);
-        assert_eq!(scrolled_to(3, 1), 1);
-        assert_eq!(scrolled_to(3, 10), 3);
-        assert_eq!(scrolled_to(2, 10), 3);
+        // By pixels (FUN_0060a490): row 8 (160..180) needs 19; twenty rows
+        // reach 400 + 5 - 161 = 244 (FUN_00609ae0).
+        assert_eq!(scrolled_to(0, 7, 20), 0);
+        assert_eq!(scrolled_to(0, 8, 20), 19);
+        assert_eq!(scrolled_to(60, 1, 20), 20);
+        assert_eq!(scrolled_to(60, 10, 20), 60);
+        assert_eq!(scrolled_to(40, 10, 20), 59);
+        assert_eq!(max_scroll(20), 244);
+        assert_eq!(max_scroll(8), 0);
     }
 
     #[test]

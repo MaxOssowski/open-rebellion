@@ -388,6 +388,77 @@ fn page(bar: &ScrollBar, part: Part, first: f32) -> f32 {
     (first + delta).clamp(0.0, bar.max)
 }
 
+/// One frame of a window's list bar, in an egui window whose top-left is
+/// `frame` at `scale`: the pointer's press, hold and release on the bar
+/// ([`update`]), then its pieces, the held arrow drawn pressed while the
+/// pointer stays on it. `list` is the list's `(x, y, width, height)` in
+/// window pixels, `content` its rows' height; returns the new first pixel.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The window, its art cache, the list and the bar's state."
+)]
+pub fn ui_bar(
+    ui: &egui_macroquad::egui::Ui,
+    cache: &mut crate::bmp_cache::BmpCache,
+    frame: egui_macroquad::egui::Rect,
+    scale: f32,
+    art: BarArt,
+    list: (f32, f32, f32, f32),
+    content: f32,
+    first: f32,
+    hold: &mut Option<Hold>,
+    step: f32,
+) -> f32 {
+    use egui_macroquad::egui;
+    let (pointer, pressed, down, released, now) = ui.input(|input| {
+        (
+            input.pointer.interact_pos(),
+            input.pointer.button_pressed(egui::PointerButton::Primary),
+            input.pointer.button_down(egui::PointerButton::Primary),
+            input.pointer.button_released(egui::PointerButton::Primary),
+            input.time,
+        )
+    });
+    let at = pointer.map_or((-1.0, -1.0), |point| {
+        ((point.x - frame.min.x) / scale, (point.y - frame.min.y) / scale)
+    });
+    let bar_at = |first| ScrollBar::new(art, list.0, list.1, list.2, list.3, content, first);
+    let first = update(
+        &bar_at(first),
+        hold,
+        Pointer {
+            at,
+            pressed,
+            down,
+            released,
+        },
+        step,
+        now,
+    );
+    let bar = bar_at(first);
+    let held = hold.map(|hold| hold.part).filter(|part| {
+        matches!(part, Part::Up | Part::Down) && down && bar.part_at(at) == Some(*part)
+    });
+    let (x, y, width, height) = bar.rect();
+    let painter = ui
+        .painter()
+        .with_clip_rect(crate::system_window::logical_rect(frame, scale, x, y, width, height));
+    for piece in bar.pieces(held) {
+        crate::fleet_window::paint_native(
+            &painter,
+            ui.ctx(),
+            cache,
+            crate::bmp_cache::DllSource::Strategy,
+            piece.id,
+            frame,
+            scale,
+            piece.x,
+            piece.y,
+        );
+    }
+    first
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

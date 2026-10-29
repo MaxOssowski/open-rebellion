@@ -315,7 +315,11 @@ struct OpenFinder {
     /// The chosen row index into the current list.
     chosen: Option<usize>,
     /// The first row the list shows.
-    first_row: usize,
+    /// The list's first visible pixel (it scrolls by pixels,
+    /// `FUN_0060a490`).
+    scroll: usize,
+    /// A press held on the list's scroll bar.
+    scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// The name box takes the focus when the window opens.
     focus_name: bool,
     /// The row the last click chose and when.
@@ -344,7 +348,8 @@ impl TroopFinderState {
             tab,
             name: String::new(),
             chosen: None,
-            first_row: 0,
+            scroll: 0,
+            scroll_hold: None,
             focus_name: true,
             last_clicked: None,
         });
@@ -373,7 +378,7 @@ impl TroopFinderState {
             if window.tab != tab {
                 window.tab = tab;
                 window.chosen = None;
-                window.first_row = 0;
+                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
@@ -403,23 +408,38 @@ fn at(frame: egui::Rect, scale: f32, (x, y, w, h): (f32, f32, f32, f32)) -> egui
     logical_rect(frame, scale, x, y, w, h)
 }
 
-/// Rows the list shows at once: 159 / 25 = 6.
+/// The list's height and rows in pixels, its bar's width (RCDATA 10653,
+/// `FUN_0046ce40`: `FUN_0060a490(.., list, 7, 0x299d, ..)`) and arrow step
+/// (`FUN_00607ea0`'s argument 10).
+const LIST_PIXELS: usize = 159;
+const ROW_PIXELS: usize = 25;
+const BAR_WIDTH: f32 = 12.0;
+const LIST_STEP: f32 = 10.0;
+
+/// The scroll that shows `row` whole, moving the list as little as
+/// possible, within the range of `rows` rows.
+fn scrolled_to(scroll: usize, row: usize, rows: usize) -> usize {
+    let top = row * ROW_PIXELS;
+    let bottom = top + ROW_PIXELS;
+    if top < scroll {
+        top
+    } else if bottom > scroll + LIST_PIXELS {
+        (bottom - LIST_PIXELS).min(max_scroll(rows))
+    } else {
+        scroll
+    }
+}
+
+/// The list's scroll range for `rows` rows, in pixels
+/// ([`crate::list_scroll_bar::max_first`]).
 #[expect(
+    clippy::cast_precision_loss,
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "Six whole rows of 25 in a list 159 tall."
+    reason = "A few hundred rows of 25 pixels."
 )]
-const VISIBLE_ROWS: usize = (LIST.3 / ROW_HEIGHT) as usize;
-
-/// The first row that shows `row`, moving the list as little as possible.
-fn scrolled_to(first_row: usize, row: usize) -> usize {
-    if row < first_row {
-        row
-    } else if row >= first_row + VISIBLE_ROWS {
-        row + 1 - VISIBLE_ROWS
-    } else {
-        first_row
-    }
+fn max_scroll(rows: usize) -> usize {
+    crate::list_scroll_bar::max_first((rows * ROW_PIXELS) as f32, LIST.3) as usize
 }
 
 /// The five column cell colours (FUN_0046d8d0).
@@ -466,6 +486,8 @@ pub fn draw_troop_finder(
     let mut name_changed = false;
     let mut enter = false;
     let mut wheel = 0.0;
+    let mut scroll = window.scroll;
+    let mut scroll_hold = window.scroll_hold;
 
     let id = egui::Id::new("original-troop-finder");
     ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
@@ -590,18 +612,43 @@ pub fn draw_troop_finder(
             let cell_font = egui::FontId::proportional((10.0 * scale).max(7.0));
             let (box_colour, text_on_box) = cell_colours(window.tab);
 
-            for (offset, row) in list
-                .iter()
-                .enumerate()
-                .skip(window.first_row)
-                .take(VISIBLE_ROWS)
+            // The bar, then the rows scrolled by pixels and clipped to the
+            // list; a row's click area ends at the bar.
+            #[expect(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "A list's pixels."
+            )]
             {
-                let line = (offset - window.first_row) as f32;
-                let row_rect = at(
+                scroll = crate::list_scroll_bar::ui_bar(
+                    ui,
+                    cache,
                     frame,
                     scale,
-                    (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2, ROW_HEIGHT),
+                    crate::list_scroll_bar::RESULTS_ART,
+                    LIST,
+                    (list.len() * ROW_PIXELS) as f32,
+                    scroll as f32,
+                    &mut scroll_hold,
+                    LIST_STEP,
+                )
+                .max(0.0) as usize;
+            }
+            for (offset, row) in list.iter().enumerate() {
+                #[expect(clippy::cast_precision_loss, reason = "A list's pixels.")]
+                let line = offset as f32 - scroll as f32 / ROW_HEIGHT;
+                if (line + 1.0) * ROW_HEIGHT <= 0.0 || line * ROW_HEIGHT >= LIST.3 {
+                    continue;
+                }
+                // The text keeps the whole row's place; the click area is
+                // the row's part in the list.
+                let full_row = at(
+                    frame,
+                    scale,
+                    (LIST.0, LIST.1 + ROW_HEIGHT * line, LIST.2 - BAR_WIDTH, ROW_HEIGHT),
                 );
+                let row_rect = full_row.intersect(list_rect);
                 // FUN_0046ce40: the text at x 5 (+0xe8) from the row's top
                 // (+0xe4 = 0x20, DT_SINGLELINE without DT_VCENTER), grey
                 // 0x787878 and the chosen row white (FUN_00607ea0's
@@ -612,7 +659,7 @@ pub fn draw_troop_finder(
                     ROW_COLOR
                 };
                 list_painter.text(
-                    row_rect.left_top() + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                    full_row.left_top() + egui::vec2(ROW_TEXT_X * scale, 0.0),
                     egui::Align2::LEFT_TOP,
                     &row.name,
                     font.clone(),
@@ -691,12 +738,14 @@ pub fn draw_troop_finder(
     let escape = ctx.input(|input| input.key_pressed(egui::Key::Escape));
     let open_window = state.window.as_mut()?;
     open_window.focus_name = false;
+    open_window.scroll = scroll;
+    open_window.scroll_hold = scroll_hold;
     if name_changed {
         open_window.name.clone_from(&name);
         let choice = prefix_choice(&list, &name);
         open_window.chosen = choice;
         if let Some(index) = choice {
-            open_window.first_row = scrolled_to(open_window.first_row, index);
+            open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
     }
     if let Some((row, at_time)) = clicked_row {
@@ -711,12 +760,12 @@ pub fn draw_troop_finder(
             }
         }
     }
+    // port: the original has no wheel; a notch moves a row.
     if wheel != 0.0 {
-        let last = list.len().saturating_sub(VISIBLE_ROWS);
-        open_window.first_row = if wheel > 0.0 {
-            open_window.first_row.saturating_sub(1)
+        open_window.scroll = if wheel > 0.0 {
+            open_window.scroll.saturating_sub(ROW_PIXELS)
         } else {
-            (open_window.first_row + 1).min(last)
+            (open_window.scroll + ROW_PIXELS).min(max_scroll(list.len()))
         };
     }
     if let Some(new_tab) = tab {
@@ -998,18 +1047,22 @@ mod tests {
     }
 
     #[test]
-    fn the_visible_rows_count_is_six() {
-        // FUN_00607ea0: list 159 tall, rows 25 tall → 6 visible.
-        assert_eq!(VISIBLE_ROWS, 6);
+    fn six_whole_rows_fit_the_list() {
+        // FUN_00607ea0: list 159 tall, rows 25 tall.
+        assert_eq!(LIST_PIXELS / ROW_PIXELS, 6);
     }
 
     #[test]
     fn the_list_scrolls_as_little_as_it_must_to_show_a_row() {
-        assert_eq!(scrolled_to(0, 5), 0);
-        assert_eq!(scrolled_to(0, 6), 1);
-        assert_eq!(scrolled_to(3, 1), 1);
-        assert_eq!(scrolled_to(3, 8), 3);
-        assert_eq!(scrolled_to(2, 8), 3);
+        // By pixels (FUN_0060a490): row 6 (150..175) needs 16; twenty rows
+        // reach 500 + 5 - 159 = 346 (FUN_00609ae0).
+        assert_eq!(scrolled_to(0, 5, 20), 0);
+        assert_eq!(scrolled_to(0, 6, 20), 16);
+        assert_eq!(scrolled_to(75, 1, 20), 25);
+        assert_eq!(scrolled_to(75, 8, 20), 75);
+        assert_eq!(scrolled_to(50, 8, 20), 66);
+        assert_eq!(max_scroll(20), 346);
+        assert_eq!(max_scroll(6), 0);
     }
 
     #[test]
@@ -1173,6 +1226,135 @@ mod tests {
     }
 
     #[test]
+    fn the_bars_down_arrow_scrolls_the_list_ten_pixels_and_moves_its_rows() {
+        // FUN_0046ce40's bar (RCDATA 10653) at the list's right, x 374;
+        // its down arrow at y 294..303 steps the list's 10. Eight systems
+        // of 25-pixel rows (200) overflow the 159-pixel list.
+        let mut world = GameWorld::default();
+        for index in 0..8 {
+            let system = add_system(&mut world, &format!("S{index}"), ControlKind::Controlled(Faction::Alliance));
+            add_troop(&mut world, system, 0x1000_0002, true);
+        }
+        let mut state = TroopFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        state.set_tab(TroopTab::Alliance);
+        let origin = window_rect(layout()).min;
+        let arrow = origin + egui::vec2(380.0, 299.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let transport = TroopTransportState::default();
+        let mut shapes = Vec::new();
+        for pressed in [None, None, Some(true), Some(false), None] {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let mut events = vec![egui::Event::PointerMoved(arrow)];
+            if let Some(pressed) = pressed {
+                events.push(egui::Event::PointerButton {
+                    pos: arrow,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::default(),
+                });
+            }
+            shapes = ctx
+                .run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
+                        events,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        let _ = draw_troop_finder(ctx, &world, &mut state, layout(), &mut cache, &transport);
+                    },
+                )
+                .shapes;
+        }
+        assert_eq!(state.window.as_ref().unwrap().scroll, 10);
+        let first = shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text() == "S0" => Some(text.pos),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(first, origin + egui::vec2(LIST.0 + 5.0, LIST.1 - 10.0));
+        // Row 6 (140..165) shows; row 7 (165..190) is below the list.
+        let named = |name: &str| {
+            shapes.iter().any(|clipped| matches!(&clipped.shape, egui::Shape::Text(text) if text.galley.text() == name))
+        };
+        assert!(named("S6"));
+        assert!(!named("S7"));
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone());
+        assert!(painted.contains(&(10_685, origin + egui::vec2(374.0, 144.0))), "{painted:?}");
+        assert!(painted.contains(&(10_687, origin + egui::vec2(374.0, 294.0))), "{painted:?}");
+
+        // A press at x 370 chooses the row; a wheel notch moves a row
+        // (port); held on the arrow, it draws pressed.
+        let mut frame = |state: &mut TroopFinderState, at: egui::Pos2, event: Option<egui::Event>| {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            let mut events = vec![egui::Event::PointerMoved(at)];
+            events.extend(event);
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_troop_finder(ctx, &world, state, layout(), &mut cache, &transport);
+                },
+            );
+        };
+        let press = |at: egui::Pos2, pressed| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let near_bar = origin + egui::vec2(370.0, LIST.1 + 30.0);
+        frame(&mut state, near_bar, Some(press(near_bar, true)));
+        frame(&mut state, near_bar, Some(press(near_bar, false)));
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(1));
+        let wheel = |delta: f32| egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, delta),
+            modifiers: egui::Modifiers::default(),
+        };
+        frame(&mut state, near_bar, Some(wheel(-1.0)));
+        assert_eq!(state.window.as_ref().unwrap().scroll, 35);
+        frame(&mut state, near_bar, Some(wheel(1.0)));
+        assert_eq!(state.window.as_ref().unwrap().scroll, 10);
+        frame(&mut state, arrow, Some(press(arrow, true)));
+        frame(&mut state, arrow, None);
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone());
+        assert!(painted.iter().any(|(id, _)| *id == 10_688), "{painted:?}");
+        frame(&mut state, origin, None);
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone());
+        assert!(!painted.iter().any(|(id, _)| *id == 10_688), "{painted:?}");
+        // A press on the bar's track, in the row's height, chooses no row.
+        state.window.as_mut().unwrap().chosen = None;
+        let track = origin + egui::vec2(380.0, LIST.1 + 120.0);
+        frame(&mut state, track, Some(press(track, true)));
+        frame(&mut state, track, Some(press(track, false)));
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
+        // Scrolled 30, row 0 (-30..-5) is wholly above the list: not drawn.
+        state.window.as_mut().unwrap().scroll = 30;
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
+                ..Default::default()
+            },
+            |ctx| {
+                let _ = draw_troop_finder(ctx, &world, &mut state, layout(), &mut cache, &transport);
+            },
+        );
+        assert!(!output
+            .shapes
+            .iter()
+            .any(|clipped| matches!(&clipped.shape, egui::Shape::Text(text) if text.galley.text() == "S0")));
+    }
+
+    #[test]
     fn at_scale_two_the_row_text_keeps_its_window_place() {
         let galaxy = galaxy();
         let layout = CockpitLayout {
@@ -1219,6 +1401,34 @@ mod tests {
             })
             .unwrap();
         assert_eq!(yavin, window_rect(layout).min + egui::vec2(LIST.0 + 5.0, LIST.1) * 2.0);
+        // The bar reads the pointer in window pixels: eight systems, a click
+        // on the down arrow at scale 2 steps 10.
+        let mut world = GameWorld::default();
+        for index in 0..8 {
+            let system = add_system(&mut world, &format!("S{index}"), ControlKind::Controlled(Faction::Alliance));
+            add_troop(&mut world, system, 0x1000_0002, true);
+        }
+        let arrow = window_rect(layout).min + egui::vec2(380.0, 299.0) * 2.0;
+        for pressed in [None, None, Some(true), Some(false)] {
+            let mut events = vec![egui::Event::PointerMoved(arrow)];
+            events.extend(pressed.map(|pressed| egui::Event::PointerButton {
+                pos: arrow,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            }));
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 1100.0))),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_troop_finder(ctx, &world, &mut state, layout, &mut cache, &transport);
+                },
+            );
+        }
+        assert_eq!(state.window.as_ref().unwrap().scroll, 10);
     }
 
     #[test]
