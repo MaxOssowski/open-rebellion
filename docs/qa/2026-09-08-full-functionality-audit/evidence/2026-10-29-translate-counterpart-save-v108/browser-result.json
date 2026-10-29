@@ -1,0 +1,74 @@
+{
+  "status": "pass",
+  "wasm_sha256": "e78137a0b8bc9f98ae9599905678bee3ee277dfd62bd4b04dc71c44550399c43",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "08c36f95b70d3cfd49c74a90ddb15f0fdfdc828d7c8006f28d150f1bd4944cd9"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "6958a9ad78bb3a2468e4ad40c030825a3933df9ffbf0af35ddc0dce51ae78e77"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "4e0febfd91fc74042a371633b0f150b5f634827d908d58a6e1b8b477d4fce758"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "80c5f94e8798c7e222109204d53c86ff9d6a262744352746f4061f5eb59d8474"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "8e61897d22b856db235fd9a60b65c77db36b6ef07ae040810f9f29a9bc957e68"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "agent": [
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "e49ce7db355c0cd05c5a8ca5db922e7965b76e87fa4a017e45f254ef12083703"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "a0c8a542561aa07afa5e600bc54987c9e4b5d838936f78178cb5f0883882edf5"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "61442dbf9bb67861f3ef0fe2768b6da560405e33f179b5de73546b86829fa942"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "0f99abe07ec28aec23ec3e4e168f93242f857368b5d0632ed590006950965b36"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "625a87f4a35c57e2560616809cacf212ebde3dc4d5ac7a87a5c6f93acf50c6d5"
+        }
+      ]
+    }
+  ]
+}

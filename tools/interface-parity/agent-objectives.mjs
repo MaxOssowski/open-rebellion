@@ -172,6 +172,26 @@ async function run(browser, base, faction) {
     await page.keyboard.up("Alt");
     await waitFor(page, log, "Alt+O opens the window", () => overview().length === 2, 5_000);
     assert.match(overview()[1], /source=accelerator/);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+
+    // Translate Counterpart: on in a new game (0x1000, FUN_004c27f0 /
+    // FUN_004c0710), Alt+V (0xbc8 -> 0x11b) flips it off, then on.
+    const translate = () => log.filter((line) => line.includes("[agent] command=translate_counterpart"));
+    for (const expected of ["off", "on"]) {
+      await page.keyboard.down("Alt");
+      await frames(page);
+      await page.keyboard.down("KeyV");
+      await frames(page);
+      await page.keyboard.up("KeyV");
+      await page.keyboard.up("Alt");
+      await waitFor(page, log, `Alt+V turns it ${expected}`,
+        () => translate().some((line) => line.includes(`status=${expected}`)), 5_000);
+    }
+    await click(page, faction.droid, "right");
+    await page.waitForTimeout(400);
+    await shot("agent-menu-translate");
+    await page.keyboard.press("Escape");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

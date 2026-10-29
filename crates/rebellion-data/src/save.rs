@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 107;
+pub const SAVE_VERSION: u32 = 108;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1548,6 +1548,23 @@ mod tests {
         let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
 
         assert_eq!(loaded.world.characters[character].ship, Some(7));
+    }
+
+    #[test]
+    fn a_round_trip_keeps_translate_counterpart_and_the_advisors_schedule() {
+        // v108: FUN_004397a0 saves DAT_006b28bc, DAT_006b28b0 (here its
+        // 0x1000) and the advisor's +0x168 table.
+        let saves_dir = tmp_dir("v108_advisor");
+        let mut state = minimal_save_state();
+        state.player_agent =
+            rebellion_core::agent_automation::PlayerAgent::for_new_game(rebellion_core::world::SeedDifficulty::Medium);
+        state.player_agent.set_advisor_state(&[0, 40_000, 3], true);
+        save_slot(&saves_dir, 0, "Advisor", &state, &[]).unwrap();
+
+        let (_, loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert!(loaded.player_agent.translate());
+        assert_eq!(loaded.player_agent.advisor_state(), (&[0, 40_000, 3][..], true));
     }
 
     #[test]

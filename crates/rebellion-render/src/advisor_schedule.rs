@@ -93,6 +93,9 @@ pub struct AdvisorSchedule {
     flushed: bool,
     /// `FUN_0041d9d0` .. `FUN_0041da80`: the briefing holds the input.
     holding_input: bool,
+    /// `DAT_006b28b0` bit `0x1000`, Translate Counterpart: entries with flag
+    /// bit 0 play only while it is set (`FUN_004c0a60`).
+    translate: bool,
 }
 
 impl AdvisorSchedule {
@@ -114,7 +117,40 @@ impl AdvisorSchedule {
             skip_requested: false,
             flushed: false,
             holding_input: false,
+            translate: true,
         }
+    }
+
+    /// A loaded game's advisor (`FUN_00439550`): its saved last days and
+    /// update flag; the next free days load as 0. A table of another length
+    /// is fitted to the side's message count.
+    #[must_use]
+    pub fn from_save(
+        faction: AdvisorFaction,
+        messages: HashMap<u32, Vec<ScriptEntry>>,
+        last_day: &[u32],
+        enabled: bool,
+    ) -> Self {
+        let count = message_count(faction);
+        let mut table = last_day.to_vec();
+        table.resize(count, 0);
+        Self {
+            last_day: table,
+            enabled,
+            ..Self::new_game(faction, messages)
+        }
+    }
+
+    /// What the save keeps (`FUN_004397a0`): the last days and whether the
+    /// update runs.
+    #[must_use]
+    pub fn saved(&self) -> (&[u32], bool) {
+        (&self.last_day, self.enabled)
+    }
+
+    /// Translate Counterpart's bit, from the agent.
+    pub fn set_translate(&mut self, translate: bool) {
+        self.translate = translate;
     }
 
     #[must_use]
@@ -206,13 +242,17 @@ impl AdvisorSchedule {
 
     /// `FUN_0041d660` -> `FUN_0042b1d0` for each entry: the record comes
     /// from the briefing DLL with flag bit 1, else the sprite DLL; a and b
-    /// replace its words 2 and 3 when not 0. Advice is on in a new game
-    /// (`0x1000`, `FUN_004c27f0`), so bit-0 entries play too.
+    /// replace its words 2 and 3 when not 0. Entries with flag bit 0 play
+    /// only while Translate Counterpart (`0x1000`) is on; a new game turns
+    /// it on (`FUN_004c27f0`, `FUN_004c0710`).
     fn queue_message(&self, id: u32, player: &mut ClipPlayer) {
         let Some(entries) = self.messages.get(&id) else {
             return;
         };
-        for entry in entries {
+        // FUN_004c0a60: an entry with flag bit 0 plays while 0x1000 is set
+        // (hyp: 0x4000, which would block it, is never set here; its writer
+        // FUN_00487f80 is not ported).
+        for entry in entries.iter().filter(|entry| entry.flags & 1 == 0 || self.translate) {
             let slot = if entry.flags & 2 != 0 {
                 BRIEFING_SLOT
             } else {
@@ -549,6 +589,51 @@ mod tests {
         assert!(!player.is_busy(), "the briefing waits for the idle clip");
         run(&mut schedule, &mut player, 14.0 * CLIP_TICK_SECONDS, 1);
         assert!(player.is_busy());
+    }
+
+    #[test]
+    fn without_translate_counterpart_the_bit_zero_entries_stay_silent() {
+        // FUN_004c0a60: an entry with flag bit 0 plays only while
+        // DAT_006b28b0 has 0x1000. The briefing's opening action carries
+        // bit 0 here; turned off, only its clip and closing action play.
+        let root = staged_root("translate");
+        let mut messages = briefing_messages();
+        messages.get_mut(&ALLIANCE_BRIEFING).unwrap()[0].flags |= 1;
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, messages);
+        schedule.set_translate(false);
+        let mut player = player(&root.0);
+        let events = run(&mut schedule, &mut player, 40.0 * CLIP_TICK_SECONDS, 1);
+        let codes: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                ClipEvent::Finished(action) => Some(action.code),
+                ClipEvent::Voice { .. } => None,
+            })
+            .collect();
+        assert_eq!(codes, [0, 1]);
+    }
+
+    #[test]
+    fn a_loaded_advisor_keeps_its_last_days_and_flag_and_frees_its_days() {
+        // FUN_004397a0 saves DAT_006b28bc and +0x168; FUN_00439550 loads
+        // them and zeroes +0x16c.
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, briefing_messages());
+        schedule.next_free[3] = 99;
+        schedule.enabled = true;
+        let (last_day, enabled) = schedule.saved();
+        let loaded = AdvisorSchedule::from_save(
+            AdvisorFaction::Alliance,
+            briefing_messages(),
+            last_day,
+            enabled,
+        );
+        assert_eq!(loaded.saved(), (&schedule.last_day[..], true));
+        assert_eq!(loaded.next_free, vec![0; 0x58]);
+        // A short table is fitted to the side's count.
+        let short = AdvisorSchedule::from_save(AdvisorFaction::Empire, HashMap::new(), &[5], false);
+        assert_eq!(short.last_day.len(), 0x56);
+        assert_eq!(short.last_day[0], 5);
+        assert!(!short.saved().1);
     }
 
     #[test]

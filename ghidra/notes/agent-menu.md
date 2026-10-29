@@ -150,6 +150,15 @@ day 137, `.artifacts/a0-vm/agent-menu/empire-agent-menu-day137.png`,
 sha256 `dfb69444…`) shows these nine, Translate Counterpart and Agent
 Advice checked.
 
+### Translate Counterpart and the advisor's save (read 2026-10-29)
+
+`0x11b` flips `DAT_006b28b0` bit `0x1000`; both advisor constructors set
+it, and `FUN_004c0a60` plays a message's flag-bit-0 entries only while it
+is set (and `0x4000` clear). The agent's save `FUN_004397a0` writes
+`DAT_006b28bc`, `DAT_006b28c0`, `DAT_006b28b0` and the advisor's schedule
+(`+0x164` count, `+0x168` last days); `FUN_00439550` reads them and zeroes
+`+0x16c`. Ported with save v108.
+
 ### Enable/disable logic (FUN_00487900)
 
 ```c

@@ -1543,7 +1543,12 @@ async fn main() {
         if game_mode == GameMode::Galaxy {
             if let Some(schedule) = advisor_schedule.as_mut() {
                 let today = u32::try_from(clock.tick).unwrap_or(u32::MAX).saturating_add(1);
+                schedule.set_translate(player_agent.translate());
                 schedule.update(dt, today, &mut advisor_state.clips);
+                // The agent carries the advisor's state into the save
+                // (FUN_004397a0).
+                let (last_day, enabled) = schedule.saved();
+                player_agent.set_advisor_state(last_day, enabled);
             }
         }
         if !interface_fixture_active || advisor_schedule.is_some() {
@@ -1762,7 +1767,8 @@ async fn main() {
                 // Manage Production (FUN_00439d60).
                 // Alt+A (0xbc9 → 0x11e) flips Agent Advice (FUN_00439e80).
                 // Alt+H (0xbd7 → 0x114) shows the Objectives, Alt+O (0xbc4 →
-                // 0x113) the Galaxy Overview.
+                // 0x113) the Galaxy Overview, Alt+V (0xbc8 → 0x11b) flips
+                // Translate Counterpart.
                 for (key, command) in [
                     (
                         KeyCode::G,
@@ -1783,6 +1789,10 @@ async fn main() {
                     (
                         KeyCode::O,
                         rebellion_render::agent_menu::AgentCommand::GalaxyOverview,
+                    ),
+                    (
+                        KeyCode::V,
+                        rebellion_render::agent_menu::AgentCommand::TranslateCounterpart,
                     ),
                 ] {
                     if is_key_pressed(key) {
@@ -4622,6 +4632,7 @@ async fn main() {
                         garrisons: player_agent.is_running(AutomationModule::Garrisons),
                         production: player_agent.is_running(AutomationModule::Production),
                         advice: player_agent.advice(),
+                        translate: player_agent.translate(),
                     };
                     if let Some(command) = rebellion_render::agent_menu::draw_agent_menu(
                         ctx,
@@ -7210,6 +7221,13 @@ async fn main() {
                                 CockpitFaction::Empire
                             };
                             advisor_state.set_faction(AdvisorFaction::from(cockpit_state.faction));
+                            // FUN_00439550: the advisor's schedule and update
+                            // flag come back with the agent.
+                            advisor_schedule = loaded_advisor_schedule(
+                                &gdata_path,
+                                AdvisorFaction::from(cockpit_state.faction),
+                                &player_agent,
+                            );
                             map_state = GalaxyMapState::default();
                             sector_window_state.clear();
                             system_window_state.clear();
@@ -7812,11 +7830,46 @@ fn confirm_character_move(
 
 /// A new game's advisor schedule for `side`, from its GDATA messages
 /// (`FUN_004c27f0`, `FUN_004c0710`); `None` when they cannot be read.
+/// A loaded game's advisor from the agent's saved state, or none when the
+/// save holds no schedule (FUN_00439550).
+fn loaded_advisor_schedule(
+    gdata: &Path,
+    side: AdvisorFaction,
+    agent: &PlayerAgent,
+) -> Option<rebellion_render::advisor_schedule::AdvisorSchedule> {
+    let (last_day, enabled) = agent.advisor_state();
+    if last_day.is_empty() {
+        return None;
+    }
+    let messages = advisor_messages(gdata, side)?;
+    macroquad::logging::info!(
+        "[advisor] schedule restored messages={} due={} enabled={} translate={}",
+        last_day.len(),
+        last_day.iter().filter(|&&day| day != 0).count(),
+        enabled,
+        agent.translate()
+    );
+    Some(rebellion_render::advisor_schedule::AdvisorSchedule::from_save(
+        side, messages, last_day, enabled,
+    ))
+}
+
 fn new_advisor_schedule(
     gdata: &Path,
     side: AdvisorFaction,
 ) -> Option<rebellion_render::advisor_schedule::AdvisorSchedule> {
-    use rebellion_render::advisor_schedule::{AdvisorSchedule, ScriptEntry};
+    advisor_messages(gdata, side)
+        .map(|messages| rebellion_render::advisor_schedule::AdvisorSchedule::new_game(side, messages))
+}
+
+/// The side's advisor messages (GDATA C3POACT.SPT / IMP22ACT.SPT).
+fn advisor_messages(
+    gdata: &Path,
+    side: AdvisorFaction,
+) -> Option<
+    std::collections::HashMap<u32, Vec<rebellion_render::advisor_schedule::ScriptEntry>>,
+> {
+    use rebellion_render::advisor_schedule::ScriptEntry;
     let script =
         match rebellion_data::load_advisor_script(gdata, side == AdvisorFaction::Alliance) {
             Ok(script) => script,
@@ -7842,7 +7895,7 @@ fn new_advisor_schedule(
             (message.id, entries)
         })
         .collect();
-    Some(AdvisorSchedule::new_game(side, messages))
+    Some(messages)
 }
 
 /// A briefing action on the galaxy view (`FUN_004c0fc0` / `FUN_004c30c0`):
@@ -8365,6 +8418,7 @@ fn apply_agent_command(
             agent.toggle(AutomationModule::Production),
         ),
         AgentCommand::AgentAdvice => ("agent_advice", agent.toggle_advice()),
+        AgentCommand::TranslateCounterpart => ("translate_counterpart", agent.toggle_translate()),
     };
     macroquad::logging::info!(
         "[agent] command={name} status={} source={source}",

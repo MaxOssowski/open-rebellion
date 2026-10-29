@@ -1,9 +1,9 @@
 ---
 title: "Save/Load System"
-description: "Native and browser save v107, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
+description: "Native and browser save v108, canonical fingerprints, campaign setup, continuation state, troop cargo, embarked tracking, deliveries, and the no-migration rule"
 category: "agent-docs"
 created: 2026-03-15
-updated: 2026-10-22
+updated: 2026-10-29
 tags: [save-load, bincode, migration, serialization, wasm, determinism]
 ---
 
@@ -11,10 +11,10 @@ tags: [save-load, bincode, migration, serialization, wasm, determinism]
 
 `crates/rebellion-data/src/save.rs` owns native files and browser storage.
 `crates/rebellion-app/src/main.rs` converts between a live campaign and the
-serializable snapshot. The current format is v107, and it is the only one
+serializable snapshot. The current format is v108, and it is the only one
 that loads.
 
-## Native format (v107)
+## Native format (v108)
 
 ```text
 [magic: 8 bytes "OPENREB\0"]
@@ -73,7 +73,7 @@ Every mutable campaign subsystem required by the app is serialized:
 | `campaign_config` | `CampaignConfig` |
 | `troop_transport` | `TroopTransportState`; it keeps the squadrons travelling on their own (v47); v59 drops the fleets' hold |
 | `deliveries` | `DeliveryState`; v100 adds each delivery's side, for its autoroute when its destination is destroyed |
-| `player_agent` | `PlayerAgent` |
+| `player_agent` | `PlayerAgent`; v108 adds Translate Counterpart (`DAT_006b28b0` bit `0x1000`), the advisor's update flag (`DAT_006b28bc`) and its schedule's last days (the advisor class `+0x168`), as `FUN_004397a0` saves them; the next free days (`+0x16c`) load as 0 (`FUN_00439550`) |
 
 Loading restores the RNG, dual-AI state, repair episodes, and combat memory
 instead of reseeding or clearing them. `campaign_config` keeps the selected

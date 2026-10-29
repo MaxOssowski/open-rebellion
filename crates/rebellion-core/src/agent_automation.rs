@@ -226,6 +226,20 @@ pub struct PlayerAgent {
     /// proactive advice it gates (`FUN_0043a0b0`, `FUN_00439bc0`, the
     /// agent's `+0x154` notifications) is not ported, so it gates nothing yet.
     advice: bool,
+
+    /// Translate Counterpart (menu item 0x11b): `DAT_006b28b0` bit `0x1000`,
+    /// which both advisor constructors set (`FUN_004c27f0`, `FUN_004c0710`)
+    /// and `FUN_00439e80` flips. The advisor plays a message's entries with
+    /// flag bit 0 only while it is set (`FUN_004c0a60`).
+    translate: bool,
+    /// `DAT_006b28bc`: the advisor's update runs (set when the idle clip
+    /// ends, `FUN_00439ef0`). Saved with the agent (`FUN_004397a0`).
+    advisor_enabled: bool,
+    /// The advisor's schedule, the class's `+0x168`: per message id, the
+    /// last day it may still play. Saved with its count (`FUN_004397a0`);
+    /// the next free days (`+0x16c`) are not, and load as 0
+    /// (`FUN_00439550`). Empty for an agent without an advisor.
+    advisor_last_day: Vec<u32>,
 }
 
 impl Default for PlayerAgent {
@@ -238,6 +252,9 @@ impl Default for PlayerAgent {
             advisor_flags: AdvisorFlags::default(),
             orders_issued: 0,
             advice: false,
+            translate: false,
+            advisor_enabled: false,
+            advisor_last_day: Vec::new(),
         }
     }
 }
@@ -251,13 +268,43 @@ impl PlayerAgent {
     }
 
     /// A new game's agent (`FUN_00439320`): both automations off, and
-    /// Agent Advice on only at Easy.
+    /// Agent Advice on only at Easy; the advisor's constructor turns
+    /// Translate Counterpart on (`FUN_004c27f0`, `FUN_004c0710`: `0x1000`).
     #[must_use]
     pub fn for_new_game(difficulty: crate::world::SeedDifficulty) -> Self {
         Self {
             advice: difficulty == crate::world::SeedDifficulty::Easy,
+            translate: true,
             ..Self::default()
         }
+    }
+
+    /// Whether Translate Counterpart is on (menu item 0x11b checked,
+    /// `FUN_00487900`).
+    #[must_use]
+    pub const fn translate(&self) -> bool {
+        self.translate
+    }
+
+    /// Translate Counterpart (0x11b, Alt+V): `FUN_00439e80` flips bit
+    /// `0x1000`.
+    pub fn toggle_translate(&mut self) -> bool {
+        self.translate = !self.translate;
+        self.translate
+    }
+
+    /// The advisor's saved state: its schedule's last days and whether its
+    /// update runs.
+    #[must_use]
+    pub fn advisor_state(&self) -> (&[u32], bool) {
+        (&self.advisor_last_day, self.advisor_enabled)
+    }
+
+    /// Keep the advisor's state for the save (`FUN_004397a0`).
+    pub fn set_advisor_state(&mut self, last_day: &[u32], enabled: bool) {
+        self.advisor_last_day.clear();
+        self.advisor_last_day.extend_from_slice(last_day);
+        self.advisor_enabled = enabled;
     }
 
     /// Whether Agent Advice is on (menu item 0x11e checked, `FUN_00487900`).
@@ -870,6 +917,29 @@ fn find_production_facility_class(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_new_games_advisor_translates_and_the_menu_flips_it() {
+        // FUN_004c27f0 / FUN_004c0710 set DAT_006b28b0 |= 0x1000;
+        // FUN_00439e80 flips it for 0x11b.
+        let mut agent = PlayerAgent::for_new_game(crate::world::SeedDifficulty::Medium);
+        assert!(agent.translate());
+        assert!(!agent.toggle_translate());
+        assert!(!agent.translate());
+        assert!(agent.toggle_translate());
+        assert!(!PlayerAgent::default().translate());
+    }
+
+    #[test]
+    fn the_advisors_schedule_and_its_update_flag_travel_with_the_agent() {
+        // FUN_004397a0 writes DAT_006b28bc and the +0x168 table.
+        let mut agent = PlayerAgent::default();
+        assert_eq!(agent.advisor_state(), (&[][..], false));
+        agent.set_advisor_state(&[0, 40_000, 7], true);
+        assert_eq!(agent.advisor_state(), (&[0, 40_000, 7][..], true));
+        agent.set_advisor_state(&[1], false);
+        assert_eq!(agent.advisor_state(), (&[1][..], false));
+    }
     use super::*;
     use crate::economy::{EconomyState, SystemEconomy};
     use crate::ids::{ManufacturingFacilityKey, ProductionFacilityKey, SystemKey, TroopKey};

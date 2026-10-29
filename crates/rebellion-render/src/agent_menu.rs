@@ -31,6 +31,9 @@ pub enum AgentCommand {
     /// 0x113, Alt+O: the Status window on the galaxy, the Galaxy Overview
     /// (`FUN_00486fb0` → `FUN_0041d7f0(0xf1000004)`).
     GalaxyOverview,
+    /// 0x11b, Alt+V: flip bit `0x1000`, Translate Counterpart
+    /// (`FUN_00439e80`).
+    TranslateCounterpart,
 }
 
 /// One record of list `0xdead`: its command, sort key (word 2) and TEXTSTRA
@@ -123,6 +126,8 @@ pub struct AgentMenuView {
     pub garrisons: bool,
     pub production: bool,
     pub advice: bool,
+    /// Bit `0x1000`: Translate Counterpart is checked.
+    pub translate: bool,
 }
 
 /// One item as `FUN_00487900` leaves it.
@@ -141,8 +146,9 @@ const MENU_COMMANDS: [u16; 9] = [0x110, 0x111, 0x112, 0x115, 0x116, 0x113, 0x11b
 
 /// The items `FUN_00487900` adds, enables and checks. Manage Garrisons and
 /// Manage Production are checked while they run (`FUN_00439e30`), Agent
-/// Advice while bit `0x8000` is clear. port: the Build orders (module
-/// 0x17) and Translate Counterpart are not ported, so they stay disabled.
+/// Advice while bit `0x8000` is clear, Translate Counterpart while
+/// `0x1000` is set. port: the Build orders (module 0x17) are not ported,
+/// so they stay disabled.
 #[must_use]
 pub fn agent_menu_items(view: AgentMenuView) -> Vec<AgentMenuItem> {
     AGENT_MENU_RECORDS
@@ -153,6 +159,7 @@ pub fn agent_menu_items(view: AgentMenuView) -> Vec<AgentMenuItem> {
                 0x115 => (Some(AgentCommand::ManageGarrisons), view.garrisons),
                 0x116 => (Some(AgentCommand::ManageProduction), view.production),
                 0x113 => (Some(AgentCommand::GalaxyOverview), false),
+                0x11b => (Some(AgentCommand::TranslateCounterpart), view.translate),
                 0x114 => (Some(AgentCommand::Objectives), false),
                 0x11e => (Some(AgentCommand::AgentAdvice), view.advice),
                 _ => (None, false),
@@ -298,6 +305,7 @@ mod tests {
             garrisons: true,
             production: false,
             advice: true,
+            translate: false,
         });
         assert!(item(&on, 0x115).checked);
         assert!(!item(&on, 0x116).checked);
@@ -308,6 +316,14 @@ mod tests {
         assert!(item(&off, 0x114).enabled, "FUN_00487900 enables 0x114 always");
         assert_eq!(item(&on, 0x113).command, Some(AgentCommand::GalaxyOverview));
         assert!(item(&off, 0x113).enabled, "FUN_00487900 enables 0x113 always");
+        // 0x11b: enabled with the agent, checked while 0x1000 is set.
+        assert!(item(&off, 0x11b).enabled && !item(&off, 0x11b).checked);
+        let translating = agent_menu_items(AgentMenuView {
+            translate: true,
+            ..AgentMenuView::default()
+        });
+        assert!(item(&translating, 0x11b).checked);
+        assert_eq!(item(&translating, 0x11b).command, Some(AgentCommand::TranslateCounterpart));
     }
 
     #[test]
