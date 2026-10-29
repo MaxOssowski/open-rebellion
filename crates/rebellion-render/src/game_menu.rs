@@ -372,11 +372,11 @@ fn menu_window(
 
     // FUN_00442860 opens a pop-up over every child window. The modeless
     // windows share Foreground and a focused one raises itself each frame
-    // (`system_window.rs`), so the menu takes the order above them, which
-    // it shares with the mission dialog, and raises itself there.
-    ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
+    // (`system_window.rs`); the Message Index, the Finders and the mission
+    // dialog take Tooltip and raise themselves there. So the menu takes
+    // the order above them all.
     let shown = egui::Area::new(id)
-        .order(egui::Order::Tooltip)
+        .order(egui::Order::Debug)
         .fade_in(false)
         .fixed_pos(origin)
         .show(ctx, |ui| {

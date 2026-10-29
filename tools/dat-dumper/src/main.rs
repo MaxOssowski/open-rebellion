@@ -86,6 +86,16 @@ fn main() -> anyhow::Result<()> {
                     messages_path.display(),
                     messages.len()
                 );
+                // The agent's advice list (RT_RCDATA 0x6000 / 0x6800).
+                let advice = types::agent_advice::load(&dll_path)?;
+                let advice_path = out_dir.join("textstra-advice.json");
+                std::fs::write(&advice_path, serde_json::to_string_pretty(&advice)?)?;
+                eprintln!(
+                    "OK   TEXTSTRA.DLL -> {} ({} + {} advice records)",
+                    advice_path.display(),
+                    advice.alliance.len(),
+                    advice.empire.len()
+                );
                 // The galaxy view's legend layouts (RT_RCDATA), from STRATEGY.DLL.
                 let strategy = cli.gdata.join("STRATEGY.DLL");
                 if strategy.exists() {

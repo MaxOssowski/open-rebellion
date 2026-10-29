@@ -184,6 +184,9 @@ struct OpenMissionsWindow {
 pub struct MissionsWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenMissionsWindow>,
+    /// A window was created, not raised, since [`Self::take_created`]
+    /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
+    created: bool,
 }
 
 impl Default for MissionsWindowState {
@@ -191,11 +194,18 @@ impl Default for MissionsWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            created: false,
         }
     }
 }
 
 impl MissionsWindowState {
+    /// Whether a window was created since the last call, which the
+    /// agent's advice hears of (`FUN_0041d2d0`).
+    pub fn take_created(&mut self) -> bool {
+        std::mem::take(&mut self.created)
+    }
+
     /// Open `system`'s Missions window at a logical point, clamped into the
     /// galaxy view, with its first mission selected (`FUN_0049f540`,
     /// `FUN_00609500`), or bring its open window to the front: one per
@@ -225,6 +235,7 @@ impl MissionsWindowState {
         let selected = mission_rows(world, fog, missions, player, system)
             .first()
             .map(|row| row.mission);
+        self.created = true;
         self.windows.push(OpenMissionsWindow {
             system,
             logical_position: clamp_window_to_galaxy(
@@ -1987,6 +1998,8 @@ mod tests {
         // FUN_00609ae0); +0x70 gives the subject (FUN_004aa470).
         let (world, system, missions, _) = busy();
         let mut state = opened(&world, &missions, system);
+        // FUN_0045aac0 tells the agent of a created window only.
+        assert!(state.take_created());
         assert!(state.open(
             &world,
             &unseen(),
@@ -1996,6 +2009,7 @@ mod tests {
             CockpitFaction::Alliance,
             scaled()
         ));
+        assert!(!state.take_created());
         assert_eq!(state.window_count(), 1);
         assert!(state.is_open(system));
         assert_eq!(

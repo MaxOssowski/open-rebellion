@@ -32,10 +32,15 @@ class Entry:
     expected_sha256: str | None = None
 
 
-# TEXTSTRA string table and message texts, and STRATEGY.DLL's legend
-# layouts, extracted from the player's own DLLs by dat-dumper
+# TEXTSTRA string table, message texts and advice list, and STRATEGY.DLL's
+# legend layouts, extracted from the player's own DLLs by dat-dumper
 # --extract-strings; key order is normalised.
-TEXT_TABLES = ("textstra.json", "textstra-messages.json", "gid-legends.json")
+TEXT_TABLES = (
+    "textstra.json",
+    "textstra-messages.json",
+    "textstra-advice.json",
+    "gid-legends.json",
+)
 # The Encyclopedia's topic texts and artwork names (P66A) and their manifest,
 # staged by build-wasm.sh from data/base/encyclopedia/. Packed byte for byte:
 # the manifest's checksum covers the catalog's exact bytes.

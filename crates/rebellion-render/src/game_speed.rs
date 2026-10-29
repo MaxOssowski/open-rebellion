@@ -172,15 +172,20 @@ pub fn choose_game_speed(clock: &mut GameClock, requested: GameSpeed) {
 /// `FUN_00487ff0` does: showing it saves the speed once and drops to Very
 /// Slow, and hiding it restores a saved speed. A second show while one is
 /// saved, or a hide with none saved, changes nothing.
+///
+/// `FUN_00487eb0` sets only the rate (`+0x54`, 1..4), never the pause,
+/// which `FUN_0041d2f0` keeps apart; a pending pause stays. port: a clock
+/// at [`GameSpeed::Paused`] has no rate to save, so a show leaves it
+/// paused (`FUN_00487ff0` saves nothing for a `+0x54` of 0).
 pub fn hold_speed_for_advice(clock: &mut GameClock, saved: &mut Option<GameSpeed>, shown: bool) {
     match (*saved, shown) {
         (Some(speed), false) => {
-            choose_game_speed(clock, speed);
+            clock.set_speed(speed);
             *saved = None;
         }
-        (None, true) => {
+        (None, true) if clock.speed != GameSpeed::Paused => {
             *saved = Some(clock.speed);
-            choose_game_speed(clock, GameSpeed::VerySlow);
+            clock.set_speed(GameSpeed::VerySlow);
         }
         _ => {}
     }
@@ -637,6 +642,29 @@ mod tests {
             GameSpeed::Fast,
             "a hide with nothing saved holds"
         );
+    }
+
+    #[test]
+    fn the_advice_hold_changes_the_rate_and_never_the_pause() {
+        // FUN_00487eb0 sets the rate +0x54 only; the pause (FUN_0041d2f0)
+        // is apart. FUN_00487ff0 saves nothing for a +0x54 of 0.
+        let mut clock = running(GameSpeed::Medium);
+        choose_game_speed(&mut clock, GameSpeed::Paused);
+        let mut saved = None;
+        hold_speed_for_advice(&mut clock, &mut saved, true);
+        assert_eq!(clock.speed, GameSpeed::VerySlow);
+        assert!(clock.pause_requested(), "the pause stays");
+        hold_speed_for_advice(&mut clock, &mut saved, false);
+        assert_eq!(clock.speed, GameSpeed::Medium);
+        assert!(clock.pause_requested());
+
+        let mut paused = GameClock::new();
+        hold_speed_for_advice(&mut paused, &mut saved, true);
+        assert_eq!(paused.speed, GameSpeed::Paused);
+        assert_eq!(saved, None);
+        hold_speed_for_advice(&mut paused, &mut saved, false);
+        assert_eq!(paused.speed, GameSpeed::Paused);
+        assert!(!paused.pause_requested());
     }
 
     #[test]

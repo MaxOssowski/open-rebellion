@@ -34,6 +34,9 @@ pub mod seed_table;
 // The GID legends from STRATEGY.DLL (their loader is native only).
 pub mod gid_legend;
 
+// The agent's advice list from TEXTSTRA.DLL (its loader is native only).
+pub mod agent_advice;
+
 // Win32 PE resource extraction (native only — uses memory-mapped file I/O)
 #[cfg(not(target_arch = "wasm32"))]
 pub mod textstra;

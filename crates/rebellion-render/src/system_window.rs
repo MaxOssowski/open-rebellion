@@ -251,6 +251,9 @@ pub struct SystemWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenSystemWindow>,
     rail: Vec<RailEntry>,
+    /// A window was created, not raised, since [`Self::take_created`]
+    /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
+    created: bool,
 }
 
 impl Default for SystemWindowState {
@@ -259,11 +262,18 @@ impl Default for SystemWindowState {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
             rail: Vec::new(),
+            created: false,
         }
     }
 }
 
 impl SystemWindowState {
+    /// Whether a window was created since the last call, which the
+    /// agent's advice hears of (`FUN_0041d2d0`).
+    pub fn take_created(&mut self) -> bool {
+        std::mem::take(&mut self.created)
+    }
+
     /// Open at the original logical double-click point, clamped so the client
     /// surface remains inside the recovered galaxy aperture, on the overview
     /// (`FUN_00452fc0` starts on page `0x67`). Existing visible or minimized
@@ -287,6 +297,7 @@ impl SystemWindowState {
             return true;
         }
         let logical_position = clamp_to_galaxy(logical_position, layout);
+        self.created = true;
         self.windows.push(OpenSystemWindow {
             system,
             logical_position,
@@ -1886,7 +1897,10 @@ mod tests {
         ));
         assert_eq!(state.windows[0].logical_position, (314, 86));
         assert_eq!(state.windows[0].tab, SystemWindowTab::Overview);
+        // FUN_0045aac0 tells the agent of a created window only.
+        assert!(state.take_created());
         assert!(state.open(&world, systems[0], (0, 0), CockpitFaction::Alliance, layout));
+        assert!(!state.take_created());
         assert_eq!(state.window_count(), 1);
     }
 

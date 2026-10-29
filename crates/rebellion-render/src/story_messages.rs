@@ -1702,6 +1702,44 @@ pub fn story_text(
     ))
 }
 
+/// The agent's advice `number` as a message (`FUN_0048b2e0`, class
+/// `0x0065b188`): for the reader's side, filed under Advice
+/// (`FUN_0048b450`: `0x200`), with TEXTSTRA `base + 3n + 1` for its title
+/// and `+ 2` for its text (base `0x6000` for the Alliance, `0x6800` for the
+/// Empire), on background `0x42f` / `0x430`. Its `+0x28` is `0x2a`, which
+/// the reader's advisor gets. `None` when the texts are missing.
+///
+/// hyp: the media short `+0x30` (`0x461` / `0x462`) plays nothing, as
+/// `FUN_00469de0` starts media only with `+0x32` set too, and the class
+/// leaves it 0.
+#[must_use]
+pub fn agent_advice_message(
+    number: u16,
+    alliance: bool,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let base: u16 = if alliance { 0x6000 } else { 0x6800 };
+    let title_id = base.checked_add(number.checked_mul(3)?)?.checked_add(1)?;
+    let title = texts.get(&title_id)?;
+    let body = texts.get(&title_id.checked_add(1)?)?;
+    let (picture, events) = if alliance {
+        (0x42f, [0x2a, 0])
+    } else {
+        (0x430, [0, 0x2a])
+    };
+    Some(
+        GameMessage::new(tick, body.clone(), MessageCategory::Event)
+            .on_rail(MessageRail::Advice, RailAudience::side(alliance))
+            .with_title(title.clone())
+            .with_picture(MessagePicture {
+                background: picture,
+                foreground: None,
+            })
+            .with_advisor_events(events[0], events[1]),
+    )
+}
+
 /// Replace each `{parameter:kind}` with that parameter's text of that kind
 /// (empty when the parameter or the kind is missing).
 #[must_use]
@@ -1754,6 +1792,43 @@ pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn an_advice_reads_its_sides_texts_files_under_advice_and_wakes_its_droid() {
+        // FUN_0048b2e0: texts 0x6001 + 3n / 0x6002 + 3n for side 1, else
+        // 0x6801 + 3n / 0x6802 + 3n; background 0x42f / 0x430; +0x28 0x2a;
+        // category FUN_0048b450 0x200 (Advice).
+        let texts: HashMap<u16, String> = [
+            (0x6004, "Victory Conditions".to_owned()),
+            (0x6005, "To defeat the Empire".to_owned()),
+            (0x681f, "Maintenance Points".to_owned()),
+            (0x6820, "Every unit".to_owned()),
+        ]
+        .into_iter()
+        .collect();
+
+        let alliance = agent_advice_message(1, true, 4, &texts).unwrap();
+        assert_eq!(alliance.title.as_deref(), Some("Victory Conditions"));
+        assert_eq!(alliance.text, "To defeat the Empire");
+        assert_eq!(alliance.rail, Some(MessageRail::Advice));
+        assert_eq!(alliance.audience, RailAudience::Alliance);
+        assert_eq!(
+            alliance.picture.map(|picture| picture.background),
+            Some(0x42f)
+        );
+        assert_eq!(alliance.advisor_event, [0x2a, 0]);
+
+        let empire = agent_advice_message(10, false, 4, &texts).unwrap();
+        assert_eq!(empire.title.as_deref(), Some("Maintenance Points"));
+        assert_eq!(empire.audience, RailAudience::Empire);
+        assert_eq!(
+            empire.picture.map(|picture| picture.background),
+            Some(0x430)
+        );
+        assert_eq!(empire.advisor_event, [0, 0x2a]);
+
+        assert!(agent_advice_message(2, true, 4, &texts).is_none());
+    }
 
     #[test]
     fn a_ships_arrival_hands_on_5_and_any_other_units_6() {

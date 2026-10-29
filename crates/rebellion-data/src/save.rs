@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 108;
+pub const SAVE_VERSION: u32 = 109;
 
 /// Current state-fingerprint algorithm version.
 ///
@@ -1565,6 +1565,63 @@ mod tests {
 
         assert!(loaded.player_agent.translate());
         assert_eq!(loaded.player_agent.advisor_state(), (&[0, 40_000, 3][..], true));
+    }
+
+    #[test]
+    fn a_round_trip_keeps_the_agents_advice_list_and_seen_windows() {
+        // v109: FUN_004397a0 saves the agent's +0x148 (the last advice's
+        // sub-tick), +0x150 (the windows seen, the list built) and +0x154
+        // (the advice not yet posted).
+        use rebellion_core::agent_advice::{AdviceRecord, AdviceWindow};
+        let saves_dir = tmp_dir("v109_advice");
+        let mut state = minimal_save_state();
+        state.player_agent = rebellion_core::agent_automation::PlayerAgent::for_new_game(
+            rebellion_core::world::SeedDifficulty::Easy,
+        );
+        let records = [
+            AdviceRecord {
+                number: 1,
+                kind: 7,
+                key: 10,
+            },
+            AdviceRecord {
+                number: 2,
+                kind: 3,
+                key: 120,
+            },
+            AdviceRecord {
+                number: 3,
+                kind: 3,
+                key: 220,
+            },
+            AdviceRecord {
+                number: 4,
+                kind: 1,
+                key: 140,
+            },
+        ];
+        let posted = state
+            .player_agent
+            .advice_window_opened(AdviceWindow::Fleet, 7, &records);
+        assert_eq!(posted.len(), 2);
+        save_slot(&saves_dir, 0, "Advice", &state, &[]).unwrap();
+
+        let (_, mut loaded) = load_slot(&saves_dir, 0).expect("the save should load");
+
+        assert_eq!(
+            loaded.player_agent.advice_entries(),
+            state.player_agent.advice_entries()
+        );
+        // The Fleet window stays seen and the list built; the period runs
+        // from sub-tick 7.
+        assert!(
+            loaded
+                .player_agent
+                .advice_window_opened(AdviceWindow::Fleet, 8, &records)
+                .is_empty()
+        );
+        assert!(loaded.player_agent.advice_check(306, &records).is_empty());
+        assert_eq!(loaded.player_agent.advice_check(307, &records).len(), 1);
     }
 
     #[test]

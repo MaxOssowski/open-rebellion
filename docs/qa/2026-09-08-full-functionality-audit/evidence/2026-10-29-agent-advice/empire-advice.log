@@ -1,0 +1,10 @@
+[agent] advice posted number=1 kind=7 reason=briefing titled=true
+[agent] advice posted number=2 kind=7 reason=briefing titled=true
+[agent] advice posted number=3 kind=7 reason=briefing titled=true
+[agent] advice posted number=4 kind=7 reason=briefing titled=true
+[agent] advice posted number=5 kind=7 reason=briefing titled=true
+[agent] advice posted number=6 kind=7 reason=briefing titled=true
+[agent] advice posted number=7 kind=7 reason=briefing titled=true
+[agent] advice posted number=8 kind=7 reason=briefing titled=true
+[agent] advice posted number=9 kind=7 reason=briefing titled=true
+[interface] destination=message_index category=0x82 status=opened_by_briefing

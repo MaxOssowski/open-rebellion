@@ -244,6 +244,9 @@ pub struct DefensesWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenDefensesWindow>,
     drag: Option<DefensesDrag>,
+    /// A window was created, not raised, since [`Self::take_created`]
+    /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
+    created: bool,
 }
 
 impl Default for DefensesWindowState {
@@ -252,11 +255,18 @@ impl Default for DefensesWindowState {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
             drag: None,
+            created: false,
         }
     }
 }
 
 impl DefensesWindowState {
+    /// Whether a window was created since the last call, which the
+    /// agent's advice hears of (`FUN_0041d2d0`).
+    pub fn take_created(&mut self) -> bool {
+        std::mem::take(&mut self.created)
+    }
+
     /// Open `system`'s Defenses window at a logical point, clamped into the
     /// galaxy view, on the personnel page (`FUN_004a8790` selects tab 1), or
     /// bring its open window to the front: one per system (`FUN_0045aac0`).
@@ -275,6 +285,7 @@ impl DefensesWindowState {
         if self.focus(system) {
             return true;
         }
+        self.created = true;
         self.windows.push(OpenDefensesWindow {
             system,
             logical_position: clamp_window_to_galaxy(
@@ -1694,6 +1705,8 @@ mod tests {
         // subject (FUN_004aa470).
         let (world, system) = world(ControlKind::Controlled(Faction::Alliance));
         let mut state = opened(&world, system);
+        // FUN_0045aac0 tells the agent of a created window only.
+        assert!(state.take_created());
         assert!(state.open(
             &world,
             system,
@@ -1701,6 +1714,7 @@ mod tests {
             CockpitFaction::Alliance,
             scaled()
         ));
+        assert!(!state.take_created());
         assert_eq!(state.window_count(), 1);
         assert!(state.is_open(system));
 

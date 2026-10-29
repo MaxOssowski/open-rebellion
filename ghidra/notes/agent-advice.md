@@ -9,6 +9,10 @@ tags: [agent-menu, advice, difficulty, speed, accelerator]
 
 # Agent Advice menu and flag
 
+> **2026-10-29.** What advice the flag gates (the TEXTSTRA list, the
+> windows' first openings, the 300-sub-tick period) is in
+> `agent-advice-list.md`.
+
 > **Correction (2026-10-06, checked against the decompiles).** A module's
 > state 2 means *suspended*: `FUN_004cc990` (VT[4]) readies only a module
 > whose state is neither 1 nor 2, so a state-2 module never runs, and
@@ -169,8 +173,13 @@ When `param_1 = 0` (restore):
    `FUN_00487eb0(this, +0x58 - 1)`, clear `+0x58`.
 2. If `+0x58 == 0`: nothing saved; no-op.
 
-The `- 1` on restore accounts for the 1-based encoding of the saved speed
-(0 means "no save active"). The guard prevents double-saves and double-restores.
+The guard prevents double-saves and double-restores.
+
+> **Correction (2026-10-29, `FUN_00487ff0.c`, `FUN_00487eb0.c`).** The
+> restore passes `+0x58` itself, with no `- 1`. `+0x54` is the rate index
+> 1..4 (`FUN_00487eb0` maps any other value to 1 at 60): the pause is not a
+> speed index but `FUN_0041d2f0`'s stop, which neither function touches.
+> So the Advice hold changes the rate and leaves a pause in place.
 
 ## Cited decompiles
 

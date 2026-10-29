@@ -673,6 +673,9 @@ fn install_runtime_pack(
     if let Some(legends) = pack.game_files.remove("gid-legends.json") {
         rebellion_data::set_gid_legends_json(&legends);
     }
+    if let Some(advice) = pack.game_files.remove("textstra-advice.json") {
+        rebellion_data::set_agent_advice_json(&advice);
+    }
     rebellion_data::set_message_texts(message_texts);
     rebellion_data::set_string_table(string_table);
     rebellion_render::set_encyclopedia_asset_cache(encyclopedia_assets);
@@ -739,6 +742,9 @@ async fn load_legacy_wasm_assets() {
     rebellion_data::set_message_texts(message_texts);
     if let Ok(legends) = macroquad::file::load_file("data/base/gid-legends.json").await {
         rebellion_data::set_gid_legends_json(&legends);
+    }
+    if let Ok(advice) = macroquad::file::load_file("data/base/textstra-advice.json").await {
+        rebellion_data::set_agent_advice_json(&advice);
     }
     rebellion_data::set_file_cache(files);
 
@@ -937,6 +943,12 @@ async fn main() {
     rebellion_render::tactical_view::set_battle_texts(message_texts.clone());
     // The galaxy view's legend windows (STRATEGY.DLL RCDATA, FUN_004522f0).
     rebellion_render::set_gid_legends(rebellion_data::gid_legends(&gdata_path));
+    // The agent's advice lists, Alliance then Empire (TEXTSTRA RCDATA
+    // 0x6000 / 0x6800, FUN_0048b460).
+    let agent_advice_records = [
+        rebellion_data::agent_advice_records(&gdata_path, true),
+        rebellion_data::agent_advice_records(&gdata_path, false),
+    ];
 
     // The Galactic Encyclopedia is immutable reference data, not campaign
     // state. Rebuild it from the installed DAT/TEXTSTRA source so opening the
@@ -1557,6 +1569,43 @@ async fn main() {
         // DAT_006b14e4); the briefing's day is the opening day's 1 (hyp:
         // the game's +0xc counts from 1; the narration captures play on the
         // opening day, which FUN_004c0a60's next-free test needs above 0).
+        // A window created, not raised, tells the agent (FUN_0045aac0 /
+        // FUN_00429ce0 → FUN_0041d2d0 → FUN_0043a0b0), whose first opening
+        // of each kind posts its advice.
+        //
+        // The agent's periodic check (Class_0065ad70_vt38 → FUN_00439bc0)
+        // compares sub-ticks (FUN_004fcee0). hyp: the panel's update runs
+        // every frame of the galaxy view, so the port checks each frame.
+        {
+            use rebellion_core::agent_advice::AdviceWindow;
+            let alliance = player_faction == MissionFaction::Alliance;
+            let records = &agent_advice_records[usize::from(!alliance)];
+            let now = clock.sub_tick();
+            for (window, created) in [
+                (AdviceWindow::Sector, sector_window_state.take_created()),
+                (AdviceWindow::System, system_window_state.take_created()),
+                (AdviceWindow::Fleet, fleet_window_state.take_created()),
+                (AdviceWindow::Defenses, defenses_window_state.take_created()),
+                (AdviceWindow::Missions, missions_window_state.take_created()),
+            ] {
+                if created {
+                    let posted = player_agent.advice_window_opened(window, now, records);
+                    post_agent_advice(
+                        &posted,
+                        alliance,
+                        clock.tick,
+                        &message_texts,
+                        &mut msg_log,
+                        "window",
+                    );
+                }
+            }
+            if game_mode == GameMode::Galaxy {
+                let posted = player_agent.advice_check(now, records);
+                post_agent_advice(&posted, alliance, clock.tick, &message_texts, &mut msg_log, "period");
+            }
+        }
+
         if game_mode == GameMode::Galaxy {
             if let Some(schedule) = advisor_schedule.as_mut() {
                 let today = u32::try_from(clock.tick).unwrap_or(u32::MAX).saturating_add(1);
@@ -1673,6 +1722,47 @@ async fn main() {
                         },
                         advisor_schedule.as_ref().is_some_and(|schedule| schedule.holds_input())
                     );
+                    // FUN_004c30c0 / FUN_004c0fc0 case 0xd: the Message
+                    // Index (window 0xd) closes (FUN_0042d760); with advice
+                    // on, the agent builds its list (FUN_00439f20) and the
+                    // index opens on Advice (FUN_0041d770(1, 0x82)).
+                    // hyp: destroying the window runs its close
+                    // (FUN_0046a6a0).
+                    if action.kind == 2 && action.code == 0xd {
+                        if let Some(index) = message_index.take() {
+                            apply_message_index_actions(
+                                index.close(),
+                                &mut msg_log,
+                                &mut clock,
+                                &mut advice_saved_speed,
+                            );
+                        }
+                        if player_agent.advice() {
+                            let alliance = player_faction == MissionFaction::Alliance;
+                            let posted = player_agent
+                                .build_advice(&agent_advice_records[usize::from(!alliance)]);
+                            post_agent_advice(
+                                &posted,
+                                alliance,
+                                clock.tick,
+                                &message_texts,
+                                &mut msg_log,
+                                "briefing",
+                            );
+                            let mut index = MessageIndexState::new();
+                            let actions = index.set_category(0x82);
+                            message_index = Some(index);
+                            apply_message_index_actions(
+                                actions,
+                                &mut msg_log,
+                                &mut clock,
+                                &mut advice_saved_speed,
+                            );
+                            macroquad::logging::info!(
+                                "[interface] destination=message_index category=0x82 status=opened_by_briefing"
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -8032,6 +8122,32 @@ fn advisor_messages(
         })
         .collect();
     Some(messages)
+}
+
+/// Post the agent's advice, each as its message (`FUN_0048a590` →
+/// `FUN_0048b2e0`).
+fn post_agent_advice(
+    posted: &[rebellion_core::agent_advice::AdviceEntry],
+    alliance: bool,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+    msg_log: &mut MessageLog,
+    reason: &str,
+) {
+    for entry in posted {
+        let message =
+            rebellion_render::story_messages::agent_advice_message(entry.number, alliance, tick, texts);
+        macroquad::logging::info!(
+            "[agent] advice posted number={} kind={} reason={} titled={}",
+            entry.number,
+            entry.kind,
+            reason,
+            message.is_some()
+        );
+        if let Some(message) = message {
+            msg_log.push(message);
+        }
+    }
 }
 
 /// A briefing action on the galaxy view (`FUN_004c0fc0` / `FUN_004c30c0`):

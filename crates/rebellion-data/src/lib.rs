@@ -12,6 +12,7 @@ use dat_dumper::types::defense_facilities::DefenseFacilitiesFile;
 use dat_dumper::types::entity_table::EntityTableFile;
 use dat_dumper::types::fighters::FightersFile;
 use dat_dumper::types::general_params::GeneralParamsFile;
+use dat_dumper::types::agent_advice;
 use dat_dumper::types::gid_legend;
 use dat_dumper::types::int_table::IntTableFile;
 use dat_dumper::types::major_characters::{CharacterEntry, MajorCharactersFile};
@@ -1055,6 +1056,59 @@ pub fn set_message_texts(texts: HashMap<u16, String>) {
 static WASM_MESSAGE_TEXTS: std::sync::LazyLock<std::sync::Mutex<HashMap<u16, String>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 
+/// The agent's advice records of one side (`FUN_0048b460`: TEXTSTRA
+/// `RT_RCDATA` `0x6000` for the Alliance, `0x6800` for the Empire), in
+/// record order. Native builds read the player's TEXTSTRA.DLL; browser
+/// builds use the records extracted from it at build time
+/// (`textstra-advice.json`). Empty when neither exists.
+#[must_use]
+pub fn agent_advice_records(
+    gdata_path: &Path,
+    alliance: bool,
+) -> Vec<rebellion_core::agent_advice::AdviceRecord> {
+    #[cfg(not(target_arch = "wasm32"))]
+    let tables = {
+        let dll = gdata_path.join("TEXTSTRA.DLL");
+        if dll.exists() {
+            agent_advice::load(&dll).unwrap_or_default()
+        } else {
+            agent_advice::AgentAdviceTables::default()
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    let tables = {
+        let _ = gdata_path;
+        WASM_AGENT_ADVICE.lock().unwrap().clone()
+    };
+    advice_side(&tables, alliance)
+}
+
+fn advice_side(
+    tables: &agent_advice::AgentAdviceTables,
+    alliance: bool,
+) -> Vec<rebellion_core::agent_advice::AdviceRecord> {
+    let side = if alliance { &tables.alliance } else { &tables.empire };
+    side.iter()
+        .map(|record| rebellion_core::agent_advice::AdviceRecord {
+            number: record.number,
+            kind: record.kind(),
+            key: record.key,
+        })
+        .collect()
+}
+
+/// Pre-load the advice records (`textstra-advice.json`) for WASM; a table
+/// that does not parse leaves none.
+#[cfg(target_arch = "wasm32")]
+pub fn set_agent_advice_json(data: &[u8]) {
+    *WASM_AGENT_ADVICE.lock().unwrap() = serde_json::from_slice(data).unwrap_or_default();
+}
+
+#[cfg(target_arch = "wasm32")]
+static WASM_AGENT_ADVICE: std::sync::LazyLock<
+    std::sync::Mutex<agent_advice::AgentAdviceTables>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(agent_advice::AgentAdviceTables::default()));
+
 /// The galaxy view's legend windows (`FUN_004522f0`), by their
 /// STRATEGY.DLL `RT_RCDATA` id, with their texts read from TEXTSTRA's string
 /// table. Native builds read the player's STRATEGY.DLL; browser builds use
@@ -1213,6 +1267,39 @@ mod tests {
             assert_eq!(script.message(briefing).unwrap().entries.len(), 34);
             assert_eq!(script.message(short).unwrap().entries.len(), 3);
         }
+    }
+
+    #[test]
+    #[ignore = "reads the original TEXTSTRA.DLL under data/base"]
+    fn each_side_holds_thirty_one_advice_records_nine_of_kind_seven() {
+        // FUN_0048b460: count 0x1f at 0x6000 / 0x6800; advice 1..9 are
+        // kind 7 with keys 10..90, and advice 31 is kind 5 with key 310.
+        let gdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        for alliance in [true, false] {
+            let records = agent_advice_records(&gdata, alliance);
+            assert_eq!(records.len(), 31);
+            assert!(records[..9].iter().all(|record| record.kind == 7));
+            assert_eq!(records[8].key, 90);
+            assert_eq!((records[30].kind, records[30].key), (5, 310));
+        }
+    }
+
+    #[test]
+    fn a_sides_advice_takes_the_records_kind_nibble() {
+        let tables = agent_advice::AgentAdviceTables {
+            alliance: vec![agent_advice::AgentAdviceRecord {
+                number: 2,
+                kind_byte: 0x17,
+                pad: 0,
+                key: 20,
+            }],
+            empire: Vec::new(),
+        };
+        assert_eq!(
+            advice_side(&tables, true),
+            [rebellion_core::agent_advice::AdviceRecord { number: 2, kind: 7, key: 20 }]
+        );
+        assert!(advice_side(&tables, false).is_empty());
     }
 
     #[test]

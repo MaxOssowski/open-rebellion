@@ -94,6 +94,9 @@ pub struct SectorWindowState {
     gid_markers: std::collections::HashMap<SystemKey, u32>,
     /// The markers the galaxy view drew and their screen centres.
     drawn_gid_markers: Vec<(u32, [f32; 2])>,
+    /// A window was created, not raised, since [`Self::take_created`]
+    /// (`FUN_00429ce0` then calls `FUN_0041d2d0`).
+    created: bool,
 }
 
 impl Default for SectorWindowState {
@@ -104,11 +107,18 @@ impl Default for SectorWindowState {
             backdrop: crate::bmp_cache::resources::strategy::GALAXY_STARFIELD_DIM,
             gid_markers: std::collections::HashMap::new(),
             drawn_gid_markers: Vec::new(),
+            created: false,
         }
     }
 }
 
 impl SectorWindowState {
+    /// Whether a window was created since the last call, which the
+    /// agent's advice hears of (`FUN_0041d2d0`).
+    pub fn take_created(&mut self) -> bool {
+        std::mem::take(&mut self.created)
+    }
+
     /// Show `gid_mode`'s starfield under the windows, the one the galaxy view
     /// paints (`draw_galaxy_backdrop`).
     pub fn set_backdrop(&mut self, gid_mode: crate::cockpit::GidMode) {
@@ -163,6 +173,7 @@ impl SectorWindowState {
         };
         // FUN_00600f90 destroys the window the new one replaces.
         self.windows.retain(|window| window.column != column);
+        self.created = true;
         self.windows.push(OpenSectorWindow {
             sector,
             column,
@@ -2024,11 +2035,16 @@ mod tests {
         let (world, first, second) = fixture_world();
         let mut state = SectorWindowState::default();
         assert!(state.open_for_system(&world, first, CockpitFaction::Alliance));
+        // FUN_00429ce0 tells the agent of a created window only.
+        assert!(state.take_created());
+        assert!(!state.take_created());
         assert!(state.open_for_system(&world, second, CockpitFaction::Alliance));
         assert_eq!(state.window_count(), 2);
         assert_eq!(state.windows[0].column, WindowColumn::Primary);
         assert_eq!(state.windows[1].column, WindowColumn::Secondary);
+        assert!(state.take_created());
         assert!(state.open_for_system(&world, first, CockpitFaction::Alliance));
+        assert!(!state.take_created());
         assert_eq!(state.window_count(), 2);
         assert_eq!(
             state.windows.last().unwrap().sector,

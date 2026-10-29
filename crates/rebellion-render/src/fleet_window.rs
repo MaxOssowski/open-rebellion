@@ -393,6 +393,9 @@ pub struct FleetWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenFleetWindow>,
     drag: Option<ItemDrag>,
+    /// A window was created, not raised, since [`Self::take_created`]
+    /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
+    created: bool,
 }
 
 impl Default for FleetWindowState {
@@ -401,11 +404,18 @@ impl Default for FleetWindowState {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
             drag: None,
+            created: false,
         }
     }
 }
 
 impl FleetWindowState {
+    /// Whether a window was created since the last call, which the
+    /// agent's advice hears of (`FUN_0041d2d0`).
+    pub fn take_created(&mut self) -> bool {
+        std::mem::take(&mut self.created)
+    }
+
     /// Open `system`'s Fleet window at a logical point, clamped into the
     /// galaxy view, or bring its open window to the front: one per system
     /// (`FUN_0045aac0`, id `(system & 0x3ff) << 6 | 4`).
@@ -424,6 +434,7 @@ impl FleetWindowState {
         if self.focus(system) {
             return true;
         }
+        self.created = true;
         self.windows.push(OpenFleetWindow {
             system,
             logical_position: clamp_window_to_galaxy(
@@ -2882,7 +2893,10 @@ pub(crate) mod tests {
             CockpitFaction::Alliance,
             layout()
         ));
+        // FUN_0045aac0 tells the agent of a created window only.
+        assert!(state.take_created());
         assert!(state.open(&world, system, (10, 10), CockpitFaction::Alliance, layout()));
+        assert!(!state.take_created());
 
         assert_eq!(state.window_count(), 1);
         assert_eq!(state.windows[0].logical_position, (405, 176));

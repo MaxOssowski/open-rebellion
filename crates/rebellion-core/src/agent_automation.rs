@@ -39,6 +39,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::agent_advice::{AdviceEntry, AdviceRecord, AdviceWindow, AgentAdvice};
 use crate::economy::{EconomyState, SystemEconomy};
 use crate::ids::{DatId, SystemKey};
 use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState};
@@ -222,10 +223,13 @@ pub struct PlayerAgent {
     /// Agent Advice (menu item 0x11e): `DAT_006b28b0` bit `0x8000` clear.
     /// `FUN_00439320` sets the bit, turning advice off, unless the game's
     /// mode (`FUN_00401b00`, `DAT_006be3b8 + 0x104`) is 1 or 4; the manual
-    /// (p. 22) has advice on at Easy only. hyp: mode 1 is Easy. port: the
-    /// proactive advice it gates (`FUN_0043a0b0`, `FUN_00439bc0`, the
-    /// agent's `+0x154` notifications) is not ported, so it gates nothing yet.
+    /// (p. 22) has advice on at Easy only. hyp: mode 1 is Easy. It gates
+    /// the agent's advice ([`Self::advice_window_opened`],
+    /// [`Self::advice_daily`]).
     advice: bool,
+    /// The agent's advice list and its state (`+0x148`, `+0x150`,
+    /// `+0x154`), saved with the agent (`FUN_004397a0`).
+    advice_list: AgentAdvice,
 
     /// Translate Counterpart (menu item 0x11b): `DAT_006b28b0` bit `0x1000`,
     /// which both advisor constructors set (`FUN_004c27f0`, `FUN_004c0710`)
@@ -252,6 +256,7 @@ impl Default for PlayerAgent {
             advisor_flags: AdvisorFlags::default(),
             orders_issued: 0,
             advice: false,
+            advice_list: AgentAdvice::default(),
             translate: false,
             advisor_enabled: false,
             advisor_last_day: Vec::new(),
@@ -317,6 +322,43 @@ impl PlayerAgent {
     pub fn toggle_advice(&mut self) -> bool {
         self.advice = !self.advice;
         self.advice
+    }
+
+    /// The advice not yet posted, in list order.
+    #[must_use]
+    pub fn advice_entries(&self) -> &[AdviceEntry] {
+        self.advice_list.entries()
+    }
+
+    /// Build the advice list, posting its kind-7 advice (`FUN_00439f20`).
+    /// The briefing's closing action calls it with advice on
+    /// (`FUN_004c30c0` / `FUN_004c0fc0` case `0xd`).
+    pub fn build_advice(&mut self, records: &[AdviceRecord]) -> Vec<AdviceEntry> {
+        self.advice_list.build(records)
+    }
+
+    /// A window opened for the first time, with advice on
+    /// (`FUN_0043a0b0`). hyp: the agent is active (`+0x10`), as the Agent
+    /// menu takes it.
+    pub fn advice_window_opened(
+        &mut self,
+        window: AdviceWindow,
+        now: u64,
+        records: &[AdviceRecord],
+    ) -> Vec<AdviceEntry> {
+        if !self.advice {
+            return Vec::new();
+        }
+        self.advice_list.window_opened(window, now, records)
+    }
+
+    /// The periodic advice check at sub-tick `now`, with advice on
+    /// (`FUN_00439bc0`).
+    pub fn advice_check(&mut self, now: u64, records: &[AdviceRecord]) -> Vec<AdviceEntry> {
+        if !self.advice {
+            return Vec::new();
+        }
+        self.advice_list.check(now, records)
     }
 
     // -----------------------------------------------------------------
@@ -1149,6 +1191,51 @@ mod tests {
 
     /// Toggling a suspended module turns it on (Suspended → Disabled).
     /// FUN_00439d60: state 2 → state 0.
+    #[test]
+    fn agent_advice_posts_only_while_the_menu_item_is_on() {
+        // FUN_0043a0b0 and FUN_00439bc0 return at once with DAT_006b28b0
+        // bit 0x8000 set; FUN_00439f20 (the briefing's 0xd) is gated by
+        // its caller.
+        use crate::agent_advice::{AdviceRecord, AdviceWindow};
+        use crate::world::SeedDifficulty;
+        let records = [
+            AdviceRecord {
+                number: 1,
+                kind: 7,
+                key: 10,
+            },
+            AdviceRecord {
+                number: 2,
+                kind: 3,
+                key: 20,
+            },
+            AdviceRecord {
+                number: 3,
+                kind: 1,
+                key: 30,
+            },
+        ];
+        let mut off = PlayerAgent::for_new_game(SeedDifficulty::Medium);
+        assert!(
+            off.advice_window_opened(AdviceWindow::Fleet, 0, &records)
+                .is_empty()
+        );
+        assert!(off.advice_check(300, &records).is_empty());
+        assert_eq!(off.advice_entries().len(), 0);
+
+        let mut on = PlayerAgent::for_new_game(SeedDifficulty::Easy);
+        assert_eq!(on.build_advice(&records).len(), 1);
+        assert_eq!(on.advice_entries().len(), 2);
+        assert_eq!(
+            on.advice_window_opened(AdviceWindow::Fleet, 5, &records)
+                .len(),
+            1
+        );
+        assert!(on.advice_check(304, &records).is_empty());
+        assert_eq!(on.advice_check(305, &records).len(), 1);
+        assert!(on.advice_entries().is_empty());
+    }
+
     #[test]
     fn agent_advice_starts_on_at_easy_only_and_its_menu_item_flips_it() {
         // FUN_00439320: bit 0x8000 (advice off) unless the mode is 1;
