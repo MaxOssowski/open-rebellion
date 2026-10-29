@@ -134,6 +134,19 @@ async function run(browser, base, faction) {
         await page.keyboard.press("Escape");
         await page.waitForTimeout(400);
       }
+      // The Fleet window: F3, the first row, then the rail's Display (0xc9,
+      // fleet-finder.md: Alliance (423, 93), Empire (426, 89)).
+      const [fx, fy] = ORIGINS[faction.name];
+      const display = faction.name === "empire" ? [426 + 22, 89 + 20] : [423 + 16, 93 + 15];
+      await page.keyboard.down("F3");
+      await frames(page);
+      await page.keyboard.up("F3");
+      await page.waitForTimeout(500);
+      await click(page, [fx + 100, fy + 138 + 10]);
+      await click(page, [fx + display[0], fy + display[1]]);
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(800);
+      await shot("fleet-window");
       return { faction: faction.name, status: "pass", shots };
     }
     await page.keyboard.down("F7");
