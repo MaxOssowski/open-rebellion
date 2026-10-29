@@ -106,6 +106,10 @@ pub struct AdvisorSchedule {
     /// The quip's roll (`FUN_005f5700(12)`). hyp: the original's generator
     /// is the interface's; a small xorshift stands in.
     roll: u32,
+    /// `+0x174`/`+0x178`: the last refused order's status, and `+0x17c`
+    /// whether it was refused twice running.
+    last_refusal: Option<(u32, u32)>,
+    refusal_repeated: bool,
 }
 
 /// The reaction bits of `DAT_006b28b0` the advisor answers
@@ -185,7 +189,53 @@ impl AdvisorSchedule {
             menu_openings: 0,
             last_played: 0,
             roll: 0x2545_f491,
+            last_refusal: None,
+            refusal_repeated: false,
         }
+    }
+
+    /// An order the side's validator refused (`FUN_00487c90` → slot `+0xc`,
+    /// `FUN_004c2940` Alliance, `FUN_004c0870` Empire): `status` is its two
+    /// words. The same status as the last one schedules the first of two
+    /// messages, and once more the second, then forgets it
+    /// (`FUN_004c43d0`, `FUN_004c21d0`). Otherwise a team left empty with
+    /// decoys and no target (`0x40`/`0x91`, `decoys_without_target`) has its
+    /// own message, and any other refusal one of two at random
+    /// (`FUN_004c4390`, `FUN_004c2230`). Each stays due 10 days.
+    pub fn refused(&mut self, status: (u32, u32), decoys_without_target: bool, today: u32) {
+        let (same, decoy, generic) = match self.faction {
+            AdvisorFaction::Alliance => ((0x0f, 0x10), 0x14, (0x11, 0x12)),
+            AdvisorFaction::Empire => ((0x10, 0x11), 0x15, (0x12, 0x13)),
+        };
+        let message = if self.last_refusal == Some(status) {
+            if self.refusal_repeated {
+                self.refusal_repeated = false;
+                self.last_refusal = None;
+                same.1
+            } else {
+                self.refusal_repeated = true;
+                same.0
+            }
+        } else {
+            self.last_refusal = Some(status);
+            self.refusal_repeated = false;
+            if decoys_without_target && status == (0x40, 0x91) {
+                decoy
+            } else if self.next_roll() % 2 == 0 {
+                generic.0
+            } else {
+                generic.1
+            }
+        };
+        self.last_day[message as usize] = today + 10;
+    }
+
+    /// The port's stand-in for the interface's generator (xorshift32).
+    fn next_roll(&mut self) -> u32 {
+        self.roll ^= self.roll << 13;
+        self.roll ^= self.roll >> 17;
+        self.roll ^= self.roll << 5;
+        self.roll
     }
 
     /// Reaction bits to answer ([`reaction`]): the agent's toggles, or the
@@ -237,11 +287,7 @@ impl AdvisorSchedule {
         }
         if self.flags & reaction::QUIP != 0 {
             self.flags &= !reaction::QUIP;
-            // xorshift32.
-            self.roll ^= self.roll << 13;
-            self.roll ^= self.roll >> 17;
-            self.roll ^= self.roll << 5;
-            let pick = self.roll % 12;
+            let pick = self.next_roll() % 12;
             if pick < 6 {
                 let (first, days) = match self.faction {
                     AdvisorFaction::Alliance => (0x50, ALWAYS),
@@ -946,6 +992,59 @@ mod tests {
             "{events:?}"
         );
         assert_eq!(schedule.last_played, 2);
+    }
+
+    #[test]
+    fn a_refusal_schedules_its_reaction_and_a_repeat_the_two_after_it() {
+        // FUN_004c2940 / FUN_004c0870: the same status twice running gives
+        // the first of +0x3c/+0x40 (Alliance) or +0x40/+0x44 (Empire), then
+        // the second and forgets it; an empty team with decoys and no target
+        // +0x50 / +0x54; any other refusal one of +0x44/+0x48 or
+        // +0x48/+0x4c. Ten days each.
+        for (faction, same, decoy, generic) in [
+            (AdvisorFaction::Alliance, (0x0f, 0x10), 0x14, [0x11, 0x12]),
+            (AdvisorFaction::Empire, (0x10, 0x11), 0x15, [0x12, 0x13]),
+        ] {
+            let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+            let due = |schedule: &AdvisorSchedule| {
+                schedule.last_day.iter().position(|&day| day != 0 && day != ALWAYS)
+            };
+            let clear = |schedule: &mut AdvisorSchedule| {
+                schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            };
+            clear(&mut schedule);
+            schedule.refused((0x40, 0x01), false, 4);
+            let first = due(&schedule).unwrap();
+            // The port's generator's first roll from its seed is even.
+            assert_eq!(first, generic[0], "{faction:?} {first:#x}");
+            assert_eq!(schedule.last_day[first], 14);
+            clear(&mut schedule);
+            schedule.refused((0x40, 0x01), false, 4);
+            assert_eq!(due(&schedule), Some(same.0));
+            clear(&mut schedule);
+            schedule.refused((0x40, 0x01), false, 4);
+            assert_eq!(due(&schedule), Some(same.1));
+            // Forgotten: the next one is a fresh refusal again.
+            clear(&mut schedule);
+            schedule.refused((0x40, 0x01), false, 4);
+            assert!(generic.contains(&due(&schedule).unwrap()));
+            clear(&mut schedule);
+            schedule.refused((0x40, 0x91), true, 4);
+            assert_eq!(due(&schedule), Some(decoy));
+            // Decoys matter only for 0x40/0x91.
+            clear(&mut schedule);
+            schedule.refused((0x40, 0x28), true, 4);
+            assert!(generic.contains(&due(&schedule).unwrap()));
+        }
+        // Both generic messages come up.
+        let mut schedule = AdvisorSchedule::new_game(AdvisorFaction::Alliance, HashMap::new());
+        let mut seen = std::collections::BTreeSet::new();
+        for code in 0..8 {
+            schedule.last_day.iter_mut().for_each(|day| *day = 0);
+            schedule.refused((0x40, code), false, 1);
+            seen.insert(schedule.last_day.iter().position(|&day| day != 0).unwrap());
+        }
+        assert_eq!(seen.into_iter().collect::<Vec<_>>(), [0x11, 0x12]);
     }
 
     #[test]

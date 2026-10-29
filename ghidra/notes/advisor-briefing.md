@@ -330,6 +330,11 @@ the agent active again) and the bits are masked to `0xc000`.
 holds one sprite-DLL record. Ported 2026-10-29 but `0x1`, `0x8000000` and
 `0x4000000`.
 
+A refused order reaches the same table through slot `+0xc`
+(`FUN_004c2940`, `FUN_004c0870`), ten days ahead: messages `0xf`..`0x14`
+(Alliance) or `0x10`..`0x15` (Empire), in `mission-dialog.md`, "Refusal".
+Ported 2026-10-29.
+
 ## Open
 
 - Action code `0xa`, kind 3, `FUN_0041dbe0` (code `0xb`) and

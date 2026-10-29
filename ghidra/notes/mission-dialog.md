@@ -157,8 +157,17 @@ one of two slots with `FUN_0041cd80(2)`. Which clip and voice line each slot
 plays is not traced; that belongs to the droid advisors' authored behavior
 (audit P34).
 
-port: until P34 plays these reactions, the dispatch writes a message-log line
-for each refusal (`apply_panel_action`, `PanelAction::DispatchMission`).
+Each slot is the message of its index in the side's `.SPT` (`+0x3c` is
+message `0xf`), one sprite-DLL record each: C3POACT `0xf`..`0x14` hold
+10110, 10111, 10201..10203 and 10212; IMP22ACT `0x10`..`0x15` hold 11111,
+11112, 11201..11203 and 11212. The schedule plays them like any other
+reaction (`advisor-briefing.md`, "The reactions").
+
+Ported 2026-10-29 (`AdvisorSchedule::refused`, the app's `refusal_status`).
+hyp: `FUN_00522b30`'s status word is not read; the port sends `0x40`/`0x91`
+without the decoy reaction. hyp: `FUN_0041cd80(2)` is the interface's
+generator; the port's xorshift stands in. port: a game without the
+advisor's messages writes a message-log line instead.
 
 ## Ported (F-019 phase 5b)
 
@@ -211,8 +220,6 @@ and checks the second page.
 
 - `FUN_00606980`'s placement, and `FUN_0060f640`'s scroll bar.
 - `FUN_0060c970` and whether a selection closes the drop-down.
-- The reader of the advisor's `+0x168` table and the clip each refusal slot
-  plays (P34).
 
 ## Supporting decompiles
 

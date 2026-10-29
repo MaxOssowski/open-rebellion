@@ -7329,6 +7329,7 @@ async fn main() {
                     } else {
                         &mut fog_empire_state
                     };
+                    let mut refusal = None;
                     apply_panel_action(
                         action,
                         &mut world,
@@ -7351,6 +7352,7 @@ async fn main() {
                         &mut mod_runtime,
                         &message_texts,
                         &mut assault_summary_state,
+                        &mut refusal,
                         #[cfg(not(target_arch = "wasm32"))]
                         &mut audio_engine,
                         #[cfg(not(target_arch = "wasm32"))]
@@ -7358,6 +7360,28 @@ async fn main() {
                         #[cfg(not(target_arch = "wasm32"))]
                         &sounds_dir,
                     );
+                    // The advisor reacts to a refused order; without its
+                    // messages the port's line stands in.
+                    if let Some(refused) = refusal.take() {
+                        if let Some(schedule) = advisor_schedule.as_mut() {
+                            let today = u32::try_from(clock.tick)
+                                .unwrap_or(u32::MAX)
+                                .saturating_add(1);
+                            schedule.refused(refused.status, refused.decoys_without_target, today);
+                            macroquad::logging::info!(
+                                "[advisor] reaction refusal status={:#x}/{:#x} decoys={}",
+                                refused.status.0,
+                                refused.status.1,
+                                refused.decoys_without_target
+                            );
+                        } else {
+                            msg_log.push(GameMessage::new(
+                                clock.tick,
+                                refused.text,
+                                MessageCategory::Mission,
+                            ));
+                        }
+                    }
                 }
             }
         }
@@ -8456,6 +8480,63 @@ fn apply_agent_command(
     clippy::cast_precision_loss,
     reason = "Retain the existing simulation rounding, saturation and fixed-width arithmetic semantics."
 )]
+/// An order the validator refused (`FUN_00487c90`): its two status words,
+/// whether its team was left empty with decoys and no target, and the
+/// port's line for a game without the advisor's messages.
+struct RefusedOrder {
+    status: (u32, u32),
+    decoys_without_target: bool,
+    text: String,
+}
+
+/// A refused mission's two status words and whether the original's decoy
+/// reaction applies (`FUN_004c2940`, `FUN_004c0870`: `0x40`/`0x91` with no
+/// target object and a decoy list). The validators' words: `FUN_0054bb90`'s
+/// `0x40`/`0x91`, `FUN_0056a110`'s `0x40`/`0x28` (and `FUN_005744c0`'s
+/// `0x29`), `FUN_00583320`'s `0x40`/`0x01`. hyp: `FUN_00522b30`'s word is
+/// not read; `0x40`/`0x91` stands in, without the decoy reaction.
+fn refusal_status(
+    refused: rebellion_core::missions::MissionRefusal,
+    has_target: bool,
+    has_decoys: bool,
+) -> ((u32, u32), bool) {
+    use rebellion_core::missions::MissionRefusal;
+    match refused {
+        MissionRefusal::EmptyTeam => ((0x40, 0x91), !has_target && has_decoys),
+        MissionRefusal::MemberUnavailable(_) => ((0x40, 0x91), false),
+        MissionRefusal::TargetUnavailable => ((0x40, 0x28), false),
+        MissionRefusal::MembersNotAllowed => ((0x40, 0x01), false),
+    }
+}
+
+#[cfg(test)]
+mod refusal_status_tests {
+    use super::refusal_status;
+    use rebellion_core::missions::{MissionMember, MissionRefusal};
+
+    #[test]
+    fn only_an_emptied_team_with_decoys_and_no_target_takes_the_decoy_reaction() {
+        // FUN_004c2940 / FUN_004c0870 (mission-dialog.md, "Refusal").
+        let empty = MissionRefusal::EmptyTeam;
+        assert_eq!(refusal_status(empty, false, true), ((0x40, 0x91), true));
+        assert_eq!(refusal_status(empty, true, true), ((0x40, 0x91), false));
+        assert_eq!(refusal_status(empty, false, false), ((0x40, 0x91), false));
+        let member = MissionMember::Character(Default::default());
+        assert_eq!(
+            refusal_status(MissionRefusal::MemberUnavailable(member), false, true),
+            ((0x40, 0x91), false)
+        );
+        assert_eq!(
+            refusal_status(MissionRefusal::TargetUnavailable, false, true),
+            ((0x40, 0x28), false)
+        );
+        assert_eq!(
+            refusal_status(MissionRefusal::MembersNotAllowed, false, true),
+            ((0x40, 0x01), false)
+        );
+    }
+}
+
 fn apply_panel_action(
     action: PanelAction,
     world: &mut GameWorld,
@@ -8478,6 +8559,7 @@ fn apply_panel_action(
     mod_runtime: &mut rebellion_data::mods::ModRuntime,
     message_texts: &std::collections::HashMap<u16, String>,
     assault_summaries: &mut rebellion_render::assault_summary::AssaultSummaryState,
+    refusal: &mut Option<RefusedOrder>,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
     #[cfg(not(target_arch = "wasm32"))] audio_vol: &AudioVolumeState,
     #[cfg(not(target_arch = "wasm32"))] _sounds_dir: &Path,
@@ -8761,11 +8843,15 @@ fn apply_panel_action(
                 target_object,
                 tick,
             };
-            if let Err(refusal) = mission_state.dispatch_guarded(request, world) {
-                // port: FUN_00487c90 shows no text; the side's advisor
-                // schedules a reaction (`mission-dialog.md`, "Refusal"). These
-                // lines stand in until the advisor plays it (audit P34).
-                let text = match refusal {
+            let has_target = request.target_character.is_some() || request.target_object.is_some();
+            let has_decoys = !request.decoys.is_empty();
+            if let Err(refused) = mission_state.dispatch_guarded(request, world) {
+                // FUN_00487c90 shows no text; the side's advisor schedules a
+                // reaction (`mission-dialog.md`, "Refusal"). The line is the
+                // port's, for a game without the advisor's messages.
+                let (status, decoys_without_target) =
+                    refusal_status(refused, has_target, has_decoys);
+                let text = match refused {
                     rebellion_core::missions::MissionRefusal::EmptyTeam => {
                         format!("{char_name} is a prisoner and cannot lead a mission")
                     }
@@ -8779,7 +8865,11 @@ fn apply_panel_action(
                         format!("{char_name} cannot undertake this mission")
                     }
                 };
-                msg_log.push(GameMessage::new(clock.tick, text, MessageCategory::Mission));
+                *refusal = Some(RefusedOrder {
+                    status,
+                    decoys_without_target,
+                    text,
+                });
                 return;
             }
             let sys_name = world
