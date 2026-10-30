@@ -334,6 +334,22 @@ async function run(browser, base, faction) {
         await probe(label, [windowAt[0] + x + 16, windowAt[1] + 35], null);
       }
 
+      // The sector window's status tracks (§7a, FUN_00459e30) in the
+      // quadrant fixture (code 50), under the player's system in uprising:
+      // energy and raw materials name their slots in use (FUN_0045c240,
+      // FUN_0045c450; A0 tooltip/132 "Energy Consumption 8/10"), support
+      // its label (134). The tracks start 39, 43 and 47 rows below the
+      // planet's top.
+      await page.goto(`${base}?fixture-code=${50 | (faction.byte << 8)}`);
+      await page.waitForFunction(() => Boolean(window.__openRebellionInterfaceQuadrantSetup), null,
+        { timeout: 15_000 });
+      const quadrants = await page.evaluate(() => window.__openRebellionInterfaceQuadrantSetup);
+      assert.ok(quadrants.uprising, "the fixture reports no planet in uprising");
+      const [planetX, planetY] = quadrants.uprising;
+      for (const [label, dy] of [["track-energy", 40], ["track-raw", 44], ["track-support", 48]]) {
+        await probe(label, [Math.round(planetX + 2), Math.round(planetY + dy)], null);
+      }
+
       // The Fleet window's tabs (§7b, FUN_004a4b10) in the fleet-load
       // fixture (code 48): the sector window's fleet icon opens it, and the
       // fleet chosen enables its tabs. A0 tooltip/142..145 put each tip at

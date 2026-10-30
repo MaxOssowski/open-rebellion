@@ -247,20 +247,29 @@ pub fn window_tool(
     string: u16,
     enabled: bool,
 ) {
+    if window_control_hovered(ui, rect, enabled) {
+        if let Some(text) = self::string(string) {
+            tool(ui.ctx(), ui.id().with(("tooltip", id)), &text);
+        }
+    }
+}
+
+/// [`window_tool`] with a text made at run time (`TTM_UPDATETIPTEXT`).
+pub fn window_tool_text(ui: &egui::Ui, rect: egui::Rect, id: impl std::hash::Hash, text: &str) {
+    if window_control_hovered(ui, rect, true) {
+        tool(ui.ctx(), ui.id().with(("tooltip", id)), text);
+    }
+}
+
+fn window_control_hovered(ui: &egui::Ui, rect: egui::Rect, enabled: bool) -> bool {
     let ctx = ui.ctx();
     let Some(pointer) = ctx.input(|input| input.pointer.latest_pos()) else {
-        return;
+        return false;
     };
-    if !enabled
-        || !ui.is_enabled()
-        || !pt_in_rect(rect, pointer)
-        || ctx.layer_id_at(pointer) != Some(ui.layer_id())
-    {
-        return;
-    }
-    if let Some(text) = self::string(string) {
-        tool(ctx, ui.id().with(("tooltip", id)), &text);
-    }
+    enabled
+        && ui.is_enabled()
+        && pt_in_rect(rect, pointer)
+        && ctx.layer_id_at(pointer) == Some(ui.layer_id())
 }
 
 /// Run the timers on the control the last frame registered and draw the tip
@@ -336,6 +345,11 @@ pub(crate) mod tests {
         (0x173c, "Legend"),
         (0x8011, "Popular Support Messages"),
         (0x8015, "Chat Messages"),
+        (0x1821, "Popular Support"),
+        (0x1822, "Energy Consumption"),
+        (0x1823, "Raw Materials"),
+        (0x1824, " "),
+        (0x1825, "/"),
     ];
 
     fn id(n: u32) -> egui::Id {
@@ -733,6 +747,38 @@ pub(crate) mod tests {
         assert_eq!(run(inside, false, true, false), None);
         assert_eq!(run(inside, true, false, false), None);
         assert_eq!(run(inside, true, true, true), None);
+    }
+
+    #[test]
+    fn a_window_control_can_tip_a_text_made_at_run_time() {
+        // TTM_UPDATETIPTEXT (FUN_0045c240: "Energy Consumption 8/10").
+        let run = |pointer: egui::Pos2| {
+            let shapes = frames(
+                &egui::Context::default(),
+                pointer,
+                &[0.0, 0.1, 0.2, 0.3, 0.9],
+                egui::Pos2::ZERO,
+                1.0,
+                |ctx| {
+                    egui::Area::new(egui::Id::new("window"))
+                        .fixed_pos(egui::pos2(0.0, 0.0))
+                        .show(ctx, |ui| {
+                            ui.allocate_exact_size(egui::vec2(300.0, 300.0), egui::Sense::hover());
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(100.0, 100.0),
+                                egui::vec2(30.0, 3.0),
+                            );
+                            window_tool_text(ui, rect, "track", "Energy Consumption 8/10");
+                        });
+                },
+            );
+            tip_shapes(&shapes).map(|(_, _, text)| text)
+        };
+        assert_eq!(
+            run(egui::pos2(110.0, 101.0)).as_deref(),
+            Some("Energy Consumption 8/10")
+        );
+        assert_eq!(run(egui::pos2(110.0, 103.0)), None);
     }
 
     #[test]

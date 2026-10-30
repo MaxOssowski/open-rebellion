@@ -895,14 +895,28 @@ fn draw_sector_window(
                 if shows_alliance_headquarters(world, fog, player, *system_key) {
                     headquarters.push(planet_rect);
                 }
-                for ((x, y, width, height), color) in status_tracks(
-                    planet_x,
-                    planet_y,
-                    &StatusTrackValues::of(world, system, player),
-                    player,
-                )
-                .into_iter()
-                .filter(|&((_, row, _, _), _)| track_shown(system, row - planet_y))
+                let track_values = StatusTrackValues::of(world, system, player);
+                for (row, (x, y, width, height), text) in track_tooltips(&track_values) {
+                    if track_shown(system, row) {
+                        crate::win_tooltip::window_tool_text(
+                            ui,
+                            logical_rect(
+                                window_rect,
+                                layout.scale,
+                                planet_x + x,
+                                planet_y + y,
+                                width,
+                                height,
+                            ),
+                            (*system_key, row.to_bits()),
+                            &text,
+                        );
+                    }
+                }
+                for ((x, y, width, height), color) in
+                    status_tracks(planet_x, planet_y, &track_values, player)
+                        .into_iter()
+                        .filter(|&((_, row, _, _), _)| track_shown(system, row - planet_y))
                 {
                     ui.painter().rect_filled(
                         logical_rect(window_rect, layout.scale, x, y, width, height),
@@ -1503,6 +1517,42 @@ impl StatusTrackValues {
     }
 }
 
+/// The status tracks' tooltips (`FUN_00459e30`, TEXTSTRA), each with its
+/// row and rectangle from the planet's top left: energy 0x1822 "Energy
+/// Consumption" and raw materials 0x1823 "Raw Materials", which
+/// `FUN_0045c240` / `FUN_0045c450` complete with " used/slots" (0x1824,
+/// 0x1825; A0 tooltip/132 "Energy Consumption 8/10" over 8 white slots of
+/// 10, 133 "Raw Materials 2/8"), each 3 pixels a slot; popular support
+/// 0x1821 "Popular Support" (134) across the planet's 37 pixels.
+fn track_tooltips(values: &StatusTrackValues) -> Vec<(f32, (f32, f32, f32, f32), String)> {
+    let string = |id| crate::win_tooltip::string(id).unwrap_or_default();
+    let (space, slash) = (string(0x1824), string(0x1825));
+    let slots = |label: u16, (total, used): (u32, u32)| {
+        format!("{}{space}{used}{slash}{total}", string(label))
+    };
+    #[expect(clippy::cast_precision_loss, reason = "Slot counts are small.")]
+    let width = |total: u32| 3.0 * total as f32;
+    let mut tips = vec![
+        (
+            39.0,
+            (0.0, 39.0, width(values.energy.0), 3.0),
+            slots(0x1822, values.energy),
+        ),
+        (
+            43.0,
+            (0.0, 43.0, width(values.raw_materials.0), 3.0),
+            slots(0x1823, values.raw_materials),
+        ),
+        (
+            SUPPORT_TRACK_ROW,
+            (0.0, SUPPORT_TRACK_ROW, 37.0, 3.0),
+            string(0x1821),
+        ),
+    ];
+    tips.retain(|(_, (_, _, width, _), text)| *width > 0.0 && !text.is_empty());
+    tips
+}
+
 /// Whether the status track `row` rows below the planet shows. The tracks
 /// are created hidden (`FUN_00459e30` clears their visible bit) and shown
 /// by their refresh:
@@ -1606,6 +1656,42 @@ fn paint_selection_brackets(painter: &egui::Painter, rect: egui::Rect, scale: f3
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_track_tips_its_label_and_count() {
+        // FUN_0045c240 / FUN_0045c450: label, 0x1824 " ", used, 0x1825 "/",
+        // slots (A0 tooltip/132, 133); 0x1821 for support (134).
+        crate::win_tooltip::set_strings(
+            crate::win_tooltip::tests::TEST_STRINGS
+                .iter()
+                .map(|(id, text)| (*id, (*text).to_owned()))
+                .collect(),
+        );
+        let values = StatusTrackValues {
+            energy: (10, 8),
+            raw_materials: (8, 2),
+            support: 40,
+        };
+        assert_eq!(
+            track_tooltips(&values),
+            vec![
+                (
+                    39.0,
+                    (0.0, 39.0, 30.0, 3.0),
+                    "Energy Consumption 8/10".to_owned()
+                ),
+                (43.0, (0.0, 43.0, 24.0, 3.0), "Raw Materials 2/8".to_owned()),
+                (47.0, (0.0, 47.0, 37.0, 3.0), "Popular Support".to_owned()),
+            ]
+        );
+        // A track with no slots has no tool.
+        let empty = StatusTrackValues {
+            energy: (0, 0),
+            raw_materials: (3, 0),
+            support: 0,
+        };
+        assert_eq!(track_tooltips(&empty).len(), 2);
+    }
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::world::{ControlKind, Sector, System};

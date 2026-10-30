@@ -88,6 +88,16 @@ pub enum MissionsTab {
 }
 
 impl MissionsTab {
+    /// The tab's tooltip (`FUN_0049f540`, TEXTSTRA): 0x8500 "Agents",
+    /// 0x8501 "Decoys".
+    #[must_use]
+    pub const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::Agents => 0x8500,
+            Self::Decoys => 0x8501,
+        }
+    }
+
     pub const ALL: [Self; 2] = [Self::Agents, Self::Decoys];
 
     /// The button's x in the strip (`FUN_0049f540`).
@@ -1249,6 +1259,7 @@ fn draw_missions_window(
                         ui.id().with((window.system, tab)),
                         egui::Sense::click(),
                     );
+                    crate::win_tooltip::response_tool(&response, rect, tab.tooltip_string());
                     if exact_clicked(&response, rect) {
                         result.tab = Some(tab);
                         result.focus = true;
@@ -1371,6 +1382,15 @@ fn draw_missions_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_0049f540 L288, L305.
+        assert_eq!(
+            super::MissionsTab::ALL.map(super::MissionsTab::tooltip_string),
+            [0x8500, 0x8501]
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use crate::fleet_window::en_route_mark;
     use crate::fleet_window::tests::PAINTED;

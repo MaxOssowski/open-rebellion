@@ -3701,7 +3701,7 @@
         "REF-MANUAL"
       ],
       "manual_pages": [],
-      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality, no tip on a disabled control). The command center's top strip, primary controls, Game Controls, rail and legend button, the four Finders, the Message Index, the Encyclopedia and the Status window register their tools; the other windows' tools are pending (inventory in ghidra/notes/tooltips.md, about 262 tools in 33 windows).",
+      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality, no tip on a disabled control). The command center, the four Finders, the Message Index, the Encyclopedia, the Status, system, fleet, defenses and missions windows, the sector tracks, Build Selection, the move confirmation and the mission dialog register their tools; the shell (main menu, setup, Game Options, message boxes), the battle windows and the tactical panels are pending (inventory in ghidra/notes/tooltips.md).",
       "finding_ids": [],
       "reverse_engineering_package_ids": [],
       "acceptance_cells": [
@@ -3929,13 +3929,15 @@
         {
           "id": "CMD-11-C018",
           "requirement": "Sector window bars",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
+            "crates/rebellion-render/src/sector_window.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7a, runtime text 'label n/m') lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00459e30's track tips, completed at run time by FUN_0045c240 / FUN_0045c450 as 'label used/slots': A0 tooltip/132..134 (Energy Consumption 8/10, Raw Materials 2/8, Popular Support) at the pointer plus (0, 21); tooltip.mjs (quadrant fixture, Linux) shows all three there; a unit test checks the texts.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C019",
@@ -3953,23 +3955,27 @@
         {
           "id": "CMD-11-C020",
           "requirement": "System Defenses window",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-defenses-missions/",
+            "crates/rebellion-render/src/defenses_window.rs",
+            "tools/interface-parity/sector-quadrants.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7c) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_004a8790's five tab tips (0x1744..0x1740): A0 tooltip/153..157 (Coruscant, Empire) at the pointer plus (0, 21); sector-quadrants.mjs finds all five there on both sides (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C021",
           "requirement": "Missions window",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-defenses-missions/",
+            "crates/rebellion-render/src/missions_window.rs",
+            "tools/interface-parity/sector-quadrants.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7d) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_0049f540's Agents (0x8500) and Decoys (0x8501) tips show at the shared tip's A0 placement in sector-quadrants.mjs on both sides (Linux); no A0 capture of the Missions window's tips (the VM save had no mission at Coruscant, tooltip/158).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3988,34 +3994,38 @@
         {
           "id": "CMD-11-C023",
           "requirement": "Build Selection",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
+            "crates/rebellion-render/src/build_selection.rs",
+            "tools/interface-parity/build-selection.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7f) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_00437f80 / FUN_00438620's seven tips (0x190c, 0x1906..0x190b) show at the shared placement in build-selection.mjs (Linux), none on the close box; no A0 capture of Build Selection's tips.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-11-C024",
           "requirement": "Move-order confirmation",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
+            "crates/rebellion-render/src/move_confirmation.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7g) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_0044f180's Yes (0x1300) and No (0x1301) tips are registered; no A0 capture (the VM's targeting click did not register over QMP) and no browser check yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-11-C025",
           "requirement": "Mission dialog",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
+            "crates/rebellion-render/src/mission_dialog.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (8) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_0046a9c0's tips (0x8520 mission box, 0x8510 Missions, 0x8503 Cancel, 0x8502 Begin Mission, 0x8031, 0x8505, 0x8506) are registered; no A0 capture and no browser check yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

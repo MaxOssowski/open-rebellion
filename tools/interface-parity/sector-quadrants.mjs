@@ -108,6 +108,26 @@ function mimeType(file) {
   return "application/octet-stream";
 }
 
+
+// The original's tooltip (win_tooltip.rs, A0 a0-vm/tooltip/153..157): rest
+// the pointer on a control for a second; a (255, 251, 240) tip with a
+// (128, 128, 128) border, 19 high, shows at the pointer plus (0, 21).
+async function tipShows(page, at) {
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await page.waitForTimeout(1000);
+  const png = PNG.sync.read(await page.screenshot());
+  const pixel = (x, y) => {
+    const i = (y * png.width + x) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
+  };
+  const top = at.y + 21;
+  const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
+    && pixel(at.x + 2, top + 2) === "255,251,240";
+  await page.mouse.move(2, 2, { steps: 4 });
+  await page.waitForTimeout(100);
+  return shown;
+}
+
 async function startServer() {
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
@@ -527,6 +547,11 @@ const cases = [
         { id: 10577, ...compareRegion(screenshot, origin, background, [0, 292, 235, 12], "personnel-bottom", directory) },
       ];
       assertExact(opening);
+      // FUN_004a8790: every tab has its tip, none is ever disabled.
+      for (const [name, rect] of window.tabs) {
+        assert.ok(await tipShows(page, { x: Math.round(rect[0] + 18), y: Math.round(rect[1] + 16) }),
+          `the ${name} tab shows no tip`);
+      }
 
       const regimentsTab = window.tabs.find(([name]) => name === "regiments")[1];
       await click(page, { x: regimentsTab[0] + 18, y: regimentsTab[1] + 16 });
@@ -651,6 +676,11 @@ const cases = [
       screenshot = await stableScreen(page, directory, "decoys");
       const decoyChecks = compareMissionTabs(screenshot, source, decoys, directory, "decoys");
       assertExact(decoyChecks);
+      // FUN_0049f540: Agents and Decoys have their tips.
+      for (const [name, rect] of decoys.tabs) {
+        assert.ok(await tipShows(page, { x: Math.round(rect[0] + 30), y: Math.round(rect[1] + 8) }),
+          `the ${name} tab shows no tip`);
+      }
 
       await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
       const railed = await until(page, "minimize sends the window to the rail",

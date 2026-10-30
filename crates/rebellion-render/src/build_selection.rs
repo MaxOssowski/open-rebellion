@@ -448,6 +448,20 @@ pub fn draw_build_selection(
                 egui::Color32::WHITE,
             );
 
+            // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA, module 2); the
+            // close box has none, and a disabled Done shows none.
+            for (rect, id, string, enabled) in [
+                (QUANTITY_FIELD, "quantity", 0x190c, true),
+                ((79.0, 90.0, 65.0, 18.0), "list", 0x1906, true),
+                ((189.0, 196.0, 13.0, 8.0), "more", 0x1907, true),
+                ((189.0, 205.0, 13.0, 8.0), "fewer", 0x1908, true),
+                ((5.0, 224.0, 66.0, 33.0), "encyclopedia", 0x190b, true),
+                ((73.0, 224.0, 66.0, 33.0), "confirm", 0x1909, valid),
+                ((141.0, 224.0, 66.0, 33.0), "cancel", 0x190a, true),
+            ] {
+                let (x, y, w, h) = rect;
+                crate::win_tooltip::window_tool(ui, at(x, y, w, h), id, string, enabled);
+            }
             if button(
                 ui,
                 cache,

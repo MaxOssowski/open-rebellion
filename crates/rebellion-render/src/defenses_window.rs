@@ -85,6 +85,20 @@ pub enum DefensesPage {
 }
 
 impl DefensesPage {
+    /// The tab's tooltip (`FUN_004a8790`, TEXTSTRA): 0x1744 "Personnel",
+    /// 0x1743 "Trooper Regiments", 0x1742 "Fighter Squadrons", 0x1741
+    /// "Planetary Shields", 0x1740 "Planetary Batteries".
+    #[must_use]
+    pub const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::Personnel => 0x1744,
+            Self::Regiments => 0x1743,
+            Self::Squadrons => 0x1742,
+            Self::Shields => 0x1741,
+            Self::Batteries => 0x1740,
+        }
+    }
+
     pub const ALL: [Self; 5] = [
         Self::Personnel,
         Self::Regiments,
@@ -1027,8 +1041,8 @@ fn draw_defenses_window(
             result.close = clicked[2];
 
             // The tabs. No tab is ever disabled; an empty one opens its
-            // empty page. port: the help messages (`FUN_00600a40`) are not
-            // shown.
+            // empty page. Each has its tip (`FUN_004a8790` via
+            // `FUN_00600a40`).
             for page in DefensesPage::ALL {
                 let rect = tab_rect(local, scale, page);
                 let empty = page_rows(world, fog, missions, player, window.system, page).is_empty();
@@ -1048,6 +1062,7 @@ fn draw_defenses_window(
                     ui.id().with((window.system, page)),
                     egui::Sense::click(),
                 );
+                crate::win_tooltip::response_tool(&response, rect, page.tooltip_string());
                 if exact_clicked(&response, rect) {
                     result.page = Some(page);
                     result.focus = true;
@@ -1245,6 +1260,15 @@ fn draw_defenses_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_004a8790 L182..L240.
+        assert_eq!(
+            super::DefensesPage::ALL.map(super::DefensesPage::tooltip_string),
+            [0x1744, 0x1743, 0x1742, 0x1741, 0x1740]
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use crate::fleet_window::tests::PAINTED;
     use rebellion_core::dat::SectorGroup;

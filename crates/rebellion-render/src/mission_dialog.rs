@@ -743,6 +743,17 @@ pub fn draw_mission_dialog(
                             egui::Color32::WHITE,
                         );
                     }
+                    // FUN_0046a9c0: the mission box (+0x128) TEXTSTRA
+                    // 0x8520, its Missions button 0x8510.
+                    let (x, y, w, h) = KIND_BOX;
+                    crate::win_tooltip::window_tool(ui, at(x, y, w, h), "kind", 0x8520, true);
+                    crate::win_tooltip::window_tool(
+                        ui,
+                        at(101.0, 174.0, 65.0, 18.0),
+                        "missions",
+                        0x8510,
+                        true,
+                    );
                     if button(
                         ui,
                         cache,
@@ -803,6 +814,18 @@ pub fn draw_mission_dialog(
                             dialog.move_selected(!to_decoys);
                         }
                     }
+                    // 0xca / 0xcb: TEXTSTRA 0x8505, 0x8506.
+                    for (y, id, string) in
+                        [(136.0, "to-decoys", 0x8505), (221.0, "to-agents", 0x8506)]
+                    {
+                        crate::win_tooltip::window_tool(
+                            ui,
+                            at(120.0, y, 16.0, 16.0),
+                            id,
+                            string,
+                            true,
+                        );
+                    }
                     if button(
                         ui,
                         cache,
@@ -828,6 +851,15 @@ pub fn draw_mission_dialog(
                 }
             }
 
+            // Cancel 0x8503, Begin Mission 0x8502, "Encylopedia" 0x8031; the
+            // close box has none.
+            for (x, id, string) in [
+                (170.0, "cancel", 0x8503),
+                (102.0, "begin", 0x8502),
+                (33.0, "encyclopedia", 0x8031),
+            ] {
+                crate::win_tooltip::window_tool(ui, at(x, 320.0, 64.0, 33.0), id, string, true);
+            }
             if button(
                 ui,
                 cache,

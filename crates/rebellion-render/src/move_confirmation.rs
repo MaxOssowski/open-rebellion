@@ -271,6 +271,9 @@ pub fn draw_move_confirmation(
                 .with_clip_rect(text_box)
                 .galley(text_box.min, galley, egui::Color32::WHITE);
 
+            // FUN_0044f180: Yes (0x14) TEXTSTRA 0x1300, No (0x15) 0x1301.
+            crate::win_tooltip::window_tool(ui, at(CONFIRM_RECT), "confirm", 0x1300, true);
+            crate::win_tooltip::window_tool(ui, at(CANCEL_RECT), "cancel", 0x1301, true);
             if button(
                 ui,
                 cache,

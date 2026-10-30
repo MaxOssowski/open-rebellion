@@ -1,0 +1,6297 @@
+{
+  "schema_version": 1,
+  "family": "sector-quadrants",
+  "scope": "test-only sector window quadrant icons (FUN_00459e30): each shown icon's art against STRATEGY.DLL, a pressed icon's selected art, hidden icons absent, the system icon opening the System window, and the defenses icon opening the System Defenses window (tabs, rows, selection frame, rail), and the missions icon opening the Missions window (rows, selection frame, tabs, rail) against STRATEGY.DLL and GOKRES.DLL, on both sides",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "launch_arguments": [
+    "--mute-audio",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-sync",
+    "--no-first-run"
+  ],
+  "profile": "one-new-muted-process-per-faction-and-case",
+  "muted": true,
+  "viewport": {
+    "width": 640,
+    "height": 480,
+    "device_scale_factor": 1
+  },
+  "source": [
+    {
+      "dll": "STRATEGY.DLL",
+      "resource_ids": [
+        904,
+        905,
+        906,
+        10550,
+        10552,
+        10555,
+        10558,
+        10561,
+        10563,
+        10564,
+        10565,
+        10566,
+        10567,
+        10568,
+        10571,
+        10572,
+        10574,
+        10575,
+        10577,
+        10578,
+        10579,
+        10771,
+        10772,
+        10773,
+        10774,
+        10775,
+        10776,
+        10777,
+        10778,
+        10779,
+        10780,
+        10781,
+        10782,
+        10783,
+        10784,
+        10785,
+        10786,
+        10787,
+        11127,
+        11128,
+        11165,
+        11530,
+        11531,
+        11533,
+        11534,
+        11539,
+        11540,
+        11560,
+        11561,
+        11562,
+        11563,
+        11565,
+        11566,
+        11567,
+        11568
+      ],
+      "aggregate_sha256": "ac43eadecbc89eb07c199bfe94c53fbbea66d0ffe57657eda5e8b335d8199666"
+    },
+    {
+      "dll": "GOKRES.DLL",
+      "resource_ids": [
+        17472,
+        17536,
+        19472,
+        23568
+      ],
+      "aggregate_sha256": "470c35829dab8e557da911264389d3cb2f703da2a04fccbafb11e51002c1a755"
+    }
+  ],
+  "results": [
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "icons",
+      "fixture_code": 306,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 306,
+        "scenario": 49,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:67e0a15cc235636f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 306,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              64,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              64,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              93,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              93,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              205,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              205,
+              335,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              234,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              234,
+              335,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          215,
+          66,
+          37,
+          37
+        ],
+        "uprising": [
+          140,
+          151,
+          37,
+          37
+        ],
+        "day_readout": [
+          144,
+          27
+        ]
+      },
+      "checks": {
+        "compares": [
+          {
+            "id": 10771,
+            "label": "primary-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10773,
+            "label": "primary-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10775,
+            "label": "primary-fleets",
+            "pixels_checked": 51,
+            "different_pixels": 0
+          },
+          {
+            "id": 10785,
+            "label": "primary-missions",
+            "pixels_checked": 90,
+            "different_pixels": 0
+          },
+          {
+            "id": 10781,
+            "label": "second-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10777,
+            "label": "second-missions",
+            "pixels_checked": 80,
+            "different_pixels": 0
+          }
+        ],
+        "absent": [
+          {
+            "id": 10787,
+            "label": "second-system-not-10787",
+            "pixels_checked": 56,
+            "different_pixels": 56
+          },
+          {
+            "id": 10771,
+            "label": "second-system-not-10771",
+            "pixels_checked": 56,
+            "different_pixels": 56
+          },
+          {
+            "id": 10779,
+            "label": "second-system-not-10779",
+            "pixels_checked": 56,
+            "different_pixels": 56
+          },
+          {
+            "id": 10775,
+            "label": "second-fleets-not-10775",
+            "pixels_checked": 51,
+            "different_pixels": 51
+          },
+          {
+            "id": 10783,
+            "label": "second-fleets-not-10783",
+            "pixels_checked": 60,
+            "different_pixels": 60
+          }
+        ],
+        "headquarters": {
+          "id": 904,
+          "label": "headquarters",
+          "pixels_checked": 376,
+          "different_pixels": 0
+        },
+        "uprising": {
+          "id": 905,
+          "label": "uprising",
+          "pixels_checked": 162,
+          "different_pixels": 0
+        }
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        },
+        {
+          "label": "final",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12fc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12fc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12fc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x12fc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 145.22156399999994
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "selected",
+      "fixture_code": 306,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 306,
+        "scenario": 49,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:67e0a15cc235636f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 306,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              64,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              64,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              93,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              93,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              205,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              205,
+              335,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              234,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              234,
+              335,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          215,
+          66,
+          37,
+          37
+        ],
+        "uprising": [
+          140,
+          151,
+          37,
+          37
+        ],
+        "day_readout": [
+          144,
+          27
+        ]
+      },
+      "checks": {
+        "compares": [
+          {
+            "id": 10772,
+            "label": "selected-system-system",
+            "pixels_checked": 94,
+            "different_pixels": 0
+          },
+          {
+            "id": 10773,
+            "label": "selected-system-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10775,
+            "label": "selected-system-fleets",
+            "pixels_checked": 51,
+            "different_pixels": 0
+          },
+          {
+            "id": 10785,
+            "label": "selected-system-missions",
+            "pixels_checked": 90,
+            "different_pixels": 0
+          },
+          {
+            "id": 10771,
+            "label": "selected-defenses-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10774,
+            "label": "selected-defenses-defenses",
+            "pixels_checked": 94,
+            "different_pixels": 0
+          },
+          {
+            "id": 10775,
+            "label": "selected-defenses-fleets",
+            "pixels_checked": 51,
+            "different_pixels": 0
+          },
+          {
+            "id": 10785,
+            "label": "selected-defenses-missions",
+            "pixels_checked": 90,
+            "different_pixels": 0
+          },
+          {
+            "id": 10771,
+            "label": "selected-fleets-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10773,
+            "label": "selected-fleets-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10776,
+            "label": "selected-fleets-fleets",
+            "pixels_checked": 104,
+            "different_pixels": 0
+          },
+          {
+            "id": 10785,
+            "label": "selected-fleets-missions",
+            "pixels_checked": 90,
+            "different_pixels": 0
+          },
+          {
+            "id": 10771,
+            "label": "selected-missions-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10773,
+            "label": "selected-missions-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10775,
+            "label": "selected-missions-fleets",
+            "pixels_checked": 51,
+            "different_pixels": 0
+          },
+          {
+            "id": 10786,
+            "label": "selected-missions-missions",
+            "pixels_checked": 134,
+            "different_pixels": 0
+          }
+        ]
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        },
+        {
+          "label": "final",
+          "sha256": "e6ba09c99bcf89232b662267a338d92847ee0fcc8b41f686c314895c2c57e28c"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x1214001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x1214001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x1214001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x1214001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 127.4517209999999
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "open-system",
+      "fixture_code": 306,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 306,
+        "scenario": 49,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:67e0a15cc235636f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 306,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              64,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              64,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              93,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              93,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              205,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              205,
+              335,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              234,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              234,
+              335,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          215,
+          66,
+          37,
+          37
+        ],
+        "uprising": [
+          140,
+          151,
+          37,
+          37
+        ],
+        "day_readout": [
+          144,
+          27
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 68,
+          "y": 74
+        },
+        "opened": {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [
+            [
+              120,
+              [
+                68,
+                74
+              ]
+            ]
+          ],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        "railChecks": [
+          {
+            "id": 11530,
+            "label": "system-rail-icon",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          }
+        ]
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [
+            [
+              120,
+              [
+                68,
+                74
+              ]
+            ]
+          ],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": [
+            [
+              120,
+              "system",
+              [
+                544,
+                61,
+                62,
+                18
+              ]
+            ]
+          ]
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        },
+        {
+          "label": "final",
+          "sha256": "fa27078484f1fb2d8febf61d78e44b852c3fb794d238b2e835a70fa4676aa48e"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x56c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x56c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x56c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x56c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 130.51998599999934
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "defenses",
+      "fixture_code": 306,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 306,
+        "scenario": 49,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:67e0a15cc235636f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 306,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              64,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              64,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              93,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              93,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              205,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              205,
+              335,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              234,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              234,
+              335,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          215,
+          66,
+          37,
+          37
+        ],
+        "uprising": [
+          140,
+          151,
+          37,
+          37
+        ],
+        "day_readout": [
+          144,
+          27
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 68,
+          "y": 94
+        },
+        "window": {
+          "system_dat_id": 120,
+          "origin": [
+            68,
+            86
+          ],
+          "side": 1,
+          "page": "personnel",
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "rows": [],
+          "selected": null,
+          "garrison": null,
+          "tabs": [
+            [
+              "personnel",
+              [
+                96,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                132,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                168,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                204,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                240,
+                106,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": []
+        },
+        "opening": [
+          {
+            "id": 10571,
+            "label": "personnel-tab-personnel",
+            "pixels_checked": 1126,
+            "different_pixels": 0
+          },
+          {
+            "id": 10563,
+            "label": "personnel-tab-regiments",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10558,
+            "label": "personnel-tab-squadrons",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10555,
+            "label": "personnel-tab-shields",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10550,
+            "label": "personnel-tab-batteries",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10577,
+            "label": "personnel-list",
+            "pixels_checked": 46620,
+            "different_pixels": 0
+          },
+          {
+            "id": 10577,
+            "label": "personnel-bottom",
+            "pixels_checked": 2820,
+            "different_pixels": 0
+          }
+        ],
+        "regiments": {
+          "system_dat_id": 120,
+          "origin": [
+            68,
+            86
+          ],
+          "side": 1,
+          "page": "regiments",
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "rows": [
+            "Alliance Fleet Regiment"
+          ],
+          "selected": null,
+          "garrison": "Garrison Requirement: 0",
+          "tabs": [
+            [
+              "personnel",
+              [
+                96,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                132,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                168,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                204,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                240,
+                106,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": [
+            [
+              75,
+              167,
+              70,
+              70
+            ]
+          ]
+        },
+        "regimentChecks": [
+          {
+            "id": 10572,
+            "label": "regiments-tab-personnel",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10564,
+            "label": "regiments-tab-regiments",
+            "pixels_checked": 1126,
+            "different_pixels": 0
+          },
+          {
+            "id": 10558,
+            "label": "regiments-tab-squadrons",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10555,
+            "label": "regiments-tab-shields",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10550,
+            "label": "regiments-tab-batteries",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 17472,
+            "label": "regiments-mini",
+            "pixels_checked": 635,
+            "different_pixels": 0
+          }
+        ],
+        "selectedChecks": [
+          {
+            "id": 10578,
+            "label": "selected-frame",
+            "pixels_checked": 167,
+            "different_pixels": 0
+          }
+        ],
+        "railChecks": [
+          {
+            "id": 11533,
+            "label": "rail-icon",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          }
+        ],
+        "restored": {
+          "system_dat_id": 120,
+          "origin": [
+            68,
+            86
+          ],
+          "side": 1,
+          "page": "personnel",
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "rows": [],
+          "selected": null,
+          "garrison": null,
+          "tabs": [
+            [
+              "personnel",
+              [
+                96,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                132,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                168,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                204,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                240,
+                106,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": []
+        }
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                68,
+                86
+              ],
+              "side": 1,
+              "page": "personnel",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [],
+              "selected": null,
+              "garrison": null,
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    96,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    132,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    168,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    204,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    240,
+                    106,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": []
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                68,
+                86
+              ],
+              "side": 1,
+              "page": "regiments",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [
+                "Alliance Fleet Regiment"
+              ],
+              "selected": null,
+              "garrison": "Garrison Requirement: 0",
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    96,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    132,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    168,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    204,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    240,
+                    106,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": [
+                [
+                  75,
+                  167,
+                  70,
+                  70
+                ]
+              ]
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                68,
+                86
+              ],
+              "side": 1,
+              "page": "regiments",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [
+                "Alliance Fleet Regiment"
+              ],
+              "selected": 0,
+              "garrison": "Garrison Requirement: 0",
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    96,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    132,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    168,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    204,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    240,
+                    106,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": [
+                [
+                  75,
+                  167,
+                  70,
+                  70
+                ]
+              ]
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": [
+            [
+              120,
+              "defenses",
+              [
+                544,
+                61,
+                62,
+                18
+              ]
+            ]
+          ]
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                68,
+                86
+              ],
+              "side": 1,
+              "page": "personnel",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [],
+              "selected": null,
+              "garrison": null,
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    96,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    132,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    168,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    204,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    240,
+                    106,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": []
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        },
+        {
+          "label": "final",
+          "sha256": "fe9f9b45aa21ff3bfa123c952eaaa309dc92e5c7e5abd95ddfe882fdc27214d4"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x19cc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x19cc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x19cc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x19cc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 130.47137699999985
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "defenses-other-side",
+      "fixture_code": 306,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 306,
+        "scenario": 49,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:67e0a15cc235636f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 306,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              64,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              64,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              93,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              93,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              205,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              205,
+              335,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              234,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              234,
+              335,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          215,
+          66,
+          37,
+          37
+        ],
+        "uprising": [
+          140,
+          151,
+          37,
+          37
+        ],
+        "day_readout": [
+          144,
+          27
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 209,
+          "y": 344
+        },
+        "window": {
+          "system_dat_id": 121,
+          "origin": [
+            209,
+            86
+          ],
+          "side": 2,
+          "page": "personnel",
+          "counts": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "rows": [],
+          "selected": null,
+          "garrison": null,
+          "tabs": [
+            [
+              "personnel",
+              [
+                237,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                273,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                309,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                345,
+                106,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                381,
+                106,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": []
+        },
+        "checks": [
+          {
+            "id": 10574,
+            "label": "other-side-tab-personnel",
+            "pixels_checked": 1126,
+            "different_pixels": 0
+          },
+          {
+            "id": 10568,
+            "label": "other-side-tab-regiments",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10561,
+            "label": "other-side-tab-squadrons",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10555,
+            "label": "other-side-tab-shields",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10552,
+            "label": "other-side-tab-batteries",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          }
+        ]
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 121,
+              "origin": [
+                209,
+                86
+              ],
+              "side": 2,
+              "page": "personnel",
+              "counts": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "rows": [],
+              "selected": null,
+              "garrison": null,
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    237,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    273,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    309,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    345,
+                    106,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    381,
+                    106,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": []
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        },
+        {
+          "label": "final",
+          "sha256": "9379f9bb27ed729146493c158cdebd2a2229e25963967f4c446623c784a73b6c"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x18b4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x18b4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x18b4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x18b4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 134.97271499999988
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "missions",
+      "fixture_code": 306,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 306,
+        "scenario": 49,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:67e0a15cc235636f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 306,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              64,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              64,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              93,
+              65,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              93,
+              85,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              205,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              205,
+              335,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              234,
+              315,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              234,
+              335,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          215,
+          66,
+          37,
+          37
+        ],
+        "uprising": [
+          140,
+          151,
+          37,
+          37
+        ],
+        "day_readout": [
+          144,
+          27
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 117,
+          "y": 94
+        },
+        "window": {
+          "system_dat_id": 120,
+          "origin": [
+            117,
+            86
+          ],
+          "side": 2,
+          "rows": [
+            [
+              "Diplomacy",
+              1,
+              19472
+            ],
+            [
+              "Diplomacy",
+              2,
+              23568
+            ]
+          ],
+          "selected": 0,
+          "tab": "agents",
+          "tab_side": 1,
+          "members": [
+            "Mon Mothma"
+          ],
+          "target": "Akrit'tar",
+          "row_rects": [
+            [
+              122,
+              110,
+              90,
+              50
+            ],
+            [
+              122,
+              160,
+              90,
+              50
+            ]
+          ],
+          "tabs": [
+            [
+              "agents",
+              [
+                222,
+                213,
+                61,
+                16
+              ]
+            ],
+            [
+              "decoys",
+              [
+                283,
+                213,
+                61,
+                16
+              ]
+            ]
+          ],
+          "member_rects": [
+            [
+              224,
+              231,
+              115,
+              43
+            ]
+          ]
+        },
+        "opening": [
+          {
+            "id": 11165,
+            "label": "missions-list",
+            "pixels_checked": 16450,
+            "different_pixels": 0
+          },
+          {
+            "id": 11165,
+            "label": "missions-foot",
+            "pixels_checked": 1620,
+            "different_pixels": 0
+          },
+          {
+            "id": 23568,
+            "label": "missions-second-mini",
+            "pixels_checked": 2409,
+            "different_pixels": 0
+          },
+          {
+            "id": 11127,
+            "label": "missions-selected-frame",
+            "pixels_checked": 236,
+            "different_pixels": 0
+          },
+          {
+            "id": 11561,
+            "label": "missions-tab-agents",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          },
+          {
+            "id": 11562,
+            "label": "missions-tab-decoys",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          }
+        ],
+        "reselected": {
+          "system_dat_id": 120,
+          "origin": [
+            117,
+            86
+          ],
+          "side": 2,
+          "rows": [
+            [
+              "Diplomacy",
+              1,
+              19472
+            ],
+            [
+              "Diplomacy",
+              2,
+              23568
+            ]
+          ],
+          "selected": 1,
+          "tab": "agents",
+          "tab_side": 2,
+          "members": [
+            "Emperor Palpatine"
+          ],
+          "target": "Akrit'tar",
+          "row_rects": [
+            [
+              122,
+              110,
+              90,
+              50
+            ],
+            [
+              122,
+              160,
+              90,
+              50
+            ]
+          ],
+          "tabs": [
+            [
+              "agents",
+              [
+                222,
+                213,
+                61,
+                16
+              ]
+            ],
+            [
+              "decoys",
+              [
+                283,
+                213,
+                61,
+                16
+              ]
+            ]
+          ],
+          "member_rects": [
+            [
+              224,
+              231,
+              115,
+              43
+            ]
+          ]
+        },
+        "reselectedChecks": [
+          {
+            "id": 19472,
+            "label": "reselected-first-mini",
+            "pixels_checked": 2409,
+            "different_pixels": 0
+          },
+          {
+            "id": 11127,
+            "label": "reselected-frame",
+            "pixels_checked": 236,
+            "different_pixels": 0
+          },
+          {
+            "id": 11566,
+            "label": "reselected-tab-agents",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          },
+          {
+            "id": 11567,
+            "label": "reselected-tab-decoys",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          }
+        ],
+        "decoyChecks": [
+          {
+            "id": 11565,
+            "label": "decoys-tab-agents",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          },
+          {
+            "id": 11568,
+            "label": "decoys-tab-decoys",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          }
+        ],
+        "railChecks": [
+          {
+            "id": 11540,
+            "label": "rail-icon",
+            "pixels_checked": 90,
+            "different_pixels": 0
+          }
+        ],
+        "restored": {
+          "system_dat_id": 120,
+          "origin": [
+            117,
+            86
+          ],
+          "side": 2,
+          "rows": [
+            [
+              "Diplomacy",
+              1,
+              19472
+            ],
+            [
+              "Diplomacy",
+              2,
+              23568
+            ]
+          ],
+          "selected": 0,
+          "tab": "agents",
+          "tab_side": 1,
+          "members": [
+            "Mon Mothma"
+          ],
+          "target": "Akrit'tar",
+          "row_rects": [
+            [
+              122,
+              110,
+              90,
+              50
+            ],
+            [
+              122,
+              160,
+              90,
+              50
+            ]
+          ],
+          "tabs": [
+            [
+              "agents",
+              [
+                222,
+                213,
+                61,
+                16
+              ]
+            ],
+            [
+              "decoys",
+              [
+                283,
+                213,
+                61,
+                16
+              ]
+            ]
+          ],
+          "member_rects": [
+            [
+              224,
+              231,
+              115,
+              43
+            ]
+          ]
+        }
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                117,
+                86
+              ],
+              "side": 2,
+              "rows": [
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ],
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ]
+              ],
+              "selected": 0,
+              "tab": "agents",
+              "tab_side": 1,
+              "members": [
+                "Mon Mothma"
+              ],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  122,
+                  110,
+                  90,
+                  50
+                ],
+                [
+                  122,
+                  160,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    222,
+                    213,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    283,
+                    213,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": [
+                [
+                  224,
+                  231,
+                  115,
+                  43
+                ]
+              ]
+            }
+          ],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                117,
+                86
+              ],
+              "side": 2,
+              "rows": [
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ],
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ]
+              ],
+              "selected": 1,
+              "tab": "agents",
+              "tab_side": 2,
+              "members": [
+                "Emperor Palpatine"
+              ],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  122,
+                  110,
+                  90,
+                  50
+                ],
+                [
+                  122,
+                  160,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    222,
+                    213,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    283,
+                    213,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": [
+                [
+                  224,
+                  231,
+                  115,
+                  43
+                ]
+              ]
+            }
+          ],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                117,
+                86
+              ],
+              "side": 2,
+              "rows": [
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ],
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ]
+              ],
+              "selected": 1,
+              "tab": "decoys",
+              "tab_side": 2,
+              "members": [],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  122,
+                  110,
+                  90,
+                  50
+                ],
+                [
+                  122,
+                  160,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    222,
+                    213,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    283,
+                    213,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": []
+            }
+          ],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": [
+            [
+              120,
+              "missions",
+              [
+                544,
+                61,
+                62,
+                18
+              ]
+            ]
+          ]
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 306,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                117,
+                86
+              ],
+              "side": 2,
+              "rows": [
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ],
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ]
+              ],
+              "selected": 0,
+              "tab": "agents",
+              "tab_side": 1,
+              "members": [
+                "Mon Mothma"
+              ],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  122,
+                  110,
+                  90,
+                  50
+                ],
+                [
+                  122,
+                  160,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    222,
+                    213,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    283,
+                    213,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": [
+                [
+                  224,
+                  231,
+                  115,
+                  43
+                ]
+              ]
+            }
+          ],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "c4cf66f5fe7976a8bc1e8a063a1337d8ea768b6a70c69a1e165e2cf9217f85cf"
+        },
+        {
+          "label": "final",
+          "sha256": "03af2c9f08e9a7d6c18c2659048d9fcb850cb6f2b221789f4c214ce6114a51b0"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x157c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x157c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x157c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x157c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 133.86237899999833
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "icons",
+      "fixture_code": 562,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 562,
+        "scenario": 49,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:4dce7388bcba7d3f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 562,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              124,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              124,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              153,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              153,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              265,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              265,
+              340,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              294,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              294,
+              340,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          275,
+          71,
+          37,
+          37
+        ],
+        "uprising": [
+          200,
+          156,
+          37,
+          37
+        ],
+        "day_readout": [
+          539.5,
+          25
+        ]
+      },
+      "checks": {
+        "compares": [
+          {
+            "id": 10779,
+            "label": "primary-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10781,
+            "label": "primary-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10783,
+            "label": "primary-fleets",
+            "pixels_checked": 60,
+            "different_pixels": 0
+          },
+          {
+            "id": 10777,
+            "label": "primary-missions",
+            "pixels_checked": 80,
+            "different_pixels": 0
+          },
+          {
+            "id": 10773,
+            "label": "second-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10785,
+            "label": "second-missions",
+            "pixels_checked": 90,
+            "different_pixels": 0
+          }
+        ],
+        "absent": [
+          {
+            "id": 10787,
+            "label": "second-system-not-10787",
+            "pixels_checked": 56,
+            "different_pixels": 56
+          },
+          {
+            "id": 10771,
+            "label": "second-system-not-10771",
+            "pixels_checked": 56,
+            "different_pixels": 56
+          },
+          {
+            "id": 10779,
+            "label": "second-system-not-10779",
+            "pixels_checked": 56,
+            "different_pixels": 56
+          },
+          {
+            "id": 10775,
+            "label": "second-fleets-not-10775",
+            "pixels_checked": 51,
+            "different_pixels": 51
+          },
+          {
+            "id": 10783,
+            "label": "second-fleets-not-10783",
+            "pixels_checked": 60,
+            "different_pixels": 60
+          }
+        ],
+        "headquarters": {
+          "id": 904,
+          "label": "headquarters",
+          "pixels_checked": 376,
+          "different_pixels": 376
+        },
+        "uprising": {
+          "id": 906,
+          "label": "uprising",
+          "pixels_checked": 163,
+          "different_pixels": 0
+        }
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        },
+        {
+          "label": "final",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x16bc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x16bc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x16bc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x16bc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 138.1226949999982
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "selected",
+      "fixture_code": 562,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 562,
+        "scenario": 49,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:4dce7388bcba7d3f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 562,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              124,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              124,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              153,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              153,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              265,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              265,
+              340,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              294,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              294,
+              340,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          275,
+          71,
+          37,
+          37
+        ],
+        "uprising": [
+          200,
+          156,
+          37,
+          37
+        ],
+        "day_readout": [
+          539.5,
+          25
+        ]
+      },
+      "checks": {
+        "compares": [
+          {
+            "id": 10780,
+            "label": "selected-system-system",
+            "pixels_checked": 94,
+            "different_pixels": 0
+          },
+          {
+            "id": 10781,
+            "label": "selected-system-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10783,
+            "label": "selected-system-fleets",
+            "pixels_checked": 60,
+            "different_pixels": 0
+          },
+          {
+            "id": 10777,
+            "label": "selected-system-missions",
+            "pixels_checked": 80,
+            "different_pixels": 0
+          },
+          {
+            "id": 10779,
+            "label": "selected-defenses-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10782,
+            "label": "selected-defenses-defenses",
+            "pixels_checked": 94,
+            "different_pixels": 0
+          },
+          {
+            "id": 10783,
+            "label": "selected-defenses-fleets",
+            "pixels_checked": 60,
+            "different_pixels": 0
+          },
+          {
+            "id": 10777,
+            "label": "selected-defenses-missions",
+            "pixels_checked": 80,
+            "different_pixels": 0
+          },
+          {
+            "id": 10779,
+            "label": "selected-fleets-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10781,
+            "label": "selected-fleets-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10784,
+            "label": "selected-fleets-fleets",
+            "pixels_checked": 109,
+            "different_pixels": 0
+          },
+          {
+            "id": 10777,
+            "label": "selected-fleets-missions",
+            "pixels_checked": 80,
+            "different_pixels": 0
+          },
+          {
+            "id": 10779,
+            "label": "selected-missions-system",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          },
+          {
+            "id": 10781,
+            "label": "selected-missions-defenses",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          },
+          {
+            "id": 10783,
+            "label": "selected-missions-fleets",
+            "pixels_checked": 60,
+            "different_pixels": 0
+          },
+          {
+            "id": 10778,
+            "label": "selected-missions-missions",
+            "pixels_checked": 127,
+            "different_pixels": 0
+          }
+        ]
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        },
+        {
+          "label": "final",
+          "sha256": "28cd15b95c25c1597083c561c79295f180d1c5f3885689adcd7d09c5e3085771"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xb8c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xb8c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xb8c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xb8c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 165.27501000000484
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "open-system",
+      "fixture_code": 562,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 562,
+        "scenario": 49,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:4dce7388bcba7d3f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 562,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              124,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              124,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              153,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              153,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              265,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              265,
+              340,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              294,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              294,
+              340,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          275,
+          71,
+          37,
+          37
+        ],
+        "uprising": [
+          200,
+          156,
+          37,
+          37
+        ],
+        "day_readout": [
+          539.5,
+          25
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 128,
+          "y": 79
+        },
+        "opened": {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [
+            [
+              120,
+              [
+                128,
+                79
+              ]
+            ]
+          ],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        "railChecks": [
+          {
+            "id": 11531,
+            "label": "system-rail-icon",
+            "pixels_checked": 56,
+            "different_pixels": 0
+          }
+        ]
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [
+            [
+              120,
+              [
+                128,
+                79
+              ]
+            ]
+          ],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": [
+            [
+              120,
+              "system",
+              [
+                21,
+                48,
+                54,
+                18
+              ]
+            ]
+          ]
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        },
+        {
+          "label": "final",
+          "sha256": "7fe6ab3bbf8cac895fc24e3161ea7e29d3783528fd8a0e6dd0b7e93a6ebf62f5"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xf3c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xf3c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xf3c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xf3c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 128.69650399999955
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "defenses",
+      "fixture_code": 562,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 562,
+        "scenario": 49,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:4dce7388bcba7d3f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 562,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              124,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              124,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              153,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              153,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              265,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              265,
+              340,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              294,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              294,
+              340,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          275,
+          71,
+          37,
+          37
+        ],
+        "uprising": [
+          200,
+          156,
+          37,
+          37
+        ],
+        "day_readout": [
+          539.5,
+          25
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 128,
+          "y": 99
+        },
+        "window": {
+          "system_dat_id": 120,
+          "origin": [
+            128,
+            91
+          ],
+          "side": 2,
+          "page": "personnel",
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "rows": [],
+          "selected": null,
+          "garrison": null,
+          "tabs": [
+            [
+              "personnel",
+              [
+                156,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                192,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                228,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                264,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                300,
+                111,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": []
+        },
+        "opening": [
+          {
+            "id": 10574,
+            "label": "personnel-tab-personnel",
+            "pixels_checked": 1126,
+            "different_pixels": 0
+          },
+          {
+            "id": 10566,
+            "label": "personnel-tab-regiments",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10561,
+            "label": "personnel-tab-squadrons",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10555,
+            "label": "personnel-tab-shields",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10550,
+            "label": "personnel-tab-batteries",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10577,
+            "label": "personnel-list",
+            "pixels_checked": 46620,
+            "different_pixels": 0
+          },
+          {
+            "id": 10577,
+            "label": "personnel-bottom",
+            "pixels_checked": 2820,
+            "different_pixels": 0
+          }
+        ],
+        "regiments": {
+          "system_dat_id": 120,
+          "origin": [
+            128,
+            91
+          ],
+          "side": 2,
+          "page": "regiments",
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "rows": [
+            "Stormtrooper Regiment"
+          ],
+          "selected": null,
+          "garrison": "Garrison Requirement: 0",
+          "tabs": [
+            [
+              "personnel",
+              [
+                156,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                192,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                228,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                264,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                300,
+                111,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": [
+            [
+              135,
+              172,
+              70,
+              70
+            ]
+          ]
+        },
+        "regimentChecks": [
+          {
+            "id": 10575,
+            "label": "regiments-tab-personnel",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10567,
+            "label": "regiments-tab-regiments",
+            "pixels_checked": 1126,
+            "different_pixels": 0
+          },
+          {
+            "id": 10561,
+            "label": "regiments-tab-squadrons",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10555,
+            "label": "regiments-tab-shields",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10550,
+            "label": "regiments-tab-batteries",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 17536,
+            "label": "regiments-mini",
+            "pixels_checked": 886,
+            "different_pixels": 0
+          }
+        ],
+        "selectedChecks": [
+          {
+            "id": 10579,
+            "label": "selected-frame",
+            "pixels_checked": 167,
+            "different_pixels": 0
+          }
+        ],
+        "railChecks": [
+          {
+            "id": 11534,
+            "label": "rail-icon",
+            "pixels_checked": 48,
+            "different_pixels": 0
+          }
+        ],
+        "restored": {
+          "system_dat_id": 120,
+          "origin": [
+            128,
+            91
+          ],
+          "side": 2,
+          "page": "personnel",
+          "counts": [
+            0,
+            1,
+            0,
+            0,
+            1
+          ],
+          "rows": [],
+          "selected": null,
+          "garrison": null,
+          "tabs": [
+            [
+              "personnel",
+              [
+                156,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                192,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                228,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                264,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                300,
+                111,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": []
+        }
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                128,
+                91
+              ],
+              "side": 2,
+              "page": "personnel",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [],
+              "selected": null,
+              "garrison": null,
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    156,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    192,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    228,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    264,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    300,
+                    111,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": []
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                128,
+                91
+              ],
+              "side": 2,
+              "page": "regiments",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [
+                "Stormtrooper Regiment"
+              ],
+              "selected": null,
+              "garrison": "Garrison Requirement: 0",
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    156,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    192,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    228,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    264,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    300,
+                    111,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": [
+                [
+                  135,
+                  172,
+                  70,
+                  70
+                ]
+              ]
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                128,
+                91
+              ],
+              "side": 2,
+              "page": "regiments",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [
+                "Stormtrooper Regiment"
+              ],
+              "selected": 0,
+              "garrison": "Garrison Requirement: 0",
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    156,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    192,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    228,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    264,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    300,
+                    111,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": [
+                [
+                  135,
+                  172,
+                  70,
+                  70
+                ]
+              ]
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": [
+            [
+              120,
+              "defenses",
+              [
+                21,
+                48,
+                54,
+                18
+              ]
+            ]
+          ]
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                128,
+                91
+              ],
+              "side": 2,
+              "page": "personnel",
+              "counts": [
+                0,
+                1,
+                0,
+                0,
+                1
+              ],
+              "rows": [],
+              "selected": null,
+              "garrison": null,
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    156,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    192,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    228,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    264,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    300,
+                    111,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": []
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        },
+        {
+          "label": "final",
+          "sha256": "ef3950defa7b6f9bbc31e683e97130f1cf5e7eeea096a2638460eadf20e48b15"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x352c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x352c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x352c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x352c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 128.62296100000094
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "defenses-other-side",
+      "fixture_code": 562,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 562,
+        "scenario": 49,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:4dce7388bcba7d3f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 562,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              124,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              124,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              153,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              153,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              265,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              265,
+              340,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              294,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              294,
+              340,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          275,
+          71,
+          37,
+          37
+        ],
+        "uprising": [
+          200,
+          156,
+          37,
+          37
+        ],
+        "day_readout": [
+          539.5,
+          25
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 269,
+          "y": 349
+        },
+        "window": {
+          "system_dat_id": 121,
+          "origin": [
+            269,
+            91
+          ],
+          "side": 1,
+          "page": "personnel",
+          "counts": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "rows": [],
+          "selected": null,
+          "garrison": null,
+          "tabs": [
+            [
+              "personnel",
+              [
+                297,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "regiments",
+              [
+                333,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "squadrons",
+              [
+                369,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "shields",
+              [
+                405,
+                111,
+                36,
+                33
+              ]
+            ],
+            [
+              "batteries",
+              [
+                441,
+                111,
+                36,
+                33
+              ]
+            ]
+          ],
+          "cells": []
+        },
+        "checks": [
+          {
+            "id": 10571,
+            "label": "other-side-tab-personnel",
+            "pixels_checked": 1126,
+            "different_pixels": 0
+          },
+          {
+            "id": 10565,
+            "label": "other-side-tab-regiments",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10558,
+            "label": "other-side-tab-squadrons",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10555,
+            "label": "other-side-tab-shields",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          },
+          {
+            "id": 10552,
+            "label": "other-side-tab-batteries",
+            "pixels_checked": 1152,
+            "different_pixels": 0
+          }
+        ]
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [
+            {
+              "system_dat_id": 121,
+              "origin": [
+                269,
+                91
+              ],
+              "side": 1,
+              "page": "personnel",
+              "counts": [
+                0,
+                0,
+                0,
+                0,
+                0
+              ],
+              "rows": [],
+              "selected": null,
+              "garrison": null,
+              "tabs": [
+                [
+                  "personnel",
+                  [
+                    297,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "regiments",
+                  [
+                    333,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "squadrons",
+                  [
+                    369,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "shields",
+                  [
+                    405,
+                    111,
+                    36,
+                    33
+                  ]
+                ],
+                [
+                  "batteries",
+                  [
+                    441,
+                    111,
+                    36,
+                    33
+                  ]
+                ]
+              ],
+              "cells": []
+            }
+          ],
+          "missions_windows": [],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        },
+        {
+          "label": "final",
+          "sha256": "29aa33b8a71e8836caf63ca1d2603b28206a25bf7f078a81b51139ee94492a43"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3154001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3154001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3154001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3154001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 129.04885400000057
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "missions",
+      "fixture_code": 562,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 562,
+        "scenario": 49,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:4dce7388bcba7d3f",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "setup": {
+        "status": "quadrant-setup",
+        "code": 562,
+        "primary_dat_id": 120,
+        "second_dat_id": 121,
+        "scale": 1,
+        "quadrants": [
+          {
+            "system_dat_id": 120,
+            "quadrant": "system",
+            "rect": [
+              124,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "defenses",
+            "rect": [
+              124,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "fleets",
+            "rect": [
+              153,
+              70,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 120,
+            "quadrant": "missions",
+            "rect": [
+              153,
+              90,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "system",
+            "rect": [
+              265,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "defenses",
+            "rect": [
+              265,
+              340,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "fleets",
+            "rect": [
+              294,
+              320,
+              28,
+              19
+            ]
+          },
+          {
+            "system_dat_id": 121,
+            "quadrant": "missions",
+            "rect": [
+              294,
+              340,
+              28,
+              19
+            ]
+          }
+        ],
+        "headquarters": [
+          275,
+          71,
+          37,
+          37
+        ],
+        "uprising": [
+          200,
+          156,
+          37,
+          37
+        ],
+        "day_readout": [
+          539.5,
+          25
+        ]
+      },
+      "checks": {
+        "at": {
+          "x": 177,
+          "y": 99
+        },
+        "window": {
+          "system_dat_id": 120,
+          "origin": [
+            177,
+            91
+          ],
+          "side": 1,
+          "rows": [
+            [
+              "Diplomacy",
+              2,
+              23568
+            ],
+            [
+              "Diplomacy",
+              1,
+              19472
+            ]
+          ],
+          "selected": 0,
+          "tab": "agents",
+          "tab_side": 2,
+          "members": [
+            "Mon Mothma"
+          ],
+          "target": "Akrit'tar",
+          "row_rects": [
+            [
+              182,
+              115,
+              90,
+              50
+            ],
+            [
+              182,
+              165,
+              90,
+              50
+            ]
+          ],
+          "tabs": [
+            [
+              "agents",
+              [
+                282,
+                218,
+                61,
+                16
+              ]
+            ],
+            [
+              "decoys",
+              [
+                343,
+                218,
+                61,
+                16
+              ]
+            ]
+          ],
+          "member_rects": [
+            [
+              284,
+              236,
+              115,
+              43
+            ]
+          ]
+        },
+        "opening": [
+          {
+            "id": 11165,
+            "label": "missions-list",
+            "pixels_checked": 16450,
+            "different_pixels": 0
+          },
+          {
+            "id": 11165,
+            "label": "missions-foot",
+            "pixels_checked": 1620,
+            "different_pixels": 0
+          },
+          {
+            "id": 19472,
+            "label": "missions-second-mini",
+            "pixels_checked": 2409,
+            "different_pixels": 0
+          },
+          {
+            "id": 11128,
+            "label": "missions-selected-frame",
+            "pixels_checked": 236,
+            "different_pixels": 0
+          },
+          {
+            "id": 11566,
+            "label": "missions-tab-agents",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          },
+          {
+            "id": 11567,
+            "label": "missions-tab-decoys",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          }
+        ],
+        "reselected": {
+          "system_dat_id": 120,
+          "origin": [
+            177,
+            91
+          ],
+          "side": 1,
+          "rows": [
+            [
+              "Diplomacy",
+              2,
+              23568
+            ],
+            [
+              "Diplomacy",
+              1,
+              19472
+            ]
+          ],
+          "selected": 1,
+          "tab": "agents",
+          "tab_side": 1,
+          "members": [
+            "Leia Organa"
+          ],
+          "target": "Akrit'tar",
+          "row_rects": [
+            [
+              182,
+              115,
+              90,
+              50
+            ],
+            [
+              182,
+              165,
+              90,
+              50
+            ]
+          ],
+          "tabs": [
+            [
+              "agents",
+              [
+                282,
+                218,
+                61,
+                16
+              ]
+            ],
+            [
+              "decoys",
+              [
+                343,
+                218,
+                61,
+                16
+              ]
+            ]
+          ],
+          "member_rects": [
+            [
+              284,
+              236,
+              115,
+              43
+            ]
+          ]
+        },
+        "reselectedChecks": [
+          {
+            "id": 23568,
+            "label": "reselected-first-mini",
+            "pixels_checked": 2409,
+            "different_pixels": 0
+          },
+          {
+            "id": 11128,
+            "label": "reselected-frame",
+            "pixels_checked": 236,
+            "different_pixels": 0
+          },
+          {
+            "id": 11561,
+            "label": "reselected-tab-agents",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          },
+          {
+            "id": 11562,
+            "label": "reselected-tab-decoys",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          }
+        ],
+        "decoyChecks": [
+          {
+            "id": 11560,
+            "label": "decoys-tab-agents",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          },
+          {
+            "id": 11563,
+            "label": "decoys-tab-decoys",
+            "pixels_checked": 975,
+            "different_pixels": 0
+          }
+        ],
+        "railChecks": [
+          {
+            "id": 11539,
+            "label": "rail-icon",
+            "pixels_checked": 80,
+            "different_pixels": 0
+          }
+        ],
+        "restored": {
+          "system_dat_id": 120,
+          "origin": [
+            177,
+            91
+          ],
+          "side": 1,
+          "rows": [
+            [
+              "Diplomacy",
+              2,
+              23568
+            ],
+            [
+              "Diplomacy",
+              1,
+              19472
+            ]
+          ],
+          "selected": 0,
+          "tab": "agents",
+          "tab_side": 2,
+          "members": [
+            "Mon Mothma"
+          ],
+          "target": "Akrit'tar",
+          "row_rects": [
+            [
+              182,
+              115,
+              90,
+              50
+            ],
+            [
+              182,
+              165,
+              90,
+              50
+            ]
+          ],
+          "tabs": [
+            [
+              "agents",
+              [
+                282,
+                218,
+                61,
+                16
+              ]
+            ],
+            [
+              "decoys",
+              [
+                343,
+                218,
+                61,
+                16
+              ]
+            ]
+          ],
+          "member_rects": [
+            [
+              284,
+              236,
+              115,
+              43
+            ]
+          ]
+        }
+      },
+      "observations": [
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                177,
+                91
+              ],
+              "side": 1,
+              "rows": [
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ],
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ]
+              ],
+              "selected": 0,
+              "tab": "agents",
+              "tab_side": 2,
+              "members": [
+                "Mon Mothma"
+              ],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  182,
+                  115,
+                  90,
+                  50
+                ],
+                [
+                  182,
+                  165,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    282,
+                    218,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    343,
+                    218,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": [
+                [
+                  284,
+                  236,
+                  115,
+                  43
+                ]
+              ]
+            }
+          ],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                177,
+                91
+              ],
+              "side": 1,
+              "rows": [
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ],
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ]
+              ],
+              "selected": 1,
+              "tab": "agents",
+              "tab_side": 1,
+              "members": [
+                "Leia Organa"
+              ],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  182,
+                  115,
+                  90,
+                  50
+                ],
+                [
+                  182,
+                  165,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    282,
+                    218,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    343,
+                    218,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": [
+                [
+                  284,
+                  236,
+                  115,
+                  43
+                ]
+              ]
+            }
+          ],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                177,
+                91
+              ],
+              "side": 1,
+              "rows": [
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ],
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ]
+              ],
+              "selected": 1,
+              "tab": "decoys",
+              "tab_side": 1,
+              "members": [],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  182,
+                  115,
+                  90,
+                  50
+                ],
+                [
+                  182,
+                  165,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    282,
+                    218,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    343,
+                    218,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": []
+            }
+          ],
+          "rail": []
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [],
+          "rail": [
+            [
+              120,
+              "missions",
+              [
+                21,
+                48,
+                54,
+                18
+              ]
+            ]
+          ]
+        },
+        {
+          "status": "quadrant-observation",
+          "code": 562,
+          "system_windows": [],
+          "defenses_windows": [],
+          "missions_windows": [
+            {
+              "system_dat_id": 120,
+              "origin": [
+                177,
+                91
+              ],
+              "side": 1,
+              "rows": [
+                [
+                  "Diplomacy",
+                  2,
+                  23568
+                ],
+                [
+                  "Diplomacy",
+                  1,
+                  19472
+                ]
+              ],
+              "selected": 0,
+              "tab": "agents",
+              "tab_side": 2,
+              "members": [
+                "Mon Mothma"
+              ],
+              "target": "Akrit'tar",
+              "row_rects": [
+                [
+                  182,
+                  115,
+                  90,
+                  50
+                ],
+                [
+                  182,
+                  165,
+                  90,
+                  50
+                ]
+              ],
+              "tabs": [
+                [
+                  "agents",
+                  [
+                    282,
+                    218,
+                    61,
+                    16
+                  ]
+                ],
+                [
+                  "decoys",
+                  [
+                    343,
+                    218,
+                    61,
+                    16
+                  ]
+                ]
+              ],
+              "member_rects": [
+                [
+                  284,
+                  236,
+                  115,
+                  43
+                ]
+              ]
+            }
+          ],
+          "rail": []
+        }
+      ],
+      "screenshots": [
+        {
+          "label": "ready",
+          "sha256": "bdf90877c3470d1fc669d993ce6242d927dfc8215e2af856f558bea9093c5260"
+        },
+        {
+          "label": "final",
+          "sha256": "149341eafa9cd0bfd066d4e1dfa424944f8642e8ea372ced277e328425f1b5bd"
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x2ac001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x2ac001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x2ac001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x2ac001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 131.7646309999982
+        }
+      ],
+      "cleanup": "closed"
+    }
+  ],
+  "wasm_sha256": "ffcfc70ced7fab313bb74b2323fb012bf33ff63dac25b6b0152304395eb5cdde",
+  "runtime_pack_sha256": "4d36198e1e9e8f2114d96c16dcf365145c4f3f4ad1ef8617b73c863194bf5fc5"
+}

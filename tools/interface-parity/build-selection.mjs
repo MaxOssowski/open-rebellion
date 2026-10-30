@@ -102,6 +102,27 @@ function mimeType(file) {
   return "application/octet-stream";
 }
 
+
+// The original's tooltip (win_tooltip.rs, ghidra/notes/tooltips.md): rest
+// the pointer on a control for a second; a (255, 251, 240) tip with a
+// (128, 128, 128) border, 19 high, shows at the pointer plus (0, 21), or
+// above the pointer when it would pass y 479.
+async function tipShows(page, at) {
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await page.waitForTimeout(1000);
+  const png = PNG.sync.read(await page.screenshot());
+  const pixel = (x, y) => {
+    const i = (y * png.width + x) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
+  };
+  const top = at.y + 21 + 19 > 479 ? at.y - 19 : at.y + 21;
+  const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
+    && pixel(at.x + 2, top + 2) === "255,251,240";
+  await page.mouse.move(2, 2, { steps: 4 });
+  await page.waitForTimeout(100);
+  return shown;
+}
+
 async function startServer() {
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
@@ -341,6 +362,17 @@ async function inspect(server, source, faction, executable) {
     const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
     const captured = await stableWindow(page, origin, directory, "opened");
     const comparisons = [compare(captured, composeExpected(source, faction), "opened", directory)];
+    // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA 0x190c, 0x1906..0x190b):
+    // the quantity box, Items to Build, Increase, Decrease, Encyclopedia,
+    // Done and Cancel each show one; the close box has none.
+    const tips = {};
+    for (const [name, [x, y, w, h]] of [["quantity", [141, 196, 45, 17]], ["list", [79, 90, 65, 18]],
+      ["more", [189, 196, 13, 8]], ["fewer", [189, 205, 13, 8]], ["encyclopedia", [5, 224, 66, 33]],
+      ["done", [73, 224, 66, 33]], ["cancel", [141, 224, 66, 33]], ["close", [193, 3, 14, 14]]]) {
+      tips[name] = await tipShows(page, { x: origin.x + x + Math.floor(w / 2), y: origin.y + y + Math.floor(h / 2) });
+    }
+    assert.deepEqual(tips, { quantity: true, list: true, more: true, fewer: true, encyclopedia: true,
+      done: true, cancel: true, close: false }, JSON.stringify(tips));
 
     // Confirm (0x65, FUN_00438980) builds one unit of the selected class.
     await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });

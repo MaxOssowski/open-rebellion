@@ -1,0 +1,36 @@
+{
+  "run_dir": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/build-selection-2026-10-30T21-26-33-419Z-3902717",
+  "status": "pass",
+  "factions": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "comparisons": [
+        {
+          "label": "opened",
+          "pixels_checked": 28496,
+          "different_pixels": 0
+        }
+      ],
+      "built": {
+        "product": "Alliance Fleet Regiment",
+        "queued": 1
+      }
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "comparisons": [
+        {
+          "label": "opened",
+          "pixels_checked": 28496,
+          "different_pixels": 0
+        }
+      ],
+      "built": {
+        "product": "Stormtrooper Regiment",
+        "queued": 1
+      }
+    }
+  ]
+}
