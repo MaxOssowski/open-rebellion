@@ -1080,7 +1080,12 @@ would tune around known simulation feedback defects.
 - [ ] Exercise real mouse/keyboard input and bitmap screenshots in Chrome, Firefox, and Safari.
 - [ ] Meet budgets: ≤3 s cold start at 50 Mbps/30 ms, ≤4 pre-menu requests, ≤8 ms frame, ≤12 ms WASM tick at 1,000 fleets, ≤5 MB optimized WASM, and ≤256 MB combined memory after 10 minutes.
 
-### M4: Authoritative Multiplayer — 6–8 weeks after M1–M3
+### M4: Authoritative Multiplayer — deferred (2026-10-30)
+
+Out of v1.0 scope by the owner's decision of 2026-10-30: v1.0 recreates the
+original single-player Rebellion in the browser. The original's multiplayer
+entry points and Compose Chat stay visible and disabled. The plan below is
+kept for a later release.
 
 - [ ] Add validated `{player, tick, sequence}` commands and route single-player through the same boundary.
 - [ ] Add `rebellion-net` and `rebellion-server` responsibilities for authoritative simulation and fog-filtered faction deltas/snapshots.
@@ -1117,10 +1122,10 @@ would tune around known simulation feedback defects.
 - [ ] Deploy the self-contained browser artifact to Cloudflare Pages with Pages Functions middleware.
 - [ ] Keep `SITE_PASSWORD` and `SESSION_SECRET` in encrypted Wrangler/Pages secrets; commit no credentials or reusable auth token.
 - [ ] Sign an expiring `HttpOnly; Secure; SameSite=Lax` session cookie and provide logout; reject missing, expired, or tampered sessions.
-- [ ] Gate HTML, WASM, DAT, bitmap/HD packs, save endpoints, WebSockets, and multiplayer APIs—not only the landing page.
+- [ ] Gate HTML, WASM, DAT, bitmap/HD packs, and save endpoints—not only the landing page.
 - [ ] Add CSP and security headers plus immutable caching for hashed public assets; never publicly cache authenticated HTML or auth responses.
 - [ ] Maintain preview and production environments, commit-linked deploys, smoke checks, retained artifacts, and documented rollback.
-- [ ] Have `/codex-orchestrator` run an independent browser-use reviewer against the deployed URL for authentication, single-player, multiplayer, input, performance, and bitmap screenshot acceptance in Chrome, Firefox, and Safari.
+- [ ] Have `/codex-orchestrator` run an independent browser-use reviewer against the deployed URL for authentication, single-player, input, performance, and bitmap screenshot acceptance in Chromium on Linux (owner's acceptance scope of 2026-10-30; macOS and Safari are not required).
 
 v1.0 exits only when the protected Cloudflare deployment passes P39, the
 GitHub Pages documentation passes P40, and every supported earlier pass. This follows the local Pages `functions/_middleware`
