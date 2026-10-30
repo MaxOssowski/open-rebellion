@@ -155,7 +155,7 @@ async function run(browser, base, faction) {
       const png = await shot(`${label}-1s`);
       const got = tipBox(png, point);
       let want = none ? null : { x: point[0], y: point[1] + 21, height: 19 };
-      if (want && point[1] + 40 > 479) want.y = point[1] - 19;
+      if (want && point[1] + 40 > 440) want.y = point[1] - 19;
       if (args.a0 && capture) {
         const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
         want = tipBox(reference, point);
@@ -316,6 +316,49 @@ async function run(browser, base, faction) {
         await probe(label, point, capture, none);
       }
       await page.keyboard.press("Escape");
+
+      // The main menu (§1a, FUN_00405560, TEXTCOMM) on the site without a
+      // fixture: Escape skips the intro, then each control and the galaxy
+      // size rect tools against A0 tooltip/221..234.
+      await page.goto(base);
+      for (const deadline = Date.now() + 90_000; ;) {
+        if (await page.locator("#main-menu-semantics[data-active=true]").count() > 0) break;
+        if (Date.now() > deadline) throw new Error("the main menu never became active");
+        if (await page.evaluate(() => Boolean(document.querySelector("video")))) {
+          await page.keyboard.press("Escape");
+        }
+        await page.waitForTimeout(500);
+      }
+      await page.waitForTimeout(500);
+      for (const [label, point, capture] of [["mm-novice", [86, 59], "221-mm-novice.png"],
+        ["mm-intermediate", [148, 58], "222-mm-intermediate.png"], ["mm-expert", [209, 59], "223-mm-expert.png"],
+        ["mm-lever", [264, 294], "224-mm-lever.png"], ["mm-standard", [302, 303], "225-mm-standard.png"],
+        ["mm-large", [338, 303], "226-mm-large.png"], ["mm-huge", [374, 303], "227-mm-huge.png"],
+        ["mm-victory", [326, 348], "228-mm-victory.png"], ["mm-empire", [184, 335], "229-mm-empire.png"],
+        ["mm-alliance", [468, 334], "230-mm-alliance.png"], ["mm-load", [431, 250], "231-mm-load.png"],
+        ["mm-credits", [475, 256], "232-mm-credits.png"], ["mm-h2h", [92, 411], "233-mm-h2h.png"],
+        ["mm-exit", [567, 425], "234-mm-exit.png"]]) {
+        await probe(label, point, capture);
+      }
+
+      // Game Options (§1c, FUN_00407180, TEXTCOMM) from the galaxy (F1),
+      // against A0 tooltip/201..209: Save, Load, the two sliders, Restart,
+      // Return and Exit tipped, Play Music and the tactical toggles not.
+      await page.goto(`${base}?fixture-code=${FLEET_FINDER | (faction.byte << 8)}`);
+      await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
+        null, { timeout: 15_000 });
+      await page.locator("#glcanvas").focus();
+      await frames(page, 6);
+      await page.keyboard.press("F1");
+      await page.waitForTimeout(800);
+      for (const [label, point, capture, none] of [["go-save", [55, 90], "201-go-save.png"],
+        ["go-load", [305, 90], "202-go-load.png"], ["go-music", [480, 150], "203-go-music.png"],
+        ["go-effects", [480, 215], "204-go-effects.png"], ["go-restart", [98, 402], "205-go-restart.png"],
+        ["go-return", [183, 402], "206-go-return.png"], ["go-exit", [270, 402], "207-go-exit.png"],
+        ["go-playmusic", [370, 90], "208-go-playmusic.png", true],
+        ["go-starfield", [380, 322], "209-go-starfield.png", true]]) {
+        await probe(label, point, capture, none);
+      }
 
       // The system window's six tabs (§7e, FUN_00455060) in the
       // Build Selection fixture (code 55), which opens the first system's

@@ -4031,45 +4031,51 @@
         {
           "id": "CMD-11-C026",
           "requirement": "main menu",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-shell/",
+            "crates/rebellion-render/src/main_menu.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1a, TEXTCOMM) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00405560's eleven button tips and three galaxy-size rect tools (TEXTCOMM 0x1001..0x100b, 0x100d..0x100f) match A0 tooltip/221..234 in tooltip.mjs (Linux): left edge, top and height; above the pointer near the bottom (TIP_BOTTOM 440). The port's music toggle and Fleet Registry have none.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C027",
           "requirement": "game setup screen",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-shell/",
             "ghidra/notes/tooltips.md"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1b, TEXTCOMM) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_0040dfd0 is the setup screen of a multiplayer or Head to Head game, which the port does not offer.",
+          "scope": "Excluded: the multiplayer and Head to Head setup is out of scope (user decision 2026-10-30)."
         },
         {
           "id": "CMD-11-C028",
           "requirement": "Game Options",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-shell/",
+            "crates/rebellion-render/src/game_options.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1c, TEXTCOMM) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00407180's tips (TEXTCOMM 0x1010..0x1015, 0x1018) match A0 tooltip/201..207 in tooltip.mjs (Linux), and Play Music and the tactical toggles have none (208, 209). The bottom buttons' tips sit above the pointer as in A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C029",
           "requirement": "message boxes",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-shell/",
+            "crates/rebellion-render/src/game_options.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1d, REBDLOG) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212); the other message boxes (FUN_00417020's one-button boxes) are not checked.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

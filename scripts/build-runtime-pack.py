@@ -40,6 +40,10 @@ TEXT_TABLES = (
     "textstra-messages.json",
     "textstra-advice.json",
     "gid-legends.json",
+    # The other string modules (TEXTCOMM, TEXTTACT, REBDLOG) for tooltips.
+    "textcomm.json",
+    "texttact.json",
+    "rebdlog.json",
 )
 # The Encyclopedia's topic texts and artwork names (P66A) and their manifest,
 # staged by build-wasm.sh from data/base/encyclopedia/. Packed byte for byte:

@@ -41,7 +41,7 @@ pub enum GameOptionsAction {
     Delete { slot: usize },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum GameOptionsControl {
     Save(usize),
     Load(usize),
@@ -265,6 +265,26 @@ fn save_rect(slot: usize) -> NativeRect {
 
 fn load_rect(slot: usize) -> NativeRect {
     NativeRect::new(285.0, 81.0 + slot as f32 * 42.0, 41.0, 20.0)
+}
+
+impl GameOptionsControl {
+    /// The control's tooltip (`FUN_00407180`, TEXTCOMM): Save Game 0x1010,
+    /// Load Game 0x1011, Music Volume 0x1012, Sound Effects Volume 0x1013,
+    /// "Restart the Game " 0x1014, Return to the Command Center 0x1015 and
+    /// Exit 0x1018 (A0 tooltip/201..207). The music and tactical toggles
+    /// have none (208, 209).
+    const fn tooltip_string(self) -> Option<u16> {
+        match self {
+            Self::Save(_) => Some(0x1010),
+            Self::Load(_) => Some(0x1011),
+            Self::MusicVolume => Some(0x1012),
+            Self::SoundVolume => Some(0x1013),
+            Self::Restart => Some(0x1014),
+            Self::Return => Some(0x1015),
+            Self::Exit => Some(0x1018),
+            Self::Music | Self::Tactical(_) => None,
+        }
+    }
 }
 
 fn control_at(origin: GameOptionsOrigin, x: f32, y: f32) -> Option<GameOptionsControl> {
@@ -649,6 +669,26 @@ pub fn draw_game_options_overlay(
         Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h) * canvas.scale)
     };
     let mut answer = None;
+    // The shared tooltip (FUN_006008e0) over the options' 640 by 480, and
+    // the tool under the pointer while no question shows.
+    crate::win_tooltip::paint(
+        ctx,
+        Pos2::new(canvas.offset_x, canvas.offset_y),
+        canvas.scale,
+    );
+    if state.pending.is_none() && !state.suspended {
+        if let Some(pointer) = ctx.input(|input| input.pointer.latest_pos()) {
+            let x = (pointer.x - canvas.offset_x) / canvas.scale;
+            let y = (pointer.y - canvas.offset_y) / canvas.scale;
+            if let Some(control) = control_at(state.origin, x, y) {
+                if let Some(text) = control.tooltip_string().and_then(|id| {
+                    crate::win_tooltip::module_string(crate::win_tooltip::StringModule::Common, id)
+                }) {
+                    crate::win_tooltip::tool(ctx, egui::Id::new(("game-options", control)), &text);
+                }
+            }
+        }
+    }
     egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
         // The area itself must not claim the entire canvas; only actual controls do.
         if state.origin == GameOptionsOrigin::CommandCenter {
@@ -685,6 +725,16 @@ pub fn draw_game_options_overlay(
                 let bounds = rect(x, 287.0, 57.0, 28.0);
                 if complete {
                     let response = ui.interact(bounds, ui.id().with(normal), egui::Sense::click());
+                    // FUN_00416e90: REBDLOG 0x1300 "Yes", 0x1301 "No" (A0
+                    // tooltip/211, 212).
+                    if let Some(text) = crate::win_tooltip::module_string(
+                        crate::win_tooltip::StringModule::Dialog,
+                        if value { 0x1300 } else { 0x1301 },
+                    ) {
+                        if response.hovered() {
+                            crate::win_tooltip::tool(ctx, response.id, &text);
+                        }
+                    }
                     let id = if response.is_pointer_button_down_on() { pressed } else { normal };
                     ui.painter().image(cache.get(ctx, DllSource::Rebdlog, id).unwrap().id(), bounds, uv, Color32::WHITE);
                     let capture_id = ui.id().with((normal, "source_capture"));
@@ -718,6 +768,38 @@ pub fn draw_game_options_overlay(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_control_has_its_tooltip_string() {
+        // FUN_00407180 (TEXTCOMM; A0 tooltip/201..209).
+        use GameOptionsControl as C;
+        let tips = [
+            C::Save(0),
+            C::Load(5),
+            C::MusicVolume,
+            C::SoundVolume,
+            C::Restart,
+            C::Return,
+            C::Exit,
+            C::Music,
+            C::Tactical(0),
+        ]
+        .map(C::tooltip_string);
+        assert_eq!(
+            tips,
+            [
+                Some(0x1010),
+                Some(0x1011),
+                Some(0x1012),
+                Some(0x1013),
+                Some(0x1014),
+                Some(0x1015),
+                Some(0x1018),
+                None,
+                None
+            ]
+        );
+    }
 
     #[test]
     fn occupied_legacy_slots_wait_for_confirmation_and_cancellation_preserves_them() {

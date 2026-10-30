@@ -180,6 +180,14 @@ enum CutsceneKind {
     Story(u32),
 }
 
+/// The string modules the tooltips read besides TEXTSTRA (`FUN_005fefd0`:
+/// modules 1, 3 and 12), by DLL.
+const TOOLTIP_STRING_MODULES: [(&str, rebellion_render::win_tooltip::StringModule); 3] = [
+    ("TEXTCOMM.DLL", rebellion_render::win_tooltip::StringModule::Common),
+    ("TEXTTACT.DLL", rebellion_render::win_tooltip::StringModule::Tactical),
+    ("REBDLOG.DLL", rebellion_render::win_tooltip::StringModule::Dialog),
+];
+
 const INTRO_CUTSCENE: &str = "assets/references/ref-videos/000.webm";
 const INTRO_CINEMATIC: &str = "assets/references/ref-videos/001.webm";
 const CREDITS_CUTSCENE: &str = "assets/references/ref-videos/005.webm";
@@ -750,6 +758,16 @@ fn install_runtime_pack(
     if let Some(advice) = pack.game_files.remove("textstra-advice.json") {
         rebellion_data::set_agent_advice_json(&advice);
     }
+    // The tooltips' other string modules, extracted at build time.
+    for (dll, module) in TOOLTIP_STRING_MODULES {
+        let name = format!("{}.json", dll.trim_end_matches(".DLL").to_ascii_lowercase());
+        let table: std::collections::HashMap<u16, String> = pack
+            .game_files
+            .remove(&name)
+            .and_then(|data| serde_json::from_slice(&data).ok())
+            .unwrap_or_default();
+        rebellion_render::win_tooltip::set_module_strings(module, table);
+    }
     rebellion_data::set_message_texts(message_texts);
     rebellion_data::set_string_table(string_table);
     rebellion_render::set_encyclopedia_asset_cache(encyclopedia_assets);
@@ -1017,6 +1035,13 @@ async fn main() {
     rebellion_render::tactical_view::set_battle_texts(message_texts.clone());
     // The tooltips' texts (TEXTSTRA RT_STRING, FUN_006008e0's shared tip).
     rebellion_render::win_tooltip::set_strings(rebellion_data::ui_strings(&gdata_path));
+    #[cfg(not(target_arch = "wasm32"))]
+    for (dll, module) in TOOLTIP_STRING_MODULES {
+        rebellion_render::win_tooltip::set_module_strings(
+            module,
+            rebellion_data::dll_strings(&gdata_path, dll),
+        );
+    }
     // The galaxy view's legend windows (STRATEGY.DLL RCDATA, FUN_004522f0).
     rebellion_render::set_gid_legends(rebellion_data::gid_legends(&gdata_path));
     // The agent's advice lists, Alliance then Empire (TEXTSTRA RCDATA

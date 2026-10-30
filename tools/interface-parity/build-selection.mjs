@@ -106,7 +106,7 @@ function mimeType(file) {
 // The original's tooltip (win_tooltip.rs, ghidra/notes/tooltips.md): rest
 // the pointer on a control for a second; a (255, 251, 240) tip with a
 // (128, 128, 128) border, 19 high, shows at the pointer plus (0, 21), or
-// above the pointer when it would pass y 479.
+// above the pointer when it would pass y 440 (win_tooltip::TIP_BOTTOM).
 async function tipShows(page, at) {
   await page.mouse.move(at.x, at.y, { steps: 4 });
   await page.waitForTimeout(1000);
@@ -115,7 +115,7 @@ async function tipShows(page, at) {
     const i = (y * png.width + x) * 4;
     return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
   };
-  const top = at.y + 21 + 19 > 479 ? at.y - 19 : at.y + 21;
+  const top = at.y + 21 + 19 > 440 ? at.y - 19 : at.y + 21;
   const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
     && pixel(at.x + 2, top + 2) === "255,251,240";
   await page.mouse.move(2, 2, { steps: 4 });

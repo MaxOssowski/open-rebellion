@@ -51,6 +51,31 @@ pub enum MainMenuControl {
 }
 
 impl MainMenuControl {
+    /// The control's tooltip (`FUN_00405560`, TEXTCOMM): its buttons'
+    /// 0x1001..0x100b, and the galaxy-size rect tools 0x100f "Standard
+    /// Galaxy", 0x100e "Large Galaxy", 0x100d "Huge Galaxy". The port's own
+    /// music toggle and Fleet Registry chip have none.
+    #[must_use]
+    pub const fn tooltip_string(self) -> Option<u16> {
+        match self {
+            Self::GalaxyLever => Some(0x1001),
+            Self::Alliance => Some(0x1002),
+            Self::Empire => Some(0x1003),
+            Self::Multiplayer => Some(0x1004),
+            Self::LoadOptions => Some(0x1005),
+            Self::Quit => Some(0x1006),
+            Self::Easy => Some(0x1007),
+            Self::Intermediate => Some(0x1008),
+            Self::Expert => Some(0x1009),
+            Self::GameType => Some(0x100a),
+            Self::Credits => Some(0x100b),
+            Self::SmallGalaxy => Some(0x100f),
+            Self::MediumGalaxy => Some(0x100e),
+            Self::LargeGalaxy => Some(0x100d),
+            Self::MusicToggle | Self::FleetRegistry => None,
+        }
+    }
+
     /// Stable DOM/keyboard order shared with the browser accessibility bridge.
     #[must_use]
     pub const fn index(self) -> usize {
@@ -687,6 +712,8 @@ pub fn draw_main_menu(
         .frame(egui::Frame::default().fill(Color32::BLACK))
         .show(ctx, |ui| {
             let canvas = main_menu_canvas_rect(ui.max_rect());
+            // The shared tooltip (FUN_006008e0) over the menu's 640 by 480.
+            crate::win_tooltip::paint(ctx, canvas.min, canvas.width() / LOGICAL_WIDTH);
             let now = ctx.input(|input| input.time);
             // egui owns Tab/Shift+Tab traversal for these focusable controls.
             // Handling Tab here as well advances twice in the browser.
@@ -749,6 +776,16 @@ pub fn draw_main_menu(
                     _ => control_rect(canvas, *logical),
                 };
                 let response = ui.interact(rect, ui.id().with(*control as u8), Sense::click());
+                if state.hovered == Some(*control) {
+                    if let Some(text) = control.tooltip_string().and_then(|id| {
+                        crate::win_tooltip::module_string(
+                            crate::win_tooltip::StringModule::Common,
+                            id,
+                        )
+                    }) {
+                        crate::win_tooltip::tool(ctx, response.id, &text);
+                    }
+                }
                 response.widget_info(|| {
                     if *control == MainMenuControl::MusicToggle {
                         WidgetInfo::selected(
@@ -916,6 +953,41 @@ fn draw_registry_chip(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_original_control_has_its_tooltip_string() {
+        // FUN_00405560 (TEXTCOMM 0x1001..0x100b, rect tools 0x100d..0x100f).
+        use super::MainMenuControl as C;
+        let tips: Vec<_> = [
+            C::GalaxyLever,
+            C::Alliance,
+            C::Empire,
+            C::Multiplayer,
+            C::LoadOptions,
+            C::Quit,
+            C::Easy,
+            C::Intermediate,
+            C::Expert,
+            C::GameType,
+            C::Credits,
+            C::SmallGalaxy,
+            C::MediumGalaxy,
+            C::LargeGalaxy,
+        ]
+        .map(C::tooltip_string)
+        .into_iter()
+        .collect();
+        assert_eq!(
+            tips,
+            [
+                0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007, 0x1008, 0x1009, 0x100a,
+                0x100b, 0x100f, 0x100e, 0x100d
+            ]
+            .map(Some)
+        );
+        assert_eq!(C::MusicToggle.tooltip_string(), None);
+        assert_eq!(C::FleetRegistry.tooltip_string(), None);
+    }
 
     fn viewport(width: f32, height: f32) -> Rect {
         Rect::from_min_size(Pos2::ZERO, Vec2::new(width, height))

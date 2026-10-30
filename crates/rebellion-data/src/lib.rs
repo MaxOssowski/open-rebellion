@@ -1046,6 +1046,16 @@ pub fn ui_strings(gdata_path: &Path) -> HashMap<u16, String> {
     }
 }
 
+/// Another DLL's string table (`RT_STRING`), such as TEXTCOMM, TEXTTACT or
+/// REBDLOG, for the tooltips (`FUN_005fefd0`). Native builds only: the
+/// browser takes the table extracted at build time from its runtime pack.
+/// Empty when the DLL is absent.
+#[cfg(not(target_arch = "wasm32"))]
+#[must_use]
+pub fn dll_strings(gdata_path: &Path, dll: &str) -> HashMap<u16, String> {
+    textstra::load_strings(&gdata_path.join(dll)).unwrap_or_default()
+}
+
 /// The string ids the Side's text provider (`FUN_0052d920`, vtable
 /// `0x660ae8`) names a side by, Alliance then Empire: kind 1 `0x4d50` /
 /// `0x4d51` ("Alliance", "Empire"), kind 2 `0x4d60` / `0x4d61` ("Rebel

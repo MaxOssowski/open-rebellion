@@ -96,6 +96,25 @@ fn main() -> anyhow::Result<()> {
                     advice.alliance.len(),
                     advice.empire.len()
                 );
+                // The other string modules the tooltips name (FUN_005fefd0's
+                // modules 1, 3 and 12): TEXTCOMM, TEXTTACT and REBDLOG.
+                for (dll, name) in [
+                    ("TEXTCOMM.DLL", "textcomm.json"),
+                    ("TEXTTACT.DLL", "texttact.json"),
+                    ("REBDLOG.DLL", "rebdlog.json"),
+                ] {
+                    let path = cli.gdata.join(dll);
+                    if path.exists() {
+                        let table = types::textstra::load_strings(&path)?;
+                        let table_path = out_dir.join(name);
+                        std::fs::write(&table_path, serde_json::to_string_pretty(&table)?)?;
+                        eprintln!(
+                            "OK   {dll} -> {} ({} strings)",
+                            table_path.display(),
+                            table.len()
+                        );
+                    }
+                }
                 // The galaxy view's legend layouts (RT_RCDATA), from STRATEGY.DLL.
                 let strategy = cli.gdata.join("STRATEGY.DLL");
                 if strategy.exists() {

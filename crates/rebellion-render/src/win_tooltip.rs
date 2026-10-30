@@ -58,27 +58,63 @@ pub const BORDER: egui::Color32 = egui::Color32::from_rgb(128, 128, 128);
 /// The text, `COLOR_INFOTEXT`.
 pub const TEXT: egui::Color32 = egui::Color32::BLACK;
 
+/// The lowest row a tip below the pointer may reach. A0 keeps tips above
+/// row 440: the pointer at y 318 shows one below it (to 358,
+/// `tooltip/28-rail-chat.png`), at 402 above it (`205-go-restart.png`).
+/// That is the Windows 10 work area above its 40-pixel taskbar at 640 by
+/// 480; hyp: the original follows the player's own work area.
+pub const TIP_BOTTOM: f32 = 440.0;
+
 /// The 640 by 480 client.
 const CLIENT: (f32, f32) = (640.0, 480.0);
 
-static STRINGS: LazyLock<Mutex<HashMap<u16, String>>> =
+/// A string module (`FUN_005fefd0`): the DLL a tool's text comes from. The
+/// tactical code names its modules by the words `DAT_0065d420` (1),
+/// `DAT_0065d424` (2) and `DAT_0065d428` (3); the dialog boxes pass 12.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StringModule {
+    /// 1: TEXTCOMM.DLL (main menu, setup, Game Options).
+    Common,
+    /// 2: TEXTSTRA.DLL (the galaxy view and its windows).
+    Strategy,
+    /// 3: TEXTTACT.DLL (the tactical battle).
+    Tactical,
+    /// 12: REBDLOG.DLL (the message boxes).
+    Dialog,
+}
+
+static STRINGS: LazyLock<Mutex<HashMap<(StringModule, u16), String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Keep a module's string table for [`module_string`], replacing the one
+/// it had.
+pub fn set_module_strings(module: StringModule, strings: HashMap<u16, String>) {
+    let mut table = STRINGS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    table.retain(|(owner, _), _| *owner != module);
+    table.extend(strings.into_iter().map(|(id, text)| ((module, id), text)));
+}
+
+/// A tooltip text from a module's string table, if it was loaded.
+#[must_use]
+pub fn module_string(module: StringModule, id: u16) -> Option<String> {
+    STRINGS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&(module, id))
+        .cloned()
+}
 
 /// Keep TEXTSTRA's string table for [`string`].
 pub fn set_strings(strings: HashMap<u16, String>) {
-    *STRINGS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = strings;
+    set_module_strings(StringModule::Strategy, strings);
 }
 
 /// A tooltip text from TEXTSTRA's string table, if it was loaded.
 #[must_use]
 pub fn string(id: u16) -> Option<String> {
-    STRINGS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .get(&id)
-        .cloned()
+    module_string(StringModule::Strategy, id)
 }
 
 /// The tip's timers, from one frame to the next.
@@ -152,11 +188,11 @@ impl TipTimer {
 }
 
 /// The tip's rectangle in client pixels for a text `width` wide, shown with
-/// the pointer at `pointer`. It stays one pixel inside the client's right
-/// and bottom edges: past the right it moves left to end at 639 (A0
-/// `tooltip/25-gid.png`, `27-rail-support.png`), past the bottom it goes
-/// above the pointer, ending at the pointer's row (A0 `20-sysfinder.png`:
-/// the pointer at y 440 puts the tip at 421..440).
+/// the pointer at `pointer`. Past the right it moves left to end at 639 (A0
+/// `tooltip/25-gid.png`, `27-rail-support.png`). Below [`TIP_BOTTOM`] it
+/// goes above the pointer, ending at the pointer's row (A0
+/// `20-sysfinder.png`: the pointer at y 440 puts the tip at 421..440; the
+/// Game Options' bottom buttons at y 402 put theirs at 383, `205..207`).
 #[must_use]
 pub fn tip_rect(pointer: (f32, f32), width: f32) -> egui::Rect {
     let w = (width + WIDTH_PADDING).ceil();
@@ -165,7 +201,7 @@ pub fn tip_rect(pointer: (f32, f32), width: f32) -> egui::Rect {
     if x + w > CLIENT.0 - 1.0 {
         x = CLIENT.0 - 1.0 - w;
     }
-    if y + TIP_HEIGHT > CLIENT.1 - 1.0 {
+    if y + TIP_HEIGHT > TIP_BOTTOM {
         y = pointer.1 - TIP_HEIGHT;
     }
     egui::Rect::from_min_size(
@@ -494,6 +530,42 @@ pub(crate) mod tests {
         // Arial's cell is 2288 of its 2048 units: an em of 12 is egui size
         // 13.40625.
         assert!((FONT_SIZE - 13.406_25).abs() < 1e-4);
+    }
+
+    #[test]
+    fn each_module_keeps_its_own_strings() {
+        // FUN_005fefd0: the same id names different texts in different
+        // modules (REBDLOG 0x1906 is not TEXTSTRA's "Items to Build").
+        set_module_strings(
+            StringModule::Dialog,
+            HashMap::from([
+                (0x1300, "Yes".to_owned()),
+                (0x1906, "Item Build".to_owned()),
+            ]),
+        );
+        set_module_strings(
+            StringModule::Common,
+            HashMap::from([(0x1001, "Select Galaxy Size".to_owned())]),
+        );
+        assert_eq!(
+            module_string(StringModule::Dialog, 0x1906).as_deref(),
+            Some("Item Build")
+        );
+        assert_eq!(
+            module_string(StringModule::Common, 0x1001).as_deref(),
+            Some("Select Galaxy Size")
+        );
+        assert_eq!(module_string(StringModule::Tactical, 0x1001), None);
+        // Setting a module again replaces it alone.
+        set_module_strings(
+            StringModule::Common,
+            HashMap::from([(0x1002, "Two".to_owned())]),
+        );
+        assert_eq!(module_string(StringModule::Common, 0x1001), None);
+        assert_eq!(
+            module_string(StringModule::Dialog, 0x1300).as_deref(),
+            Some("Yes")
+        );
     }
 
     #[test]
@@ -879,8 +951,12 @@ pub(crate) mod tests {
         // One that would end at 640 ends at 639 instead.
         let edge = tip_rect((515.0, 25.0), 120.0);
         assert_eq!((edge.min.x, edge.max.x), (514.0, 639.0));
+        let options = tip_rect((98.0, 402.0), 95.0);
+        assert_eq!((options.min.y, options.max.y), (383.0, 402.0));
         // A tip that just fits stays where it is.
-        let fits = tip_rect((514.0, 439.0), 120.0);
-        assert_eq!((fits.min.x, fits.min.y), (514.0, 460.0));
+        let fits = tip_rect((514.0, 400.0), 120.0);
+        assert_eq!((fits.min.x, fits.min.y, fits.max.y), (514.0, 421.0, 440.0));
+        let past = tip_rect((514.0, 401.0), 120.0);
+        assert_eq!(past.min.y, 382.0);
     }
 }
