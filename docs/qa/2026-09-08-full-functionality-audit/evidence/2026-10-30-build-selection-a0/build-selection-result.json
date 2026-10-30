@@ -1,0 +1,462 @@
+{
+  "schema_version": 1,
+  "family": "build-selection",
+  "scope": "test-only Build Selection window (FUN_00437df0) reached from a Manufacturing window band's Build: static STRATEGY chrome compared exactly; title, class item, labels, values and number masked and kept as captures; Confirm builds and Stop clears the band",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "launch_arguments": [
+    "--mute-audio",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-sync",
+    "--no-first-run"
+  ],
+  "viewport": {
+    "width": 640,
+    "height": 480,
+    "device_scale_factor": 1
+  },
+  "window": {
+    "width": 210,
+    "height": 261
+  },
+  "masks": [
+    {
+      "x": 2,
+      "y": 2,
+      "width": 190,
+      "height": 15
+    },
+    {
+      "x": 6,
+      "y": 22,
+      "width": 195,
+      "height": 63
+    },
+    {
+      "x": 36,
+      "y": 110,
+      "width": 64,
+      "height": 23
+    },
+    {
+      "x": 138,
+      "y": 110,
+      "width": 64,
+      "height": 23
+    },
+    {
+      "x": 10,
+      "y": 145,
+      "width": 130,
+      "height": 15
+    },
+    {
+      "x": 10,
+      "y": 165,
+      "width": 130,
+      "height": 15
+    },
+    {
+      "x": 140,
+      "y": 145,
+      "width": 60,
+      "height": 15
+    },
+    {
+      "x": 140,
+      "y": 165,
+      "width": 60,
+      "height": 15
+    },
+    {
+      "x": 20,
+      "y": 196,
+      "width": 118,
+      "height": 15
+    },
+    {
+      "x": 141,
+      "y": 196,
+      "width": 45,
+      "height": 17
+    }
+  ],
+  "source": {
+    "dll": "STRATEGY.DLL",
+    "resource_ids": [
+      10108,
+      10592,
+      10594,
+      10596,
+      10606,
+      10610,
+      10612,
+      10800,
+      10801,
+      10802
+    ],
+    "aggregate_sha256": "db9870398de3a89912f907aa3892ac89141d50aa8c2f6819a6a66766e2284a60"
+  },
+  "factions": [
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "fixture_code": 311,
+      "origin": {
+        "x": 192,
+        "y": 84
+      },
+      "build_menu": {
+        "status": "object-menu",
+        "code": 311,
+        "left": 363,
+        "top": 253,
+        "width": 96.96875,
+        "height": 122,
+        "rows": 6,
+        "mission_row": null,
+        "move_row": null,
+        "confirmed_move_row": null,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": 2,
+        "status_window_row": 4,
+        "build_row": 0,
+        "stop_row": 1,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 0,
+        "target_screen_y": 0
+      },
+      "stop_menu": {
+        "status": "object-menu",
+        "code": 311,
+        "left": 363,
+        "top": 253,
+        "width": 96.96875,
+        "height": 122,
+        "rows": 6,
+        "mission_row": null,
+        "move_row": null,
+        "confirmed_move_row": null,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": 2,
+        "status_window_row": 4,
+        "build_row": 0,
+        "stop_row": 1,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 0,
+        "target_screen_y": 0
+      },
+      "built": {
+        "product": "Alliance Fleet Regiment",
+        "queued": 1
+      },
+      "comparisons": [
+        {
+          "label": "opened",
+          "pixels_checked": 28496,
+          "different_pixels": 0
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3cb4001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3cb4001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3cb4001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x3cb4001ada00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        },
+        {
+          "type": "info",
+          "text": "[interface] command=0x21x destination=build_selection status=opened area=TrainingFacility system=Akrit'tar"
+        },
+        {
+          "type": "info",
+          "text": "[interface] command=0x21x destination=production_build status=queued area=TrainingFacility count=1 system=Akrit'tar"
+        },
+        {
+          "type": "info",
+          "text": "[interface] command=0x213 destination=production_stop status=stopped area=TrainingFacility system=Akrit'tar"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 121.488359
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "fixture_code": 567,
+      "origin": {
+        "x": 255,
+        "y": 87
+      },
+      "build_menu": {
+        "status": "object-menu",
+        "code": 567,
+        "left": 363,
+        "top": 253,
+        "width": 96.96875,
+        "height": 122,
+        "rows": 6,
+        "mission_row": null,
+        "move_row": null,
+        "confirmed_move_row": null,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": 2,
+        "status_window_row": 4,
+        "build_row": 0,
+        "stop_row": 1,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 0,
+        "target_screen_y": 0
+      },
+      "stop_menu": {
+        "status": "object-menu",
+        "code": 567,
+        "left": 363,
+        "top": 253,
+        "width": 96.96875,
+        "height": 122,
+        "rows": 6,
+        "mission_row": null,
+        "move_row": null,
+        "confirmed_move_row": null,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": 2,
+        "status_window_row": 4,
+        "build_row": 0,
+        "stop_row": 1,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 0,
+        "target_screen_y": 0
+      },
+      "built": {
+        "product": "Stormtrooper Regiment",
+        "queued": 1
+      },
+      "comparisons": [
+        {
+          "label": "opened",
+          "pixels_checked": 28496,
+          "different_pixels": 0
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x387c001a9a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x387c001a9a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x387c001a9a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0x387c001a9a00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[cutscene] opened path=assets/references/ref-videos/000.webm"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        },
+        {
+          "type": "info",
+          "text": "[interface] command=0x21x destination=build_selection status=opened area=TrainingFacility system=Akrit'tar"
+        },
+        {
+          "type": "info",
+          "text": "[interface] command=0x21x destination=production_build status=queued area=TrainingFacility count=1 system=Akrit'tar"
+        },
+        {
+          "type": "info",
+          "text": "[interface] command=0x213 destination=production_stop status=stopped area=TrainingFacility system=Akrit'tar"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 111.28608399999985
+        }
+      ],
+      "cleanup": "closed"
+    }
+  ],
+  "wasm_sha256": "50bad2faf4c6848454ce1fe60d4d5bd66a4987a2108879e82dfcaa993622db0b",
+  "runtime_pack_sha256": "4d36198e1e9e8f2114d96c16dcf365145c4f3f4ad1ef8617b73c863194bf5fc5"
+}

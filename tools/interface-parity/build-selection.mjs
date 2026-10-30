@@ -32,12 +32,12 @@ const factions = [
 ];
 // FUN_00438620 controls: (x, y, width, height, normal bitmap, native size).
 const controls = [
-  { x: 79, y: 90, width: 65, height: 18, id: 10606, native: [65, 18] },
-  { x: 189, y: 196, width: 13, height: 8, id: 10610, native: [13, 8] },
-  { x: 189, y: 205, width: 13, height: 8, id: 10612, native: [13, 8] },
-  { x: 5, y: 224, width: 66, height: 33, id: 10592, native: [66, 33] },
-  { x: 73, y: 224, width: 66, height: 33, id: 10594, native: [66, 33] },
-  { x: 141, y: 224, width: 66, height: 33, id: 10596, native: [66, 33] },
+  { x: 79, y: 90, width: 65, height: 18, id: 10606, keyed: true, native: [65, 18] },
+  { x: 189, y: 196, width: 13, height: 8, id: 10610, keyed: true, native: [13, 8] },
+  { x: 189, y: 205, width: 13, height: 8, id: 10612, keyed: true, native: [13, 8] },
+  { x: 5, y: 224, width: 66, height: 33, id: 10592, keyed: true, native: [66, 33] },
+  { x: 73, y: 224, width: 66, height: 33, id: 10594, keyed: true, native: [66, 33] },
+  { x: 141, y: 224, width: 66, height: 33, id: 10596, keyed: true, native: [66, 33] },
   // port: the close box sits 17 pixels in from the right, as the mission
   // dialog's (hyp: the source chrome's placement is untraced).
   { x: 193, y: 3, width: 14, height: 14, id: 10108, native: [14, 14] },
@@ -50,8 +50,11 @@ const masks = [
   { x: 6, y: 22, width: 195, height: 63 },
   { x: 36, y: 110, width: 64, height: 23 },
   { x: 138, y: 110, width: 64, height: 23 },
-  { x: 10, y: 145, width: 125, height: 15 },
-  { x: 10, y: 165, width: 125, height: 15 },
+  // The time labels' boxes (10..135) plus 5: the port's unhinted Arial
+  // metrics run "Best Time To Completion:" to x 137 where GDI's hinted
+  // glyphs end at 126 (A0 build-orders/15-t01, 2026-10-30).
+  { x: 10, y: 145, width: 130, height: 15 },
+  { x: 10, y: 165, width: 130, height: 15 },
   { x: 140, y: 145, width: 60, height: 15 },
   { x: 140, y: 165, width: 60, height: 15 },
   { x: 20, y: 196, width: 118, height: 15 },
@@ -150,16 +153,26 @@ function decodeIndexedBmp(bytes, expectedWidth, expectedHeight) {
       png.data[destination + 3] = 255;
     }
   }
+  // FUN_005fd170: the first byte of the bits is the bitmap's key.
+  const key = bytes[paletteOffset + bytes[dataOffset] * 4 + 2] << 16
+    | bytes[paletteOffset + bytes[dataOffset] * 4 + 1] << 8 | bytes[paletteOffset + bytes[dataOffset] * 4];
+  png.key = key;
   return png;
 }
 
-function blitClipped(destination, source, x, y, width = source.width, height = source.height) {
+function blitClipped(destination, source, x, y, width = source.width, height = source.height, keyed = false) {
   // FUN_005fc140 blits at the bitmap's own size; the control clips the rest.
+  // A CoolStrobeButton blits keyed (FUN_00602d30 -> FUN_005fd0f0): its key
+  // colour shows the window behind.
   for (let row = 0; row < Math.min(height, source.height); row += 1) {
     if (y + row >= destination.height) break;
     const columns = Math.min(width, source.width, destination.width - x);
-    const start = row * source.width * 4;
-    destination.data.set(source.data.subarray(start, start + columns * 4), ((y + row) * destination.width + x) * 4);
+    for (let column = 0; column < columns; column += 1) {
+      const from = (row * source.width + column) * 4;
+      const colour = source.data[from] << 16 | source.data[from + 1] << 8 | source.data[from + 2];
+      if (keyed && colour === source.key) continue;
+      destination.data.set(source.data.subarray(from, from + 4), ((y + row) * destination.width + x + column) * 4);
+    }
   }
 }
 
@@ -177,7 +190,7 @@ function composeExpected(source, faction) {
   blitClipped(expected, resource(source, faction.title, 240, 17), 2, 2);
   for (const control of controls) {
     blitClipped(expected, resource(source, control.id, ...control.native), control.x, control.y,
-      control.width, control.height);
+      control.width, control.height, control.keyed ?? false);
   }
   return expected;
 }

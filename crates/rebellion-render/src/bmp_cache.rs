@@ -1990,6 +1990,31 @@ fn uses_black_key_transparency(source: DllSource, resource_id: u32) -> bool {
         && matches!(resource_id, 10_906..=10_911 | 10_916 | 10_963..=10_969)
 }
 
+/// Return whether a staged resource is a `CoolStrobeButton`'s bitmap that
+/// the button blits keyed on its first pixel (`FUN_00602d30` →
+/// `FUN_005fd0f0`; the key is the first byte of the DIB's bits,
+/// `FUN_005fd170`): Build Selection's list, step and bottom buttons
+/// (`FUN_00438620`; 10592..10597 also serve the mission dialog), whose
+/// corners show the window behind them in A0 (2026-10-30).
+fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
+    source == DllSource::Strategy
+        && matches!(resource_id, 10_592..=10_597 | 10_606..=10_607 | 10_610..=10_613)
+}
+
+/// The colour of an uncompressed 8-bit DIB's first pixel (its bottom row's
+/// first, for a bottom-up bitmap): `FUN_005fd170` keeps its palette index
+/// as the bitmap's key.
+fn first_pixel_colour(bytes: &[u8]) -> Option<[u8; 3]> {
+    let compression = u32::from_le_bytes(bytes.get(30..34)?.try_into().ok()?);
+    if compression != 0 {
+        return None;
+    }
+    let palette = decode_bmp_palette(bytes)?;
+    let offset = u32::from_le_bytes(bytes.get(10..14)?.try_into().ok()?) as usize;
+    let [r, g, b, _] = palette[usize::from(*bytes.get(offset)?)];
+    Some([r, g, b])
+}
+
 fn decode_macroquad_texture(
     bytes: &[u8],
     source: DllSource,
@@ -2144,6 +2169,16 @@ fn decode_rgba_image(
     } else if uses_lime_screen_transparency(source, resource_id) {
         for pixel in rgba.pixels_mut() {
             if pixel[0] == 0 && pixel[1] == 255 && pixel[2] == 0 {
+                pixel[3] = 0;
+            }
+        }
+    } else if let Some(key) = uses_first_pixel_key(source, resource_id)
+        .then(|| first_pixel_colour(bytes))
+        .flatten()
+    {
+        // port: keyed by colour; an index sharing the key's colour keys too.
+        for pixel in rgba.pixels_mut() {
+            if pixel.0[..3] == key {
                 pixel[3] = 0;
             }
         }
@@ -2808,6 +2843,26 @@ pub(crate) mod tests {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
         for opaque in [10905, 10912, 10915, 10962, 10970] {
+            assert_eq!(alpha(opaque), [255, 255], "{opaque}");
+        }
+    }
+
+    #[test]
+    fn build_selections_buttons_key_out_their_first_pixels_colour() {
+        // FUN_005fd170 keeps the first byte of the bits as the key and
+        // FUN_005fd0f0 skips it: 10594's corners (index 174, pink) show the
+        // window behind in A0; the background 10800 is blitted plain.
+        let mut palette = vec![[10, 20, 30]; 256];
+        palette[0] = [204, 28, 205];
+        let bytes = indexed_bmp(&palette);
+        let alpha = |resource_id| {
+            let decoded = decode_color_image(&bytes, DllSource::Strategy, resource_id).unwrap();
+            [decoded.pixels[0].a(), decoded.pixels[1].a()]
+        };
+        for keyed in [10592, 10594, 10597, 10606, 10607, 10610, 10613] {
+            assert_eq!(alpha(keyed), [0, 255], "{keyed}");
+        }
+        for opaque in [10591, 10598, 10605, 10608, 10609, 10614, 10800] {
             assert_eq!(alpha(opaque), [255, 255], "{opaque}");
         }
     }

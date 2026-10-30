@@ -22,8 +22,10 @@ const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-
 const dimensions = { width: 259, height: 355 };
 // `galaxy` is the galaxy view's top-left and width at 640 by 480 (CockpitState::layout_for).
 const factions = [
+  // FUN_00606980 centres the 259-wide dialog in the galaxy view truncating:
+  // 120 + (480 - 259) / 2 = 230 for the Empire (A0 placement, 2026-10-29).
   { name: "alliance", byte: 1, galaxy: { x: 55, y: 40, width: 485 }, origin: { x: 168, y: 38 }, title: 10801, tabs: [[11103, 11104], [11107, 11108]], headers: [11121, 11122] },
-  { name: "empire", byte: 2, galaxy: { x: 120, y: 40, width: 480 }, origin: { x: 231, y: 40 }, title: 10802, tabs: [[11105, 11106], [11109, 11110]], headers: [11123, 11124] },
+  { name: "empire", byte: 2, galaxy: { x: 120, y: 40, width: 480 }, origin: { x: 230, y: 40 }, title: 10802, tabs: [[11105, 11106], [11109, 11110]], headers: [11123, 11124] },
 ];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 // "targeting" reaches the dialog through the original entry: a right-click on
@@ -153,6 +155,9 @@ function decodeIndexedBmp(bytes, expectedWidth, expectedHeight) {
       png.data[destination + 3] = 255;
     }
   }
+  // FUN_005fd170: the first byte of the bits is the bitmap's key.
+  const first = paletteOffset + bytes[dataOffset] * 4;
+  png.key = bytes[first + 2] << 16 | bytes[first + 1] << 8 | bytes[first];
   return png;
 }
 
@@ -260,13 +265,19 @@ function resource(source, id, width, height) {
   return decodeIndexedBmp(fs.readFileSync(path.join(source, `${id}.bmp`)), width, height);
 }
 
-function blitClipped(destination, source, x, y, width = source.width, height = source.height) {
+function blitClipped(destination, source, x, y, width = source.width, height = source.height, keyed = false) {
   // FUN_005fc140 blits at the bitmap's own size; the control clips the rest.
+  // A CoolStrobeButton blits keyed (FUN_00602d30 -> FUN_005fd0f0): its key
+  // colour shows the window behind.
   for (let row = 0; row < Math.min(height, source.height); row += 1) {
     if (y + row >= destination.height) break;
     const columns = Math.min(width, source.width, destination.width - x);
-    const start = row * source.width * 4;
-    destination.data.set(source.data.subarray(start, start + columns * 4), ((y + row) * destination.width + x) * 4);
+    for (let column = 0; column < columns; column += 1) {
+      const from = (row * source.width + column) * 4;
+      const colour = source.data[from] << 16 | source.data[from + 1] << 8 | source.data[from + 2];
+      if (keyed && colour === source.key) continue;
+      destination.data.set(source.data.subarray(from, from + 4), ((y + row) * destination.width + x + column) * 4);
+    }
   }
 }
 
@@ -306,7 +317,7 @@ function composeExpected(source, faction, page) {
   blitClipped(expected, resource(source, missionTab[page === "mission" ? 1 : 0], 116, 33), 7, 20);
   blitClipped(expected, resource(source, agentsTab[page === "agents" ? 1 : 0], 116, 33), 137, 20);
   if (page === "mission") {
-    blitClipped(expected, resource(source, 10606, 65, 18), 101, 174);
+    blitClipped(expected, resource(source, 10606, 65, 18), 101, 174, 65, 18, true);
   } else {
     blitClipped(expected, resource(source, faction.headers[0], 108, 27), 8, 65);
     blitClipped(expected, resource(source, faction.headers[1], 108, 27), 136, 65);
@@ -314,7 +325,7 @@ function composeExpected(source, faction, page) {
     blitClipped(expected, resource(source, 11119, 16, 16), 120, 221);
   }
   for (const button of bottomButtons) {
-    blitClipped(expected, resource(source, button.id, ...button.native), button.x, button.y, button.width, button.height);
+    blitClipped(expected, resource(source, button.id, ...button.native), button.x, button.y, button.width, button.height, true);
   }
   return expected;
 }

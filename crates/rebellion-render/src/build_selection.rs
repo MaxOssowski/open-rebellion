@@ -346,9 +346,12 @@ pub fn draw_build_selection(
             let (frame, _) = ui.allocate_exact_size(window.size(), egui::Sense::hover());
             let painter = ui.painter().with_clip_rect(frame);
             let at = |x: f32, y: f32, w: f32, h: f32| logical_rect(frame, scale, x, y, w, h);
-            let title_font = egui::FontId::proportional((11.0 * scale).max(7.0));
-            let value_font = egui::FontId::proportional((10.0 * scale).max(7.0));
-            let small = egui::FontId::proportional((9.0 * scale).max(6.0));
+            // FUN_00438500 / FUN_00437f80: the title in font 5, "Number to
+            // build", the costs and the number edit in font 4, the time
+            // labels, the times and the class list in font 10.
+            let title_font = crate::theme::original_font(5, scale);
+            let value_font = crate::theme::original_font(4, scale);
+            let small = crate::theme::original_font(10, scale);
 
             paint(&painter, ctx, cache, BACKGROUND, frame, scale);
             // FUN_00438500: the side's 240-pixel strip at (2, 2), which the
@@ -366,9 +369,10 @@ pub fn draw_build_selection(
                 at(2.0, 2.0, 208.0, 17.0),
                 scale,
             );
+            // Format 0x21: centred, from the box's top (no DT_VCENTER).
             painter.text(
-                at(2.0, 2.0, 202.0, 14.0).center(),
-                egui::Align2::CENTER_CENTER,
+                at(2.0, 2.0, 202.0, 14.0).center_top(),
+                egui::Align2::CENTER_TOP,
                 TITLE,
                 title_font,
                 egui::Color32::BLACK,
@@ -424,8 +428,11 @@ pub fn draw_build_selection(
                 ),
                 (DEPLOYMENT_FIELD, days_text(estimate.deployment, valid)),
             ] {
-                painter.text(
-                    at(x, y, 60.0, 15.0).right_center(),
+                // hyp: the field draws with DrawText, which clips to its
+                // rect unless DT_NOCLIP, so a glyph's edge stays inside it.
+                let field = at(x, y, 60.0, 15.0);
+                painter.with_clip_rect(field).text(
+                    field.right_center(),
                     egui::Align2::RIGHT_CENTER,
                     text,
                     small.clone(),
@@ -733,6 +740,7 @@ mod tests {
         let layout = scaled(scale);
         let pos = window_rect(layout).min + egui::vec2(x, y) * scale;
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let manufacturing = ManufacturingState::new();
         let mut emitted = None;
@@ -1133,13 +1141,17 @@ mod tests {
                 .find(|(text, _, _)| text == wanted)
                 .map(|(_, _, size)| *size)
         };
-        assert_eq!(size(TITLE), Some(22.0));
-        assert_eq!(size(NUMBER_TO_BUILD), Some(20.0));
-        assert_eq!(size(BEST_COMPLETION), Some(18.0));
-        assert_eq!(size("32 Days"), Some(18.0));
-        assert_eq!(size("8"), Some(20.0));
-        assert_eq!(size("6"), Some(20.0));
-        assert_eq!(size("Alliance Fleet Regiment"), Some(18.0));
+        // FUN_00438500: the title in font 5, "Number to build" in font 4,
+        // the time labels in font 10; FUN_00437f80: the costs in font 4,
+        // the times in font 10, the class list in font 10.
+        let font = |n| Some(crate::theme::original_font(n, 2.0).size);
+        assert_eq!(size(TITLE), font(5));
+        assert_eq!(size(NUMBER_TO_BUILD), font(4));
+        assert_eq!(size(BEST_COMPLETION), font(10));
+        assert_eq!(size("32 Days"), font(10));
+        assert_eq!(size("8"), font(4));
+        assert_eq!(size("6"), font(4));
+        assert_eq!(size("Alliance Fleet Regiment"), font(10));
     }
 
     // FUN_00438dd0 / FUN_00438f30: 9999 at most, " Days" (14357), and "n/a"
