@@ -33,6 +33,11 @@ if [ ! -f web/data/runtime.orpk ]; then
 fi
 mkdir -p "${DIST}/data"
 cp web/data/runtime.orpk "${DIST}/data/"
+# The cutscenes load on demand, outside the pack (index.html's <video>).
+if ls web/data/video/*.webm >/dev/null 2>&1; then
+    mkdir -p "${DIST}/data/video"
+    cp web/data/video/*.webm "${DIST}/data/video/"
+fi
 
 # Refuse to create an artifact that can compile but cannot boot.
 if [ ! -s "${DIST}/data/runtime.orpk" ]; then

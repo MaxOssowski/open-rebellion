@@ -408,36 +408,77 @@ mod native {
     }
 }
 
+/// The browser's player: the page plays `data/video/<stem>.webm` in a
+/// `<video>` over the canvas (`web/index.html`, `open_rebellion_video`),
+/// black around it and keeping its aspect, as the native player draws its
+/// decoded frames; the game polls its state and stops it on a skip.
 #[cfg(target_arch = "wasm32")]
-mod wasm_stub {
-    use std::path::Path;
+mod web {
+    use std::path::{Path, PathBuf};
 
     use macroquad::prelude::Texture2D;
 
     use super::VideoError;
 
-    pub struct VideoPlayer;
+    const ENDED: u32 = 2;
+
+    extern "C" {
+        fn open_rebellion_video_play(ptr: *const u8, len: usize, volume: f32) -> u32;
+        fn open_rebellion_video_state() -> u32;
+        fn open_rebellion_video_stop();
+    }
+
+    pub struct VideoPlayer {
+        finished: bool,
+    }
 
     impl VideoPlayer {
-        pub fn open(_path: &Path, _volume: f32) -> Result<VideoPlayer, VideoError> {
-            Ok(VideoPlayer)
+        /// Ask the page to play the movie `path` names (its file stem, as in
+        /// `assets/references/ref-videos/000.webm`).
+        pub fn open(path: &Path, volume: f32) -> Result<VideoPlayer, VideoError> {
+            let stem = path
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .ok_or_else(|| VideoError::InvalidPath {
+                    path: path.to_path_buf(),
+                    message: "missing file stem".to_string(),
+                })?;
+            let started =
+                unsafe { open_rebellion_video_play(stem.as_ptr(), stem.len(), volume) } != 0;
+            if started {
+                Ok(VideoPlayer { finished: false })
+            } else {
+                Err(VideoError::NotDecoded {
+                    path: PathBuf::from(format!("data/video/{stem}.webm")),
+                })
+            }
         }
 
-        pub fn advance(&mut self, _dt: f32) {}
+        /// The page plays on its own clock; a movie that ended or failed to
+        /// load is finished.
+        pub fn advance(&mut self, _dt: f32) {
+            if unsafe { open_rebellion_video_state() } >= ENDED {
+                self.finished = true;
+            }
+        }
 
+        /// The page draws the movie itself.
         pub fn current_frame(&self) -> Option<&Texture2D> {
             None
         }
 
         pub fn is_finished(&self) -> bool {
-            true
+            self.finished || unsafe { open_rebellion_video_state() } >= ENDED
         }
 
-        pub fn stop(&mut self) {}
+        pub fn stop(&mut self) {
+            unsafe { open_rebellion_video_stop() };
+            self.finished = true;
+        }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::VideoPlayer;
 #[cfg(target_arch = "wasm32")]
-pub use wasm_stub::VideoPlayer;
+pub use web::VideoPlayer;

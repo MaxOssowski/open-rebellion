@@ -1,0 +1,79 @@
+{
+  "status": "pass",
+  "wasm_sha256": "fc8ee61891a17f8de41a2cb0db7cff6f8e0113acea7d62ca75cc36f089c418cb",
+  "intro_webm_sha256": "0af15384e2ba2d835a2cad5d64d026b2ee9fe9248320778caa3c00367c64da64",
+  "results": [
+    {
+      "name": "natural-end",
+      "status": "pass",
+      "playing": {
+        "stem": "000",
+        "time": 0.595
+      },
+      "during": {
+        "state": 1,
+        "stem": "000",
+        "video": {
+          "time": 0.597083,
+          "duration": 17.272,
+          "muted": false,
+          "width": 640,
+          "height": 480
+        },
+        "menu": false
+      },
+      "ended": {
+        "state": 2
+      },
+      "shots": [
+        {
+          "label": "playing",
+          "sha256": "148c7cf364810582c03e13ce48d7c4241fdf4cb2986cb1142cda721baaaf5426"
+        },
+        {
+          "label": "main-menu",
+          "sha256": "abf1e2d2010d002a8f97d508d7c8c9f19dc07c396ebc41bd40f5d2d54bffd455"
+        }
+      ],
+      "cutscene_log": [
+        "[cutscene] opened path=assets/references/ref-videos/000.webm"
+      ]
+    },
+    {
+      "name": "escape-skip",
+      "status": "pass",
+      "playing": {
+        "stem": "000",
+        "time": 0.565343
+      },
+      "during": {
+        "state": 1,
+        "stem": "000",
+        "video": {
+          "time": 0.566963,
+          "duration": 17.272,
+          "muted": false,
+          "width": 640,
+          "height": 480
+        },
+        "menu": false
+      },
+      "ended": {
+        "state": 2
+      },
+      "shots": [
+        {
+          "label": "playing",
+          "sha256": "963a248d03b79e36f5e0ce76a0c94c3b85d5fff5333322a052277ef81ff14b38"
+        },
+        {
+          "label": "main-menu",
+          "sha256": "abf1e2d2010d002a8f97d508d7c8c9f19dc07c396ebc41bd40f5d2d54bffd455"
+        }
+      ],
+      "cutscene_log": [
+        "[cutscene] opened path=assets/references/ref-videos/000.webm"
+      ]
+    }
+  ]
+}

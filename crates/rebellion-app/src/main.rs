@@ -4034,16 +4034,6 @@ async fn main() {
                         draw_fullscreen_texture(frame);
                     }
 
-                    let skip_label = "SPACE / ESC to skip";
-                    let metrics = measure_text(skip_label, None, 24, 1.0);
-                    draw_text(
-                        skip_label,
-                        screen_width() - metrics.width - 24.0,
-                        screen_height() - 24.0,
-                        24.0,
-                        Color::new(1.0, 1.0, 1.0, 0.8),
-                    );
-
                     if player.is_finished() {
                         cutscene_player = None;
                         game_mode = next_mode;

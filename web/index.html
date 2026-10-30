@@ -228,6 +228,76 @@
             });
         }());
     </script>
+    <script>
+        // Cutscenes: the game names a movie (ref-videos stem) and the page
+        // plays data/video/<stem>.webm in a <video> over the canvas, black
+        // around it, keeping its aspect, as the native player draws its
+        // frames. The game polls the state and stops it on a skip.
+        (function registerCutscenes() {
+            "use strict";
+
+            const IDLE = 0, PLAYING = 1, ENDED = 2, FAILED = 3;
+            let video = null;
+            let state = IDLE;
+
+            function finish(next) {
+                state = next;
+                if (video) {
+                    video.pause();
+                    video.removeAttribute("src");
+                    video.load();
+                    video.remove();
+                    video = null;
+                }
+                window.__openRebellionCutscene = { state };
+            }
+
+            function register(imports) {
+                imports.env.open_rebellion_video_play = function (ptr, len, volume) {
+                    let stem;
+                    try {
+                        stem = new TextDecoder("utf-8", { fatal: true })
+                            .decode(new Uint8Array(wasm_memory.buffer, ptr, len));
+                    } catch (error) {
+                        return 0;
+                    }
+                    if (!/^[0-9A-Za-z_-]+$/.test(stem)) return 0;
+                    finish(IDLE);
+                    video = document.createElement("video");
+                    video.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;pointer-events:none;z-index:10";
+                    video.playsInline = true;
+                    video.preload = "auto";
+                    video.volume = Math.max(0, Math.min(1, volume));
+                    video.src = "data/video/" + stem + ".webm";
+                    video.addEventListener("ended", () => finish(ENDED));
+                    video.addEventListener("error", () => finish(FAILED));
+                    document.body.append(video);
+                    state = PLAYING;
+                    window.__openRebellionCutscene = { state, stem };
+                    // Before any gesture the browser refuses sound; the movie
+                    // then plays muted rather than not at all.
+                    video.play().catch(() => {
+                        if (!video) return;
+                        video.muted = true;
+                        video.play().catch(() => finish(FAILED));
+                    });
+                    return 1;
+                };
+                imports.env.open_rebellion_video_state = function () {
+                    return state;
+                };
+                imports.env.open_rebellion_video_stop = function () {
+                    finish(ENDED);
+                };
+            }
+
+            miniquad_add_plugin({
+                register_plugin: register,
+                version: 1,
+                name: "open_rebellion_video",
+            });
+        }());
+    </script>
     <script>load("open-rebellion.wasm");</script>
 </body>
 </html>

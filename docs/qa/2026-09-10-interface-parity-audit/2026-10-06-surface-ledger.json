@@ -78,13 +78,15 @@
         {
           "id": "PRE-01-C001",
           "requirement": "LucasArts logo",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "The browser build has no video: VideoPlayer's wasm_stub reports every cutscene finished at once, so the intro (LucasArts logo) jumps straight to the main menu. Native plays one reference file (assets/references/ref-videos/000.webm) with no per-sequence check and no A0 capture."
+          "note": "The browser plays the intro's LucasArts movie (ref-videos 000) in the page's <video> since 2026-10-30 (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C002",
@@ -144,24 +146,28 @@
         {
           "id": "PRE-01-C007",
           "requirement": "skip",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "Nothing to skip in the browser (wasm_stub). Native skip uses Space/Escape and draws a replacement 'SPACE / ESC to skip' label; the original skip input is not traced."
+          "note": "Escape (and Space) ends the movie in the browser and the main menu follows (cutscenes.mjs escape-skip, Linux); the original's skip rule is not yet traced or compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C008",
           "requirement": "natural completion",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "In the browser the intro 'completes' at once without playing (wasm_stub). Native routes Intro to MainMenu on finish; no A0 or browser check."
+          "note": "The intro movie plays to its end and hands over to the main menu in the browser (cutscenes.mjs natural-end, Linux); the full original sequence is not yet traced.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C009",
@@ -9456,24 +9462,28 @@
         {
           "id": "END-01-C012",
           "requirement": "successful trench run",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "crates/rebellion-render/src/video_player.rs"
+            "crates/rebellion-render/src/video_player.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "Native routes a successful trench run to ref-videos/201.webm (test trench_run_outcomes_route_to_their_source_movies); the browser plays nothing (wasm_stub). No A0 or browser check."
+          "note": "Native routes a successful trench run to 201 and the browser now plays it through the page's <video> (video_player.rs web, 2026-10-30); not run in a browser case or compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C013",
           "requirement": "failed trench run",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "crates/rebellion-render/src/video_player.rs"
+            "crates/rebellion-render/src/video_player.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "As the successful run, with 202.webm; absent in the browser."
+          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
     },

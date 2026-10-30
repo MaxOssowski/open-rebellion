@@ -185,6 +185,19 @@ else
     echo "WARNING: VOICEFXA.DLL or VOICEFXE.DLL not found in $ORIGINAL_GAME_DIR or $GDATA; tactical voices will remain silent."
 fi
 
+# Stage the cutscenes (the intro, the story movies and the trench run) the
+# browser plays in a <video>: assets/references/ref-videos/*.webm, decoded
+# from an original installation and never committed.
+VIDEO_SRC="$ROOT/assets/references/ref-videos"
+WEB_VIDEO="$ROOT/web/data/video"
+mkdir -p "$WEB_VIDEO"
+if ls "$VIDEO_SRC"/*.webm >/dev/null 2>&1; then
+    cp "$VIDEO_SRC"/*.webm "$WEB_VIDEO/"
+    echo "Staged $(ls -1 "$WEB_VIDEO"/*.webm | wc -l | tr -d ' ') cutscenes in web/data/video/"
+else
+    echo "WARNING: no cutscenes in $VIDEO_SRC; the browser skips every movie."
+fi
+
 # ── Stage UI resources into web/data/ui/ ────────────────────────────────────
 UI_SRC="$ROOT/data/base/ui"
 WEB_UI="$ROOT/web/data/ui"
