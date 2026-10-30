@@ -109,6 +109,26 @@ function mimeType(file) {
   return "application/octet-stream";
 }
 
+
+// The original's tooltip (win_tooltip.rs; ghidra/notes/tooltips.md): rest
+// the pointer on a control for a second; a (255, 251, 240) tip with a
+// (128, 128, 128) border, 19 high, shows at the pointer plus (0, 21).
+async function tipShows(page, at) {
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await page.waitForTimeout(1000);
+  const png = PNG.sync.read(await page.screenshot());
+  const pixel = (x, y) => {
+    const i = (y * png.width + x) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
+  };
+  const top = at.y + 21 + 19 > 440 ? at.y - 19 : at.y + 21;
+  const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
+    && pixel(at.x + 2, top + 2) === "255,251,240";
+  await page.mouse.move(2, 2, { steps: 4 });
+  await page.waitForTimeout(100);
+  return shown;
+}
+
 async function startServer() {
   const server = http.createServer((request, response) => {
     const pathname = new URL(request.url, "http://localhost").pathname;
@@ -877,12 +897,24 @@ const cases = [
         (o) => o.assault_summary?.page === "SystemForces");
       await frames(page, 3);
       await shot(page, directory, "assault-system-forces");
+      // FUN_0044c630's tips: the four rail buttons (Summary 0x1944, the
+      // attacker's forces, System Forces 0x1943, Display 0x1939) and, on a
+      // forces page, the six category buttons (CATEGORY_BAR (36, 59), 62
+      // apart, 49 by 41).
+      const assaultTips = {};
+      for (let index = 0; index < 4; index += 1) {
+        assaultTips[`rail-${index}`] = await tipShows(page, railButton(index));
+      }
+      for (const [index, x] of [0, 62, 124, 186, 248, 312].entries()) {
+        assaultTips[`category-${index}`] = await tipShows(page, point([ox + 36 + x + 24, oy + 59 + 20]));
+      }
+      assert.ok(Object.values(assaultTips).every(Boolean), JSON.stringify(assaultTips));
       // FUN_0044e180: Escape closes the window.
       await press(page, "Escape");
       const closed = await until(page, "Escape closes the Assault Summary",
         (o) => o.assault_summary === null);
       await shot(page, directory, "assault-done");
-      return { before, menu, after, attackers, defenders, closed };
+      return { before, menu, after, attackers, defenders, assaultTips, closed };
     },
   },
   {
@@ -901,6 +933,18 @@ const cases = [
         (o) => o.enemy_planet_squadrons === 0 && o.enemy_fleets === 1, null, 60_000);
       await frames(page, 30);
       await shot(page, directory, "squadron-battle");
+      // FUN_0044f860's tips on the Battle Alert (TEXTSTRA 0x1922..0x1925 on
+      // the tabs, 0x1926 Simulate Results, 0x1927 Take Command), at the
+      // window's origin (tactical_view.rs BATTLE_WINDOW_*).
+      const origin = faction.name === "alliance" ? [62, 49] : [125, 52];
+      const tabX = faction.name === "alliance" ? 438 : 448;
+      const tabYs = faction.name === "alliance" ? [41, 101, 163, 225] : [37, 100, 163, 226];
+      const alertTips = {};
+      for (const [name, [x, y]] of [["simulate", [213, 309]], ["take-command", [347, 309]],
+        ...tabYs.map((y, index) => [`tab-${index}`, [tabX, y]])]) {
+        alertTips[name] = await tipShows(page, { x: origin[0] + x, y: origin[1] + y });
+      }
+      assert.ok(Object.values(alertTips).every(Boolean), JSON.stringify(alertTips));
       // The battle alert's middle button simulates the battle (resource
       // 1110 row, BattleAlertControl::Simulate); the group's survivors land.
       await click(page, { x: 275, y: 362 });
@@ -909,7 +953,7 @@ const cases = [
       assert.ok(after.enemy_planet_squadrons <= 2, JSON.stringify(after));
       await frames(page, 10);
       await shot(page, directory, "squadron-battle-after");
-      return { before, speed, battle, after };
+      return { before, speed, battle, alertTips, after };
     },
   },
   {

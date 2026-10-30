@@ -1373,6 +1373,11 @@ async function probeTactical(page, viewport, folder, stable) {
   probes.push({ type: "resume", ...verifyTacticalBitmap(viewport, resumed, 1060, 561, 308) });
   await page.mouse.click(pause.x, pause.y);
   await page.waitForTimeout(80);
+  // Then the pointer leaves the control: resting on it, the shared tooltip
+  // (win_tooltip.rs, "Resume Battle") would show between the two frames.
+  // The release must reach the game first, or the move cancels the click.
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(80);
   const pausedAgain = await capture("paused-again");
   probes.push({ type: "pause", ...verifyTacticalBitmap(viewport, pausedAgain, 1061, 561, 308) });
   await page.waitForTimeout(250);
@@ -4683,7 +4688,12 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         requests.push({ url: new URL(response.url()).pathname, status: response.status() });
       }
     });
-    page.on("requestfailed", (request) => errors.push(`requestfailed:${request.url()}:${request.failure()?.errorText}`));
+    page.on("requestfailed", (request) => {
+      // Escape on the trench run's movie stops its download (see below).
+      if (scenario.trench_run_outcome && /\/data\/video\/20[12]\.webm$/.test(request.url())
+        && request.failure()?.errorText === "net::ERR_ABORTED") return;
+      errors.push(`requestfailed:${request.url()}:${request.failure()?.errorText}`);
+    });
     page.on("pageerror", (error) => errors.push(`pageerror:${error.stack || error.message}`));
     page.on("console", (message) => {
       consoleLines.push({ type: message.type(), text: message.text() });
@@ -4696,6 +4706,18 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     const code = fixtureCode(scenario, faction);
     const url = `http://127.0.0.1:${server.address().port}/?fixture-code=${code}`;
     await page.goto(url, { waitUntil: "load", timeout: 30_000 });
+    if (scenario.trench_run_outcome) {
+      // The trench run's movie (MDATA.201 / 202) plays before the battle
+      // returns; Escape ends any movie (movie-flow.md, "Ported").
+      const deadline = Date.now() + 30_000;
+      while (!(await page.evaluate(() => Boolean(window.__openRebellionInterfaceReady?.status)))) {
+        if (Date.now() > deadline) throw new Error("the trench run never returned to the battle");
+        if (await page.evaluate(() => Boolean(document.querySelector("video")))) {
+          await page.keyboard.press("Escape");
+        }
+        await page.waitForTimeout(250);
+      }
+    }
     await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, {
       timeout: 30_000,
     });
@@ -5591,6 +5613,11 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     }
 
     const expectedRequests = ["/", "/gl.js", "/open-rebellion-test.wasm", "/data/runtime.orpk"];
+    // The trench run ends on its movie (ghidra/notes/movie-flow.md: 0x71
+    // MDATA.201 on success, 0x70 MDATA.202 on failure), which the browser
+    // plays from data/video.
+    if (/trench-run-success/.test(id)) expectedRequests.push("/data/video/201.webm");
+    if (/trench-run-failure/.test(id)) expectedRequests.push("/data/video/202.webm");
     assert.deepEqual(requests.map(({ url: pathname }) => pathname).sort(), expectedRequests.sort());
     assert.ok(requests.every(({ status }) => status === 200), "startup has non-200 requests");
     assert.deepEqual(errors, [], `browser diagnostics for ${id}: ${errors.join("; ")}`);

@@ -156,6 +156,9 @@ async function run(browser, base, faction) {
       const got = tipBox(png, point);
       let want = none ? null : { x: point[0], y: point[1] + 21, height: 19 };
       if (want && point[1] + 40 > 440) want.y = point[1] - 19;
+      // Without an A0 file, the rule's own right edge: a tip that would pass
+      // x 639 ends there (A0 25-gid.png).
+      if (want && got && !capture) want.x = Math.min(point[0], 639 - got.width);
       if (args.a0 && capture) {
         const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
         want = tipBox(reference, point);
@@ -358,6 +361,23 @@ async function run(browser, base, faction) {
         ["go-playmusic", [370, 90], "208-go-playmusic.png", true],
         ["go-starfield", [380, 322], "209-go-starfield.png", true]]) {
         await probe(label, point, capture, none);
+      }
+
+      // The tactical HUD (§9a, TEXTTACT) in the production battle fixture
+      // (code 66056, tactical.catalog.json "production-participants"):
+      // the headers, the first task force, Pause, the zoom and camera
+      // controls and Game Options, at the shared placement (A0 under Wine,
+      // .artifacts/interface-parity/a0/TAC-02-C009: "Task Force 1" below
+      // the pointer).
+      await page.goto(`${base}?fixture-code=${faction.byte === 1 ? 65800 : 66056}`);
+      await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status === "battle-ready",
+        null, { timeout: 30_000 });
+      await frames(page, 30);
+      for (const [label, point] of [["tac-task-forces", [33, 10]], ["tac-task-force-1", [72, 10]],
+        ["tac-fighters", [320, 10]], ["tac-pause", [575, 318]], ["tac-zoom-in", [503, 355]],
+        ["tac-zoom-out", [619, 355]], ["tac-options", [618, 319]], ["tac-recall", [507, 456]],
+        ["tac-memorize", [615, 456]]]) {
+        await probe(label, point, null);
       }
 
       // The system window's six tabs (§7e, FUN_00455060) in the

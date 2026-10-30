@@ -3896,34 +3896,37 @@
         {
           "id": "CMD-11-C015",
           "requirement": "Battle Alert",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "crates/rebellion-render/src/tactical_view.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6b) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_0044f860's tips (tabs 0x1922..0x1925, Simulate Results, Take Command; Retreat while enabled) show at the shared placement in fleet-window.mjs's squadron-battle case on both sides (Linux); no A0 capture of the alert's tips.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-11-C016",
           "requirement": "Battle Summary",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "crates/rebellion-render/src/tactical_view.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6c) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_0046f360's tab and category tips are registered (tactical_view.rs); no browser case reaches the Battle Summary with the pointer on them, and no A0 capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-11-C017",
           "requirement": "Assault and bombardment summary",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "crates/rebellion-render/src/tactical_view.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6d) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "FUN_0044c630's rail and category tips show in fleet-window.mjs's assault case on both sides (Linux); the port's invented unit-name tooltips are removed; no A0 capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4081,12 +4084,13 @@
         {
           "id": "CMD-11-C030",
           "requirement": "tactical battle panels",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "crates/rebellion-render/src/tactical_view.rs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (9a-9h, TEXTTACT; see also TAC-02-C007 and TAC-02-C009) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "note": "All 51 §9 controls register their TEXTTACT tips with their runtime texts (hud_tooltip, command_tooltip); tooltip.mjs checks nine HUD controls in the production battle fixture (Linux); Wine A0 TAC-02-C009 shows 'Task Force 1' below the pointer. The side panels have no browser check and no Windows A0 capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8423,9 +8427,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/"
           ],
-          "note": "Empty slots are drawn at the A0 positions, but A0 TAC-02-C007 shows the tooltip 'Unassigned Task Force', which the tactical view does not draw (no tooltip code in tactical_view.rs).",
+          "note": "Empty slots are drawn at the A0 positions, and since 2026-10-31 the slot shows its tip 'Unassigned Task Force' (TEXTTACT 0xad92, tactical_view.rs hud_tooltip) as A0 TAC-02-C007 does; the tip's look is the A0 Windows one, not Wine's, and no pixel comparison is made.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8442,12 +8447,14 @@
         {
           "id": "TAC-02-C009",
           "requirement": "hover",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/"
           ],
-          "note": "A0 TAC-02-C009 shows the hover tooltip 'Task Force 1'; the port has no tactical tooltips, so the hover state is absent."
+          "note": "Since 2026-10-31 hovering an assigned task force shows 'Task Force N' (TEXTTACT 0xad93+i) below the pointer, as A0 TAC-02-C009 (Wine) shows 'Task Force 1'; tooltip.mjs finds the tip on the first slot in the battle fixture. No pixel comparison with the Wine capture (its tip is Wine-styled).",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "TAC-02-C010",

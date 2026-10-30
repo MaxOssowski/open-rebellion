@@ -1,0 +1,17 @@
+  "cases": 148,
+  "passed": 136,
+  "failed": 12,
+FAIL tactical/alliance/battle-entry/640x480
+FAIL tactical/alliance/battle-entry/1280x800-letterboxed
+FAIL tactical/empire/battle-entry/640x480
+FAIL tactical/empire/battle-entry/1280x800-letterboxed
+FAIL tactical/alliance/production-trench-run-success/640x480
+FAIL tactical/alliance/production-trench-run-success/1280x800-letterboxed
+FAIL tactical/empire/production-trench-run-success/640x480
+FAIL tactical/empire/production-trench-run-success/1280x800-letterboxed
+FAIL tactical/alliance/production-trench-run-failure/640x480
+FAIL tactical/alliance/production-trench-run-failure/1280x800-letterboxed
+FAIL tactical/empire/production-trench-run-failure/640x480
+FAIL tactical/empire/production-trench-run-failure/1280x800-letterboxed
+
+[exited with code 0]

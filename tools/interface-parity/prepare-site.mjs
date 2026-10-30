@@ -90,11 +90,11 @@ for (const [source, destination] of [
 }
 // The story movies, for the StoryMovie fixture (story-movie.mjs), and the
 // intro (000, 001), which the site plays without a fixture before the main
-// menu (tooltip.mjs's main-menu case).
+// menu (tooltip.mjs's main-menu case), and the trench run's (201, 202).
 const videos = path.join(web, "data/video");
 if (fs.existsSync(videos)) {
   fs.mkdirSync(path.join(artifacts, "data/video"), { recursive: true });
-  for (const stem of ["000", "001", "101", "102", "103", "104"]) {
+  for (const stem of ["000", "001", "101", "102", "103", "104", "201", "202"]) {
     const source = path.join(videos, `${stem}.webm`);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(artifacts, "data/video", `${stem}.webm`));
   }

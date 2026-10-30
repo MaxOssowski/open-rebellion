@@ -437,6 +437,112 @@ impl NativeRect {
     }
 }
 
+// ── The shared tooltip in the battle screens ────────────────────────────────
+//
+// The battle screens draw with macroquad, so they keep their own frame of
+// the shared tip (`win_tooltip`, `FUN_006008e0`): its timers, placement and
+// look are the galaxy view's; a control registers itself while the pointer
+// is over it, and the frame draws the tip last.
+
+#[derive(Default)]
+struct TacticalTip {
+    timer: crate::win_tooltip::TipTimer,
+    hovered: Option<(u64, String)>,
+    pointer: Option<(f32, f32)>,
+}
+
+thread_local! {
+    static TACTICAL_TIP: std::cell::RefCell<TacticalTip> =
+        std::cell::RefCell::new(TacticalTip::default());
+}
+
+/// Register the battle control `id` with its text this frame.
+fn tactical_tool_text(id: u64, text: String) {
+    TACTICAL_TIP.with(|tip| tip.borrow_mut().hovered = Some((id, text)));
+}
+
+/// Register the control at `rect` (native pixels, right and bottom edges
+/// outside) while the pointer is over it and it is `enabled`, with string
+/// `string` of `module`.
+fn tactical_tool(
+    canvas: TacticalCanvas,
+    rect: NativeRect,
+    id: u64,
+    module: crate::win_tooltip::StringModule,
+    string: u16,
+    enabled: bool,
+) {
+    let (x, y) = mouse_position();
+    let (x, y) = canvas.logical_pointer(x, y);
+    if enabled && rect.contains(x, y) {
+        if let Some(text) = crate::win_tooltip::module_string(module, string) {
+            tactical_tool_text(id, text);
+        }
+    }
+}
+
+/// Run the tip's timers on this frame's control and draw the tip over
+/// everything.
+fn paint_tactical_tip(canvas: TacticalCanvas) {
+    let (x, y) = mouse_position();
+    let pointer = canvas.logical_pointer(x, y);
+    let pressed =
+        is_mouse_button_pressed(MouseButton::Left) || is_mouse_button_pressed(MouseButton::Right);
+    let shown = TACTICAL_TIP.with(|tip| {
+        let mut tip = tip.borrow_mut();
+        let hovered = tip.hovered.take();
+        let moved = tip.pointer.is_some_and(|last| last != pointer);
+        tip.pointer = Some(pointer);
+        tip.timer
+            .step(
+                get_time(),
+                hovered
+                    .as_ref()
+                    .map(|(id, text)| (egui_macroquad::egui::Id::new(id), text.as_str())),
+                pointer,
+                moved,
+                pressed,
+            )
+            .map(|(text, at)| (text.to_owned(), at))
+    });
+    let Some((text, at)) = shown else {
+        return;
+    };
+    let font = tactical_arial();
+    let font_size = tactical_text_font_size(canvas);
+    let font_scale = crate::win_tooltip::FONT_EM / TACTICAL_FONT_RASTER;
+    let width = measure_text(&text, font.as_ref(), font_size, font_scale).width / canvas.scale;
+    let rect = crate::win_tooltip::tip_rect(at, width);
+    let color = |c: egui_macroquad::egui::Color32| Color::from_rgba(c.r(), c.g(), c.b(), 255);
+    let (left, top) = canvas.point(rect.min.x, rect.min.y);
+    let (w, h) = (rect.width() * canvas.scale, rect.height() * canvas.scale);
+    let one = canvas.scale;
+    draw_rectangle(left, top, w, h, color(crate::win_tooltip::BORDER));
+    draw_rectangle(
+        left + one,
+        top + one,
+        w - 2.0 * one,
+        h - 2.0 * one,
+        color(crate::win_tooltip::FILL),
+    );
+    // The ink starts 4 pixels in; the capitals start 5 pixels down and are
+    // 9 rows tall, so the baseline is 14 pixels down (A0 tooltip/01.png).
+    let (text_x, baseline) = canvas.point(rect.min.x + 4.0, rect.min.y + 14.0);
+    draw_text_ex(
+        &text,
+        text_x,
+        baseline,
+        TextParams {
+            font: font.as_ref(),
+            font_size,
+            font_scale,
+            font_scale_aspect: 1.0,
+            color: color(crate::win_tooltip::TEXT),
+            ..Default::default()
+        },
+    );
+}
+
 /// One uniformly scaled, letterboxed copy of the original tactical canvas.
 #[derive(Debug, Clone, Copy)]
 struct TacticalCanvas {
@@ -4572,6 +4678,339 @@ fn draw_tactical_withdraw_confirmation(
     }
 }
 
+/// A main-HUD control's tooltip (TEXTTACT, `FUN_0059a8d0`'s builders) and
+/// whether it is enabled: task forces 0xad93 + i, or 0xad92 "Unassigned
+/// Task Force" while empty (`FUN_0059b550`, `FUN_0059b450`); fighter groups
+/// 0xad9d + i, disabled while empty (`FUN_0059b690`); nav point sets
+/// 0xada2 + i; Pause 0xadb7, 0xadb8 "Resume Battle" while paused; the
+/// highlights 0xada6 / 0xada8, "Dim" 0xada7 / 0xada9 while lit
+/// (`FUN_0059b130`); the camera controls 0xadb6..0xadab; Game Options 0xadaa.
+fn hud_tooltip(
+    control: TacticalHudControl,
+    task_forces: [bool; 8],
+    fighter_groups: [bool; 4],
+    paused: bool,
+    highlight_alliance: bool,
+    highlight_empire: bool,
+) -> (u16, bool) {
+    match control {
+        TacticalHudControl::TaskForce(i) => {
+            let assigned = task_forces[usize::from(i)];
+            (
+                if assigned {
+                    0xad93 + u16::from(i)
+                } else {
+                    0xad92
+                },
+                true,
+            )
+        }
+        TacticalHudControl::FighterGroup(i) => {
+            (0xad9d + u16::from(i), fighter_groups[usize::from(i)])
+        }
+        TacticalHudControl::NavigationSet(i) => (0xada2 + u16::from(i), true),
+        TacticalHudControl::Pause => (if paused { 0xadb8 } else { 0xadb7 }, true),
+        TacticalHudControl::ZoomIn => (0xadb6, true),
+        TacticalHudControl::ZoomOut => (0xadb5, true),
+        TacticalHudControl::CameraLeft => (0xadb4, true),
+        TacticalHudControl::CameraRight => (0xadb3, true),
+        TacticalHudControl::CameraUp => (0xadb2, true),
+        TacticalHudControl::CameraDown => (0xadb1, true),
+        TacticalHudControl::CameraTarget => (0xadb0, true),
+        TacticalHudControl::CameraRecall => (0xadad, true),
+        TacticalHudControl::CameraMemorize => (0xadab, true),
+        TacticalHudControl::HighlightAlliance => {
+            (if highlight_alliance { 0xada7 } else { 0xada6 }, true)
+        }
+        TacticalHudControl::HighlightEmpire => {
+            (if highlight_empire { 0xada9 } else { 0xada8 }, true)
+        }
+        TacticalHudControl::BattleOptions => (0xadaa, true),
+    }
+}
+
+/// A side panel's control tooltip (TEXTTACT): the panel decides the
+/// shared confirm button's text (Assign Maneuver / Tactics 0xddb9, Assign
+/// Mission 0xdda0); Surround / Stand Off names the other tactic
+/// (`FUN_005dd080`); Previous / Next name the task force when the ship has
+/// one (9f 0xdd81 / 0xdd82, 9g 0xdd84 / 0xdd85).
+fn command_tooltip(
+    control: TacticalCommandControl,
+    maneuvers: bool,
+    surround: bool,
+    in_task_force: bool,
+) -> u16 {
+    match control {
+        TacticalCommandControl::PreviousCapital => {
+            if in_task_force {
+                0xdd81
+            } else {
+                0xdd84
+            }
+        }
+        TacticalCommandControl::NextCapital => {
+            if in_task_force {
+                0xdd82
+            } else {
+                0xdd85
+            }
+        }
+        TacticalCommandControl::OpenManeuvers => 0xddcd,
+        TacticalCommandControl::OpenMissions => 0xdd8c,
+        TacticalCommandControl::LeftHook => 0xddd0,
+        TacticalCommandControl::RightHook => 0xddd1,
+        TacticalCommandControl::Hammer => 0xddd2,
+        TacticalCommandControl::Anvil => 0xddd3,
+        TacticalCommandControl::HoldPosition => 0xddd4,
+        TacticalCommandControl::ToggleTactic => {
+            if surround {
+                0xddce
+            } else {
+                0xddcf
+            }
+        }
+        TacticalCommandControl::AttackCapitalShips => 0xdde5,
+        TacticalCommandControl::AttackFighters => 0xddeb,
+        TacticalCommandControl::Recover => 0xdde2,
+        TacticalCommandControl::AttackDeathStar => 0xdde6,
+        TacticalCommandControl::Confirm => {
+            if maneuvers {
+                0xddb9
+            } else {
+                0xdda0
+            }
+        }
+        TacticalCommandControl::Cancel => 0xdda1,
+    }
+}
+
+/// Register the tooltip of the battle control under the pointer, for the
+/// controls `draw_original_tactical_hud` shows this frame
+/// (`ghidra/notes/tooltips.md` §9).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The HUD's state comes as the drawing's own parameters."
+)]
+fn register_tactical_tooltips(
+    canvas: TacticalCanvas,
+    groups: &TacticalGroupHud<'_>,
+    attack_death_star_enabled: bool,
+    paused: bool,
+    (highlight_alliance, highlight_empire): (bool, bool),
+    command_panel: TacticalCommandPanel,
+    battle_options_open: bool,
+    withdraw_confirmation_open: bool,
+    player_observing: bool,
+    withdraw_enabled: bool,
+) {
+    use crate::win_tooltip::StringModule::Tactical;
+    // The headers (FUN_0059be80, FUN_0059c030).
+    tactical_tool(
+        canvas,
+        NativeRect::new(9.0, 1.0, 49.0, 19.0),
+        0x9a00,
+        Tactical,
+        0xad91,
+        true,
+    );
+    tactical_tool(
+        canvas,
+        NativeRect::new(296.0, 1.0, 49.0, 19.0),
+        0x9a01,
+        Tactical,
+        0xad9b,
+        true,
+    );
+    for (index, rect) in TASK_FORCE_BUTTONS.into_iter().enumerate() {
+        let control = TacticalHudControl::TaskForce(index as u8);
+        let (string, enabled) = hud_tooltip(
+            control,
+            groups.task_forces,
+            groups.fighter_groups,
+            paused,
+            highlight_alliance,
+            highlight_empire,
+        );
+        tactical_tool(
+            canvas,
+            rect,
+            0x9a10 | index as u64,
+            Tactical,
+            string,
+            enabled,
+        );
+    }
+    for (index, rect) in FIGHTER_GROUP_BUTTONS.into_iter().enumerate() {
+        let control = TacticalHudControl::FighterGroup(index as u8);
+        let (string, enabled) = hud_tooltip(
+            control,
+            groups.task_forces,
+            groups.fighter_groups,
+            paused,
+            highlight_alliance,
+            highlight_empire,
+        );
+        // FUN_00602150 makes the buttons 25 by 15.
+        let rect = NativeRect::new(rect.x, rect.y, rect.width, 15.0);
+        tactical_tool(
+            canvas,
+            rect,
+            0x9a20 | index as u64,
+            Tactical,
+            string,
+            enabled,
+        );
+    }
+    for spec in TACTICAL_HUD_CONTROLS {
+        let (string, enabled) = hud_tooltip(
+            spec.control,
+            groups.task_forces,
+            groups.fighter_groups,
+            paused,
+            highlight_alliance,
+            highlight_empire,
+        );
+        let id = 0x9a40 | u64::from(string);
+        tactical_tool(canvas, spec.rect, id, Tactical, string, enabled);
+    }
+    if withdraw_confirmation_open {
+        // FUN_005f0f40: Confirm Withdraw 0xddc2, Cancel 0xdda1.
+        for (spec, string) in TACTICAL_WITHDRAW_CONFIRMATION_CONTROLS
+            .into_iter()
+            .zip([0xddc2, 0xdda1])
+        {
+            tactical_tool(
+                canvas,
+                spec.rect,
+                0x9b00 | u64::from(string),
+                Tactical,
+                string,
+                true,
+            );
+        }
+        return;
+    }
+    if battle_options_open {
+        // FUN_005dab90; Observe / Take Command names the other state.
+        for spec in TACTICAL_BATTLE_OPTIONS_CONTROLS {
+            let (string, enabled) = match spec.control {
+                TacticalBattleOptionsControl::Withdraw => (0xddba, withdraw_enabled),
+                TacticalBattleOptionsControl::SimulateRemainder => (0xddbb, true),
+                TacticalBattleOptionsControl::ObserveToggle => {
+                    (if player_observing { 0xdded } else { 0xddbc }, true)
+                }
+                TacticalBattleOptionsControl::GameOptions => (0xddbd, true),
+                TacticalBattleOptionsControl::Close => (0xddbe, true),
+            };
+            tactical_tool(
+                canvas,
+                spec.rect,
+                0x9c00 | u64::from(string),
+                Tactical,
+                string,
+                enabled,
+            );
+        }
+        return;
+    }
+    let in_task_force = groups.selected_ship_group.is_some();
+    let command =
+        |control: TacticalCommandControl, maneuvers: bool, surround: bool, enabled: bool| {
+            let string = command_tooltip(control, maneuvers, surround, in_task_force);
+            let id = 0x9d00 | (u64::from(maneuvers) << 16) | u64::from(string);
+            tactical_tool(
+                canvas,
+                tactical_command_spec(control, true).0,
+                id,
+                Tactical,
+                string,
+                enabled,
+            );
+        };
+    match command_panel {
+        TacticalCommandPanel::Maneuvers { pending_tactic, .. } => {
+            let surround = pending_tactic == TacticalTactic::Surround;
+            for control in [
+                TacticalCommandControl::LeftHook,
+                TacticalCommandControl::RightHook,
+                TacticalCommandControl::Hammer,
+                TacticalCommandControl::Anvil,
+                TacticalCommandControl::HoldPosition,
+                TacticalCommandControl::ToggleTactic,
+                TacticalCommandControl::Confirm,
+                TacticalCommandControl::Cancel,
+            ] {
+                command(control, true, surround, true);
+            }
+        }
+        TacticalCommandPanel::Missions { .. } => {
+            let fighter = groups.selected_fighter_group.is_some();
+            for (control, enabled) in [
+                (TacticalCommandControl::AttackCapitalShips, true),
+                (TacticalCommandControl::AttackFighters, true),
+                (TacticalCommandControl::Recover, fighter),
+                (
+                    TacticalCommandControl::AttackDeathStar,
+                    attack_death_star_enabled,
+                ),
+                (TacticalCommandControl::Confirm, true),
+                (TacticalCommandControl::Cancel, true),
+            ] {
+                command(control, false, false, enabled);
+            }
+        }
+        TacticalCommandPanel::Display => {
+            let has_selection =
+                groups.selected_fighter_group.is_some() || groups.selected_ship_name.is_some();
+            if !has_selection {
+                return;
+            }
+            if groups.selected_ship_name.is_some() {
+                command(TacticalCommandControl::PreviousCapital, false, false, true);
+                command(TacticalCommandControl::NextCapital, false, false, true);
+                // FUN_005e4110: the hull and shield bars, then the power
+                // allocation rect tools 0xddd5..0xddd9.
+                if groups.selected_ship_hull.is_some() {
+                    tactical_tool(
+                        canvas,
+                        TACTICAL_SELECTED_HULL_METER,
+                        0x9e00,
+                        Tactical,
+                        0xdd9a,
+                        true,
+                    );
+                }
+                if groups.selected_ship_shield.is_some() {
+                    tactical_tool(
+                        canvas,
+                        TACTICAL_SELECTED_SHIELD_METER,
+                        0x9e01,
+                        Tactical,
+                        0xdd9b,
+                        true,
+                    );
+                }
+                if groups.selected_ship_subsystems.is_some() {
+                    for (index, x) in TACTICAL_SUBSYSTEM_X.into_iter().enumerate() {
+                        tactical_tool(
+                            canvas,
+                            NativeRect::new(x, TACTICAL_SUBSYSTEM_Y, 22.0, 15.0),
+                            0x9e10 | index as u64,
+                            Tactical,
+                            0xddd5 + index as u16,
+                            true,
+                        );
+                    }
+                }
+            }
+            if !groups.selected_enemy {
+                command(TacticalCommandControl::OpenManeuvers, false, false, true);
+                command(TacticalCommandControl::OpenMissions, false, false, true);
+            }
+        }
+    }
+}
+
 /// Paint only resource-backed battle chrome. Unmapped command groups remain
 /// visible but are not passed off as implemented interactions.
 #[expect(
@@ -4607,6 +5046,18 @@ fn draw_original_tactical_hud(
 ) {
     use resources::tactical as art;
 
+    register_tactical_tooltips(
+        canvas,
+        &groups,
+        attack_death_star_enabled,
+        paused,
+        (highlight_alliance, highlight_empire),
+        command_panel,
+        battle_options_open,
+        withdraw_confirmation_open,
+        player_observing,
+        withdraw_enabled,
+    );
     if let Some(death_star) = death_star {
         draw_tactical_bitmap(
             cache,
@@ -8347,6 +8798,21 @@ fn draw_original_battle_alert(
 
     for (index, tab) in BattleAlertTab::ALL.into_iter().enumerate() {
         let rect = skin.tab_rects[index];
+        // FUN_0044f860: Battle Summary 0x1922, Alliance Forces 0x1923,
+        // Imperial Forces 0x1924, System Assets 0x1925 (TEXTSTRA).
+        tactical_tool(
+            canvas,
+            NativeRect::new(
+                battle_window_origin().0 + rect.x,
+                battle_window_origin().1 + rect.y,
+                rect.width,
+                rect.height,
+            ),
+            0x0001_0000 | index as u64,
+            crate::win_tooltip::StringModule::Strategy,
+            0x1922 + index as u16,
+            true,
+        );
         let active = state.battle_alert_tab == tab
             || (mouse_down && rect.contains(local_mouse.0, local_mouse.1));
         draw_strategy_bitmap(
@@ -8395,6 +8861,21 @@ fn draw_original_battle_alert(
     for (index, rect) in button_rects.into_iter().enumerate() {
         let control = button_controls[index];
         let enabled = control != BattleAlertControl::Retreat || retreat_enabled;
+        // FUN_0044f860: Retreat 0x194a, Simulate Results 0x1926, Take
+        // Command 0x1927; a disabled Retreat shows none.
+        tactical_tool(
+            canvas,
+            NativeRect::new(
+                battle_window_origin().0 + rect.x,
+                battle_window_origin().1 + rect.y,
+                rect.width,
+                rect.height,
+            ),
+            0x0001_0010 | index as u64,
+            crate::win_tooltip::StringModule::Strategy,
+            [0x194a, 0x1926, 0x1927][index],
+            enabled,
+        );
         let resource_state = if !enabled {
             2
         } else if mouse_down
@@ -8593,6 +9074,21 @@ fn draw_original_battle_results(
             mouse.0 - battle_window_origin().0,
             mouse.1 - battle_window_origin().1,
         );
+        // FUN_0046f360: Battle Summary 0x1922, Alliance Forces 0x1937,
+        // Imperial Forces 0x1938, Display 0x1939 (TEXTSTRA).
+        tactical_tool(
+            canvas,
+            NativeRect::new(
+                battle_window_origin().0 + rect.x,
+                battle_window_origin().1 + rect.y,
+                rect.width,
+                rect.height,
+            ),
+            0x0002_0000 | index as u64,
+            crate::win_tooltip::StringModule::Strategy,
+            [0x1922, 0x1937, 0x1938, 0x1939][index],
+            true,
+        );
         let selected = state.battle_result_tab.index() == index;
         let active = selected || (mouse_down && rect.contains(local_mouse.0, local_mouse.1));
         draw_strategy_bitmap(
@@ -8616,6 +9112,29 @@ fn draw_original_battle_results(
         }
     }
 
+    if matches!(
+        state.battle_result_tab,
+        BattleResultTab::AllianceForces | BattleResultTab::ImperialForces
+    ) {
+        // FUN_0046f360: Capital Ships 0x1928, Fighter Squadrons 0x1929,
+        // Trooper Regiments 0x1930, Personnel 0x1931.
+        for index in 0..BattleResultCategory::ALL.len() {
+            let rect = battle_category_rect(index);
+            tactical_tool(
+                canvas,
+                NativeRect::new(
+                    battle_window_origin().0 + rect.x,
+                    battle_window_origin().1 + rect.y,
+                    rect.width,
+                    rect.height,
+                ),
+                0x0002_0010 | index as u64,
+                crate::win_tooltip::StringModule::Strategy,
+                [0x1928, 0x1929, 0x1930, 0x1931][index],
+                true,
+            );
+        }
+    }
     if matches!(
         state.battle_result_tab,
         BattleResultTab::AllianceForces | BattleResultTab::ImperialForces
@@ -8643,10 +9162,26 @@ fn draw_original_battle_results(
     action
 }
 
-/// Draw the tactical combat view (macroquad).
+/// Draw the tactical combat view (macroquad), then the shared tooltip over
+/// it.
 ///
 /// Call this when `GameMode::TacticalCombat`. Returns a `TacticalAction`
 /// indicating whether the main loop should transition modes.
+///
+/// # Panics
+/// Panics if the active battle session disappears during drawing.
+pub fn draw_tactical_view(
+    state: &mut TacticalState,
+    bmp_cache: &mut BmpCache,
+    world: &GameWorld,
+    troop_transport: &TroopTransportState,
+) -> TacticalAction {
+    let action = draw_tactical_frame(state, bmp_cache, world, troop_transport);
+    paint_tactical_tip(TacticalCanvas::new(screen_width(), screen_height()));
+    action
+}
+
+/// The battle screens' frame, without the tooltip.
 #[expect(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
@@ -8655,10 +9190,7 @@ fn draw_original_battle_results(
     clippy::cast_precision_loss,
     reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
 )]
-///
-/// # Panics
-/// Panics if the active battle session disappears during drawing.
-pub fn draw_tactical_view(
+fn draw_tactical_frame(
     state: &mut TacticalState,
     bmp_cache: &mut BmpCache,
     world: &GameWorld,
@@ -10530,6 +11062,121 @@ fn handle_placement_input(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hud_tooltips_follow_the_controls_state() {
+        // FUN_0059b550 / FUN_0059b450: "Task Force N" once assigned, else
+        // 0xad92; FUN_0059b690 disables an empty fighter group; FUN_0059b130
+        // swaps Pause / Resume and Highlight / Dim (A0 TAC-02-C007, C009).
+        let mut forces = [false; 8];
+        forces[0] = true;
+        forces[3] = true;
+        let mut fighters = [false; 4];
+        fighters[2] = true;
+        let tip = |control, paused, lit| hud_tooltip(control, forces, fighters, paused, lit, lit);
+        assert_eq!(
+            tip(TacticalHudControl::TaskForce(0), false, false),
+            (0xad93, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::TaskForce(3), false, false),
+            (0xad96, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::TaskForce(7), false, false),
+            (0xad92, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::FighterGroup(2), false, false),
+            (0xad9f, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::FighterGroup(0), false, false),
+            (0xad9d, false)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::NavigationSet(3), false, false),
+            (0xada5, true)
+        );
+        assert_eq!(tip(TacticalHudControl::Pause, false, false), (0xadb7, true));
+        assert_eq!(tip(TacticalHudControl::Pause, true, false), (0xadb8, true));
+        assert_eq!(
+            tip(TacticalHudControl::HighlightAlliance, false, false),
+            (0xada6, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::HighlightAlliance, false, true),
+            (0xada7, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::HighlightEmpire, false, false),
+            (0xada8, true)
+        );
+        assert_eq!(
+            tip(TacticalHudControl::HighlightEmpire, false, true),
+            (0xada9, true)
+        );
+        // FUN_0059c650 and FUN_0059bd30.
+        let camera = [
+            TacticalHudControl::ZoomIn,
+            TacticalHudControl::ZoomOut,
+            TacticalHudControl::CameraLeft,
+            TacticalHudControl::CameraRight,
+            TacticalHudControl::CameraUp,
+            TacticalHudControl::CameraDown,
+            TacticalHudControl::CameraTarget,
+            TacticalHudControl::CameraRecall,
+            TacticalHudControl::CameraMemorize,
+            TacticalHudControl::BattleOptions,
+        ]
+        .map(|control| tip(control, false, false).0);
+        assert_eq!(
+            camera,
+            [0xadb6, 0xadb5, 0xadb4, 0xadb3, 0xadb2, 0xadb1, 0xadb0, 0xadad, 0xadab, 0xadaa]
+        );
+    }
+
+    #[test]
+    fn panel_tooltips_follow_the_panel_and_state() {
+        // FUN_005dcc70, FUN_005df110, FUN_005e4110 / FUN_005e7030.
+        use TacticalCommandControl as C;
+        assert_eq!(command_tooltip(C::Confirm, true, false, false), 0xddb9);
+        assert_eq!(command_tooltip(C::Confirm, false, false, false), 0xdda0);
+        assert_eq!(command_tooltip(C::ToggleTactic, true, false, false), 0xddcf);
+        assert_eq!(command_tooltip(C::ToggleTactic, true, true, false), 0xddce);
+        assert_eq!(
+            command_tooltip(C::PreviousCapital, false, false, true),
+            0xdd81
+        );
+        assert_eq!(
+            command_tooltip(C::PreviousCapital, false, false, false),
+            0xdd84
+        );
+        assert_eq!(command_tooltip(C::NextCapital, false, false, true), 0xdd82);
+        assert_eq!(command_tooltip(C::NextCapital, false, false, false), 0xdd85);
+        let fixed = [
+            C::OpenManeuvers,
+            C::OpenMissions,
+            C::LeftHook,
+            C::RightHook,
+            C::Hammer,
+            C::Anvil,
+            C::HoldPosition,
+            C::AttackCapitalShips,
+            C::AttackFighters,
+            C::Recover,
+            C::AttackDeathStar,
+            C::Cancel,
+        ]
+        .map(|control| command_tooltip(control, true, false, false));
+        assert_eq!(
+            fixed,
+            [
+                0xddcd, 0xdd8c, 0xddd0, 0xddd1, 0xddd2, 0xddd3, 0xddd4, 0xdde5, 0xddeb, 0xdde2,
+                0xdde6, 0xdda1
+            ]
+        );
+    }
     use rebellion_core::ids::{CapitalShipKey, DatId, FighterKey};
     use rebellion_core::tactical_resources::{
         capital_ship_tactical_resource, death_star_tactical_resource, fighter_tactical_resource,

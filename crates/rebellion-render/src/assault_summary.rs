@@ -334,6 +334,33 @@ fn rail_art(page: SummaryPage, report: &AssaultReport, viewer: usize) -> (u32, u
     }
 }
 
+/// A rail button's tooltip (`FUN_0044c630`, TEXTSTRA): Summary 0x1944, the
+/// attacker's 0x1937 "Alliance Forces" or 0x1938 "Imperial Forces" (chosen
+/// at create by the report's side), System Forces 0x1943, Display 0x1939.
+fn rail_tooltip(page: SummaryPage, report: &AssaultReport) -> u16 {
+    match page {
+        SummaryPage::Summary => 0x1944,
+        SummaryPage::Attackers if report.attacker == Faction::Alliance => 0x1937,
+        SummaryPage::Attackers => 0x1938,
+        SummaryPage::SystemForces => 0x1943,
+        SummaryPage::Display => 0x1939,
+    }
+}
+
+/// A category button's tooltip (`FUN_0044c630`): Capital Ships 0x1928,
+/// Fighter Squadrons 0x1929, Manufacturing 0x1835, Defense Facilities
+/// 0x1946, Trooper Regiments 0x1930, Personnel 0x1931.
+const fn category_tooltip(category: ReportCategory) -> u16 {
+    match category {
+        ReportCategory::CapitalShips => 0x1928,
+        ReportCategory::Fighters => 0x1929,
+        ReportCategory::Manufacturing => 0x1835,
+        ReportCategory::Defense => 0x1946,
+        ReportCategory::Troops => 0x1930,
+        ReportCategory::Personnel => 0x1931,
+    }
+}
+
 /// A category button's art (normal, pressed) by the viewer's side.
 fn category_art(category: ReportCategory, viewer: usize) -> (u32, u32) {
     let (alliance, empire) = match category {
@@ -644,6 +671,11 @@ fn draw_window(
                             ui.id().with((window.serial, "category", index)),
                             egui::Sense::click(),
                         );
+                        crate::win_tooltip::response_tool(
+                            &response,
+                            rect,
+                            category_tooltip(category),
+                        );
                         let down = category == window.category || held(rect);
                         paint(cache, DllSource::Strategy, if down { pressed } else { normal }, x, y);
                         if exact_clicked(&response, rect) {
@@ -712,12 +744,6 @@ fn draw_window(
                                     picture_box.max.y,
                                 );
                                 list_painter.galley(name_at, galley, egui::Color32::WHITE);
-                                let response = ui.interact(
-                                    cell.intersect(list),
-                                    ui.id().with((window.serial, "unit", column, row)),
-                                    egui::Sense::hover(),
-                                );
-                                response.on_hover_text(&unit.name);
                             }
                         }
                     }
@@ -786,7 +812,7 @@ fn draw_window(
             }
             let (x, top, offsets, width, height) = RAIL_BUTTONS[viewer];
             for (page, offset) in SummaryPage::ALL.into_iter().zip(offsets) {
-                let (normal, pressed, label) = rail_art(page, report, viewer);
+                let (normal, pressed, _) = rail_art(page, report, viewer);
                 let y = top + offset;
                 let rect = logical_rect(local, scale, x, y, width, height);
                 let response = ui.interact(
@@ -799,7 +825,7 @@ fn draw_window(
                 if exact_clicked(&response, rect) {
                     result.page = Some(page);
                 }
-                response.on_hover_text(label);
+                crate::win_tooltip::response_tool(&response, rect, rail_tooltip(page, report));
             }
 
             // FUN_0044e180: Escape closes; Left and Right step through the
@@ -878,6 +904,24 @@ mod tests {
         });
         world.systems[system].ground_units.push(troop);
         (world, system)
+    }
+
+    #[test]
+    fn the_rail_and_category_buttons_have_their_tooltip_strings() {
+        // FUN_0044c630: the attacker's tab is chosen at create by the
+        // report's side (+0x6c).
+        let (world, system) = world(ControlKind::Uncontrolled);
+        let mut empire = report(&world, system);
+        assert_eq!(
+            SummaryPage::ALL.map(|page| rail_tooltip(page, &empire)),
+            [0x1944, 0x1938, 0x1943, 0x1939]
+        );
+        empire.attacker = Faction::Alliance;
+        assert_eq!(rail_tooltip(SummaryPage::Attackers, &empire), 0x1937);
+        assert_eq!(
+            ReportCategory::ALL.map(category_tooltip),
+            [0x1928, 0x1929, 0x1835, 0x1946, 0x1930, 0x1931]
+        );
     }
 
     fn report(world: &GameWorld, system: SystemKey) -> AssaultReport {

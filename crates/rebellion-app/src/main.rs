@@ -1511,7 +1511,8 @@ async fn main() {
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_request = interface_test_fixture::requested();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
-    let plays_intro = interface_fixture_request.is_none();
+    let plays_intro =
+        interface_fixture_request.is_none() && tactical_test_fixture::requested().is_none();
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
     let plays_intro = true;
     // The fixtures' galaxies have no Alliance headquarters, so the victory
