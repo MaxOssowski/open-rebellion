@@ -4662,7 +4662,14 @@ async fn main() {
                     });
                 #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
                 let original_modal_fixture_open = false;
-                map_state.pointer_blocked = sector_window_state
+                // An open Finder is modal: A0 (2026-10-30, the Fleet Finder)
+                // takes no click on the cockpit controls, the rail, the
+                // droids or the map until it closes.
+                let finder_modal = fleet_finder_state.is_open()
+                    || troop_finder_state.is_open()
+                    || personnel_finder_state.is_open();
+                map_state.pointer_blocked = finder_modal
+                    || sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
                     || fleet_window_state.contains_screen_point(cockpit_layout, pointer)
@@ -4752,7 +4759,7 @@ async fn main() {
 
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
-                    let strategic_input_enabled = !original_modal_fixture_open;
+                    let strategic_input_enabled = !original_modal_fixture_open && !finder_modal;
                     // Register the cockpit background before panels so the
                     // opaque chrome never covers their content or artwork.
                     draw_cockpit_background(ctx, &cockpit_state, &mut bmp_cache);
@@ -6983,7 +6990,9 @@ async fn main() {
                     draw_advisor(ctx, &mut advisor_state);
 
                     // The galaxy view holds the capture while targeting.
-                    let cockpit_command = (!original_modal_fixture_open && targeting.is_none())
+                    let cockpit_command = (!original_modal_fixture_open
+                        && !finder_modal
+                        && targeting.is_none())
                         .then(|| {
                             handle_cockpit_egui_input(ctx, &mut cockpit_state, &mut bmp_cache)
                         });

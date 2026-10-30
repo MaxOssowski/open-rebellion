@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "family": "fleet-finder",
+  "scope": "test-only Fleet Finder (window type 0x15) through its original entries, the cockpit's Fleet Finder control and F3: chrome in both modes against STRATEGY.DLL, the side tabs, a typed name and Enter, a row click and Display, a double click, the Ship Finder opening a ship in its fleet's window, Close and Escape, on both sides",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "launch_arguments": [
+    "--mute-audio",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-sync",
+    "--no-first-run"
+  ],
+  "profile": "one-new-muted-process-per-faction-and-case",
+  "muted": true,
+  "viewport": {
+    "width": 640,
+    "height": 480,
+    "device_scale_factor": 1
+  },
+  "masks": [
+    {
+      "x": 36,
+      "y": 12,
+      "width": 350,
+      "height": 20,
+      "why": "title text"
+    },
+    {
+      "x": 36,
+      "y": 46,
+      "width": 105,
+      "height": 18,
+      "why": "name label"
+    },
+    {
+      "x": 143,
+      "y": 45,
+      "width": 250,
+      "height": 16,
+      "why": "name box"
+    },
+    {
+      "x": 40,
+      "y": 119,
+      "width": 283,
+      "height": 18,
+      "why": "tab label"
+    },
+    {
+      "x": 36,
+      "y": 138,
+      "width": 350,
+      "height": 165,
+      "why": "list rows"
+    }
+  ],
+  "source": {
+    "dll": "STRATEGY.DLL",
+    "resource_ids": [
+      10335,
+      10336,
+      10500,
+      10501,
+      10502,
+      10505,
+      10506,
+      10514,
+      10516,
+      10518,
+      10520,
+      10524,
+      10525,
+      10526,
+      10527,
+      10528,
+      10529,
+      10530,
+      10531,
+      10532,
+      10533,
+      10534,
+      10535,
+      10586,
+      10590
+    ],
+    "aggregate_sha256": "1e7f73a10bdb7482d3009be6725ddb57900a22be56a05b847d50d6346a8654dc"
+  },
+  "wasm_sha256": "fe4f1c5074eadb004cfa24b9d1389d3406094beec441b039949004dea85cab1b",
+  "runtime_pack_sha256": "4d36198e1e9e8f2114d96c16dcf365145c4f3f4ad1ef8617b73c863194bf5fc5",
+  "results": [
+    {
+      "faction": "alliance",
+      "case": "modal",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "chrome",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "tabs",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "sector-occlusion",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "fleet-overlap",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "type-and-enter",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "click-and-display",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "double-click",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "ship",
+      "status": "pass"
+    },
+    {
+      "faction": "alliance",
+      "case": "escape",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "modal",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "chrome",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "tabs",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "sector-occlusion",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "fleet-overlap",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "type-and-enter",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "click-and-display",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "double-click",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "ship",
+      "status": "pass"
+    },
+    {
+      "faction": "empire",
+      "case": "escape",
+      "status": "pass"
+    }
+  ]
+}

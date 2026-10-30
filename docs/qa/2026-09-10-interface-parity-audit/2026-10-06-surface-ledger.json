@@ -2319,18 +2319,20 @@
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
           ],
-          "note": "The Status window blocks the map only under its own rect (main.rs pointer_blocked) and the cockpit stays live, so it is not modal."
+          "note": "The Status window blocks the map only under its own rect (main.rs pointer_blocked) and the cockpit stays live, so it is not modal. 2026-10-30: the Finders are modal in A0 and now in the port; the Status window's modality is not yet checked in A0."
         },
         {
           "id": "CMD-04-C017",
           "requirement": "Finder windows are modal",
-          "status": "fail",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
-            "ghidra/notes/fleet-finder.md"
+            "ghidra/notes/fleet-finder.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-finder-modal/"
           ],
-          "note": "The Finders block the map only under their rect and the cockpit controls stay live (fleet-finder.md), so they are not modal."
+          "note": "An open Finder takes the input: A0 (VM, Fleet Finder) ignores the GID control, the agent's right click, the Encyclopedia control and the rail; the port blocks the map, the strategic controls, the menus and the cockpit while any Finder is open, and fleet-finder.mjs's modal case passes on Linux for both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-04-C018",

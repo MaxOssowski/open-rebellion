@@ -47,7 +47,8 @@ const tabs = [
 // the list's rows stay out of the pixel check.
 const masks = [
   { x: 36, y: 12, width: 350, height: 20, why: "title text" },
-  { x: 36, y: 46, width: 105, height: 16, why: "name label" },
+  // Font 4 (s203, as A0 shows it): "Ship Name"'s p hangs to y 63.
+  { x: 36, y: 46, width: 105, height: 18, why: "name label" },
   { x: 143, y: 45, width: 250, height: 16, why: "name box" },
   { x: 40, y: 119, width: 283, height: 18, why: "tab label" },
   { x: 36, y: 138, width: 350, height: 165, why: "list rows" },
@@ -335,8 +336,8 @@ async function stableWindow(page, origin, directory, label) {
 
 function checked(check) {
   assert.equal(check.different_pixels, 0, `${check.label}: ${check.different_pixels} of ${check.pixels_checked} pixels differ`);
-  // 155,100 window pixels less the masks' 75,524.
-  assert.equal(check.pixels_checked, 79_576, `${check.label}: the masks changed`);
+  // 155,100 window pixels less the masks' 75,734.
+  assert.equal(check.pixels_checked, 79_366, `${check.label}: the masks changed`);
 }
 
 // The cockpit's Fleet Finder control (0x12e, FUN_00427270) opens the Finder
@@ -384,6 +385,36 @@ function assertOpened(observed, row) {
 // Each case starts from a fresh load and returns its checks.
 const cases = [
   {
+    name: "modal",
+    // An open Finder is modal: A0 (2026-10-30, Empire, the Fleet Finder)
+    // opens no GID menu and no Agent menu while it shows. Clicks on the
+    // GID control (0x132) and a right click on the agent do nothing; the
+    // Finder stays open.
+    async run(page, faction) {
+      const lines = [];
+      const listen = (message) => lines.push(message.text());
+      page.on("console", listen);
+      const opened = await openFinder(page);
+      const gid = faction === "alliance" ? [446 + 13, 406 + 8] : [519 + 18, 434 + 12];
+      const agent = faction === "alliance" ? [575, 395] : [52, 412];
+      await click(page, point(gid));
+      const at = point(agent);
+      await page.mouse.move(at.x, at.y);
+      await frames(page, 2);
+      await page.mouse.down({ button: "right" });
+      await frames(page, 2);
+      await page.mouse.up({ button: "right" });
+      const after = await settle(page);
+      page.off("console", listen);
+      assert.equal(after.open, true, "the Finder stays open");
+      assert.deepEqual(lines.filter((line) => line.includes("destination=gid_menu status=opened")), [],
+        "the GID control opened its menu under the Finder");
+      assert.deepEqual(lines.filter((line) => line.includes("reaction menu_opened")), [],
+        "the agent's menu opened under the Finder");
+      return { opened, after };
+    },
+  },
+  {
     name: "chrome",
     async run(page, faction, directory, source) {
       const opened = await openFinder(page);
@@ -409,8 +440,10 @@ const cases = [
   },
   {
     name: "tabs",
-    // FUN_00462be0: tab 2 lists side bit 0x40, tab 3 side bit 0x80; a tab
-    // change clears the choice.
+    // FUN_00462be0: tab 2 lists side bit 0x40, tab 3 side bit 0x80. The
+    // row click copied its name into the name box, and the tab's
+    // notification lets the box choose the row it best begins
+    // (FUN_0046df90 case 100, FUN_00609650; A0 troop-finder-first-row).
     async run(page) {
       const opened = await openFinder(page);
       const selectedBefore = opened.selected_system_dat_id;
@@ -421,7 +454,7 @@ const cases = [
       const chosen = await until(page, "the row is chosen", (o) => o.chosen === 0);
       await click(page, point(opened.controls.tabs[1]));
       const alliance = await until(page, "the Alliance tab shows", (o) => o.tab === "alliance");
-      assert.equal(alliance.chosen, null);
+      assert.equal(alliance.chosen, prefixChoice(alliance.rows, chosen.name));
       assert.ok(alliance.rows.length > 0 && alliance.rows.every((row) => row.is_alliance), JSON.stringify(alliance.rows));
       await click(page, point(opened.controls.tabs[2]));
       const imperial = await until(page, "the Imperial tab shows", (o) => o.tab === "imperial");
@@ -475,6 +508,21 @@ const cases = [
       await click(page, point(chosen.controls.display));
       const fleet = await until(page, "Display opens the Fleet window", (o) => !o.open);
       assertOpened(fleet, row);
+      // The Fleet window opens beside its icon (s183, as A0 places it), clear
+      // of the Finder's controls; drag it by its title over the Ship Finder
+      // button (FUN_00606ee0 moves a window by its surface).
+      const [wx, wy] = fleet.fleet_windows[0].rect;
+      const [tx, ty] = opened.controls.ship_finder;
+      await page.mouse.move(wx + 30, wy + 8);
+      await frames(page, 2);
+      await page.mouse.down();
+      await frames(page, 2);
+      for (let step = 1; step <= 10; step += 1) {
+        await page.mouse.move(wx + 30 + (tx - 20 - wx) * step / 10, wy + 8 + (ty - 20 - wy) * step / 10);
+        await frames(page);
+      }
+      await page.mouse.up();
+      await frames(page, 2);
 
       await key(page, "F3");
       const reopened = await until(page, "F3 reopens above the Fleet window", (o) => o.open);
