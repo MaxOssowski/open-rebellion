@@ -2481,9 +2481,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "Menu rows highlight white 0x2ffffff (FUN_0042d190); P60 hovers Slow (macOS); A0 status/08-speed.png shows the open menu but is not compared.",
+          "note": "Menu rows highlight white 0x2ffffff (FUN_0042d190); P60 hovers Slow (macOS); A0 status/08-speed.png shows the open menu but is not compared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2505,9 +2506,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "FUN_0042d190 passes flags 0, so the original marks no current speed; the port matches by code. Not compared with A0.",
+          "note": "FUN_0042d190 passes flags 0, so the original marks no current speed; the port matches by code. Not compared with A0. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6674,9 +6676,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "Character and special-force menus (Move, Retire, Mission, Command submenu) pass personnel-orders.mjs and status-window.mjs on Arch Chromium; A0 14-char-menu.png and 31/32-emp-menu.png exist. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
+          "note": "Character and special-force menus (Move, Retire, Mission, Command submenu) pass personnel-orders.mjs and status-window.mjs on Arch Chromium; A0 14-char-menu.png and 31/32-emp-menu.png exist. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6807,9 +6810,10 @@
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
             "tools/interface-parity/fleet-window.mjs",
-            "tools/interface-parity/sector-quadrants.mjs"
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "Enabled items route in the Linux gates; no A0 comparison of menu rendering.",
+          "note": "Enabled items route in the Linux gates; no A0 comparison of menu rendering. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6832,9 +6836,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/",
-            "ghidra/notes/object-popup-menu.md"
+            "ghidra/notes/object-popup-menu.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared.",
+          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
