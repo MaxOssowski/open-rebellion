@@ -1782,7 +1782,7 @@
         158,
         159
       ],
-      "current_implementation": "P49 restores the nine original resting Message Index rail BMPs for each faction, and P63 restores the faction window shells and ten category controls. Commit 8fc9d983 adds production message rows, click/Ctrl-click/Shift-click/double-click gestures, filtering, Display/Delete/Close, F6 and rail entry, Agent Advice defaults and speed hold/restore, plus the Agent-menu toggle. The bounded both-faction browser batch passes entry and close routes. Rail illumination, exact native placement and Escape behavior, complete report navigation, chat, alerts, and A0 state comparison remain open. Reconciled 2026-10-30: 18 cells partial (A0 and Linux Chromium), 1 fail (navigate to object: Display 0x67), 1 blocked (chat), 3 pending (summary, diplomacy, clear); see each cell's note.",
+      "current_implementation": "P49 restores the nine original resting Message Index rail BMPs for each faction, and P63 restores the faction window shells and ten category controls. Commit 8fc9d983 adds production message rows, click/Ctrl-click/Shift-click/double-click gestures, filtering, Display/Delete/Close, F6 and rail entry, Agent Advice defaults and speed hold/restore, plus the Agent-menu toggle. The bounded both-faction browser batch passes entry and close routes. Rail illumination, exact native placement and Escape behavior, complete report navigation, chat, alerts, and A0 state comparison remain open. Reconciled 2026-10-30: 19 cells partial (A0 and Linux Chromium), 1 blocked (chat), 3 pending (summary, diplomacy, clear); see each cell's note.",
       "finding_ids": [
         "UIP-F-007"
       ],
@@ -1936,12 +1936,13 @@
         {
           "id": "CMD-08-C014",
           "requirement": "navigate to object",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-message-display/"
           ],
-          "note": "Display (0x67) is never enabled: the port's messages do not carry the kinds (3, 5 with a target, 4) FUN_004697b0 enables it for."
+          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0.",
+          "scope": "Verified in Linux Chromium 155; Firefox, Safari and macOS native not yet run; no A0 capture of the enabled state."
         },
         {
           "id": "CMD-08-C015",

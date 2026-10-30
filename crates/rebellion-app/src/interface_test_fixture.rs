@@ -2518,13 +2518,25 @@ pub fn post_event_messages(
         ("Character Killed", Some(pictures::killed(side))),
         ("Research Complete", Some(pictures::research())),
     ];
+    // The arrival names its system, which Display (0x67) goes to
+    // (FUN_004981c0 sets the message's object).
+    let arrival_system = world.systems.keys().next();
     for (title, picture) in posts {
-        log.push(
-            rebellion_render::GameMessage::new(
+        let message = match arrival_system.filter(|_| title == "Fleet Arrives") {
+            Some(system) => rebellion_render::GameMessage::at_system(
                 0,
                 format!("{title}."),
                 rebellion_render::MessageCategory::Event,
-            )
+                system,
+            ),
+            None => rebellion_render::GameMessage::new(
+                0,
+                format!("{title}."),
+                rebellion_render::MessageCategory::Event,
+            ),
+        };
+        log.push(
+            message
             .with_title(title)
             .with_picture_if(picture)
             .on_rail(

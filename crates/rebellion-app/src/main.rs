@@ -4909,6 +4909,23 @@ async fn main() {
                             index,
                             player_faction == MissionFaction::Alliance,
                         );
+                        // Display (0x67, FUN_00467f10 → FUN_00429440): the
+                        // message's object; port: its system's sector window
+                        // opens with the system chosen.
+                        for action in &actions {
+                            if let MessageIndexAction::Display(system) = *action {
+                                sector_window_state.open_for_system(
+                                    &world,
+                                    system,
+                                    cockpit_state.faction,
+                                );
+                                map_state.selected_system = Some(system);
+                                macroquad::logging::info!(
+                                    "[interface] message_index display system={:?}",
+                                    world.systems.get(system).map(|value| value.name.as_str())
+                                );
+                            }
+                        }
                         // FUN_00469de0: a battle report (type 0x0f) opens
                         // its Assault Summary (FUN_0042a410) and the index
                         // closes (slot +0x30).
@@ -8635,6 +8652,8 @@ fn apply_message_index_actions(
             MessageIndexAction::MarkCategoryRead(None) => log.mark_all_read(),
             MessageIndexAction::DeleteSelected(ids) => log.delete_by_ids(&ids),
             MessageIndexAction::MessageDisplayed(id) => log.mark_message_read(id),
+            // The caller opened the object's window.
+            MessageIndexAction::Display(_) => {}
             MessageIndexAction::ToggleSilent(mask) => {
                 log.toggle_silent(mask);
                 macroquad::logging::info!(
