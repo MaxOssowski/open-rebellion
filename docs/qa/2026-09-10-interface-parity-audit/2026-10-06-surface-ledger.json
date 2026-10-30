@@ -1434,9 +1434,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-popular-support-gid.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "Display Off restores STRATEGY 902 (P47A/P47B) and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of Display Off.",
+          "note": "Display Off restores STRATEGY 902 (P47A/P47B) and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of Display Off. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1448,9 +1449,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-gid-caption/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "A0 galaxy-a.png is Popular Support and its caption and shell match the Linux capture, but the support marks differ with the game state and were not compared on matching systems (bands follow FUN_0042b330).",
+          "note": "A0 galaxy-a.png is Popular Support and its caption and shell match the Linux capture, but the support marks differ with the game state and were not compared on matching systems (bands follow FUN_0042b330). Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1460,9 +1462,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Uprisings display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Uprisings display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1473,9 +1476,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-fleet-marks/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Idle Fleets display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Idle Fleets display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1486,9 +1490,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Idle Personnel display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Idle Personnel display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1498,9 +1503,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Available Energy display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Available Energy display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1511,9 +1517,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Available Raw Material display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Available Raw Material display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1524,9 +1531,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Mines display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Mines display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1537,9 +1545,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Refineries display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Refineries display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1550,9 +1559,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Shipyards display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Shipyards display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1563,9 +1573,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Training Facilities display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Training Facilities display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1576,9 +1587,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Construction Yards display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Construction Yards display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1589,9 +1601,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
           ],
-          "note": "The Planetary Defense Batteries display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display.",
+          "note": "The Planetary Defense Batteries display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
