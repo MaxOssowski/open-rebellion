@@ -393,6 +393,11 @@ impl MessageLog {
         self.story_movies.push_back(movie);
     }
 
+    /// The story movies waiting, oldest first.
+    pub fn queued_story_movies(&self) -> impl Iterator<Item = &StoryMovie> {
+        self.story_movies.iter()
+    }
+
     /// The oldest story movie waiting, taken off the list.
     pub fn take_story_movie(&mut self) -> Option<StoryMovie> {
         self.story_movies.pop_front()

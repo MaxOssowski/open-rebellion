@@ -3603,6 +3603,7 @@ impl FleetLoadWatch {
         confirmation_open: bool,
         messages: &[GameMessage],
         assault_summary: Option<FixtureAssaultSummary>,
+        destroy_movie: Option<String>,
     ) -> Option<FleetLoadObservation> {
         if !request.scenario.uses_the_fleet_window() {
             return None;
@@ -3631,6 +3632,9 @@ impl FleetLoadWatch {
         )
         .map(|observation| FleetLoadObservation {
             assault_summary,
+            // A story movie is no message (FUN_0048a060 kind 6): the
+            // Death Star's movie 101 carries the line as its caption.
+            last_destroy_message: observation.last_destroy_message.clone().or(destroy_movie),
             ..observation
         });
         if now.is_none() || now == self.last {
@@ -3652,6 +3656,7 @@ impl FleetLoadWatch {
         confirmation_open: bool,
         messages: &[GameMessage],
         assault_summary: Option<FixtureAssaultSummary>,
+        destroy_movie: Option<String>,
     ) {
         let Some(report) = self.next(
             request,
@@ -3663,6 +3668,7 @@ impl FleetLoadWatch {
             confirmation_open,
             messages,
             assault_summary,
+            destroy_movie,
         ) else {
             return;
         };
@@ -5659,6 +5665,7 @@ mod tests {
                     false,
                     &[],
                     None,
+                    None,
                 )
                 .unwrap();
             assert!(start.aboard, "{faction:?}");
@@ -5839,6 +5846,7 @@ mod tests {
                 false,
                 &[],
                 None,
+                None,
             )
         };
 
@@ -5892,6 +5900,7 @@ mod tests {
                 &fleets,
                 false,
                 &[],
+                None,
                 None,
             ),
             None

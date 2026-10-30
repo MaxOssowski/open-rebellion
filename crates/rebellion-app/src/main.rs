@@ -8176,6 +8176,10 @@ async fn main() {
                         &assault_summary_state,
                         cockpit_state.faction,
                     ),
+                    msg_log
+                        .queued_story_movies()
+                        .find(|movie| movie.movie == 101)
+                        .map(|movie| movie.caption.clone()),
                 );
                 system_finder_watch.observe(
                     request,
@@ -8238,6 +8242,10 @@ async fn main() {
                         &assault_summary_state,
                         cockpit_state.faction,
                     ),
+                    msg_log
+                        .queued_story_movies()
+                        .find(|movie| movie.movie == 101)
+                        .map(|movie| movie.caption.clone()),
                 );
             }
         }

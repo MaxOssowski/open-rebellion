@@ -47,8 +47,15 @@ All of these pass after the fixes (`rerun-summary.txt` and the gate runs):
 - personnel-orders, briefing and story-movie;
 - agent-advice, agent-objectives and encyclopedia-placement.
 
-`fleet-window.mjs` still fails two cases ("blockade" and "destroy
-system"); they are being checked against the build before these stages.
+`fleet-window.mjs`:
+- **"destroy system".** This case waited for the Death Star's line as a
+  message, but since 522a76c5 it is movie 101's caption (`FUN_004950d0` is
+  a story class of kind 6, not a message). In fixtures the movie stays
+  queued, so the fleet-load report now also reads its caption
+  (`MessageLog::queued_story_movies`), and the case passes.
+- **"blockade".** Both sides fail it on the build before the movie,
+  modality and tooltip stages too (8c984888, built in a worktree, same
+  "no blockade yet"). The failure is older and not part of this work.
 
 These still fail, for older reasons:
 - `message-index-shell`: 470 pixels;
