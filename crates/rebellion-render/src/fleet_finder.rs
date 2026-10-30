@@ -537,11 +537,16 @@ pub fn draw_fleet_finder(
     // windows. Those windows share Foreground and raise the focused one each
     // frame, so the Finder uses the popup layer, like the mission dialog and
     // game menu.
+    // Escape closes the Finder even from the name box (FUN_00461590,
+    // FUN_00463360): read it before the box, which would take it.
+    let escape = ctx.input(|input| input.key_pressed(egui::Key::Escape));
     let id = egui::Id::new("original-fleet-finder");
     ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
     egui::Area::new(id)
         .fixed_pos(rect.min)
         .order(egui::Order::Tooltip)
+        // The original's window shows whole at once.
+        .fade_in(false)
         .show(ctx, |ui| {
             let (frame, _) = ui.allocate_exact_size(rect.size(), egui::Sense::click());
             let painter = ui.painter().with_clip_rect(frame);
@@ -560,12 +565,15 @@ pub fn draw_fleet_finder(
             };
 
             painter.rect_filled(frame, 0.0, egui::Color32::BLACK);
-            paint(cache, BACKGROUND[side], (0.0, 0.0));
             let panel = match window.mode {
                 FinderMode::Fleets => FLEET_PANEL[side],
                 FinderMode::Ships => SHIP_PANEL[side],
             };
+            // The panel lies under the base, whose rounded corners, keyed
+            // on blue, cover the panel's (A0 System, Fleet, Troop and
+            // Personnel Finders).
             paint(cache, panel, PANEL_AT);
+            paint(cache, BACKGROUND[side], (0.0, 0.0));
             paint(cache, RAIL[side], RAIL_AT);
 
             // The title in font 5, centred in its 350 (A0 2026-10-29), the
@@ -656,6 +664,10 @@ pub fn draw_fleet_finder(
 
             // The name box (0xcd): white text, no frame.
             let name_rect = at(frame, scale, NAME_BOX);
+            // port: the caret stays inside the box, as a Windows edit
+            // control's does; egui's runs a row past its bottom.
+            let outer_clip = ui.clip_rect();
+            ui.set_clip_rect(name_rect.intersect(outer_clip));
             let edit = ui.put(
                 name_rect,
                 egui::TextEdit::singleline(&mut name)
@@ -665,6 +677,7 @@ pub fn draw_fleet_finder(
                     .text_color(egui::Color32::WHITE)
                     .desired_width(name_rect.width()),
             );
+            ui.set_clip_rect(outer_clip);
             if window.focus_name {
                 edit.request_focus();
             }
@@ -797,7 +810,6 @@ pub fn draw_fleet_finder(
             }
         });
 
-    let escape = ctx.input(|input| input.key_pressed(egui::Key::Escape));
     let open_window = state.window.as_mut()?;
     open_window.focus_name = false;
     open_window.scroll = scroll;

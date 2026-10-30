@@ -12,6 +12,7 @@ pub mod cockpit;
 pub mod defenses_window;
 pub mod encyclopedia;
 pub mod fleet_finder;
+pub mod system_finder;
 pub mod fleet_movement;
 pub mod fleet_registry;
 pub mod fleet_window;

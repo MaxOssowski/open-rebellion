@@ -1235,6 +1235,7 @@ async fn main() {
     let mut fleet_finder_state = FleetFinderState::default();
     let mut troop_finder_state = TroopFinderState::default();
     let mut personnel_finder_state = PersonnelFinderState::default();
+    let mut system_finder_state = rebellion_render::system_finder::SystemFinderState::default();
     // The open Message Index (window 0x0d) and the speed its Advice
     // category saved (FUN_00487ff0 +0x58).
     let mut message_index: Option<MessageIndexState> = None;
@@ -1468,22 +1469,31 @@ async fn main() {
     let mut tactical_music_active = false;
     let mut screen_music_playing: Option<rebellion_render::MusicTrack> = None;
 
-    let mut cutscene_player = open_cutscene(
-        Path::new(INTRO_CUTSCENE),
-        audio_vol.cutscene_volume(),
-        &mut msg_log,
-        clock.tick,
-        #[cfg(not(target_arch = "wasm32"))]
-        &mut audio_engine,
-    );
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let interface_fixture_request = interface_test_fixture::requested();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let plays_intro = interface_fixture_request.is_none();
+    #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
+    let plays_intro = true;
+    // A fixture opens straight on its scene: it must not request the intro.
+    let mut cutscene_player = if plays_intro {
+        open_cutscene(
+            Path::new(INTRO_CUTSCENE),
+            audio_vol.cutscene_volume(),
+            &mut msg_log,
+            clock.tick,
+            #[cfg(not(target_arch = "wasm32"))]
+            &mut audio_engine,
+        )
+    } else {
+        None
+    };
     if cutscene_player.is_some() {
         game_mode = GameMode::Cutscene {
             kind: CutsceneKind::Intro,
         };
     }
 
-    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
-    let interface_fixture_request = interface_test_fixture::requested();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     if let Some(request) = interface_fixture_request {
         cutscene_player = None;
@@ -1592,6 +1602,8 @@ async fn main() {
     let mut quadrant_watch = interface_test_fixture::QuadrantWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut fleet_finder_watch = interface_test_fixture::FleetFinderWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut system_finder_watch = interface_test_fixture::SystemFinderWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let interface_fixture_active =
         interface_fixture_request.is_some() || tactical_fixture_request.is_some();
@@ -1892,9 +1904,12 @@ async fn main() {
                     // The Status window closes on Escape itself.
                 } else if fleet_finder_state.is_open() {
                     // The Fleet Finder's key slot closes it (FUN_00463360).
-                } else if troop_finder_state.is_open() || personnel_finder_state.is_open() {
-                    // The Troop and Personnel Finders close on Escape in
-                    // their own key slots, as the Fleet Finder.
+                } else if troop_finder_state.is_open()
+                    || personnel_finder_state.is_open()
+                    || system_finder_state.is_open()
+                {
+                    // The Troop, Personnel and System Finders close on
+                    // Escape in their own key slots, as the Fleet Finder.
                 } else if assault_summary_state.window_count() > 0 {
                     // The Assault Summary's key slot closes it (FUN_0044e180).
                 } else if let Some(index) = message_index.take() {
@@ -4539,6 +4554,7 @@ async fn main() {
                                     fleet_finder_state = FleetFinderState::default();
                                     troop_finder_state = TroopFinderState::default();
                                     personnel_finder_state = PersonnelFinderState::default();
+                                    system_finder_state = rebellion_render::system_finder::SystemFinderState::default();
                                     message_index = None;
                                     advice_saved_speed = None;
                                     enc_state = EncyclopediaState::new();
@@ -4754,7 +4770,8 @@ async fn main() {
                 // droids or the map until it closes.
                 let finder_modal = fleet_finder_state.is_open()
                     || troop_finder_state.is_open()
-                    || personnel_finder_state.is_open();
+                    || personnel_finder_state.is_open()
+                    || system_finder_state.is_open();
                 map_state.pointer_blocked = finder_modal
                     || sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
@@ -6535,6 +6552,24 @@ async fn main() {
                             (system, FinderTarget::Fleet(fleet))
                         }
                     });
+                    // Display, Enter or a double click: FUN_00429ce0 opens the
+                    // window of the chosen system's sector; nothing is
+                    // selected.
+                    if let Some(rebellion_render::system_finder::SystemFinderAction::OpenSector(
+                        system,
+                    )) = rebellion_render::system_finder::draw_system_finder(
+                        ctx,
+                        &world,
+                        &mut system_finder_state,
+                        cockpit_layout,
+                        &mut bmp_cache,
+                    ) {
+                        sector_window_state.open_for_system(&world, system, cockpit_state.faction);
+                        macroquad::logging::info!(
+                            "[interface] system_finder status=display system={}",
+                            world.systems.get(system).map_or("", |value| value.name.as_str())
+                        );
+                    }
                     let personnel_choice = draw_personnel_finder(
                         ctx,
                         &world,
@@ -7085,7 +7120,15 @@ async fn main() {
                         });
                     if let Some(btn) = cockpit_command.flatten() {
                         let (command, destination) = match btn {
-                            CockpitButton::SystemFinder => (0x12d, "system_finder"),
+                            CockpitButton::SystemFinder => {
+                                // FUN_0042a000 opens one System Finder; F2
+                                // reaches the same case (FUN_00422ce0).
+                                system_finder_state.open(cockpit_state.faction);
+                                macroquad::logging::info!(
+                                    "[interface] command=0x12d destination=system_finder status=opened_original"
+                                );
+                                return;
+                            }
                             CockpitButton::FleetFinder => {
                                 // FUN_0042a0c0 opens one Fleet Finder; F3
                                 // reaches the same case (FUN_00422ce0).
@@ -7682,6 +7725,7 @@ async fn main() {
                             fleet_finder_state = FleetFinderState::default();
                             troop_finder_state = TroopFinderState::default();
                             personnel_finder_state = PersonnelFinderState::default();
+                            system_finder_state = rebellion_render::system_finder::SystemFinderState::default();
                             message_index = None;
                             advice_saved_speed = None;
                             enc_state = EncyclopediaState::new();
@@ -8048,6 +8092,12 @@ async fn main() {
                         &assault_summary_state,
                         cockpit_state.faction,
                     ),
+                );
+                system_finder_watch.observe(
+                    request,
+                    &world,
+                    &system_finder_state,
+                    &sector_window_state,
                 );
                 fleet_finder_watch.observe(
                     request,

@@ -3903,6 +3903,101 @@ fn fleet_finder_observation(
     })
 }
 
+/// The System Finder's state, for `system-finder.mjs` (the Fleet Finder
+/// scenario's galaxy).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+struct SystemFinderObservation {
+    status: &'static str,
+    code: u32,
+    open: bool,
+    tab: Option<&'static str>,
+    name: String,
+    rows: Vec<String>,
+    chosen: Option<usize>,
+    origin: Option<(f32, f32)>,
+    tabs: Vec<(f32, f32)>,
+    close: Option<(f32, f32)>,
+    display: Option<(f32, f32)>,
+    row_centres: Vec<Option<(f32, f32)>>,
+    /// The cockpit's System Finder control (0x12d).
+    button: (f32, f32),
+    /// The systems whose sector windows are open.
+    sector_open: Vec<String>,
+}
+
+fn system_finder_observation(
+    request: FixtureRequest,
+    world: &GameWorld,
+    finder: &rebellion_render::system_finder::SystemFinderState,
+    sectors: &SectorWindowState,
+) -> Option<SystemFinderObservation> {
+    use rebellion_render::system_finder::{SystemFinderControl, SystemTab};
+    if request.scenario != Scenario::FleetFinder {
+        return None;
+    }
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let report = finder.report(world);
+    let center = |control| finder.control_screen_rect(layout, control).map(screen_center);
+    let rows: Vec<String> = report
+        .as_ref()
+        .map_or_else(Vec::new, |report| report.rows.iter().map(|row| row.name.clone()).collect());
+    let button = strategic_primary_controls(request.faction)
+        .iter()
+        .find(|control| control.button == CockpitButton::SystemFinder)?
+        .rect;
+    Some(SystemFinderObservation {
+        status: "system-finder",
+        code: request.code,
+        open: report.is_some(),
+        tab: report.as_ref().map(|report| report.tab.label()),
+        name: report.as_ref().map_or_else(String::new, |report| report.name.clone()),
+        chosen: report.as_ref().and_then(|report| report.chosen),
+        origin: finder.screen_rect(layout).map(|rect| (rect.min.x, rect.min.y)),
+        tabs: SystemTab::ALL
+            .into_iter()
+            .filter_map(|tab| center(SystemFinderControl::Tab(tab)))
+            .collect(),
+        close: center(SystemFinderControl::Close),
+        display: center(SystemFinderControl::Display),
+        row_centres: (0..rows.len()).map(|row| center(SystemFinderControl::Row(row))).collect(),
+        rows,
+        button: (button.x + button.width / 2.0, button.y + button.height / 2.0),
+        sector_open: world
+            .systems
+            .iter()
+            .filter(|(key, _)| sectors.planet_screen_rect(world, layout, *key).is_some())
+            .map(|(_, system)| system.name.clone())
+            .collect(),
+    })
+}
+
+/// Emits the System Finder's observation when it changes.
+#[derive(Debug, Default)]
+pub struct SystemFinderWatch {
+    last: Option<SystemFinderObservation>,
+}
+
+impl SystemFinderWatch {
+    pub fn observe(
+        &mut self,
+        request: FixtureRequest,
+        world: &GameWorld,
+        finder: &rebellion_render::system_finder::SystemFinderState,
+        sectors: &SectorWindowState,
+    ) {
+        let now = system_finder_observation(request, world, finder, sectors);
+        if now.is_none() || now == self.last {
+            return;
+        }
+        self.last.clone_from(&now);
+        let Some(report) = now else {
+            return;
+        };
+        let bytes = serde_json::to_vec(&report).expect("serialize the system finder observation");
+        unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct FleetFinderWatch {
     last: Option<FleetFinderObservation>,

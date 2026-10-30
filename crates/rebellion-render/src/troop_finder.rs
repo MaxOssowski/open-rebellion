@@ -497,6 +497,8 @@ pub fn draw_troop_finder(
     egui::Area::new(id)
         .fixed_pos(rect.min)
         .order(egui::Order::Tooltip)
+        // The original's window shows whole at once.
+        .fade_in(false)
         .show(ctx, |ui| {
             let (frame, _) = ui.allocate_exact_size(rect.size(), egui::Sense::click());
             let painter = ui.painter().with_clip_rect(frame);
@@ -515,8 +517,11 @@ pub fn draw_troop_finder(
             };
 
             painter.rect_filled(frame, 0.0, egui::Color32::BLACK);
-            paint(cache, BACKGROUND[side_idx], (0.0, 0.0));
+            // The panel lies under the base, whose rounded corners, keyed
+            // on blue, cover the panel's (A0 System, Fleet, Troop and
+            // Personnel Finders).
             paint(cache, PANEL[window.tab.panel_index()], PANEL_AT);
+            paint(cache, BACKGROUND[side_idx], (0.0, 0.0));
             paint(cache, RAIL[side_idx], RAIL_AT);
 
             // Title (TEXTSTRA 0x1900) centred in its 350 in font 5, label
@@ -594,6 +599,10 @@ pub fn draw_troop_finder(
 
             // The name box (0xcb).
             let name_rect = at(frame, scale, NAME_BOX);
+            // port: the caret stays inside the box, as a Windows edit
+            // control's does; egui's runs a row past its bottom.
+            let outer_clip = ui.clip_rect();
+            ui.set_clip_rect(name_rect.intersect(outer_clip));
             let edit = ui.put(
                 name_rect,
                 egui::TextEdit::singleline(&mut name)
@@ -603,6 +612,7 @@ pub fn draw_troop_finder(
                     .text_color(egui::Color32::WHITE)
                     .desired_width(name_rect.width()),
             );
+            ui.set_clip_rect(outer_clip);
             if window.focus_name {
                 edit.request_focus();
             }

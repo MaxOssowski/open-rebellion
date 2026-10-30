@@ -3548,12 +3548,14 @@
         {
           "id": "CMD-10-C012",
           "requirement": "System Finder command",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-system-finder/",
             "crates/rebellion-app/src/main.rs"
           ],
-          "note": "Command 0x12d is recognized but logs status=pending_original_window; the System Finder (FUN_0042a000) is not ported."
+          "note": "Command 0x12d and F2 open the original System Finder (FUN_0042a000), logged status=opened_original; system-finder.mjs opens it from the cockpit control on both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-10-C013",
@@ -3905,26 +3907,39 @@
         {
           "id": "OBJ-02-C001",
           "requirement": "finder",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "The System Finder (cockpit 0x12d, F2) only logs status=pending_original_window in main.rs; no window is implemented."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-system-finder/",
+            "crates/rebellion-render/src/system_finder.rs",
+            "ghidra/notes/system-finder.md"
+          ],
+          "note": "The System Finder (FUN_00460090, type 0x14) opens from F2 and the cockpit's 0x12d, is modal, and closes on Escape and Close. Against A0 01-f2 (Empire, window at (125, 52)), 0 of 78,866 chrome pixels differ outside the text and the list; text is ~9% wider (accepted deviation). system-finder.mjs passes on both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-02-C002",
           "requirement": "filtered",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No System Finder exists, so no filtered state."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-system-finder/",
+            "crates/rebellion-render/src/system_finder.rs"
+          ],
+          "note": "Five side tabs filter by side bits and the explored flag (FUN_004611d0), each choosing its first row (command 100, FUN_00609650). A0 02..05 against the port's tabs: only A0's pointer differs (171..179 px) outside the text and the list; the All tab's rows read the same as A0. The other tabs' rows follow each game's state and are checked by unit test and the browser gate, not against A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-02-C003",
           "requirement": "selected",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No System Finder exists, so no selected state."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-system-finder/",
+            "crates/rebellion-render/src/system_finder.rs"
+          ],
+          "note": "A chosen row shows white (A0 02..05, first rows); a typed name chooses the row it best begins and Enter opens its sector window and closes the Finder (A0 08-enter: 'cor' opens Corellian). A0 07-typed duplicates 08-enter, so the typed frame alone is not kept; the browser gate checks the typed choice on both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-02-C004",

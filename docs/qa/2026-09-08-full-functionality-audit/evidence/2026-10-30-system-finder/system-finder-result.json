@@ -1,0 +1,126 @@
+{
+  "status": "pass",
+  "wasm_sha256": "6c5973f1a4479ec993f2ea7e1df29da5b09b01fb66117cf3a1281fe2d3733156",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "rows": 100,
+      "rebel": [
+        "Akrit'tar",
+        "Bpfassh",
+        "Corellia",
+        "Corfai",
+        "Corsin",
+        "Fwillsving",
+        "Ghorman",
+        "Jerijador",
+        "Kubindi",
+        "Norval II",
+        "Yavin"
+      ],
+      "others": [
+        {
+          "tab": "imperial",
+          "rows": 14
+        },
+        {
+          "tab": "neutral",
+          "rows": 16
+        },
+        {
+          "tab": "unexplored",
+          "rows": 59
+        }
+      ],
+      "typed": "Ka",
+      "target": "Kabal",
+      "shots": [
+        {
+          "label": "all",
+          "sha256": "7094fd33821d3d4115dbc96a198e163fb9bf788571d9859acf997b23584192c7"
+        },
+        {
+          "label": "rebel",
+          "sha256": "7f77550a1103f718d926078add973e68ed6fc005126f1b9b7c3eb44c97fda683"
+        },
+        {
+          "label": "imperial",
+          "sha256": "35aaef9066550a8b72164d7256ba4707f8e77a713bb84931afac07f371a91c9c"
+        },
+        {
+          "label": "neutral",
+          "sha256": "850183c50e59a209617bcda91eb5348427d1b95ebd45775d43553a689899c87d"
+        },
+        {
+          "label": "unexplored",
+          "sha256": "68be2b8af5778f8b85ed216359e4f9b9b1da7f80fc50d93e31541881106cd14e"
+        },
+        {
+          "label": "sector",
+          "sha256": "dc4ae42f2b17ec2d752f31ac299fc9f7da1c5f4db042689cba53a5802e8fd615"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "rows": 100,
+      "rebel": [
+        "Bpfassh",
+        "Corellia",
+        "Corfai",
+        "Corsin",
+        "F'tral",
+        "Ghorman",
+        "Ithor",
+        "Kessel",
+        "Morvogodine",
+        "Skor II",
+        "Yavin"
+      ],
+      "others": [
+        {
+          "tab": "imperial",
+          "rows": 14
+        },
+        {
+          "tab": "neutral",
+          "rows": 16
+        },
+        {
+          "tab": "unexplored",
+          "rows": 59
+        }
+      ],
+      "typed": "Ka",
+      "target": "Kabal",
+      "shots": [
+        {
+          "label": "all",
+          "sha256": "3959d1e87bb86509dfc7ddfe6f9c28f57dbb2ba59246b9102e61fcfcc46a6ec9"
+        },
+        {
+          "label": "rebel",
+          "sha256": "02c09c2ae8ffb354a98c48215b1960a07d1e976c9f6c54601c2b7a93eebf2835"
+        },
+        {
+          "label": "imperial",
+          "sha256": "440718f13bba5e7f032fd6f23f3d25e5c6fa9003544e98a12458e776db3d8337"
+        },
+        {
+          "label": "neutral",
+          "sha256": "22cc30363ca3c6a96f450194157a2cd0e681aaba972a837e522bc8da02c176af"
+        },
+        {
+          "label": "unexplored",
+          "sha256": "58367dc7c69891bbc8ef9bb6b183e6316fc71043fdda68378dac51049a61964e"
+        },
+        {
+          "label": "sector",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        }
+      ]
+    }
+  ]
+}

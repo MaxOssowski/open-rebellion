@@ -1829,6 +1829,11 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10450..=10456
                 | 10470..=10480
                 | 10500..=10506
+                // The System Finder's Neutral and Unexplored tabs
+                // (`FUN_00460270`); A0 `system-finder/01-f2.png` shows the
+                // panel under their first pixel.
+                | 10508..=10509
+                | 10511..=10512
                 | 10514..=10521
                 | 10528..=10535
                 | 10550..=10576
@@ -3130,6 +3135,27 @@ pub(crate) mod tests {
         for resource_id in [10499, 10507, 10513, 10522, 10527, 10536] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
+        }
+    }
+
+    #[test]
+    fn the_system_finders_neutral_and_unexplored_tabs_key_out_blue() {
+        // STRATEGY 10508/10509 and 10511/10512, the System Finder's tabs 4
+        // and 5 (FUN_00460270): A0 system-finder/01-f2.png shows the panel's
+        // white, not blue, under their first pixel at (192, 118) and
+        // (244, 118) in the window.
+        let mut image = image::RgbaImage::new(1, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        for resource_id in [10508, 10509, 10511, 10512] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
         }
     }
 

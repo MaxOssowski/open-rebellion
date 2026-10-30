@@ -174,13 +174,15 @@ function blit(destination, image, x, y, { width = image.width, height = image.he
   }
 }
 
-// The window as FUN_00461960 builds it in `mode` on tab `tab`: the base,
-// the mode's panel and the rail, then the buttons keyed. hyp: the current
-// tab and mode show their second bitmap (fleet_finder.rs).
+// The window as FUN_00461960 builds it in `mode` on tab `tab`: the mode's
+// panel under the base keyed on blue (A0 modal/01-f3.png shows the base's
+// corners over the panel's), the rail, then the buttons keyed. hyp: the
+// current tab and mode show their second bitmap (fleet_finder.rs).
 function composeExpected(source, faction, { mode, tab }) {
   const expected = new PNG(windowSize);
-  blit(expected, resource(source, faction.base), 0, 0);
+  for (let offset = 3; offset < expected.data.length; offset += 4) expected.data[offset] = 255;
   blit(expected, resource(source, mode === "ships" ? faction.shipPanel : faction.fleetPanel), 12, 13);
+  blit(expected, resource(source, faction.base), 0, 0, { keyed: true });
   blit(expected, resource(source, faction.rail), 412, 0);
   tabs.forEach((control, index) => {
     blit(expected, resource(source, control.art[index === tab ? 1 : 0]), control.x, 78,
