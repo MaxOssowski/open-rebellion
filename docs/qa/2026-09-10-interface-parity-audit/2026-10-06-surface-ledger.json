@@ -1611,7 +1611,7 @@
       "phase": "strategy",
       "title": "Faction droids, Agent menus, animation, and voice",
       "required": true,
-      "status": "fail",
+      "status": "partial",
       "required_states": [
         "C-3PO idle",
         "R2-D2 idle",
@@ -1645,7 +1645,7 @@
         78,
         79
       ],
-      "current_implementation": "Authentic idle anchors and cumulative type-302 runs render for all four faction droids in native and WASM. Replacement strategic controls still overlap lower apertures; A0 comparison, original chrome, Agent menus, SPT/BIN/FDT action timing, preemption, and voice remain open.",
+      "current_implementation": "Authentic idle anchors and cumulative type-302 runs render for all four faction droids in native and WASM. Replacement strategic controls still overlap lower apertures; A0 comparison, original chrome, Agent menus, SPT/BIN/FDT action timing, preemption, and voice remain open. Reconciled 2026-10-30: 9 cells partial, 1 fail (message filter submenu: menu items 0x171..0x179), 2 pending (urgent message, missing frame). The replacement controls no longer overlap the apertures.",
       "finding_ids": [
         "UIP-F-004",
         "UIP-F-005"
@@ -1661,74 +1661,136 @@
         {
           "id": "CMD-07-C001",
           "requirement": "C-3PO idle",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "Authentic idle frames (type-302 runs) render in the aperture of FUN_0042adb0; the Alliance cockpit matches A0's galaxy-a.png placement.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C002",
           "requirement": "R2-D2 idle",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "As C-3PO; the second droid's aperture (FUN_0042adb0).",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C003",
           "requirement": "IMP-22 idle",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "Matches the A0 Empire captures (agent-menu, agent-advice) in place and frame.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C004",
           "requirement": "SD-7 idle",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "As IMP-22, the Empire's second droid.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C005",
           "requirement": "normal message",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-reactions/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-event-clips/"
+          ],
+          "note": "Scheduled messages play their clips and voices (FUN_004c0a60); the briefing matches the SquakeNet narration frames; events and reactions play in the browser gates.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C006",
           "requirement": "urgent message",
           "status": "pending",
-          "counts_toward_parity": true
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Not yet identified: the schedule plays the first due message by id; no separate urgent path is traced."
         },
         {
           "id": "CMD-07-C007",
           "requirement": "speaking",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-reactions/"
+          ],
+          "note": "Clip voices play from the briefing and sprite DLLs (briefing.mjs, agent-objectives.mjs).",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C008",
           "requirement": "gesture",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-quip-clips/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-sub-ticks/"
+          ],
+          "note": "Quips (op 0x13) after fifty quiet sub-ticks, checked in the browser.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C009",
           "requirement": "Agent menu",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-galaxy-overview/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-translate-counterpart-save-v108/"
+          ],
+          "note": "The nine items of FUN_00487900 as A0 shows; Objectives, Galaxy Overview, Translate Counterpart, Agent Advice and the automation toggles work.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C010",
           "requirement": "message filter submenu",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "fail",
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "The notification options (menu items 0x171..0x179, FUN_00487a60, checked while a category alerts) are not ported; the Message Index's posting toggle sets the same option per category (evidence/2026-10-29-message-index-posting/)."
         },
         {
           "id": "CMD-07-C011",
           "requirement": "audio preemption",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-clip-preemption/"
+          ],
+          "note": "A new clip stops the playing one (FUN_00472930); a skip flushes both players and cuts the voice (briefing.mjs).",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-07-C012",
           "requirement": "missing frame",
           "status": "pending",
-          "counts_toward_parity": true
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "The behaviour for a missing clip frame is not yet traced."
         }
       ]
     },
