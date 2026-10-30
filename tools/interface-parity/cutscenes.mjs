@@ -1,7 +1,10 @@
-// Cutscenes in the browser build: the intro (ref-videos 000) plays in the
-// page's <video> over the canvas (web/index.html, open_rebellion_video;
-// crates/rebellion-render/src/video_player.rs) and hands over to the main
-// menu when it ends or when Escape skips it.
+// Cutscenes in the browser build: the page plays each movie in a <video>
+// over the canvas (web/index.html, open_rebellion_video;
+// crates/rebellion-render/src/video_player.rs). The cases follow the
+// original's movie flow (FUN_004138a0, FUN_00406000, state 7): the intro's
+// two movies 000 and 001, a skip that ends only the playing movie, the
+// credits movie 005 from the main menu, and the side's movie 004 before a
+// new Empire game.
 //
 // Serves the release site in web/ (build first: ./scripts/build-wasm.sh,
 // which stages data/video/*.webm from assets/references/ref-videos).
@@ -63,7 +66,81 @@ const cutscene = () => {
   };
 };
 
-async function run(browser, base, name, skip) {
+const stemPlaying = (stem) => page => page.evaluate((wanted) => {
+  const v = document.querySelector("video");
+  const c = window.__openRebellionCutscene;
+  return c && c.state === 1 && c.stem === wanted && v && v.currentTime > 0.3
+    ? { stem: c.stem, time: v.currentTime, width: v.videoWidth, height: v.videoHeight } : null;
+}, stem);
+
+async function waitStem(page, stem, description, timeout = 30_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const value = await stemPlaying(stem)(page);
+    if (value) return value;
+    if (Date.now() > deadline) throw new Error(`${description}: ${JSON.stringify(await page.evaluate(cutscene))}`);
+    await page.waitForTimeout(100);
+  }
+}
+
+const menuActive = () => document.getElementById("main-menu-semantics")?.dataset.active === "true";
+
+// Each case starts from a fresh load. The intro is FUN_004138a0's states 1
+// and 2: MDATA.000 (the logos), then MDATA.001 (the card, title, crawl and
+// cinematic), then the main menu. A skip (Escape, a click, any key) ends only
+// the playing movie.
+const CASES = {
+  async "natural-end"(page, shot) {
+    const logos = await waitStem(page, "000", "the logos play");
+    assert.equal(await page.evaluate(menuActive), false, "the main menu waits for the intro");
+    await shot("logos");
+    const cinematic = await waitStem(page, "001", "the logos' end starts the cinematic", 60_000);
+    await shot("cinematic");
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("Escape");
+    await waitFor(page, menuActive, "the main menu follows the cinematic");
+    return { logos, cinematic };
+  },
+  async "skips"(page, shot) {
+    await waitStem(page, "000", "the logos play");
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("Escape");
+    // A skip ends the logos only: the cinematic follows.
+    const cinematic = await waitStem(page, "001", "Escape on the logos starts the cinematic");
+    assert.equal(await page.evaluate(menuActive), false);
+    await shot("cinematic-after-skip");
+    // Any other key ends the cinematic (FUN_00421790's WM_KEYDOWN).
+    await page.keyboard.press("KeyX");
+    await waitFor(page, menuActive, "a key ends the cinematic and the main menu follows");
+    await page.waitForTimeout(500);
+    await shot("main-menu");
+    return { cinematic };
+  },
+  async "credits-and-new-game"(page, shot) {
+    await waitStem(page, "000", "the logos play");
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("Escape");
+    await waitStem(page, "001", "the cinematic plays");
+    await page.keyboard.press("Escape");
+    await waitFor(page, menuActive, "the main menu");
+    // Credits (command 0x73, FUN_00406000): MDATA.005, then the menu again.
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(11));
+    const credits = await waitStem(page, "005", "the credits movie plays");
+    await shot("credits");
+    await page.mouse.click(320, 240);
+    await waitFor(page, menuActive, "a click ends the credits and the menu shows again");
+    // Start as the Empire (state 7): MDATA.004 before the game starts.
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(8));
+    const newGame = await waitStem(page, "004", "the Empire's movie plays before the game");
+    await shot("new-game");
+    await page.keyboard.press("Escape");
+    await waitFor(page, () => !document.querySelector("video") && !(document.getElementById("main-menu-semantics")?.dataset.active === "true"),
+      "the game starts after the movie");
+    return { credits, newGame };
+  },
+};
+
+async function run(browser, base, name) {
   const directory = path.join(OUT, name);
   await fs.mkdir(directory, { recursive: true });
   const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
@@ -82,32 +159,10 @@ async function run(browser, base, name, skip) {
   };
   try {
     await page.goto(base);
-    // The intro opens at start and plays 000.webm.
-    const playing = await waitFor(page, () => {
-      const v = document.querySelector("video");
-      return window.__openRebellionCutscene?.state === 1 && v && v.currentTime > 0.5
-        ? { stem: window.__openRebellionCutscene.stem, time: v.currentTime } : null;
-    }, "the intro plays in the page's video");
-    assert.equal(playing.stem, "000");
-    const during = await page.evaluate(cutscene);
-    assert.equal(during.menu, false, "the main menu waits for the intro");
-    assert.ok(during.video.width > 0 && during.video.height > 0, JSON.stringify(during));
-    await shot("playing");
-    if (skip) {
-      await page.locator("#glcanvas").focus();
-      await page.keyboard.press("Escape");
-    }
-    const ended = await waitFor(page, () => {
-      const c = window.__openRebellionCutscene;
-      return c && c.state === 2 && !document.querySelector("video") ? c : null;
-    }, skip ? "Escape ends the intro" : "the intro plays to its end", skip ? 10_000 : 120_000);
-    await waitFor(page, () => document.getElementById("main-menu-semantics")?.dataset.active === "true",
-      "the main menu follows the intro");
-    await page.waitForTimeout(500);
-    await shot("main-menu");
+    const checks = await CASES[name](page, shot);
     assert.deepEqual(errors, [], errors.join("; "));
-    return { name, status: "pass", playing, during, ended, shots,
-      cutscene_log: log.filter((line) => line.includes("[cutscene]")) };
+    return { name, status: "pass", checks, shots,
+      cutscene_log: log.filter((line) => line.includes("[cutscene]") || line.includes("[main_menu]")) };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { name, status: "fail", error: String(error.stack || error), errors,
@@ -129,8 +184,7 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  results.push(await run(browser, base, "natural-end", false));
-  results.push(await run(browser, base, "escape-skip", true));
+  for (const name of Object.keys(CASES)) results.push(await run(browser, base, name));
 } finally {
   await browser.close();
   server.close();
@@ -141,6 +195,8 @@ const summary = {
   status: results.every(({ status }) => status === "pass") ? "pass" : "fail",
   wasm_sha256: createHash("sha256").update(wasm).digest("hex"),
   intro_webm_sha256: createHash("sha256").update(video).digest("hex"),
+  movies_sha256: Object.fromEntries(await Promise.all(["000", "001", "004", "005"].map(async (stem) =>
+    [stem, createHash("sha256").update(await fs.readFile(path.join(SITE, `data/video/${stem}.webm`))).digest("hex")]))),
   results,
 };
 await fs.writeFile(path.join(OUT, "result.json"), `${JSON.stringify(summary, null, 2)}\n`);

@@ -83,65 +83,76 @@
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The browser plays the intro's LucasArts movie (ref-videos 000) in the page's <video> since 2026-10-30 (cutscenes.mjs, Linux); not yet compared with A0.",
+          "note": "MDATA.000 (the LucasArts logo, then Coolhand's) plays first (FUN_004138a0 state 1) in the browser's <video> (cutscenes.mjs, Linux); not yet compared with A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C002",
           "requirement": "Coolhand logo",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The browser build has no video: VideoPlayer's wasm_stub reports every cutscene finished at once, so the intro (Coolhand logo) jumps straight to the main menu. Native plays one reference file (assets/references/ref-videos/000.webm) with no per-sequence check and no A0 capture."
+          "note": "Coolhand's logo is the second half of MDATA.000, which the browser plays (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C003",
           "requirement": "long-time-ago card",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The browser build has no video: VideoPlayer's wasm_stub reports every cutscene finished at once, so the intro (long-time-ago card) jumps straight to the main menu. Native plays one reference file (assets/references/ref-videos/000.webm) with no per-sequence check and no A0 capture."
+          "note": "The 'long time ago' card opens MDATA.001, which follows 000 (state 2) in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C004",
           "requirement": "opening crawl",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The browser build has no video: VideoPlayer's wasm_stub reports every cutscene finished at once, so the intro (opening crawl) jumps straight to the main menu. Native plays one reference file (assets/references/ref-videos/000.webm) with no per-sequence check and no A0 capture."
+          "note": "The crawl is part of MDATA.001, played after 000 in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C005",
           "requirement": "Star Wars title",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The browser build has no video: VideoPlayer's wasm_stub reports every cutscene finished at once, so the intro (Star Wars title) jumps straight to the main menu. Native plays one reference file (assets/references/ref-videos/000.webm) with no per-sequence check and no A0 capture."
+          "note": "The STAR WARS title is part of MDATA.001, played after 000 in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C006",
           "requirement": "intro cinematics",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The browser build has no video: VideoPlayer's wasm_stub reports every cutscene finished at once, so the intro (intro cinematics) jumps straight to the main menu. Native plays one reference file (assets/references/ref-videos/000.webm) with no per-sequence check and no A0 capture."
+          "note": "The opening cinematic is the rest of MDATA.001 (169 s), played in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C007",
@@ -151,9 +162,10 @@
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Escape (and Space) ends the movie in the browser and the main menu follows (cutscenes.mjs escape-skip, Linux); the original's skip rule is not yet traced or compared with A0.",
+          "note": "Escape or a left click ends a movie, any other key too outside the trench run (FUN_005f7240, FUN_00421790); a skip ends only the playing movie, so 001 follows a skipped 000 (cutscenes.mjs skips, Linux); not yet compared with A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -164,9 +176,10 @@
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The intro movie plays to its end and hands over to the main menu in the browser (cutscenes.mjs natural-end, Linux); the full original sequence is not yet traced.",
+          "note": "000 ends into 001 and 001 into the main menu (FUN_004138a0's 0x405), in the browser (cutscenes.mjs natural-end, Linux); not yet compared with A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -701,7 +714,7 @@
       "phase": "front_end",
       "title": "Credits presentation",
       "required": true,
-      "status": "fail",
+      "status": "partial",
       "required_states": [
         "open",
         "playback",
@@ -724,46 +737,54 @@
         {
           "id": "PRE-04-C001",
           "requirement": "open",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Credits opens a replacement egui screen with port-written text (draw_credits, CREDIT_LINES), not the original presentation."
+          "note": "Credits (command 0x73, FUN_00406000) play MDATA.005, the credits over cinematic footage; the replacement scrolling screen is gone (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-04-C002",
           "requirement": "playback",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Playback is an egui scroll of invented lines at 24 px/s; the original credits sequence is not traced."
+          "note": "Playback is the 2-minute MDATA.005 movie, as the original has no credit strings (cutscenes.mjs, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-04-C003",
           "requirement": "completion",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "The replacement loops forever after the last line (test credits_restart_after_last_line_leaves_viewport); original completion behaviour not traced."
+          "note": "When 005 ends the main menu shows again (LAB_00406520) (unit-traced; the browser case ends it by a click); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-04-C004",
           "requirement": "back",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Back is an egui 'Back to Main Menu' button, not an original control."
+          "note": "Escape, a click or a key ends the credits movie and returns to the menu (cutscenes.mjs credits case, Linux); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
     },
@@ -9343,111 +9364,131 @@
         {
           "id": "END-01-C001",
           "requirement": "Alliance victory",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
-            "ghidra/notes/victory-conditions.md"
+            "ghidra/notes/victory-conditions.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Victory rules pass fixtures (F-007E), but the result is a replacement egui VictoryModal ('Alliance Victory!'), not the original end screen."
+          "note": "An Alliance victory for the Alliance player plays MDATA.105 (FUN_00425c90 state 0x10), then the main menu; the replacement modal is gone (unit test ending_cutscene); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C002",
           "requirement": "Alliance defeat",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
-            "ghidra/notes/victory-conditions.md"
+            "ghidra/notes/victory-conditions.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "There is no defeat presentation: the same egui VictoryModal names the winning side whatever the player's side."
+          "note": "The Alliance player's defeat plays MDATA.106 (state 0x11), then the main menu (unit test); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C003",
           "requirement": "Imperial victory",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
-            "ghidra/notes/victory-conditions.md"
+            "ghidra/notes/victory-conditions.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "As Alliance victory: replacement egui VictoryModal ('Imperial Victory!')."
+          "note": "An Imperial victory for the Empire player plays MDATA.108 (state 0x12), then the main menu (unit test); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C004",
           "requirement": "Imperial defeat",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
-            "ghidra/notes/victory-conditions.md"
+            "ghidra/notes/victory-conditions.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "As Alliance defeat: no defeat presentation."
+          "note": "The Empire player's defeat plays MDATA.107 (state 0x13), then the main menu (unit test); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C005",
           "requirement": "video start",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "crates/rebellion-render/src/video_player.rs"
+            "crates/rebellion-render/src/video_player.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "No ending video is wired: the cutscene table holds Intro, trench run 201/202 and story 101-108 only, and the browser plays no video (wasm_stub)."
+          "note": "The ending movie starts through the page's <video> in the browser (the player as in cutscenes.mjs); no browser case ends a game yet; not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C006",
           "requirement": "skip",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Not implemented: no ending video to skip; the original ending-video path is not traced."
+          "note": "An ending movie skips like any other (Escape, click, key); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C007",
           "requirement": "natural completion",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Not implemented: no ending video; natural completion not traced."
+          "note": "An ending movie's end leads to the main menu (state 3, game reset); not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C008",
           "requirement": "continue",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Continue is an egui button in the replacement modal that returns to MainMenu."
+          "note": "The original has no continue control after the ending movie (none found in FUN_00425c90's states); the port's replacement Continue button is gone; not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C009",
           "requirement": "restart",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Not implemented: no restart from the end state."
+          "note": "No restart from the end state was found in the original; the port returns to the main menu as it does; not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C010",
           "requirement": "return to menu",
-          "status": "fail",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
           ],
-          "note": "Return to the menu goes through the replacement modal's egui Continue button."
+          "note": "After the ending movie the main menu shows (state 3), as in the port since 2026-10-30; not yet compared with A0.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C011",
