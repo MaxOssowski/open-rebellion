@@ -2341,12 +2341,14 @@
         {
           "id": "CMD-04-C016",
           "requirement": "Status window is modal",
-          "status": "fail",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-modal-windows/",
+            "crates/rebellion-app/src/main.rs"
           ],
-          "note": "The Status window blocks the map only under its own rect (main.rs pointer_blocked) and the cockpit stays live, so it is not modal. 2026-10-30: the Finders are modal in A0 and now in the port; the Status window's modality is not yet checked in A0."
+          "note": "A0 (modal2/06..11): with a Manufacturing Status window open, the GID control, the agent's right click, a rail button and a planet double click change nothing; Escape closes it. The port gates the map, the strategic input and the cockpit while the Status window is open (modal_window_open); status-window.mjs checks the GID click in all ten cases, failing on the build without the change.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-04-C017",
@@ -2376,27 +2378,26 @@
         {
           "id": "CMD-04-C019",
           "requirement": "Encyclopedia window is modal",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-placement/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-command/",
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-modal-windows/",
+            "crates/rebellion-app/src/main.rs"
           ],
-          "note": "An open Encyclopedia blocks the whole map (enc_state.open) and matches A0 placement, but the cockpit controls are not gated by it and modality was not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 (modal2/12..16): with the Galactic Encyclopedia open, GID, agent, rail and cockpit clicks change nothing but the Topic caret. The port's enc_state.open now gates the cockpit and strategic input too; status-window.mjs's character cases click the GID control with the Encyclopedia open (it ran after the Status check, which failed first on the build without the change).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-04-C020",
           "requirement": "Message windows are modal",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-modal-windows/",
+            "crates/rebellion-app/src/main.rs"
           ],
-          "note": "The Message Index blocks only its rect; message-window modality was not traced or compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 (modal2/17..26): the Message Index in list and message modes takes no GID, agent, cockpit or rail click, while its own tabs work. The port gates the map, strategic input and cockpit while it is open; message-display.mjs checks the GID click on both sides, failing on the build without the change.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         }
       ]
     },

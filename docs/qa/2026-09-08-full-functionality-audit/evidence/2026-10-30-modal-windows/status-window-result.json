@@ -1,0 +1,877 @@
+{
+  "schema_version": 1,
+  "family": "status-window",
+  "scope": "test-only Status window (FUN_00442d70) for a character, a regiment, a fleet, a capital ship and a production manager, each opened from its pop-up menu: STRATEGY background and buttons compared exactly; title, list, name and picture masked and checked for content and keying; Close closes each, and Escape and Encyclopedia close the character's; on both sides",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "viewport": {
+    "width": 640,
+    "height": 480,
+    "device_scale_factor": 1
+  },
+  "window": {
+    "width": 379,
+    "height": 272
+  },
+  "masks": {
+    "title": {
+      "x": 15,
+      "y": 18,
+      "width": 211,
+      "height": 18
+    },
+    "list": {
+      "x": 18,
+      "y": 47,
+      "width": 208,
+      "height": 204
+    },
+    "name": {
+      "x": 242,
+      "y": 137,
+      "width": 130,
+      "height": 44
+    },
+    "picture": {
+      "x": 242,
+      "y": 15,
+      "width": 130,
+      "height": 98
+    }
+  },
+  "factions": [
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "character",
+      "fixture_code": 301,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 301,
+        "left": 342,
+        "top": 161,
+        "width": 136.96875,
+        "height": 142,
+        "rows": 7,
+        "mission_row": 2,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": null,
+        "status_window_row": 5,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": 3,
+        "retire_row": 6,
+        "retire_enabled": true,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 233.5,
+        "target_screen_y": 334.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=108,79,379,272",
+      "rect": {
+        "x": 108,
+        "y": 79,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 773,
+          "list": 9236,
+          "name": 583,
+          "picture": 3973
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close",
+        "escape": "close",
+        "encyclopedia": "encyclopedia"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x1c5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1c5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1c5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1c5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=close",
+        "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=close",
+        "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=encyclopedia"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 148.88556999999997
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "regiment",
+      "fixture_code": 304,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 304,
+        "left": 102,
+        "top": 161,
+        "width": 116.96875,
+        "height": 102,
+        "rows": 5,
+        "mission_row": null,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": null,
+        "status_window_row": 3,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 473.5,
+        "target_screen_y": 334.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Troop(TroopKey(32v1)) rect=108,79,379,272",
+      "rect": {
+        "x": 108,
+        "y": 79,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 1126,
+          "list": 3553,
+          "name": 1040,
+          "picture": 5951
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x37d4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x37d4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x37d4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x37d4001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Troop(TroopKey(32v1)) rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 114.14012199999979
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "fleet",
+      "fixture_code": 304,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 304,
+        "left": 167.03125,
+        "top": 129,
+        "width": 187.96875,
+        "height": 162,
+        "rows": 8,
+        "mission_row": null,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": null,
+        "rename_row": 4,
+        "destination_row": null,
+        "status_window_row": 6,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": 2,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 473.5,
+        "target_screen_y": 334.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Fleet(FleetKey(1v1)) rect=108,79,379,272",
+      "rect": {
+        "x": 108,
+        "y": 79,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 563,
+          "list": 6853,
+          "name": 286,
+          "picture": 1655
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x3674001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3674001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3674001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3674001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Fleet(FleetKey(1v1)) rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 111.01528099999996
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "capital-ship",
+      "fixture_code": 304,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 304,
+        "left": 352.03125,
+        "top": 227,
+        "width": 116.96875,
+        "height": 142,
+        "rows": 7,
+        "mission_row": null,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": 2,
+        "rename_row": 3,
+        "destination_row": null,
+        "status_window_row": 5,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 473.5,
+        "target_screen_y": 334.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Ship { fleet: FleetKey(1v1), index: 0 } rect=108,79,379,272",
+      "rect": {
+        "x": 108,
+        "y": 79,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 883,
+          "list": 8998,
+          "name": 930,
+          "picture": 2726
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x3a44001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3a44001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3a44001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3a44001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Ship { fleet: FleetKey(1v1), index: 0 } rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 119.58872599999995
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "case": "production-manager",
+      "fixture_code": 311,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 311,
+        "left": 363,
+        "top": 172,
+        "width": 96.96875,
+        "height": 142,
+        "rows": 7,
+        "mission_row": null,
+        "move_row": null,
+        "confirmed_move_row": null,
+        "create_fleet_row": null,
+        "rename_row": 3,
+        "destination_row": 2,
+        "status_window_row": 5,
+        "build_row": 0,
+        "stop_row": 1,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 0,
+        "target_screen_y": 0
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Producer { system: SystemKey(1v1), area: Shipyard } rect=108,79,379,272",
+      "rect": {
+        "x": 108,
+        "y": 79,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 786,
+          "list": 698,
+          "name": 348,
+          "picture": 6010
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x1224001a6000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1224001a6000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1224001a6000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x1224001a6000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Producer { system: SystemKey(1v1), area: Shipyard } rect=108,79,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 235.59305499999937
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "character",
+      "fixture_code": 557,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 557,
+        "left": 402,
+        "top": 161,
+        "width": 136.96875,
+        "height": 142,
+        "rows": 7,
+        "mission_row": 2,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": null,
+        "status_window_row": 5,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": 3,
+        "retire_row": 6,
+        "retire_enabled": true,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 293.5,
+        "target_screen_y": 339.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=170,81,379,272",
+      "rect": {
+        "x": 170,
+        "y": 81,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 773,
+          "list": 9254,
+          "name": 583,
+          "picture": 3973
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close",
+        "escape": "close",
+        "encyclopedia": "encyclopedia"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x91c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x91c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x91c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x91c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=close",
+        "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=close",
+        "[interface] command=0x103 destination=status_window status=opened object=Character(CharacterKey(1v1)) rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=encyclopedia"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 118.07337800000096
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "regiment",
+      "fixture_code": 560,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 560,
+        "left": 167,
+        "top": 161,
+        "width": 116.96875,
+        "height": 102,
+        "rows": 5,
+        "mission_row": null,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": null,
+        "rename_row": null,
+        "destination_row": null,
+        "status_window_row": 3,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 538.5,
+        "target_screen_y": 339.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Troop(TroopKey(32v1)) rect=170,81,379,272",
+      "rect": {
+        "x": 170,
+        "y": 81,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 1126,
+          "list": 3559,
+          "name": 1074,
+          "picture": 5461
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x153c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x153c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x153c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x153c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Troop(TroopKey(32v1)) rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 125.93241699999999
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "fleet",
+      "fixture_code": 560,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 560,
+        "left": 227.03125,
+        "top": 134,
+        "width": 187.96875,
+        "height": 162,
+        "rows": 8,
+        "mission_row": null,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": null,
+        "rename_row": 4,
+        "destination_row": null,
+        "status_window_row": 6,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": 2,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 538.5,
+        "target_screen_y": 339.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Fleet(FleetKey(1v1)) rect=170,81,379,272",
+      "rect": {
+        "x": 170,
+        "y": 81,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 563,
+          "list": 6859,
+          "name": 286,
+          "picture": 1776
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x3264001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3264001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3264001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x3264001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Fleet(FleetKey(1v1)) rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 115.75618199999735
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "capital-ship",
+      "fixture_code": 560,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 560,
+        "left": 412.03125,
+        "top": 232,
+        "width": 116.96875,
+        "height": 142,
+        "rows": 7,
+        "mission_row": null,
+        "move_row": 0,
+        "confirmed_move_row": 1,
+        "create_fleet_row": 2,
+        "rename_row": 3,
+        "destination_row": null,
+        "status_window_row": 5,
+        "build_row": null,
+        "stop_row": null,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 538.5,
+        "target_screen_y": 339.5
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Ship { fleet: FleetKey(1v1), index: 0 } rect=170,81,379,272",
+      "rect": {
+        "x": 170,
+        "y": 81,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 883,
+          "list": 9344,
+          "name": 775,
+          "picture": 2128
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0xe5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xe5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xe5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0xe5c001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Ship { fleet: FleetKey(1v1), index: 0 } rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 117.73387899999943
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "case": "production-manager",
+      "fixture_code": 567,
+      "object_menu": {
+        "status": "object-menu",
+        "code": 567,
+        "left": 363,
+        "top": 172,
+        "width": 96.96875,
+        "height": 142,
+        "rows": 7,
+        "mission_row": null,
+        "move_row": null,
+        "confirmed_move_row": null,
+        "create_fleet_row": null,
+        "rename_row": 3,
+        "destination_row": 2,
+        "status_window_row": 5,
+        "build_row": 0,
+        "stop_row": 1,
+        "bombardment_row": null,
+        "assault_row": null,
+        "command_row": null,
+        "retire_row": null,
+        "retire_enabled": false,
+        "abort_row": null,
+        "abort_enabled": false,
+        "submenu": null,
+        "target_dat_id": 121,
+        "target_name": "F'tral",
+        "target_screen_x": 0,
+        "target_screen_y": 0
+      },
+      "opened": "[interface] command=0x103 destination=status_window status=opened object=Producer { system: SystemKey(1v1), area: Shipyard } rect=170,81,379,272",
+      "rect": {
+        "x": 170,
+        "y": 81,
+        "width": 379,
+        "height": 272
+      },
+      "comparison": {
+        "pixels_checked": 38398,
+        "different_pixels": 0,
+        "changed_in_masks": {
+          "title": 786,
+          "list": 698,
+          "name": 348,
+          "picture": 6010
+        },
+        "picture_blue_pixels": 0
+      },
+      "closes": {
+        "close": "close"
+      },
+      "console": [
+        "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code.",
+        "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code.",
+        "[assets] render_profile=original-parity",
+        "[.WebGL-0x12cc001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x12cc001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x12cc001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+        "[.WebGL-0x12cc001aa000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)",
+        "runtime_asset_pack loaded game_files=59 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104362319",
+        "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69",
+        "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346",
+        "[encyclopedia] topics loaded audience=Empire entries=356 complete=346",
+        "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16",
+        "[audio] music_volume=0.00 muted=true music_muted=true",
+        "[interface] command=0x103 destination=status_window status=opened object=Producer { system: SystemKey(1v1), area: Shipyard } rect=170,81,379,272",
+        "[interface] destination=status_window status=closed action=close"
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 243.08067700000538
+        }
+      ]
+    }
+  ],
+  "wasm_sha256": "d8cb370b98ebeeab24c50bf7bdad203e67d7d1d27577cd97eeb4be71f0f21a58"
+}

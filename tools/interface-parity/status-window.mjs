@@ -362,6 +362,15 @@ async function inspect(server, source, faction, testCase, executable) {
     for (const name of Object.keys(masks)) assert.ok(comparison.changed_in_masks[name] > 0, `${name} shows nothing`);
     assert.equal(comparison.picture_blue_pixels, 0, "the picture's blue matte is not keyed");
 
+    // The window is modal (A0 a0-vm/modal2/07-gid-click.png): the GID
+    // control under it opens nothing and the window stays.
+    const gidMenu = /destination=gid_menu status=opened/;
+    const gidControl = faction.byte === 1 ? { x: 459, y: 414 } : { x: 537, y: 446 };
+    await click(page, gidControl);
+    for (let i = 0; i < 3; i += 1) await frames(page);
+    assert.equal(consoleLines.filter((text) => gidMenu.test(text)).length, 0, "the GID control opened its menu under the Status window");
+    assert.equal(consoleLines.filter((text) => closed.test(text)).length, 0, "the GID click closed the Status window");
+
     const closes = {};
     // 0x65 closes.
     await click(page, { x: rect.x + buttons.close.x + 16, y: rect.y + buttons.close.y + 15 });
@@ -378,6 +387,11 @@ async function inspect(server, source, faction, testCase, executable) {
       await click(page, { x: rect.x + buttons.encyclopedia.x + 16, y: rect.y + buttons.encyclopedia.y + 15 });
       closes.encyclopedia = (await logged("Encyclopedia closes it", closed, 3)).match(closed)[1];
       assert.deepEqual(closes, { close: "close", escape: "close", encyclopedia: "encyclopedia" });
+      // The Encyclopedia is modal too (A0 a0-vm/modal2/13-ency-gid.png).
+      await page.waitForTimeout(200);
+      await click(page, gidControl);
+      for (let i = 0; i < 3; i += 1) await frames(page);
+      assert.equal(consoleLines.filter((text) => gidMenu.test(text)).length, 0, "the GID control opened its menu under the Encyclopedia");
       await page.waitForTimeout(200);
       fs.writeFileSync(path.join(directory, "encyclopedia-screen.png"), await page.screenshot({ animations: "disabled" }));
     } else {

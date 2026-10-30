@@ -4817,14 +4817,19 @@ async fn main() {
                     });
                 #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
                 let original_modal_fixture_open = false;
-                // An open Finder is modal: A0 (2026-10-30, the Fleet Finder)
-                // takes no click on the cockpit controls, the rail, the
-                // droids or the map until it closes.
-                let finder_modal = fleet_finder_state.is_open()
+                // An open Finder, Status window, Encyclopedia or Message
+                // Index is modal: A0 (2026-10-30, `a0-vm/modal` and
+                // `a0-vm/modal2`) takes no click on the cockpit controls, the
+                // GID control, the rail, the droids or the map until it
+                // closes.
+                let modal_window_open = fleet_finder_state.is_open()
                     || troop_finder_state.is_open()
                     || personnel_finder_state.is_open()
-                    || system_finder_state.is_open();
-                map_state.pointer_blocked = finder_modal
+                    || system_finder_state.is_open()
+                    || status_window_state.is_open()
+                    || enc_state.open
+                    || message_index.is_some();
+                map_state.pointer_blocked = modal_window_open
                     || sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
                     || system_window_state.contains_screen_point(cockpit_layout, pointer)
@@ -4915,7 +4920,7 @@ async fn main() {
 
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
-                    let strategic_input_enabled = !original_modal_fixture_open && !finder_modal;
+                    let strategic_input_enabled = !original_modal_fixture_open && !modal_window_open;
                     // Register the cockpit background before panels so the
                     // opaque chrome never covers their content or artwork.
                     draw_cockpit_background(ctx, &cockpit_state, &mut bmp_cache);
@@ -7165,7 +7170,7 @@ async fn main() {
 
                     // The galaxy view holds the capture while targeting.
                     let cockpit_command = (!original_modal_fixture_open
-                        && !finder_modal
+                        && !modal_window_open
                         && targeting.is_none())
                         .then(|| {
                             handle_cockpit_egui_input(ctx, &mut cockpit_state, &mut bmp_cache)

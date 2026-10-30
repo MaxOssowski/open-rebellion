@@ -7,6 +7,7 @@
 // a message without a target leaves Display disabled (FUN_004697b0), the
 // arrival enables it, and a click goes to its system (FUN_00467f10 ->
 // FUN_00429440: port, the system's sector window) and closes the index.
+// While it shows, the GID control does nothing (the index is modal).
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire]
@@ -110,6 +111,13 @@ async function run(browser, base, faction) {
     const row = (index) => [opened.window_left + 25 + 60, opened.window_top + 108 + 21 * index + 10];
     const display = [opened.window_left + faction.display[0], opened.window_top + faction.display[1]];
     const displays = () => log.filter((line) => line.includes("[interface] message_index display"));
+    // The index is modal (A0 a0-vm/modal2/18-msg-gid.png): the GID control
+    // opens nothing and the index stays.
+    await click(page, faction.byte === 1 ? [459, 414] : [537, 446]);
+    await frames(page, 6);
+    assert.equal(log.filter((line) => line.includes("destination=gid_menu status=opened")).length, 0,
+      "the GID control opened its menu under the Message Index");
+    assert.ok((await report(page)).index_open, "the GID click closed the index");
     // A message without a system: Display stays disabled.
     const research = opened.rows.findIndex((text) => text.startsWith("Research Complete"));
     assert.ok(research >= 0, JSON.stringify(opened.rows));
