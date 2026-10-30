@@ -63,8 +63,8 @@ const PAGE_LABEL_Y: f32 = 58.0;
 /// Each yard count label `+0x19c`: format 1, 46 wide from x 6.
 const COUNT_WIDTH: f32 = 46.0;
 /// The count label keeps the default font (`FUN_00601880` ->
-/// `FUN_00603850`, the game root's `+0xb0`): a 14-row regular cell
-/// ([`crate::DEFAULT_FONT`]), which the A0 GID caption's width shows.
+/// `FUN_00603850`, the game root's `+0xb0`): font 4's 16-row regular cell
+/// ([`crate::DEFAULT_FONT`]).
 const COUNT_FONT: u16 = crate::DEFAULT_FONT;
 /// A band's progress bar, `0x200f0f0` (`FUN_004acec0`).
 const PROGRESS_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);

@@ -1024,20 +1024,6 @@ fn gid_category_resource(category: GidCategory, faction: CockpitFaction) -> u32 
     }
 }
 
-fn gid_arrow_resource(faction: CockpitFaction) -> u32 {
-    match faction {
-        CockpitFaction::Alliance => resources::strategy::GID_ALLIANCE_ARROW,
-        CockpitFaction::Empire => resources::strategy::GID_EMPIRE_ARROW,
-    }
-}
-
-fn gid_check_resource(faction: CockpitFaction) -> u32 {
-    match faction {
-        CockpitFaction::Alliance => resources::strategy::GID_CHECK_ALLIANCE,
-        CockpitFaction::Empire => resources::strategy::GID_CHECK_EMPIRE,
-    }
-}
-
 #[expect(
     clippy::too_many_lines,
     reason = "Keep this existing ordered routine together; splitting its phases is a separate refactor."
@@ -1264,73 +1250,94 @@ pub(crate) fn paint_gid_icon(
     }
 }
 
-fn gid_menu_row(
-    ui: &mut egui::Ui,
-    cache: &mut BmpCache,
-    label: &str,
-    icon_resource: Option<u32>,
-    arrow_resource: Option<u32>,
-    checked_resource: Option<u32>,
-    scale: f32,
-) -> egui::Response {
-    let height = 21.0 * scale;
-    let (rect, response) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), height),
-        egui::Sense::click(),
-    );
-    if let Some(resource_id) = icon_resource {
-        paint_gid_icon(
-            ui,
-            cache,
-            resource_id,
-            egui::Rect::from_min_size(
-                egui::pos2(
-                    rect.min.x + if arrow_resource.is_some() { 22.0 } else { 2.0 } * scale,
-                    rect.min.y + scale,
-                ),
-                egui::vec2(20.0 * scale, 20.0 * scale),
-            ),
-        );
+/// The GID menu window (`FUN_00422ce0` → `FUN_00451130`): 160 by 160 at
+/// (370, 233) for side 1 and (420, 233) otherwise, as A0 shows the Empire's.
+fn gid_root_rect(faction: CockpitFaction) -> (f32, f32, f32, f32) {
+    match faction {
+        CockpitFaction::Alliance => (370.0, 233.0, 160.0, 160.0),
+        CockpitFaction::Empire => (420.0, 233.0, 160.0, 160.0),
     }
-    if let Some(resource_id) = checked_resource {
-        paint_gid_icon(
-            ui,
-            cache,
-            resource_id,
-            egui::Rect::from_min_size(
-                egui::pos2(rect.min.x + 22.0 * scale, rect.min.y + 4.0 * scale),
-                egui::vec2(14.0 * scale, 14.0 * scale),
-            ),
-        );
-    }
-    ui.painter().text(
-        egui::pos2(
-            rect.min.x + if arrow_resource.is_some() { 45.0 } else { 39.0 } * scale,
-            rect.center().y,
-        ),
-        egui::Align2::LEFT_CENTER,
-        label,
-        egui::FontId::proportional((11.0 * scale).max(8.0)),
-        egui::Color32::WHITE,
-    );
-    if let Some(resource_id) = arrow_resource {
-        paint_gid_icon(
-            ui,
-            cache,
-            resource_id,
-            egui::Rect::from_min_size(
-                egui::pos2(rect.min.x + 2.0 * scale, rect.min.y + scale),
-                egui::vec2(17.0 * scale, 20.0 * scale),
-            ),
-        );
-    }
-    response
 }
 
+/// `FUN_004511e0`'s items: a category row's top (`10 + 22 k`) and a
+/// child's (`7 + 22 k`), each 20 high from x 30; Display Off at (50, 142).
+const GID_ROW_PITCH: f32 = 22.0;
+const GID_ROOT_FIRST_ROW: f32 = 10.0;
+const GID_CHILD_FIRST_ROW: f32 = 7.0;
+const GID_ITEM_X: f32 = 30.0;
+const GID_ITEM_HEIGHT: f32 = 20.0;
+const GID_DISPLAY_OFF: (f32, f32) = (50.0, 142.0);
+/// The submenu arrow's place in a category row (A0, `00-menu.png`).
+const GID_ARROW_X: f32 = 7.0;
+
+/// A category's submenu window (`FUN_004aa960`): 240 wide, and 55, 55, 55,
+/// 100, 142 or 122 high for Loyalty .. Defense.
+const GID_SUBMENU_WIDTH: f32 = 240.0;
+const GID_SUBMENU_HEIGHTS: [f32; 6] = [55.0, 55.0, 55.0, 100.0, 142.0, 122.0];
+
+/// `FUN_004ab3a0`'s place for a category's submenu beside the root window:
+/// x = root.x − w + 3; y = root.y + row.top − 3 when it ends inside the
+/// root window, else root.y + row.bottom − h + 3.
+fn gid_submenu_rect(root: (f32, f32, f32, f32), category: usize) -> (f32, f32, f32, f32) {
+    let (x, y, _, height) = root;
+    let h = GID_SUBMENU_HEIGHTS[category];
+    let top = GID_ROOT_FIRST_ROW + GID_ROW_PITCH * category as f32;
+    let sub_y = if top + h + y < y + height {
+        y + top - 3.0
+    } else {
+        y + top + GID_ITEM_HEIGHT - h + 3.0
+    };
+    (x - GID_SUBMENU_WIDTH + 3.0, sub_y, GID_SUBMENU_WIDTH, h)
+}
+
+/// One row of a GID menu window: its icon at (30, top), opaque, and its
+/// text from the icon's right, white or the side's colour when highlighted
+/// (`FUN_004ab1b0`), in the window's default font from the row's top; a
+/// category's arrow at (7, top), lit when highlighted (`FUN_004aab50`).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "A row's parts are each the original's separate item fields."
+)]
+fn paint_gid_row(
+    ui: &egui::Ui,
+    cache: &mut BmpCache,
+    origin: egui::Pos2,
+    scale: f32,
+    (x, top): (f32, f32),
+    label: &str,
+    icon: Option<u32>,
+    arrow: Option<u32>,
+    color: egui::Color32,
+) {
+    let at = |x: f32, y: f32, w: f32, h: f32| {
+        egui::Rect::from_min_size(origin + egui::vec2(x, y) * scale, egui::vec2(w, h) * scale)
+    };
+    if let Some(id) = arrow {
+        paint_gid_icon(ui, cache, id, at(GID_ARROW_X, top, 17.0, 20.0));
+    }
+    let text_x = if let Some(id) = icon {
+        paint_gid_icon(ui, cache, id, at(x, top, 20.0, 20.0));
+        x + 20.0 + 1.0
+    } else {
+        x
+    };
+    ui.painter().text(
+        origin + egui::vec2(text_x, top) * scale,
+        egui::Align2::LEFT_TOP,
+        label,
+        crate::theme::original_font(0, scale),
+        color,
+    );
+}
+
+/// The GID menu (`FUN_004511e0`): the root window of the six categories and
+/// Display Off, and the hovered category's submenu beside it, each a Game
+/// Menu Window with the shaded fill and the tiled frame.
+/// port: the submenu opens on hover, without the 500 ms timer.
 #[expect(
     clippy::too_many_lines,
     clippy::cast_precision_loss,
-    reason = "Preserve existing conversion of bitmap sizes and bounded UI indices into pixel coordinates. Keep this existing ordered routine together; splitting its phases is a separate refactor."
+    reason = "The menu paints its windows in the original's order; bounded indices become pixel rows."
 )]
 fn draw_gid_menu(
     ctx: &egui::Context,
@@ -1342,104 +1349,116 @@ fn draw_gid_menu(
     if !state.gid_ui.menu_open {
         return None;
     }
-
-    let scale = layout.scale.max(0.5);
-    let root_pos = egui::pos2(
-        layout.canvas.x + 425.0 * layout.scale,
-        layout.canvas.y + 230.0 * layout.scale,
-    );
-    let root = egui::Area::new(egui::Id::new("original_gid_root_menu"))
-        .order(egui::Order::Foreground)
-        .fade_in(false)
-        .fixed_pos(root_pos)
-        .show(ctx, |ui| {
-            if !input_enabled {
-                ui.disable();
-            }
-            ui.set_width(158.0 * scale);
-            let menu = gid_popup_frame().show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                for category in GidCategory::ALL {
-                    let response = gid_menu_row(
-                        ui,
-                        cache,
-                        category.label(),
-                        Some(gid_category_resource(category, state.faction)),
-                        Some(gid_arrow_resource(state.faction)),
-                        None,
-                        scale,
-                    );
-                    if response.hovered() || response.clicked() {
-                        state.gid_ui.category = Some(category);
-                    }
-                }
-                let checked = (state.gid_mode == GidMode::DisplayOff)
-                    .then_some(gid_check_resource(state.faction));
-                gid_menu_row(
-                    ui,
-                    cache,
-                    GidMode::DisplayOff.label(),
-                    None,
-                    None,
-                    checked,
-                    scale,
-                )
-                .clicked()
-                .then_some(GidMode::DisplayOff)
-            });
-            paint_gid_frame_border(ui, cache, menu.response.rect, scale);
-            menu.inner
-        });
-
-    let mut selected = root.inner;
-    let mut submenu_rect = egui::Rect::NOTHING;
-    if let Some(category) = state.gid_ui.category {
-        let items = gid_submenu_items(category, state.faction);
-        let category_index = GidCategory::ALL
-            .iter()
-            .position(|candidate| *candidate == category)
-            .unwrap_or_default() as f32;
-        let submenu_y = (root_pos.y + category_index * 21.0 * scale).min(
-            layout.canvas.y + (STRATEGIC_LOGICAL_HEIGHT - 10.0) * layout.scale
-                - items.len() as f32 * 21.0 * scale,
-        );
-        let submenu_pos = egui::pos2(root_pos.x - 246.0 * scale, submenu_y);
-        let submenu = egui::Area::new(egui::Id::new("original_gid_submenu"))
+    let scale = layout.scale;
+    let screen = |(x, y, w, h): (f32, f32, f32, f32)| {
+        egui::Rect::from_min_size(
+            egui::pos2(layout.canvas.x + x * scale, layout.canvas.y + y * scale),
+            egui::vec2(w * scale, h * scale),
+        )
+    };
+    let lit = crate::game_menu::faction_text_color(state.faction);
+    let (pointer, released) = ctx.input(|input| {
+        (
+            input.pointer.hover_pos(),
+            input.pointer.button_released(egui::PointerButton::Primary),
+        )
+    });
+    let root_logical = gid_root_rect(state.faction);
+    let root_rect = screen(root_logical);
+    let row_rect = |window: egui::Rect, top: f32| {
+        egui::Rect::from_min_size(
+            window.min + egui::vec2(2.0, top) * scale,
+            egui::vec2(window.width() - 4.0 * scale, GID_ITEM_HEIGHT * scale),
+        )
+    };
+    let over = |rect: egui::Rect| input_enabled && pointer.is_some_and(|p| rect.contains(p));
+    for (index, category) in GidCategory::ALL.iter().enumerate() {
+        let top = GID_ROOT_FIRST_ROW + GID_ROW_PITCH * index as f32;
+        if over(row_rect(root_rect, top)) {
+            state.gid_ui.category = Some(*category);
+        }
+    }
+    let mut selected = None;
+    let window = |id: &str, rect: egui::Rect| {
+        egui::Area::new(egui::Id::new(id.to_owned()))
             .order(egui::Order::Foreground)
             .fade_in(false)
-            .fixed_pos(submenu_pos)
-            .show(ctx, |ui| {
-                if !input_enabled {
-                    ui.disable();
+            .fixed_pos(rect.min)
+    };
+    window("original_gid_root_menu", root_rect).show(ctx, |ui| {
+        let (rect, _) = ui.allocate_exact_size(root_rect.size(), egui::Sense::click());
+        ui.painter()
+            .rect_filled(rect, 0.0, crate::game_menu::MENU_SHADE);
+        paint_gid_frame_border(ui, cache, rect, scale);
+        for (index, category) in GidCategory::ALL.iter().enumerate() {
+            let top = GID_ROOT_FIRST_ROW + GID_ROW_PITCH * index as f32;
+            let highlighted = state.gid_ui.category == Some(*category);
+            paint_gid_row(
+                ui,
+                cache,
+                rect.min,
+                scale,
+                (GID_ITEM_X, top),
+                category.label(),
+                Some(gid_category_resource(*category, state.faction)),
+                Some(crate::game_menu::submenu_arrow(state.faction, highlighted)),
+                if highlighted {
+                    lit
+                } else {
+                    egui::Color32::WHITE
+                },
+            );
+        }
+        let off = row_rect(rect, GID_DISPLAY_OFF.1);
+        let off_lit = over(off);
+        paint_gid_row(
+            ui,
+            cache,
+            rect.min,
+            scale,
+            GID_DISPLAY_OFF,
+            GidMode::DisplayOff.label(),
+            None,
+            None,
+            if off_lit { lit } else { egui::Color32::WHITE },
+        );
+        if off_lit && released {
+            selected = Some(GidMode::DisplayOff);
+        }
+    });
+
+    let mut submenu_rect = egui::Rect::NOTHING;
+    if let Some(category) = state.gid_ui.category {
+        let index = GidCategory::ALL
+            .iter()
+            .position(|candidate| *candidate == category)
+            .unwrap_or_default();
+        submenu_rect = screen(gid_submenu_rect(root_logical, index));
+        let items = gid_submenu_items(category, state.faction);
+        window("original_gid_submenu", submenu_rect).show(ctx, |ui| {
+            let (rect, _) = ui.allocate_exact_size(submenu_rect.size(), egui::Sense::click());
+            ui.painter()
+                .rect_filled(rect, 0.0, crate::game_menu::MENU_SHADE);
+            paint_gid_frame_border(ui, cache, rect, scale);
+            for (row, item) in items.iter().enumerate() {
+                let top = GID_CHILD_FIRST_ROW + GID_ROW_PITCH * row as f32;
+                let hovered = over(row_rect(rect, top));
+                paint_gid_row(
+                    ui,
+                    cache,
+                    rect.min,
+                    scale,
+                    (GID_ITEM_X, top),
+                    item.mode.label(),
+                    Some(item.resource_id),
+                    None,
+                    if hovered { lit } else { egui::Color32::WHITE },
+                );
+                if hovered && released {
+                    selected = Some(item.mode);
                 }
-                ui.set_width(238.0 * scale);
-                let menu = gid_popup_frame().show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    let mut chosen = None;
-                    for item in items {
-                        let checked = (state.gid_mode == item.mode)
-                            .then_some(gid_check_resource(state.faction));
-                        if gid_menu_row(
-                            ui,
-                            cache,
-                            item.mode.label(),
-                            Some(item.resource_id),
-                            None,
-                            checked,
-                            scale,
-                        )
-                        .clicked()
-                        {
-                            chosen = Some(item.mode);
-                        }
-                    }
-                    chosen
-                });
-                paint_gid_frame_border(ui, cache, menu.response.rect, scale);
-                menu.inner
-            });
-        submenu_rect = submenu.response.rect;
-        selected = selected.or(submenu.inner);
+            }
+        });
     }
 
     if input_enabled && selected.is_none() {
@@ -1454,7 +1473,7 @@ fn draw_gid_menu(
             logical_rect_to_screen(layout, strategic_gid_control(state.faction).rect);
         let outside = pressed
             && pointer.is_some_and(|pointer| {
-                should_dismiss_gid_menu(pointer, root.response.rect, submenu_rect, trigger_rect)
+                should_dismiss_gid_menu(pointer, root_rect, submenu_rect, trigger_rect)
             });
         if outside || escape {
             state.gid_ui.menu_open = false;
@@ -1651,6 +1670,34 @@ fn macroquad_accelerator(key: KeyCode) -> Option<CockpitButton> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_gid_menu_and_its_submenus_sit_where_the_original_places_them() {
+        // FUN_00422ce0 -> FUN_00451130: (370, 233) for side 1, (420, 233)
+        // otherwise, 160 x 160. FUN_004aa960 heights and FUN_004ab3a0's
+        // placement, as the A0 submenus show (gid/01-loyalty-sub.png,
+        // sub-*.png): x 183, y 240, 262, 284, 232, 212 and 254.
+        assert_eq!(
+            super::gid_root_rect(CockpitFaction::Alliance),
+            (370.0, 233.0, 160.0, 160.0)
+        );
+        let root = super::gid_root_rect(CockpitFaction::Empire);
+        assert_eq!(root, (420.0, 233.0, 160.0, 160.0));
+        let placed: Vec<_> = (0..6)
+            .map(|category| super::gid_submenu_rect(root, category))
+            .collect();
+        assert_eq!(
+            placed,
+            vec![
+                (183.0, 240.0, 240.0, 55.0),
+                (183.0, 262.0, 240.0, 55.0),
+                (183.0, 284.0, 240.0, 55.0),
+                (183.0, 232.0, 240.0, 100.0),
+                (183.0, 212.0, 240.0, 142.0),
+                (183.0, 254.0, 240.0, 122.0),
+            ]
+        );
+    }
 
     #[test]
     fn the_frame_paints_its_tiles_scaled_from_the_rect() {

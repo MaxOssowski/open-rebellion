@@ -1998,12 +1998,19 @@ fn uses_black_key_transparency(source: DllSource, resource_id: u32) -> bool {
 /// corners show the window behind them in A0 (2026-10-30); and the Game
 /// Menu Window's submenu arrows (10117/10118, 10128/10129), which its paint
 /// blits keyed the same way (`FUN_004aab50` → `FUN_005fd0f0`), black around
-/// the arrow in A0 `status/14-char-menu.png` showing the menu's fill.
+/// the arrow in A0 `status/14-char-menu.png` showing the menu's fill; and the
+/// legend button 10168 (`FUN_00427270`'s 30 x 30 button), whose white
+/// border A0 `gid/d-mines.png` does not show.
 fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     source == DllSource::Strategy
         && matches!(
             resource_id,
-            10_117..=10_118 | 10_128..=10_129 | 10_592..=10_597 | 10_606..=10_607 | 10_610..=10_613
+            10_117..=10_118
+                | 10_128..=10_129
+                | 10_168
+                | 10_592..=10_597
+                | 10_606..=10_607
+                | 10_610..=10_613
         )
 }
 

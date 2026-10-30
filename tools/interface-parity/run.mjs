@@ -291,7 +291,8 @@ function decodeIndexedBmp(bytes) {
   };
 }
 
-function verifyGidRootFrame(viewport, screenshotBytes, systemWindowOpen = false) {
+function verifyGidRootFrame(viewport, screenshotBytes, faction, systemWindowOpen = false) {
+  const rootX = faction === "alliance" ? 370 : 420;
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
     return { status: "non-native-scale", pixels_checked: 0 };
   }
@@ -305,7 +306,7 @@ function verifyGidRootFrame(viewport, screenshotBytes, systemWindowOpen = false)
   let pixelsChecked = 0;
   let pixelsOccluded = 0;
   if (systemWindowOpen) {
-    const covered = (230 * screenshot.width + 425) * 4;
+    const covered = (235 * screenshot.width + rootX) * 4;
     assert.notDeepEqual(
       Array.from(screenshot.data.subarray(covered, covered + 3)),
       resources.get(10100).pixel(0, 0),
@@ -329,31 +330,32 @@ function verifyGidRootFrame(viewport, screenshotBytes, systemWindowOpen = false)
     );
     pixelsChecked++;
   };
-  // The root rectangle is 158x159 at native 640x480, from the recovered
-  // GID anchor and seven rows. FUN_004511e0 hands FUN_00607740 the tiles in
-  // the Game Menu Window's order, laid out as the A0 menus show
-  // (status/14-char-menu.png, build-orders/12-speed.png): corners 10101,
-  // 10100, 10103, 10102; 10105 and 10106 in every column of the top and
-  // bottom; 10107 and 10104 on every second row of the sides. Check every
-  // painted border pixel.
+  // The root window is 160 x 160 at (370, 233) for the Alliance and
+  // (420, 233) for the Empire (FUN_00422ce0 -> FUN_00451130; A0 gid/00-menu).
+  // FUN_004511e0 hands FUN_00607740 the tiles in the Game Menu Window's
+  // order, laid out as the A0 menus show: corners 10101, 10100, 10103,
+  // 10102; 10105 and 10106 in every column of the top and bottom; 10107 and
+  // 10104 on every second row of the sides. Check every painted border pixel.
+  const right = rootX + 158;
+  const bottom = 233 + 158;
   for (const [id, x, y] of [
-    [10101, 425, 230], [10100, 581, 230],
-    [10103, 425, 387], [10102, 581, 387],
+    [10101, rootX, 233], [10100, right, 233],
+    [10103, rootX, bottom], [10102, right, bottom],
   ]) {
     for (let by = 0; by < 2; by++) {
       for (let bx = 0; bx < 2; bx++) check(x + bx, y + by, id, bx, by);
     }
   }
-  for (let x = 427; x <= 580; x++) {
+  for (let x = rootX + 2; x < right; x++) {
     for (let by = 0; by < 2; by++) {
-      check(x, 230 + by, 10105, 0, by);
-      check(x, 387 + by, 10106, 0, by);
+      check(x, 233 + by, 10105, 0, by);
+      check(x, bottom + by, 10106, 0, by);
     }
   }
-  for (let y = 232; y < 387; y += 2) {
+  for (let y = 235; y < bottom; y += 2) {
     for (let bx = 0; bx < 2; bx++) {
-      check(425 + bx, y, 10107, bx, 0);
-      check(581 + bx, y, 10104, bx, 0);
+      check(rootX + bx, y, 10107, bx, 0);
+      check(right + bx, y, 10104, bx, 0);
     }
   }
   return {
@@ -426,7 +428,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   const opened = "command=0x132 destination=gid_menu status=opened_original";
   await performCommand(page, opened, () => page.mouse.up());
   const rootCapture = await page.screenshot({ path: path.join(folder, "menu-root.png"), animations: "disabled" });
-  const rootFrame = verifyGidRootFrame(viewport, rootCapture, scenario.slug === "system");
+  const rootFrame = verifyGidRootFrame(viewport, rootCapture, faction, scenario.slug === "system");
   probes.push({ type: "control-click", x: interior.x, y: interior.y, opened: true,
     screenshot_sha256: sha256(rootCapture), root_frame: rootFrame });
 
@@ -440,9 +442,23 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     screenshot_sha256: sha256(closedCapture) });
   await performCommand(page, opened, () => page.mouse.click(interior.x, interior.y));
 
+  // The GID menu window (FUN_00422ce0 -> FUN_00451130): 160 x 160 at
+  // (370, 233) for the Alliance and (420, 233) for the Empire; categories at
+  // y 10 + 22 k, children at 7 + 22 k (FUN_004511e0); a submenu 240 wide,
+  // placed by FUN_004ab3a0 beside the root.
+  const rootX = faction === "alliance" ? 370 : 420;
+  const rootY = 233;
+  const submenuHeights = [55, 55, 55, 100, 142, 122];
+  const submenuTop = (category) => {
+    const top = 10 + 22 * category;
+    return top + submenuHeights[category] < 160
+      ? rootY + top - 3
+      : rootY + top + 20 - submenuHeights[category] + 3;
+  };
+  const leafAt = (category, leaf) => point(rootX - 240 + 3 + 80, submenuTop(category) + 7 + 22 * leaf + 10);
   if (scenario.category !== null) {
     const alternate = scenario.mode === "Uprisings" ? "Popular Support" : "Uprisings";
-    const alternatePoint = point(470, 246);
+    const alternatePoint = point(rootX + 80, rootY + 10 + 10);
     await page.mouse.move(alternatePoint.x, alternatePoint.y);
     await page.waitForTimeout(50);
     const hoveredRoot = await page.screenshot({ path: path.join(folder, "menu-root-hover.png"), animations: "disabled" });
@@ -451,10 +467,12 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       const before = PNG.sync.read(rootCapture);
       const after = PNG.sync.read(hoveredRoot);
       const pixel = (png, x, y) => Array.from(png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
-      assert.deepEqual(pixel(after, 450, 245), pixel(before, 450, 245),
+      // A pixel of the Loyalty row's icon (30..49): hovering lights the
+      // text and arrow only.
+      assert.deepEqual(pixel(after, rootX + 40, rootY + 20), pixel(before, rootX + 40, rootY + 20),
         "GID root added an unproven synthetic row hover wash");
     }
-    const alternateLeaf = point(222, 246 + (alternate === "Uprisings" ? 21 : 0));
+    const alternateLeaf = leafAt(0, alternate === "Uprisings" ? 1 : 0);
     await performCommand(page, `destination=gid status=selected label=${alternate}`,
       () => page.mouse.click(alternateLeaf.x, alternateLeaf.y));
     await page.waitForFunction((expected) => window.__openRebellionInterfaceSelection?.mode === expected,
@@ -462,7 +480,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     probes.push({ type: "alternate-mode", mode: alternate });
 
     await performCommand(page, opened, () => page.mouse.click(interior.x, interior.y));
-    const rootPoint = point(470, 246 + 21 * scenario.category);
+    const rootPoint = point(rootX + 80, rootY + 10 + 22 * scenario.category + 10);
     await page.mouse.move(rootPoint.x, rootPoint.y);
     await page.waitForTimeout(80);
     const submenuCapture = await page.screenshot({ path: path.join(folder, "menu-submenu.png"), animations: "disabled" });
@@ -470,9 +488,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       screenshot_sha256: sha256(submenuCapture) });
     assert.notEqual(sha256(rootCapture), sha256(submenuCapture),
       `${scenario.slug}: submenu did not change the root view`);
-    const submenuTop = Math.min(230 + 21 * scenario.category,
-      470 - 21 * [2, 2, 2, 4, 6, 5][scenario.category]);
-    const leafPoint = point(222, submenuTop + 16 + 21 * scenario.leaf);
+    const leafPoint = leafAt(scenario.category, scenario.leaf);
     const expected = `destination=gid status=selected label=${scenario.mode}`;
     await performCommand(page, expected, () => page.mouse.click(leafPoint.x, leafPoint.y));
     await page.waitForFunction((mode) => window.__openRebellionInterfaceSelection?.mode === mode,
@@ -483,7 +499,7 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     probes.push({ type: "submenu-selection", mode: scenario.mode,
       screenshot_sha256: sha256(selectedCapture) });
   } else if (scenario.slug === "display-off") {
-    const displayOff = point(477, 372);
+    const displayOff = point(rootX + 70, rootY + 142 + 8);
     await performCommand(page, "destination=gid status=selected label=Display Off",
       () => page.mouse.click(displayOff.x, displayOff.y));
     await page.waitForFunction(() => window.__openRebellionInterfaceSelection?.mode === "Display Off",

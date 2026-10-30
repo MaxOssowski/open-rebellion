@@ -38,7 +38,8 @@ const DISABLED_COLOR: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
 /// ([`crate::bmp_cache::sector_shade`]); blending premultiplied 50 at
 /// alpha 213 leaves `50 + c x 42 / 255` of it. port: the original then takes
 /// the nearest palette entry, which the blend does not.
-const MENU_SHADE: egui::Color32 = egui::Color32::from_rgba_premultiplied(50, 50, 50, 213);
+pub(crate) const MENU_SHADE: egui::Color32 =
+    egui::Color32::from_rgba_premultiplied(50, 50, 50, 213);
 
 /// Faction text color: Alliance `0x20000ff` (red), Empire `0x200ff00` (green).
 /// The menus highlight an item in it, and the day readout is drawn in it.

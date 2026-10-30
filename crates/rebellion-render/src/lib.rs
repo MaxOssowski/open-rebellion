@@ -520,8 +520,9 @@ pub fn draw_galaxy_map(
 /// default font (`FUN_00601880`), format 1 (`DT_CENTER`, top-aligned), from
 /// the galaxy view's top left (`+0xcc`, `+0xd0`) across its width, in
 /// `0x20000ff` (red) for side 1 and `0x200ff00` (green) otherwise. The A0
-/// capture (Alliance, Popular Support) shows it regular, not bold, pure red,
-/// 91 pixels wide: Arial in a 14-row cell, the size of font 10.
+/// captures (Alliance and Empire, every display) show it regular, pure red
+/// or green, its capitals 10 rows high from 3 below the aperture's top:
+/// Arial in a 16-row cell ([`DEFAULT_FONT`]).
 pub fn draw_gid_caption(
     ctx: &egui::Context,
     cam: CameraView,
@@ -543,9 +544,12 @@ pub fn draw_gid_caption(
     );
 }
 
-/// The game's default font (the game root's `+0xb0`, `FUN_00603850`): a
-/// 14-row regular cell, as font 10. The A0 GID caption's width fits it.
-pub(crate) const DEFAULT_FONT: u16 = 10;
+/// The game's default font (the game root's `+0xb0`, `FUN_00603850`), which
+/// `FUN_00420550(4)` sets from `FUN_00421790` and `FUN_0044f180`: font 4, the
+/// table's default 16-row regular cell (`FUN_0060eed0`). The A0 GID
+/// captions' capital height (10 rows) is that cell's; their width is GDI's
+/// hinted one, about 9% narrower than the port's.
+pub(crate) const DEFAULT_FONT: u16 = 4;
 
 /// Screen point the caption's text box hangs from: the aperture's top centre.
 fn gid_caption_anchor(cam: CameraView) -> egui::Pos2 {
@@ -2055,7 +2059,10 @@ mod interaction_tests {
         let (text, colour, size, top, centre) = &texts[0];
         assert_eq!(text, "Uprisings");
         assert_eq!(*colour, egui::Color32::from_rgb(0, 255, 0));
-        assert_eq!(*size, theme::original_font(DEFAULT_FONT, 2.0).size);
+        // FUN_00420550(4): the default font is font 4, a 16-row regular
+        // cell (FUN_0060eed0), the A0 captions' capital height.
+        assert_eq!(theme::original_font_cell(DEFAULT_FONT), (16.0, false));
+        assert_eq!(*size, theme::original_font(4, 2.0).size);
         assert_eq!(*top, anchor.y);
         assert!((centre - anchor.x).abs() < 0.01);
         assert!(caption(GidMode::DisplayOff).is_empty());
