@@ -1737,7 +1737,7 @@
       "phase": "strategy",
       "title": "Messages, alerts, categories, and chat index",
       "required": true,
-      "status": "fail",
+      "status": "partial",
       "required_states": [
         "indicator",
         "unread",
@@ -1782,7 +1782,7 @@
         158,
         159
       ],
-      "current_implementation": "P49 restores the nine original resting Message Index rail BMPs for each faction, and P63 restores the faction window shells and ten category controls. Commit 8fc9d983 adds production message rows, click/Ctrl-click/Shift-click/double-click gestures, filtering, Display/Delete/Close, F6 and rail entry, Agent Advice defaults and speed hold/restore, plus the Agent-menu toggle. The bounded both-faction browser batch passes entry and close routes. Rail illumination, exact native placement and Escape behavior, complete report navigation, chat, alerts, and A0 state comparison remain open.",
+      "current_implementation": "P49 restores the nine original resting Message Index rail BMPs for each faction, and P63 restores the faction window shells and ten category controls. Commit 8fc9d983 adds production message rows, click/Ctrl-click/Shift-click/double-click gestures, filtering, Display/Delete/Close, F6 and rail entry, Agent Advice defaults and speed hold/restore, plus the Agent-menu toggle. The bounded both-faction browser batch passes entry and close routes. Rail illumination, exact native placement and Escape behavior, complete report navigation, chat, alerts, and A0 state comparison remain open. Reconciled 2026-10-30: 18 cells partial (A0 and Linux Chromium), 1 fail (navigate to object: Display 0x67), 1 blocked (chat), 3 pending (summary, diplomacy, clear); see each cell's note.",
       "finding_ids": [
         "UIP-F-007"
       ],
@@ -1796,140 +1796,242 @@
         {
           "id": "CMD-08-C001",
           "requirement": "indicator",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-12-message-index-rail.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "The rail controls light per unread category; the Advice control lit in A0 and the port (agent-advice.mjs).",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C002",
           "requirement": "unread",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "Unread messages light their rail; closing a category marks it read (FUN_0048a530, message_index tests).",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C003",
           "requirement": "index",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-rows/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/"
+          ],
+          "note": "Shell, title, category controls, rows, heading, scroll bar and rail match the A0 Advice list.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C004",
           "requirement": "summary",
           "status": "pending",
-          "counts_toward_parity": true
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Not yet identified against the manual's summary state."
         },
         {
           "id": "CMD-08-C005",
           "requirement": "alert",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-posting/"
+          ],
+          "note": "The posting toggle switches a category between alerted and silent posting; the alerted droid comment plays (advisor-events.mjs). The toggle's silent art is not compared in A0.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C006",
           "requirement": "build",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-yard-research-messages/"
+          ],
+          "note": "Manufacturing messages post on their rail with their pictures; not compared in an A0 Manufacturing list.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C007",
           "requirement": "mission",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/"
+          ],
+          "note": "Mission messages post on their rail; not compared in an A0 Mission list.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C008",
           "requirement": "diplomacy",
           "status": "pending",
-          "counts_toward_parity": true
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "No A0 comparison of diplomacy messages yet."
         },
         {
           "id": "CMD-08-C009",
           "requirement": "event",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery-message/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-uprising-incident-off-index/"
+          ],
+          "note": "Story and event messages post with their classes' pictures; not compared in an A0 list.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C010",
           "requirement": "agent",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-rows/"
+          ],
+          "note": "The agent's advice posts to Advice; list and message compared with A0.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C011",
           "requirement": "combat",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-encounter-messages/"
+          ],
+          "note": "Battle reports open their Assault Summary from the index; not compared in an A0 Conflict list.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C012",
           "requirement": "chat",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "blocked",
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Chat needs a multiplayer session, which the port does not run; Compose Chat (0x68) shows disabled, as A0 shows in single player."
         },
         {
           "id": "CMD-08-C013",
           "requirement": "silent",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-posting/"
+          ],
+          "note": "A silent category keeps its messages from the advisor (FUN_0048a060); browser toggle verified.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C014",
           "requirement": "navigate to object",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "fail",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/"
+          ],
+          "note": "Display (0x67) is never enabled: the port's messages do not carry the kinds (3, 5 with a target, 4) FUN_004697b0 enables it for."
         },
         {
           "id": "CMD-08-C015",
           "requirement": "clear",
           "status": "pending",
-          "counts_toward_parity": true
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Not yet identified."
         },
         {
           "id": "CMD-08-C016",
           "requirement": "delete",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md"
+          ],
+          "note": "Delete (0x91) removes the selected rows (message_index tests); not compared in A0.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C017",
           "requirement": "message row single-click selection",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-rows/"
+          ],
+          "note": "A click chooses a row (headless tests, agent-advice.mjs); the chosen bar matches A0.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C018",
           "requirement": "message row Ctrl-click toggle",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Covered by headless tests only; not compared in A0.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C019",
           "requirement": "message row Shift-click range selection",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Covered by headless tests only; not compared in A0.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C020",
           "requirement": "message row double-click opens message",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "A double click opens the message; the Empire's advice message matches A0's picture 0x430.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C021",
           "requirement": "Agent Advice defaults on for Easy",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+          ],
+          "note": "FUN_00439320; agent-advice.mjs starts at Easy with advice on.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C022",
           "requirement": "Agent Advice defaults off for Medium and Hard",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "FUN_00439320 (agent_automation tests); no A0 game at Medium or Hard compared.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         },
         {
           "id": "CMD-08-C023",
           "requirement": "Agent Advice menu toggle",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
+          ],
+          "note": "Menu item 0x11e flips advice (agent_automation tests); the A0 Agent menu shows it checked.",
+          "scope": "Verified against A0 (Windows 10 VM) and Linux Chromium 155; Firefox, Safari and macOS native not yet run."
         }
       ]
     },
