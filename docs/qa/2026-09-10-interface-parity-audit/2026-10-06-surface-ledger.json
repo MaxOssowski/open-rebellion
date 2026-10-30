@@ -3940,13 +3940,15 @@
         {
           "id": "CMD-11-C019",
           "requirement": "Fleet window",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-fleet-window/",
+            "crates/rebellion-render/src/fleet_window.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7b) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_004a4b10's tab tips (0x3823 Ships, 0x3820, 0x3821, 0x3822): A0 tooltip/142..145 at the pointer plus (0, 21); tooltip.mjs (fleet-load fixture, Linux) shows Ships there and no tip on the fixture fleet's disabled Fighters and Troops tabs (FUN_004a6980), as a disabled control has none. Every tab shares one code path; their strings are unit-tested.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C020",

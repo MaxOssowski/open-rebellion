@@ -333,6 +333,35 @@ async function run(browser, base, faction) {
       for (const [label, x] of tabs) {
         await probe(label, [windowAt[0] + x + 16, windowAt[1] + 35], null);
       }
+
+      // The Fleet window's tabs (§7b, FUN_004a4b10) in the fleet-load
+      // fixture (code 48): the sector window's fleet icon opens it, and the
+      // fleet chosen enables its tabs. A0 tooltip/142..145 put each tip at
+      // the pointer plus (0, 21); a disabled tab (FUN_004a6980) has none.
+      await page.goto(`${base}?fixture-code=${48 | (faction.byte << 8)}`);
+      await page.waitForFunction(() => window.__openRebellionInterfaceFleetLoadSetup
+        && (window.__openRebellionInterfaceFleetLoads || []).length > 0, null, { timeout: 15_000 });
+      const setup = await page.evaluate(() => window.__openRebellionInterfaceFleetLoadSetup);
+      const latestLoad = () => page.evaluate(() => window.__openRebellionInterfaceFleetLoads.at(-1));
+      await page.mouse.move(setup.icon[0], setup.icon[1], { steps: 4 });
+      await frames(page, 3);
+      await page.mouse.dblclick(setup.icon[0], setup.icon[1]);
+      await page.waitForFunction(() => {
+        const last = window.__openRebellionInterfaceFleetLoads.at(-1);
+        return last && last.window_open && last.fleet_entry;
+      }, null, { timeout: 15_000 });
+      await press((await latestLoad()).fleet_entry);
+      await page.waitForTimeout(300);
+      const fleet = await latestLoad();
+      // The tabs are 32 apart (x 1, 0x21, 0x41, 0x61): Ships left of
+      // Fighters.
+      const shipsTab = fleet.fighters_tab && [fleet.fighters_tab[0] - 32, fleet.fighters_tab[1]];
+      assert.ok(fleet.enabled[0], "the fleet's Ships tab is disabled");
+      for (const [label, at, index] of [["fw-ships", shipsTab, 0], ["fw-fighters", fleet.fighters_tab, 1],
+        ["fw-troops", fleet.troops_tab, 2]]) {
+        if (!at) throw new Error(`${label}: the fixture reports no tab`);
+        await probe(label, [Math.round(at[0]), Math.round(at[1])], null, !fleet.enabled[index]);
+      }
     }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", box, a0, others, shots };

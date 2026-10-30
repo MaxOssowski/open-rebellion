@@ -236,6 +236,19 @@ impl FleetWindowTab {
         Self::Personnel,
     ];
 
+    /// The tab's tooltip (`FUN_004a4b10`, TEXTSTRA): 0x3823 "Ships",
+    /// 0x3820 "Fighter Squadrons", 0x3821 "Troop Regiments", 0x3822
+    /// "Personnel" (A0 tooltip/142..145).
+    #[must_use]
+    pub const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::CapitalShips => 0x3823,
+            Self::Fighters => 0x3820,
+            Self::Troops => 0x3821,
+            Self::Personnel => 0x3822,
+        }
+    }
+
     const fn index(self) -> u32 {
         match self {
             Self::CapitalShips => 0,
@@ -2099,6 +2112,10 @@ fn draw_fleet_window(
                             egui::Sense::hover()
                         },
                     );
+                    // A disabled tab (FUN_004a6980) shows no tip.
+                    if enabled {
+                        crate::win_tooltip::response_tool(&response, rect, tab.tooltip_string());
+                    }
                     if enabled && exact_clicked(&response, rect) {
                         result.tab = Some(tab);
                         result.focus = true;
@@ -2397,6 +2414,15 @@ fn paint_dotted(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_004a4b10 (A0 tooltip/142..145).
+        assert_eq!(
+            super::FleetWindowTab::ALL.map(super::FleetWindowTab::tooltip_string),
+            [0x3823, 0x3820, 0x3821, 0x3822]
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::SectorGroup;
     use rebellion_core::ids::{DatId, TroopKey};
