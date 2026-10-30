@@ -106,6 +106,15 @@ pub enum TroopTab {
 impl TroopTab {
     const ALL: [Self; 2] = [Self::Alliance, Self::Imperial];
 
+    /// The tab's tooltip (`FUN_0046ce40`): TEXTSTRA 0x1950 "Alliance
+    /// Troops", 0x1951 "Imperial Troops".
+    const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::Alliance => 0x1950,
+            Self::Imperial => 0x1951,
+        }
+    }
+
     fn lists(self, is_alliance: bool) -> bool {
         match self {
             Self::Alliance => is_alliance,
@@ -556,6 +565,13 @@ pub fn draw_troop_finder(
             for candidate in TroopTab::ALL {
                 let control = TABS[tab_index(candidate)];
                 let down = candidate == window.tab;
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    ("troop-tab", tab_index(candidate)),
+                    candidate.tooltip_string(),
+                    true,
+                );
                 if button(
                     ui,
                     cache,
@@ -570,6 +586,26 @@ pub fn draw_troop_finder(
             }
 
             // Close and Display buttons.
+            for (control, id, string) in [
+                (
+                    controls.close,
+                    "troop-close",
+                    crate::system_finder::CLOSE_TOOLTIP,
+                ),
+                (
+                    controls.display,
+                    "troop-display",
+                    crate::system_finder::DISPLAY_TOOLTIP,
+                ),
+            ] {
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    id,
+                    string,
+                    true,
+                );
+            }
             if button(
                 ui,
                 cache,
@@ -809,6 +845,15 @@ fn action_for_row(row: &TroopFinderRow) -> TroopFinderAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_0046ce40: 0x1950 "Alliance Troops", 0x1951 "Imperial Troops".
+        assert_eq!(
+            TroopTab::ALL.map(TroopTab::tooltip_string),
+            [0x1950, 0x1951]
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::{ExplorationStatus, Faction, SectorGroup};
     use rebellion_core::ids::{DatId, FleetKey, SystemKey};

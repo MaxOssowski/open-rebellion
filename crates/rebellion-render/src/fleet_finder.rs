@@ -450,6 +450,27 @@ const fn side(faction: CockpitFaction) -> usize {
     }
 }
 
+/// A side tab's tooltip (`FUN_00461960`, `FUN_00462be0`): TEXTSTRA 0x1882
+/// "All Fleets", 0x1883 "Alliance Fleets", 0x1884 "Imperial Fleets"; in
+/// Ship mode `TTM_UPDATETIPTEXT` swaps in 0x1887 "All Ships", 0x1888
+/// "Alliance Ships", 0x1889 "Imperial Ships" (A0 tooltip/48, 49).
+const fn tab_tooltip_string(tab: FinderTab, mode: FinderMode) -> u16 {
+    let base = match mode {
+        FinderMode::Fleets => 0x1882,
+        FinderMode::Ships => 0x1887,
+    };
+    base + tab_index(tab) as u16
+}
+
+/// A mode tab's tooltip (`FUN_00461960`): 0x1885 "Ship Finder", 0x1880
+/// "Fleet Finder"; both show whichever is chosen (A0 tooltip/46, 47, 66).
+const fn mode_tooltip_string(mode: FinderMode) -> u16 {
+    match mode {
+        FinderMode::Ships => 0x1885,
+        FinderMode::Fleets => 0x1880,
+    }
+}
+
 const fn tab_index(tab: FinderTab) -> usize {
     match tab {
         FinderTab::All => 0,
@@ -611,6 +632,13 @@ pub fn draw_fleet_finder(
             for candidate in FinderTab::ALL {
                 let control = TABS[tab_index(candidate)];
                 let down = candidate == window.tab;
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    ("finder-tab", tab_index(candidate)),
+                    tab_tooltip_string(candidate, window.mode),
+                    true,
+                );
                 if button(
                     ui,
                     cache,
@@ -627,6 +655,13 @@ pub fn draw_fleet_finder(
                 (FinderMode::Ships, controls.ship_finder, "finder-ships"),
                 (FinderMode::Fleets, controls.fleet_finder, "finder-fleets"),
             ] {
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    id,
+                    mode_tooltip_string(candidate),
+                    true,
+                );
                 if button(
                     ui,
                     cache,
@@ -638,6 +673,26 @@ pub fn draw_fleet_finder(
                 ) {
                     mode = Some(candidate);
                 }
+            }
+            for (control, id, string) in [
+                (
+                    controls.close,
+                    "finder-close",
+                    crate::system_finder::CLOSE_TOOLTIP,
+                ),
+                (
+                    controls.display,
+                    "finder-display",
+                    crate::system_finder::DISPLAY_TOOLTIP,
+                ),
+            ] {
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    id,
+                    string,
+                    true,
+                );
             }
             if button(
                 ui,
@@ -885,6 +940,17 @@ fn max_scroll(rows: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_side_tabs_name_fleets_or_ships_by_mode() {
+        // FUN_00461960 adds 0x1882..0x1884; FUN_00462be0 swaps in
+        // 0x1887..0x1889 in Ship mode (A0 tooltip/41..43, 48, 49).
+        let names = |mode| FinderTab::ALL.map(|tab| tab_tooltip_string(tab, mode));
+        assert_eq!(names(FinderMode::Fleets), [0x1882, 0x1883, 0x1884]);
+        assert_eq!(names(FinderMode::Ships), [0x1887, 0x1888, 0x1889]);
+        assert_eq!(mode_tooltip_string(FinderMode::Ships), 0x1885);
+        assert_eq!(mode_tooltip_string(FinderMode::Fleets), 0x1880);
+    }
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::ids::{DatId, FleetKey, SystemKey};

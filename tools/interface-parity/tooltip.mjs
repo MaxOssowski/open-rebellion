@@ -143,41 +143,46 @@ async function run(browser, base, faction) {
     const gone = await shot("rest-5s6");
     assert.equal(tipBox(gone, [px, py]), null, "the tip stayed past five seconds");
 
-    // The other top-strip tools (FUN_00422ce0's rect tools), and a gap
-    // between two of them, against A0 11-maintenance.png, 12-speed.png and
-    // 13-gap-244.png.
+    // One control: rest the pointer on it for a second and compare the tip
+    // with A0's capture at the same spot (or, without --a0, with the
+    // placement rule).
     const others = [];
+    const probe = async (label, point, capture, none = false) => {
+      await page.mouse.move(320, 300, { steps: 4 });
+      await frames(page, 4);
+      await page.mouse.move(point[0], point[1], { steps: 4 });
+      await page.waitForTimeout(1000);
+      const png = await shot(`${label}-1s`);
+      const got = tipBox(png, point);
+      let want = none ? null : { x: point[0], y: point[1] + 21, height: 19 };
+      if (want && point[1] + 40 > 479) want.y = point[1] - 19;
+      if (args.a0) {
+        const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
+        want = tipBox(reference, point);
+        assert.equal(want === null, none, `${label}: A0 ${capture} disagrees with the case`);
+      }
+      if (want === null) assert.equal(got, null, `${label}: a tip showed`);
+      else if (got && want.width && got.x !== want.x) {
+        // The wider text (accepted deviation) pushes the tip off the
+        // client's right edge, so it moves left to end at 639 (A0 25-gid.png).
+        assert.equal(got.x + got.width, 639, `${label}: ${JSON.stringify(got)}`);
+        assert.ok(want.x + Math.ceil(want.width * 1.12) > 639, `${label}: A0 ${JSON.stringify(want)}`);
+        assert.deepEqual([got.y, got.height], [want.y, want.height], label);
+      } else assert.deepEqual(got && [got.x, got.y, got.height], [want.x, want.y, want.height], label);
+      others.push({ label, got, want });
+    };
+
+    // The other top-strip tools (FUN_00422ce0's rect tools), a gap between
+    // two of them, the cockpit's controls (FUN_004286b0) and rail
+    // (FUN_00427270).
     if (faction.name === "empire") {
-      for (const [label, point, capture] of [["maintenance", [400, 25], "11-maintenance.png"],
-        ["speed", [520, 25], "12-speed.png"], ["gap", [244, 25], "13-gap-244.png"],
-        // The cockpit's controls (FUN_004286b0) and rail (FUN_00427270).
+      for (const [label, point, capture, none] of [["maintenance", [400, 25], "11-maintenance.png"],
+        ["speed", [520, 25], "12-speed.png"], ["gap", [244, 25], "13-gap-244.png", true],
         ["system-finder", [150, 440], "20-sysfinder.png"], ["fleet-finder", [205, 440], "21-fleetfinder.png"],
         ["personnel-finder", [418, 440], "22-personnel.png"], ["troop-finder", [260, 440], "23-troop.png"],
         ["encyclopedia", [472, 440], "24-ency.png"], ["gid", [526, 440], "25-gid.png"],
         ["game-controls", [90, 210], "26-gamecontrols.png"], ["rail-support", [618, 118], "27-rail-support.png"],
-        ["rail-chat", [618, 318], "28-rail-chat.png"]]) {
-        await page.mouse.move(320, 300, { steps: 4 });
-        await frames(page, 4);
-        await page.mouse.move(point[0], point[1], { steps: 4 });
-        await page.waitForTimeout(1000);
-        const png = await shot(`${label}-1s`);
-        const got = tipBox(png, point);
-        let want = label === "gap" ? null : { x: point[0], y: point[1] + 21, height: 19 };
-        if (!args.a0 && point[1] + 40 > 479) want.y = point[1] - 19;
-        if (args.a0) {
-          const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
-          want = tipBox(reference, point);
-        }
-        if (want === null) assert.equal(got, null, `${label}: a tip showed`);
-        else if (got && want.width && got.x !== want.x) {
-          // The wider text (accepted deviation) pushes the tip off the
-          // client's right edge, so it moves left to end at 639 (A0 25-gid.png).
-          assert.equal(got.x + got.width, 639, `${label}: ${JSON.stringify(got)}`);
-          assert.ok(want.x + Math.ceil(want.width * 1.12) > 639, `${label}: A0 ${JSON.stringify(want)}`);
-          assert.deepEqual([got.y, got.height], [want.y, want.height], label);
-        } else assert.deepEqual(got && [got.x, got.y, got.height], [want.x, want.y, want.height], label);
-        others.push({ label, got, want });
-      }
+        ["rail-chat", [618, 318], "28-rail-chat.png"]]) await probe(label, point, capture, none);
     }
 
     // Modal: with the System Finder open the monitor shows no tip.
@@ -191,6 +196,58 @@ async function run(browser, base, faction) {
     await page.waitForTimeout(1000);
     const modal = await shot("modal-rest-1s");
     assert.equal(tipBox(modal, [px, py]), null, "a tip showed under the modal Finder");
+
+    // The Finders' own controls (ghidra/notes/tooltips.md 3a-3d), Empire
+    // against A0 tooltip/30..65. The System Finder is open from above.
+    if (faction.name === "empire") {
+      const open = async (key) => {
+        await page.keyboard.press("Escape");
+        await frames(page, 6);
+        await page.keyboard.press(key);
+        await page.waitForTimeout(500);
+      };
+      for (const [label, point, capture] of [["sf-all", [180, 150], "30-sf-all.png"],
+        ["sf-rebel", [232, 150], "31-sf-rebel.png"], ["sf-imperial", [284, 150], "32-sf-imperial.png"],
+        ["sf-neutral", [336, 150], "33-sf-neutral.png"], ["sf-unexplored", [388, 150], "34-sf-unexplored.png"],
+        ["sf-close", [573, 92], "35-sf-close.png"], ["sf-display", [573, 160], "36-sf-display.png"]]) {
+        await probe(label, point, capture);
+      }
+      await open("F3");
+      for (const [label, point, capture] of [["ff-all", [180, 150], "41-ff-all.png"],
+        ["ff-alliance", [232, 150], "42-ff-alliance.png"], ["ff-imperial", [284, 150], "43-ff-imperial.png"],
+        ["ff-close", [573, 92], "44-ff-close.png"], ["ff-display", [573, 160], "45-ff-display.png"],
+        ["ff-mode-ship", [573, 215], "46-ff-mode-ship.png"], ["ff-mode-fleet", [573, 268], "47-ff-mode-fleet.png"]]) {
+        await probe(label, point, capture);
+      }
+      // Ship mode: FUN_00462be0 renames the side tabs (TTM_UPDATETIPTEXT).
+      await page.mouse.move(573, 215, { steps: 4 });
+      await frames(page, 3);
+      await page.mouse.down();
+      await frames(page, 3);
+      await page.mouse.up();
+      await frames(page, 6);
+      for (const [label, point, capture] of [["ff-ships-all", [180, 150], "48-sf2-all-ships.png"],
+        ["ff-ships-alliance", [232, 150], "49-sf2-alliance-ships.png"],
+        ["ff-ships-imperial", [284, 150], "50-sf2-imperial-ships.png"],
+        ["ff-ship-current", [573, 215], "66-ff-ship-current.png"]]) {
+        await probe(label, point, capture);
+      }
+      await open("F4");
+      for (const [label, point, capture] of [["tf-alliance", [180, 145], "51-tf-alliance.png"],
+        ["tf-imperial", [232, 145], "52-tf-imperial.png"], ["tf-close", [573, 92], "53-tf-close.png"],
+        ["tf-display", [573, 160], "54-tf-display.png"]]) {
+        await probe(label, point, capture);
+      }
+      await open("F5");
+      // FUN_00464890 disables the chosen view tab: Characters shows none.
+      for (const [label, point, capture, none] of [["pf-alliance", [180, 145], "56-pf-alliance.png"],
+        ["pf-imperial", [232, 145], "57-pf-imperial.png"], ["pf-close", [573, 92], "58-pf-close.png"],
+        ["pf-display", [573, 160], "59-pf-display.png"], ["pf-characters", [573, 215], "60-pf-characters.png", true],
+        ["pf-specforces", [573, 268], "61-pf-specforces.png"]]) {
+        await probe(label, point, capture, none);
+      }
+      await page.keyboard.press("Escape");
+    }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", box, a0, others, shots };
   } catch (error) {

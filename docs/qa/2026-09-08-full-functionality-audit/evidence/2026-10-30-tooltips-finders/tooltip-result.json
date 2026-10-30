@@ -1,0 +1,820 @@
+{
+  "status": "pass",
+  "wasm_sha256": "c91d1e64f5449e8381a0227cd397246bd3b9f76143485b250f8de2c3faa7c8e6",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "box": {
+        "x": 265,
+        "y": 43,
+        "width": 137,
+        "height": 19
+      },
+      "a0": null,
+      "others": [],
+      "shots": [
+        {
+          "label": "rest-250ms",
+          "sha256": "dc4ae42f2b17ec2d752f31ac299fc9f7da1c5f4db042689cba53a5802e8fd615"
+        },
+        {
+          "label": "rest-1s",
+          "sha256": "a38708b480e222cac81941e4203719776ce3c70d90ea8902a6f02d81f8c3c016"
+        },
+        {
+          "label": "rest-5s6",
+          "sha256": "dc4ae42f2b17ec2d752f31ac299fc9f7da1c5f4db042689cba53a5802e8fd615"
+        },
+        {
+          "label": "modal-rest-1s",
+          "sha256": "7094fd33821d3d4115dbc96a198e163fb9bf788571d9859acf997b23584192c7"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "box": {
+        "x": 175,
+        "y": 46,
+        "width": 137,
+        "height": 19
+      },
+      "a0": {
+        "want": {
+          "x": 175,
+          "y": 46,
+          "width": 125,
+          "height": 19
+        },
+        "got": {
+          "x": 175,
+          "y": 46,
+          "width": 137,
+          "height": 19
+        }
+      },
+      "others": [
+        {
+          "label": "maintenance",
+          "got": {
+            "x": 400,
+            "y": 46,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 400,
+            "y": 46,
+            "width": 121,
+            "height": 19
+          }
+        },
+        {
+          "label": "speed",
+          "got": {
+            "x": 512,
+            "y": 46,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 520,
+            "y": 46,
+            "width": 115,
+            "height": 19
+          }
+        },
+        {
+          "label": "gap",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "system-finder",
+          "got": {
+            "x": 150,
+            "y": 421,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 150,
+            "y": 421,
+            "width": 80,
+            "height": 19
+          }
+        },
+        {
+          "label": "fleet-finder",
+          "got": {
+            "x": 205,
+            "y": 421,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 205,
+            "y": 421,
+            "width": 67,
+            "height": 19
+          }
+        },
+        {
+          "label": "personnel-finder",
+          "got": {
+            "x": 418,
+            "y": 421,
+            "width": 104,
+            "height": 19
+          },
+          "want": {
+            "x": 418,
+            "y": 421,
+            "width": 94,
+            "height": 19
+          }
+        },
+        {
+          "label": "troop-finder",
+          "got": {
+            "x": 260,
+            "y": 421,
+            "width": 79,
+            "height": 19
+          },
+          "want": {
+            "x": 260,
+            "y": 421,
+            "width": 73,
+            "height": 19
+          }
+        },
+        {
+          "label": "encyclopedia",
+          "got": {
+            "x": 472,
+            "y": 421,
+            "width": 84,
+            "height": 19
+          },
+          "want": {
+            "x": 472,
+            "y": 421,
+            "width": 76,
+            "height": 19
+          }
+        },
+        {
+          "label": "gid",
+          "got": {
+            "x": 469,
+            "y": 421,
+            "width": 170,
+            "height": 19
+          },
+          "want": {
+            "x": 484,
+            "y": 421,
+            "width": 155,
+            "height": 19
+          }
+        },
+        {
+          "label": "game-controls",
+          "got": {
+            "x": 90,
+            "y": 231,
+            "width": 93,
+            "height": 19
+          },
+          "want": {
+            "x": 90,
+            "y": 231,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "rail-support",
+          "got": {
+            "x": 477,
+            "y": 139,
+            "width": 162,
+            "height": 19
+          },
+          "want": {
+            "x": 493,
+            "y": 139,
+            "width": 146,
+            "height": 19
+          }
+        },
+        {
+          "label": "rail-chat",
+          "got": {
+            "x": 542,
+            "y": 339,
+            "width": 97,
+            "height": 19
+          },
+          "want": {
+            "x": 554,
+            "y": 339,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 76,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 66,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-rebel",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 95,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 81,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-imperial",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 107,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 95,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-neutral",
+          "got": {
+            "x": 336,
+            "y": 171,
+            "width": 103,
+            "height": 19
+          },
+          "want": {
+            "x": 336,
+            "y": 171,
+            "width": 91,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-unexplored",
+          "got": {
+            "x": 388,
+            "y": 171,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 388,
+            "y": 171,
+            "width": 113,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 60,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 53,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-alliance",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 81,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-imperial",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 82,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-mode-ship",
+          "got": {
+            "x": 567,
+            "y": 236,
+            "width": 72,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 236,
+            "width": 65,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-mode-fleet",
+          "got": {
+            "x": 564,
+            "y": 289,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 572,
+            "y": 289,
+            "width": 67,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ships-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 57,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 51,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ships-alliance",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 88,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 79,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ships-imperial",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 88,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 80,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ship-current",
+          "got": {
+            "x": 567,
+            "y": 236,
+            "width": 72,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 236,
+            "width": 65,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-alliance",
+          "got": {
+            "x": 180,
+            "y": 166,
+            "width": 95,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 166,
+            "width": 87,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-imperial",
+          "got": {
+            "x": 232,
+            "y": 166,
+            "width": 95,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 166,
+            "width": 88,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-alliance",
+          "got": {
+            "x": 180,
+            "y": 166,
+            "width": 113,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 166,
+            "width": 103,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-imperial",
+          "got": {
+            "x": 232,
+            "y": 166,
+            "width": 113,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 166,
+            "width": 104,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-characters",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "pf-specforces",
+          "got": {
+            "x": 564,
+            "y": 289,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 289,
+            "width": 65,
+            "height": 19
+          }
+        }
+      ],
+      "shots": [
+        {
+          "label": "rest-250ms",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "rest-1s",
+          "sha256": "c297007e99065ebf4a9a79a9019817b47ec68c278769cd8598857d48605f4aa1"
+        },
+        {
+          "label": "rest-5s6",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "maintenance-1s",
+          "sha256": "7087f71316dabb851f6526db299922a1fc7c2365b31e86261281e6040f388022"
+        },
+        {
+          "label": "speed-1s",
+          "sha256": "b20a413bdb16d57633f9a2a94416359071683fc761a67f9662c0020d9a6cfbc4"
+        },
+        {
+          "label": "gap-1s",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "system-finder-1s",
+          "sha256": "1762f551e9bc3f50fe1f7c3e0e785cb47d09b61e539ff076156c198d829d1693"
+        },
+        {
+          "label": "fleet-finder-1s",
+          "sha256": "9426e4ee9f846370ebbab49812f8f6476233144a50b18639e65e61b9c3ef1704"
+        },
+        {
+          "label": "personnel-finder-1s",
+          "sha256": "3f1d9cef566e59c2980a289ae0e158a749e7538a93f395a99e45624d257e6f2d"
+        },
+        {
+          "label": "troop-finder-1s",
+          "sha256": "19cdcebab0aa381ecf1a3b795b039b6996e8a93ebddd0e32f6f8c564548d7dbd"
+        },
+        {
+          "label": "encyclopedia-1s",
+          "sha256": "291b4dcb03d77206ccfddd9cb572780f06e0c0f8d2819b9b89578bb7c342512e"
+        },
+        {
+          "label": "gid-1s",
+          "sha256": "33d69b31f2d0093dd854d35ccdf0b36f86da44fdef285f947b3b3ccb04e0d450"
+        },
+        {
+          "label": "game-controls-1s",
+          "sha256": "e52f71b9a01ace499dcaf313f2600a1529e72718fdd967239463a4053d340485"
+        },
+        {
+          "label": "rail-support-1s",
+          "sha256": "3ebc639da0f6f54cada42149a6f76face165438c2182c870c3bf4a49a13b6106"
+        },
+        {
+          "label": "rail-chat-1s",
+          "sha256": "e745df2d2d9a945713684f3c884052c0dbdd2268bab1261fa425a5d25e4b7659"
+        },
+        {
+          "label": "modal-rest-1s",
+          "sha256": "3959d1e87bb86509dfc7ddfe6f9c28f57dbb2ba59246b9102e61fcfcc46a6ec9"
+        },
+        {
+          "label": "sf-all-1s",
+          "sha256": "f97e08121e33f23141de2686cc6629cc3558b890450b0b1704a22f25a0b73932"
+        },
+        {
+          "label": "sf-rebel-1s",
+          "sha256": "4c4c2afa89b429375ff5393b2a6539ff49c4c8a5233e2d5eb170206eef09dc9b"
+        },
+        {
+          "label": "sf-imperial-1s",
+          "sha256": "0a7e9f7d06f748dba0a357b7baabf26d85087bd67958168d3e8979b1056bdfc6"
+        },
+        {
+          "label": "sf-neutral-1s",
+          "sha256": "4f1c3354065a7e40583833728af8cf76c3e08edd76b6546913e8bb90aa663b3f"
+        },
+        {
+          "label": "sf-unexplored-1s",
+          "sha256": "946985f77ede518fd1c444be79a50eba0a57f4ff9f98e168143dcb210e8d6324"
+        },
+        {
+          "label": "sf-close-1s",
+          "sha256": "61a8e1981b856b72df4bebc51757610d555b8a84dee9aca0d011981dd921600e"
+        },
+        {
+          "label": "sf-display-1s",
+          "sha256": "ed4989dce5b7dba89ac2683faefc7e08ac377230548e806d5696d7eff300588b"
+        },
+        {
+          "label": "ff-all-1s",
+          "sha256": "cb23ea5f9c78623f66333e74c4998c3dcd262cdb913eae08c1cc144c9482a172"
+        },
+        {
+          "label": "ff-alliance-1s",
+          "sha256": "9fc7c1f1d15fc7f7be0b9a91bd0b57a6cd535d307ba80067d729af89a2392249"
+        },
+        {
+          "label": "ff-imperial-1s",
+          "sha256": "a7df7eb26de36486e1983d7db861dc5981c2e2d031e162c20258e9d3f1b4663d"
+        },
+        {
+          "label": "ff-close-1s",
+          "sha256": "44a662ff703d66722936fbaeddb3512fe859a5597464ad8c4d7a1a19366acfb3"
+        },
+        {
+          "label": "ff-display-1s",
+          "sha256": "13717239a4141a2d2d0305549371206d618a3ef3863646ffd91ea5598f0f520e"
+        },
+        {
+          "label": "ff-mode-ship-1s",
+          "sha256": "7fe17ef3ca119e7db53d99e566480ed7f7115295c6782f21cd5e61bb4c2db084"
+        },
+        {
+          "label": "ff-mode-fleet-1s",
+          "sha256": "7b73b0fc36ed494165719ec5684e35d869632f1cdd59484280f48f7a09e7838d"
+        },
+        {
+          "label": "ff-ships-all-1s",
+          "sha256": "6e38a134cfbe3103fdee7501d7a5c5ff2b3518f5644e95f9fa528a470d7c1ff5"
+        },
+        {
+          "label": "ff-ships-alliance-1s",
+          "sha256": "06ee16bfc96c0fc942799934e25febd8f7745d002fe3d28c0620018e2b61fbc6"
+        },
+        {
+          "label": "ff-ships-imperial-1s",
+          "sha256": "d90a1fc13c97252c43e3f6341971bf3deeaa7ba5fa27b1299babeffd912f1cf0"
+        },
+        {
+          "label": "ff-ship-current-1s",
+          "sha256": "53cbb2cfea0315b87ec674998d85151fafe7afaddf2a1a14ef663ec862f3e521"
+        },
+        {
+          "label": "tf-alliance-1s",
+          "sha256": "acdbbb832a01dc150b30a21b1be11f7368a586a4073400c097a291e689d6f72f"
+        },
+        {
+          "label": "tf-imperial-1s",
+          "sha256": "598ded0bf3fc5538eb32778405a78a02e8c009b68768d871a9f991bd70a5dcfe"
+        },
+        {
+          "label": "tf-close-1s",
+          "sha256": "5c3aeacd26e080723516ce2f4bfc340e00f8a9ca5b92e1ded03df6ee3ce107c3"
+        },
+        {
+          "label": "tf-display-1s",
+          "sha256": "deffd5fdbff48b392650c51ff0791ea55d6ea055670cd8a1a44a437a0f964f72"
+        },
+        {
+          "label": "pf-alliance-1s",
+          "sha256": "6014b1741d822e5f3c4009af2c69cf4450e93d50d62c3e4615ef1640d2d610d7"
+        },
+        {
+          "label": "pf-imperial-1s",
+          "sha256": "d5b84c16cfb0ac6d495c4574c8cecd41987db3f80a46e329ce0f0990580895ef"
+        },
+        {
+          "label": "pf-close-1s",
+          "sha256": "312ecbd4a856610833dee0d538e60ad1e5eec4a76ba83aaa4d1a650bad88aa1e"
+        },
+        {
+          "label": "pf-display-1s",
+          "sha256": "1522a5ab31e3b78e1c509929865e3e8ddebffb654ce3358851b1b290fa0f8c6c"
+        },
+        {
+          "label": "pf-characters-1s",
+          "sha256": "f1805b901aea895d13ffb4c5c0b82b1b94db2b1943d3f5dc1e4c4850c8079537"
+        },
+        {
+          "label": "pf-specforces-1s",
+          "sha256": "539e2341ecd817cc630fa1bc303e355d51dbadf1bbb3c75935cd641ed486a975"
+        }
+      ]
+    }
+  ]
+}

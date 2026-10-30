@@ -3701,7 +3701,7 @@
         "REF-MANUAL"
       ],
       "manual_pages": [],
-      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality). The command center's top strip, primary controls, Game Controls, rail and legend button register their tools; every other window's tools are pending (inventory in ghidra/notes/tooltips.md, about 262 tools in 33 windows).",
+      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality, no tip on a disabled control). The command center's top strip, primary controls, Game Controls, rail and legend button, and the four Finders register their tools; the other windows' tools are pending (inventory in ghidra/notes/tooltips.md, about 262 tools in 33 windows).",
       "finding_ids": [],
       "reverse_engineering_package_ids": [],
       "acceptance_cells": [
@@ -3800,46 +3800,58 @@
         {
           "id": "CMD-11-C008",
           "requirement": "System Finder",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-finders/",
+            "crates/rebellion-render/src/system_finder.rs",
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3a) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00460270's five tabs (TEXTSTRA 0x1867..0x1869, 0x1870, 0x1871), Close 0x1954 and Display 0x1953 match A0 tooltip/30..36 in tooltip.mjs (left edge, top, height; Empire, Linux). Tips are about 9% wider (accepted text-width deviation).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C009",
           "requirement": "Fleet and Ship Finder",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-finders/",
+            "crates/rebellion-render/src/fleet_finder.rs",
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3b, with the side tabs' runtime text) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00461960's side tabs 0x1882..0x1884, renamed in Ship mode to 0x1887..0x1889 by FUN_00462be0 (TTM_UPDATETIPTEXT), mode tabs 0x1885 Ship Finder and 0x1880 Fleet Finder (both always tipped), Close and Display match A0 tooltip/41..50, 66, 67 in tooltip.mjs; the mode tabs' wider tips move left to end at 639 (accepted text-width deviation).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C010",
           "requirement": "Personnel Finder",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-finders/",
+            "crates/rebellion-render/src/personnel_finder.rs",
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3c) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_004637a0's side tabs 0x1893/0x1894, view tabs 0x1899 Characters / 0x1898 SpecForces, Close and Display match A0 tooltip/56..65 in tooltip.mjs. FUN_00464890 disables the chosen view tab (EnableWindow FALSE), so it shows no tip: A0 60, 62, 63 and the port show none on Characters.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C011",
           "requirement": "Troop Finder",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-finders/",
+            "crates/rebellion-render/src/troop_finder.rs",
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3d) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_0046ce40's tabs 0x1950/0x1951, Close and Display match A0 tooltip/51..54 in tooltip.mjs (Empire, Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C012",

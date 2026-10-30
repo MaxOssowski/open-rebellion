@@ -53,6 +53,15 @@ pub enum PersonnelTab {
 impl PersonnelTab {
     const ALL: [Self; 2] = [Self::Alliance, Self::Imperial];
 
+    /// The tab's tooltip (`FUN_004637a0`): TEXTSTRA 0x1893 "Alliance
+    /// Personnel", 0x1894 "Imperial Personnel".
+    const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::Alliance => 0x1893,
+            Self::Imperial => 0x1894,
+        }
+    }
+
     fn lists(self, is_alliance: bool) -> bool {
         match self {
             Self::Alliance => is_alliance,
@@ -87,6 +96,15 @@ pub enum PersonnelView {
 
 impl PersonnelView {
     const ALL: [Self; 2] = [Self::SpecForces, Self::Characters];
+
+    /// The tab's tooltip (`FUN_004637a0`): TEXTSTRA 0x1898 "SpecForces",
+    /// 0x1899 "Characters".
+    const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::SpecForces => 0x1898,
+            Self::Characters => 0x1899,
+        }
+    }
 
     const fn index(self) -> usize {
         match self {
@@ -753,6 +771,13 @@ pub fn draw_personnel_finder(
             for candidate in PersonnelTab::ALL {
                 let control = SIDE_TABS[candidate.index()];
                 let down = candidate == window.tab;
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    ("personnel-side-tab", candidate.index()),
+                    candidate.tooltip_string(),
+                    true,
+                );
                 if button(
                     ui,
                     cache,
@@ -777,6 +802,16 @@ pub fn draw_personnel_finder(
                 );
                 let art = VIEW_TAB_ART[side_idx][candidate.index()];
                 let down = candidate == window.view;
+                // FUN_00464890 case 0x6e disables the chosen view tab
+                // (EnableWindow FALSE, drawn pressed), so only the other one
+                // shows its tip (A0 tooltip/62, 64, 65).
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, view_rect),
+                    ("personnel-view-tab", candidate.index()),
+                    candidate.tooltip_string(),
+                    !down,
+                );
                 if button(
                     ui,
                     cache,
@@ -791,6 +826,26 @@ pub fn draw_personnel_finder(
             }
 
             // Close and Display.
+            for (control, id, string) in [
+                (
+                    controls.close,
+                    "personnel-close",
+                    crate::system_finder::CLOSE_TOOLTIP,
+                ),
+                (
+                    controls.display,
+                    "personnel-display",
+                    crate::system_finder::DISPLAY_TOOLTIP,
+                ),
+            ] {
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    id,
+                    string,
+                    true,
+                );
+            }
             if button(
                 ui,
                 cache,
@@ -1049,6 +1104,19 @@ fn action_for_row(row: &PersonnelFinderRow) -> PersonnelFinderAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_004637a0: 0x1893, 0x1894 side tabs; 0x1898, 0x1899 view tabs.
+        assert_eq!(
+            PersonnelTab::ALL.map(PersonnelTab::tooltip_string),
+            [0x1893, 0x1894]
+        );
+        assert_eq!(
+            PersonnelView::ALL.map(PersonnelView::tooltip_string),
+            [0x1898, 0x1899]
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};
     use rebellion_core::ids::DatId;

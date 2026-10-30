@@ -48,6 +48,11 @@ const CLOSE: [Control; 2] = [
         art: (10516, 10517),
     },
 ];
+/// The Close and Display buttons' tooltips, TEXTSTRA 0x1954 "Close" and
+/// 0x1953 "Display" (`FUN_00606c90` in every Finder's create routine).
+pub(crate) const CLOSE_TOOLTIP: u16 = 0x1954;
+pub(crate) const DISPLAY_TOOLTIP: u16 = 0x1953;
+
 const DISPLAY: [Control; 2] = [
     Control {
         rect: (427.0, 93.0, 32.0, 31.0),
@@ -96,6 +101,20 @@ pub enum SystemTab {
 }
 
 impl SystemTab {
+    /// The tab's tooltip (`FUN_00460270`): TEXTSTRA 0x1867 "All
+    /// Systems", 0x1868 "Rebel Systems", 0x1869 "Imperial Systems", 0x1870
+    /// "Neutral Systems", 0x1871 "Unexplored Systems".
+    #[must_use]
+    pub const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::All => 0x1867,
+            Self::Rebel => 0x1868,
+            Self::Imperial => 0x1869,
+            Self::Neutral => 0x1870,
+            Self::Unexplored => 0x1871,
+        }
+    }
+
     pub const ALL: [Self; 5] = [
         Self::All,
         Self::Rebel,
@@ -477,6 +496,13 @@ pub fn draw_system_finder(
             );
 
             for candidate in SystemTab::ALL {
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, tab_rect(candidate)),
+                    ("system-finder-tab", candidate.index()),
+                    candidate.tooltip_string(),
+                    true,
+                );
                 if button(
                     ui,
                     cache,
@@ -488,6 +514,18 @@ pub fn draw_system_finder(
                 ) {
                     tab = Some(candidate);
                 }
+            }
+            for (control, id, string) in [
+                (CLOSE[side], "system-finder-close", CLOSE_TOOLTIP),
+                (DISPLAY[side], "system-finder-display", DISPLAY_TOOLTIP),
+            ] {
+                crate::win_tooltip::window_tool(
+                    ui,
+                    at(frame, scale, control.rect),
+                    id,
+                    string,
+                    true,
+                );
             }
             if button(
                 ui,
@@ -735,6 +773,18 @@ fn max_scroll(rows: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_00460270: TEXTSTRA 0x1867..0x1869, 0x1870, 0x1871; A0
+        // tooltip/30..34.
+        assert_eq!(
+            SystemTab::ALL.map(SystemTab::tooltip_string),
+            [0x1867, 0x1868, 0x1869, 0x1870, 0x1871]
+        );
+        // FUN_00606c90 in every Finder: 0x1954 "Close", 0x1953 "Display".
+        assert_eq!((CLOSE_TOOLTIP, DISPLAY_TOOLTIP), (0x1954, 0x1953));
+    }
     use rebellion_core::dat::SectorGroup;
     use rebellion_core::ids::DatId;
     use rebellion_core::world::{ControlKind, Sector, System};

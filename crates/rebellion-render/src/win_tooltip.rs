@@ -208,17 +208,43 @@ pub fn chrome_tool(
     text: &str,
     enabled: bool,
 ) {
-    // PtInRect: the right and bottom edges are outside.
     let over = ctx
         .input(|input| input.pointer.latest_pos())
-        .is_some_and(|p| {
-            p.x >= screen_rect.min.x
-                && p.x < screen_rect.max.x
-                && p.y >= screen_rect.min.y
-                && p.y < screen_rect.max.y
-        });
+        .is_some_and(|p| pt_in_rect(screen_rect, p));
     if enabled && over && !ctx.is_pointer_over_area() {
         tool(ctx, id, text);
+    }
+}
+
+/// `PtInRect`: the right and bottom edges are outside.
+fn pt_in_rect(rect: egui::Rect, p: egui::Pos2) -> bool {
+    p.x >= rect.min.x && p.x < rect.max.x && p.y >= rect.min.y && p.y < rect.max.y
+}
+
+/// [`tool`] for a control of a window drawn in `ui`: registers TEXTSTRA
+/// `string` while the pointer is inside `rect`, the window is the top layer
+/// under it and the control is `enabled`. A disabled window shows no tip
+/// (`EnableWindow(FALSE)`, `ghidra/notes/tooltips.md`).
+pub fn window_tool(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    id: impl std::hash::Hash,
+    string: u16,
+    enabled: bool,
+) {
+    let ctx = ui.ctx();
+    let Some(pointer) = ctx.input(|input| input.pointer.latest_pos()) else {
+        return;
+    };
+    if !enabled
+        || !ui.is_enabled()
+        || !pt_in_rect(rect, pointer)
+        || ctx.layer_id_at(pointer) != Some(ui.layer_id())
+    {
+        return;
+    }
+    if let Some(text) = self::string(string) {
+        tool(ctx, ui.id().with(("tooltip", id)), &text);
     }
 }
 
@@ -629,6 +655,69 @@ pub(crate) mod tests {
         );
         assert_eq!(run(egui::pos2(160.0, 105.0), true, false), None);
         assert_eq!(run(egui::pos2(110.0, 120.0), true, false), None);
+    }
+
+    #[test]
+    fn a_window_control_tips_only_when_enabled_and_on_top() {
+        // A disabled window shows no tip (FUN_00464890 disables the chosen
+        // Personnel view tab: A0 tooltip/62, 65); nor does one under
+        // another window.
+        set_strings(
+            TEST_STRINGS
+                .iter()
+                .map(|(id, text)| (*id, (*text).to_owned()))
+                .collect(),
+        );
+        let run = |pointer: egui::Pos2, enabled: bool, ui_enabled: bool, covered: bool| {
+            let shapes = frames(
+                &egui::Context::default(),
+                pointer,
+                &[0.0, 0.1, 0.2, 0.3, 0.9],
+                egui::Pos2::ZERO,
+                1.0,
+                |ctx| {
+                    egui::Area::new(egui::Id::new("window"))
+                        .fixed_pos(egui::pos2(0.0, 0.0))
+                        .show(ctx, |ui| {
+                            if !ui_enabled {
+                                ui.disable();
+                            }
+                            ui.allocate_exact_size(egui::vec2(300.0, 300.0), egui::Sense::hover());
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(100.0, 100.0),
+                                egui::vec2(40.0, 30.0),
+                            );
+                            window_tool(ui, rect, "close", 0x1501, enabled);
+                        });
+                    if covered {
+                        egui::Area::new(egui::Id::new("over"))
+                            .order(egui::Order::Foreground)
+                            .fixed_pos(egui::pos2(90.0, 90.0))
+                            .show(ctx, |ui| {
+                                ui.allocate_exact_size(
+                                    egui::vec2(100.0, 100.0),
+                                    egui::Sense::hover(),
+                                );
+                            });
+                    }
+                },
+            );
+            tip_shapes(&shapes).map(|(_, _, text)| text)
+        };
+        let inside = egui::pos2(110.0, 110.0);
+        assert_eq!(
+            run(inside, true, true, false).as_deref(),
+            Some("System Finder")
+        );
+        assert_eq!(
+            run(egui::pos2(100.0, 100.0), true, true, false).as_deref(),
+            Some("System Finder")
+        );
+        assert_eq!(run(egui::pos2(140.0, 110.0), true, true, false), None);
+        assert_eq!(run(egui::pos2(110.0, 130.0), true, true, false), None);
+        assert_eq!(run(inside, false, true, false), None);
+        assert_eq!(run(inside, true, false, false), None);
+        assert_eq!(run(inside, true, true, true), None);
     }
 
     #[test]
