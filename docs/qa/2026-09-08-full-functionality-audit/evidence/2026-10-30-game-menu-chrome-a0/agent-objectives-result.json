@@ -1,0 +1,110 @@
+{
+  "status": "pass",
+  "wasm_sha256": "537ff8aea2f60f93f7f2e862a55dc1afe88bd9f8845fa8552520c8a1dcb61bfc",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "agent": [
+        "[agent] advice posted number=1 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=2 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=3 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=4 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=5 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=6 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=7 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=8 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=9 kind=7 reason=briefing titled=true",
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator",
+        "[agent] command=manage_garrisons status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "0ad2f438f2a00b51354ece33739ddb5844e4807496b14e978c95253f12971883"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "62971002b32cd75e8dc79d38d489413f18fd37f3fb381b5438ef38d6078ed16f"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "dc9793c60c748bfefc2869e9f399addc55756718f37e5c3cdddaa30513f6de37"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "b8a4c9dcd82e3eb8321711855127dc6a6e264f101bf72c8fc1743e4f1d7d3a99"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "ed85299d74fda5eae88b3d22b82e086861f3957115bb821aa8cbfdfc310e8a1f"
+        },
+        {
+          "label": "speed-menu",
+          "sha256": "b9e89bd1b0bc02aa7b35bc466a1d583f062ee21ec36bb5da818bc5155f83b9bf"
+        },
+        {
+          "label": "quip",
+          "sha256": "4661c3410da53132109f374c5ac6600a104be4c61d7c6317f8b78980bd317469"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "agent": [
+        "[agent] advice posted number=1 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=2 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=3 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=4 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=5 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=6 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=7 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=8 kind=7 reason=briefing titled=true",
+        "[agent] advice posted number=9 kind=7 reason=briefing titled=true",
+        "[agent] command=objectives status=opened source=menu",
+        "[agent] command=objectives status=opened source=accelerator",
+        "[agent] command=galaxy_overview status=opened source=menu",
+        "[agent] command=galaxy_overview status=opened source=accelerator",
+        "[agent] command=translate_counterpart status=off source=accelerator",
+        "[agent] command=translate_counterpart status=on source=accelerator",
+        "[agent] command=manage_garrisons status=on source=accelerator"
+      ],
+      "shots": [
+        {
+          "label": "agent-menu",
+          "sha256": "a52ae0eab572a1bc8737e1ce81900727b3d8ac6fcea0ff10e65a8204622f8c88"
+        },
+        {
+          "label": "objectives-from-menu",
+          "sha256": "6d4aae4e146c75abf3ed084a5a0eaca02b70ec18af766ba20fca5cf46bc541fe"
+        },
+        {
+          "label": "objectives-from-alt-h",
+          "sha256": "897665d4cd931a4f23f876c6dcf7641f2e3665c08cb5a8fd2053fbc733e03de8"
+        },
+        {
+          "label": "galaxy-overview-from-menu",
+          "sha256": "3606a127dcd22c9489222bdb5e1314ad17c307e3d923a4da92309ad3c95dad23"
+        },
+        {
+          "label": "agent-menu-translate",
+          "sha256": "9fab3f35cbe55d1515f719a34b9a5715615a00632e93c5ece6244be9206e99f1"
+        },
+        {
+          "label": "speed-menu",
+          "sha256": "139940df7260fde4708388c61fdd6e8017fbbc2bc14f8eedd1b352e349ab2f03"
+        },
+        {
+          "label": "quip",
+          "sha256": "6a945df866c7882c7e54cefb0ed3917b878b5a29b9aa42737307d23ae6e01ec4"
+        }
+      ]
+    }
+  ]
+}

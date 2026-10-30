@@ -2502,15 +2502,15 @@
         {
           "id": "CMD-05-C010",
           "requirement": "selected",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "FUN_0042d190 passes flags 0, so the original marks no current speed; the port matches by code. Not compared with A0. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_0042d190 passes flags 0, so no row marks the current speed; A0 build-orders/12-speed.png (Medium) shows none, and the port's Empire speed menu (agent-objectives.mjs, Linux, 2026-10-30) neither; rows, icons, frame and fill match. Deviation accepted 2026-10-30: text width (GDI hinting).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-05-C011",
@@ -6671,7 +6671,7 @@
         {
           "id": "OBJ-14-C005",
           "requirement": "personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
@@ -6679,8 +6679,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "Character and special-force menus (Move, Retire, Mission, Command submenu) pass personnel-orders.mjs and status-window.mjs on Arch Chromium; A0 14-char-menu.png and 31/32-emp-menu.png exist. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The character menu's rows, frame, shaded fill and keyed Command arrow match A0 status/14-char-menu.png; personnel-orders.mjs passes on Linux. Deviations accepted 2026-10-30: text width (GDI hinting) and the fill's palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-14-C006",
@@ -6805,7 +6805,7 @@
         {
           "id": "OBJ-14-C016",
           "requirement": "enabled",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
@@ -6813,8 +6813,8 @@
             "tools/interface-parity/sector-quadrants.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
           ],
-          "note": "Enabled items route in the Linux gates; no A0 comparison of menu rendering. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Enabled rows are white on the shaded fill as in A0 status/14-char-menu.png; personnel-orders.mjs on Linux. Deviations accepted 2026-10-30: text width and the fill's palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-14-C017",
@@ -9648,5 +9648,5 @@
     "excluded_baseline_cells": 24,
     "required_surfaces_with_retrieval_packages": 43
   },
-  "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check."
+  "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."
 }

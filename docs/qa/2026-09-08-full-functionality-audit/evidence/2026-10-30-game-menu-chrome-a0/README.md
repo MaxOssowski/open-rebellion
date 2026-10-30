@@ -92,3 +92,18 @@ differences that remain:
 - A first, unscoped mutants run was stopped by the system for low memory.
   It left `cockpit.rs` mutated, so the file was restored from the saved
   diff and checked by sha256 before going on.
+
+## The speed menu (CMD-05)
+
+A0 `build-orders/12-speed.png` (Empire, Medium) against the port's Empire
+speed menu from `agent-objectives.mjs` on the release WASM `537ff8ae…`
+(`empire/speed-menu.png`, sha256 `139940df…`, `agent-objectives-result.json`):
+
+- the same five rows, Pause through Fast (`FUN_0042d190`), with their speed
+  icons;
+- no row marked as the current speed in either;
+- the frame and the shaded fill as above;
+- the menu's left edge at x 540 in both, and its top within a pixel.
+
+The text is wider, as noted above. A0 shows no highlighted row, so hover is
+not compared.
