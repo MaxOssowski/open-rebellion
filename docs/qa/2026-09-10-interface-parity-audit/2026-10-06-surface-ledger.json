@@ -1430,182 +1430,195 @@
         {
           "id": "CMD-02-C004",
           "requirement": "display off",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-popular-support-gid.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "Display Off restores STRATEGY 902 (P47A/P47B) and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of Display Off. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Display Off: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C005",
           "requirement": "support",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-gid-caption/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "A0 galaxy-a.png is Popular Support and its caption and shell match the Linux capture, but the support marks differ with the game state and were not compared on matching systems (bands follow FUN_0042b330). Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Popular Support: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C006",
           "requirement": "uprising",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Uprisings display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Uprisings: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C007",
           "requirement": "fleets",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-fleet-marks/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Idle Fleets display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Idle Fleets: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C008",
           "requirement": "personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Idle Personnel display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Idle Personnel: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C009",
           "requirement": "energy",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Available Energy display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Available Energy: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C010",
           "requirement": "raw materials",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Available Raw Material display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Available Raw Material: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C011",
           "requirement": "mines",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Mines display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Mines: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C012",
           "requirement": "refineries",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Refineries display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Refineries: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C013",
           "requirement": "shipyards",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Shipyards display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Shipyards: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C014",
           "requirement": "training",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Training Facilities display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Training Facilities: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C015",
           "requirement": "construction",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Construction Yards display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Construction Yards: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C016",
           "requirement": "defenses",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-gid-holder-counts/",
             "ghidra/notes/gid-markers.md",
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "The Planetary Defense Batteries display's marks and bands follow FUN_0042b330/FUN_00426e70 and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no A0 capture of this display. Since 2026-10-30 the display is chosen through the original GID menu (FUN_004511e0 rows, FUN_004ab3a0 submenus) and its caption takes the default font 4, both compared with A0 gid/*.png (all 21 displays captured); the system marks are not yet compared in a matching game state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Planetary Defense Batteries: chosen through the original GID menu, its caption in the default font 4 and its marks at FUN_00425d00's exact corners match A0 gid/*.png (all 21 displays; 100 of 100 mark corners, the marks exact STRATEGY bitmaps); which mark a system takes follows FUN_0042b330/FUN_00426e70 (unit tests), and run.mjs --all passes 152/152 on Linux. Deviations accepted 2026-10-30: caption width (GDI hinting), menu fill palette step.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C017",
@@ -1637,15 +1650,16 @@
         {
           "id": "CMD-02-C019",
           "requirement": "unknown",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-visibility/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-side-zero-flags/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-gid-system-positions/"
           ],
-          "note": "Unexplored systems take the unexplored mark 0x27ae (FUN_0042cde0, flag 0x80), unit-tested and run in the Linux GID gate; not compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Unexplored systems take 10158 (FUN_0042cde0 flag 0x80); A0 shows 10158 at the exact corners of every unexplored system across the 21 displays, as the port's Linux run does.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-02-C020",

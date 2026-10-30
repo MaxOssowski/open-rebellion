@@ -181,10 +181,15 @@ pub struct CameraView {
 impl CameraView {
     /// Convert original DAT coordinates into this aperture's screen space.
     #[must_use]
+    ///
+    /// `FUN_00425d00` places a system's item at whole pixels: the DAT
+    /// coordinate times the scale, truncated (`__ftol` chops), in the
+    /// original's 640 x 480 pixels; this is the centre of its 17 x 17 cell.
     pub fn to_screen(self, dat_x: f32, dat_y: f32) -> (f32, f32) {
+        let logical = |dat: f32, scale: f32| (dat * scale / self.display_scale).floor();
         (
-            self.origin_x + dat_x * self.map_scale_x,
-            self.origin_y + dat_y * self.map_scale_y,
+            self.origin_x + logical(dat_x, self.map_scale_x) * self.display_scale,
+            self.origin_y + logical(dat_y, self.map_scale_y) * self.display_scale,
         )
     }
 
@@ -219,18 +224,17 @@ impl CameraView {
     }
 }
 
-/// Canvas pixels per DAT unit on the strategic galaxy map.
-///
-/// Measured by registering SYSTEMSD positions against original-game frames:
-/// squakenet 0129 (Alliance) and 0712 (Empire) place 100 of 100 markers
-/// within 2 px, pravus 0157 places 143 of 150. The map is stretched, not
-/// uniformly scaled, and the scale is the same for every galaxy size.
-pub const GALAXY_MAP_SCALE: (f32, f32) = (0.5946, 0.4286);
+/// Canvas pixels per DAT unit on the strategic galaxy map: `FUN_00425d00`
+/// divides SYSTEMSD's x and y by 1023 + 1 and multiplies by 607 and 437
+/// (`0x658bd8`, `0x658be0`, `0x658bda`, `0x658be8`), for every galaxy size.
+pub const GALAXY_MAP_SCALE: (f32, f32) = (607.0 / 1024.0, 437.0 / 1024.0);
 
-/// Canvas position of DAT (0, 0) relative to the map content origin.
-/// Measured from the same frames as [`GALAXY_MAP_SCALE`]: markers sit at
-/// canvas (28.7, 31.7) in the Alliance cockpit, (7.7, 6.7) past its origin.
-pub const GALAXY_MAP_OFFSET: (f32, f32) = (7.7, 6.7);
+/// A system item's cell is 17 x 17 from its place (`FUN_00425d00`:
+/// `SetRect(x, y, x + 17, y + 17)`); the camera's point is the cell's
+/// centre, and the marks hang from the cell's top left (`FUN_0042cde0` →
+/// `FUN_005fd0f0`), whatever their size.
+pub const GALAXY_CELL: f32 = 17.0;
+pub const GALAXY_MAP_OFFSET: (f32, f32) = (GALAXY_CELL / 2.0, GALAXY_CELL / 2.0);
 
 /// Canvas origin of the galaxy map content (starfield and markers).
 ///
@@ -567,10 +571,11 @@ fn draw_gid_marker(
     };
     let width = texture.width() * cam.display_scale;
     let height = texture.height() * cam.display_scale;
+    let corner = GALAXY_MAP_OFFSET.0 * cam.display_scale;
     draw_texture_ex(
         texture,
-        center_x - width / 2.0,
-        center_y - height / 2.0,
+        center_x - corner,
+        center_y - corner,
         WHITE,
         DrawTextureParams {
             dest_size: Some(vec2(width, height)),
@@ -1953,6 +1958,35 @@ mod interaction_tests {
             gid_marker_resource(ControlKind::Controlled(Faction::Alliance), false, 1.0),
             strategy::GID_UNEXPLORED
         );
+    }
+
+    #[test]
+    #[expect(
+        clippy::float_cmp,
+        reason = "The original places items at whole pixels; the check compares them exactly."
+    )]
+    fn a_systems_cell_sits_where_fun_00425d00_places_its_item() {
+        // FUN_00425d00: (x * 607) / 1024 and (y * 437) / 1024 chopped, plus
+        // (84, 27) for the Empire and (21, 25) for the Alliance; the cell is
+        // 17 x 17 from there. SYSTEMSD id 100 is at (479, 726); A0 gid/*.png
+        // show the marks of 100 systems at exactly these corners.
+        for (faction, origin, scale) in [
+            (CockpitFaction::Empire, (84.0, 27.0), 1.0),
+            (CockpitFaction::Alliance, (21.0, 25.0), 2.0),
+        ] {
+            let (ax, ay, aw, ah) = cockpit::galaxy_aperture(faction);
+            let camera = galaxy_camera(
+                (ax * scale, ay * scale, aw * scale, ah * scale),
+                scale,
+                faction,
+            );
+            let corner = (origin.0 + 283.0, origin.1 + 309.0);
+            assert_eq!(
+                camera.to_screen(479.0, 726.0),
+                ((corner.0 + 8.5) * scale, (corner.1 + 8.5) * scale),
+                "{faction:?}"
+            );
+        }
     }
 
     #[test]
