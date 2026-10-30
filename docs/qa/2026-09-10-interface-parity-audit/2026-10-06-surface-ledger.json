@@ -1760,9 +1760,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-galaxy-overview/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-translate-counterpart-save-v108/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-translate-counterpart-save-v108/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/"
           ],
-          "note": "The nine items of FUN_00487900 as A0 shows; Objectives, Galaxy Overview, Translate Counterpart, Agent Advice and the automation toggles work.",
+          "note": "The nine items of FUN_00487900 as A0 shows; Objectives, Galaxy Overview, Translate Counterpart, Agent Advice and the automation toggles work. Since 2026-10-30 the Build items work too (module 0x17): a target cursor, the nearest idle producer, then Build Selection, as A0 shows (agent-build.mjs).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {

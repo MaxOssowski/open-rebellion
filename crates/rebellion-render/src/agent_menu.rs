@@ -22,6 +22,9 @@ const CHECK_BITMAP: u32 = 11902;
 /// An Agent menu command the port carries out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentCommand {
+    /// 0x110..0x112, Alt+B/T/F: Build Ships, Troops or Facilities, module
+    /// `0x17`'s target cursor (`FUN_00439d10`, `FUN_0041d5e0`).
+    Build(rebellion_core::agent_build::BuildKind),
     /// 0x115, Alt+G: toggle module 0x15 (`FUN_00439d60`).
     ManageGarrisons,
     /// 0x116, Alt+U: toggle module 0x14 (`FUN_00439d60`).
@@ -150,15 +153,18 @@ const MENU_COMMANDS: [u16; 9] = [0x110, 0x111, 0x112, 0x115, 0x116, 0x113, 0x11b
 /// The items `FUN_00487900` adds, enables and checks. Manage Garrisons and
 /// Manage Production are checked while they run (`FUN_00439e30`), Agent
 /// Advice while bit `0x8000` is clear, Translate Counterpart while
-/// `0x1000` is set. port: the Build orders (module 0x17) are not ported,
-/// so they stay disabled.
+/// `0x1000` is set. The Build items need module `0x17` idle
+/// (`FUN_00487c30`); port: the agent runs a request at once, so it always
+/// is.
 #[must_use]
 pub fn agent_menu_items(view: AgentMenuView) -> Vec<AgentMenuItem> {
     AGENT_MENU_RECORDS
         .iter()
         .filter(|record| MENU_COMMANDS.contains(&record.command))
         .map(|&record| {
+            let build = rebellion_core::agent_build::BuildKind::from_command(record.command);
             let (command, checked) = match record.command {
+                0x110..=0x112 => (build.map(AgentCommand::Build), false),
                 0x115 => (Some(AgentCommand::ManageGarrisons), view.garrisons),
                 0x116 => (Some(AgentCommand::ManageProduction), view.production),
                 0x113 => (Some(AgentCommand::GalaxyOverview), false),
@@ -808,7 +814,22 @@ mod tests {
         assert!(!item(&on, 0x116).checked);
         assert!(item(&on, 0x11e).checked);
         assert_eq!(item(&on, 0x11e).command, Some(AgentCommand::AgentAdvice));
-        assert!(!item(&on, 0x110).enabled, "port: Build Ships is not ported");
+        // FUN_00487900: the Build items with the agent active and module
+        // 0x17 idle (FUN_00487c30).
+        use rebellion_core::agent_build::BuildKind;
+        assert!(item(&off, 0x110).enabled);
+        assert_eq!(
+            item(&on, 0x110).command,
+            Some(AgentCommand::Build(BuildKind::Ships))
+        );
+        assert_eq!(
+            item(&on, 0x111).command,
+            Some(AgentCommand::Build(BuildKind::Troops))
+        );
+        assert_eq!(
+            item(&on, 0x112).command,
+            Some(AgentCommand::Build(BuildKind::Facilities))
+        );
         assert_eq!(item(&on, 0x114).command, Some(AgentCommand::Objectives));
         assert!(item(&off, 0x114).enabled, "FUN_00487900 enables 0x114 always");
         assert_eq!(item(&on, 0x113).command, Some(AgentCommand::GalaxyOverview));

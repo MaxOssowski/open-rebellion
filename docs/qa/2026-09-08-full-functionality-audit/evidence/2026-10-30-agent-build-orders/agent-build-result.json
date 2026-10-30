@@ -1,0 +1,58 @@
+{
+  "status": "pass",
+  "wasm_sha256": "13c042e3026752bca89ca3ca4862ccb67814e424586f90cb532ea5a353d7d7da",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "producer": "Akrit'tar",
+      "agent": [
+        "[agent] command=build kind=Troops status=targeting source=accelerator",
+        "[agent] build kind=Troops status=opened producer=Akrit'tar destination=Akrit'tar",
+        "[agent] build status=confirmed count=1",
+        "[agent] command=build kind=Troops status=targeting source=accelerator",
+        "[agent] build kind=Troops status=refused reason=NoIdleProducer"
+      ],
+      "shots": [
+        {
+          "label": "targeting",
+          "sha256": "874d0846f2f79e063d0f6ee1f7029a7b255218d04bcb2fdf389bb92d0fbf29ae"
+        },
+        {
+          "label": "agent-build-selection",
+          "sha256": "5a7be69d8d43063006788e7185331535fccd2c00c9e7c3a4a8c3d08bd53b2329"
+        },
+        {
+          "label": "refused",
+          "sha256": "091b2ad7c569e37e511575b79507357945b8a65b13702ad330361ba386f4f17e"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "producer": "Akrit'tar",
+      "agent": [
+        "[agent] command=build kind=Troops status=targeting source=accelerator",
+        "[agent] build kind=Troops status=opened producer=Akrit'tar destination=Akrit'tar",
+        "[agent] build status=confirmed count=1",
+        "[agent] command=build kind=Troops status=targeting source=accelerator",
+        "[agent] build kind=Troops status=refused reason=NoIdleProducer"
+      ],
+      "shots": [
+        {
+          "label": "targeting",
+          "sha256": "c7d4bb889e914b742f8e262621dbeb3ef7dc44c8dc225038235059666fefa803"
+        },
+        {
+          "label": "agent-build-selection",
+          "sha256": "5e1646ad2dabb7bd7bed48e7777c9785ae32293ae37136f233ab8e584ada771c"
+        },
+        {
+          "label": "refused",
+          "sha256": "b297c0285b2c9e0f18a8a393118d54798df19d085a4b3d9bd0539b991390929e"
+        }
+      ]
+    }
+  ]
+}

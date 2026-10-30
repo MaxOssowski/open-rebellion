@@ -120,8 +120,9 @@ pub struct AdvisorSchedule {
 /// The reaction bits of `DAT_006b28b0` the advisor answers
 /// (`FUN_004c2dd0`, `FUN_004c0d00`).
 pub mod reaction {
-    /// `FUN_0043a2a0`: a ship move the agent ordered arrived.
-    pub const MOVE_DONE: u32 = 0x1;
+    /// `FUN_0043a2a0`: the Build order the agent opened Build Selection on
+    /// was dispatched (`FUN_00487740`, `agent+0x180`).
+    pub const BUILD_CONFIRMED: u32 = 0x1;
     /// `FUN_00439d60`: Manage Garrisons on, Production on, Garrisons off,
     /// Production off, and the toggle counter past 3.
     pub const GARRISONS_ON: u32 = 0x10;
@@ -229,12 +230,13 @@ const fn event_message(faction: AdvisorFaction, code: u32) -> Option<(u32, u32)>
 /// quip's messages are picked apart ([`AdvisorSchedule::react`]).
 const fn reactions(faction: AdvisorFaction) -> &'static [Reaction] {
     use reaction::{
-        GARRISONS_OFF, GARRISONS_ON, MOVE_DONE, PRODUCTION_OFF, PRODUCTION_ON, TOO_MANY_TOGGLES,
+        BUILD_CONFIRMED, GARRISONS_OFF, GARRISONS_ON, PRODUCTION_OFF, PRODUCTION_ON,
+        TOO_MANY_TOGGLES,
     };
     match faction {
         AdvisorFaction::Alliance => &[
             Reaction {
-                bit: MOVE_DONE,
+                bit: BUILD_CONFIRMED,
                 message: 0x23,
                 span: 10,
             },
@@ -266,7 +268,7 @@ const fn reactions(faction: AdvisorFaction) -> &'static [Reaction] {
         ],
         AdvisorFaction::Empire => &[
             Reaction {
-                bit: MOVE_DONE,
+                bit: BUILD_CONFIRMED,
                 message: 0x1c,
                 span: 10,
             },
@@ -327,9 +329,11 @@ impl AdvisorSchedule {
     /// `FUN_004c2940` Alliance, `FUN_004c0870` Empire): `status` is its two
     /// words. The same status as the last one schedules the first of two
     /// messages, and once more the second, then forgets it
-    /// (`FUN_004c43d0`, `FUN_004c21d0`). Otherwise a team left empty with
-    /// decoys and no target (`0x40`/`0x91`, `decoys_without_target`) has its
-    /// own message, and any other refusal one of two at random
+    /// (`FUN_004c43d0`, `FUN_004c21d0`). Otherwise a producer with no idle
+    /// yard (`0xa0`/`3`) and a request at a system (`0xa0`/`2`, `1`/`0x24`,
+    /// `1`/`0x28`) have their own messages, so has a team left empty with
+    /// decoys and no target (`0x40`/`0x91`, `decoys_without_target`), and
+    /// any other refusal one of two at random
     /// (`FUN_004c4390`, `FUN_004c2230`). Each stays due 10 sub-ticks.
     pub fn refused(&mut self, status: (u32, u32), decoys_without_target: bool, now: u32) {
         let (same, decoy, generic) = match self.faction {
@@ -348,7 +352,23 @@ impl AdvisorSchedule {
         } else {
             self.last_refusal = Some(status);
             self.refusal_repeated = false;
-            if decoys_without_target && status == (0x40, 0x91) {
+            let producer = match self.faction {
+                AdvisorFaction::Alliance => 0x18,
+                AdvisorFaction::Empire => 0x19,
+            };
+            // A producer's refusal (word 0 0xa0..0xaf: FUN_004c3860,
+            // FUN_004c16a0): {0xa0, 2} and {0xa0, 3} have their own
+            // messages (+8, +0x60 / +0x64).
+            if status == (0xa0, 2) {
+                2
+            } else if status == (0xa0, 3) {
+                producer
+            } else if status == (1, 0x24) || status == (1, 0x28) {
+                // FUN_004c3bb0 / FUN_004c19f0: +8 when the order's target is
+                // a system. port: the agent's Build request, the one caller
+                // with these words, always targets one.
+                2
+            } else if decoys_without_target && status == (0x40, 0x91) {
                 decoy
             } else if self.next_roll() % 2 == 0 {
                 generic.0
@@ -996,7 +1016,7 @@ mod tests {
         assert_eq!(alliance.last_tick[0x25], 55);
         assert_eq!(alliance.pending_flags(), 0);
         for (bit, message, span) in [
-            (reaction::MOVE_DONE, 0x23, 10),
+            (reaction::BUILD_CONFIRMED, 0x23, 10),
             (reaction::PRODUCTION_ON, 0x26, 10),
             (reaction::PRODUCTION_OFF, 0x27, 50),
             (reaction::TOO_MANY_TOGGLES, 0x4f, 5),
@@ -1008,7 +1028,7 @@ mod tests {
 
         let mut empire = AdvisorSchedule::new_game(AdvisorFaction::Empire, HashMap::new());
         for (bit, message, span) in [
-            (reaction::MOVE_DONE, 0x1c, 10),
+            (reaction::BUILD_CONFIRMED, 0x1c, 10),
             (reaction::GARRISONS_ON, 0x1d, 10),
             (reaction::PRODUCTION_ON, 0x1f, 10),
             (reaction::GARRISONS_OFF, 0x1e, 50),
@@ -1167,6 +1187,34 @@ mod tests {
             "{events:?}"
         );
         assert_eq!(schedule.last_played, 2);
+    }
+
+    #[test]
+    fn the_agents_build_refusals_have_their_own_reactions() {
+        // FUN_004c3860 / FUN_004c16a0: {0xa0, 3} (no idle producer,
+        // FUN_0049e7a0) is +0x60 for the Alliance and +0x64 for the Empire,
+        // {0xa0, 2} +8; FUN_004c3bb0 / FUN_004c19f0: {1, 0x24} at a system
+        // (FUN_0049e380's troops) +8. Ten sub-ticks each.
+        for (faction, producer) in [
+            (AdvisorFaction::Alliance, 0x18),
+            (AdvisorFaction::Empire, 0x19),
+        ] {
+            for (status, message) in [
+                ((0xa0, 3), producer),
+                ((0xa0, 2), 2),
+                ((1, 0x24), 2),
+                ((1, 0x28), 2),
+            ] {
+                let mut schedule = AdvisorSchedule::new_game(faction, HashMap::new());
+                schedule.last_tick.iter_mut().for_each(|tick| *tick = 0);
+                schedule.refused(status, false, 4);
+                let due: Vec<_> = (0..schedule.last_tick.len())
+                    .filter(|&i| schedule.last_tick[i] != 0)
+                    .collect();
+                assert_eq!(due, vec![message], "{faction:?} {status:?}");
+                assert_eq!(schedule.last_tick[message], 14);
+            }
+        }
     }
 
     #[test]

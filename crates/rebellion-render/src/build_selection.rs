@@ -78,6 +78,9 @@ pub struct BuildSelection {
     quantity: u32,
     /// The class list is open (`CoolSelectionBoxClass +0xe8`).
     list_open: bool,
+    /// The agent opened it on its Build order (`FUN_0049e6b0` phase 3,
+    /// `agent+0x180`).
+    agent: bool,
 }
 
 impl BuildSelection {
@@ -172,8 +175,26 @@ impl BuildSelectionState {
             selected,
             quantity: 1,
             list_open: false,
+            agent: false,
         });
         true
+    }
+
+    /// The window on the agent's Build order (`FUN_0049ec40` →
+    /// `FUN_0041d640`): the same window, whose confirmed order the agent
+    /// acknowledges ([`BuildSelectionAction::Confirm`]'s `agent`).
+    pub fn open_for_agent(
+        &mut self,
+        system: SystemKey,
+        area: ProductionArea,
+        is_alliance: bool,
+        kinds: Vec<BuildableKind>,
+    ) -> bool {
+        let opened = self.open(system, area, is_alliance, kinds);
+        if let Some(dialog) = self.dialog.as_mut() {
+            dialog.agent = true;
+        }
+        opened
     }
 
     #[must_use]
@@ -213,6 +234,7 @@ impl BuildSelectionState {
             area: dialog.area,
             kind,
             count: dialog.quantity,
+            agent: dialog.agent,
         })
     }
 }
@@ -226,6 +248,8 @@ pub enum BuildSelectionAction {
         area: ProductionArea,
         kind: BuildableKind,
         count: u32,
+        /// The agent's order (`FUN_0043a2a0`: `agent+0x180`).
+        agent: bool,
     },
     /// Encyclopedia (`0x67`, `FUN_0041d6b0`). port: it opens the
     /// Encyclopedia; the selected class's entry is not bound yet.
@@ -794,6 +818,40 @@ mod tests {
         }
     }
 
+    #[test]
+    fn the_agents_window_confirms_as_the_agents_order() {
+        // FUN_0049ec40 -> FUN_0041d640 opens the same window; its confirmed
+        // order is agent+0x180, which FUN_0043a2a0 acknowledges.
+        let mut state = BuildSelectionState::default();
+        assert!(!state.open_for_agent(
+            SystemKey::default(),
+            ProductionArea::TrainingFacility,
+            true,
+            Vec::new()
+        ));
+        assert!(!state.is_open());
+        assert!(state.open_for_agent(
+            SystemKey::default(),
+            ProductionArea::TrainingFacility,
+            true,
+            kinds()
+        ));
+        assert!(matches!(
+            state.confirm(),
+            Some(BuildSelectionAction::Confirm { agent: true, .. })
+        ));
+        assert!(state.open(
+            SystemKey::default(),
+            ProductionArea::TrainingFacility,
+            true,
+            kinds()
+        ));
+        assert!(matches!(
+            state.confirm(),
+            Some(BuildSelectionAction::Confirm { agent: false, .. })
+        ));
+    }
+
     // FUN_00438800 case 0x65 confirms; FUN_00439160 disables Confirm when
     // the manager has no yard to build with.
     #[test]
@@ -807,6 +865,7 @@ mod tests {
                 area: ProductionArea::TrainingFacility,
                 kind: BuildableKind::Troop(DatId::new(0x1000_0001)),
                 count: 1,
+                agent: false,
             })
         );
         assert!(!state.is_open());
@@ -959,6 +1018,7 @@ mod tests {
                 area: ProductionArea::TrainingFacility,
                 kind: kinds()[1],
                 count: 2,
+                agent: false,
             })
         );
         assert!(!state.is_open());

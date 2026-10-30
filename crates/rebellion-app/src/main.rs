@@ -1906,8 +1906,28 @@ async fn main() {
                 // Alt+A (0xbc9 → 0x11e) flips Agent Advice (FUN_00439e80).
                 // Alt+H (0xbd7 → 0x114) shows the Objectives, Alt+O (0xbc4 →
                 // 0x113) the Galaxy Overview, Alt+V (0xbc8 → 0x11b) flips
-                // Translate Counterpart.
+                // Translate Counterpart. Alt+B, Alt+T and Alt+F (0xbc1..0xbc3
+                // → 0x110..0x112) start the agent's Build orders when the
+                // view is not already targeting.
                 for (key, command) in [
+                    (
+                        KeyCode::B,
+                        rebellion_render::agent_menu::AgentCommand::Build(
+                            rebellion_core::agent_build::BuildKind::Ships,
+                        ),
+                    ),
+                    (
+                        KeyCode::T,
+                        rebellion_render::agent_menu::AgentCommand::Build(
+                            rebellion_core::agent_build::BuildKind::Troops,
+                        ),
+                    ),
+                    (
+                        KeyCode::F,
+                        rebellion_render::agent_menu::AgentCommand::Build(
+                            rebellion_core::agent_build::BuildKind::Facilities,
+                        ),
+                    ),
                     (
                         KeyCode::G,
                         rebellion_render::agent_menu::AgentCommand::ManageGarrisons,
@@ -1937,6 +1957,7 @@ async fn main() {
                         apply_agent_command(
                             &mut player_agent,
                             &mut status_window_state,
+                            &mut targeting,
                             command,
                             "accelerator",
                         );
@@ -4847,6 +4868,7 @@ async fn main() {
                         apply_agent_command(
                             &mut player_agent,
                             &mut status_window_state,
+                            &mut targeting,
                             command,
                             "menu",
                         );
@@ -6322,12 +6344,28 @@ async fn main() {
                             area,
                             kind,
                             count,
-                        }) => panel_actions.push(PanelAction::BuildProduction {
-                            system,
-                            area,
-                            kind,
-                            count,
-                        }),
+                            agent,
+                        }) => {
+                            // FUN_00487740 → FUN_0043a2a0: the agent's own
+                            // order earns its acknowledgement (bit 1).
+                            if agent {
+                                if let Some(schedule) = advisor_schedule.as_mut() {
+                                    schedule.add_flags(
+                                        rebellion_render::advisor_schedule::reaction::BUILD_CONFIRMED,
+                                    );
+                                }
+                                macroquad::logging::info!(
+                                    "[agent] build status=confirmed count={}",
+                                    count
+                                );
+                            }
+                            panel_actions.push(PanelAction::BuildProduction {
+                                system,
+                                area,
+                                kind,
+                                count,
+                            });
+                        }
                         Some(BuildSelectionAction::Encyclopedia) => enc_state.open = true,
                         None => {}
                     }
@@ -6856,6 +6894,81 @@ async fn main() {
                                     area,
                                     destination,
                                 }),
+                                // FUN_0049e380 takes the destination;
+                                // the agent then finds the producer,
+                                // points it there and opens Build
+                                // Selection (FUN_0049e6b0).
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::AgentBuild(kind),
+                                    target,
+                                }) => {
+                                    let fleet = match target {
+                                        ReleaseTarget::Fleet { fleet, .. } => Some(fleet),
+                                        ReleaseTarget::System(_) => None,
+                                    };
+                                    let target = rebellion_core::agent_build::BuildTarget {
+                                        system: target.system(),
+                                        fleet,
+                                    };
+                                    let side = rebellion_core::dat::Faction::from(player_faction);
+                                    let outcome = match rebellion_core::agent_build::accept_target(
+                                        &world, side, kind, target,
+                                    ) {
+                                        Ok(request) => rebellion_core::agent_build::run(
+                                            &world,
+                                            &mfg_state,
+                                            &uprising_state,
+                                            side,
+                                            request,
+                                        ),
+                                        Err(refusal) => {
+                                            rebellion_core::agent_build::BuildOutcome::Refused(refusal)
+                                        }
+                                    };
+                                    match outcome {
+                                        rebellion_core::agent_build::BuildOutcome::Open {
+                                            producer,
+                                            area,
+                                            destination,
+                                        } => {
+                                            panel_actions.push(PanelAction::SetDestination {
+                                                system: producer,
+                                                area: Some(area),
+                                                destination,
+                                            });
+                                            let is_alliance = player_faction == MissionFaction::Alliance;
+                                            let kinds = rebellion_core::build_selection::listed_classes(
+                                                &world,
+                                                &research_state,
+                                                area,
+                                                is_alliance,
+                                            );
+                                            let opened = build_selection_state
+                                                .open_for_agent(producer, area, is_alliance, kinds);
+                                            macroquad::logging::info!(
+                                                "[agent] build kind={:?} status={} producer={} destination={}",
+                                                kind,
+                                                if opened { "opened" } else { "no_classes" },
+                                                world.systems.get(producer).map_or("", |v| v.name.as_str()),
+                                                world.systems.get(destination).map_or("", |v| v.name.as_str())
+                                            );
+                                        }
+                                        rebellion_core::agent_build::BuildOutcome::Refused(refusal) => {
+                                            if let Some(schedule) = advisor_schedule.as_mut() {
+                                                schedule.refused(
+                                                    refusal.status(),
+                                                    false,
+                                                    advisor_now(&clock),
+                                                );
+                                            }
+                                            macroquad::logging::info!(
+                                                "[agent] build kind={:?} status=refused reason={:?}",
+                                                kind,
+                                                refusal
+                                            );
+                                        }
+                                    }
+                                }
                                 Some(TargetingEnd::Dropped) | None => {}
                             }
                         }
@@ -8728,11 +8841,26 @@ fn apply_message_index_actions(
 fn apply_agent_command(
     agent: &mut PlayerAgent,
     status: &mut rebellion_render::status_window::StatusWindowState,
+    targeting: &mut Option<Targeting>,
     command: rebellion_render::agent_menu::AgentCommand,
     source: &str,
 ) {
     use rebellion_render::agent_menu::AgentCommand;
     let (name, on) = match command {
+        // FUN_00439d10 → FUN_0049e360 keeps the kind; FUN_0041d5e0(0) puts
+        // the view into the target cursor (FUN_00429320, mode 2). The
+        // accelerators need the view out of it (FUN_00422ce0).
+        AgentCommand::Build(kind) => {
+            if targeting.is_none() {
+                *targeting = Some(Targeting::new(TargetOrder::AgentBuild(kind)));
+                macroquad::logging::info!(
+                    "[agent] command=build kind={:?} status=targeting source={}",
+                    kind,
+                    source
+                );
+            }
+            return;
+        }
         // FUN_0041d7f0 → FUN_0042a440 posts 0x468 type 0x1a with the empty
         // id, which the galaxy view always opens.
         AgentCommand::Objectives => {

@@ -80,6 +80,10 @@ pub enum TargetOrder {
         system: SystemKey,
         area: Option<rebellion_core::manufacturing::ProductionArea>,
     },
+    /// The agent's Build Ships, Troops or Facilities (`0x110..0x112`):
+    /// the cursor names the destination for module `0x17`
+    /// (`FUN_0041ce40` → `FUN_0049e380`).
+    AgentBuild(rebellion_core::agent_build::BuildKind),
 }
 
 /// What a release lands on: a system, or a fleet a Fleet window gives

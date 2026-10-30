@@ -1,6 +1,7 @@
 pub mod abstract_battle;
 pub mod agent_advice;
 pub mod agent_automation;
+pub mod agent_build;
 pub mod ai;
 pub mod ai_module1;
 pub mod ai_module2;

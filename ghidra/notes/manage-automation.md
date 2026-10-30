@@ -64,6 +64,19 @@ sources:
 
 # Manage Garrisons / Manage Production — Player-Side Agent Automation
 
+> **Correction (2026-10-30, `agent-build-orders.md`).**
+> - Module `0x17` is not a "Build Ships" automation. It is the one-shot
+>   module behind all three Build items (`0x110..0x112` → `FUN_00439d10`,
+>   kind at `+0x34`). The player clicks a destination and picks the class in
+>   Build Selection.
+> - Order `0x214` is Destination. Build orders are `0x210` (facilities),
+>   `0x211` (ships) and `0x212` (troops).
+> - In `FUN_00439a10` a validator result of 0 means refusal (VT[6]);
+>   anything else means dispatch. §6 has these the other way round.
+> - Bit `0x10000000` means the agent's Build dialog is pending, and bit `1`
+>   is its acknowledgement.
+> - Menu items `0x117` and `0x118` do nothing.
+
 > **Correction (2026-10-06, checked against the decompiles).** A module's
 > state 2 means *suspended*: `FUN_004cc990` (VT[4]) readies only a module
 > whose state is neither 1 nor 2, so a state-2 module never runs, and

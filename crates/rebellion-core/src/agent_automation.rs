@@ -59,7 +59,7 @@ const ORDERS_LIMIT: u32 = 5; // FUN_00439950 line: param_1[99] = 5
 
 /// The two automation modules exposed by the Agent menu.
 /// Original module indices: 0x14 (Production), 0x15 (Garrisons).
-/// (0x17 = Build Ships is out of scope.)
+/// (Module 0x17, the Build items' one-shot request, is `crate::agent_build`.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AutomationModule {
     /// Module 0x14 — Manage Production (Alt+U, menu 0x116).
@@ -149,14 +149,14 @@ impl AdvisorFlags {
 
 /// An order produced by the agent automation for the app/integrator to apply.
 ///
-/// Maps to the original's order objects (0x210 Start-Construction, 0x212
-/// Train-Troops, 0x214 Build-Facility). The app enqueues these through the
+/// Maps to the original's order objects (0x214 Destination, then 0x210
+/// Build facilities or 0x212 Build troops). The app enqueues these through the
 /// existing `ManufacturingState::enqueue` path, constructing a `QueueItem`
 /// from the fields here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentOrder {
     /// Build a production facility (mine or refinery) at a system.
-    /// Original orders: 0x214 (set destination) then 0x210 (start construction,
+    /// Original orders: 0x214 (Destination) then 0x210 (Build facilities,
     /// quantity 1). `FUN_004c70e0` + `FUN_004c7220`.
     BuildFacility {
         /// The system whose construction yard builds it.
