@@ -1,0 +1,4 @@
+agent-advice exit=0
+agent-objectives exit=0
+encyclopedia-placement exit=0
+ALLDONE

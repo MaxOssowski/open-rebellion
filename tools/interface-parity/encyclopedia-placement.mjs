@@ -59,6 +59,23 @@ function serve(root) {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
 }
 
+
+// The release site opens on the intro movies (crates/rebellion-app/src/main.rs,
+// FUN_004138a0); Escape skips each one (cutscenes.mjs) until the main menu
+// is active.
+async function skipToMainMenu(page, timeout = 90_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const active = await page.locator("#main-menu-semantics[data-active=true]").count();
+    if (active > 0) return;
+    if (Date.now() > deadline) throw new Error("the main menu never became active");
+    if (await page.evaluate(() => Boolean(document.querySelector("video")))) {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(500);
+  }
+}
+
 async function waitFor(page, log, description, predicate, timeout) {
   const deadline = Date.now() + timeout;
   while (!predicate()) {
@@ -109,8 +126,9 @@ async function run(browser, base, faction) {
   };
   try {
     await page.goto(base);
-    await page.waitForSelector("#main-menu-semantics[data-active=true]",
-      { state: "attached", timeout: 90_000 });
+    // The release site plays the intro first (MDATA.000, 001): Escape
+    // skips each movie until the main menu shows.
+    await skipToMainMenu(page);
     await page.waitForTimeout(1_000);
     await page.evaluate((index) => wasm_exports.open_rebellion_menu_activate(index), faction.menuIndex);
     await waitFor(page, log, "the new game starts",
@@ -121,6 +139,13 @@ async function run(browser, base, faction) {
     await waitFor(page, log, "the short form ends",
       () => log.some((line) => /clip finished kind=2 code=0xd /.test(line)), 60_000);
     await page.waitForTimeout(300);
+    // The briefing opens the Message Index on Advice, and the index is
+    // modal: in A0 (a0-vm/tooltip/171, 172) neither the cockpit nor F3/F7
+    // act under it. Escape closes it.
+    if (log.some((line) => line.includes("status=opened_by_briefing"))) {
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(400);
+    }
     await page.mouse.move(2, 2);
     if (args.window === "finders") {
       // F3 the Fleet Finder, F4 the Troop Finder, F5 the Personnel Finder

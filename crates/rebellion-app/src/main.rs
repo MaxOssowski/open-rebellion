@@ -1489,6 +1489,14 @@ async fn main() {
     let plays_intro = interface_fixture_request.is_none();
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
     let plays_intro = true;
+    // The fixtures' galaxies have no Alliance headquarters, so the victory
+    // word's HQ bit queues movie 102 at once; only the story-movie
+    // scenario plays story movies, so no other fixture opens one.
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let plays_story_movies = interface_fixture_request
+        .is_none_or(|request| request.scenario == interface_test_fixture::Scenario::StoryMovie);
+    #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
+    let plays_story_movies = true;
     // A fixture opens straight on its scene: it must not request the intro.
     // The playing story movie's caption (FUN_00421790's caption window).
     let mut story_caption: Option<String> = None;
@@ -4109,6 +4117,7 @@ async fn main() {
         // port: the strategic clock holds while it plays, as in every
         // cutscene; hyp: the original's keeps running.
         if game_mode == GameMode::Galaxy
+            && plays_story_movies
             && cutscene_player.is_none()
             && clock.speed != GameSpeed::Paused
             && !clock.pause_requested()

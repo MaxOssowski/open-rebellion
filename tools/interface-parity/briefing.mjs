@@ -76,6 +76,23 @@ const actionPattern = /\[advisor\] clip finished kind=2 code=(0x[0-9a-f]+)/;
 const markPattern = /\[advisor\] clip finished kind=2 code=(0x[0-9a-f]+) .* marked=(\S+)/;
 const voicePattern = /\[advisor\] clip voice directory=(\S+) wave=(\d+) seconds=([\d.]+)/;
 
+
+// The release site opens on the intro movies (crates/rebellion-app/src/main.rs,
+// FUN_004138a0); Escape skips each one (cutscenes.mjs) until the main menu
+// is active.
+async function skipToMainMenu(page, timeout = 90_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const active = await page.locator("#main-menu-semantics[data-active=true]").count();
+    if (active > 0) return;
+    if (Date.now() > deadline) throw new Error("the main menu never became active");
+    if (await page.evaluate(() => Boolean(document.querySelector("video")))) {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(500);
+  }
+}
+
 async function waitFor(page, log, description, predicate, timeout) {
   const deadline = Date.now() + timeout;
   while (!predicate()) {
@@ -117,8 +134,9 @@ async function run(browser, base, faction, name) {
   let marks = {};
   try {
     await page.goto(base);
-    await page.waitForSelector("#main-menu-semantics[data-active=true]",
-      { state: "attached", timeout: 90_000 });
+    // The release site plays the intro first (MDATA.000, 001): Escape
+    // skips each movie until the main menu shows.
+    await skipToMainMenu(page);
     await page.waitForTimeout(1_000);
     await page.evaluate((index) => wasm_exports.open_rebellion_menu_activate(index), faction.menuIndex);
     await waitFor(page, log, "the new game starts",
