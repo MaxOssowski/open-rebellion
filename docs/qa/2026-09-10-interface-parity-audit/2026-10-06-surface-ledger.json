@@ -530,8 +530,8 @@
       "id": "PRE-06",
       "phase": "multiplayer",
       "title": "Multiplayer configuration and connection flow",
-      "required": true,
-      "status": "fail",
+      "required": false,
+      "status": "excluded",
       "required_states": [
         "provider",
         "host",
@@ -563,7 +563,7 @@
         158,
         159
       ],
-      "current_implementation": "Replacement unavailable screen. Networking and original nested dialogs are absent.",
+      "current_implementation": "Out of scope for v1.0 by the owner's decision of 2026-10-30 (single-player browser game; agent_docs/roadmap.md, M4 deferred). The main menu's Multiplayer entry stays as the port's unavailable screen.",
       "finding_ids": [
         "UIP-F-007",
         "UIP-F-012"
@@ -577,98 +577,130 @@
         {
           "id": "PRE-06-C001",
           "requirement": "provider",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C002",
           "requirement": "host",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C003",
           "requirement": "join",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C004",
           "requirement": "TCP/IP",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C005",
           "requirement": "IPX",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C006",
           "requirement": "modem",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C007",
           "requirement": "serial",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C008",
           "requirement": "side settings",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C009",
           "requirement": "galaxy settings",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C010",
           "requirement": "game-length settings",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C011",
           "requirement": "ready",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C012",
           "requirement": "wait",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C013",
           "requirement": "sync",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C014",
           "requirement": "chat",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C015",
           "requirement": "disconnect",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-06-C016",
           "requirement": "error",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "note": "Multiplayer is out of v1.0 scope (owner decision 2026-10-30).",
+          "scope": "Excluded from the parity denominator."
         }
       ]
     },
@@ -6067,7 +6099,7 @@
       "phase": "extensions",
       "title": "Visible replacement dashboards",
       "required": true,
-      "status": "fail",
+      "status": "pass",
       "required_states": [
         "Officers",
         "Research",
@@ -6091,44 +6123,77 @@
         {
           "id": "EXT-01-C001",
           "requirement": "Officers",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-officers-panel-removed/"
+          ],
+          "note": "Removed (85824279); its contents are in the Personnel Finder and Character Status.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         },
         {
           "id": "EXT-01-C002",
           "requirement": "Research",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/"
+          ],
+          "note": "Removed (58ec3b36): research runs as the original's three research missions.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         },
         {
           "id": "EXT-01-C003",
           "requirement": "Jedi",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-jedi-fleets-panels-removed/"
+          ],
+          "note": "Removed (069f30b8); the Force shows in Character Status as in the original.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         },
         {
           "id": "EXT-01-C004",
           "requirement": "Loyalty",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/"
+          ],
+          "note": "Removed (2026-10-22); support shows in the system window and GID filters.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         },
         {
           "id": "EXT-01-C005",
           "requirement": "Bombardment",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/"
+          ],
+          "note": "Removed (2026-10-22); bombardment is the fleet object menu's 0x220..0x223.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         },
         {
           "id": "EXT-01-C006",
           "requirement": "Death Star",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/"
+          ],
+          "note": "Removed (2026-10-22); the Death Star's orders are its fleet's object menu.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         },
         {
           "id": "EXT-01-C007",
           "requirement": "live ground combat",
-          "status": "pending",
-          "counts_toward_parity": true
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [],
+          "note": "Removed with crates/rebellion-render/src/ground_combat.rs (6c9220a5); assaults report as the original's assault reports.",
+          "scope": "A removal cell: it passes when the replacement no longer exists in the build (no code, key or draw path left; crates/rebellion-render/src/panels holds only the main menu, setup, save/load, command palette and mod manager)."
         }
       ]
     },
@@ -6223,10 +6288,10 @@
   },
   "acceptance_summary": {
     "surface_families": 44,
-    "required_surface_families": 43,
+    "required_surface_families": 42,
     "baseline_cells": 633,
-    "required_baseline_cells": 627,
-    "excluded_baseline_cells": 6,
+    "required_baseline_cells": 611,
+    "excluded_baseline_cells": 22,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check."
