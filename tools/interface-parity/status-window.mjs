@@ -362,6 +362,36 @@ async function inspect(server, source, faction, testCase, executable) {
     for (const name of Object.keys(masks)) assert.ok(comparison.changed_in_masks[name] > 0, `${name} shows nothing`);
     assert.equal(comparison.picture_blue_pixels, 0, "the picture's blue matte is not keyed");
 
+    // FUN_00443020's tips (A0 a0-vm/tooltip/122-st-ency.png,
+    // 123-st-close.png): a (255, 251, 240) tip with a (128, 128, 128)
+    // border, 19 high, its top left at the pointer plus (0, 21). The
+    // Encyclopedia button has one while it is enabled (the character
+    // cases open the Encyclopedia through it).
+    const tipAt = (png, px, py) => {
+      const at = (x, y) => {
+        const i = (y * png.width + x) * 4;
+        return [png.data[i], png.data[i + 1], png.data[i + 2]];
+      };
+      const same = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+      const top = py + 21;
+      return same(at(px, top), [128, 128, 128]) && same(at(px, top + 18), [128, 128, 128])
+        && !same(at(px, top + 19), [128, 128, 128]) && same(at(px + 2, top + 2), [255, 251, 240]);
+    };
+    const tips = {};
+    for (const [name, button] of [["encyclopedia", buttons.encyclopedia], ["close", buttons.close]]) {
+      const px = rect.x + button.x + 16;
+      const py = rect.y + button.y + 15;
+      await page.mouse.move(px, py, { steps: 4 });
+      await page.waitForTimeout(1000);
+      const shot = await page.screenshot({ animations: "disabled" });
+      fs.writeFileSync(path.join(directory, `tip-${name}.png`), shot);
+      tips[name] = tipAt(PNG.sync.read(shot), px, py);
+      await page.mouse.move(2, 2, { steps: 4 });
+      await frames(page);
+    }
+    assert.equal(tips.close, true, "Close shows no tip");
+    if (testCase.closes) assert.equal(tips.encyclopedia, true, "Encyclopedia shows no tip");
+
     // The window is modal (A0 a0-vm/modal2/07-gid-click.png): the GID
     // control under it opens nothing and the window stays.
     const gidMenu = /destination=gid_menu status=opened/;
@@ -398,7 +428,7 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.deepEqual(closes, { close: "close" });
     }
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, tips, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

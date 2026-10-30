@@ -3701,7 +3701,7 @@
         "REF-MANUAL"
       ],
       "manual_pages": [],
-      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality, no tip on a disabled control). The command center's top strip, primary controls, Game Controls, rail and legend button, the four Finders, the Message Index and the Encyclopedia register their tools; the other windows' tools are pending (inventory in ghidra/notes/tooltips.md, about 262 tools in 33 windows).",
+      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality, no tip on a disabled control). The command center's top strip, primary controls, Game Controls, rail and legend button, the four Finders, the Message Index, the Encyclopedia and the Status window register their tools; the other windows' tools are pending (inventory in ghidra/notes/tooltips.md, about 262 tools in 33 windows).",
       "finding_ids": [],
       "reverse_engineering_package_ids": [],
       "acceptance_cells": [
@@ -3883,13 +3883,15 @@
         {
           "id": "CMD-11-C014",
           "requirement": "Status window",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-status/",
+            "crates/rebellion-render/src/status_window.rs",
+            "tools/interface-parity/status-window.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6a) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00443020's Encyclopedia (0x1505) and Close (0x1954) tips: A0 tooltip/122, 123 put them at the pointer plus (0, 21), 19 high; status-window.mjs finds both at that geometry in all ten cases on Linux.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C015",

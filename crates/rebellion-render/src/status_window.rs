@@ -31,6 +31,10 @@ const BACKGROUND: [u32; 3] = [11_554, 11_555, 11_556];
 const ENCYCLOPEDIA: (u32, u32) = (11_552, 11_553);
 const CLOSE: (u32, u32) = (10_370, 10_371);
 const ENCYCLOPEDIA_RECT: (f32, f32, f32, f32) = (258.0, 218.0, 32.0, 31.0);
+/// The Encyclopedia and Close buttons' tooltips (`FUN_00443020` via
+/// `FUN_00606c90`): TEXTSTRA 0x1505 "Encyclopedia", 0x1954 "Close".
+pub(crate) const ENCYCLOPEDIA_TOOLTIP: u16 = 0x1505;
+pub(crate) const CLOSE_TOOLTIP: u16 = 0x1954;
 const CLOSE_RECT: (f32, f32, f32, f32) = (324.0, 218.0, 32.0, 31.0);
 
 /// `+0x130`: (15, 18), 211 by 18, font 5, format `0x21`.
@@ -637,6 +641,22 @@ pub fn draw_status_window(
                 );
             }
 
+            // FUN_00443020: Encyclopedia TEXTSTRA 0x1505 and Close 0x1954
+            // (A0 tooltip/122, 123); a disabled Encyclopedia shows none.
+            crate::win_tooltip::window_tool(
+                ui,
+                at(ENCYCLOPEDIA_RECT),
+                "status-encyclopedia",
+                ENCYCLOPEDIA_TOOLTIP,
+                view.encyclopedia,
+            );
+            crate::win_tooltip::window_tool(
+                ui,
+                at(CLOSE_RECT),
+                "status-close",
+                CLOSE_TOOLTIP,
+                true,
+            );
             if !view.encyclopedia {
                 paint(
                     ui.painter(),
