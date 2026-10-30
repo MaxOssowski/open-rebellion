@@ -1133,9 +1133,14 @@ pub fn draw_encyclopedia_topic(
         .edata
         .and_then(|edata| state.artwork_texture(ctx, edata));
     let mut activated = None;
-    egui::Area::new(egui::Id::new("original-encyclopedia-topic"))
+    // The window is modal (A0 modal2/12..16) and above the sector and
+    // system windows, which raise themselves on Foreground each frame, as
+    // the Finders and the Message Index are.
+    let id = egui::Id::new("original-encyclopedia-topic");
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
+    egui::Area::new(id)
         .fixed_pos(origin)
-        .order(egui::Order::Middle)
+        .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
             let size = egui::vec2(
                 ENCYCLOPEDIA_INDEX_WIDTH * scale,
@@ -1373,9 +1378,14 @@ fn draw_encyclopedia_index_layers(
     }
 
     let mut outcome = OriginalIndexOutcome::default();
-    egui::Area::new(egui::Id::new("original-encyclopedia-index-shell"))
+    // The window is modal (A0 modal2/12..16) and above the sector and
+    // system windows, which raise themselves on Foreground each frame, as
+    // the Finders and the Message Index are.
+    let id = egui::Id::new("original-encyclopedia-index-shell");
+    ctx.move_to_top(egui::LayerId::new(egui::Order::Tooltip, id));
+    egui::Area::new(id)
         .fixed_pos(origin)
-        .order(egui::Order::Middle)
+        .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
             let size = egui::vec2(
                 ENCYCLOPEDIA_INDEX_WIDTH * scale,
@@ -1639,6 +1649,29 @@ fn draw_original_index_content(
     }
 }
 
+/// A control's tooltip (`FUN_0045ddc0`, TEXTSTRA): Close 0x1954, Display
+/// Topic 0x1860, Index 0x1859, the databases 0x1850 All, 0x1855 System,
+/// 0x1854 Ship, 0x1852 Facilities, 0x1851 Missions, 0x1856 Troop, 0x1853
+/// Personnel, and Previous / Next Topic 0x1858 / 0x1857 (A0 tooltip/101..116).
+#[must_use]
+pub const fn encyclopedia_tooltip_string(command: u16) -> Option<u16> {
+    match command {
+        0xfb => Some(0x1954),
+        0x67 => Some(0x1860),
+        0x68 => Some(0x1859),
+        0x6f => Some(0x1850),
+        0x70 => Some(0x1855),
+        0x71 => Some(0x1854),
+        0x72 => Some(0x1852),
+        0x73 => Some(0x1851),
+        0x74 => Some(0x1856),
+        0x75 => Some(0x1853),
+        0x83 => Some(0x1858),
+        0x84 => Some(0x1857),
+        _ => None,
+    }
+}
+
 fn draw_original_control(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -1660,6 +1693,15 @@ fn draw_original_control(
         .id()
         .with(("encyclopedia-original-control", control.command_id));
     let response = ui.interact(rect, control_id, egui::Sense::click());
+    // FUN_0045f480 disables the current mode's button (0x67 in a topic,
+    // 0x68 in the index), and a disabled control shows no tip (A0
+    // tooltip/110, 112).
+    let disabled = selected && matches!(control.command_id, 0x67 | 0x68);
+    if let Some(string) = encyclopedia_tooltip_string(control.command_id) {
+        if !disabled {
+            crate::win_tooltip::response_tool(&response, rect, string);
+        }
+    }
     let capture_id = control_id.with("opaque-press-origin");
     if ctx.input(|input| input.pointer.primary_pressed()) {
         let captured = ctx.pointer_latest_pos().is_some_and(|point| {
@@ -2029,6 +2071,26 @@ fn stat_row_pair(ui: &mut egui::Ui, label: &str, base: u32, variance: u32) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn each_control_has_its_tooltip_string() {
+        // FUN_0045ddc0 (A0 tooltip/101..116).
+        let tips: Vec<_> = [
+            0xfb, 0x67, 0x68, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x83, 0x84,
+        ]
+        .into_iter()
+        .map(super::encyclopedia_tooltip_string)
+        .collect();
+        assert_eq!(
+            tips,
+            [
+                0x1954, 0x1860, 0x1859, 0x1850, 0x1855, 0x1854, 0x1852, 0x1851, 0x1856, 0x1853,
+                0x1858, 0x1857
+            ]
+            .map(Some)
+        );
+        assert_eq!(super::encyclopedia_tooltip_string(0x76), None);
+    }
+
     use super::*;
 
     fn synthetic_indexed_edata() -> Vec<u8> {

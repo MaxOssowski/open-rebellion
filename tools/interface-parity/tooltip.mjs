@@ -280,6 +280,41 @@ async function run(browser, base, faction) {
       await page.mouse.up();
       await frames(page, 6);
       await probe("mi-message-index", [573, 160], "90-mi-msg-r2.png");
+      await page.goto(`${base}?fixture-code=${FLEET_FINDER | (faction.byte << 8)}`);
+      await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
+        null, { timeout: 15_000 });
+      await page.locator("#glcanvas").focus();
+      await frames(page, 6);
+
+      // The Encyclopedia (§5) from its cockpit control, against A0
+      // tooltip/101..116. FUN_0045f480 disables the current mode's button:
+      // Index in the index, Display Topic in a topic.
+      const press = async ([x, y]) => {
+        await page.mouse.move(x, y, { steps: 4 });
+        await frames(page, 3);
+        await page.mouse.down();
+        await frames(page, 3);
+        await page.mouse.up();
+        await frames(page, 6);
+      };
+      await press([472, 440]);
+      await page.waitForTimeout(500);
+      for (const [label, point, capture, none] of [["en-all", [180, 150], "101-en-all.png"],
+        ["en-system", [232, 150], "102-en-system.png"], ["en-ship", [284, 150], "103-en-ship.png"],
+        ["en-facilities", [336, 150], "104-en-facilities.png"], ["en-missions", [388, 150], "105-en-missions.png"],
+        ["en-troop", [440, 150], "106-en-troop.png"], ["en-personnel", [492, 150], "107-en-personnel.png"],
+        ["en-display-topic", [573, 160], "109-en-display-topic.png"],
+        ["en-index", [573, 215], "110-en-index.png", true]]) {
+        await probe(label, point, capture, none);
+      }
+      await press([200, 219]);
+      await press([573, 160]);
+      await page.waitForTimeout(500);
+      for (const [label, point, capture, none] of [["en-topic-display", [573, 160], "112-en-topic-display.png", true],
+        ["en-topic-index", [573, 215], "113-en-topic-index.png"], ["en-prev", [161, 73], "114-en-prev.png"],
+        ["en-next", [512, 73], "115-en-next.png"], ["en-topic-close", [573, 92], "116-en-topic-close.png"]]) {
+        await probe(label, point, capture, none);
+      }
       await page.keyboard.press("Escape");
     }
     assert.deepEqual(errors, [], errors.join("; "));
