@@ -1,0 +1,1448 @@
+{
+  "status": "pass",
+  "wasm_sha256": "bca6d9981b84eeadae9b52a6d59902a9b32d6e3220d3615f973635b58c603829",
+  "results": [
+    {
+      "faction": "empire",
+      "status": "pass",
+      "box": {
+        "x": 175,
+        "y": 46,
+        "width": 137,
+        "height": 19
+      },
+      "a0": {
+        "want": {
+          "x": 175,
+          "y": 46,
+          "width": 125,
+          "height": 19
+        },
+        "got": {
+          "x": 175,
+          "y": 46,
+          "width": 137,
+          "height": 19
+        }
+      },
+      "others": [
+        {
+          "label": "maintenance",
+          "got": {
+            "x": 400,
+            "y": 46,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 400,
+            "y": 46,
+            "width": 121,
+            "height": 19
+          }
+        },
+        {
+          "label": "speed",
+          "got": {
+            "x": 512,
+            "y": 46,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 520,
+            "y": 46,
+            "width": 115,
+            "height": 19
+          }
+        },
+        {
+          "label": "gap",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "system-finder",
+          "got": {
+            "x": 150,
+            "y": 421,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 150,
+            "y": 421,
+            "width": 80,
+            "height": 19
+          }
+        },
+        {
+          "label": "fleet-finder",
+          "got": {
+            "x": 205,
+            "y": 421,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 205,
+            "y": 421,
+            "width": 67,
+            "height": 19
+          }
+        },
+        {
+          "label": "personnel-finder",
+          "got": {
+            "x": 418,
+            "y": 421,
+            "width": 104,
+            "height": 19
+          },
+          "want": {
+            "x": 418,
+            "y": 421,
+            "width": 94,
+            "height": 19
+          }
+        },
+        {
+          "label": "troop-finder",
+          "got": {
+            "x": 260,
+            "y": 421,
+            "width": 79,
+            "height": 19
+          },
+          "want": {
+            "x": 260,
+            "y": 421,
+            "width": 73,
+            "height": 19
+          }
+        },
+        {
+          "label": "encyclopedia",
+          "got": {
+            "x": 472,
+            "y": 421,
+            "width": 84,
+            "height": 19
+          },
+          "want": {
+            "x": 472,
+            "y": 421,
+            "width": 76,
+            "height": 19
+          }
+        },
+        {
+          "label": "gid",
+          "got": {
+            "x": 469,
+            "y": 421,
+            "width": 170,
+            "height": 19
+          },
+          "want": {
+            "x": 484,
+            "y": 421,
+            "width": 155,
+            "height": 19
+          }
+        },
+        {
+          "label": "game-controls",
+          "got": {
+            "x": 90,
+            "y": 231,
+            "width": 93,
+            "height": 19
+          },
+          "want": {
+            "x": 90,
+            "y": 231,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "rail-support",
+          "got": {
+            "x": 477,
+            "y": 139,
+            "width": 162,
+            "height": 19
+          },
+          "want": {
+            "x": 493,
+            "y": 139,
+            "width": 146,
+            "height": 19
+          }
+        },
+        {
+          "label": "rail-chat",
+          "got": {
+            "x": 542,
+            "y": 339,
+            "width": 97,
+            "height": 19
+          },
+          "want": {
+            "x": 554,
+            "y": 339,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 76,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 66,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-rebel",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 95,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 81,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-imperial",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 107,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 95,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-neutral",
+          "got": {
+            "x": 336,
+            "y": 171,
+            "width": 103,
+            "height": 19
+          },
+          "want": {
+            "x": 336,
+            "y": 171,
+            "width": 91,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-unexplored",
+          "got": {
+            "x": 388,
+            "y": 171,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 388,
+            "y": 171,
+            "width": 113,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "sf-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 60,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 53,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-alliance",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 81,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-imperial",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 82,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-mode-ship",
+          "got": {
+            "x": 567,
+            "y": 236,
+            "width": 72,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 236,
+            "width": 65,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-mode-fleet",
+          "got": {
+            "x": 564,
+            "y": 289,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 572,
+            "y": 289,
+            "width": 67,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ships-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 57,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 51,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ships-alliance",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 88,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 79,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ships-imperial",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 88,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 80,
+            "height": 19
+          }
+        },
+        {
+          "label": "ff-ship-current",
+          "got": {
+            "x": 567,
+            "y": 236,
+            "width": 72,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 236,
+            "width": 65,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-alliance",
+          "got": {
+            "x": 180,
+            "y": 166,
+            "width": 95,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 166,
+            "width": 87,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-imperial",
+          "got": {
+            "x": 232,
+            "y": 166,
+            "width": 95,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 166,
+            "width": 88,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "tf-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-alliance",
+          "got": {
+            "x": 180,
+            "y": 166,
+            "width": 113,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 166,
+            "width": 103,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-imperial",
+          "got": {
+            "x": 232,
+            "y": 166,
+            "width": 113,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 166,
+            "width": 104,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-display",
+          "got": {
+            "x": 573,
+            "y": 181,
+            "width": 49,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 181,
+            "width": 44,
+            "height": 19
+          }
+        },
+        {
+          "label": "pf-characters",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "pf-specforces",
+          "got": {
+            "x": 564,
+            "y": 289,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 289,
+            "width": 65,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-all",
+          "got": {
+            "x": 165,
+            "y": 136,
+            "width": 84,
+            "height": 19
+          },
+          "want": {
+            "x": 165,
+            "y": 136,
+            "width": 74,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-support",
+          "got": {
+            "x": 203,
+            "y": 136,
+            "width": 162,
+            "height": 19
+          },
+          "want": {
+            "x": 203,
+            "y": 136,
+            "width": 146,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-fleet",
+          "got": {
+            "x": 241,
+            "y": 136,
+            "width": 98,
+            "height": 19
+          },
+          "want": {
+            "x": 241,
+            "y": 136,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-mission",
+          "got": {
+            "x": 279,
+            "y": 136,
+            "width": 114,
+            "height": 19
+          },
+          "want": {
+            "x": 279,
+            "y": 136,
+            "width": 101,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-resource",
+          "got": {
+            "x": 317,
+            "y": 136,
+            "width": 125,
+            "height": 19
+          },
+          "want": {
+            "x": 317,
+            "y": 136,
+            "width": 108,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-manufacturing",
+          "got": {
+            "x": 355,
+            "y": 136,
+            "width": 151,
+            "height": 19
+          },
+          "want": {
+            "x": 355,
+            "y": 136,
+            "width": 139,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-defense",
+          "got": {
+            "x": 393,
+            "y": 136,
+            "width": 118,
+            "height": 19
+          },
+          "want": {
+            "x": 393,
+            "y": 136,
+            "width": 102,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-conflict",
+          "got": {
+            "x": 430,
+            "y": 136,
+            "width": 114,
+            "height": 19
+          },
+          "want": {
+            "x": 430,
+            "y": 136,
+            "width": 102,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-chat",
+          "got": {
+            "x": 468,
+            "y": 136,
+            "width": 97,
+            "height": 19
+          },
+          "want": {
+            "x": 468,
+            "y": 136,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-advice",
+          "got": {
+            "x": 505,
+            "y": 136,
+            "width": 109,
+            "height": 19
+          },
+          "want": {
+            "x": 505,
+            "y": 136,
+            "width": 96,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-selectall",
+          "got": {
+            "x": 440,
+            "y": 169,
+            "width": 60,
+            "height": 19
+          },
+          "want": {
+            "x": 440,
+            "y": 169,
+            "width": 54,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-delete",
+          "got": {
+            "x": 477,
+            "y": 169,
+            "width": 162,
+            "height": 19
+          },
+          "want": {
+            "x": 490,
+            "y": 169,
+            "width": 140,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-close",
+          "got": {
+            "x": 573,
+            "y": 116,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 116,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-display-message",
+          "got": {
+            "x": 532,
+            "y": 181,
+            "width": 107,
+            "height": 19
+          },
+          "want": {
+            "x": 546,
+            "y": 181,
+            "width": 93,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-post",
+          "got": {
+            "x": 496,
+            "y": 241,
+            "width": 143,
+            "height": 19
+          },
+          "want": {
+            "x": 515,
+            "y": 241,
+            "width": 124,
+            "height": 19
+          }
+        },
+        {
+          "label": "mi-message-index",
+          "got": {
+            "x": 545,
+            "y": 181,
+            "width": 94,
+            "height": 19
+          },
+          "want": {
+            "x": 555,
+            "y": 181,
+            "width": 84,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-all",
+          "got": {
+            "x": 180,
+            "y": 171,
+            "width": 87,
+            "height": 19
+          },
+          "want": {
+            "x": 180,
+            "y": 171,
+            "width": 76,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-system",
+          "got": {
+            "x": 232,
+            "y": 171,
+            "width": 111,
+            "height": 19
+          },
+          "want": {
+            "x": 232,
+            "y": 171,
+            "width": 95,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-ship",
+          "got": {
+            "x": 284,
+            "y": 171,
+            "width": 92,
+            "height": 19
+          },
+          "want": {
+            "x": 284,
+            "y": 171,
+            "width": 80,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-facilities",
+          "got": {
+            "x": 336,
+            "y": 171,
+            "width": 118,
+            "height": 19
+          },
+          "want": {
+            "x": 336,
+            "y": 171,
+            "width": 102,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-missions",
+          "got": {
+            "x": 388,
+            "y": 171,
+            "width": 118,
+            "height": 19
+          },
+          "want": {
+            "x": 388,
+            "y": 171,
+            "width": 103,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-troop",
+          "got": {
+            "x": 440,
+            "y": 171,
+            "width": 99,
+            "height": 19
+          },
+          "want": {
+            "x": 440,
+            "y": 171,
+            "width": 88,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-personnel",
+          "got": {
+            "x": 492,
+            "y": 171,
+            "width": 124,
+            "height": 19
+          },
+          "want": {
+            "x": 492,
+            "y": 171,
+            "width": 109,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-display-topic",
+          "got": {
+            "x": 555,
+            "y": 181,
+            "width": 84,
+            "height": 19
+          },
+          "want": {
+            "x": 563,
+            "y": 181,
+            "width": 76,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-index",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "en-topic-display",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "en-topic-index",
+          "got": {
+            "x": 573,
+            "y": 236,
+            "width": 37,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 236,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-prev",
+          "got": {
+            "x": 161,
+            "y": 94,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 161,
+            "y": 94,
+            "width": 83,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-next",
+          "got": {
+            "x": 512,
+            "y": 94,
+            "width": 68,
+            "height": 19
+          },
+          "want": {
+            "x": 512,
+            "y": 94,
+            "width": 63,
+            "height": 19
+          }
+        },
+        {
+          "label": "en-topic-close",
+          "got": {
+            "x": 573,
+            "y": 113,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 573,
+            "y": 113,
+            "width": 35,
+            "height": 19
+          }
+        },
+        {
+          "label": "sw-manufacturing",
+          "got": {
+            "x": 241,
+            "y": 132,
+            "width": 88,
+            "height": 19
+          },
+          "want": {
+            "x": 241,
+            "y": 132,
+            "height": 19
+          }
+        },
+        {
+          "label": "sw-shipyards",
+          "got": {
+            "x": 280,
+            "y": 132,
+            "width": 63,
+            "height": 19
+          },
+          "want": {
+            "x": 280,
+            "y": 132,
+            "height": 19
+          }
+        },
+        {
+          "label": "sw-training",
+          "got": {
+            "x": 318,
+            "y": 132,
+            "width": 107,
+            "height": 19
+          },
+          "want": {
+            "x": 318,
+            "y": 132,
+            "height": 19
+          }
+        },
+        {
+          "label": "sw-construction",
+          "got": {
+            "x": 356,
+            "y": 132,
+            "width": 116,
+            "height": 19
+          },
+          "want": {
+            "x": 356,
+            "y": 132,
+            "height": 19
+          }
+        },
+        {
+          "label": "sw-refineries",
+          "got": {
+            "x": 393,
+            "y": 132,
+            "width": 64,
+            "height": 19
+          },
+          "want": {
+            "x": 393,
+            "y": 132,
+            "height": 19
+          }
+        },
+        {
+          "label": "sw-mines",
+          "got": {
+            "x": 431,
+            "y": 132,
+            "width": 40,
+            "height": 19
+          },
+          "want": {
+            "x": 431,
+            "y": 132,
+            "height": 19
+          }
+        }
+      ],
+      "shots": [
+        {
+          "label": "rest-250ms",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "rest-1s",
+          "sha256": "c297007e99065ebf4a9a79a9019817b47ec68c278769cd8598857d48605f4aa1"
+        },
+        {
+          "label": "rest-5s6",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "maintenance-1s",
+          "sha256": "7087f71316dabb851f6526db299922a1fc7c2365b31e86261281e6040f388022"
+        },
+        {
+          "label": "speed-1s",
+          "sha256": "b20a413bdb16d57633f9a2a94416359071683fc761a67f9662c0020d9a6cfbc4"
+        },
+        {
+          "label": "gap-1s",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "system-finder-1s",
+          "sha256": "1762f551e9bc3f50fe1f7c3e0e785cb47d09b61e539ff076156c198d829d1693"
+        },
+        {
+          "label": "fleet-finder-1s",
+          "sha256": "9426e4ee9f846370ebbab49812f8f6476233144a50b18639e65e61b9c3ef1704"
+        },
+        {
+          "label": "personnel-finder-1s",
+          "sha256": "3f1d9cef566e59c2980a289ae0e158a749e7538a93f395a99e45624d257e6f2d"
+        },
+        {
+          "label": "troop-finder-1s",
+          "sha256": "19cdcebab0aa381ecf1a3b795b039b6996e8a93ebddd0e32f6f8c564548d7dbd"
+        },
+        {
+          "label": "encyclopedia-1s",
+          "sha256": "291b4dcb03d77206ccfddd9cb572780f06e0c0f8d2819b9b89578bb7c342512e"
+        },
+        {
+          "label": "gid-1s",
+          "sha256": "33d69b31f2d0093dd854d35ccdf0b36f86da44fdef285f947b3b3ccb04e0d450"
+        },
+        {
+          "label": "game-controls-1s",
+          "sha256": "e52f71b9a01ace499dcaf313f2600a1529e72718fdd967239463a4053d340485"
+        },
+        {
+          "label": "rail-support-1s",
+          "sha256": "3ebc639da0f6f54cada42149a6f76face165438c2182c870c3bf4a49a13b6106"
+        },
+        {
+          "label": "rail-chat-1s",
+          "sha256": "e745df2d2d9a945713684f3c884052c0dbdd2268bab1261fa425a5d25e4b7659"
+        },
+        {
+          "label": "modal-rest-1s",
+          "sha256": "af6741b7148416737471ffd4f3c3bb84111ab76f247c408ef21b4948e3aef738"
+        },
+        {
+          "label": "sf-all-1s",
+          "sha256": "b9027976ef0b40c5135fe5f3fe9d1e05f74ef3cb137046b9bcc343f222699f55"
+        },
+        {
+          "label": "sf-rebel-1s",
+          "sha256": "670d25ea4107bf2fda02e417f4dd0ea402d3d3eba2c5dc4648ede051df2e6203"
+        },
+        {
+          "label": "sf-imperial-1s",
+          "sha256": "eff0022d5551804cf12c5c645283731a5d071d70084578d1e3ac2f7bb4ec5073"
+        },
+        {
+          "label": "sf-neutral-1s",
+          "sha256": "62054025040d79b27c2b213f776217218e49c1857ba2ab4f7c3bade1dd6f520e"
+        },
+        {
+          "label": "sf-unexplored-1s",
+          "sha256": "946985f77ede518fd1c444be79a50eba0a57f4ff9f98e168143dcb210e8d6324"
+        },
+        {
+          "label": "sf-close-1s",
+          "sha256": "ffc7c02070f487d6fa943faa0dfd97304737e3cd3c2312c0f9151c99b704c2f2"
+        },
+        {
+          "label": "sf-display-1s",
+          "sha256": "3236ec46892702d78a264a0c5b8135744c54cc8bc3cfad55501d268f035868df"
+        },
+        {
+          "label": "ff-all-1s",
+          "sha256": "cc9592f507a02e5fcc262e3ebba1dba77d48c152fd1d93d7270af628b2d9917e"
+        },
+        {
+          "label": "ff-alliance-1s",
+          "sha256": "9fc7c1f1d15fc7f7be0b9a91bd0b57a6cd535d307ba80067d729af89a2392249"
+        },
+        {
+          "label": "ff-imperial-1s",
+          "sha256": "a7df7eb26de36486e1983d7db861dc5981c2e2d031e162c20258e9d3f1b4663d"
+        },
+        {
+          "label": "ff-close-1s",
+          "sha256": "8a26a2bb4917d734ae90fe41283ac6c402b57057a5683126ddef8fb5e4b89a3e"
+        },
+        {
+          "label": "ff-display-1s",
+          "sha256": "13717239a4141a2d2d0305549371206d618a3ef3863646ffd91ea5598f0f520e"
+        },
+        {
+          "label": "ff-mode-ship-1s",
+          "sha256": "7fe17ef3ca119e7db53d99e566480ed7f7115295c6782f21cd5e61bb4c2db084"
+        },
+        {
+          "label": "ff-mode-fleet-1s",
+          "sha256": "7b73b0fc36ed494165719ec5684e35d869632f1cdd59484280f48f7a09e7838d"
+        },
+        {
+          "label": "ff-ships-all-1s",
+          "sha256": "6e38a134cfbe3103fdee7501d7a5c5ff2b3518f5644e95f9fa528a470d7c1ff5"
+        },
+        {
+          "label": "ff-ships-alliance-1s",
+          "sha256": "06ee16bfc96c0fc942799934e25febd8f7745d002fe3d28c0620018e2b61fbc6"
+        },
+        {
+          "label": "ff-ships-imperial-1s",
+          "sha256": "d90a1fc13c97252c43e3f6341971bf3deeaa7ba5fa27b1299babeffd912f1cf0"
+        },
+        {
+          "label": "ff-ship-current-1s",
+          "sha256": "53cbb2cfea0315b87ec674998d85151fafe7afaddf2a1a14ef663ec862f3e521"
+        },
+        {
+          "label": "tf-alliance-1s",
+          "sha256": "acdbbb832a01dc150b30a21b1be11f7368a586a4073400c097a291e689d6f72f"
+        },
+        {
+          "label": "tf-imperial-1s",
+          "sha256": "598ded0bf3fc5538eb32778405a78a02e8c009b68768d871a9f991bd70a5dcfe"
+        },
+        {
+          "label": "tf-close-1s",
+          "sha256": "f3d57573b917f69ceb76d32392a2750816acea1598c6ce658938d2f71599c220"
+        },
+        {
+          "label": "tf-display-1s",
+          "sha256": "deffd5fdbff48b392650c51ff0791ea55d6ea055670cd8a1a44a437a0f964f72"
+        },
+        {
+          "label": "pf-alliance-1s",
+          "sha256": "6014b1741d822e5f3c4009af2c69cf4450e93d50d62c3e4615ef1640d2d610d7"
+        },
+        {
+          "label": "pf-imperial-1s",
+          "sha256": "d5b84c16cfb0ac6d495c4574c8cecd41987db3f80a46e329ce0f0990580895ef"
+        },
+        {
+          "label": "pf-close-1s",
+          "sha256": "62511aeef397a07617a20cb910e78e5fd9b9fc995d5550fafab135f74347152f"
+        },
+        {
+          "label": "pf-display-1s",
+          "sha256": "05430a0704dedc37413dc021da5093cc8164f243ae6ec015b77974edf74b24f6"
+        },
+        {
+          "label": "pf-characters-1s",
+          "sha256": "b9ffb63dbbddfdb45959c10d1c0a7f15af4e1c6843bfbdb1478b35f37e5752ac"
+        },
+        {
+          "label": "pf-specforces-1s",
+          "sha256": "db194c97d3c88a242c1291023006087a94813e114ca82ece63b56f18900a52bc"
+        },
+        {
+          "label": "mi-all-1s",
+          "sha256": "534a00788b4eaeefe433eec74bc1ee5f2bde88978f265385692b5d46a31c73dd"
+        },
+        {
+          "label": "mi-support-1s",
+          "sha256": "435746ae673146150c608e4f19785697f956965a4ac734fdf7f09b1e63dca62b"
+        },
+        {
+          "label": "mi-fleet-1s",
+          "sha256": "f95bb677877997fe1e5e2bc42c0c10de7b83f744020734ba50ba44a9e31c2378"
+        },
+        {
+          "label": "mi-mission-1s",
+          "sha256": "475c16b413321821e0302842d3522867e02b69fc56f84404068836d6b21d2dd0"
+        },
+        {
+          "label": "mi-resource-1s",
+          "sha256": "d945f8354302ccb94a19d1d1f288c50b58cd6b383fe8b40f5e193140a2c1d53f"
+        },
+        {
+          "label": "mi-manufacturing-1s",
+          "sha256": "dbe7e8fa433fc1001ac8f18b88deda8a5bc3098741db7150e5c379c8f60b03bf"
+        },
+        {
+          "label": "mi-defense-1s",
+          "sha256": "b3a12b9dbe7b2052351acf2692511ebb3657565809e91987dea62e9636d395bc"
+        },
+        {
+          "label": "mi-conflict-1s",
+          "sha256": "60ff4c572b447d353d670b3e7d56d9e5611a050388b621d75a08dc2446ed78de"
+        },
+        {
+          "label": "mi-chat-1s",
+          "sha256": "b17c1ee87869aa1395e40d178e07cfa34f302042999bcb58050f86faf129b91f"
+        },
+        {
+          "label": "mi-advice-1s",
+          "sha256": "dbe96c959d79735efeefc279b0b3272af16f3caf0553e91e7069231bf2cc9816"
+        },
+        {
+          "label": "mi-selectall-1s",
+          "sha256": "c41deaefb4950ddb3a3de20cbcb62ad7c2f62234a35ddde980409f75d155405d"
+        },
+        {
+          "label": "mi-delete-1s",
+          "sha256": "ae6fafafcac3de29a401198b9c3cf1c08db7252f90ef72dcaa14a9feefa7b77c"
+        },
+        {
+          "label": "mi-close-1s",
+          "sha256": "ed059535d67a29cc2c5934a5833c183f13e527519de7587180c394398fae7c4c"
+        },
+        {
+          "label": "mi-display-message-1s",
+          "sha256": "5504790d73b8d9af35164a597fc6afdf81daf41e0a16cda1cd385b63f96065f3"
+        },
+        {
+          "label": "mi-post-1s",
+          "sha256": "807bdd5fcd4d1a2df1150c483bf32cb7268f6eeca30f9d9962035d1cfd47c5c4"
+        },
+        {
+          "label": "mi-message-index-1s",
+          "sha256": "82240564f4b284ccbc8b181698e6167fa00bfdacd73f81daeeac04045d53414b"
+        },
+        {
+          "label": "en-all-1s",
+          "sha256": "d8e8e3f2e4caf6d1ff116fe80a6442fdb7b44e2d74268fff32c833ef80d567f1"
+        },
+        {
+          "label": "en-system-1s",
+          "sha256": "e85c46c79ad223610e9e39c6954f90a3ac387acea6f42a44abca9ff882d41c73"
+        },
+        {
+          "label": "en-ship-1s",
+          "sha256": "239c4419710b989e146d7328b139d4670e5bc989371c8e29bd23c618f2cde7e0"
+        },
+        {
+          "label": "en-facilities-1s",
+          "sha256": "08471f7adb6532bac3c3d0f980661e57bca497af0d8c57ade1ce3130db5d6c53"
+        },
+        {
+          "label": "en-missions-1s",
+          "sha256": "eea559c48a6d519ac05a83c182ed5df26921a2111fd0ed731833c3b7e89bc53d"
+        },
+        {
+          "label": "en-troop-1s",
+          "sha256": "cb8a92f45dfee3fc92e5a6d711ff8c6873cd35ad9abcaa4ae7fb2f8b53ae3360"
+        },
+        {
+          "label": "en-personnel-1s",
+          "sha256": "19e13acc529d6c094f532991c32df0cf30bb361415ac679aa721d6082fb9ca44"
+        },
+        {
+          "label": "en-display-topic-1s",
+          "sha256": "9f335f3cc2cd374ef67c15201963aee97598d020a2192b270355b17fc332edb8"
+        },
+        {
+          "label": "en-index-1s",
+          "sha256": "6822097c5728a99b5f6cea42980fbef077bd5956fbe2c1f4e010e30d27e0c977"
+        },
+        {
+          "label": "en-topic-display-1s",
+          "sha256": "97f273697bbd09a6bf76ba36695e2e652a8cd77b8faa95993751ef178fea4d70"
+        },
+        {
+          "label": "en-topic-index-1s",
+          "sha256": "4c5f4a1d17505ebd0dd3b73898e73001f7d25cc4ab4120731f34c015c5067d2c"
+        },
+        {
+          "label": "en-prev-1s",
+          "sha256": "da15d2544a84f6ad4dd9cb41dcf81f19bdc1f2e2da7edf7ba32622c17cf43b52"
+        },
+        {
+          "label": "en-next-1s",
+          "sha256": "c64419a6adc676c60ed7aaaf823c7757cf14b59f7b30e6c7e3f624912ee74a7a"
+        },
+        {
+          "label": "en-topic-close-1s",
+          "sha256": "514d51806aa141a39b07957f0cf13dcaa03608d9c78b8918f8ac4a549c7bbaef"
+        },
+        {
+          "label": "sw-manufacturing-1s",
+          "sha256": "51d20e9d4ee6d964faae8fd3046e3cf6df5917ce8185f4c6584b3f2e8efd94c1"
+        },
+        {
+          "label": "sw-shipyards-1s",
+          "sha256": "e75d499df5df22fa661a86d0d478108472dfde8a2cb06259dc38628903e3a47c"
+        },
+        {
+          "label": "sw-training-1s",
+          "sha256": "447199c6a95886fd4f90b4f84e43feadb02190b12debf9d066978d154fc30fd3"
+        },
+        {
+          "label": "sw-construction-1s",
+          "sha256": "2b43a7bd511dc3de07357914dad31ebc688b7efc6fa71fc39e90876b60451766"
+        },
+        {
+          "label": "sw-refineries-1s",
+          "sha256": "80da61776e99beba573acec8b8814c8907a6ed2272a638fa2b6b2f930fda0c36"
+        },
+        {
+          "label": "sw-mines-1s",
+          "sha256": "b91e9ed47081fd2456d0b0e6856ef0128131c0130040d8482fd6d3cfc7b17e11"
+        }
+      ]
+    }
+  ]
+}

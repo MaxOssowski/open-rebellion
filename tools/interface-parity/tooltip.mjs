@@ -156,7 +156,7 @@ async function run(browser, base, faction) {
       const got = tipBox(png, point);
       let want = none ? null : { x: point[0], y: point[1] + 21, height: 19 };
       if (want && point[1] + 40 > 479) want.y = point[1] - 19;
-      if (args.a0) {
+      if (args.a0 && capture) {
         const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
         want = tipBox(reference, point);
         assert.equal(want === null, none, `${label}: A0 ${capture} disagrees with the case`);
@@ -316,6 +316,23 @@ async function run(browser, base, faction) {
         await probe(label, point, capture, none);
       }
       await page.keyboard.press("Escape");
+
+      // The system window's six tabs (§7e, FUN_00455060) in the
+      // Build Selection fixture (code 55), which opens the first system's
+      // window on its producer bands. A0 tooltip/124..129 put each tip at
+      // the pointer plus (0, 21); the window stands elsewhere in A0, so the
+      // probe uses that rule, not the A0 file. The ships band sits at
+      // (55, 57) in the window (manufacturing_window::BAND_RECTS).
+      await page.goto(`${base}?fixture-code=${55 | (faction.byte << 8)}`);
+      await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+        null, { timeout: 15_000 });
+      const [band] = (await page.evaluate(() => window.__openRebellionInterfaceProduction)).bands;
+      const windowAt = [band.left - 55, band.top - 57];
+      const tabs = [["sw-manufacturing", 0], ["sw-shipyards", 39], ["sw-training", 77],
+        ["sw-construction", 115], ["sw-refineries", 152], ["sw-mines", 190]];
+      for (const [label, x] of tabs) {
+        await probe(label, [windowAt[0] + x + 16, windowAt[1] + 35], null);
+      }
     }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", box, a0, others, shots };

@@ -94,6 +94,22 @@ impl SystemWindowTab {
         Self::Mines,
     ];
 
+    /// The tab's tooltip (`FUN_00455060`, TEXTSTRA): 0x1835
+    /// "Manufacturing", 0x1828 "Shipyards", 0x1830 "Training Facilities",
+    /// 0x1832 "Construction Yards", 0x1827 "Refineries", 0x1826 "Mines"
+    /// (A0 tooltip/124..129). The title-bar buttons have none.
+    #[must_use]
+    pub const fn tooltip_string(self) -> u16 {
+        match self {
+            Self::Overview => 0x1835,
+            Self::Shipyards => 0x1828,
+            Self::TrainingFacilities => 0x1830,
+            Self::ConstructionYards => 0x1832,
+            Self::Refineries => 0x1827,
+            Self::Mines => 0x1826,
+        }
+    }
+
     /// The button's x in the strip.
     #[must_use]
     pub const fn x(self) -> f32 {
@@ -1013,6 +1029,7 @@ fn draw_system_window(
                     ui.id().with((window.system, tab)),
                     egui::Sense::click(),
                 );
+                crate::win_tooltip::response_tool(&response, rect, tab.tooltip_string());
                 let pressed = tab == window.tab
                     || (primary_down && pointer.is_some_and(|point| rect_contains(rect, point)));
                 paint(
@@ -1522,6 +1539,15 @@ pub(crate) fn rect_contains(rect: egui::Rect, point: egui::Pos2) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_tab_has_its_tooltip_string() {
+        // FUN_00455060 (A0 tooltip/124..129).
+        assert_eq!(
+            super::SystemWindowTab::ALL.map(super::SystemWindowTab::tooltip_string),
+            [0x1835, 0x1828, 0x1830, 0x1832, 0x1827, 0x1826]
+        );
+    }
     use crate::cockpit::CockpitViewport;
     use crate::fleet_window::tests::PAINTED;
     use rebellion_core::dat::{ExplorationStatus, SectorGroup};

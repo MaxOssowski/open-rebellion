@@ -3686,7 +3686,7 @@
         "Fleet window",
         "System Defenses window",
         "Missions window",
-        "Manufacturing window",
+        "system window (Manufacturing) tabs",
         "Build Selection",
         "Move-order confirmation",
         "Mission dialog",
@@ -3972,14 +3972,16 @@
         },
         {
           "id": "CMD-11-C022",
-          "requirement": "Manufacturing window",
-          "status": "pending",
+          "requirement": "system window (Manufacturing) tabs",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/tooltips.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-system-window/",
+            "crates/rebellion-render/src/system_window.rs",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7e) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00455060's six tab tips (0x1835, 0x1828, 0x1830, 0x1832, 0x1827, 0x1826): A0 tooltip/124..129 (Coruscant, Empire) and tooltip.mjs's Build Selection fixture both put them at the pointer plus (0, 21), 19 high, with the same texts (widths within the accepted text-width deviation); the title-bar buttons have none (A0 130, 131).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-11-C023",
