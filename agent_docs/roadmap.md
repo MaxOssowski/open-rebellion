@@ -1127,6 +1127,11 @@ kept for a later release.
 - [ ] Maintain preview and production environments, commit-linked deploys, smoke checks, retained artifacts, and documented rollback.
 - [ ] Have `/codex-orchestrator` run an independent browser-use reviewer against the deployed URL for authentication, single-player, input, performance, and bitmap screenshot acceptance in Chromium on Linux (owner's acceptance scope of 2026-10-30; macOS and Safari are not required).
 
+v1.0 scope (owner, 2026-10-30): the original single-player game in the
+browser. Multiplayer (M4) and mods in the browser are out of scope; the
+native mod loader stays as it is, unextended. The add-on below is not part
+of v1.0.
+
 v1.0 exits only when the protected Cloudflare deployment passes P39, the
 GitHub Pages documentation passes P40, and every supported earlier pass. This follows the local Pages `functions/_middleware`
 pattern while replacing hardcoded passwords/cookie values with encrypted
