@@ -14,8 +14,8 @@ use egui_macroquad::egui;
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{
-    gid_popup_frame, paint_gid_frame_border, CockpitFaction, CockpitLayout, CockpitViewport,
-    STRATEGIC_LOGICAL_HEIGHT, STRATEGIC_LOGICAL_WIDTH,
+    CockpitFaction, CockpitLayout, CockpitViewport, STRATEGIC_LOGICAL_HEIGHT,
+    STRATEGIC_LOGICAL_WIDTH, paint_gid_frame_border,
 };
 
 /// Menu text height. The Game Menu Window uses the application default font
@@ -30,6 +30,15 @@ const NORMAL_COLOR: egui::Color32 = egui::Color32::WHITE;
 
 /// Disabled item color `0x2808080`.
 const DISABLED_COLOR: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
+
+/// The window's fill: what lies behind it, shaded (`Class_0065bef0_vt38`
+/// builds `FUN_005fddd0`'s table from `LAB_004ac550`, the sector window's
+/// transform, and `FUN_004aab50`'s paint copies the screen under the menu
+/// through it). Each channel `c` becomes `c / 6 + 50`
+/// ([`crate::bmp_cache::sector_shade`]); blending premultiplied 50 at
+/// alpha 213 leaves `50 + c x 42 / 255` of it. port: the original then takes
+/// the nearest palette entry, which the blend does not.
+const MENU_SHADE: egui::Color32 = egui::Color32::from_rgba_premultiplied(50, 50, 50, 213);
 
 /// Faction text color: Alliance `0x20000ff` (red), Empire `0x200ff00` (green).
 /// The menus highlight an item in it, and the day readout is drawn in it.
@@ -384,7 +393,7 @@ fn menu_window(
                 ui.disable();
             }
             let (rect, _) = ui.allocate_exact_size(menu_size, egui::Sense::hover());
-            ui.painter().rect_filled(rect, 0.0, gid_popup_frame().fill);
+            ui.painter().rect_filled(rect, 0.0, MENU_SHADE);
             let mut hovered = None;
             let mut clicked = None;
             for (index, ((entry, (top, height)), text)) in entries

@@ -120,13 +120,15 @@ function fixtureCode(scenario, faction) {
 }
 
 // The original Encyclopedia's rail close (0xfb): Alliance (423,25,32,31),
-// Empire (426,21,44,41), in the 470 x 330 window the port centres in the
-// 640 x 480 command centre (origin (85,75)). The pointer then goes back to
-// `restore`, off the galaxy map, before the command centre is compared.
+// Empire (426,21,44,41), in the 470 x 330 window FUN_0045ddc0 ->
+// FUN_00606980 centres in the galaxy view: origin (62, 50) for the
+// Alliance, (125, 52) for the Empire, as A0 shows
+// (encyclopedia-placement.mjs). The pointer then goes back to `restore`,
+// off the galaxy map, before the command centre is compared.
 async function closeOriginalEncyclopedia(page, point, faction, restore) {
   const close = faction === "alliance"
-    ? point(85 + 423 + 16, 75 + 25 + 15)
-    : point(85 + 426 + 22, 75 + 21 + 20);
+    ? point(62 + 423 + 16, 50 + 25 + 15)
+    : point(125 + 426 + 22, 52 + 21 + 20);
   await page.mouse.move(close.x, close.y);
   await page.mouse.down();
   await page.evaluate(() => new Promise((resolve) => {
@@ -328,22 +330,31 @@ function verifyGidRootFrame(viewport, screenshotBytes, systemWindowOpen = false)
     pixelsChecked++;
   };
   // The root rectangle is 158x159 at native 640x480, from the recovered
-  // GID anchor and seven rows. Check every visible painted border pixel.
+  // GID anchor and seven rows. FUN_004511e0 hands FUN_00607740 the tiles in
+  // the Game Menu Window's order, laid out as the A0 menus show
+  // (status/14-char-menu.png, build-orders/12-speed.png): corners 10101,
+  // 10100, 10103, 10102; 10105 and 10106 in every column of the top and
+  // bottom; 10107 and 10104 on every second row of the sides. Check every
+  // painted border pixel.
   for (const [id, x, y] of [
-    [10100, 425, 230], [10101, 581, 230],
-    [10102, 425, 387], [10103, 581, 387],
+    [10101, 425, 230], [10100, 581, 230],
+    [10103, 425, 387], [10102, 581, 387],
   ]) {
     for (let by = 0; by < 2; by++) {
       for (let bx = 0; bx < 2; bx++) check(x + bx, y + by, id, bx, by);
     }
   }
   for (let x = 427; x <= 580; x++) {
-    check(x, 230, 10104, (x - 427) % 2, 0);
-    check(x, 388, 10107, (x - 427) % 2, 0);
+    for (let by = 0; by < 2; by++) {
+      check(x, 230 + by, 10105, 0, by);
+      check(x, 387 + by, 10106, 0, by);
+    }
   }
-  for (let y = 232; y <= 386; y++) {
-    check(425, y, 10105, 0, (y - 232) % 2);
-    check(582, y, 10106, 0, (y - 232) % 2);
+  for (let y = 232; y < 387; y += 2) {
+    for (let bx = 0; bx < 2; bx++) {
+      check(425 + bx, y, 10107, bx, 0);
+      check(581 + bx, y, 10104, bx, 0);
+    }
   }
   return {
     status: systemWindowOpen ? "source-bitmap-visible-partial" : "source-bitmap-exact",

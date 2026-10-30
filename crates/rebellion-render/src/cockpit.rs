@@ -1176,96 +1176,76 @@ pub(crate) fn gid_popup_frame() -> egui::Frame {
 
 /// `FUN_004511e0` passes STRATEGY 10100..10107 to the native GID frame
 /// constructor, and `FUN_00442860` passes the same tiles to every Game Menu
-/// Window. Corners are 2x2; the four one-pixel strips repeat between them.
-/// The video reference also shows the characteristic alternating edge.
+/// Window; `FUN_00607740` builds the frame from them. As the A0 menus show
+/// (`status/14-char-menu.png`, `build-orders/12-speed.png`, 2026-10-30):
+///
+/// - the corners, 2 by 2: 10101 top left, 10100 top right, 10103 bottom
+///   left, 10102 bottom right;
+/// - the top and bottom, 10105 and 10106 (1 by 2), in every column between
+///   the corners;
+/// - the sides, 10107 left and 10104 right (2 by 1), on every second row
+///   from the third: the loop steps by two rows (hyp: by a 2-pixel tile's
+///   height), so the rows between show the window's fill.
 pub(crate) fn paint_gid_frame_border(
     ui: &egui::Ui,
     cache: &mut BmpCache,
     rect: egui::Rect,
     scale: f32,
 ) {
-    let corner = 2.0 * scale;
-    let tile = |ui: &egui::Ui, cache: &mut BmpCache, id, target: egui::Rect| {
-        if let Some(texture) = cache.get(ui.ctx(), DllSource::Strategy, id) {
-            ui.painter().image(
-                texture.id(),
-                target,
-                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-                egui::Color32::WHITE,
-            );
-        }
-    };
-    for (id, pos) in [
-        (10100, rect.min),
-        (10101, egui::pos2(rect.max.x - corner, rect.min.y)),
-        (10102, egui::pos2(rect.min.x, rect.max.y - corner)),
-        (10103, rect.max - egui::vec2(corner, corner)),
-    ] {
-        tile(
-            ui,
-            cache,
-            id,
-            egui::Rect::from_min_size(pos, egui::vec2(corner, corner)),
-        );
-    }
-    for (id, start, end, horizontal) in [
-        (
-            10104,
-            egui::pos2(rect.min.x + corner, rect.min.y),
-            egui::pos2(rect.max.x - corner, rect.min.y),
-            true,
-        ),
-        (
-            10107,
-            egui::pos2(rect.min.x + corner, rect.max.y - scale),
-            egui::pos2(rect.max.x - corner, rect.max.y - scale),
-            true,
-        ),
-        (
-            10105,
-            egui::pos2(rect.min.x, rect.min.y + corner),
-            egui::pos2(rect.min.x, rect.max.y - corner),
-            false,
-        ),
-        (
-            10106,
-            egui::pos2(rect.max.x - scale, rect.min.y + corner),
-            egui::pos2(rect.max.x - scale, rect.max.y - corner),
-            false,
-        ),
-    ] {
+    let width = (rect.width() / scale).round();
+    let height = (rect.height() / scale).round();
+    let tiles = frame_tiles(width, height);
+    let full = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0));
+    for id in 10100..=10107 {
+        let targets: Vec<_> = tiles
+            .iter()
+            .filter(|tile| tile.0 == id)
+            .map(|&(_, x, y, w, h)| {
+                egui::Rect::from_min_size(
+                    rect.min + egui::vec2(x, y) * scale,
+                    egui::vec2(w, h) * scale,
+                )
+            })
+            .collect();
+        #[cfg(test)]
+        crate::fleet_window::tests::PAINTED.with(|painted| {
+            painted
+                .borrow_mut()
+                .extend(targets.iter().map(|target| (id, target.min)));
+        });
         let Some(texture) = cache.get(ui.ctx(), DllSource::Strategy, id) else {
             continue;
         };
         let mut mesh = egui::Mesh::with_texture(texture.id());
-        let mut position = if horizontal { start.x } else { start.y };
-        let limit = if horizontal { end.x } else { end.y };
-        while position < limit {
-            let remaining = (limit - position).min(corner);
-            let target = if horizontal {
-                egui::Rect::from_min_size(
-                    egui::pos2(position, start.y),
-                    egui::vec2(remaining, scale),
-                )
-            } else {
-                egui::Rect::from_min_size(
-                    egui::pos2(start.x, position),
-                    egui::vec2(scale, remaining),
-                )
-            };
-            let uv = egui::Rect::from_min_max(
-                egui::Pos2::ZERO,
-                if horizontal {
-                    egui::pos2(remaining / corner, 1.0)
-                } else {
-                    egui::pos2(1.0, remaining / corner)
-                },
-            );
-            mesh.add_rect_with_uv(target, uv, egui::Color32::WHITE);
-            position += corner;
+        for target in targets {
+            mesh.add_rect_with_uv(target, full, egui::Color32::WHITE);
         }
         ui.painter().add(egui::Shape::mesh(mesh));
     }
+}
+
+/// The frame's tiles for a window `width` by `height` (logical pixels):
+/// each one's STRATEGY id and its rectangle in the window.
+pub(crate) fn frame_tiles(width: f32, height: f32) -> Vec<(u32, f32, f32, f32, f32)> {
+    let mut tiles = vec![
+        (10101, 0.0, 0.0, 2.0, 2.0),
+        (10100, width - 2.0, 0.0, 2.0, 2.0),
+        (10103, 0.0, height - 2.0, 2.0, 2.0),
+        (10102, width - 2.0, height - 2.0, 2.0, 2.0),
+    ];
+    let mut x = 2.0;
+    while x < width - 2.0 {
+        tiles.push((10105, x, 0.0, 1.0, 2.0));
+        tiles.push((10106, x, height - 2.0, 1.0, 2.0));
+        x += 1.0;
+    }
+    let mut y = 2.0;
+    while y < height - 2.0 {
+        tiles.push((10107, 0.0, y, 2.0, 1.0));
+        tiles.push((10104, width - 2.0, y, 2.0, 1.0));
+        y += 2.0;
+    }
+    tiles
 }
 
 pub(crate) fn paint_gid_icon(
@@ -1671,6 +1651,72 @@ fn macroquad_accelerator(key: KeyCode) -> Option<CockpitButton> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_frame_paints_its_tiles_scaled_from_the_rect() {
+        // A 20 by 18 window at (10, 20), scale 2: each tile lands at the
+        // rect's corner plus its place times the scale.
+        crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let rect = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(40.0, 36.0));
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            egui::Area::new(egui::Id::new("frame")).show(ctx, |ui| {
+                super::paint_gid_frame_border(ui, &mut cache, rect, 2.0);
+            });
+        });
+        let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
+        let mut expected: Vec<(u32, egui::Pos2)> = super::frame_tiles(20.0, 18.0)
+            .into_iter()
+            .map(|(id, x, y, _, _)| (id, egui::pos2(10.0 + 2.0 * x, 20.0 + 2.0 * y)))
+            .collect();
+        expected.sort_by(|a, b| {
+            (a.0, a.1.x as i32, a.1.y as i32).cmp(&(b.0, b.1.x as i32, b.1.y as i32))
+        });
+        let mut seen = painted;
+        seen.sort_by(|a, b| {
+            (a.0, a.1.x as i32, a.1.y as i32).cmp(&(b.0, b.1.x as i32, b.1.y as i32))
+        });
+        assert_eq!(seen, expected);
+        assert!(seen.contains(&(10102, egui::pos2(46.0, 52.0))));
+    }
+
+    #[test]
+    fn the_frame_lays_its_tiles_as_the_a0_menus_show() {
+        // FUN_00607740 with FUN_00442860's tiles; A0 status/14-char-menu.png:
+        // corners 10101/10100/10103/10102, the top and bottom (10105,
+        // 10106) in every column, the sides (10107, 10104) on every second
+        // row from the third.
+        let tiles = super::frame_tiles(10.0, 9.0);
+        let at = |id: u32| -> Vec<(f32, f32)> {
+            tiles
+                .iter()
+                .filter(|tile| tile.0 == id)
+                .map(|tile| (tile.1, tile.2))
+                .collect()
+        };
+        assert_eq!(at(10101), vec![(0.0, 0.0)]);
+        assert_eq!(at(10100), vec![(8.0, 0.0)]);
+        assert_eq!(at(10103), vec![(0.0, 7.0)]);
+        assert_eq!(at(10102), vec![(8.0, 7.0)]);
+        let columns: Vec<_> = (2..8).map(|x| (x as f32, 0.0)).collect();
+        assert_eq!(at(10105), columns);
+        assert_eq!(
+            at(10106),
+            columns.iter().map(|&(x, _)| (x, 7.0)).collect::<Vec<_>>()
+        );
+        assert_eq!(at(10107), vec![(0.0, 2.0), (0.0, 4.0), (0.0, 6.0)]);
+        assert_eq!(at(10104), vec![(8.0, 2.0), (8.0, 4.0), (8.0, 6.0)]);
+        for tile in &tiles {
+            let size = (tile.3, tile.4);
+            let expected = match tile.0 {
+                10100..=10103 => (2.0, 2.0),
+                10105 | 10106 => (1.0, 2.0),
+                _ => (2.0, 1.0),
+            };
+            assert_eq!(size, expected, "{tile:?}");
+        }
+    }
 
     #[test]
     fn the_briefing_displays_carry_their_textstra_names() {

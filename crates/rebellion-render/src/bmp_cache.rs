@@ -1995,10 +1995,16 @@ fn uses_black_key_transparency(source: DllSource, resource_id: u32) -> bool {
 /// `FUN_005fd0f0`; the key is the first byte of the DIB's bits,
 /// `FUN_005fd170`): Build Selection's list, step and bottom buttons
 /// (`FUN_00438620`; 10592..10597 also serve the mission dialog), whose
-/// corners show the window behind them in A0 (2026-10-30).
+/// corners show the window behind them in A0 (2026-10-30); and the Game
+/// Menu Window's submenu arrows (10117/10118, 10128/10129), which its paint
+/// blits keyed the same way (`FUN_004aab50` → `FUN_005fd0f0`), black around
+/// the arrow in A0 `status/14-char-menu.png` showing the menu's fill.
 fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     source == DllSource::Strategy
-        && matches!(resource_id, 10_592..=10_597 | 10_606..=10_607 | 10_610..=10_613)
+        && matches!(
+            resource_id,
+            10_117..=10_118 | 10_128..=10_129 | 10_592..=10_597 | 10_606..=10_607 | 10_610..=10_613
+        )
 }
 
 /// The colour of an uncompressed 8-bit DIB's first pixel (its bottom row's
@@ -2859,10 +2865,14 @@ pub(crate) mod tests {
             let decoded = decode_color_image(&bytes, DllSource::Strategy, resource_id).unwrap();
             [decoded.pixels[0].a(), decoded.pixels[1].a()]
         };
-        for keyed in [10592, 10594, 10597, 10606, 10607, 10610, 10613] {
+        for keyed in [
+            10117, 10118, 10128, 10129, 10592, 10594, 10597, 10606, 10607, 10610, 10613,
+        ] {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
-        for opaque in [10591, 10598, 10605, 10608, 10609, 10614, 10800] {
+        for opaque in [
+            10116, 10119, 10127, 10130, 10591, 10598, 10605, 10608, 10609, 10614, 10800,
+        ] {
             assert_eq!(alpha(opaque), [255, 255], "{opaque}");
         }
     }
