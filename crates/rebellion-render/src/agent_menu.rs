@@ -7,7 +7,10 @@ use egui_macroquad::egui;
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::{CockpitFaction, CockpitLayout};
-use crate::game_menu::{draw_game_menu, GameMenuEntry, GameMenuPlacement, GameMenuResponse};
+use crate::game_menu::{
+    GameMenuEntry, GameMenuPlacement, GameMenuResponse, GameMenuState, GameSubmenu, draw_game_menu,
+    draw_game_menu_with_submenu,
+};
 
 const AGENT_MENU_ID: &str = "original-agent-menu";
 
@@ -266,9 +269,503 @@ pub fn draw_agent_menu(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Message Alerts (list 0xbeef)
+// ---------------------------------------------------------------------------
+
+const ALERTS_MENU_ID: &str = "original-message-alerts-menu";
+
+/// One Message Alerts record: its command, sort key (word 2), TEXTSTRA
+/// label (word 5) and the message category mask it toggles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AlertRecord {
+    pub command: u16,
+    pub sort_key: u16,
+    pub label: &'static str,
+    pub mask: u16,
+}
+
+/// The submenu "Message Alerts" (STRATEGY `RT_RCDATA` `0x170`, sort key 630,
+/// TEXTSTRA 12573), parent of `0x171..0x179` (word 1 `0x170`), in sort
+/// order; the masks are `FUN_00486fb0`'s.
+pub const ALERT_RECORDS: [AlertRecord; 9] = [
+    AlertRecord {
+        command: 0x171,
+        sort_key: 631,
+        label: "Loyalty",
+        mask: 0x001,
+    },
+    AlertRecord {
+        command: 0x172,
+        sort_key: 632,
+        label: "Fleets",
+        mask: 0x080,
+    },
+    AlertRecord {
+        command: 0x173,
+        sort_key: 633,
+        label: "Mission",
+        mask: 0x010,
+    },
+    AlertRecord {
+        command: 0x174,
+        sort_key: 634,
+        label: "Resources",
+        mask: 0x004,
+    },
+    AlertRecord {
+        command: 0x175,
+        sort_key: 635,
+        label: "Manufacturing",
+        mask: 0x008,
+    },
+    AlertRecord {
+        command: 0x176,
+        sort_key: 636,
+        label: "Defense",
+        mask: 0x040,
+    },
+    AlertRecord {
+        command: 0x177,
+        sort_key: 637,
+        label: "Conflict",
+        mask: 0x100,
+    },
+    AlertRecord {
+        command: 0x179,
+        sort_key: 638,
+        label: "Chat",
+        mask: 0x020,
+    },
+    AlertRecord {
+        command: 0x178,
+        sort_key: 639,
+        label: "Advice",
+        mask: 0x200,
+    },
+];
+
+/// What the Message Alerts menu asks of the app.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AlertsCommand {
+    /// `0x11c` "Messages": the Message Index on All (`FUN_0041d770(1, 0x79)`).
+    Messages,
+    /// `0x171..0x179`: flip the category's silent bit (`FUN_00486fb0`:
+    /// `FUN_0048a210(mask, FUN_0048a1c0(mask) ^ 4)`).
+    ToggleAlert(u16),
+}
+
+/// The open Message Alerts menu: its anchor, a 640 by 480 canvas point,
+/// and its window's submenu state.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct AlertsMenuState {
+    pub anchor: Option<(f32, f32)>,
+    window: GameMenuState,
+}
+
+/// Whether a right click at canvas `point` lands on the second droid's
+/// panel (list `0xbeef`, `FUN_0042d050`).
+#[must_use]
+pub fn alerts_panel_contains(faction: CockpitFaction, point: (f32, f32)) -> bool {
+    let (x, y, width, height) = crate::advisor::second_aperture(faction);
+    point.0 >= x && point.0 < x + width && point.1 >= y && point.1 < y + height
+}
+
+/// Open the Message Alerts menu on a right-button release over the second
+/// droid's panel (`FUN_0042d050` with `0xbeef` → `FUN_0041d190` →
+/// `FUN_00487a60`), anchored at the release.
+pub fn open_alerts_menu_on_right_click(
+    ctx: &egui::Context,
+    state: &mut AlertsMenuState,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+) -> bool {
+    if layout.scale <= 0.0 || ctx.is_pointer_over_area() {
+        return false;
+    }
+    let (released, pointer) = ctx.input(|input| {
+        (
+            input
+                .pointer
+                .button_released(egui::PointerButton::Secondary),
+            input.pointer.interact_pos(),
+        )
+    });
+    let Some(pointer) = pointer.filter(|_| released) else {
+        return false;
+    };
+    let point = (
+        (pointer.x - layout.canvas.x) / layout.scale,
+        (pointer.y - layout.canvas.y) / layout.scale,
+    );
+    if !alerts_panel_contains(faction, point) {
+        return false;
+    }
+    *state = AlertsMenuState {
+        anchor: Some(point),
+        window: GameMenuState::default(),
+    };
+    true
+}
+
+/// The submenu's entries as `FUN_00487a60` leaves them: every category
+/// enabled, checked while it alerts (its option's bit 4 clear).
+#[must_use]
+pub fn alert_entries(silent: impl Fn(u16) -> bool) -> Vec<(AlertRecord, bool)> {
+    ALERT_RECORDS
+        .iter()
+        .map(|&record| (record, !silent(record.mask)))
+        .collect()
+}
+
+/// Draw the open Message Alerts menu: "Messages" (sort key 620) and the
+/// "Message Alerts" submenu (630); return the command chosen.
+pub fn draw_alerts_menu(
+    ctx: &egui::Context,
+    state: &mut AlertsMenuState,
+    cache: &mut BmpCache,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    silent: impl Fn(u16) -> bool,
+    input_enabled: bool,
+) -> Option<AlertsCommand> {
+    let anchor = state.anchor?;
+    let entries = [
+        GameMenuEntry {
+            label: "Messages",
+            icon: None,
+            enabled: true,
+            submenu: false,
+        },
+        GameMenuEntry {
+            label: "Message Alerts",
+            icon: None,
+            enabled: true,
+            submenu: true,
+        },
+    ];
+    let alerts = alert_entries(silent);
+    let children: Vec<GameMenuEntry<'_>> = alerts
+        .iter()
+        .map(|(record, checked)| GameMenuEntry {
+            label: record.label,
+            icon: checked.then_some(CHECK_BITMAP),
+            enabled: true,
+            submenu: false,
+        })
+        .collect();
+    match draw_game_menu_with_submenu(
+        ctx,
+        egui::Id::new(ALERTS_MENU_ID),
+        cache,
+        layout,
+        faction,
+        GameMenuPlacement::in_frame(anchor),
+        &entries,
+        Some(GameSubmenu {
+            parent: 1,
+            entries: &children,
+        }),
+        &mut state.window,
+        input_enabled,
+    ) {
+        GameMenuResponse::Open => None,
+        response => {
+            state.anchor = None;
+            alerts_command(response)
+        }
+    }
+}
+
+/// The command a closing response chooses: row 0 is "Messages"; the
+/// parent row chooses nothing; a submenu row toggles its category.
+#[must_use]
+pub fn alerts_command(response: GameMenuResponse) -> Option<AlertsCommand> {
+    match response {
+        GameMenuResponse::Chosen(0) => Some(AlertsCommand::Messages),
+        GameMenuResponse::ChosenChild(index) => ALERT_RECORDS
+            .get(index)
+            .map(|record| AlertsCommand::ToggleAlert(record.mask)),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_alerts_submenu_lists_its_categories_in_sort_order_checked_while_they_alert() {
+        // STRATEGY RCDATA 0x171..0x179 (parent 0x170): sort keys 631..639,
+        // Chat (638) before Advice (639); FUN_00487a60 checks a category
+        // while its option's bit 4 is clear; FUN_00486fb0's masks.
+        let keys: Vec<u16> = ALERT_RECORDS.iter().map(|record| record.sort_key).collect();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(
+            ALERT_RECORDS.map(|record| (record.command, record.mask)),
+            [
+                (0x171, 0x001),
+                (0x172, 0x080),
+                (0x173, 0x010),
+                (0x174, 0x004),
+                (0x175, 0x008),
+                (0x176, 0x040),
+                (0x177, 0x100),
+                (0x179, 0x020),
+                (0x178, 0x200),
+            ]
+        );
+        let entries = alert_entries(|mask| mask == 0x200);
+        assert!(
+            entries
+                .iter()
+                .all(|(record, checked)| *checked == (record.mask != 0x200))
+        );
+        assert_eq!(entries[8].0.label, "Advice");
+    }
+
+    #[test]
+    fn the_alerts_menu_opens_the_index_or_toggles_the_chosen_category() {
+        // FUN_00486fb0: 0x11c opens the index on All; 0x171..0x179 flip
+        // their category's bit 4.
+        assert_eq!(
+            alerts_command(GameMenuResponse::Chosen(0)),
+            Some(AlertsCommand::Messages)
+        );
+        assert_eq!(alerts_command(GameMenuResponse::Chosen(1)), None);
+        assert_eq!(alerts_command(GameMenuResponse::Dismissed), None);
+        assert_eq!(
+            alerts_command(GameMenuResponse::ChosenChild(0)),
+            Some(AlertsCommand::ToggleAlert(0x001))
+        );
+        assert_eq!(
+            alerts_command(GameMenuResponse::ChosenChild(8)),
+            Some(AlertsCommand::ToggleAlert(0x200))
+        );
+        assert_eq!(alerts_command(GameMenuResponse::ChosenChild(9)), None);
+    }
+
+    #[test]
+    fn the_second_droids_panel_opens_the_alerts_menu() {
+        // FUN_0042d050: 0xbeef is the second droid's panel (FUN_0042adb0):
+        // Alliance R2-D2 (316, 411) 47 by 69, Empire SD-7 (302, 401) 101
+        // by 79.
+        assert!(alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (320.0, 420.0)
+        ));
+        assert!(!alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (364.0, 420.0)
+        ));
+        assert!(alerts_panel_contains(
+            CockpitFaction::Empire,
+            (402.0, 479.0)
+        ));
+        assert!(!alerts_panel_contains(
+            CockpitFaction::Empire,
+            (301.0, 420.0)
+        ));
+        assert!(!agent_panel_contains(
+            CockpitFaction::Alliance,
+            (320.0, 420.0)
+        ));
+        // The right and bottom edges are outside.
+        assert!(alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (362.9, 479.9)
+        ));
+        assert!(!alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (363.0, 420.0)
+        ));
+        assert!(!alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (320.0, 480.0)
+        ));
+        assert!(!alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (315.9, 420.0)
+        ));
+        assert!(!alerts_panel_contains(
+            CockpitFaction::Alliance,
+            (320.0, 410.9)
+        ));
+    }
+
+    /// A screen that scales the canvas by 2 and letterboxes it 20 down,
+    /// and one that letterboxes it sideways.
+    const TEST_SCREEN: (f32, f32) = (1280.0, 1000.0);
+    const WIDE_SCREEN: (f32, f32) = (1400.0, 1000.0);
+
+    /// Run `frames` through the alerts menu at the Alliance's layout on
+    /// `screen`: each frame's pointer and a button pressed or released
+    /// there; returns each frame's opening and command.
+    fn drive_alerts(
+        screen: (f32, f32),
+        state: &mut AlertsMenuState,
+        frames: &[(egui::Pos2, Option<(egui::PointerButton, bool)>)],
+    ) -> Vec<(bool, Option<AlertsCommand>)> {
+        let placed: Vec<_> = frames
+            .iter()
+            .map(|&(pos, button)| (Placed::At(pos), button))
+            .collect();
+        drive_alerts_placed(screen, state, &placed)
+    }
+
+    /// A pointer at a screen point, or on the open menu's row `n` of two.
+    #[derive(Clone, Copy)]
+    enum Placed {
+        At(egui::Pos2),
+        Row(usize),
+    }
+
+    fn drive_alerts_placed(
+        screen: (f32, f32),
+        state: &mut AlertsMenuState,
+        frames: &[(Placed, Option<(egui::PointerButton, bool)>)],
+    ) -> Vec<(bool, Option<AlertsCommand>)> {
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let layout = crate::cockpit::CockpitState::new(CockpitFaction::Alliance)
+            .layout_for(screen.0, screen.1);
+        let mut out = Vec::new();
+        for (index, &(placed, button)) in frames.iter().enumerate() {
+            let pos = match placed {
+                Placed::At(pos) => pos,
+                Placed::Row(row) => {
+                    let menu = ctx
+                        .memory(|memory| memory.area_rect(egui::Id::new(ALERTS_MENU_ID)))
+                        .expect("the menu is shown");
+                    #[expect(clippy::cast_precision_loss, reason = "Two rows.")]
+                    let y = menu.top() + menu.height() * (row as f32 * 2.0 + 1.0) / 4.0;
+                    egui::pos2(menu.center().x, y)
+                }
+            };
+            let mut events = vec![egui::Event::PointerMoved(pos)];
+            if let Some((button, pressed)) = button {
+                events.push(egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    modifiers: egui::Modifiers::default(),
+                });
+            }
+            #[expect(clippy::cast_precision_loss, reason = "A few frames.")]
+            let time = index as f64 * 0.05;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(screen.0, screen.1),
+                )),
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let mut step = (false, None);
+            let _ = ctx.run(input, |ctx| {
+                step.0 =
+                    open_alerts_menu_on_right_click(ctx, state, layout, CockpitFaction::Alliance);
+                step.1 = draw_alerts_menu(
+                    ctx,
+                    state,
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Alliance,
+                    |_| false,
+                    true,
+                );
+            });
+            out.push(step);
+        }
+        out
+    }
+
+    #[test]
+    fn a_right_click_on_the_second_droid_opens_the_menu_at_the_release() {
+        // FUN_0042d050 (0xbeef): a right-button release on the panel opens
+        // the menu at the release; elsewhere it does not.
+        for screen in [TEST_SCREEN, WIDE_SCREEN] {
+            opens_at_the_release(screen);
+        }
+    }
+
+    fn opens_at_the_release(screen: (f32, f32)) {
+        let layout = crate::cockpit::CockpitState::new(CockpitFaction::Alliance)
+            .layout_for(screen.0, screen.1);
+        let at = |x: f32, y: f32| {
+            egui::pos2(
+                layout.canvas.x + x * layout.scale,
+                layout.canvas.y + y * layout.scale,
+            )
+        };
+        let click = |point: egui::Pos2, button| {
+            [
+                (point, Some((button, true))),
+                (point, Some((button, false))),
+            ]
+        };
+        let mut state = AlertsMenuState::default();
+        let outside = drive_alerts(
+            screen,
+            &mut state,
+            &click(at(200.0, 200.0), egui::PointerButton::Secondary),
+        );
+        assert_eq!(outside, [(false, None), (false, None)]);
+        assert_eq!(state.anchor, None);
+        let left = drive_alerts(
+            screen,
+            &mut state,
+            &click(at(339.0, 445.0), egui::PointerButton::Primary),
+        );
+        assert_eq!(
+            left,
+            [(false, None), (false, None)],
+            "a left click does not open it"
+        );
+        let opened = drive_alerts(
+            screen,
+            &mut state,
+            &click(at(339.0, 445.0), egui::PointerButton::Secondary),
+        );
+        assert!(opened[1].0);
+        let anchor = state.anchor.expect("the menu opens");
+        assert!(
+            (anchor.0 - 339.0).abs() < 0.01 && (anchor.1 - 445.0).abs() < 0.01,
+            "{anchor:?}"
+        );
+    }
+
+    #[test]
+    fn the_menus_first_row_opens_the_message_index() {
+        // FUN_00486fb0 0x11c: FUN_0041d770(1, 0x79).
+        let layout = crate::cockpit::CockpitState::new(CockpitFaction::Alliance)
+            .layout_for(TEST_SCREEN.0, TEST_SCREEN.1);
+        let droid = egui::pos2(
+            layout.canvas.x + 339.0 * layout.scale,
+            layout.canvas.y + 445.0 * layout.scale,
+        );
+        let right = egui::PointerButton::Secondary;
+        let left = egui::PointerButton::Primary;
+        let mut state = AlertsMenuState::default();
+        let out = drive_alerts_placed(
+            TEST_SCREEN,
+            &mut state,
+            &[
+                (Placed::At(droid), Some((right, true))),
+                (Placed::At(droid), Some((right, false))),
+                (Placed::Row(0), None),
+                (Placed::Row(0), Some((left, true))),
+                (Placed::Row(0), Some((left, false))),
+            ],
+        );
+        assert_eq!(
+            out.last(),
+            Some(&(false, Some(AlertsCommand::Messages))),
+            "{out:?}"
+        );
+        assert_eq!(state.anchor, None, "the menu closes");
+    }
 
     #[test]
     fn the_menu_lists_list_0xdeads_records_in_sort_order() {

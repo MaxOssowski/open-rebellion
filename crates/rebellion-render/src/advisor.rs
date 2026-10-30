@@ -1551,6 +1551,16 @@ pub fn agent_aperture(faction: CockpitFaction) -> (f32, f32, f32, f32) {
     })[0]
 }
 
+/// The second droid's aperture (`FUN_0042adb0`, the panel the Message
+/// Alerts menu opens from), in 640 by 480 canvas points.
+#[must_use]
+pub fn second_aperture(faction: CockpitFaction) -> (f32, f32, f32, f32) {
+    advisor_apertures(match faction {
+        CockpitFaction::Alliance => AdvisorFaction::Alliance,
+        CockpitFaction::Empire => AdvisorFaction::Empire,
+    })[1]
+}
+
 fn scaled_advisor_apertures(
     faction: AdvisorFaction,
     screen_width: f32,

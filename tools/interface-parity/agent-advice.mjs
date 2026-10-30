@@ -38,9 +38,11 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // 41 (FUN_004665f0).
 const FACTIONS = [
   { name: "alliance", menuIndex: 9, firstRow: [args.alliance_row_x ?? 260, args.alliance_row_y ?? 160],
-    selectAll: [62 + 0x11a + 28, 49 + 0x57 + 10], post: [62 + 0x1a7 + 16, 49 + 0x93 + 15] },
+    selectAll: [62 + 0x11a + 28, 49 + 0x57 + 10], post: [62 + 0x1a7 + 16, 49 + 0x93 + 15],
+    secondDroid: [316 + 23, 411 + 34] },
   { name: "empire", menuIndex: 8, firstRow: [args.empire_row_x ?? 330, args.empire_row_y ?? 160],
-    selectAll: [125 + 0x11a + 28, 52 + 0x57 + 10], post: [125 + 0x1aa + 22, 52 + 0x94 + 20] },
+    selectAll: [125 + 0x11a + 28, 52 + 0x57 + 10], post: [125 + 0x1aa + 22, 52 + 0x94 + 20],
+    secondDroid: [302 + 50, 401 + 39] },
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
@@ -158,6 +160,16 @@ async function run(browser, base, faction) {
     await page.waitForTimeout(500);
     await shot("advice-message");
     assert.equal(posted().length, 9, "nothing more is posted at once");
+    // The second droid's panel (FUN_0042d050, 0xbeef) opens the Message
+    // Alerts menu (FUN_00487a60): "Messages" and the "Message Alerts"
+    // submenu.
+    await click(page, faction.secondDroid, "right");
+    await waitFor(page, log, "the second droid opens the Message Alerts menu",
+      () => log.some((line) => line.includes("[interface] message_alerts status=opened")), 5_000);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    await shot("alerts-menu");
+    await page.keyboard.press("Escape");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));

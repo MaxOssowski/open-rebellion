@@ -1130,6 +1130,7 @@ async fn main() {
     // at a new game (FUN_00439950).
     let mut player_agent = PlayerAgent::default();
     let mut agent_menu_state = rebellion_render::agent_menu::AgentMenuState::default();
+    let mut alerts_menu_state = rebellion_render::agent_menu::AlertsMenuState::default();
     // Find HQ systems for victory detection
     let alliance_hq = world
         .systems
@@ -4849,6 +4850,63 @@ async fn main() {
                             command,
                             "menu",
                         );
+                    }
+                    // A right click on the second droid opens the Message
+                    // Alerts menu (list 0xbeef, FUN_0041d190 → FUN_00487a60).
+                    if speed_input
+                        && rebellion_render::agent_menu::open_alerts_menu_on_right_click(
+                            ctx,
+                            &mut alerts_menu_state,
+                            cockpit_layout,
+                            cockpit_state.faction,
+                        )
+                    {
+                        macroquad::logging::info!("[interface] message_alerts status=opened");
+                    }
+                    let player_alliance = player_faction == MissionFaction::Alliance;
+                    let alerts_command = rebellion_render::agent_menu::draw_alerts_menu(
+                        ctx,
+                        &mut alerts_menu_state,
+                        &mut bmp_cache,
+                        cockpit_layout,
+                        cockpit_state.faction,
+                        |mask| {
+                            msg_log.posting_option(Some(mask))
+                                & rebellion_render::message_log::SILENT
+                                != 0
+                        },
+                        speed_input,
+                    );
+                    match alerts_command {
+                        Some(rebellion_render::agent_menu::AlertsCommand::ToggleAlert(mask)) => {
+                            msg_log.toggle_silent(Some(mask));
+                            macroquad::logging::info!(
+                                "[interface] message_alerts mask={:#x} silent={}",
+                                mask,
+                                msg_log.posting_option(Some(mask))
+                                    & rebellion_render::message_log::SILENT
+                                    != 0
+                            );
+                        }
+                        Some(rebellion_render::agent_menu::AlertsCommand::Messages)
+                            if message_index.is_none() =>
+                        {
+                            // FUN_0041d770(1, 0x79): the index on All.
+                            let mut index = MessageIndexState::new();
+                            let actions = index.set_category(0x79);
+                            message_index = Some(index);
+                            apply_message_index_actions(
+                                actions,
+                                &mut msg_log,
+                                &mut clock,
+                                &mut advice_saved_speed,
+                            );
+                            macroquad::logging::info!(
+                                "[interface] destination=message_index category=0x79 status=opened_by_alerts_menu side_alliance={}",
+                                player_alliance
+                            );
+                        }
+                        _ => {}
                     }
                     // A rail light's click (0x136..0x13e) or F6 (0x75) opens
                     // the Message Index on its category; FUN_0042a240 does
