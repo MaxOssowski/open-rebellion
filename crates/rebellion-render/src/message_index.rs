@@ -422,6 +422,47 @@ pub fn disabled_rail_controls(
     controls
 }
 
+/// A rail or list button's tooltip (`FUN_004665f0`, TEXTSTRA): Close
+/// 0x1954; Display Message 0x8020, renamed 0x8019 "Message Index" while
+/// one message shows (`FUN_00468fb0`, A0 tooltip/90); the posting toggle
+/// 0x8005 "Post Messages Silently", or 0x8006 "Post Messages with Alert"
+/// for a silent category (`FUN_004697b0`, `FUN_00467f10`); Display 0x8030;
+/// Select All 0x8008; Delete 0x8009. The scroll buttons have none.
+#[must_use]
+pub const fn button_tooltip_string(command: u16, mode: IndexMode, silent: bool) -> Option<u16> {
+    match command {
+        0x28 => Some(0x1954),
+        0x65 => Some(match mode {
+            IndexMode::List => 0x8020,
+            IndexMode::SingleMessage => 0x8019,
+        }),
+        0x66 => Some(if silent { 0x8006 } else { 0x8005 }),
+        0x67 => Some(0x8030),
+        0x90 => Some(0x8008),
+        0x91 => Some(0x8009),
+        _ => None,
+    }
+}
+
+/// A category control's tooltip (`FUN_004665f0`): its category's name,
+/// TEXTSTRA 0x8010 "All Messages" and the rail's names (A0 tooltip/71..80).
+#[must_use]
+pub const fn category_tooltip_string(command: u16) -> Option<u16> {
+    match command {
+        0x79 => Some(0x8010), // All Messages
+        0x7a => Some(0x8011), // Popular Support Messages
+        0x7b => Some(0x8017), // Fleet Messages
+        0x7c => Some(0x8014), // Mission Messages
+        0x7d => Some(0x8012), // Resource Messages
+        0x7e => Some(0x8013), // Manufacturing Messages
+        0x7f => Some(0x8016), // Defense Messages
+        0x80 => Some(0x8018), // Conflict Messages
+        0x81 => Some(0x8015), // Chat Messages
+        0x82 => Some(0x8032), // Advice Messages
+        _ => None,
+    }
+}
+
 /// Paint the window's buttons and return the one clicked.
 fn draw_window_buttons(
     ctx: &egui::Context,
@@ -481,6 +522,9 @@ fn draw_window_buttons(
                     ui.id().with(("message-index-button", button.command_id)),
                     egui::Sense::click(),
                 );
+                if let Some(string) = button_tooltip_string(button.command_id, mode, silent) {
+                    crate::win_tooltip::response_tool(&response, rect, string);
+                }
                 let pressed = primary_down
                     && pointer.is_some_and(|point| message_index_rect_contains(rect, point));
                 paint_strategy_resource(
@@ -612,6 +656,9 @@ fn draw_shell(
                     ui.id().with(("message-index-category", control.command_id)),
                     egui::Sense::click(),
                 );
+                if let Some(string) = category_tooltip_string(control.command_id) {
+                    crate::win_tooltip::response_tool(&response, rect, string);
+                }
                 let pressed = category_pressed(
                     chosen,
                     control.command_id,
@@ -1681,6 +1728,33 @@ pub fn draw_message_index_fixture(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn each_control_has_its_tooltip_string() {
+        use super::{button_tooltip_string, category_tooltip_string, IndexMode};
+        // FUN_004665f0: the categories' names, A0 tooltip/71..80.
+        let categories: Vec<_> = (0x79..=0x82).map(category_tooltip_string).collect();
+        assert_eq!(
+            categories,
+            [0x8010, 0x8011, 0x8017, 0x8014, 0x8012, 0x8013, 0x8016, 0x8018, 0x8015, 0x8032]
+                .map(Some)
+        );
+        assert_eq!(category_tooltip_string(0x83), None);
+        let list = IndexMode::List;
+        let single = IndexMode::SingleMessage;
+        assert_eq!(button_tooltip_string(0x28, list, false), Some(0x1954));
+        // FUN_00468fb0: Display Message, "Message Index" while one shows
+        // (A0 tooltip/84, 90).
+        assert_eq!(button_tooltip_string(0x65, list, false), Some(0x8020));
+        assert_eq!(button_tooltip_string(0x65, single, false), Some(0x8019));
+        // FUN_004697b0: the toggle names what it would do (A0 85).
+        assert_eq!(button_tooltip_string(0x66, list, false), Some(0x8005));
+        assert_eq!(button_tooltip_string(0x66, list, true), Some(0x8006));
+        assert_eq!(button_tooltip_string(0x67, list, false), Some(0x8030));
+        assert_eq!(button_tooltip_string(0x90, list, false), Some(0x8008));
+        assert_eq!(button_tooltip_string(0x91, list, false), Some(0x8009));
+        assert_eq!(button_tooltip_string(0x96, single, false), None);
+    }
 
     #[test]
     fn a_message_picture_sits_at_12_33_with_its_foreground_centred() {

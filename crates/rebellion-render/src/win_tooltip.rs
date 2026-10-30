@@ -221,6 +221,21 @@ fn pt_in_rect(rect: egui::Rect, p: egui::Pos2) -> bool {
     p.x >= rect.min.x && p.x < rect.max.x && p.y >= rect.min.y && p.y < rect.max.y
 }
 
+/// [`tool`] for a control with its own egui response: registers TEXTSTRA
+/// `string` while the response is hovered (egui's hit test, so nothing
+/// covers it) and the pointer is inside `rect` (`PtInRect`).
+pub fn response_tool(response: &egui::Response, rect: egui::Rect, string: u16) {
+    let inside = response
+        .ctx
+        .input(|input| input.pointer.latest_pos())
+        .is_some_and(|p| pt_in_rect(rect, p));
+    if response.hovered() && inside {
+        if let Some(text) = self::string(string) {
+            tool(&response.ctx, response.id, &text);
+        }
+    }
+}
+
 /// [`tool`] for a control of a window drawn in `ui`: registers TEXTSTRA
 /// `string` while the pointer is inside `rect`, the window is the top layer
 /// under it and the control is `enabled`. A disabled window shows no tip
@@ -718,6 +733,46 @@ pub(crate) mod tests {
         assert_eq!(run(inside, false, true, false), None);
         assert_eq!(run(inside, true, false, false), None);
         assert_eq!(run(inside, true, true, true), None);
+    }
+
+    #[test]
+    fn a_hovered_response_tips_inside_its_rectangle() {
+        set_strings(
+            TEST_STRINGS
+                .iter()
+                .map(|(id, text)| (*id, (*text).to_owned()))
+                .collect(),
+        );
+        let run = |pointer: egui::Pos2| {
+            let shapes = frames(
+                &egui::Context::default(),
+                pointer,
+                &[0.0, 0.1, 0.2, 0.3, 0.9],
+                egui::Pos2::ZERO,
+                1.0,
+                |ctx| {
+                    egui::Area::new(egui::Id::new("buttons"))
+                        .fixed_pos(egui::pos2(0.0, 0.0))
+                        .show(ctx, |ui| {
+                            let rect = egui::Rect::from_min_size(
+                                egui::pos2(20.0, 20.0),
+                                egui::vec2(40.0, 40.0),
+                            );
+                            let response =
+                                ui.interact(rect, ui.id().with("b"), egui::Sense::click());
+                            response_tool(&response, rect, 0x1501);
+                        });
+                },
+            );
+            tip_shapes(&shapes).map(|(_, _, text)| text)
+        };
+        assert_eq!(
+            run(egui::pos2(30.0, 30.0)).as_deref(),
+            Some("System Finder")
+        );
+        // egui's response covers the right edge; PtInRect does not.
+        assert_eq!(run(egui::pos2(60.0, 30.0)), None);
+        assert_eq!(run(egui::pos2(200.0, 200.0)), None);
     }
 
     #[test]

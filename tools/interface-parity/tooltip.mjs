@@ -247,6 +247,40 @@ async function run(browser, base, faction) {
         await probe(label, point, capture, none);
       }
       await page.keyboard.press("Escape");
+
+      // The Message Index (ghidra/notes/tooltips.md §4), opened on All
+      // (F6), against A0 tooltip/71..85 and 90. Display (0x67) and the
+      // mode-2 controls without a tip are left to the unit tests: their
+      // state depends on the chosen message.
+      // The event-messages fixture (code 57) has rows, so Display Message
+      // is enabled as in A0.
+      await page.goto(`${base}?fixture-code=${57 | (faction.byte << 8)}`);
+      await page.waitForFunction(() => Boolean(window.__openRebellionInterfaceReady), null,
+        { timeout: 15_000 });
+      await page.locator("#glcanvas").focus();
+      await frames(page, 6);
+      await page.keyboard.press("F6");
+      await page.waitForTimeout(500);
+      for (const [label, point, capture] of [["mi-all", [165, 115], "71-mi-all.png"],
+        ["mi-support", [203, 115], "72-mi-support.png"], ["mi-fleet", [241, 115], "73-mi-fleet.png"],
+        ["mi-mission", [279, 115], "74-mi-mission.png"], ["mi-resource", [317, 115], "75-mi-resource.png"],
+        ["mi-manufacturing", [355, 115], "76-mi-manufacturing.png"], ["mi-defense", [393, 115], "77-mi-defense.png"],
+        ["mi-conflict", [430, 115], "78-mi-conflict.png"], ["mi-chat", [468, 115], "79-mi-chat.png"],
+        ["mi-advice", [505, 115], "80-mi-advice.png"], ["mi-selectall", [440, 148], "81-mi-selectall.png"],
+        ["mi-delete", [490, 148], "82-mi-delete.png"], ["mi-close", [573, 95], "83-mi-r1.png"],
+        ["mi-display-message", [573, 160], "84-mi-r2.png"], ["mi-post", [573, 220], "85-mi-r3.png"]]) {
+        await probe(label, point, capture);
+      }
+      // Display Message opens the chosen message; its tip becomes
+      // "Message Index" (FUN_00468fb0).
+      await page.mouse.move(573, 160, { steps: 4 });
+      await frames(page, 3);
+      await page.mouse.down();
+      await frames(page, 3);
+      await page.mouse.up();
+      await frames(page, 6);
+      await probe("mi-message-index", [573, 160], "90-mi-msg-r2.png");
+      await page.keyboard.press("Escape");
     }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", box, a0, others, shots };
