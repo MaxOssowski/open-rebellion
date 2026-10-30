@@ -1,0 +1,229 @@
+// The original's shared tooltip in the browser build
+// (crates/rebellion-render/src/win_tooltip.rs, ghidra/notes/tooltips.md).
+//
+// Serves the interface-fixture site and opens the Fleet Finder fixture's
+// galaxy (code 53) for each faction. The pointer rests on the Raw Materials
+// monitor: no tip before 500 ms, then TEXTSTRA 5392 in a tip 21 pixels below
+// the pointer, gone after 5 s (TTDT_AUTOMATIC 500, FUN_006008e0). The tip's
+// box and colours are compared with A0 tooltip/01.png when given (--a0=DIR).
+// While the System Finder shows (modal) the monitor gets no tip (A0
+// tooltip/08-index-hover-monitor.png).
+//
+// Build first: bash scripts/build-interface-test-wasm.sh
+// Run:         node tooltip.mjs [--out=DIR] [--faction=alliance|empire] [--a0=DIR]
+// Env:         CHROMIUM_PATH (default /usr/bin/chromium)
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const SITE = path.join(ROOT, ".artifacts/interface-parity/site");
+const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
+  const [key, value = "true"] = arg.replace(/^--/, "").split("=");
+  return [key, value];
+}));
+const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parity",
+  `tooltip-${new Date().toISOString().replace(/[:.]/g, "-")}`));
+// Fixture codes are the Scenario index plus one: 52 FleetFinder.
+const FLEET_FINDER = 53;
+// The Raw Materials monitor's pointer spot (FUN_00422ce0: Alliance (265, 16),
+// Empire (175, 19); A0 tooltip/01.png points at (175, 25)).
+const FACTIONS = [
+  { name: "alliance", byte: 1, pointer: [265, 22] },
+  { name: "empire", byte: 2, pointer: [175, 25] },
+].filter(({ name }) => !args.faction || args.faction === name);
+const FILL = [255, 251, 240];
+const BORDER = [128, 128, 128];
+const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
+  ".json": "application/json", ".orpk": "application/octet-stream" };
+
+function serve(root) {
+  const server = http.createServer(async (request, response) => {
+    const url = new URL(request.url, "http://localhost");
+    const file = path.join(root, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
+    try {
+      const bytes = await fs.readFile(file);
+      response.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" });
+      response.end(bytes);
+    } catch {
+      response.writeHead(404);
+      response.end();
+    }
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+async function frames(page, count = 3) {
+  await page.evaluate((n) => new Promise((resolve) => {
+    let left = n;
+    const step = () => (--left <= 0 ? resolve() : requestAnimationFrame(step));
+    requestAnimationFrame(step);
+  }), count);
+}
+
+const same = (png, x, y, rgb) => {
+  const i = (y * png.width + x) * 4;
+  return png.data[i] === rgb[0] && png.data[i + 1] === rgb[1] && png.data[i + 2] === rgb[2];
+};
+
+// The tip's box: the bounding box of its border colour around the fill.
+function tipBox(png, [px, py]) {
+  let found = null;
+  // Below the pointer, or above it near the client's bottom.
+  for (let y = Math.max(0, py - 25); y < Math.min(png.height, py + 40); y += 1) {
+    for (let x = Math.max(0, px - 220); x < Math.min(png.width, px + 160); x += 1) {
+      if (same(png, x, y, BORDER) && same(png, x + 1, y + 1, FILL)) { found = [x, y]; break; }
+    }
+    if (found) break;
+  }
+  if (!found) return null;
+  const [x0, y0] = found;
+  // The pointer may cover the top edge: measure along the left and bottom.
+  let y1 = y0 + 1;
+  while (y1 < png.height && same(png, x0, y1, BORDER)) y1 += 1;
+  let x1 = x0 + 1;
+  while (x1 < png.width && same(png, x1, y1 - 1, BORDER)) x1 += 1;
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
+const hasFill = (png, box) => box && same(png, box.x + 2, box.y + 2, FILL);
+
+async function run(browser, base, faction) {
+  const directory = path.join(OUT, faction.name);
+  await fs.mkdir(directory, { recursive: true });
+  const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
+  const page = await context.newPage();
+  const log = [];
+  const errors = [];
+  const shots = [];
+  page.on("console", (message) => {
+    log.push(message.text());
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(String(error)));
+  const shot = async (label) => {
+    const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
+    shots.push({ label, sha256: createHash("sha256").update(bytes).digest("hex") });
+    return PNG.sync.read(bytes);
+  };
+  const [px, py] = faction.pointer;
+  try {
+    await page.goto(`${base}?fixture-code=${FLEET_FINDER | (faction.byte << 8)}`);
+    await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
+      null, { timeout: 15_000 });
+    await page.locator("#glcanvas").focus();
+    await page.mouse.move(320, 240);
+    await frames(page, 4);
+    await page.mouse.move(px, py, { steps: 4 });
+    await page.waitForTimeout(250);
+    const early = await shot("rest-250ms");
+    assert.equal(tipBox(early, [px, py]), null, "a tip showed before 500 ms");
+    await page.waitForTimeout(750);
+    const shown = await shot("rest-1s");
+    const box = tipBox(shown, [px, py]);
+    assert.ok(box && hasFill(shown, box), "no tip after one second");
+    assert.deepEqual([box.x, box.y, box.height], [px, py + 21, 19], JSON.stringify(box));
+    let a0 = null;
+    if (args.a0 && faction.name === "empire") {
+      const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, "01.png")));
+      const want = tipBox(reference, [px, py]);
+      a0 = { want, got: box };
+      assert.deepEqual([box.x, box.y, box.height], [want.x, want.y, want.height]);
+      // The text is drawn about 9% wider than GDI's (accepted deviation,
+      // 2026-10-30), and the tip fits its text.
+      assert.ok(box.width >= want.width && box.width <= Math.ceil(want.width * 1.12),
+        `width ${box.width} vs A0 ${want.width}`);
+    }
+    await page.waitForTimeout(4600);
+    const gone = await shot("rest-5s6");
+    assert.equal(tipBox(gone, [px, py]), null, "the tip stayed past five seconds");
+
+    // The other top-strip tools (FUN_00422ce0's rect tools), and a gap
+    // between two of them, against A0 11-maintenance.png, 12-speed.png and
+    // 13-gap-244.png.
+    const others = [];
+    if (faction.name === "empire") {
+      for (const [label, point, capture] of [["maintenance", [400, 25], "11-maintenance.png"],
+        ["speed", [520, 25], "12-speed.png"], ["gap", [244, 25], "13-gap-244.png"],
+        // The cockpit's controls (FUN_004286b0) and rail (FUN_00427270).
+        ["system-finder", [150, 440], "20-sysfinder.png"], ["fleet-finder", [205, 440], "21-fleetfinder.png"],
+        ["personnel-finder", [418, 440], "22-personnel.png"], ["troop-finder", [260, 440], "23-troop.png"],
+        ["encyclopedia", [472, 440], "24-ency.png"], ["gid", [526, 440], "25-gid.png"],
+        ["game-controls", [90, 210], "26-gamecontrols.png"], ["rail-support", [618, 118], "27-rail-support.png"],
+        ["rail-chat", [618, 318], "28-rail-chat.png"]]) {
+        await page.mouse.move(320, 300, { steps: 4 });
+        await frames(page, 4);
+        await page.mouse.move(point[0], point[1], { steps: 4 });
+        await page.waitForTimeout(1000);
+        const png = await shot(`${label}-1s`);
+        const got = tipBox(png, point);
+        let want = label === "gap" ? null : { x: point[0], y: point[1] + 21, height: 19 };
+        if (!args.a0 && point[1] + 40 > 479) want.y = point[1] - 19;
+        if (args.a0) {
+          const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
+          want = tipBox(reference, point);
+        }
+        if (want === null) assert.equal(got, null, `${label}: a tip showed`);
+        else if (got && want.width && got.x !== want.x) {
+          // The wider text (accepted deviation) pushes the tip off the
+          // client's right edge, so it moves left to end at 639 (A0 25-gid.png).
+          assert.equal(got.x + got.width, 639, `${label}: ${JSON.stringify(got)}`);
+          assert.ok(want.x + Math.ceil(want.width * 1.12) > 639, `${label}: A0 ${JSON.stringify(want)}`);
+          assert.deepEqual([got.y, got.height], [want.y, want.height], label);
+        } else assert.deepEqual(got && [got.x, got.y, got.height], [want.x, want.y, want.height], label);
+        others.push({ label, got, want });
+      }
+    }
+
+    // Modal: with the System Finder open the monitor shows no tip.
+    await page.mouse.move(320, 300, { steps: 4 });
+    await page.keyboard.press("F2");
+    await page.waitForFunction(() => {
+      const list = window.__openRebellionInterfaceSystemFinders || [];
+      return list.length > 0 && list[list.length - 1].open;
+    }, null, { timeout: 15_000 });
+    await page.mouse.move(px, py, { steps: 4 });
+    await page.waitForTimeout(1000);
+    const modal = await shot("modal-rest-1s");
+    assert.equal(tipBox(modal, [px, py]), null, "a tip showed under the modal Finder");
+    assert.deepEqual(errors, [], errors.join("; "));
+    return { faction: faction.name, status: "pass", box, a0, others, shots };
+  } catch (error) {
+    await shot("failure").catch(() => {});
+    return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
+  } finally {
+    await fs.writeFile(path.join(directory, "console.log"), log.join("\n"));
+    await context.close();
+  }
+}
+
+await fs.mkdir(OUT, { recursive: true });
+const server = await serve(SITE);
+const base = `http://127.0.0.1:${server.address().port}/`;
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM_PATH ?? "/usr/bin/chromium",
+  headless: true,
+  args: ["--mute-audio", "--no-sandbox", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+});
+const results = [];
+try {
+  for (const faction of FACTIONS) results.push(await run(browser, base, faction));
+} finally {
+  await browser.close();
+  server.close();
+}
+const wasm = await fs.readFile(path.join(SITE, "open-rebellion-test.wasm"));
+const summary = {
+  status: results.every(({ status }) => status === "pass") ? "pass" : "fail",
+  wasm_sha256: createHash("sha256").update(wasm).digest("hex"),
+  results,
+};
+await fs.writeFile(path.join(OUT, "result.json"), `${JSON.stringify(summary, null, 2)}\n`);
+console.log(JSON.stringify({ out: OUT, status: summary.status,
+  results: results.map(({ faction, status, error, box, a0 }) => ({ faction, status, error, box, a0 })) }, null, 2));
+if (summary.status !== "pass") process.exitCode = 1;

@@ -629,6 +629,67 @@ fn strategic_side_control(faction: CockpitFaction) -> &'static StrategicControlS
     }
 }
 
+/// The tooltip string of a command-center control, by its command
+/// (TEXTSTRA): `FUN_004286b0` gives the six primary controls, Game
+/// Controls and the GID legend button theirs, and `FUN_00427270` each
+/// rail control its category's name.
+#[must_use]
+pub const fn control_tooltip_string(command: u16) -> Option<u16> {
+    match command {
+        0x12d => Some(0x1501), // System Finder
+        0x12e => Some(0x1502), // Fleet Finder
+        0x12f => Some(0x1503), // Personnel Finder
+        0x130 => Some(0x1504), // Troop Finder
+        0x131 => Some(0x1505), // Encyclopedia
+        0x132 => Some(0x1506), // Galactic Information Display
+        0x133 => Some(0x1500), // Game Controls
+        0x134 => Some(0x173c), // Legend
+        0x136 => Some(0x8011), // Popular Support Messages
+        0x137 => Some(0x8017), // Fleet Messages
+        0x138 => Some(0x8014), // Mission Messages
+        0x139 => Some(0x8012), // Resource Messages
+        0x13a => Some(0x8013), // Manufacturing Messages
+        0x13b => Some(0x8016), // Defense Messages
+        0x13c => Some(0x8018), // Conflict Messages
+        0x13d => Some(0x8032), // Advice Messages
+        0x13e => Some(0x8015), // Chat Messages
+        _ => None,
+    }
+}
+
+/// Register the tooltip of the command-center control under the pointer:
+/// the primary controls, Game Controls and the rail. Each is a window, so
+/// its whole rectangle carries the tip.
+pub fn cockpit_tooltips(
+    ctx: &egui::Context,
+    layout: CockpitLayout,
+    faction: CockpitFaction,
+    enabled: bool,
+) {
+    let controls = strategic_primary_controls(faction)
+        .iter()
+        .chain(std::iter::once(strategic_side_control(faction)))
+        .map(|control| (control.command_id, control.rect))
+        .chain(
+            strategic_message_index_controls(faction)
+                .iter()
+                .map(|control| (control.command_id, control.rect)),
+        );
+    for (command, rect) in controls {
+        let Some(text) = control_tooltip_string(command).and_then(crate::win_tooltip::string)
+        else {
+            continue;
+        };
+        crate::win_tooltip::chrome_tool(
+            ctx,
+            egui::Id::new(("cockpit-control-tooltip", command)),
+            logical_rect_to_screen(layout, rect),
+            &text,
+            enabled,
+        );
+    }
+}
+
 /// Exact Message Index rail records constructed by `FUN_00427270`.
 #[must_use]
 pub fn strategic_message_index_controls(
@@ -912,6 +973,7 @@ pub fn draw_cockpit_egui_layer(
         input_enabled,
     );
 
+    cockpit_tooltips(ctx, layout, state.faction, input_enabled);
     let selected = draw_gid_menu(ctx, state, cache, layout, input_enabled);
     if let Some(mode) = selected {
         // FUN_00422ce0 command 0x140 runs FUN_00426d00 after FUN_00425d00,
@@ -1670,6 +1732,93 @@ fn macroquad_accelerator(key: KeyCode) -> Option<CockpitButton> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn every_command_center_control_has_its_tooltip_string() {
+        // FUN_004286b0 (0x12d..0x134) and FUN_00427270 (rail 0x136..0x13e).
+        let primary: Vec<_> = (0x12d..=0x134).map(control_tooltip_string).collect();
+        assert_eq!(
+            primary,
+            [0x1501, 0x1502, 0x1503, 0x1504, 0x1505, 0x1506, 0x1500, 0x173c].map(Some)
+        );
+        assert_eq!(control_tooltip_string(0x135), None);
+        let rail: Vec<_> = (0x136..=0x13e).map(control_tooltip_string).collect();
+        assert_eq!(
+            rail,
+            [0x8011, 0x8017, 0x8014, 0x8012, 0x8013, 0x8016, 0x8018, 0x8032, 0x8015].map(Some)
+        );
+        assert_eq!(control_tooltip_string(0x13f), None);
+        // Every control the cockpit draws has one.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            for control in strategic_primary_controls(faction) {
+                assert!(control_tooltip_string(control.command_id).is_some());
+            }
+            assert!(control_tooltip_string(strategic_side_control(faction).command_id).is_some());
+            for control in strategic_message_index_controls(faction) {
+                assert!(control_tooltip_string(control.command_id).is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn the_control_under_the_pointer_shows_its_tooltip_while_input_is_on() {
+        // A0 tooltip/20-sysfinder.png, 26-gamecontrols.png and
+        // 27-rail-support.png: the Empire's System Finder control at
+        // (150, 440), Game Controls at (90, 210), the first rail control at
+        // (618, 118).
+        crate::win_tooltip::set_strings(
+            crate::win_tooltip::tests::TEST_STRINGS
+                .iter()
+                .map(|(id, text)| (*id, (*text).to_owned()))
+                .collect(),
+        );
+        let tip = |faction: CockpitFaction, x: f32, y: f32, enabled: bool| {
+            let layout = CockpitState::new(faction).layout_for(1280.0, 960.0);
+            let origin = egui::pos2(layout.canvas.x, layout.canvas.y);
+            let pointer = origin + egui::vec2(x, y) * layout.scale;
+            let shapes = crate::win_tooltip::tests::frames(
+                &egui::Context::default(),
+                pointer,
+                &[0.0, 0.1, 0.2, 0.8],
+                origin,
+                layout.scale,
+                |ctx| cockpit_tooltips(ctx, layout, faction, enabled),
+            );
+            crate::win_tooltip::tests::tip_shapes(&shapes)
+                .map(|(rect, _, text)| ((rect.min - origin) / layout.scale, text))
+        };
+        let empire = CockpitFaction::Empire;
+        assert_eq!(
+            tip(empire, 150.0, 440.0, true),
+            Some((egui::vec2(150.0, 421.0), "System Finder".to_owned()))
+        );
+        assert_eq!(
+            tip(empire, 90.0, 210.0, true),
+            Some((egui::vec2(90.0, 231.0), "Game Controls".to_owned()))
+        );
+        assert_eq!(
+            tip(empire, 618.0, 118.0, true)
+                .map(|(_, text)| text)
+                .as_deref(),
+            Some("Popular Support Messages")
+        );
+        assert_eq!(
+            tip(empire, 618.0, 318.0, true)
+                .map(|(_, text)| text)
+                .as_deref(),
+            Some("Chat Messages")
+        );
+        assert_eq!(tip(empire, 150.0, 440.0, false), None);
+        assert_eq!(tip(empire, 320.0, 240.0, true), None);
+        let alliance = CockpitFaction::Alliance;
+        let finder = ALLIANCE_PRIMARY_CONTROLS[0].rect;
+        assert_eq!(
+            tip(alliance, finder.x + 2.0, finder.y + 2.0, true)
+                .map(|(_, text)| text)
+                .as_deref(),
+            Some("System Finder")
+        );
+    }
 
     #[test]
     fn the_gid_menu_and_its_submenus_sit_where_the_original_places_them() {

@@ -1015,6 +1015,8 @@ async fn main() {
     let message_texts = rebellion_data::message_texts(&gdata_path);
     // The battle report's sentences (TEXTSTRA RCDATA 0x7001..0x7016).
     rebellion_render::tactical_view::set_battle_texts(message_texts.clone());
+    // The tooltips' texts (TEXTSTRA RT_STRING, FUN_006008e0's shared tip).
+    rebellion_render::win_tooltip::set_strings(rebellion_data::ui_strings(&gdata_path));
     // The galaxy view's legend windows (STRATEGY.DLL RCDATA, FUN_004522f0).
     rebellion_render::set_gid_legends(rebellion_data::gid_legends(&gdata_path));
     // The agent's advice lists, Alliance then Empire (TEXTSTRA RCDATA
@@ -4921,6 +4923,16 @@ async fn main() {
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
                     let strategic_input_enabled = !original_modal_fixture_open && !modal_window_open;
+                    // The shared tooltip (FUN_006008e0), from the control
+                    // the last frame registered, above every window.
+                    {
+                        let layout = cockpit_state.layout();
+                        rebellion_render::win_tooltip::paint(
+                            ctx,
+                            egui_macroquad::egui::pos2(layout.canvas.x, layout.canvas.y),
+                            layout.scale,
+                        );
+                    }
                     // Register the cockpit background before panels so the
                     // opaque chrome never covers their content or artwork.
                     draw_cockpit_background(ctx, &cockpit_state, &mut bmp_cache);
@@ -4974,6 +4986,12 @@ async fn main() {
                             &uprising_state,
                             cockpit_state.faction,
                         ),
+                    );
+                    rebellion_render::resource_monitors::top_bar_tooltips(
+                        ctx,
+                        cockpit_layout,
+                        cockpit_state.faction,
+                        strategic_input_enabled,
                     );
                     draw_time_bar(
                         ctx,

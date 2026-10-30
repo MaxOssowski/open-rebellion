@@ -1,0 +1,298 @@
+{
+  "status": "pass",
+  "wasm_sha256": "3a95051586bf3233498e005efdf367efeb62011deaa789a28e3547ffd6fcfb7e",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "box": {
+        "x": 265,
+        "y": 43,
+        "width": 137,
+        "height": 19
+      },
+      "a0": null,
+      "others": [],
+      "shots": [
+        {
+          "label": "rest-250ms",
+          "sha256": "dc4ae42f2b17ec2d752f31ac299fc9f7da1c5f4db042689cba53a5802e8fd615"
+        },
+        {
+          "label": "rest-1s",
+          "sha256": "a38708b480e222cac81941e4203719776ce3c70d90ea8902a6f02d81f8c3c016"
+        },
+        {
+          "label": "rest-5s6",
+          "sha256": "dc4ae42f2b17ec2d752f31ac299fc9f7da1c5f4db042689cba53a5802e8fd615"
+        },
+        {
+          "label": "modal-rest-1s",
+          "sha256": "7094fd33821d3d4115dbc96a198e163fb9bf788571d9859acf997b23584192c7"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "box": {
+        "x": 175,
+        "y": 46,
+        "width": 137,
+        "height": 19
+      },
+      "a0": {
+        "want": {
+          "x": 175,
+          "y": 46,
+          "width": 125,
+          "height": 19
+        },
+        "got": {
+          "x": 175,
+          "y": 46,
+          "width": 137,
+          "height": 19
+        }
+      },
+      "others": [
+        {
+          "label": "maintenance",
+          "got": {
+            "x": 400,
+            "y": 46,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 400,
+            "y": 46,
+            "width": 121,
+            "height": 19
+          }
+        },
+        {
+          "label": "speed",
+          "got": {
+            "x": 512,
+            "y": 46,
+            "width": 127,
+            "height": 19
+          },
+          "want": {
+            "x": 520,
+            "y": 46,
+            "width": 115,
+            "height": 19
+          }
+        },
+        {
+          "label": "gap",
+          "got": null,
+          "want": null
+        },
+        {
+          "label": "system-finder",
+          "got": {
+            "x": 150,
+            "y": 421,
+            "width": 91,
+            "height": 19
+          },
+          "want": {
+            "x": 150,
+            "y": 421,
+            "width": 80,
+            "height": 19
+          }
+        },
+        {
+          "label": "fleet-finder",
+          "got": {
+            "x": 205,
+            "y": 421,
+            "width": 75,
+            "height": 19
+          },
+          "want": {
+            "x": 205,
+            "y": 421,
+            "width": 67,
+            "height": 19
+          }
+        },
+        {
+          "label": "personnel-finder",
+          "got": {
+            "x": 418,
+            "y": 421,
+            "width": 104,
+            "height": 19
+          },
+          "want": {
+            "x": 418,
+            "y": 421,
+            "width": 94,
+            "height": 19
+          }
+        },
+        {
+          "label": "troop-finder",
+          "got": {
+            "x": 260,
+            "y": 421,
+            "width": 79,
+            "height": 19
+          },
+          "want": {
+            "x": 260,
+            "y": 421,
+            "width": 73,
+            "height": 19
+          }
+        },
+        {
+          "label": "encyclopedia",
+          "got": {
+            "x": 472,
+            "y": 421,
+            "width": 84,
+            "height": 19
+          },
+          "want": {
+            "x": 472,
+            "y": 421,
+            "width": 76,
+            "height": 19
+          }
+        },
+        {
+          "label": "gid",
+          "got": {
+            "x": 469,
+            "y": 421,
+            "width": 170,
+            "height": 19
+          },
+          "want": {
+            "x": 484,
+            "y": 421,
+            "width": 155,
+            "height": 19
+          }
+        },
+        {
+          "label": "game-controls",
+          "got": {
+            "x": 90,
+            "y": 231,
+            "width": 93,
+            "height": 19
+          },
+          "want": {
+            "x": 90,
+            "y": 231,
+            "width": 85,
+            "height": 19
+          }
+        },
+        {
+          "label": "rail-support",
+          "got": {
+            "x": 477,
+            "y": 139,
+            "width": 162,
+            "height": 19
+          },
+          "want": {
+            "x": 493,
+            "y": 139,
+            "width": 146,
+            "height": 19
+          }
+        },
+        {
+          "label": "rail-chat",
+          "got": {
+            "x": 542,
+            "y": 339,
+            "width": 97,
+            "height": 19
+          },
+          "want": {
+            "x": 554,
+            "y": 339,
+            "width": 85,
+            "height": 19
+          }
+        }
+      ],
+      "shots": [
+        {
+          "label": "rest-250ms",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "rest-1s",
+          "sha256": "c297007e99065ebf4a9a79a9019817b47ec68c278769cd8598857d48605f4aa1"
+        },
+        {
+          "label": "rest-5s6",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "maintenance-1s",
+          "sha256": "7087f71316dabb851f6526db299922a1fc7c2365b31e86261281e6040f388022"
+        },
+        {
+          "label": "speed-1s",
+          "sha256": "b20a413bdb16d57633f9a2a94416359071683fc761a67f9662c0020d9a6cfbc4"
+        },
+        {
+          "label": "gap-1s",
+          "sha256": "7f876a2e93dec0fb3d5b195c208a944f51563da8baaf00d5a9b1502211dde5eb"
+        },
+        {
+          "label": "system-finder-1s",
+          "sha256": "1762f551e9bc3f50fe1f7c3e0e785cb47d09b61e539ff076156c198d829d1693"
+        },
+        {
+          "label": "fleet-finder-1s",
+          "sha256": "9426e4ee9f846370ebbab49812f8f6476233144a50b18639e65e61b9c3ef1704"
+        },
+        {
+          "label": "personnel-finder-1s",
+          "sha256": "3f1d9cef566e59c2980a289ae0e158a749e7538a93f395a99e45624d257e6f2d"
+        },
+        {
+          "label": "troop-finder-1s",
+          "sha256": "19cdcebab0aa381ecf1a3b795b039b6996e8a93ebddd0e32f6f8c564548d7dbd"
+        },
+        {
+          "label": "encyclopedia-1s",
+          "sha256": "291b4dcb03d77206ccfddd9cb572780f06e0c0f8d2819b9b89578bb7c342512e"
+        },
+        {
+          "label": "gid-1s",
+          "sha256": "33d69b31f2d0093dd854d35ccdf0b36f86da44fdef285f947b3b3ccb04e0d450"
+        },
+        {
+          "label": "game-controls-1s",
+          "sha256": "e52f71b9a01ace499dcaf313f2600a1529e72718fdd967239463a4053d340485"
+        },
+        {
+          "label": "rail-support-1s",
+          "sha256": "3ebc639da0f6f54cada42149a6f76face165438c2182c870c3bf4a49a13b6106"
+        },
+        {
+          "label": "rail-chat-1s",
+          "sha256": "e745df2d2d9a945713684f3c884052c0dbdd2268bab1261fa425a5d25e4b7659"
+        },
+        {
+          "label": "modal-rest-1s",
+          "sha256": "af6741b7148416737471ffd4f3c3bb84111ab76f247c408ef21b4948e3aef738"
+        }
+      ]
+    }
+  ]
+}

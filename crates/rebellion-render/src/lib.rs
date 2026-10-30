@@ -51,6 +51,7 @@ pub mod targeting;
 pub mod theme;
 pub mod troop_finder;
 pub mod video_player;
+pub mod win_tooltip;
 
 use egui_macroquad::egui;
 use macroquad::prelude::*;

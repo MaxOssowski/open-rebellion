@@ -3659,6 +3659,412 @@
       ]
     },
     {
+      "id": "CMD-11",
+      "phase": "strategy",
+      "title": "Tooltips (the shared tip and every window's tools)",
+      "required": true,
+      "status": "partial",
+      "required_states": [
+        "tip timing: 500 ms show, 5 s hide",
+        "tip look and placement",
+        "reshow and click hide",
+        "no tip under a modal window",
+        "top strip: Game Speed Control and the three resource monitors",
+        "cockpit command buttons and Game Controls",
+        "message-category rail",
+        "System Finder",
+        "Fleet and Ship Finder",
+        "Personnel Finder",
+        "Troop Finder",
+        "Message Index",
+        "Encyclopedia",
+        "Status window",
+        "Battle Alert",
+        "Battle Summary",
+        "Assault and bombardment summary",
+        "Sector window bars",
+        "Fleet window",
+        "System Defenses window",
+        "Missions window",
+        "Manufacturing window",
+        "Build Selection",
+        "Move-order confirmation",
+        "Mission dialog",
+        "main menu",
+        "game setup screen",
+        "Game Options",
+        "message boxes",
+        "tactical battle panels",
+        "GID legend button"
+      ],
+      "authority_refs": [
+        "REF-MANUAL"
+      ],
+      "manual_pages": [],
+      "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality). The command center's top strip, primary controls, Game Controls, rail and legend button register their tools; every other window's tools are pending (inventory in ghidra/notes/tooltips.md, about 262 tools in 33 windows).",
+      "finding_ids": [],
+      "reverse_engineering_package_ids": [],
+      "acceptance_cells": [
+        {
+          "id": "CMD-11-C001",
+          "requirement": "tip timing: 500 ms show, 5 s hide",
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
+            "ghidra/notes/tooltips.md",
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "tools/interface-parity/tooltip.mjs"
+          ],
+          "note": "FUN_006008e0 sets TTDT_AUTOMATIC 500. A0 tooltip/02-03 (no tip at once, shown later), 04-4s (shown), 05-6s5 and 06-moved (gone, not back on the same control). win_tooltip::TipTimer; tooltip.mjs (Linux, both sides): none at 250 ms, shown at 1 s, gone at 5.6 s.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
+        },
+        {
+          "id": "CMD-11-C002",
+          "requirement": "tip look and placement",
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
+            "ghidra/notes/tooltips.md",
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "tools/interface-parity/tooltip.mjs"
+          ],
+          "note": "A0 tooltip/01.png: fill (255,251,240), (128,128,128) border, 19 high, top left at the pointer plus (0,21), text ink 4 in and capitals 5 down, 9 high. tooltip.mjs matches box x, y and height to A0 and the text's first ink column and capital rows match; deviation accepted 2026-10-30: the text is about 9% wider than GDI's, so the tip is as much wider (137 vs 124 for Raw Materials Monitor) and near the right edge moves left to stay in the client (Game Speed Control: 512 vs A0 520; it ends at 639 as A0 tips do).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
+        },
+        {
+          "id": "CMD-11-C003",
+          "requirement": "reshow and click hide",
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md",
+            "crates/rebellion-render/src/win_tooltip.rs"
+          ],
+          "note": "TTDT_AUTOMATIC 500 implies a 100 ms reshow from one shown tip to the next, and a click hides the tip (tooltips_class32 relay); unit tests cover both. No A0 capture of either.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C004",
+          "requirement": "no tip under a modal window",
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
+            "tools/interface-parity/tooltip.mjs"
+          ],
+          "note": "A0 tooltip/08-index-hover-monitor.png: with the Message Index open the Raw Materials monitor shows no tip; tooltip.mjs: none with the System Finder open (Linux, both sides). Tips inside the modal window show (A0 09, 10).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
+        },
+        {
+          "id": "CMD-11-C005",
+          "requirement": "top strip: Game Speed Control and the three resource monitors",
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
+            "crates/rebellion-render/src/resource_monitors.rs",
+            "tools/interface-parity/tooltip.mjs"
+          ],
+          "note": "FUN_00422ce0 rect tools 0x14f, 0x14c, 0x14d, 0x14e (TEXTSTRA 5395, 5392-5394) at their SetRect rectangles per side (resource_monitors::TOP_BAR_TOOLS). A0 01, 03, 11, 12 and the gap at x 244 (13) match tooltip.mjs's Empire run in text and box position; the Alliance run shows Raw Materials Monitor; unit tests cover all eight rectangles' edges.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
+        },
+        {
+          "id": "CMD-11-C006",
+          "requirement": "cockpit command buttons and Game Controls",
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
+            "ghidra/notes/tooltips.md",
+            "crates/rebellion-render/src/cockpit.rs",
+            "tools/interface-parity/tooltip.mjs"
+          ],
+          "note": "FUN_004286b0 gives the System, Fleet, Personnel and Troop Finder controls, the Encyclopedia, the GID control and Game Controls TEXTSTRA 0x1501..0x1506 and 0x1500 (cockpit::control_tooltip_string). A0 tooltip/20..26 (Empire) match tooltip.mjs in text, top and left edge and height: near the bottom the tip goes above the pointer (y 421 for the pointer at 440), and the GID tip moves left to end at 639 (469 vs A0 484, the wider-text deviation accepted 2026-10-30).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
+        },
+        {
+          "id": "CMD-11-C007",
+          "requirement": "message-category rail",
+          "status": "pass",
+          "counts_toward_parity": true,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
+            "crates/rebellion-render/src/cockpit.rs",
+            "tools/interface-parity/tooltip.mjs"
+          ],
+          "note": "FUN_00427270 gives the nine rail controls their categories' names (TEXTSTRA 0x8011..0x8018, 0x8032). A0 tooltip/27 (Popular Support Messages, first) and 28 (Chat Messages, last) match tooltip.mjs: both tips end at 639 (wider-text deviation); the other seven share the code path and their strings are checked by every_command_center_control_has_its_tooltip_string.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
+        },
+        {
+          "id": "CMD-11-C008",
+          "requirement": "System Finder",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3a) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C009",
+          "requirement": "Fleet and Ship Finder",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3b, with the side tabs' runtime text) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C010",
+          "requirement": "Personnel Finder",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3c) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C011",
+          "requirement": "Troop Finder",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (3d) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C012",
+          "requirement": "Message Index",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (4, with the runtime texts of commands 0x65, 0x66 and 0x67) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C013",
+          "requirement": "Encyclopedia",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (5) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C014",
+          "requirement": "Status window",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6a) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C015",
+          "requirement": "Battle Alert",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6b) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C016",
+          "requirement": "Battle Summary",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6c) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C017",
+          "requirement": "Assault and bombardment summary",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (6d) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C018",
+          "requirement": "Sector window bars",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7a, runtime text 'label n/m') lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C019",
+          "requirement": "Fleet window",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7b) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C020",
+          "requirement": "System Defenses window",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7c) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C021",
+          "requirement": "Missions window",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7d) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C022",
+          "requirement": "Manufacturing window",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7e) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C023",
+          "requirement": "Build Selection",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7f) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C024",
+          "requirement": "Move-order confirmation",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (7g) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C025",
+          "requirement": "Mission dialog",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (8) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C026",
+          "requirement": "main menu",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1a, TEXTCOMM) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C027",
+          "requirement": "game setup screen",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1b, TEXTCOMM) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C028",
+          "requirement": "Game Options",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1c, TEXTCOMM) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C029",
+          "requirement": "message boxes",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (1d, REBDLOG) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C030",
+          "requirement": "tactical battle panels",
+          "status": "pending",
+          "counts_toward_parity": true,
+          "evidence": [
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "Not yet ported: the inventory in ghidra/notes/tooltips.md (9a-9h, TEXTTACT; see also TAC-02-C007 and TAC-02-C009) lists the tools and TEXTSTRA/TEXTCOMM/TEXTTACT strings; the port registers none for this window.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        },
+        {
+          "id": "CMD-11-C031",
+          "requirement": "GID legend button",
+          "status": "partial",
+          "counts_toward_parity": true,
+          "evidence": [
+            "crates/rebellion-render/src/gid_legend.rs",
+            "ghidra/notes/tooltips.md"
+          ],
+          "note": "FUN_004286b0 gives the legend button (command 0x134) TEXTSTRA 0x173c \"Legend\"; the port attaches it (test the_legend_button_shows_its_tooltip_while_input_is_on). No A0: in the VM save a sector window covers the button (tooltip/29-legend.png).",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+        }
+      ]
+    },
+    {
       "id": "OBJ-01",
       "phase": "object_management",
       "title": "Encyclopedia Index and Topic views",

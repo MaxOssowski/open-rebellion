@@ -1029,6 +1029,23 @@ pub fn message_texts(gdata_path: &Path) -> HashMap<u16, String> {
     }
 }
 
+/// TEXTSTRA's string table (`RT_STRING`), for the interface's own texts
+/// such as tooltips. Native builds read the player's TEXTSTRA.DLL; browser
+/// builds use the table extracted from it (`textstra.json`). Empty when
+/// neither exists.
+#[must_use]
+pub fn ui_strings(gdata_path: &Path) -> HashMap<u16, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        textstra::load_strings(&gdata_path.join("TEXTSTRA.DLL")).unwrap_or_default()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = gdata_path;
+        WASM_STRING_TABLE.lock().unwrap().clone()
+    }
+}
+
 /// The string ids the Side's text provider (`FUN_0052d920`, vtable
 /// `0x660ae8`) names a side by, Alliance then Empire: kind 1 `0x4d50` /
 /// `0x4d51` ("Alliance", "Empire"), kind 2 `0x4d60` / `0x4d61` ("Rebel

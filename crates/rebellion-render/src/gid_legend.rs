@@ -372,6 +372,14 @@ pub fn draw_gid_legend(
                     ui.disable();
                 }
                 let response = ui.allocate_rect(rect, egui::Sense::click());
+                // FUN_004286b0: the button's tooltip, TEXTSTRA 0x173c "Legend".
+                if input_enabled {
+                    if let Some(text) = crate::cockpit::control_tooltip_string(0x134)
+                        .and_then(crate::win_tooltip::string)
+                    {
+                        crate::win_tooltip::attach(&response, &text);
+                    }
+                }
                 if let Some(texture) = cache.get(ctx, DllSource::Strategy, LEGEND_BUTTON) {
                     let size = texture.size_vec2() * scale;
                     ui.painter_at(rect).image(
@@ -500,6 +508,46 @@ pub fn draw_gid_legend(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_legend_button_shows_its_tooltip_while_input_is_on() {
+        // FUN_004286b0: the button (command 0x134) has TEXTSTRA 0x173c.
+        crate::win_tooltip::set_strings(
+            crate::win_tooltip::tests::TEST_STRINGS
+                .iter()
+                .map(|(id, text)| (*id, (*text).to_owned()))
+                .collect(),
+        );
+        let faction = CockpitFaction::Empire;
+        let layout = crate::cockpit::CockpitState::new(faction).layout_for(1280.0, 960.0);
+        let origin = egui::pos2(layout.canvas.x, layout.canvas.y);
+        let tip = |enabled: bool| {
+            let mut cache = BmpCache::new();
+            let mut window = GidLegendWindow::default();
+            let pointer = origin + egui::vec2(120.0, 57.0) * layout.scale;
+            let shapes = crate::win_tooltip::tests::frames(
+                &egui::Context::default(),
+                pointer,
+                &[0.0, 0.1, 0.2, 0.3, 0.9],
+                origin,
+                layout.scale,
+                |ctx| {
+                    draw_gid_legend(
+                        ctx,
+                        &mut cache,
+                        layout,
+                        &mut window,
+                        GidMode::PopularSupport,
+                        faction,
+                        enabled,
+                    );
+                },
+            );
+            crate::win_tooltip::tests::tip_shapes(&shapes).map(|(_, _, text)| text)
+        };
+        assert_eq!(tip(true).as_deref(), Some("Legend"));
+        assert_eq!(tip(false), None);
+    }
 
     #[test]
     fn each_display_shows_its_own_legend_layout() {
