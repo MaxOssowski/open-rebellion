@@ -174,6 +174,10 @@ enum CutsceneKind {
     Ending(u32),
     /// Death Star trench-run result (201/202.webm) → resume tactical view.
     TrenchRun(TacticalTrenchRunOutcome),
+    /// A story movie, MDATA.101..104 (`FUN_00488b90` → `0x482` with
+    /// `wParam` 1 → `FUN_004019a0(+0x5c, +0x50)`), its caption under it →
+    /// the same galaxy view, its music restarted (`FUN_00422ce0`'s `0x402`).
+    Story(u32),
 }
 
 const INTRO_CUTSCENE: &str = "assets/references/ref-videos/000.webm";
@@ -262,6 +266,7 @@ fn music_context_after_cutscene(kind: &CutsceneKind) -> Option<MusicContext> {
             Some(MusicContext::MainMenu)
         }
         CutsceneKind::TrenchRun(_) => None,
+        CutsceneKind::Story(_) => Some(MusicContext::GalaxyMap),
     }
 }
 
@@ -350,6 +355,7 @@ mod audio_source_tests {
             CutsceneKind::NewGame,
             CutsceneKind::Credits,
             CutsceneKind::Ending(105),
+            CutsceneKind::Story(104),
         ] {
             assert!(key_skips_cutscene(&kind, false), "{kind:?}");
             assert!(key_skips_cutscene(&kind, true), "{kind:?}");
@@ -385,6 +391,12 @@ mod audio_source_tests {
                 None
             );
         }
+        // FUN_00422ce0's 0x402 after a story movie: FUN_004173c0 and
+        // FUN_00422cb0 → FUN_00417520 restart the galaxy view's music.
+        assert_eq!(
+            music_context_after_cutscene(&CutsceneKind::Story(101)),
+            Some(MusicContext::GalaxyMap)
+        );
     }
 }
 
@@ -1476,6 +1488,8 @@ async fn main() {
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
     let plays_intro = true;
     // A fixture opens straight on its scene: it must not request the intro.
+    // The playing story movie's caption (FUN_00421790's caption window).
+    let mut story_caption: Option<String> = None;
     let mut cutscene_player = if plays_intro {
         open_cutscene(
             Path::new(INTRO_CUTSCENE),
@@ -2985,14 +2999,14 @@ async fn main() {
                             .get(*system)
                             .map(|s| s.name.clone())
                             .unwrap_or_default();
-                        if let Some(message) =
-                            rebellion_render::story_messages::death_star_sabotaged_message(
+                        // FUN_0048d470: a story movie, MDATA.104.
+                        if let Some(movie) =
+                            rebellion_render::story_messages::death_star_sabotaged_movie(
                                 &name,
-                                current_tick,
                                 &message_texts,
                             )
                         {
-                            msg_log.push(message);
+                            msg_log.queue_story_movie(movie);
                         }
                     }
                     // Notification 0x231 (FUN_0048b6e0) as the Pickup sets
@@ -3973,12 +3987,11 @@ async fn main() {
                     &world,
                     campaign_config.victory_conditions,
                 ) {
-                    for message in rebellion_render::story_messages::victory_conditions_messages(
+                    for movie in rebellion_render::story_messages::victory_conditions_movies(
                         new,
-                        current_tick,
                         &message_texts,
                     ) {
-                        msg_log.push(message);
+                        msg_log.queue_story_movie(movie);
                     }
                 }
             }
@@ -4089,6 +4102,40 @@ async fn main() {
             }
         }
 
+        // FUN_00488b90: while the game runs, the oldest story movie plays,
+        // one at a time; a paused game keeps them waiting (FUN_0041dc10).
+        // port: the strategic clock holds while it plays, as in every
+        // cutscene; hyp: the original's keeps running.
+        if game_mode == GameMode::Galaxy
+            && cutscene_player.is_none()
+            && clock.speed != GameSpeed::Paused
+            && !clock.pause_requested()
+        {
+            if let Some(movie) = msg_log.take_story_movie() {
+                // FUN_00422ce0's 0x482: the music stops (FUN_00610c00(0)),
+                // the galaxy view hides and the movie plays its caption.
+                cutscene_player = open_cutscene(
+                    Path::new(&story_cutscene_path(movie.movie)),
+                    audio_vol.cutscene_volume(),
+                    &mut msg_log,
+                    clock.tick,
+                    #[cfg(not(target_arch = "wasm32"))]
+                    &mut audio_engine,
+                );
+                if cutscene_player.is_some() {
+                    macroquad::logging::info!(
+                        "[cutscene] story movie={} caption={}",
+                        movie.movie,
+                        movie.caption
+                    );
+                    story_caption = Some(movie.caption);
+                    game_mode = GameMode::Cutscene {
+                        kind: CutsceneKind::Story(movie.movie),
+                    };
+                }
+            }
+        }
+
         // ── Rendering (mode-specific) ────────────────────────────────────────
 
         match game_mode {
@@ -4102,6 +4149,7 @@ async fn main() {
                     | CutsceneKind::Ending(_) => GameMode::MainMenu,
                     CutsceneKind::NewGame => GameMode::GameSetup,
                     CutsceneKind::TrenchRun(_) => GameMode::TacticalCombat,
+                    CutsceneKind::Story(_) => GameMode::Galaxy,
                 };
                 let chains_cinematic = *kind == CutsceneKind::Intro;
                 #[cfg(not(target_arch = "wasm32"))]
@@ -4112,9 +4160,13 @@ async fn main() {
                     if let Some(frame) = player.current_frame() {
                         draw_fullscreen_texture(frame);
                     }
+                    if let Some(caption) = story_caption.as_deref() {
+                        draw_story_caption(caption);
+                    }
 
                     if player.is_finished() {
                         cutscene_player = None;
+                        story_caption = None;
                         game_mode = next_mode;
                         // FUN_004138a0's 0x405: the logos' end (or skip)
                         // starts state 2, the opening cinematic.
@@ -10638,18 +10690,10 @@ fn destroy_planet(
         }
     }
     // Notification 0x182, System Destroyed by the Death Star
-    // (FUN_004950d0), for both sides.
-    let (title, text) =
-        rebellion_render::story_messages::death_star_destroyed_texts(&name, holder, message_texts)
-            .map_or_else(
-                || (None, format!("{name} DESTROYED by Death Star superlaser!")),
-                |(title, body)| (Some(title), body),
-            );
-    let mut message = GameMessage::new(tick, text, MessageCategory::Combat);
-    if let Some(title) = title {
-        message = message.with_title(title);
-    }
-    msg_log.push(filed(message, MessageRail::Mission, Some(RailAudience::Both)));
+    // (FUN_004950d0): a story movie, MDATA.101, whichever side plays.
+    msg_log.queue_story_movie(
+        rebellion_render::story_messages::death_star_destroyed_movie(&name, holder, message_texts),
+    );
 }
 
 #[expect(
@@ -11016,6 +11060,18 @@ fn apply_ai_actions(
     }
 }
 
+/// The 640 by 480 client the original's movie window fills
+/// (`FUN_005f6920` centres the movie in it), scaled into the screen:
+/// `(x, y, scale)`.
+fn movie_client() -> (f32, f32, f32) {
+    let scale = (screen_width() / 640.0).min(screen_height() / 480.0);
+    (
+        (screen_width() - 640.0 * scale) * 0.5,
+        (screen_height() - 480.0 * scale) * 0.5,
+        scale,
+    )
+}
+
 fn draw_fullscreen_texture(texture: &Texture2D) {
     let texture_width = texture.width();
     let texture_height = texture.height();
@@ -11023,11 +11079,12 @@ fn draw_fullscreen_texture(texture: &Texture2D) {
         return;
     }
 
-    let scale = (screen_width() / texture_width).min(screen_height() / texture_height);
+    let (client_x, client_y, client_scale) = movie_client();
+    let scale = (640.0 * client_scale / texture_width).min(480.0 * client_scale / texture_height);
     let dest_width = texture_width * scale;
     let dest_height = texture_height * scale;
-    let x = (screen_width() - dest_width) * 0.5;
-    let y = (screen_height() - dest_height) * 0.5;
+    let x = client_x + (640.0 * client_scale - dest_width) * 0.5;
+    let y = client_y + (480.0 * client_scale - dest_height) * 0.5;
 
     draw_texture_ex(
         texture,
@@ -11039,6 +11096,37 @@ fn draw_fullscreen_texture(texture: &Texture2D) {
             ..Default::default()
         },
     );
+}
+
+/// A story movie's caption (`FUN_0041ecf0`, class "TextScrollField"): 580
+/// by 70 at (4, 404) in the movie's 640 by 480 client, under the
+/// letterboxed movie (rows 78..401). White font 4 on black, from its top
+/// left, wrapped by words at 580 (`FUN_0041fd00`, `FUN_0041fe70`); lines
+/// past its 70 rows are not drawn. port: the scroll bar the field adds to
+/// a longer text is not drawn; no shipped caption needs one.
+fn draw_story_caption(caption: &str) {
+    use egui_macroquad::egui;
+    let (x, y, scale) = movie_client();
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(x + 4.0 * scale, y + 404.0 * scale),
+        egui::vec2(580.0 * scale, 70.0 * scale),
+    );
+    egui_macroquad::ui(|ctx| {
+        let painter = ctx
+            .layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("story-caption"),
+            ))
+            .with_clip_rect(rect);
+        let galley = painter.layout(
+            caption.to_owned(),
+            rebellion_render::theme::original_font(4, scale),
+            egui::Color32::WHITE,
+            rect.width(),
+        );
+        painter.galley(rect.min, galley, egui::Color32::WHITE);
+    });
+    egui_macroquad::draw();
 }
 
 /// FUN_00499760's event code for `reader` when a system joins `new`: 1 when

@@ -88,6 +88,15 @@ for (const [source, destination] of [
 ]) {
   fs.copyFileSync(source, destination);
 }
+// The story movies, for the StoryMovie fixture (story-movie.mjs).
+const videos = path.join(web, "data/video");
+if (fs.existsSync(videos)) {
+  fs.mkdirSync(path.join(artifacts, "data/video"), { recursive: true });
+  for (const stem of ["101", "102", "103", "104"]) {
+    const source = path.join(videos, `${stem}.webm`);
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(artifacts, "data/video", `${stem}.webm`));
+  }
+}
 
 const productionHtml = fs.readFileSync(path.join(web, "index.html"), "utf8");
 if (!productionHtml.includes(marker)) {

@@ -331,6 +331,19 @@ impl GameMessage {
 // MessageLog
 // ---------------------------------------------------------------------------
 
+/// A story movie: one of the four story messages (System Destroyed by the
+/// Death Star, Alliance Headquarters Destroyed, Coruscant Captured, Death
+/// Star Sabotaged), whose class's kind 6 `FUN_0048a060` files only in the
+/// message manager's movie list (`+0x28`, branch `0x48a149`): no Message
+/// Index row, no alert, no advisor event. `movie` is the MDATA number
+/// (101..104, from the message's `+0x5c` through `FUN_00421ba0`) and
+/// `caption` the message's body (`+0x50`), shown under the movie.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoryMovie {
+    pub movie: u32,
+    pub caption: String,
+}
+
 /// Capped FIFO buffer of game messages.
 ///
 /// When `capacity` is exceeded the oldest message is dropped. Lives alongside
@@ -346,6 +359,9 @@ pub struct MessageLog {
     /// The categories' posting options (`FUN_0048a1c0`): a default and
     /// per-category values by mask; bit [`SILENT`] posts silently.
     posting: (u32, std::collections::BTreeMap<u16, u32>),
+    /// The story movies waiting to play, oldest first (the message
+    /// manager's `+0x28`, drained one at a time by `FUN_00488b90`).
+    story_movies: std::collections::VecDeque<StoryMovie>,
 }
 
 /// A category's posting option bit 4: its messages post silently, without
@@ -368,7 +384,18 @@ impl MessageLog {
             next_id: 1,
             advisor_events: Vec::new(),
             posting: (0, std::collections::BTreeMap::new()),
+            story_movies: std::collections::VecDeque::new(),
         }
+    }
+
+    /// File a story movie to play (`FUN_0048a060`'s kind 6).
+    pub fn queue_story_movie(&mut self, movie: StoryMovie) {
+        self.story_movies.push_back(movie);
+    }
+
+    /// The oldest story movie waiting, taken off the list.
+    pub fn take_story_movie(&mut self) -> Option<StoryMovie> {
+        self.story_movies.pop_front()
     }
 
     /// Append a message, assigning it a stable [`MessageId`].
@@ -1066,5 +1093,23 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn story_movies_wait_in_order_and_post_no_message() {
+        // FUN_0048a060's kind 6 (0x48a149) adds the message to the movie
+        // list +0x28 only; FUN_00488b90 takes the oldest first.
+        let mut log = MessageLog::new(8);
+        let movie = |movie: u32| StoryMovie {
+            movie,
+            caption: format!("caption {movie}"),
+        };
+        log.queue_story_movie(movie(104));
+        log.queue_story_movie(movie(102));
+        assert!(log.messages().is_empty());
+        assert!(log.take_advisor_events(true).is_empty());
+        assert_eq!(log.take_story_movie(), Some(movie(104)));
+        assert_eq!(log.take_story_movie(), Some(movie(102)));
+        assert_eq!(log.take_story_movie(), None);
     }
 }

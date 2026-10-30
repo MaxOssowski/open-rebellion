@@ -114,7 +114,7 @@ pub use message_index::draw_message_index_fixture;
 pub use message_index::draw_message_index_shell;
 pub use message_log::{
     draw_message_log, GameMessage, MessageCategory, MessageLog, MessageLogState, MessageRail,
-    RailAudience,
+    RailAudience, StoryMovie,
 };
 pub use missions_window::{
     draw_missions_windows, MissionsTab, MissionsWindowAction, MissionsWindowState,

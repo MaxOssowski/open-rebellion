@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 78;
+const SCENARIO_COUNT: u8 = 79;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -212,6 +212,10 @@ pub enum Scenario {
     /// (`FUN_0050b610`) and System Joins (`FUN_00499760`, `0x100`) tells the
     /// player it "Joins Enemy". The clock runs Fast.
     SupportFlip = 77,
+    /// Death Star Sabotaged waits as a story movie (MDATA.104 under its
+    /// caption, `FUN_0048d470`); the clock runs Fast, so it plays at once
+    /// (`FUN_00488b90`).
+    StoryMovie = 78,
 }
 
 impl Scenario {
@@ -295,6 +299,7 @@ impl Scenario {
             75 => Self::UprisingIncident,
             76 => Self::BlockadeArrival,
             77 => Self::SupportFlip,
+            78 => Self::StoryMovie,
             _ => return None,
         })
     }
@@ -932,6 +937,7 @@ pub fn runs_the_clock(request: FixtureRequest) -> bool {
             | Scenario::UprisingIncident
             | Scenario::BlockadeArrival
             | Scenario::SupportFlip
+            | Scenario::StoryMovie
     )
 }
 
@@ -2288,6 +2294,14 @@ pub fn post_story_messages(
     log: &mut rebellion_render::MessageLog,
     texts: &std::collections::HashMap<u16, String>,
 ) {
+    if request.scenario == Scenario::StoryMovie {
+        if let Some(movie) =
+            rebellion_render::story_messages::death_star_sabotaged_movie("Endor", texts)
+        {
+            log.queue_story_movie(movie);
+        }
+        return;
+    }
     if request.scenario != Scenario::StoryMessages {
         return;
     }
@@ -2328,27 +2342,17 @@ pub fn post_story_messages(
     ) {
         log.push(message);
     }
-    // Notification 0x128 with the HQ lost and Coruscant the Alliance's.
-    for message in rebellion_render::story_messages::victory_conditions_messages(0x101, 0, texts) {
-        log.push(message);
-    }
     // Emperor Arrives at Coruscant (FUN_0048ce80), the Empire's.
     if let Some(message) = rebellion_render::story_messages::emperor_arrives_message(0, texts) {
         log.push(message);
     }
-    // Killed by Imperial Assassins (FUN_0048b050) and Death Star
-    // Sabotaged (FUN_0048d470).
+    // Killed by Imperial Assassins (FUN_0048b050).
     if let Some(message) = rebellion_render::story_messages::assassins_message(
         &world.characters[chewbacca],
         "Yavin",
         0,
         texts,
     ) {
-        log.push(message);
-    }
-    if let Some(message) =
-        rebellion_render::story_messages::death_star_sabotaged_message("Endor", 0, texts)
-    {
         log.push(message);
     }
     // Jabba Delivers Prisoners (FUN_0048b6e0), then Jabba Captures

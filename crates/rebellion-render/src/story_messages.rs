@@ -13,7 +13,9 @@ use rebellion_core::ids::{CharacterKey, DatId};
 use rebellion_core::world::GameWorld;
 
 use crate::cockpit::CockpitFaction;
-use crate::message_log::{GameMessage, MessageCategory, MessagePicture, MessageRail, RailAudience};
+use crate::message_log::{
+    GameMessage, MessageCategory, MessagePicture, MessageRail, RailAudience, StoryMovie,
+};
 use crate::system_window::character_mini_resource_id;
 
 /// The category story messages are filed under: the Mission rail, bit
@@ -556,34 +558,29 @@ pub fn rescue_attempt_message(
 }
 
 /// Notification `0x128`, a change of the victory conditions word
-/// (`ghidra/notes/victory-conditions.md`), for both sides:
+/// (`ghidra/notes/victory-conditions.md`), for the player whichever side:
 ///
 /// - Alliance Headquarters Destroyed (`FUN_0048e5a0`) when the new word
-///   has bit `0x1`: TEXTSTRA `0x7188` / `0x7189`;
+///   has bit `0x1`: MDATA.102 (`+0x5c` = `0x73`) under TEXTSTRA `0x7189`;
 /// - Coruscant Captured (`FUN_0048f790`) while Coruscant is the
-///   Alliance's (bit `0x100`): `0x7170` / `0x7171`.
+///   Alliance's (bit `0x100`): MDATA.103 (`0x74`) under `0x7171`.
 ///
-/// Neither has a once flag. port: their `+0x5c` (`0x73`, `0x74`; hyp: a
-/// film) and speakers are not read, and they set no background.
+/// Neither has a once flag. Both are story movies, not messages
+/// ([`StoryMovie`]); their titles `0x7188` / `0x7170` show nowhere.
 #[must_use]
-pub fn victory_conditions_messages(
-    word: u32,
-    tick: u64,
-    texts: &HashMap<u16, String>,
-) -> Vec<GameMessage> {
-    let message = |title: u16, body: u16| {
-        Some(
-            GameMessage::new(tick, texts.get(&body)?.clone(), MessageCategory::Event)
-                .on_rail(STORY_RAIL, RailAudience::Both)
-                .with_title(texts.get(&title)?.clone()),
-        )
+pub fn victory_conditions_movies(word: u32, texts: &HashMap<u16, String>) -> Vec<StoryMovie> {
+    let movie = |movie: u32, body: u16| {
+        Some(StoryMovie {
+            movie,
+            caption: texts.get(&body)?.clone(),
+        })
     };
     let mut out = Vec::new();
     if word & rebellion_core::victory::WORD_HQ_LOST != 0 {
-        out.extend(message(0x7188, 0x7189));
+        out.extend(movie(102, 0x7189));
     }
     if word & rebellion_core::victory::WORD_CORUSCANT_ALLIANCE != 0 {
-        out.extend(message(0x7170, 0x7171));
+        out.extend(movie(103, 0x7171));
     }
     out
 }
@@ -651,27 +648,19 @@ pub fn assassins_message(
 /// Death Star Sabotaged (`FUN_0048d470`): notification `0x305`, which
 /// `FUN_004fc080` posts for an object destroyed with reason 6 (sabotage),
 /// when the object is of family `0x18`..`0x1b` (the Death Star) and its
-/// location stands at a system. TEXTSTRA `0x71bd` / `0x71be` name the
-/// system (1); both sides are shown it.
-///
-/// port: the builder sets no background but writes `+0x5c` = `0x72`
-/// (hyp: a film, not traced); the message has no picture.
+/// location stands at a system. A story movie, MDATA.104 (`+0x5c` =
+/// `0x72`), under TEXTSTRA `0x71be`, which names the system (1); the title
+/// `0x71bd` shows nowhere.
 #[must_use]
-pub fn death_star_sabotaged_message(
+pub fn death_star_sabotaged_movie(
     system: &str,
-    tick: u64,
     texts: &HashMap<u16, String>,
-) -> Option<GameMessage> {
+) -> Option<StoryMovie> {
     let parameters = [MessageParameter::Named { name: system }];
-    Some(
-        GameMessage::new(
-            tick,
-            fill_message_text(texts.get(&0x71be)?, &parameters),
-            MessageCategory::Event,
-        )
-        .on_rail(STORY_RAIL, RailAudience::Both)
-        .with_title(fill_message_text(texts.get(&0x71bd)?, &parameters)),
-    )
+    Some(StoryMovie {
+        movie: 104,
+        caption: fill_message_text(texts.get(&0x71be)?, &parameters),
+    })
 }
 
 /// Smuggling (`FUN_00499130`): notification `0x145`, the system's smuggling
@@ -872,6 +861,23 @@ pub fn death_star_destroyed_texts(
         _ => fill_message_text(texts.get(&0x70ca)?, &[death_star, named]),
     };
     Some((title, body))
+}
+
+/// System Destroyed by the Death Star as the story movie it is: MDATA.101
+/// (`FUN_004950d0`'s `+0x5c` = `0x6f`) under the body
+/// ([`death_star_destroyed_texts`]); the title shows nowhere.
+#[must_use]
+pub fn death_star_destroyed_movie(
+    system: &str,
+    holder: Option<rebellion_core::dat::Faction>,
+    texts: &HashMap<u16, String>,
+) -> StoryMovie {
+    StoryMovie {
+        movie: 101,
+        caption: death_star_destroyed_texts(system, holder, texts)
+            .map(|(_, body)| body)
+            .unwrap_or_default(),
+    }
 }
 
 /// Research Complete (`FUN_00499aa0`): notifications `0x125` (ships),
@@ -2144,6 +2150,14 @@ mod tests {
         assert_eq!(
             death_star_destroyed_texts("Alderaan", None, &texts).map(|(_, body)| body),
             Some("The Death Star has destroyed the neutral system Alderaan.".into())
+        );
+        // +0x5c 0x6f (MDATA.101), kind 6 (0x4953a0): a movie under the body.
+        assert_eq!(
+            death_star_destroyed_movie("Alderaan", Some(Faction::Alliance), &texts),
+            StoryMovie {
+                movie: 101,
+                caption: "The Death Star has destroyed the Alliance system Alderaan.".into()
+            }
         );
     }
 
@@ -3581,9 +3595,10 @@ mod tests {
     }
 
     #[test]
-    fn a_victory_conditions_change_posts_the_hq_and_coruscant_messages() {
-        // FUN_0048e5a0 on bit 0x1, FUN_0048f790 while Coruscant is the
-        // Alliance's (bit 0x100); both sides read them.
+    fn a_victory_conditions_change_queues_the_hq_and_coruscant_movies() {
+        // FUN_0048e5a0 on bit 0x1 (+0x5c 0x73, MDATA.102), FUN_0048f790
+        // while Coruscant is the Alliance's (bit 0x100; 0x74, MDATA.103);
+        // their kind 6 (0x48d640) files them only as movies (0x48a149).
         let texts: HashMap<u16, String> = [
             (0x7188, "Alliance Headquarters Destroyed"),
             (
@@ -3599,26 +3614,32 @@ mod tests {
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
-        let titles = |word| {
-            victory_conditions_messages(word, 4, &texts)
+        let movies = |word| {
+            victory_conditions_movies(word, &texts)
                 .into_iter()
-                .map(|m| (m.title.unwrap_or_default(), m.audience))
+                .map(|m| (m.movie, m.caption))
                 .collect::<Vec<_>>()
         };
-        assert!(titles(0x10).is_empty());
+        assert!(movies(0x10).is_empty());
         assert_eq!(
-            titles(0x1),
+            movies(0x1),
             [(
-                "Alliance Headquarters Destroyed".to_owned(),
-                RailAudience::Both
+                102,
+                "The Empire has destroyed the Alliance Headquarters.".to_owned()
             )]
         );
         assert_eq!(
-            titles(0x100),
-            [("Coruscant Captured".to_owned(), RailAudience::Both)]
+            movies(0x100),
+            [(
+                103,
+                "The Alliance has seized the Imperial capital system of Coruscant.".to_owned()
+            )]
         );
-        assert_eq!(titles(0x101).len(), 2);
-        assert!(victory_conditions_messages(0x101, 4, &HashMap::new()).is_empty());
+        assert_eq!(
+            movies(0x101).iter().map(|m| m.0).collect::<Vec<_>>(),
+            [102, 103]
+        );
+        assert!(victory_conditions_movies(0x101, &HashMap::new()).is_empty());
     }
 
     #[test]
@@ -3676,15 +3697,15 @@ mod tests {
         );
         assert_eq!(killed.audience, RailAudience::Alliance);
         assert_eq!(killed.picture.map(|p| p.background), Some(0x42e));
-        let sabotaged = death_star_sabotaged_message("Endor", 8, &texts).expect("message");
-        assert_eq!(sabotaged.title.as_deref(), Some("Death Star Sabotaged"));
+        // FUN_0048d470's +0x5c 0x72 (MDATA.104), kind 6: a movie only.
+        let sabotaged = death_star_sabotaged_movie("Endor", &texts).expect("movie");
+        assert_eq!(sabotaged.movie, 104);
         assert_eq!(
-            sabotaged.text,
+            sabotaged.caption,
             "The Rebel Alliance has sabotaged the Death Star at Endor."
         );
-        assert_eq!(sabotaged.audience, RailAudience::Both);
         assert!(assassins_message(&dodonna, "Yavin", 7, &HashMap::new()).is_none());
-        assert!(death_star_sabotaged_message("Endor", 8, &HashMap::new()).is_none());
+        assert!(death_star_sabotaged_movie("Endor", &HashMap::new()).is_none());
     }
 
     #[test]

@@ -230,9 +230,11 @@
     </script>
     <script>
         // Cutscenes: the game names a movie (ref-videos stem) and the page
-        // plays data/video/<stem>.webm in a <video> over the canvas, black
-        // around it, keeping its aspect, as the native player draws its
-        // frames. The game polls the state and stops it on a skip.
+        // plays data/video/<stem>.webm in a <video> over the canvas's
+        // 640 by 480 client, keeping its aspect, as the native player draws
+        // its frames. Around the movie the canvas shows through: its black,
+        // and a story movie's caption under it (FUN_0041ecf0). The game
+        // polls the state and stops it on a skip.
         (function registerCutscenes() {
             "use strict";
 
@@ -264,7 +266,7 @@
                     if (!/^[0-9A-Za-z_-]+$/.test(stem)) return 0;
                     finish(IDLE);
                     video = document.createElement("video");
-                    video.style.cssText = "position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;pointer-events:none;z-index:10";
+                    video.style.cssText = "position:fixed;inset:0;margin:auto;width:min(100vw,calc(100vh*4/3));height:min(100vh,calc(100vw*3/4));object-fit:contain;background:transparent;pointer-events:none;z-index:10";
                     video.playsInline = true;
                     video.preload = "auto";
                     video.volume = Math.max(0, Math.min(1, volume));

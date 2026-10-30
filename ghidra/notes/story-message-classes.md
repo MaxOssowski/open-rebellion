@@ -73,9 +73,9 @@ Character ids: Mon Mothma `0x30000240`, Leia `0x31000241`, Luke
 | 16 | Emperor Arrives at Coruscant | `0x230`, arg set, once | `FUN_0048ce80` (`0x65b338`) | `0x42c` | `0x71c8` / `0x71c9` | Empire only | mapped 2026-10-18 (`emperor_arrives_message`, SeatOfPower in `seat_of_power.rs`, save v78) |
 | 17 | Character Discovers Traitor | `0x361` | `FUN_0048c9c0` (`0x65b2f0`) | side, the discoverer's portrait | `0x71e8` / `0x71e9` | one side, by `FUN_004edc80` | mapped 2026-10-18 (`discovers_traitor_message`, the betrayal's learners, `FUN_00588e80`) |
 | 18 | Killed by Imperial Assassins | `0x306` | `FUN_0048b050` (`0x65b140`) | `0x42e` | `0x7208` / `0x7209` | Alliance only | mapped 2026-10-18 (`assassins_message`, an assassination that kills; "Delivery") |
-| 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | both | mapped 2026-10-18 (`death_star_sabotaged_message`, a DS Sabotage that destroys it; "Delivery") |
-| 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79) |
-| 21 | Alliance Headquarters Destroyed | `0x128`, arg bit 0 | `FUN_0048e5a0` (`0x65b450`) | — | `0x7188` / `0x7189` | both | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79) |
+| 19 | Death Star Sabotaged | `0x305`, Death Star target | `FUN_0048d470` (`0x65b3c8`) | — | `0x71bd` / `0x71be` (system) | both | mapped 2026-10-18 (`death_star_sabotaged_message`, a DS Sabotage that destroys it; "Delivery"); 2026-10-30 a story movie only (kind 6, `movie-flow.md`), no message |
+| 20 | Coruscant Captured | `0x128` | `FUN_0048f790` (`0x65b568`) | — | `0x7170` / `0x7171` | when the Alliance holds `0x90000109` | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79); 2026-10-30 a story movie only (kind 6, `movie-flow.md`), no message |
+| 21 | Alliance Headquarters Destroyed | `0x128`, arg bit 0 | `FUN_0048e5a0` (`0x65b450`) | — | `0x7188` / `0x7189` | both | mapped 2026-10-18 (`victory_conditions_messages`, the word's `0x128`, save v79); 2026-10-30 a story movie only (kind 6, `movie-flow.md`), no message |
 
 Notes on the rows:
 
@@ -147,7 +147,7 @@ Notes on the rows:
 | Near Uprising | `0x148` | `FUN_00498cb0` | `0x3f0`/`0x3f1` | `0x7070` / `0x7071` |
 | Uprising Begins / Ends | `0x14b` | `FUN_00499460` | `0x3f2`-`0x3f4` | `0x7030`-`0x7033` |
 | System Joins / Declares Neutrality | `0x100` | `FUN_00499760` | `0x3ed` | `0x7038`-`0x703d` |
-| System Destroyed by the Death Star | `0x182`, then 2 | `FUN_004950d0` | — | `0x70c8` / `0x70c9`, `0x70ca` |
+| System Destroyed by the Death Star | `0x182`, then 2 | `FUN_004950d0` | — | `0x70c8` / `0x70c9`, `0x70ca`; a story movie only, MDATA.101 (kind 6, `movie-flow.md`) |
 | Message From / Sent to the other side | — | `FUN_00498e90` | `0x410`/`0x411` | `0x71f0`, `0x71f1` |
 
 Natural Disaster and the resource messages share the class at vtable

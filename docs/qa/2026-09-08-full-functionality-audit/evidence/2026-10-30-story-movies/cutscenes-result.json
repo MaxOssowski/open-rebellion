@@ -1,0 +1,106 @@
+{
+  "status": "pass",
+  "wasm_sha256": "f3322e7fe27b2538424cab0f4899a78f055d196208e3bf48cc1fd12933813141",
+  "intro_webm_sha256": "0af15384e2ba2d835a2cad5d64d026b2ee9fe9248320778caa3c00367c64da64",
+  "movies_sha256": {
+    "000": "0af15384e2ba2d835a2cad5d64d026b2ee9fe9248320778caa3c00367c64da64",
+    "001": "8e18ded01cb483f645e77675d18d0752e13050ddba80e5f20c1415905ebc628e",
+    "004": "292ed78e4755f305abef27d3b7e4a3608df80bcf05c28eb681d4a91976b386f1",
+    "005": "4d678ae363c747ad5af8ad0a1dc752384d5d3582b775135cfdc2d3f5d5a3b076"
+  },
+  "results": [
+    {
+      "name": "natural-end",
+      "status": "pass",
+      "checks": {
+        "logos": {
+          "stem": "000",
+          "time": 0.384455,
+          "width": 640,
+          "height": 480
+        },
+        "cinematic": {
+          "stem": "001",
+          "time": 0.367608,
+          "width": 640,
+          "height": 324
+        }
+      },
+      "shots": [
+        {
+          "label": "logos",
+          "sha256": "cbb9485c8da539f8719892afd12b0fbfb959f86a4ea71061cea0c0c95970c462"
+        },
+        {
+          "label": "cinematic",
+          "sha256": "867ee4c7b75eca5fdfab62a247504bb9a0ce2f1f6d2e37d16356ee934303aec8"
+        }
+      ],
+      "cutscene_log": [
+        "[cutscene] opened path=assets/references/ref-videos/000.webm",
+        "[cutscene] opened path=assets/references/ref-videos/001.webm"
+      ]
+    },
+    {
+      "name": "skips",
+      "status": "pass",
+      "checks": {
+        "cinematic": {
+          "stem": "001",
+          "time": 0.388409,
+          "width": 640,
+          "height": 324
+        }
+      },
+      "shots": [
+        {
+          "label": "cinematic-after-skip",
+          "sha256": "6137936a7decf536ef36534b08e5619704fe714d63538e7d7f50ef3de2a5f135"
+        },
+        {
+          "label": "main-menu",
+          "sha256": "abf1e2d2010d002a8f97d508d7c8c9f19dc07c396ebc41bd40f5d2d54bffd455"
+        }
+      ],
+      "cutscene_log": [
+        "[cutscene] opened path=assets/references/ref-videos/000.webm",
+        "[cutscene] opened path=assets/references/ref-videos/001.webm"
+      ]
+    },
+    {
+      "name": "credits-and-new-game",
+      "status": "pass",
+      "checks": {
+        "credits": {
+          "stem": "005",
+          "time": 0.349539,
+          "width": 640,
+          "height": 324
+        },
+        "newGame": {
+          "stem": "004",
+          "time": 0.39277,
+          "width": 640,
+          "height": 324
+        }
+      },
+      "shots": [
+        {
+          "label": "credits",
+          "sha256": "e77e3e847d0a13f4c066d6fbae723b76733b4d63e595d53b445b4be21bde3dc5"
+        },
+        {
+          "label": "new-game",
+          "sha256": "768ab5f222c95278fb8b3f45dc75d209b617484d0e0a243cd00554b549ced106"
+        }
+      ],
+      "cutscene_log": [
+        "[cutscene] opened path=assets/references/ref-videos/000.webm",
+        "[cutscene] opened path=assets/references/ref-videos/001.webm",
+        "[cutscene] opened path=assets/references/ref-videos/005.webm",
+        "[main_menu] destination=credits",
+        "[cutscene] opened path=assets/references/ref-videos/004.webm"
+      ]
+    }
+  ]
+}

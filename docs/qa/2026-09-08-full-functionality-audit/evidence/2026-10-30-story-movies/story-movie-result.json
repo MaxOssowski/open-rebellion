@@ -1,0 +1,71 @@
+{
+  "status": "pass",
+  "wasm_sha256": "62a8d63b38541adcf00d5e10db6abe4a5c2d6a7cc18d03df115a54d30d81e554",
+  "movie_104_sha256": "8f817e66067c439cbd7416ac3ceda8b2d2d972c6d7a57111028544da676a6d75",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "stems": [
+        "104",
+        "102"
+      ],
+      "playing": {
+        "white": 798,
+        "colour": 13074,
+        "outside": 0
+      },
+      "after": {
+        "white": 5595,
+        "colour": 199427,
+        "outside": 49516
+      },
+      "shots": [
+        {
+          "label": "movie",
+          "sha256": "41d5bb4970f24360b6d8cc3a727238dc946e8ee93fff1c0a7ba06e14628636fc"
+        },
+        {
+          "label": "movie-102",
+          "sha256": "43623e8f077c5e4b0596014cd96b54c1dcdbea87932d304e86086525dc66e764"
+        },
+        {
+          "label": "galaxy",
+          "sha256": "3bd4dc99a189ae44dc6845effb4088f9aea823eafd03b89e3c69dac9dab70f28"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "stems": [
+        "104",
+        "102"
+      ],
+      "playing": {
+        "white": 798,
+        "colour": 13074,
+        "outside": 0
+      },
+      "after": {
+        "white": 1291,
+        "colour": 198931,
+        "outside": 47995
+      },
+      "shots": [
+        {
+          "label": "movie",
+          "sha256": "41d5bb4970f24360b6d8cc3a727238dc946e8ee93fff1c0a7ba06e14628636fc"
+        },
+        {
+          "label": "movie-102",
+          "sha256": "135ee6ab9725d3c6ef03bf78cbc3a8f3445f610ef0fd92eaed832e9cbda987ad"
+        },
+        {
+          "label": "galaxy",
+          "sha256": "1143e49797591d49273eac0c643a70e6ee9678d98cac2b5530334f112c0a8dda"
+        }
+      ]
+    }
+  ]
+}

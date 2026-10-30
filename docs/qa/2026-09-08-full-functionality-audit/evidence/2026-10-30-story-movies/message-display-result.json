@@ -1,0 +1,50 @@
+{
+  "status": "pass",
+  "wasm_sha256": "62a8d63b38541adcf00d5e10db6abe4a5c2d6a7cc18d03df115a54d30d81e554",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "display": [
+        "[interface] message_index display system=Some(\"Akrit'tar\")"
+      ],
+      "closed": "closed",
+      "shots": [
+        {
+          "label": "display-disabled",
+          "sha256": "ed9f8c48a4419e51606c6cf7777623ca70cf04b6b831ec5750bde7192fcf7823"
+        },
+        {
+          "label": "display-enabled",
+          "sha256": "1cd6934545052b3a3ffb52bc6e5ff24bf3a1593b15cab70554368f7e774d3aad"
+        },
+        {
+          "label": "after-display",
+          "sha256": "b1efaa1110d1e80f7ebd647c110897220bea4e5a89ed950b54039d98829c7c1e"
+        }
+      ]
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "display": [
+        "[interface] message_index display system=Some(\"Akrit'tar\")"
+      ],
+      "closed": "closed",
+      "shots": [
+        {
+          "label": "display-disabled",
+          "sha256": "4e8aafa1e33ba8d6a9e29728fed336a33e987635b465449abab265e98af12fee"
+        },
+        {
+          "label": "display-enabled",
+          "sha256": "ad44210ddb77ad61554c051b5aa13767af6e23427c740ea41560a6089c40a97a"
+        },
+        {
+          "label": "after-display",
+          "sha256": "68ec44e9a82aac8a00f5139fd2da3f6aef8beedd0d2deae6f9a34f69e6e289bb"
+        }
+      ]
+    }
+  ]
+}
