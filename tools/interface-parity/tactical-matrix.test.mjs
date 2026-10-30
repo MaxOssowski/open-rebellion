@@ -88,13 +88,15 @@ test("unknown and duplicate catalog mappings fail closed", () => {
 
 test("development matrix reports complete mapping separately from original evidence", () => {
   const result = buildTacticalMatrix({ surfaceLedger: ledger, catalog });
+  // Acceptance follows the ledger: its tactical cells marked "pass".
+  const passed = collectTacticalCells(ledger).filter((cell) => cell.ledger_status === "pass").length;
   assert.deepEqual(result.summary, {
     denominator: 106,
     matrix_coverage: 106,
     journey_cells: 87,
     snapshot_cells: 19,
     a0_coverage: 0,
-    parity_acceptance: 0,
+    parity_acceptance: passed,
     catalog_cells_missing: 0,
     a0_cells_missing: 106,
     status: "incomplete",
@@ -123,7 +125,7 @@ test("strict coverage requires all 106 catalog and A0 records", () => {
 test("release acceptance always implies strict catalog and A0 coverage", () => {
   const acceptedLedger = clone(ledger);
   for (const surface of acceptedLedger.surfaces.filter(({ id }) => /^TAC-0[1-7]$/.test(id))) {
-    for (const cell of surface.acceptance_cells) cell.status = "passed";
+    for (const cell of surface.acceptance_cells) cell.status = "pass";
   }
   assert.throws(
     () => buildTacticalMatrix({

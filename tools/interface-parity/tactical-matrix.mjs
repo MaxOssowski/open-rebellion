@@ -216,7 +216,8 @@ export function buildTacticalMatrix({
     scenario_slug: catalogResult.mapped.get(cell.id) ?? null,
     execution_kind: catalogResult.executionKinds.get(cell.id) ?? null,
     a0_status: a0Result.captures.has(cell.id) ? "available" : "reference-needed",
-    accepted: cell.ledger_status === "passed",
+    // The ledger marks an accepted cell "pass" (2026-10-06-surface-ledger.json).
+    accepted: cell.ledger_status === "pass",
   }));
   const accepted = rows.filter((row) => row.accepted).length;
   const journeyCells = rows.filter((row) => row.execution_kind === "journey").length;

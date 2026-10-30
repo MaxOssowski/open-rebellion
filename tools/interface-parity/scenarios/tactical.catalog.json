@@ -501,14 +501,14 @@
     },
     {
       "slug": "production-hull-scale-a0",
-      "description": "A0 TAC-01-C003's battle, one Medium Transport against one Victory Destroyer with no fighters (extent 103), for a like-for-like hull pixel size",
+      "description": "A0 TAC-01-C003's battle, one Medium Transport against one Victory Destroyer with no fighters (extent 103), for a like-for-like hull pixel size. It supports TAC-01-C003, which battle-entry maps: a cell has one mapping scenario",
       "fixture_codes": { "alliance": 65829, "empire": 66085 },
       "execution_kind": "snapshot",
       "tactical_proof": false,
       "production_participants": true,
       "hull_scale_presentation": true,
       "expected_status": "battle-ready",
-      "audit_cells": ["TAC-01-C003"],
+      "audit_cells": [],
       "acceptance": "Measures each hull's lit-pixel box in the first paused frame for comparison with A0 TAC-01-C003 (Victory Destroyer 17 x 15 px)."
     },
     {
