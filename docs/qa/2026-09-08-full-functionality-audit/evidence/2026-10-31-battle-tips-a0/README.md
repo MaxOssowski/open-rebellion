@@ -70,3 +70,11 @@ Yards, then Popular Support. The windows cover parts of the titles; the
 fragments that show match these names. These are the port's
 `GidMode::label` strings, which `audit-batch.mjs` logs in the same order
 on Linux.
+
+## Alt+G and Alt+U in A0
+
+The agent's menu (right click on the droid) showed Manage Garrisons and
+Manage Production unchecked (`alt-keys/menu-before.png`). After Alt+G and
+Alt+U both were checked (`menu-after-g-u.png`). After the two keys again
+both were unchecked (`menu-restored.png`). `audit-batch.mjs` turns both on
+and off with the same keys on Linux.

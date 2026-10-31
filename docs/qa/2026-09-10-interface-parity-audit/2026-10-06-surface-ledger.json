@@ -1386,20 +1386,21 @@
         {
           "id": "CMD-01-C016",
           "requirement": "Alt+G toggles Manage Garrisons",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/agent-advice.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/audit-batch.json",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/"
           ],
-          "note": "0xbc5 -> 0x115 -> FUN_00439d60 toggles Manage Garrisons; audit-batch.mjs (Linux 2026-10-22) turns it on and off and agent-objectives.mjs plays its reaction. No A0 capture of the toggle.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "0xbc5 -> 0x115 -> FUN_00439d60 toggles Manage Garrisons; audit-batch.mjs (Linux 2026-10-22) turns it on and off and agent-objectives.mjs plays its reaction. 2026-10-31: in A0 the key checks Manage Garrisons in the agent's menu and the second press unchecks it (.artifacts/a0-vm/alt-keys/menu-*.png), as the port toggles it.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C017",
           "requirement": "Alt+U toggles Manage Production",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/agent-advice.md",
@@ -1407,8 +1408,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
             "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "0xbc6 -> 0x116 -> FUN_00439d60 toggles Manage Production (implemented in 8fc9d983); no A0. 2026-10-31: audit-batch.mjs on Linux turns Manage Production on and off with Alt+U (both sides). No A0 capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "0xbc6 -> 0x116 -> FUN_00439d60 toggles Manage Production (implemented in 8fc9d983). 2026-10-31: audit-batch.mjs on Linux turns Manage Production on and off with Alt+U (both sides). 2026-10-31: in A0 the key checks Manage Production in the agent's menu and the second press unchecks it (.artifacts/a0-vm/alt-keys/menu-*.png), as the port toggles it.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         }
       ]
     },
