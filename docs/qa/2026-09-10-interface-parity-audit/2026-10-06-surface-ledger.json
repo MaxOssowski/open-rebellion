@@ -2313,9 +2313,11 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "Close works in the browser gates; not compared with A0, and the UIP-B01 run was on macOS only.",
+          "note": "Close works in the browser gates; not compared with A0, and the UIP-B01 run was on macOS only. 2026-10-31: a sector window's close box closes it in A0 and in the port alike (sector-windows/05, sector-windows.mjs on Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2333,13 +2335,15 @@
         {
           "id": "CMD-04-C008",
           "requirement": "single sector window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "A sector opens one window, refocused rather than duplicated (sector_window.rs); unit tests and the macOS UIP-B01 run, no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A sector opens one window, refocused rather than duplicated (sector_window.rs); unit tests and the macOS UIP-B01 run, no A0. 2026-10-31: in A0 a click on a system of a sector already shown opens no second window (sector-windows/06); the port does the same, its window matching A0 pixel for pixel (sector-windows.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-04-C009",

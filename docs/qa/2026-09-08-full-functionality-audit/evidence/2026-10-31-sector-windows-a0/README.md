@@ -46,3 +46,14 @@ It passes all four steps:
 
 `sector-quadrants.mjs` and the GID gate's popular-support cases still
 pass.
+
+## One window per sector (second stage)
+
+Two more steps were added:
+
+5. Churba's close box (284, 44) closes the left window.
+6. Sesswenna's system (252, 162) clicked again opens no second window.
+   Its sector's window stays on the right half (`05-closed-left`,
+   `06-same-sector`).
+
+The port does the same on Linux: the gate passes all six steps.

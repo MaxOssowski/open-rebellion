@@ -196,6 +196,94 @@
           }
         }
       }
+    },
+    {
+      "frame": "05-closed-left",
+      "sha256": "6e6fc02930f8b403a65d4f43bd207a34732462dbd05f740e5454d19fa57932dc",
+      "halves": {
+        "left": {
+          "expected": false,
+          "differing": [
+            146,
+            0,
+            0,
+            0,
+            3
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "06-same-sector",
+      "sha256": "6e6fc02930f8b403a65d4f43bd207a34732462dbd05f740e5454d19fa57932dc",
+      "halves": {
+        "left": {
+          "expected": false,
+          "differing": [
+            146,
+            0,
+            0,
+            0,
+            3
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
     }
   ]
 }

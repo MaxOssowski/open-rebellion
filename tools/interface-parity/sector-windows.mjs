@@ -5,7 +5,8 @@
 // Alliance Popular Support fixture (code 5): a system in Sesswenna opens
 // its sector on the left half, one in Sumitra opens on the right half,
 // Sesswenna's side switch moves it to the right half and closes Sumitra
-// there, and a system in Churba then opens on the freed left half. After
+// there, a system in Churba then opens on the freed left half, Churba
+// closes, and Sesswenna's system again opens no second window. After
 // each step it compares, pixel for pixel with the A0 frame, each sector
 // window's title-bar buttons (side switch and close; there is no minimize
 // box, FUN_004593e0) and the window's outer frame (its fixed place), and
@@ -54,6 +55,10 @@ const STEPS = [
   ["02-second", [470, 240], ["left", "right"]],
   ["03-flip", [270, 44], ["right"]],
   ["04-left", [115, 215], ["left", "right"]],
+  // Churba's close box, then Sesswenna's system again: its sector already
+  // has a window (right), so no second one opens (FUN_00429ce0).
+  ["05-closed-left", [284, 44], ["right"]],
+  ["06-same-sector", [252, 162], ["right"]],
 ];
 
 function serve(root) {
