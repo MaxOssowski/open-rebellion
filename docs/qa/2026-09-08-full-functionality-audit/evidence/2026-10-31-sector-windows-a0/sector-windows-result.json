@@ -284,6 +284,114 @@
           }
         }
       }
+    },
+    {
+      "frame": "07-both",
+      "sha256": "26eda63a3a7f46b0da9d1d742ef7ef44ce5f7f7daad911e310d37da159e11cb5",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              160,
+              42,
+              198,
+              51
+            ],
+            "port": [
+              155,
+              42,
+              200,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "09-third",
+      "sha256": "feda4de58be0871b0192cac6738bde83192bd21d8d26df53420aef03aa927f40",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              160,
+              42,
+              198,
+              51
+            ],
+            "port": [
+              155,
+              42,
+              200,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              398,
+              42,
+              440,
+              51
+            ],
+            "port": [
+              394,
+              42,
+              442,
+              51
+            ]
+          }
+        }
+      }
     }
   ]
 }

@@ -57,3 +57,14 @@ Two more steps were added:
    `06-same-sector`).
 
 The port does the same on Linux: the gate passes all six steps.
+
+## A third sector (third stage)
+
+Two more steps were added:
+
+7. Churba opens again on the left.
+8. With both halves held, the System Finder (F2) is given "Kashyyyk" and
+   Enter. Sumitra, a third sector, opens on the right half. It replaces
+   Sesswenna and leaves Churba (`07-both`, `08-finder`, `09-third`).
+
+The port does the same; the gate passes all eight steps.

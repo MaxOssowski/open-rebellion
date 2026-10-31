@@ -59,6 +59,11 @@ const STEPS = [
   // has a window (right), so no second one opens (FUN_00429ce0).
   ["05-closed-left", [284, 44], ["right"]],
   ["06-same-sector", [252, 162], ["right"]],
+  // Churba again, then a third sector with both halves held: the System
+  // Finder (F2) on Kashyyyk opens Sumitra, which replaces the right half's
+  // window (Sesswenna) and leaves Churba (FUN_00429ce0).
+  ["07-both", [115, 215], ["left", "right"]],
+  ["09-third", { keys: ["F2", "type:Kashyyyk", "Enter"] }, ["left", "right"]],
 ];
 
 function serve(root) {
@@ -131,11 +136,19 @@ try {
   await page.locator("#glcanvas").focus();
   await page.waitForTimeout(800);
   for (const [frame, click, halves] of STEPS) {
-    await page.mouse.move(...click, { steps: 4 });
-    await page.waitForTimeout(150);
-    await page.mouse.down();
-    await page.waitForTimeout(120);
-    await page.mouse.up();
+    if (Array.isArray(click)) {
+      await page.mouse.move(...click, { steps: 4 });
+      await page.waitForTimeout(150);
+      await page.mouse.down();
+      await page.waitForTimeout(120);
+      await page.mouse.up();
+    } else {
+      for (const key of click.keys) {
+        if (key.startsWith("type:")) await page.keyboard.type(key.slice(5), { delay: 60 });
+        else await page.keyboard.press(key);
+        await page.waitForTimeout(700);
+      }
+    }
     await page.waitForTimeout(600);
     await page.mouse.move(2, 470, { steps: 4 });
     await page.waitForTimeout(400);

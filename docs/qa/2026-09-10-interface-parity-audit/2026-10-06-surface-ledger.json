@@ -2376,15 +2376,15 @@
         {
           "id": "CMD-04-C011",
           "requirement": "no more than two sector windows",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
             "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "A third sector request replaces the window on its own half (FUN_00429ce0, commit 8fc9d983); unit test only. 2026-10-31: sector-windows.mjs shows two windows on the two halves and a flip replacing the other half's window, matching A0; a third sector request with both halves full was not exercised in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A third sector request replaces the window on its own half (FUN_00429ce0, commit 8fc9d983); unit test only. 2026-10-31: sector-windows.mjs shows two windows on the two halves and a flip replacing the other half's window, matching A0; a third sector request with both halves full was not exercised in A0. 2026-10-31 (later): with both halves held, a third sector (Sumitra through the System Finder) replaces the right half's window and leaves the left in A0 (sector-windows/09) and in the port (sector-windows.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-04-C012",
