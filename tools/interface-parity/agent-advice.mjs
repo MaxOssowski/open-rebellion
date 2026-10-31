@@ -20,6 +20,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const WEB = path.join(ROOT, "web");
@@ -46,6 +47,40 @@ const FACTIONS = [
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
+
+// The unread advice rows (FUN_00468ab0: font 13, set by
+// theme::paint_gdi_text) against A0 tooltip/170-index (--a0=.artifacts/
+// a0-vm/tooltip; the Empire's index, its rows other topics): the first
+// row's ink starts 24 right of the heading's and its capitals 40 below the
+// heading's top, within a pixel. Both windows' contents differ, so only
+// these offsets are compared.
+async function rowsAgainstA0(portFile) {
+  const read = async (file) => PNG.sync.read(await fs.readFile(file));
+  const ink = (png, [x0, y0, x1, y1], pred) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = (y * png.width + x) * 4;
+        if (!pred(png.data[i], png.data[i + 1], png.data[i + 2])) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const white = (r, g, b) => Math.min(r, g, b) > 200;
+  const grey = (r, g, b) => r > 100 && Math.abs(r - g) < 25 && Math.abs(g - b) < 40 && b > 100;
+  const a0 = await read(path.join(args.a0, "170-index.png"));
+  const port = await read(portFile);
+  const offsets = (png, heading, row) => {
+    const h = ink(png, heading, white);
+    const r = ink(png, row, grey);
+    return [r[0] - h[0], r[1] - h[1]];
+  };
+  const check = { a0: offsets(a0, [150, 142, 300, 158], [175, 180, 500, 200]),
+    port: offsets(port, [90, 140, 300, 156], [112, 177, 430, 197]) };
+  assert.ok(check.a0.every((value, k) => Math.abs(value - check.port[k]) <= 1), `advice rows: ${JSON.stringify(check)}`);
+  return check;
+}
 
 function serve(root) {
   const server = http.createServer(async (req, res) => {
@@ -157,6 +192,8 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(500);
     await shot("advice-index");
+    const rowsText = args.a0 && faction.name === "alliance"
+      ? await rowsAgainstA0(path.join(directory, "advice-index.png")) : null;
     // Select All (0x90) chooses every row; the posting toggle (0x66,
     // FUN_00467f10) silences Advice (mask 0x200), then turns it back.
     await click(page, faction.selectAll);
@@ -197,7 +234,7 @@ async function run(browser, base, faction) {
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", posted: posted(), shots,
+    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText,
       agent: log.filter((line) => line.startsWith("[agent]") || line.includes("message_index")) };
   } catch (error) {
     await shot("failure").catch(() => {});

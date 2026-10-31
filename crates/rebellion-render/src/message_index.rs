@@ -64,8 +64,12 @@ const TEXT_INSET: f32 = 32.0;
 const HEADING_AT: (f32, f32) = (35.0, 91.0);
 /// The row text's cell below the row's top (A0 2026-10-29).
 const ROW_TEXT_Y: f32 = 2.0;
-/// The rows' font (`theme::original_font`): 12-pixel regular, as A0 shows.
-const ROW_FONT: u16 = 8;
+/// The rows' fonts (`FUN_00468ab0`, `+0x38`): font 13 (the bold 12-pixel
+/// cell, 10 ppem) for an unread message, font 10 once read (`FUN_00469de0`).
+/// A0 tooltip/170-index: unread "Garrisons" is 47 by 7, Arial Bold at 10
+/// ppem, its glyphs one pixel wide.
+const ROW_FONT_UNREAD: u16 = 13;
+const ROW_FONT_READ: u16 = 10;
 /// An unchosen row's text, the list's grey (`FUN_00607ea0`, as the Finders).
 const ROW_COLOR: Color32 = Color32::from_rgb(0x78, 0x78, 0x78);
 /// A chosen row's bar, STRATEGY `0x2aa2` (Alliance) / `0x2aa3` (Empire)
@@ -1298,36 +1302,39 @@ fn draw_list_rows(
             let (list_rect, _) = ui.allocate_exact_size(list_size, egui::Sense::hover());
             let painter = ui.painter().with_clip_rect(list_rect);
 
-            // The chosen category's label heads the list, white in font 10
-            // (A0 2026-10-29: "Advice Messages" from (35, 93) of the window,
-            // 100 wide).
             // Mode 1's title (`Class_0065a1c0_vt44`): TEXTSTRA 0x8019 in
-            // font 11 at (15, 20). A0 shows it white, from x 141 with
-            // caps from y 76 (its width, 155, is GDI's hinted Arial; the
-            // port's is 142).
-            ui.painter().text(
-                title_pos(origin, scale),
-                egui::Align2::LEFT_TOP,
+            // font 11 at (15, 20). A0 shows it white, from x 141 with caps
+            // from y 76. The chosen category's label heads the list, white
+            // in the default font: A0 tooltip/170-index's "Advice Messages"
+            // is 101 wide, Arial at 13 ppem.
+            use crate::theme::{paint_gdi_text, GdiAlign, GdiVAlign};
+            let line = |at: egui::Pos2, width: f32| {
+                egui::Rect::from_min_size(at, egui::vec2(width * scale, 30.0 * scale))
+            };
+            paint_gdi_text(
+                ui.painter(),
+                line(title_pos(origin, scale), 300.0),
+                scale,
+                11,
                 "Message Index",
-                crate::theme::original_font(11, scale),
                 Color32::WHITE,
+                (GdiAlign::Left, GdiVAlign::Top),
             );
             if let Some(heading) = category_heading(state.category) {
-                ui.painter().text(
-                    heading_pos(origin, scale),
-                    egui::Align2::LEFT_TOP,
+                paint_gdi_text(
+                    ui.painter(),
+                    line(heading_pos(origin, scale), 300.0),
+                    scale,
+                    crate::DEFAULT_FONT,
                     heading,
-                    crate::theme::original_font(10, scale),
                     Color32::WHITE,
+                    (GdiAlign::Left, GdiVAlign::Top),
                 );
             }
 
-            // hyp: the list draws every item in one font. FUN_00468ab0 sets
-            // an item's +0x38 to 13 (unread) or 10 (read), but the A0 rows
-            // of unread advice are 12-pixel regular Arial (font 8's cell:
-            // "Bombardments" 72 wide, caps 7 high), grey, the chosen one
-            // white (A0 2026-10-29, as the Finders' FUN_00607ea0 colours).
-            let font = crate::theme::original_font(ROW_FONT, scale);
+            // Each row in its own font (unread or read), grey, the chosen
+            // one white (A0 2026-10-29, as the Finders' FUN_00607ea0
+            // colours).
             let chosen_bar = match faction {
                 CockpitFaction::Alliance => ROW_CHOSEN_ALLIANCE,
                 CockpitFaction::Empire => ROW_CHOSEN_EMPIRE,
@@ -1388,18 +1395,25 @@ fn draw_list_rows(
                     paint_strategy_resource(&painter, ctx, cache, icon, layout.icon);
                 }
 
-                // The text at the item's +0x30 (32), its cell 2 below the
-                // row's top (A0: caps from 4).
-                painter.text(
-                    layout.text,
-                    egui::Align2::LEFT_TOP,
+                // The text at the item's +0x30 (32), its line 2 below the
+                // row's top (A0 tooltip/170-index: unread caps from 5,
+                // tmAscent 10).
+                paint_gdi_text(
+                    &painter,
+                    line(layout.text, ROW_WIDTH - TEXT_INSET),
+                    scale,
+                    if msg.unread {
+                        ROW_FONT_UNREAD
+                    } else {
+                        ROW_FONT_READ
+                    },
                     msg.title.as_deref().unwrap_or(&msg.text),
-                    font.clone(),
                     if is_selected {
                         Color32::WHITE
                     } else {
                         ROW_COLOR
                     },
+                    (GdiAlign::Left, GdiVAlign::Top),
                 );
 
                 // Click interaction.
@@ -2135,6 +2149,7 @@ mod tests {
         // The interface fixture's shell (draw_message_index_shell): a click
         // on Fleet (0x7b) returns it.
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let fleet = egui::pos2(22.0 + f32::from(0x4c_u16) + 18.0, 46.0 + 20.0);
         let mut clicked = None;
@@ -2827,6 +2842,8 @@ mod tests {
 
     struct DriveResult {
         actions: Vec<MessageIndexAction>,
+        /// The last frame's lines of text.
+        lines: Vec<crate::theme::TestLine>,
     }
 
     /// Run two idle frames, then one frame per entry in `frames` with the
@@ -2837,10 +2854,12 @@ mod tests {
         frames: Vec<(egui::Pos2, Vec<egui::Event>)>,
     ) -> DriveResult {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let origin = egui::Pos2::ZERO;
         let scale = 1.0;
         let mut all_actions = Vec::new();
+        let mut lines = Vec::new();
 
         let first = frames.first().map_or(egui::Pos2::ZERO, |(pos, _)| *pos);
         let full_frames = [(first, vec![]), (first, vec![])].into_iter().chain(frames);
@@ -2880,7 +2899,7 @@ mod tests {
                 events: raw_events,
                 ..Default::default()
             };
-            let _ = ctx.run(input, |ctx| {
+            let output = ctx.run(input, |ctx| {
                 let actions = draw_message_index(
                     ctx,
                     &mut cache,
@@ -2894,11 +2913,45 @@ mod tests {
                 );
                 all_actions.extend(actions);
             });
+            lines = crate::theme::test_lines(&output.shapes);
         }
 
         DriveResult {
             actions: all_actions,
+            lines,
         }
+    }
+
+    #[test]
+    fn an_unread_row_takes_font_13_and_a_read_one_font_10() {
+        // FUN_00468ab0 sets an item's +0x38 to 13 for an unread message, 10
+        // once read (FUN_00469de0). A0 tooltip/170-index: unread
+        // "Garrisons" is 47 by 7, Arial Bold at 10 ppem (font 13's bold
+        // 12-pixel cell). The heading is the default font ("Advice
+        // Messages" 101 wide, 13 ppem).
+        let mut log = scroll_log(2);
+        let read = log.messages().last().map(|msg| msg.id).unwrap();
+        log.mark_message_read(read);
+        let mut state = MessageIndexState::new();
+        state.category = 0x7b;
+        let lines = drive(&log, &mut state, vec![]).lines;
+        let size = |text: &str| {
+            lines
+                .iter()
+                .find(|line| line.text == text)
+                .map(|line| line.size)
+        };
+        let unread = log.messages().iter().find(|msg| msg.unread).unwrap();
+        assert_eq!(
+            size(&unread.text),
+            Some(crate::theme::gdi_font(13, 1.0).size)
+        );
+        let read = log.messages().iter().find(|msg| !msg.unread).unwrap();
+        assert_eq!(size(&read.text), Some(crate::theme::gdi_font(10, 1.0).size));
+        assert_eq!(
+            size(category_heading(state.category).unwrap()),
+            Some(crate::theme::gdi_font(crate::DEFAULT_FONT, 1.0).size)
+        );
     }
 
     #[test]
