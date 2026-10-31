@@ -1569,17 +1569,19 @@ async fn main() {
             &mut troop_transport_state,
             &mut uprising_state,
         );
+        // Every fixture's cockpit shows its own side's droids (the
+        // Empire's IMP sprites, not the Alliance's).
+        let side = if player_faction == MissionFaction::Alliance {
+            AdvisorFaction::Alliance
+        } else {
+            AdvisorFaction::Empire
+        };
+        advisor_state.set_faction(side);
         if interface_test_fixture::runs_the_clock(request) {
             choose_game_speed(&mut clock, GameSpeed::Fast);
             // The clock-running fixtures give the player's advisor its
             // messages, without the opening briefing, so their
             // notifications reach its event slot (FUN_0048a060).
-            let side = if player_faction == MissionFaction::Alliance {
-                AdvisorFaction::Alliance
-            } else {
-                AdvisorFaction::Empire
-            };
-            advisor_state.set_faction(side);
             advisor_schedule = advisor_messages(&gdata_path, side).map(|messages| {
                 rebellion_render::advisor_schedule::AdvisorSchedule::from_save(
                     side,
