@@ -226,7 +226,7 @@ const ALERT_BUTTON_RECT: CockpitViewport = CockpitViewport {
     width: 57.0,
     height: 28.0,
 };
-/// Game-font entry 5: 16 pixels, bold. Drawn with egui's proportional face.
+/// Game-font entry 5: a 16-pixel cell, bold (`theme::original_font`).
 const ALERT_FONT_HEIGHT: f32 = 16.0;
 const SPEED_MENU_ID: &str = "original_game_speed_menu";
 /// Text color `0x2f0fbff`.
@@ -311,11 +311,21 @@ pub fn draw_pause_alert(
                     ui.painter().rect_filled(rect, 0.0, gid_popup_frame().fill);
                 }
             }
-            ui.painter().text(
-                local(ALERT_TEXT_RECT).center(),
-                egui::Align2::CENTER_CENTER,
-                RESUME_GAME_PLAY,
-                egui::FontId::proportional(ALERT_FONT_HEIGHT * scale),
+            // Class_00658950_vt3c: the one string centred on a line of the
+            // 16-pixel cell, DT_VCENTER in whole pixels.
+            let text_rect = local(ALERT_TEXT_RECT);
+            let galley = ui.painter().layout_no_wrap(
+                RESUME_GAME_PLAY.to_owned(),
+                crate::theme::original_font(5, scale),
+                ALERT_TEXT_COLOR,
+            );
+            let line_top = ((ALERT_TEXT_RECT.height - ALERT_FONT_HEIGHT) / 2.0).floor() * scale;
+            ui.painter().galley(
+                egui::pos2(
+                    text_rect.center().x - galley.size().x / 2.0,
+                    text_rect.top() + line_top,
+                ),
+                galley,
                 ALERT_TEXT_COLOR,
             );
             let button = local(ALERT_BUTTON_RECT);
@@ -984,6 +994,7 @@ mod tests {
     fn alert_resumes(clock: &GameClock, point: (f32, f32), last: Vec<egui::Event>) -> bool {
         let layout = strategic_layout(2.0);
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let pos = screen(layout, point);
         let mut resumed = false;
@@ -1036,11 +1047,14 @@ mod tests {
 
     #[test]
     fn the_pause_alert_message_is_centred_in_its_rectangle() {
-        // The message rectangle (43,25)-(368,112) read from 0x00658920.
+        // The message rectangle (43,25)-(368,112) read from 0x00658920;
+        // Class_00658950_vt3c centres the line in it with DT_VCENTER, whose
+        // top is (87 - 16) / 2 = 35 whole pixels down, in font 5.
         let layout = strategic_layout(2.0);
         let mut paused = running(GameSpeed::Slow);
         paused.pause();
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut shapes = Vec::new();
         for _ in 0..2 {
@@ -1056,24 +1070,24 @@ mod tests {
             })
             .expect("the message is painted");
         let (x, y) = pause_alert_origin();
-        let centre = screen(
+        let centre_top = screen(
             layout,
             (
                 x + ALERT_TEXT_RECT.x + ALERT_TEXT_RECT.width / 2.0,
-                y + ALERT_TEXT_RECT.y + ALERT_TEXT_RECT.height / 2.0,
+                y + ALERT_TEXT_RECT.y + 35.0,
             ),
         );
-        let painted = text.pos + text.galley.size() / 2.0;
+        let painted = text.pos + egui::vec2(text.galley.size().x / 2.0, 0.0);
         assert!(
-            (painted - centre).length() < 0.5,
-            "{painted:?} vs {centre:?}"
+            (painted - centre_top).length() < 0.5,
+            "{painted:?} vs {centre_top:?}"
         );
         assert_eq!(text.fallback_color, ALERT_TEXT_COLOR);
         let expected = ctx.fonts(|fonts| {
             fonts
                 .layout_no_wrap(
                     RESUME_GAME_PLAY.to_owned(),
-                    egui::FontId::proportional(ALERT_FONT_HEIGHT * 2.0),
+                    crate::theme::original_font(5, 2.0),
                     ALERT_TEXT_COLOR,
                 )
                 .size()

@@ -1,0 +1,21 @@
+{
+  "gate": "tools/interface-parity/personnel-orders.mjs --only=empire/abort --a0=.artifacts/a0-vm/tooltip",
+  "status": "pass",
+  "wasm_sha256": "dee60a1c59456eb1f57c8305053f4585f1941e291282c4c1863947b981dbfc1f",
+  "browser_version": "155.0.8059.84",
+  "alert": {
+    "differing": 0,
+    "a0_ink": [
+      254,
+      215,
+      384,
+      227
+    ],
+    "port_ink": [
+      249,
+      215,
+      389,
+      227
+    ]
+  }
+}

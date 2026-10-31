@@ -24,6 +24,9 @@ const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json
 const noBuild = process.argv.includes("--no-build");
 // `--only=alliance/retire` runs the named cases alone.
 const only = process.argv.filter((arg) => arg.startsWith("--only=")).map((arg) => arg.slice(7));
+// `--a0=DIR` (the A0 tooltip captures) compares the pause alert with
+// tooltip/321-resume-box-base.png.
+const a0Dir = process.argv.find((arg) => arg.startsWith("--a0="))?.slice(5);
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const QUADRANTS = 50;
@@ -300,6 +303,47 @@ const cases = [
       // missions, well inside Diplomacy's five-day minimum timer.
       await page.waitForTimeout(2_600);
       await setSpeed(page, setup, SPEED_ROWS.pause);
+      // The alert against A0 tooltip/321-resume-box-base (an Empire game;
+      // REBDLOG 10622 at (114, 152), checkmark 10625 at (290, 286)): its
+      // pixels outside the message's line and A0's pointer match, and the
+      // line's ink is centred within 1 pixel with the same top and bottom
+      // (Class_00658950_vt3c, font 5, 0x2f0fbff).
+      let alert = null;
+      if (a0Dir && faction.name === "empire") {
+        await page.mouse.move(2, 470);
+        await frames(page, 4);
+        const port = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
+        fs.writeFileSync(path.join(directory, "pause-alert.png"), PNG.sync.write(port));
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Dir, "321-resume-box-base.png")));
+        const rgb = (png, x, y) => png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3).join(",");
+        const inside = (x, y, [rx, ry, rw, rh]) => x >= rx && x < rx + rw && y >= ry && y < ry + rh;
+        const LINE = [157, 177, 325, 87];
+        const POINTER = [318, 288, 24, 32];
+        let differing = 0;
+        for (let y = 152; y < 328; y += 1) {
+          for (let x = 114; x < 526; x += 1) {
+            if (inside(x, y, LINE) || inside(x, y, POINTER)) continue;
+            if (rgb(port, x, y) !== rgb(a0, x, y)) differing += 1;
+          }
+        }
+        const ink = (png) => {
+          let box = null;
+          for (let y = LINE[1]; y < LINE[1] + LINE[3]; y += 1) {
+            for (let x = LINE[0]; x < LINE[0] + LINE[2]; x += 1) {
+              const [r, g, b] = rgb(png, x, y).split(",").map(Number);
+              if (r > 200 && g > 200 && b > 180) {
+                box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+              }
+            }
+          }
+          return box;
+        };
+        alert = { differing, a0_ink: ink(a0), port_ink: ink(port) };
+        assert.equal(differing, 0, `${differing} pause alert pixels differ from A0`);
+        const [a, p] = [alert.a0_ink, alert.port_ink];
+        assert.ok(Math.abs((a[0] + a[2]) / 2 - (p[0] + p[2]) / 2) <= 1 && Math.abs(a[1] - p[1]) <= 1
+          && Math.abs(a[3] - p[3]) <= 1, `the message's ink ${p} vs A0 ${a}`);
+      }
       // "Resume Game Play?" (FUN_00415e60) is open: its button's tip is its
       // REBDLOG label "Resume" (A0 a0-vm/tooltip/321-resume-box.png, the
       // pointer at (320, 298), the tip at (320, 319)).
@@ -312,7 +356,7 @@ const cases = [
       await click(page, confirmationCheckmark(faction));
       const aborted = await log.logged("the checkmark aborts the mission",
         /command=0x250 destination=abort mission=\d+ result=true$/);
-      return { before, running, asked, aborted };
+      return { before, running, asked, aborted, alert };
     },
   },
 ];

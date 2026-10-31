@@ -2513,15 +2513,17 @@
         {
           "id": "CMD-05-C001",
           "requirement": "paused",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-pause-alert-a0/",
+            "tools/interface-parity/personnel-orders.mjs"
           ],
-          "note": "Pause (FUN_0041d2f0 stop day) finishes the day and opens the REBDLOG 0x297e 'Resume Game Play?' alert at (114,152); P60 browser run (macOS 2026-09-25); Linux gates (personnel-orders.mjs) use the Pause row. No A0 comparison of the alert.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Pause (FUN_0041d2f0 stop day) finishes the day and opens the REBDLOG 0x297e 'Resume Game Play?' alert at (114,152); P60 browser run (macOS 2026-09-25); Linux gates (personnel-orders.mjs) use the Pause row. 2026-10-31: the alert against A0 tooltip/321 (personnel-orders.mjs --a0, Linux): no pixel differs outside the message and A0's pointer; the message in font 5 is centred with A0's top and bottom, 10 px wider (accepted text deviation).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-05-C002",
