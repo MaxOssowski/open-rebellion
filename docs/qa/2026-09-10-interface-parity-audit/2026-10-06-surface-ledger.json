@@ -3581,37 +3581,42 @@
         {
           "id": "CMD-10-C005",
           "requirement": "hover unchanged",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/"
           ],
-          "note": "FUN_00602d30 has no hover art; the Linux GID gate captures the hover frame but does not compare it with rest; no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00602d30 has no hover art; the Linux GID gate captures the hover frame but does not compare it with rest. 2026-10-31: A0 tooltip/20..26 *-base show each hovered control with its normal bitmap; the GID gate (run.mjs, Linux, both sides) now asserts the hovered control's pixels equal its rest frame.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C006",
           "requirement": "release inside",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "One dispatch on a valid release (FUN_006030c0, FUN_006035f0), checked in the Linux GID gate for 0x132, 0x131 and 0x133; no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "One dispatch on a valid release (FUN_006030c0, FUN_006035f0), checked in the Linux GID gate for 0x132, 0x131 and 0x133. 2026-10-31: in A0 a release inside the Fleet, Troop and Personnel Finder controls and the globe opens their window once (controls/*); audit-batch.mjs and the GID gate do the same on Linux.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C007",
           "requirement": "release outside",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Cancel on release outside (FUN_006030f0) passed in the September Astra review, browser run on macOS only; rerun on Linux. No A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Cancel on release outside (FUN_006030f0) passed in the September Astra review, browser run on macOS only; rerun on Linux. 2026-10-31: A0 controls/fleet-held-out and fleet-released-out: held off the control the pressed art stays, a release off it opens nothing and restores the normal art; audit-batch.mjs (Linux, both sides) asserts the same, the held control equal to A0 pixel for pixel (Alliance).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C008",
@@ -3649,14 +3654,15 @@
         {
           "id": "CMD-10-C011",
           "requirement": "no persistent selected art",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/"
           ],
-          "note": "After release the Linux GID gate's closed frame is byte-identical to rest, so no selected art persists (FUN_00602d30); no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "After release the Linux GID gate's closed frame is byte-identical to rest, so no selected art persists (FUN_00602d30). 2026-10-31: after a release A0 shows the normal art again (controls/fleet-released-out: 10004); the port's closed frame equals its rest frame (GID gate, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C012",

@@ -343,6 +343,51 @@ async function inspect(server, source, faction, executable) {
       await page.waitForTimeout(300);
     }
 
+    // A press held off the control keeps its pressed art (the button keeps
+    // the capture, FUN_00602d30), and a release off it opens nothing
+    // (FUN_006030f0). A0 controls/fleet-held-out.png and
+    // fleet-released-out.png (Alliance, the Fleet Finder control).
+    {
+      const [x, y] = CONTROLS.fleet;
+      const rect = faction.name === "alliance" ? [157, 407, 29, 17] : [199, 434, 37, 24];
+      await page.mouse.move(x, y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      const held = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
+      await page.mouse.move(x, y - 55, { steps: 4 });
+      await frames(page, 2);
+      const heldOut = await page.screenshot({ animations: "disabled" });
+      fs.writeFileSync(path.join(directory, "fleet-held-out.png"), heldOut);
+      const out = PNG.sync.read(heldOut);
+      let changed = 0;
+      for (let yy = rect[1]; yy < rect[1] + rect[3]; yy += 1) {
+        for (let xx = rect[0]; xx < rect[0] + rect[2]; xx += 1) {
+          const i = (yy * out.width + xx) * 4;
+          if (out.data.readUInt32BE(i) !== held.data.readUInt32BE(i)) changed += 1;
+        }
+      }
+      assert.equal(changed, 0, "the held control lost its pressed art off the control");
+      if (faction.name === "alliance") {
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/controls/fleet-held-out.png")));
+        let differing = 0;
+        for (let yy = rect[1]; yy < rect[1] + rect[3]; yy += 1) {
+          for (let xx = rect[0]; xx < rect[0] + rect[2]; xx += 1) {
+            const i = (yy * out.width + xx) * 4;
+            if ((out.data.readUInt32BE(i) >>> 8) !== (a0.data.readUInt32BE(i) >>> 8)) differing += 1;
+          }
+        }
+        checks.held_out_a0_differing = differing;
+        assert.equal(differing, 0, `the held control differs from A0 in ${differing} pixels`);
+      }
+      const before = countOf(/command=0x12e destination=fleet_finder status=opened_original/);
+      await page.mouse.up();
+      await page.waitForTimeout(500);
+      assert.equal(countOf(/command=0x12e destination=fleet_finder status=opened_original/), before,
+        "a release off the control opened the Fleet Finder");
+      checks.release_outside = "nothing opened";
+    }
+
     // Alt+2..Alt+9 then Alt+1: commands 0xbcb..0xbd2 and 0xbca (TEXTCOMM
     // accelerator table 11) select the nine GID modes in turn
     // (FUN_00422ce0: 0x11, 0x12, 0x21, 0x22, 0x43, 0x44, 0x65, 0x66, 0x67);

@@ -418,8 +418,28 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     `${faction}: strict outside-edge opened the GID menu`);
   probes.push({ type: "outside-control", x: outside.x, y: outside.y, opened: false });
 
+  // FUN_00602d30 has no hover art: the control under the pointer keeps its
+  // rest art (A0 tooltip/20..26 *-base: each hovered control shows its
+  // normal bitmap).
+  const restBytes = await page.screenshot({ animations: "disabled" });
   await page.mouse.move(interior.x, interior.y);
-  await page.screenshot({ path: path.join(folder, "control-hover.png"), animations: "disabled" });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const hoverBytes = await page.screenshot({ path: path.join(folder, "control-hover.png"), animations: "disabled" });
+  {
+    const [rest, hover] = [PNG.sync.read(restBytes), PNG.sync.read(hoverBytes)];
+    const at = point(control.x, control.y);
+    let differing = 0;
+    for (let y = Math.round(at.y); y < Math.round(at.y + control.height * scale); y += 1) {
+      for (let x = Math.round(at.x); x < Math.round(at.x + control.width * scale); x += 1) {
+        const i = (y * rest.width + x) * 4;
+        if (rest.data.readUInt32BE(i) !== hover.data.readUInt32BE(i)) differing += 1;
+      }
+    }
+    assert.equal(differing, 0, `${faction}: the hovered control changed its art`);
+    probes.push({ type: "control-hover", unchanged: true });
+  }
   await page.mouse.down();
   await page.evaluate(() => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
@@ -515,9 +535,9 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   }
 
   if (scenario.slug === "popular-support") {
-    // Choosing a display opens its legend (FUN_00422ce0 command 0x140 runs
-    // FUN_00426d00), so the command centre to return to is the one after
-    // the selection, legend open.
+    // Choosing a display builds its legend under the galaxy view
+    // (FUN_00426d00), so the command centre to return to is the one after
+    // the selection, legend button shown.
     const commandCenter = await stableInteractionFrame(page, folder,
       "command-center-after-selection");
     const commandControls = faction === "alliance"
@@ -615,6 +635,10 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       }
     }
 
+    // Off every control, so no tip (500 ms, FUN_006008e0) shows over the
+    // frame compared.
+    await page.mouse.move(offsetX + 2 * scale, offsetY + 2 * scale);
+    await page.waitForTimeout(100);
     await page.keyboard.press("E");
     await page.evaluate(() => new Promise((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(resolve));

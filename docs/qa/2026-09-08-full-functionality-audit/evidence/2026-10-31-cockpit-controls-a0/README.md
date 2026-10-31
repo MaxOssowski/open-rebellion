@@ -37,3 +37,26 @@ on their first pixel (`bmp_cache::uses_first_pixel_key`).
   (`audit-batch-controls.json`). The Finders themselves match A0 through
   F3..F5 (`encyclopedia-placement.mjs --window=finders`).
 - **The rest.** The GID catalog (152/152) and `briefing.mjs` pass.
+
+## Hover, release inside and outside (second stage)
+
+**A0.**
+- **Hover.** The `tooltip/20..26 *-base` frames show each hovered Empire
+  control with its normal bitmap: 10016, 10018, 10028 and the others.
+  There is no hover art.
+- **Held off the control.** The Fleet Finder control held (`fleet-held`)
+  shows its pressed art 10003. Moved off while still held
+  (`fleet-held-out`), it keeps that art, because the button keeps the
+  capture.
+- **Released outside.** Released off the control (`fleet-released-out`),
+  it shows its normal art 10004 again and opens nothing.
+
+**Gates (Linux).**
+- `run.mjs` (the GID gate) now asserts that the hovered GID control's
+  pixels equal its rest frame, on both sides and every viewport. It also
+  moves the pointer off the controls before the legacy-E check; a control's
+  500 ms tip had made that check flaky.
+- `audit-batch.mjs` presses the Fleet Finder control on both sides and
+  moves off it. The control keeps its pressed art; for the Alliance its
+  pixels equal A0's `fleet-held-out` (0 differing). The release opens
+  nothing.
