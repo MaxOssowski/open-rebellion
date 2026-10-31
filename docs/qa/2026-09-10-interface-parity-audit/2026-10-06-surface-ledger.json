@@ -1196,7 +1196,7 @@
         {
           "id": "CMD-01-C001",
           "requirement": "Alliance initial",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-shell-canvas.md",
@@ -1204,8 +1204,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
           ],
-          "note": "A0 (Windows 10 VM, day-7 save, galaxy-a.png) against the Linux GID gate capture: shell, aperture and controls pixel-identical, 98.28% overall. That is not the initial state (day 0, Display Off, briefing), which has no A0 capture. 2026-10-31: A0 now has a new Alliance game's first frame (new-alliance/t18): against briefing.mjs first-voice (Linux) the shell, galaxy, legend button (fixed: the port hid it on Display Off), day field and time bar are identical; the droids' frames, maintenance and the pointer differ; the advisor button at (0, 355) is lit in the port, unlit in A0, unexplained.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 (Windows 10 VM, day-7 save, galaxy-a.png) against the Linux GID gate capture: shell, aperture and controls pixel-identical, 98.28% overall. That is not the initial state (day 0, Display Off, briefing), which has no A0 capture. 2026-10-31: A0 now has a new Alliance game's first frame (new-alliance/t18): against briefing.mjs first-voice (Linux) the shell, galaxy, legend button (fixed: the port hid it on Display Off), day field and time bar are identical; the droids' frames, maintenance and the pointer differ; the 'advisor button' at (3, 355) is the Game Options globe, whose normal and pressed art the port had swapped (FUN_00427270 passes 0x271e/0x272c first); fixed, it now matches A0 (1 px). The rest is the droids' animation frames, the maintenance figure and A0's pointer.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C002",

@@ -49,8 +49,15 @@ release WASM with the fix): 2,696 of 307,200 pixels differ.
   and the time bar (both blank).
 - **Different.** C-3PO and R2-D2's animation frames, the maintenance
   figure (169 against 141, game state) and A0's pointer.
-- **Unexplained.** The advisor button at (0, 355) is lit in the port and
-  unlit in A0, a difference of 807 pixels.
+- **Globe (fixed).** The control at (3, 355) is the Game Options globe,
+  not the advisor. `FUN_00427270` passes it its normal art first: 0x271e
+  (10014) for the Alliance and 0x272c (10028) for the Empire. A0 shows
+  10014 at rest here and in `2026-10-28-nav/galaxy-a.png`. The port had
+  normal and pressed swapped on both sides; it now uses the constructor's
+  order. After the fix the globe differs from A0 by 1 pixel, and the frame
+  by 2,567 pixels in all: the droids' frames, the maintenance figure and
+  A0's pointer. The Alliance galaxy comparison against `galaxy-a.png` drops
+  from about 5,300 to 3,350 differing pixels.
 
 ## Legend tip
 

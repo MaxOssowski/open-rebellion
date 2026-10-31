@@ -2253,8 +2253,9 @@ mod tests {
         let globe = strategic_side_control(CockpitFaction::Empire);
         assert_eq!(globe.button, CockpitButton::GameOptions);
         assert_eq!(globe.command_id, 0x133);
-        assert_eq!(globe.normal_resource, 10027);
-        assert_eq!(globe.pressed_resource, 10028);
+        // FUN_00427270: normal 0x272c, pressed 0x272b.
+        assert_eq!(globe.normal_resource, 10028);
+        assert_eq!(globe.pressed_resource, 10027);
         assert_viewport(globe.rect, 79.0, 192.0, 35.0, 57.0);
         let controls = strategic_primary_controls(CockpitFaction::Empire);
         assert_eq!(
@@ -2276,8 +2277,10 @@ mod tests {
         let globe = strategic_side_control(CockpitFaction::Alliance);
         assert_eq!(globe.button, CockpitButton::GameOptions);
         assert_eq!(globe.command_id, 0x133);
-        assert_eq!(globe.normal_resource, 10013);
-        assert_eq!(globe.pressed_resource, 10014);
+        // FUN_00427270: normal 0x271e, pressed 0x271d (A0 new-alliance/t18
+        // and 2026-10-28-nav/galaxy-a show 10014 at rest).
+        assert_eq!(globe.normal_resource, 10014);
+        assert_eq!(globe.pressed_resource, 10013);
         assert_viewport(globe.rect, 3.0, 355.0, 27.0, 41.0);
 
         let controls = strategic_primary_controls(CockpitFaction::Alliance);
