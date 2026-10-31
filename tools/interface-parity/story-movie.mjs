@@ -133,11 +133,17 @@ async function run(browser, base, faction) {
         const c = window.__openRebellionCutscene;
         return !document.querySelector("video") || (c && c.state === 1 && c.stem !== undefined);
       });
-      await page.waitForTimeout(800);
-      const next = await page.evaluate(() => {
-        const c = window.__openRebellionCutscene;
-        return document.querySelector("video") && c?.state === 1 ? c.stem : null;
-      });
+      // A queued movie starts when the day's check queues it (102 at the
+      // day's end, 0.25 s sub-ticks, FUN_00415e20), so wait a few seconds
+      // before taking the galaxy view as back.
+      let next = null;
+      for (let waited = 0; waited < 4000 && !next; waited += 400) {
+        await page.waitForTimeout(400);
+        next = await page.evaluate(() => {
+          const c = window.__openRebellionCutscene;
+          return document.querySelector("video") && c?.state === 1 ? c.stem : null;
+        });
+      }
       if (!next || next === stems.at(-1)) {
         if (!next) break;
         continue;

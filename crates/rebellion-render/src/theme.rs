@@ -135,6 +135,34 @@ pub fn original_font_cell(font: u16) -> (f32, bool) {
 const ARIAL_UNITS_PER_EM: f32 = 2048.0;
 const ARIAL_CELL_UNITS: f32 = 1854.0 + 434.0;
 
+/// The pixels per em GDI draws font `font` at. For a positive `lfHeight`
+/// GDI takes the tallest hinted cell of Arial's VDMX table (`yMax - yMin`)
+/// that fits the height, at the smallest ppem that has it: the 14-pixel
+/// cell is 11 ppem (VDMX 11 + 3), the 16-pixel one 13 (13 + 3, as 14 is).
+/// Read from Windows 10's arial.ttf and arialbd.ttf (VDMX ratio 1:1); only
+/// these numbers are kept (ghidra/notes/gdi-font-sizes.md). A0 confirms 11
+/// (sector-windows/04-left, planet names in font 10), 13 (the sector title
+/// in font 4) and bold 13 (the pause box in font 5, tooltip/321): drawn at
+/// those sizes, the names and the title match A0 pixel for pixel.
+/// [`original_font`] still sizes egui by the cell; moving it to these
+/// sizes moves every text, window by window against A0.
+#[must_use]
+pub fn original_font_ppem(font: u16) -> f32 {
+    match font {
+        1 | 5 => 13.0,
+        2 => 11.0,
+        3 => 7.0,
+        6 => 16.0,
+        7 => 15.0,
+        8 | 9 => 9.0,
+        10 => 11.0,
+        11 => 21.0,
+        12 => 25.0,
+        13 => 10.0,
+        _ => 13.0,
+    }
+}
+
 /// The egui font for the original's font `font` at `scale`. GDI's positive
 /// `lfHeight` is the cell, ascent plus descent; egui's size is the em
 /// (epaint scales it by the face's height over its em), so the cell
@@ -265,6 +293,27 @@ mod tests {
         let bold = original_font(7, 1.0);
         assert_eq!(bold.family, FontFamily::Name(ARIAL_BOLD_FAMILY.into()));
         assert!((bold.size - 18.0 * 2048.0 / 2288.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn gdi_draws_each_font_at_the_ppem_arials_vdmx_fits_in_its_cell() {
+        // Windows 10 arial.ttf / arialbd.ttf VDMX: the tallest yMax - yMin
+        // within lfHeight, at its smallest ppem. A0 sector-windows/04-left
+        // (font 10: 11) and its title (font 4: 13), tooltip/321 (font 5:
+        // bold 13).
+        let ppems: Vec<f32> = (0..=14).map(original_font_ppem).collect();
+        assert_eq!(
+            ppems,
+            [
+                13.0, 13.0, 11.0, 7.0, 13.0, 13.0, 16.0, 15.0, 9.0, 9.0, 11.0, 21.0, 25.0, 10.0,
+                13.0
+            ]
+        );
+        // Each is below the cell's share of the em (cell x 2048 / 2288).
+        for font in 0..=14 {
+            let (cell, _) = original_font_cell(font);
+            assert!(original_font_ppem(font) < cell * 2048.0 / 2288.0);
+        }
     }
 
     #[test]

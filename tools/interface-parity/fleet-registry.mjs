@@ -119,6 +119,21 @@ function amber(rgb) {
   return r > 200 && g > 150 && g < 220 && b < 110;
 }
 
+// The release site opens on the intro movies; Escape skips each one
+// (cutscenes.mjs) until the main menu is active.
+async function skipToMainMenu(page, timeout = 90_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const active = await page.locator("#main-menu-semantics[data-active=true]").count();
+    if (active > 0) return;
+    if (Date.now() > deadline) throw new Error("the main menu never became active");
+    if (await page.evaluate(() => Boolean(document.querySelector("video")))) {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(500);
+  }
+}
+
 async function frames(page, count = 6) {
   for (let index = 0; index < count; index += 1) {
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
@@ -161,7 +176,8 @@ async function main() {
     page.on("console", (message) => consoleLines.push(message.text()));
     page.on("pageerror", (error) => errors.push(String(error)));
     await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load", timeout: 30_000 });
-    await page.waitForTimeout(12_000);
+    await skipToMainMenu(page);
+    await page.waitForTimeout(1_000);
     await frames(page);
 
     const menu = await shot(page, "01-menu");

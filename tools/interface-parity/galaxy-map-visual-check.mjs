@@ -34,6 +34,21 @@ const CASES = [
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
 
+// The release site opens on the intro movies; Escape skips each one
+// (cutscenes.mjs) until the main menu is active.
+async function skipToMainMenu(page, timeout = 90_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const active = await page.locator("#main-menu-semantics[data-active=true]").count();
+    if (active > 0) return;
+    if (Date.now() > deadline) throw new Error("the main menu never became active");
+    if (await page.evaluate(() => Boolean(document.querySelector("video")))) {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(500);
+  }
+}
+
 function serve(root) {
   const server = http.createServer(async (req, res) => {
     const pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -122,9 +137,9 @@ try {
     page.on("pageerror", (e) => errors.push(String(e)));
     page.on("response", (r) => network.push({ url: r.url(), status: r.status() }));
     await page.goto(base);
-    // The accessibility bridge marks the bitmap main menu active once it is drawn.
-    await page.waitForSelector("#main-menu-semantics[data-active=true]",
-      { state: "attached", timeout: Number(process.env.MENU_WAIT_MS ?? 90_000) });
+    // The accessibility bridge marks the bitmap main menu active once it is
+    // drawn, after the intro movies are skipped.
+    await skipToMainMenu(page, Number(process.env.MENU_WAIT_MS ?? 90_000));
     await page.waitForTimeout(1_000);
     await page.screenshot({ path: path.join(OUT, `${faction}-main-menu.png`) });
     await page.evaluate((index) => wasm_exports.open_rebellion_menu_activate(index), menuIndex);
