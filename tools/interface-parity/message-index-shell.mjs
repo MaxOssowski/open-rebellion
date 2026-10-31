@@ -172,6 +172,13 @@ function sourceIdentity(source) {
 
 function composeExpected(source, faction, pressedCommand = null) {
   const expected = resource(source, faction.base, dimensions.width, dimensions.height);
+  // The base keys out its blue over the window's black background: the
+  // 470 by 331 window (FUN_00466350) shows its keyed last row black in A0
+  // modal2/17-msg (screen row 382).
+  for (let offset = 0; offset < expected.data.length; offset += 4) {
+    const [red, green, blue] = expected.data.subarray(offset, offset + 3);
+    if (red === 0 && green === 0 && blue === 255) expected.data.set([0, 0, 0], offset);
+  }
   blit(expected, resource(source, faction.rail, 58, 330), 412, 0);
   blit(expected, resource(source, 10822, 400, 306), 12, 13);
   for (const control of controls) {

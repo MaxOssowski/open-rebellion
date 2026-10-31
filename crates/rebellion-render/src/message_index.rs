@@ -627,6 +627,11 @@ fn draw_shell(
         .show(ctx, |ui| {
             let size = egui::vec2(MESSAGE_INDEX_WIDTH * scale, MESSAGE_INDEX_HEIGHT * scale);
             let (window_rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            // The window's own black background: `FUN_00466350` makes the
+            // window 470 by 331, and the base's keyed bottom row shows it
+            // (A0 modal2/17-msg row 382 is black across the window).
+            ui.painter()
+                .rect_filled(window_rect, 0.0, egui::Color32::BLACK);
             for (resource, (x, y, width, height)) in shell_layers(faction, mode) {
                 paint_strategy_resource(
                     ui.painter(),
@@ -2693,6 +2698,52 @@ mod tests {
                 (0x9a, 367, 19, 10_949)
             ]
         );
+    }
+
+    #[test]
+    fn the_shell_paints_the_windows_black_background_under_its_base() {
+        // FUN_00466350 makes the window 470 by 331, here at scale 2; the
+        // base's keyed last row shows black in A0 modal2/17-msg (screen
+        // row 382).
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        // A new Area shows from its second frame, once faded in.
+        let mut frame = |time| {
+            let input = egui::RawInput {
+                time: Some(time),
+                ..Default::default()
+            };
+            ctx.run(input, |ctx| {
+                draw_shell(
+                    ctx,
+                    &mut cache,
+                    CockpitFaction::Alliance,
+                    egui::pos2(85.0, 55.0),
+                    2.0,
+                    IndexMode::List,
+                    None,
+                );
+            })
+        };
+        frame(0.0);
+        frame(1.0);
+        let output = frame(2.0);
+        let backgrounds = output
+            .shapes
+            .iter()
+            .filter(|clipped| match &clipped.shape {
+                egui::Shape::Rect(rect) => {
+                    rect.fill == Color32::BLACK
+                        && rect.rect
+                            == egui::Rect::from_min_size(
+                                egui::pos2(85.0, 55.0),
+                                egui::vec2(940.0, 662.0),
+                            )
+                }
+                _ => false,
+            })
+            .count();
+        assert_eq!(backgrounds, 1);
     }
 
     #[test]

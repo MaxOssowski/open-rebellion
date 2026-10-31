@@ -3099,9 +3099,10 @@
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-rows/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-message-index-background-a0/"
           ],
-          "note": "Shell, title, category controls, rows, heading, scroll bar and rail match the A0 Advice list.",
+          "note": "Shell, title, category controls, rows, heading, scroll bar and rail match the A0 Advice list; the keyed last row shows the window's black background as in A0 (2026-10-31).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {

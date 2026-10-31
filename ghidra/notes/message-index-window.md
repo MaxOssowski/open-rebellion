@@ -26,6 +26,14 @@ Coordinates are relative to the Message Index window.
 | Right rail | 10820 | 10821 | 412,0 | 58 by 330 |
 | Index content | 10822 | 10822 | 12,13 | 400 by 306 |
 
+The base keys out its pure blue (palette index 252). Every blue pixel lies
+under the rail or the content pane except the last row (y 330), which the
+330-pixel rail does not reach. A0 `modal2/17-msg.png` (window at 125,52) shows
+that row black across all 470 pixels, so the keyed base sits on the window's
+own black background, not on the galaxy map. The Encyclopedia index reuses
+10335/10336 in a 470 by 330 window, so its row 330 is outside the window and
+A0 shows the map there.
+
 The same function also reveals two later message compositions:
 
 - list state: resource 10823, with resource 10827 copied into a 384 by 195
