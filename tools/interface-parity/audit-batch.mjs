@@ -402,6 +402,16 @@ async function inspect(server, source, faction, executable) {
       checks.globe_key = await logged("the pixel beside the key opens Game Options", options, before + 1);
       await key(page, "Escape");
       await page.waitForTimeout(500);
+      // The globe ends at x 29 (3 + 27 - 1): x 30 is outside, x 29 inside
+      // (FUN_005fca00's strict right edge; A0 controls/globe-edge-out and
+      // globe-edge-in at y 375).
+      await click(page, { x: 30, y: 375 });
+      await page.waitForTimeout(400);
+      assert.equal(countOf(options), before + 1, "a click just right of the globe opened Game Options");
+      await click(page, { x: 29, y: 375 });
+      checks.globe_edge = await logged("the globe's last column opens Game Options", options, before + 2);
+      await key(page, "Escape");
+      await page.waitForTimeout(500);
     }
 
     // Alt+2..Alt+9 then Alt+1: commands 0xbcb..0xbd2 and 0xbca (TEXTCOMM

@@ -67,3 +67,9 @@ In A0 a click on the globe's keyed corner (3, 395), its magenta first
 pixel, opens nothing (`globe-key-click`). A click on the pixel beside it,
 (4, 394), opens Game Options (`globe-near-key-click`). `audit-batch.mjs`
 (Alliance, Linux) asserts the same for the port.
+
+## The strict outer edge (fourth stage)
+
+The globe spans x 3 to 29. In A0 a click at (30, 375) opens nothing
+(`globe-edge-out`) and one at (29, 375) opens Game Options
+(`globe-edge-in`). `audit-batch.mjs` (Alliance, Linux) asserts the same.

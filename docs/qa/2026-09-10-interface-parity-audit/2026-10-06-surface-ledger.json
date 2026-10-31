@@ -3634,14 +3634,16 @@
         {
           "id": "CMD-10-C009",
           "requirement": "outer-edge miss",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Strict outer-edge rejection (FUN_005fca00) is probed by the Linux GID gate's outside-control click; no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Strict outer-edge rejection (FUN_005fca00) is probed by the Linux GID gate's outside-control click. 2026-10-31: in A0 a click at (30, 375), one past the globe's right edge, opens nothing and one at (29, 375) opens Game Options (controls/globe-edge-out, globe-edge-in); audit-batch.mjs asserts both on Linux (Alliance).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C010",
