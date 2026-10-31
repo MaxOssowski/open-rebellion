@@ -349,9 +349,7 @@ pub fn draw_build_selection(
             // FUN_00438500 / FUN_00437f80: the title in font 5, "Number to
             // build", the costs and the number edit in font 4, the time
             // labels, the times and the class list in font 10.
-            let title_font = crate::theme::original_font(5, scale);
-            let value_font = crate::theme::original_font(4, scale);
-            let small = crate::theme::original_font(10, scale);
+            use crate::theme::{paint_gdi_text, GdiAlign, GdiVAlign};
 
             paint(&painter, ctx, cache, BACKGROUND, frame, scale);
             // FUN_00438500: the side's 240-pixel strip at (2, 2), which the
@@ -370,27 +368,33 @@ pub fn draw_build_selection(
                 scale,
             );
             // Format 0x21: centred, from the box's top (no DT_VCENTER).
-            painter.text(
-                at(2.0, 2.0, 202.0, 14.0).center_top(),
-                egui::Align2::CENTER_TOP,
+            paint_gdi_text(
+                &painter,
+                at(2.0, 2.0, 202.0, 14.0),
+                scale,
+                5,
                 TITLE,
-                title_font,
                 egui::Color32::BLACK,
+                (GdiAlign::Center, GdiVAlign::Top),
             );
-            painter.text(
-                at(20.0, 196.0, 118.0, 15.0).right_top(),
-                egui::Align2::RIGHT_TOP,
+            paint_gdi_text(
+                &painter,
+                at(20.0, 196.0, 118.0, 15.0),
+                scale,
+                4,
                 NUMBER_TO_BUILD,
-                value_font.clone(),
                 LABEL,
+                (GdiAlign::Right, GdiVAlign::Top),
             );
             for (label, y) in [(BEST_COMPLETION, 145.0), (BEST_DEPLOYMENT, 165.0)] {
-                painter.text(
-                    at(10.0, y, 125.0, 15.0).left_center(),
-                    egui::Align2::LEFT_CENTER,
+                paint_gdi_text(
+                    &painter,
+                    at(10.0, y, 125.0, 15.0),
+                    scale,
+                    10,
                     label,
-                    small.clone(),
                     LABEL,
+                    (GdiAlign::Left, GdiVAlign::VCenter),
                 );
             }
 
@@ -405,7 +409,6 @@ pub fn draw_build_selection(
                 dialog.kind(),
                 at(x, y, w, h),
                 scale,
-                &small,
             );
 
             // FUN_00438dd0 / FUN_00438f30: the values, white.
@@ -413,12 +416,14 @@ pub fn draw_build_selection(
                 (REFINED_FIELD, cost_text(estimate.refined_material, valid)),
                 (MAINTENANCE_FIELD, cost_text(estimate.maintenance, valid)),
             ] {
-                painter.text(
-                    at(x, y, 64.0, 23.0).center(),
-                    egui::Align2::CENTER_CENTER,
-                    text,
-                    value_font.clone(),
+                paint_gdi_text(
+                    &painter,
+                    at(x, y, 64.0, 23.0),
+                    scale,
+                    4,
+                    &text,
                     egui::Color32::WHITE,
+                    (GdiAlign::Center, GdiVAlign::VCenter),
                 );
             }
             for ((x, y), text) in [
@@ -431,21 +436,25 @@ pub fn draw_build_selection(
                 // hyp: the field draws with DrawText, which clips to its
                 // rect unless DT_NOCLIP, so a glyph's edge stays inside it.
                 let field = at(x, y, 60.0, 15.0);
-                painter.with_clip_rect(field).text(
-                    field.right_center(),
-                    egui::Align2::RIGHT_CENTER,
-                    text,
-                    small.clone(),
+                paint_gdi_text(
+                    &painter.with_clip_rect(field),
+                    field,
+                    scale,
+                    10,
+                    &text,
                     egui::Color32::WHITE,
+                    (GdiAlign::Right, GdiVAlign::VCenter),
                 );
             }
             let (x, y, w, h) = QUANTITY_FIELD;
-            painter.text(
-                at(x, y, w, h).left_center(),
-                egui::Align2::LEFT_CENTER,
-                dialog.quantity.to_string(),
-                value_font.clone(),
+            paint_gdi_text(
+                &painter,
+                at(x, y, w, h),
+                scale,
+                4,
+                &dialog.quantity.to_string(),
                 egui::Color32::WHITE,
+                (GdiAlign::Left, GdiVAlign::VCenter),
             );
 
             // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA, module 2); the
@@ -556,16 +565,7 @@ pub fn draw_build_selection(
                     let row = scrolled(dialog.selected, dialog.kinds.len(), wheel);
                     dialog.select(row);
                 }
-                paint_item(
-                    &painter,
-                    ctx,
-                    cache,
-                    world,
-                    dialog.kind(),
-                    item,
-                    scale,
-                    &small,
-                );
+                paint_item(&painter, ctx, cache, world, dialog.kind(), item, scale);
                 if exact_clicked(&response, popup) {
                     dialog.list_open = false;
                 }
@@ -595,20 +595,20 @@ fn paint_item(
     kind: BuildableKind,
     bounds: egui::Rect,
     scale: f32,
-    font: &egui::FontId,
 ) {
     let (name, mini) = product(world, kind);
     let image = mini
         .and_then(|id| paint_centered(painter, ctx, cache, DllSource::Gokres, id, bounds, scale));
-    painter.text(
-        egui::pos2(
-            bounds.center().x,
-            image.map_or(bounds.center().y, |rect| rect.max.y),
-        ),
-        egui::Align2::CENTER_TOP,
-        name,
-        font.clone(),
+    // The name in font 10, centred across the item under its mini.
+    let top = image.map_or(bounds.center().y, |rect| rect.max.y);
+    crate::theme::paint_gdi_text(
+        painter,
+        egui::Rect::from_min_max(egui::pos2(bounds.min.x, top), bounds.max),
+        scale,
+        10,
+        &name,
         egui::Color32::WHITE,
+        (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
     );
 }
 
@@ -645,8 +645,8 @@ mod tests {
         }
     }
 
-    /// A drawn text: its string, position and font size.
-    /// A painted text, the top centre of its galley, and its size.
+    /// A painted line ([`crate::theme::TestLine`]): its string, its pen's
+    /// left and baseline, and its font size.
     type Text = (String, egui::Pos2, f32);
 
     /// A system of the Alliance's with a training facility (period 4) when
@@ -783,17 +783,9 @@ mod tests {
                     emitted = Some(action);
                 }
             });
-            texts = output
-                .shapes
+            texts = crate::theme::test_lines(&output.shapes)
                 .into_iter()
-                .filter_map(|clipped| match clipped.shape {
-                    egui::Shape::Text(text) => Some((
-                        text.galley.text().to_owned(),
-                        text.pos + egui::vec2(text.galley.size().x / 2.0, 0.0),
-                        text.galley.job.sections[0].format.font_id.size,
-                    )),
-                    _ => None,
-                })
+                .map(|line| (line.text, line.pen, line.size))
                 .collect();
         }
         (emitted, texts)
@@ -1106,14 +1098,17 @@ mod tests {
             .map(|(_, top, _)| *top)
             .max_by(|a, b| a.y.total_cmp(&b.y))
             .unwrap();
-        assert!(
-            (named.x - item.center().x).abs() < 0.5,
-            "{named:?} vs {item:?}"
-        );
-        // No mini is painted here, so the name hangs from the item's middle.
-        assert!(
-            (named.y - item.center().y).abs() < 0.5,
-            "{named:?} vs {item:?}"
+        // DT_CENTER across the item, its spare width halved; no mini is
+        // painted here, so the line hangs from the item's middle (tmAscent
+        // 11 to the baseline).
+        let (_, width) = crate::theme::gdi_pen_positions(10, "Alliance Army Regiment").unwrap();
+        assert_eq!(
+            named,
+            egui::pos2(
+                item.min.x + ((item.width() - width) / 2.0).floor(),
+                item.center().y + 11.0
+            ),
+            "{item:?}"
         );
         // The list is the box's height and four more (y 85..152): the wheel
         // below it, up a notch, leaves the class alone.
@@ -1161,7 +1156,7 @@ mod tests {
         // FUN_00438500: the title in font 5, "Number to build" in font 4,
         // the time labels in font 10; FUN_00437f80: the costs in font 4,
         // the times in font 10, the class list in font 10.
-        let font = |n| Some(crate::theme::original_font(n, 2.0).size);
+        let font = |n| Some(crate::theme::gdi_font(n, 2.0).size);
         assert_eq!(size(TITLE), font(5));
         assert_eq!(size(NUMBER_TO_BUILD), font(4));
         assert_eq!(size(BEST_COMPLETION), font(10));

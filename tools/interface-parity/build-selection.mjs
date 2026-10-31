@@ -20,6 +20,9 @@ const root = path.resolve(here, "../..");
 const site = path.join(root, ".artifacts/interface-parity/site");
 const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json"), "utf8"));
 const noBuild = process.argv.includes("--no-build");
+// `--a0=DIR` (.artifacts/a0-vm/build-selection) compares the fixed labels
+// with A0 10-build (the Alliance's Build Selection at (192, 84)).
+const a0Dir = process.argv.find((arg) => arg.startsWith("--a0="))?.slice(5);
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 // FUN_00437df0: a 210 by 261 window over background 10800.
 const dimensions = { width: 210, height: 261 };
@@ -291,6 +294,34 @@ async function bandOrder(page, band, rowName, directory, label) {
   return menu;
 }
 
+// The fixed labels (FUN_00438500: the time labels in font 10, "Number to
+// build" in font 4, DrawTextA through theme::paint_gdi_text) against A0
+// 10-build: each ink box within a pixel, relative to the window. A0 draws
+// black and white; the port's antialiased edges count from 120.
+function labelsAgainstA0(port, origin) {
+  const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Dir, "10-build.png")));
+  const ink = (png, ox, oy, [x0, y0, x1, y1], threshold) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = ((oy + y) * png.width + ox + x) * 4;
+        if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= threshold) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const checks = {};
+  for (const [name, region] of [["best-completion", [8, 144, 135, 161]], ["best-deployment", [8, 164, 135, 181]],
+    ["number-to-build", [20, 198, 139, 210]]]) {
+    const a = ink(a0, 192, 84, region, 200);
+    const p = ink(port, origin.x, origin.y, region, 120);
+    checks[name] = { a0: a, port: p };
+    assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1), `${name}: ${JSON.stringify(checks[name])}`);
+  }
+  return checks;
+}
+
 async function stableWindow(page, origin, directory, label) {
   await page.waitForTimeout(150);
   await frames(page);
@@ -368,6 +399,8 @@ async function inspect(server, source, faction, executable) {
     const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
     const captured = await stableWindow(page, origin, directory, "opened");
     const comparisons = [compare(captured, composeExpected(source, faction), "opened", directory)];
+    const textChecks = a0Dir && faction.name === "alliance"
+      ? labelsAgainstA0(PNG.sync.read(fs.readFileSync(path.join(directory, "opened-screen.png"))), origin) : null;
     // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA 0x190c, 0x1906..0x190b,
     // and 0x1903 on the close box through FUN_00606e10): every control
     // shows one.
@@ -424,6 +457,7 @@ async function inspect(server, source, faction, executable) {
       stop_menu: stopMenu,
       built: { product: built.product, queued: built.queued },
       comparisons,
+      textChecks,
       requests,
       errors,
       console: consoleLines,
