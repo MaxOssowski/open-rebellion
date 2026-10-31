@@ -48,6 +48,7 @@ mod tactical_asset_cache;
 mod tactical_assets;
 pub mod tactical_view;
 pub mod targeting;
+mod gdi_metrics;
 pub mod theme;
 pub mod troop_finder;
 pub mod video_player;

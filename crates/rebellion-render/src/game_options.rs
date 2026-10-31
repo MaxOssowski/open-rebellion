@@ -546,12 +546,10 @@ fn draw_original_text(
     shadow: Option<Color>,
     clip: bool,
 ) {
-    let (cell, bold) = crate::theme::original_font_cell(font);
-    // GDI's positive lfHeight is the cell, ascent plus descent (Arial 1854
-    // + 434 of 2048 units).
-    let em = cell * 2048.0 / 2288.0;
-    // GDI's whole-pixel tmAscent.
-    let ascent = (cell * 1854.0 / 2288.0).round();
+    let (_, bold) = crate::theme::original_font_cell(font);
+    // GDI's size for the font, matched in Liberation's widths
+    // (theme::gdi_font).
+    let em = crate::theme::gdi_font(font, 1.0).size;
     let face = arial(bold);
     #[expect(
         clippy::cast_possible_truncation,
@@ -559,30 +557,46 @@ fn draw_original_text(
         reason = "A small font size."
     )]
     let size = (em * canvas.scale).round().max(1.0) as u16;
-    let width = measure_text(text, face.as_ref(), size, 1.0).width / canvas.scale;
-    let left = match format {
-        TextFormat::Centred => x + ((w - width) / 2.0).floor(),
-        TextFormat::LeftMiddle | TextFormat::TopLeft => x,
-    };
-    let top = match format {
-        // DT_VCENTER: (rect height - line height) / 2, in whole pixels.
-        TextFormat::Centred | TextFormat::LeftMiddle => y + ((h - cell) / 2.0).floor(),
-        TextFormat::TopLeft => y,
-    };
+    // GDI's pens and width (Arial's advances and kerning), else the face's.
+    let pens = crate::theme::gdi_pen_positions(font, text);
+    let width = pens.as_ref().map_or_else(
+        || measure_text(text, face.as_ref(), size, 1.0).width / canvas.scale,
+        |(_, width)| *width,
+    );
+    use crate::theme::{GdiAlign, GdiVAlign};
+    let (left, baseline) = crate::theme::gdi_text_origin(
+        (x, y, w, h),
+        font,
+        width,
+        match format {
+            TextFormat::Centred => (GdiAlign::Center, GdiVAlign::VCenter),
+            TextFormat::LeftMiddle => (GdiAlign::Left, GdiVAlign::VCenter),
+            TextFormat::TopLeft => (GdiAlign::Left, GdiVAlign::Top),
+        },
+    );
     let paint = |dx: f32, color: Color| {
-        let (sx, sy) = canvas.point(left + dx, top + ascent + dx);
-        draw_text_ex(
-            text,
-            sx.round(),
-            sy.round(),
-            TextParams {
-                font: face.as_ref(),
-                font_size: size,
-                font_scale: 1.0,
-                color,
-                ..Default::default()
-            },
-        );
+        let params = TextParams {
+            font: face.as_ref(),
+            font_size: size,
+            font_scale: 1.0,
+            color,
+            ..Default::default()
+        };
+        if let Some((pens, _)) = &pens {
+            let mut buffer = [0u8; 4];
+            for (ch, pen) in text.chars().zip(pens) {
+                let (sx, sy) = canvas.point(left + pen + dx, baseline + dx);
+                draw_text_ex(
+                    ch.encode_utf8(&mut buffer),
+                    sx.round(),
+                    sy.round(),
+                    params.clone(),
+                );
+            }
+        } else {
+            let (sx, sy) = canvas.point(left + dx, baseline + dx);
+            draw_text_ex(text, sx.round(), sy.round(), params);
+        }
     };
     // A heading is DrawTextA without DT_NOCLIP (FUN_005ff6b0, format 0x25)
     // and clips to its rectangle; the text objects add DT_NOCLIP
@@ -933,7 +947,8 @@ pub fn draw_game_options(
             let crest = if alliance { 10056 } else { 10055 };
             draw_bitmap(cache, canvas, crest, 85.0, save_bounds.y + 2.0);
         }
-        // The name box: default font (14-pixel cell), white with a black
+        // The name box: the default font (16-pixel cell; A0 200-options's
+        // "test" is 21 by 9, Arial at 13 ppem), white with a black
         // shadow (+0xe4 0x2ffffff, +0xe8 0x2000000), left, centred
         // vertically. In the command center the overlay's edit box shows it.
         if state.origin != GameOptionsOrigin::CommandCenter {
@@ -942,7 +957,7 @@ pub fn draw_game_options(
                     canvas,
                     &save.name,
                     (119.0, save_bounds.y, 160.0, 20.0),
-                    10,
+                    4,
                     WHITE,
                     TextFormat::LeftMiddle,
                     Some(BLACK),

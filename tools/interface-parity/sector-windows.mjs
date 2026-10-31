@@ -203,15 +203,17 @@ try {
     if (step.planets) {
       assert.ok(Object.values(step.planets).every((count) => count === 0),
         `04-left planets: ${JSON.stringify(step.planets)}`);
-      // Each name in white, centred and topped as in A0 within a pixel or
-      // two. The widths are recorded only: A0 draws GDI's hinted Arial,
-      // 10 to 26 % narrower here (the open text-rendering finding).
+      // Each name in white, centred within a pixel and a half and topped
+      // within one, as wide within 7 %: the port sets each character at
+      // GDI's pen (Arial's advances and kerning at 11 ppem,
+      // theme::gdi_pen_positions); the glyphs themselves are Liberation's.
       for (const [name, entry] of Object.entries(step.names)) {
         const { a0: a, port: p } = entry;
         assert.ok(p, `${name}: no white name`);
-        assert.ok(Math.abs((a[0] + a[2]) / 2 - (p[0] + p[2]) / 2) <= 2.5 && Math.abs(a[1] - p[1]) <= 1
+        assert.ok(Math.abs((a[0] + a[2]) / 2 - (p[0] + p[2]) / 2) <= 1.5 && Math.abs(a[1] - p[1]) <= 1
           && Math.abs(a[3] - p[3]) <= 1, `${name}: ink ${p} vs A0 ${a}`);
         entry.width_ratio = Number(((p[2] - p[0] + 1) / (a[2] - a[0] + 1)).toFixed(3));
+        assert.ok(entry.width_ratio >= 0.93 && entry.width_ratio <= 1.07, `${name}: width ratio ${entry.width_ratio}`);
       }
     }
     for (const [half, { expected, differing: counts, ink }] of Object.entries(step.halves)) {

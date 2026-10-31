@@ -858,16 +858,21 @@ pub fn draw_main_menu(
             // one line), showing TEXTCOMM 0x1060 "Standard Game"; command
             // 0x71 swaps in 0x1061 "Headquarters Victory" (FUN_00406000).
             // The A0 ink is 8 rows tall and 74 wide (tooltip/221..234 base
-            // frames): the 12-pixel cell, game font 8. egui's centring of
-            // that face lands one pixel right of and above A0's ink.
+            // frames): "Standard Game" is Arial at 11 ppem, font 10 (the
+            // 14-pixel cell, theme::original_font_ppem), as DrawTextA sets it.
             let label_rect = control_rect(canvas, LogicalRect::new(271.0, 374.0, 110.0, 14.0));
             let scale = canvas.width() / LOGICAL_WIDTH;
-            ui.painter().text(
-                label_rect.center() + Vec2::new(-1.0, 1.0) * scale,
-                egui::Align2::CENTER_CENTER,
-                game_type_label(state.headquarters_only),
-                crate::theme::original_font(8, scale),
+            crate::theme::paint_gdi_text(
+                ui.painter(),
+                label_rect,
+                scale,
+                10,
+                &game_type_label(state.headquarters_only),
                 Color32::from_rgb(0, 255, 0),
+                (
+                    crate::theme::GdiAlign::Center,
+                    crate::theme::GdiVAlign::VCenter,
+                ),
             );
         });
     if let Some(registry) = state.registry.as_mut() {

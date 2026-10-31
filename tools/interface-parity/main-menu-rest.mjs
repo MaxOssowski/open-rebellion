@@ -136,11 +136,14 @@ try {
     first_differing: differing.slice(0, 20), a0_ink: a0Ink, port_ink: portInk, shots, errors,
     a0_frames: a0Files };
   assert.equal(differing.length, 0, `${differing.length} still pixels differ from A0`);
-  // Left, top and bottom exact; the right edge within one pixel (the
-  // accepted text-width deviation, 2026-10-30).
-  assert.deepEqual([portInk[0], portInk[1], portInk[3]], [a0Ink[0], a0Ink[1], a0Ink[3]],
+  // Top and bottom exact, the width exact: the line is set at GDI's pens
+  // (theme::gdi_pen_positions, Arial's advances at 11 ppem). The left and
+  // right ink edges within a pixel: the glyphs are Liberation's, whose
+  // side bearings round differently from Arial's hinted ones.
+  assert.deepEqual([portInk[1], portInk[3]], [a0Ink[1], a0Ink[3]],
     `the game-type label's ink box ${portInk} differs from A0 ${a0Ink}`);
-  assert.ok(Math.abs(portInk[2] - a0Ink[2]) <= 1, `the label's right edge ${portInk[2]} vs A0 ${a0Ink[2]}`);
+  assert.equal(portInk[2] - portInk[0], a0Ink[2] - a0Ink[0], `the label's width ${portInk} vs A0 ${a0Ink}`);
+  assert.ok(Math.abs(portInk[0] - a0Ink[0]) <= 1, `the label's left edge ${portInk[0]} vs A0 ${a0Ink[0]}`);
   assert.deepEqual(errors, []);
 } catch (error) {
   result = { ...(result ?? {}), status: "fail", error: String(error.stack || error) };

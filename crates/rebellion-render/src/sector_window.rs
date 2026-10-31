@@ -711,12 +711,19 @@ fn draw_sector_window(
             // FUN_00459e30: the sector's name in font 4, 0x200f0f0 (yellow),
             // centred (0x25: DT_CENTER | DT_VCENTER | DT_SINGLELINE) in the
             // title from (2, 2), 20 high (the text object's +4, 0x14).
-            ui.painter().text(
-                logical_point(window_rect, layout.scale, 117.5, 2.0 + 10.0),
-                egui::Align2::CENTER_CENTER,
+            // The text object is the window's width from (2, 2): A0's titles
+            // centre on x 119.5 (Churba and Sesswenna at 13 ppem).
+            crate::theme::paint_gdi_text(
+                ui.painter(),
+                logical_rect(window_rect, layout.scale, 2.0, 2.0, 235.0, 20.0),
+                layout.scale,
+                4,
                 &sector.name,
-                crate::theme::original_font(4, layout.scale),
                 SECTOR_TITLE_COLOR,
+                (
+                    crate::theme::GdiAlign::Center,
+                    crate::theme::GdiVAlign::VCenter,
+                ),
             );
 
             let switch_rect = logical_rect(window_rect, layout.scale, 204.0, 2.0, 14.0, 14.0);
@@ -918,21 +925,27 @@ fn draw_sector_window(
                         color,
                     );
                 }
-                ui.painter().text(
-                    logical_point(
+                // FUN_004593e0: centred in a 100-wide box at the bitmap's
+                // x + width / 2 - 50 (37 / 2 = 18), from the label's top.
+                crate::theme::paint_gdi_text(
+                    ui.painter(),
+                    logical_rect(
                         window_rect,
                         layout.scale,
-                        planet_x + 18.5,
+                        planet_x + 18.0 - 50.0,
                         planet_y + NAME_OFFSET,
+                        100.0,
+                        16.0,
                     ),
-                    egui::Align2::CENTER_TOP,
+                    layout.scale,
+                    10,
                     &system.name,
-                    crate::theme::original_font(10, layout.scale),
                     if system.is_destroyed {
                         DESTROYED_NAME_COLOR
                     } else {
                         system_name_color(system)
                     },
+                    (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                 );
 
                 overlays.extend(
@@ -2845,11 +2858,30 @@ mod tests {
                     egui::Shape::Text(text) => Some((
                         text.galley.text().to_owned(),
                         text.galley.job.sections[0].format.color,
-                        text.pos.y + text.galley.size().y / 2.0,
+                        text.pos.y
+                            + text
+                                .galley
+                                .rows
+                                .first()
+                                .and_then(|row| row.glyphs.first())
+                                .map_or(0.0, |glyph| glyph.pos.y),
                     )),
                     _ => None,
                 })
-                .collect::<Vec<_>>();
+                .fold(
+                    Vec::<(String, egui::Color32, f32)>::new(),
+                    |mut lines, (text, colour, baseline)| {
+                        // paint_gdi_text paints a line a character at a
+                        // time; join each run of one colour and baseline.
+                        match lines.last_mut() {
+                            Some(line) if line.1 == colour && line.2 == baseline => {
+                                line.0.push_str(&text);
+                            }
+                            _ => lines.push((text, colour, baseline)),
+                        }
+                        lines
+                    },
+                );
         }
         let colour = |name: &str| {
             texts
@@ -2859,13 +2891,15 @@ mod tests {
         };
         let sector = &world.sectors[world.systems[system].sector].name;
         assert_eq!(colour(sector), Some(SECTOR_TITLE_COLOR), "{texts:?}");
-        // Centred in the title's 20 rows from y 2.
+        // DT_VCENTER in the title's 20 rows from y 2 with font 4 (tmHeight
+        // 16, tmAscent 13): the baseline 2 + 2 + 13 down (A0
+        // sector-windows/04-left's title matches at that line).
         let window = window_screen_rect(CockpitFaction::Alliance, state.windows[0].column, layout);
-        let middle = texts
+        let baseline = texts
             .iter()
             .find(|(text, _, _)| text == sector)
-            .map(|(_, _, middle)| *middle);
-        assert_eq!(middle, Some(window.min.y + 12.0 * 2.0));
+            .map(|(_, _, baseline)| *baseline);
+        assert_eq!(baseline, Some(window.min.y + 17.0 * 2.0));
         assert_eq!(
             colour(&world.systems[system].name),
             Some(egui::Color32::from_rgb(0, 255, 0)),
