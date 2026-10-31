@@ -1,0 +1,553 @@
+{
+  "run_dir": "<repo>/.artifacts/interface-parity/encyclopedia-index-shell-2026-10-31T22-19-31-552Z-690761",
+  "schema_version": 1,
+  "family": "encyclopedia-index-shell",
+  "scope": "test-only source-exact Galactic Encyclopedia index bitmap shell, category selection, rail states, clipping, edge, palette-key, press-capture, cancel, and modal input probes; labels, object rows, topics, and production routing remain open",
+  "status": "pass",
+  "browser_version": "155.0.8059.84",
+  "browser_executable": "/usr/bin/chromium",
+  "launch_arguments": [
+    "--mute-audio",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-sync",
+    "--no-first-run"
+  ],
+  "profile": "one-new-muted-process-per-faction",
+  "muted": true,
+  "viewport": {
+    "width": 640,
+    "height": 480,
+    "device_scale_factor": 1
+  },
+  "shell": {
+    "width": 470,
+    "height": 330
+  },
+  "source": {
+    "dll": "STRATEGY.DLL",
+    "resource_count": 41,
+    "resource_ids": [
+      10335,
+      10336,
+      10338,
+      10339,
+      10340,
+      10343,
+      10344,
+      10345,
+      10346,
+      10347,
+      10348,
+      10349,
+      10350,
+      10351,
+      10352,
+      10355,
+      10356,
+      10357,
+      10358,
+      10359,
+      10360,
+      10361,
+      10362,
+      10370,
+      10371,
+      10372,
+      10373,
+      10374,
+      10375,
+      10376,
+      10377,
+      10378,
+      10379,
+      10380,
+      10381,
+      10585,
+      10589,
+      11615,
+      11616,
+      11617,
+      11618
+    ],
+    "aggregate_sha256": "3a440072a73b1f69fa9134a9fd88e5ccf2994047cafb9c538cf72fc6875e2c11"
+  },
+  "factions": [
+    {
+      "status": "pass",
+      "faction": "alliance",
+      "fixture_code": 297,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 297,
+        "scenario": 40,
+        "faction": "alliance",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:9477403ac5c7880a",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 343.5,
+        "probe_screen_y": 263.5
+      },
+      "comparisons": [
+        {
+          "label": "selected-6f",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-70",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-71",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-72",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-73",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-74",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-75",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "held-fb",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "held-67",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "held-68",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "outside-category-right-edge",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "outside-close-right-edge",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "transparent-category-hit-miss",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "press-origin-outside-drag-inside",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "press-origin-inside-drag-outside",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "underlying-cockpit-encyclopedia-blocked",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xfbc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xfbc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xfbc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xfbc001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=62 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104369558"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=alsprite-dll primary_resources=2001..2024 primary_frames=24 secondary_resources=3331..3346 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 142.493769
+        }
+      ],
+      "cleanup": "closed"
+    },
+    {
+      "status": "pass",
+      "faction": "empire",
+      "fixture_code": 553,
+      "ready": {
+        "schema_version": 1,
+        "status": "ready",
+        "code": 553,
+        "scenario": 40,
+        "faction": "empire",
+        "mode": "Popular Support",
+        "state_fingerprint": "fnv1a64:ae933c71987e574e",
+        "stable_frames": 2,
+        "primary_system_x": 385,
+        "primary_system_y": 138,
+        "probe_system_dat_id": 278,
+        "probe_system_name": "Sullust",
+        "probe_screen_x": 406.5,
+        "probe_screen_y": 265.5
+      },
+      "comparisons": [
+        {
+          "label": "selected-6f",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-70",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-71",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-72",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-73",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-74",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "selected-75",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "held-fb",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "held-67",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "held-68",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "outside-category-right-edge",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "outside-close-right-edge",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "transparent-category-hit-miss",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "press-origin-outside-drag-inside",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "press-origin-inside-drag-outside",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        },
+        {
+          "label": "underlying-cockpit-encyclopedia-blocked",
+          "pixels_checked": 155100,
+          "ignored_pixels": 0,
+          "ignored_difference_pixels": 0,
+          "ignored_region_difference_pixels": {},
+          "different_pixels": 0
+        }
+      ],
+      "requests": [
+        {
+          "url": "/",
+          "status": 200
+        },
+        {
+          "url": "/gl.js",
+          "status": 200
+        },
+        {
+          "url": "/open-rebellion-test.wasm",
+          "status": 200
+        },
+        {
+          "url": "/data/runtime.orpk",
+          "status": 200
+        }
+      ],
+      "errors": [],
+      "console": [
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_replay is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_video is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "log",
+          "text": "Plugin open_rebellion_interface_fixture is present in JS bundle, but is not used in the rust code."
+        },
+        {
+          "type": "info",
+          "text": "[assets] render_profile=original-parity"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xe64001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xe64001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xe64001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+        },
+        {
+          "type": "warning",
+          "text": "[.WebGL-0xe64001ae000]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+        },
+        {
+          "type": "info",
+          "text": "runtime_asset_pack loaded game_files=62 encyclopedia_assets=0 ui_bitmaps=2366 advisor_frames=11752 audio_files=802 tactical_meshes=87 tactical_textures=397 bytes=104369558"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Alliance entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[encyclopedia] topics loaded audience=Empire entries=356 complete=346"
+        },
+        {
+          "type": "info",
+          "text": "[advisor] loaded authentic source=emsprite-dll primary_resources=2001..2016 primary_frames=16 secondary_resources=3001..3016 secondary_frames=16"
+        },
+        {
+          "type": "info",
+          "text": "[audio] music_volume=0.00 muted=true music_muted=true"
+        }
+      ],
+      "launch_attempts": [
+        {
+          "attempt": 1,
+          "status": "pass",
+          "duration_ms": 129.75111199999992
+        }
+      ],
+      "cleanup": "closed"
+    }
+  ],
+  "wasm_sha256": "31d5274c068aaf2a34b912bcdea8d0659ad1d930a799d3360347942cbb20d8cb",
+  "runtime_pack_sha256": "3f3f6876a255da49d10ec37220f6b492e5a8239b2555497f0cc84ac7e175f98c"
+}

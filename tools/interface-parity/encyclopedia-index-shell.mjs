@@ -203,6 +203,21 @@ function blitClipped(destination, source, x, y, width = source.width, height = s
   }
 }
 
+// The original blits button art keyed on its first DIB pixel's exact index
+// (FUN_005fd170, compared in FUN_005fc710); the keyed art here is pure blue.
+function blitKeyed(destination, source, x, y, width = source.width, height = source.height) {
+  const rows = Math.min(height, source.height, destination.height - y);
+  const columns = Math.min(width, source.width, destination.width - x);
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const from = (row * source.width + column) * 4;
+      const [red, green, blue] = source.data.subarray(from, from + 3);
+      if (red === 0 && green === 0 && blue === 255) continue;
+      destination.data.set(source.data.subarray(from, from + 4), ((y + row) * destination.width + x + column) * 4);
+    }
+  }
+}
+
 function sourceIdentity(source) {
   const resourceIds = new Set([10338]);
   for (const faction of factions) {
@@ -233,12 +248,12 @@ function composeExpected(source, faction, selectedCategory = 0x6f, heldCommand =
   for (const control of categoryControls) {
     const [normal, pressed] = resourcesFor(control, faction);
     const resourceId = control.command === selectedCategory || control.command === heldCommand ? pressed : normal;
-    blitClipped(expected, resource(source, resourceId), control.x, control.y, control.width, control.height);
+    blitKeyed(expected, resource(source, resourceId), control.x, control.y, control.width, control.height);
   }
   for (const control of faction.railControls) {
     const [normal, pressed] = control.resources;
     const resourceId = control.selected || control.command === heldCommand ? pressed : normal;
-    blitClipped(expected, resource(source, resourceId), control.x, control.y, control.width, control.height);
+    blitKeyed(expected, resource(source, resourceId), control.x, control.y, control.width, control.height);
   }
   return expected;
 }

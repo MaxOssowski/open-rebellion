@@ -1928,6 +1928,13 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // (0x2a78..0x2a7b, 0x2ac7..0x2ac9), button art blitted
                 // keyed (`FUN_00602d30`); A0 2026-10-29 shows no blue.
                 | 10378..=10379
+                // The Encyclopedia index's other category and rail buttons
+                // (`FUN_00602d30`): A0 encyclopedia/index-empire-day143
+                // shows their blue corners keyed, at 0x6f's (36, 118) and
+                // the Empire's 0x67 rail button at (426, 89).
+                | 10339..=10344
+                | 10380..=10381
+                | 11615..=11618
                 | 10872..=10875
                 | 10951..=10953
                 // and the disabled Display and Compose Chat (0x2acf,
@@ -2313,8 +2320,11 @@ fn decode_rgba_image(
 ) -> image::ImageResult<image::RgbaImage> {
     let mut rgba = image::load_from_memory(bytes)?.to_rgba8();
     if uses_blue_screen_transparency(source, resource_id) {
+        // The original keys one exact index, its first DIB pixel's
+        // (`FUN_005fd170`, compared in `FUN_005fc710`): near blues such as (0, 0, 196) stay drawn, as
+        // A0 status/01 shows them in the Empire cockpit 901.
         for pixel in rgba.pixels_mut() {
-            if pixel[0] < 32 && pixel[1] < 32 && pixel[2] > 192 {
+            if pixel.0[..3] == [0, 0, 255] {
                 pixel[3] = 0;
             }
         }
@@ -2648,6 +2658,49 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_encyclopedia_indexs_category_and_rail_buttons_key_out_blue() {
+        // FUN_00602d30 blits button art keyed on its first DIB pixel, blue
+        // in each of these; A0 encyclopedia/index-empire-day143 shows 0x6f's
+        // corner (36, 118) and the Empire's 0x67 rail corner (426, 89) keyed.
+        for resource_id in [10_339, 10_344, 10_380, 10_381, 11_615, 11_618] {
+            assert!(
+                uses_blue_screen_transparency(DllSource::Strategy, resource_id),
+                "{resource_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_blue_keyed_bitmap_keeps_its_near_blue_pixels() {
+        // FUN_005fd170 keys the first DIB pixel's index and FUN_005fc710
+        // skips that exact index (blitted through FUN_00602d30). A0
+        // status/01 draws 901's (0, 0, 196), (0, 0, 223) and (28, 28, 210)
+        // pixels, and A0 encyclopedia/index-empire-day143 draws them in the
+        // Empire's rail button 10378.
+        let mut image = image::RgbaImage::new(4, 1);
+        image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
+        image.put_pixel(1, 0, image::Rgba([0, 0, 196, 255]));
+        image.put_pixel(2, 0, image::Rgba([0, 0, 223, 255]));
+        image.put_pixel(3, 0, image::Rgba([28, 28, 210, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        for resource_id in [resources::strategy::EMPIRE_COMMAND_CENTER_SHELL, 10_378] {
+            let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
+            let alphas = decoded
+                .pixels
+                .iter()
+                .map(|pixel| pixel.a())
+                .collect::<Vec<_>>();
+            assert_eq!(alphas, [0, 255, 255, 255], "{resource_id}");
+        }
+    }
+
+    #[test]
     fn cockpit_background_blue_screen_becomes_transparent() {
         // Source: STRATEGY.DLL command-center shell palette-blue matte.
         let mut image = image::RgbaImage::new(2, 1);
@@ -2878,7 +2931,9 @@ pub(crate) mod tests {
         ] {
             let decoded = decode_color_image(&encoded, DllSource::Gokres, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 0);
-            assert_eq!(decoded.pixels[1].a(), 0);
+            // Only the exact key goes: FUN_005fd170 takes the first DIB
+            // pixel's index and FUN_005fc710 skips `*src == key` alone.
+            assert_eq!(decoded.pixels[1].a(), 255);
             assert_eq!(decoded.pixels[2].a(), 255);
         }
     }
@@ -3025,8 +3080,10 @@ pub(crate) mod tests {
         ] {
             assert_eq!(alpha(keyed), 0, "{keyed}");
         }
+        // 10380 keys too: A0 encyclopedia/index-empire-day143 shows the
+        // Empire's 0x67 rail button's blue corners keyed at (426, 89).
         for opaque in [
-            10380, 10869, 10876, 10877, 10879, 10950, 10954, 10958, 10963, 11553,
+            10869, 10876, 10877, 10879, 10950, 10954, 10958, 10963, 11553,
         ] {
             assert_eq!(alpha(opaque), 255, "{opaque}");
         }

@@ -3750,9 +3750,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-command/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-placement/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-placement/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-keyed-blit-exact-a0/"
           ],
-          "note": "The control 0x131 (FUN_00429f30) opens the original Encyclopedia in the Linux GID gate; its placement and index match A0 index-empire-day143.png (Empire at (125, 52)).",
+          "note": "The control 0x131 (FUN_00429f30) opens the original Encyclopedia in the Linux GID gate; its placement and index match A0 index-empire-day143.png (Empire at (125, 52)). 2026-11-01: the index's buttons key exactly their first pixel's blue as in A0; encyclopedia-index-shell passes at 0 pixels.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
