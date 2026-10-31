@@ -3628,7 +3628,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
             "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Palette-key rejection (FUN_005fca00, FUN_005fd170) passed in the September Astra review,. 2026-10-31: in A0 a click on the globe's keyed corner (3, 395) opens nothing and one on (4, 394) opens Game Options (controls/globe-key-click, globe-near-key-click); audit-batch.mjs asserts both on Linux (Alliance).",
+          "note": "Palette-key rejection (FUN_005fca00, FUN_005fd170) passed in the September Astra review. 2026-10-31: in A0 a click on the globe's keyed corner (3, 395) opens nothing and one on (4, 394) opens Game Options (controls/globe-key-click, globe-near-key-click); audit-batch.mjs asserts both on Linux (Alliance).",
           "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
