@@ -3541,26 +3541,30 @@
         {
           "id": "CMD-10-C002",
           "requirement": "Alliance pressed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Pressed art shows only while captured (FUN_00602d30); the Linux GID gate checks the pressed capture differs; no A0 pressed capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Pressed art shows only while captured (FUN_00602d30); the Linux GID gate checks the pressed capture differs; no A0 pressed capture. 2026-10-31: A0 controls/globe-held shows the held globe as 10013; the port's pressed globe (GID gate game-options-pressed, Linux) matches it pixel for pixel outside A0's pointer, after keying the controls' magenta corner.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C003",
           "requirement": "Imperial rest",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "The Imperial controls (10016..10028) render in the Linux GID gate; A0 Empire captures exist (uprisings-e.png) but were not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The Imperial controls (10016..10028) render in the Linux GID gate; A0 Empire captures exist (uprisings-e.png) but were not compared. 2026-10-31: against A0 gid/d-popular-support.png (Empire) the port's bottom controls and globe differ in 0 pixels (GID gate, Linux), after the globe's normal art (12f0bca6) and the keyed corner fixes.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C004",
@@ -3669,50 +3673,58 @@
         {
           "id": "CMD-10-C013",
           "requirement": "Fleet Finder command",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-finder-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-window-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-window-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "The Fleet Finder matches A0 (opened by F3) in encyclopedia-placement.mjs --window=finders on Linux via F3; the control click (fleet-finder.mjs) has no Linux run on record.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The Fleet Finder matches A0 (opened by F3) in encyclopedia-placement.mjs --window=finders on Linux via F3; the control click (fleet-finder.mjs) has no Linux run on record. 2026-10-31: in A0 the Fleet Finder control (170, 415) opens the Fleet Finder (controls/fleet-finder.png); audit-batch.mjs clicks the control on both sides on Linux and it opens the Finder.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C014",
           "requirement": "Troop Finder command",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "A0 button-open-day173.png shows the control opening the Troop Finder, and the window matches on Linux, but the browser opened it with F4, not the control.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 button-open-day173.png shows the control opening the Troop Finder, and the window matches on Linux, but the browser opened it with F4, not the control. 2026-10-31: in A0 the Troop Finder control (222, 413) opens the Troop Finder (controls/troop-finder.png); audit-batch.mjs clicks the control on both sides on Linux and it opens the Finder.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C015",
           "requirement": "Personnel Finder command",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "The Personnel Finder matches A0 (opened by F5) on Linux via F5; the control click was not run in the browser and not captured in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The Personnel Finder matches A0 (opened by F5) on Linux via F5; the control click was not run in the browser and not captured in A0. 2026-10-31: in A0 the Personnel Finder control (271, 413) opens the Personnel Finder (controls/personnel-finder.png); audit-batch.mjs clicks the control on both sides on Linux and it opens the Finder.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C016",
           "requirement": "Game Options command",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "The side globe 0x133 opens original Game Options (bitmap 20002) and Escape returns, checked in the Linux GID gate; no A0 capture of Game Options.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The side globe 0x133 opens original Game Options (bitmap 20002) and Escape returns, checked in the Linux GID gate; no A0 capture of Game Options. 2026-10-31: in A0 the globe opens Game Options (controls/globe-options.png); the port's globe does on Linux (GID gate), and that window matches A0 in game-options.mjs.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C017",
@@ -3729,28 +3741,32 @@
         {
           "id": "CMD-10-C018",
           "requirement": "F2 through F5 accelerators",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-finder-text/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "F3, F4 and F5 open their Finders as A0 shows, on Linux; F2's System Finder is not ported.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "F3, F4 and F5 open their Finders as A0 shows, on Linux; F2's System Finder is not ported. 2026-10-31: F2 opens the System Finder, now ported, in A0 (sector-windows/08-finder.png) and in the port (sector-windows.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C019",
           "requirement": "F1 Game Options and F7 Encyclopedia accelerators",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-placement/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "F7 matches A0 and Linux; F1 opens Game Options in the Linux GID gate but has no A0 capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "F7 matches A0 and Linux; F1 opens Game Options in the Linux GID gate but has no A0 capture. 2026-10-31: F1 opens Game Options in A0 (main-menu-states/00-options.png) and in the port, whose F1 window matches A0 (game-options.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C020",

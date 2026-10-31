@@ -327,6 +327,22 @@ async function inspect(server, source, faction, executable) {
     await key(page, "Escape");
     await stableShot(page, directory, "personnel-closed");
 
+    // The cockpit controls themselves (FUN_00427270: 0x12e Fleet, 0x130
+    // Troop, 0x12f Personnel Finder) open the same windows as F3..F5; A0
+    // .artifacts/a0-vm/controls/*-finder.png (Alliance) shows the three.
+    const CONTROLS = faction.name === "alliance"
+      ? { fleet: [170, 415], troop: [222, 413], personnel: [271, 413] }
+      : { fleet: [217, 446], troop: [270, 444], personnel: [429, 444] };
+    for (const [name, command] of [["fleet", "0x12e"], ["troop", "0x130"], ["personnel", "0x12f"]]) {
+      const [x, y] = CONTROLS[name];
+      await click(page, { x, y });
+      checks[`${name}_control_log`] = await logged(`the ${name} control opens its Finder`,
+        new RegExp(`command=${command} destination=${name}_finder status=opened_original`), 2);
+      await stableShot(page, directory, `${name}-control`);
+      await key(page, "Escape");
+      await page.waitForTimeout(300);
+    }
+
     // Alt+2..Alt+9 then Alt+1: commands 0xbcb..0xbd2 and 0xbca (TEXTCOMM
     // accelerator table 11) select the nine GID modes in turn
     // (FUN_00422ce0: 0x11, 0x12, 0x21, 0x22, 0x43, 0x44, 0x65, 0x66, 0x67);
@@ -449,7 +465,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "audit-batch",
-    scope: "test-only: F4 Troop Finder and F5 Personnel Finder rails against STRATEGY.DLL and Escape; F6 and a rail light open the Message Index once, Close closes it; Alt+1..9 each select their GID mode; Alt+G Manage Garrisons and Alt+U Manage Production on and off; right click on the agent droid opens the Agent menu; on both sides",
+    scope: "test-only: F4 Troop Finder and F5 Personnel Finder rails against STRATEGY.DLL and Escape; F6 and a rail light open the Message Index once, Close closes it; Alt+1..9 each select their GID mode; Alt+G Manage Garrisons and Alt+U Manage Production on and off; the Fleet, Troop and Personnel Finder controls open their Finders; right click on the agent droid opens the Agent menu; on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

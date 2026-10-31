@@ -2089,10 +2089,14 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     if source == DllSource::Common {
         return matches!(resource_id, 10_020..=10_057);
     }
+    // The command centre's controls (FUN_00427270 makes each a
+    // CoolStrobeButton): A0 new-alliance/t18 and controls/globe-held show
+    // the background through their magenta corner (10013 at (3, 395)).
     source == DllSource::Strategy
         && matches!(
             resource_id,
-            10_117..=10_118
+            10_001..=10_028
+                | 10_117..=10_118
                 | 10_128..=10_129
                 | 10_168
                 | 10_592..=10_597
