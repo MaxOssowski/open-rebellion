@@ -449,8 +449,11 @@ pub fn draw_build_selection(
             );
 
             // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA, module 2); the
-            // close box has none, and a disabled Done shows none.
+            // close box's comes from FUN_00606e10(0x277c, 0x277d, 100,
+            // 0x1903), A0 build-selection/tip-close. A disabled Done shows
+            // none (A0 build-selection/tip-done).
             for (rect, id, string, enabled) in [
+                ((193.0, 3.0, 14.0, 14.0), "close", 0x1903, true),
                 (QUANTITY_FIELD, "quantity", 0x190c, true),
                 ((79.0, 90.0, 65.0, 18.0), "list", 0x1906, true),
                 ((189.0, 196.0, 13.0, 8.0), "more", 0x1907, true),

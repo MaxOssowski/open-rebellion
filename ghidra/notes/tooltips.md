@@ -119,7 +119,11 @@ the tip fits its text, so the port's tips are as much wider.
     a rect tool to the sector window, so this is probably a no-op or
     vestigial (guess).
 - **Other paths.** No other code sends to `DAT_006be5a4`. The close-button
-  helper `FUN_00606e10` passes tooltip 0, so it registers none.
+  helper `FUN_00606e10(art, pressed art, command, tip)` passes its fourth
+  argument to `FUN_00606c90` as the tip. Its only caller, Build Selection's
+  `FUN_00438620`, passes `0x1903` "Close"; A0 build-selection/tip-close
+  shows it (corrected 2026-10-31; this line said the helper registers
+  none).
 
 Notation:
 
@@ -428,6 +432,13 @@ cmd 0xca) pass tooltip 0.
 | cmd 0x67 at (5,0xe0) | 0x190b (6411) | Encyclopedia | L16 | static (REBDLOG would read "Lookup") |
 | cmd 0x69 at (0xbd,0xc4) | 0x1907 (6407) | Increase | L17 | static |
 | cmd 0x6a at (0xbd,0xcd) | 0x1908 (6408) | Decrease | L18 | static |
+| close cmd 100 at (0xc1,3) (`FUN_00606e10`) | 0x1903 (6403) | Close | L7 | static |
+
+A0 `.artifacts/a0-vm/build-selection/tip-*` (2026-10-31, Kimanan): every
+tip shows at the pointer plus (0, 21). The text is Close, Cancel, Increase,
+Decrease, Edit Number, Encyclopedia or Items to Build, each 4 pixels from
+the left border with its capitals 5 pixels down. The disabled Done shows
+no tip.
 
 ### 7g. Move-order confirmation (`FUN_0044f180`, slot +0x38)
 

@@ -1,0 +1,59 @@
+{
+  "browser": "Arch Chromium 155 (Linux), not the pinned macOS build",
+  "gates": {
+    "build-selection": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/build-selection-2026-10-31T09-30-45-795Z-2647624",
+      "wasm_sha256": null
+    },
+    "tooltip": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/tooltip-2026-10-31T09-31-13-821Z",
+      "wasm_sha256": null
+    },
+    "fleet-window": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/fleet-window-2026-10-31T09-34-19-943Z-2652174",
+      "wasm_sha256": "1e2d1d65291acaa1874359ff2cc412fcbda1c5359ca81a3e213e4903d01fa449"
+    },
+    "game-options": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/game-options-2026-10-31T09-41-05-381Z",
+      "wasm_sha256": null
+    },
+    "main-menu-rest": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/main-menu-rest-2026-10-31T09-41-28-657Z",
+      "wasm_sha256": null
+    },
+    "personnel-orders": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/personnel-orders-2026-10-31T09-41-37-615Z-2668333",
+      "wasm_sha256": "1e2d1d65291acaa1874359ff2cc412fcbda1c5359ca81a3e213e4903d01fa449"
+    },
+    "agent-objectives": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/agent-objectives-2026-10-31T09-42-39-574Z",
+      "wasm_sha256": null
+    },
+    "status-window": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/status-window-2026-10-31T09-45-39-163Z-2673177",
+      "wasm_sha256": null
+    },
+    "encyclopedia-placement": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/encyclopedia-placement-2026-10-31T09-46-38-866Z",
+      "wasm_sha256": null
+    },
+    "sector-quadrants": {
+      "status": "pass",
+      "run": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/sector-quadrants-2026-10-31T09-48-58-643Z-2677269",
+      "wasm_sha256": "1e2d1d65291acaa1874359ff2cc412fcbda1c5359ca81a3e213e4903d01fa449"
+    },
+    "run --all (GID)": {
+      "status": "pass",
+      "cases": 152
+    }
+  }
+}

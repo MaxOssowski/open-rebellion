@@ -3865,9 +3865,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips/",
             "ghidra/notes/tooltips.md",
             "crates/rebellion-render/src/win_tooltip.rs",
-            "tools/interface-parity/tooltip.mjs"
+            "tools/interface-parity/tooltip.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-build-selection-tips-a0/"
           ],
-          "note": "A0 tooltip/01.png: fill (255,251,240), (128,128,128) border, 19 high, top left at the pointer plus (0,21), text ink 4 in and capitals 5 down, 9 high. tooltip.mjs matches box x, y and height to A0 and the text's first ink column and capital rows match; deviation accepted 2026-10-30: the text is about 9% wider than GDI's, so the tip is as much wider (137 vs 124 for Raw Materials Monitor) and near the right edge moves left to stay in the client (Game Speed Control: 512 vs A0 520; it ends at 639 as A0 tips do).",
+          "note": "A0 tooltip/01.png: fill (255,251,240), (128,128,128) border, 19 high, top left at the pointer plus (0,21), text ink 4 in and capitals 5 down, 9 high. tooltip.mjs matches box x, y and height to A0 and the text's first ink column and capital rows match; deviation accepted 2026-10-30: the text is about 9% wider than GDI's, so the tip is as much wider (137 vs 124 for Raw Materials Monitor) and near the right edge moves left to stay in the client (Game Speed Control: 512 vs A0 520; it ends at 639 as A0 tips do). 2026-10-31: the tip text was drawn at em 13.4, not 12 (FONT_SIZE took egui's size for the cell; epaint already scales the em to the cell). The 14-pixel cell, em 12.53, is the nearest epaint can draw: each measured tip is now within 5 pixels of A0's width, and the capitals sit 5 pixels down as in A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -3945,9 +3946,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-finders/",
             "crates/rebellion-render/src/system_finder.rs",
             "crates/rebellion-render/src/win_tooltip.rs",
-            "tools/interface-parity/tooltip.mjs"
+            "tools/interface-parity/tooltip.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-build-selection-tips-a0/"
           ],
-          "note": "FUN_00460270's five tabs (TEXTSTRA 0x1867..0x1869, 0x1870, 0x1871), Close 0x1954 and Display 0x1953 match A0 tooltip/30..36 in tooltip.mjs (left edge, top, height; Empire, Linux). Tips are about 9% wider (accepted text-width deviation).",
+          "note": "FUN_00460270's five tabs (TEXTSTRA 0x1867..0x1869, 0x1870, 0x1871), Close 0x1954 and Display 0x1953 match A0 tooltip/30..36 in tooltip.mjs (left edge, top, height; Empire, Linux). Tips are about 9% wider (accepted text-width deviation). 2026-10-31: the tip text was drawn at em 13.4, not 12 (FONT_SIZE took egui's size for the cell; epaint already scales the em to the cell). The 14-pixel cell, em 12.53, is the nearest epaint can draw: each measured tip is now within 5 pixels of A0's width, and the capitals sit 5 pixels down as in A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -4145,9 +4147,11 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
             "crates/rebellion-render/src/build_selection.rs",
-            "tools/interface-parity/build-selection.mjs"
+            "tools/interface-parity/build-selection.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-build-selection-tips-a0/",
+            "ghidra/notes/tooltips.md"
           ],
-          "note": "FUN_00437f80 / FUN_00438620's seven tips (0x190c, 0x1906..0x190b) show at the shared placement in build-selection.mjs (Linux), none on the close box; no A0 capture of Build Selection's tips.",
+          "note": "FUN_00437f80 / FUN_00438620's seven tips (0x190c, 0x1906..0x190b) show at the shared placement in build-selection.mjs (Linux), none on the close box; no A0 capture of Build Selection's tips. 2026-10-31: A0 build-selection/tip-* (Kimanan, Alliance): Edit Number, Items to Build, Increase, Decrease, Encyclopedia, Cancel and Close show at the pointer plus (0, 21). The close box's Close (0x1903 through FUN_00606e10) was missing in the port and is added. build-selection.mjs compares each box with A0 (left and top exact, width within 15%) and passes on Linux. A disabled Done shows no tip in A0; an enabled Done's tip was not seen in A0 (Kimanan had no room to build).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

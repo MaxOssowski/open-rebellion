@@ -118,9 +118,15 @@ async function tipShows(page, at) {
   const top = at.y + 21 + 19 > 440 ? at.y - 19 : at.y + 21;
   const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
     && pixel(at.x + 2, top + 2) === "255,251,240";
+  // The tip's box: the run of its grey bottom border (clear of the
+  // pointer) through the pointer's column.
+  let left = at.x;
+  let right = at.x;
+  while (left > 0 && pixel(left - 1, top + 18) === "128,128,128") left -= 1;
+  while (right < png.width - 1 && pixel(right + 1, top + 18) === "128,128,128") right += 1;
   await page.mouse.move(2, 2, { steps: 4 });
   await page.waitForTimeout(100);
-  return shown;
+  return shown && { left: left - at.x, top: top - at.y, right: right - at.x };
 }
 
 async function startServer() {
@@ -362,17 +368,29 @@ async function inspect(server, source, faction, executable) {
     const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
     const captured = await stableWindow(page, origin, directory, "opened");
     const comparisons = [compare(captured, composeExpected(source, faction), "opened", directory)];
-    // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA 0x190c, 0x1906..0x190b):
-    // the quantity box, Items to Build, Increase, Decrease, Encyclopedia,
-    // Done and Cancel each show one; the close box has none.
+    // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA 0x190c, 0x1906..0x190b,
+    // and 0x1903 on the close box through FUN_00606e10): every control
+    // shows one.
     const tips = {};
     for (const [name, [x, y, w, h]] of [["quantity", [141, 196, 45, 17]], ["list", [79, 90, 65, 18]],
       ["more", [189, 196, 13, 8]], ["fewer", [189, 205, 13, 8]], ["encyclopedia", [5, 224, 66, 33]],
       ["done", [73, 224, 66, 33]], ["cancel", [141, 224, 66, 33]], ["close", [193, 3, 14, 14]]]) {
       tips[name] = await tipShows(page, { x: origin.x + x + Math.floor(w / 2), y: origin.y + y + Math.floor(h / 2) });
     }
-    assert.deepEqual(tips, { quantity: true, list: true, more: true, fewer: true, encyclopedia: true,
-      done: true, cancel: true, close: false }, JSON.stringify(tips));
+    assert.ok(Object.values(tips).every(Boolean), JSON.stringify(tips));
+    // A0 build-selection/tip-* (Windows 10 VM, Alliance, the same points in
+    // the window): each box (left, top, right inclusive) from the pointer.
+    // Left and top must match; the width may differ by the accepted text
+    // deviation. A0's Done was disabled there and showed no tip.
+    const A0_TIPS = { quantity: [0, 21, 72], list: [0, 21, 78], more: [0, 21, 48], fewer: [0, 21, 52],
+      encyclopedia: [0, 21, 75], cancel: [0, 21, 41], close: [0, 21, 34] };
+    for (const [name, [left, top, right]] of Object.entries(A0_TIPS)) {
+      const box = tips[name];
+      assert.equal(box.top, top, `${name} tip top ${box.top} vs A0 ${top}`);
+      assert.equal(box.left, left, `${name} tip left ${box.left} vs A0 ${left}`);
+      const ratio = (box.right - box.left + 1) / (right - left + 1);
+      assert.ok(ratio > 0.85 && ratio < 1.15, `${name} tip width ratio ${ratio.toFixed(3)}`);
+    }
 
     // Confirm (0x65, FUN_00438980) builds one unit of the selected class.
     await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });

@@ -39,9 +39,10 @@ pub const POINTER_DROP: f32 = 21.0;
 pub const TIP_HEIGHT: f32 = 19.0;
 
 /// The text's line box in the tip, in client pixels. A0: the ink starts 4
-/// pixels in and the capitals 5 pixels down; egui's line box sits one pixel
-/// left of its ink and three above the capitals.
-const TEXT_INSET: (f32, f32) = (3.0, 2.0);
+/// pixels in and the capitals 5 pixels down (build-selection/tip-*); egui's
+/// line box at the 14-pixel cell sits one pixel left of its ink and two
+/// above the capitals.
+const TEXT_INSET: (f32, f32) = (3.0, 3.0);
 
 /// Room around the text: the tip is the text's advance plus five pixels
 /// wide (A0: "Raw Materials Monitor" 124, "Refined Materials Monitor" 143).
@@ -51,9 +52,13 @@ const WIDTH_PADDING: f32 = 5.0;
 /// an em of 12 gives the A0 widths within one pixel.
 pub const FONT_EM: f32 = 12.0;
 
-/// egui sizes a font by its cell, ascent plus descent (`theme::original_font`):
-/// Arial's cell is 2288 of its 2048 units.
-const FONT_SIZE: f32 = FONT_EM * 2288.0 / 2048.0;
+/// egui's size is the em; epaint scales it by the face's cell over its em
+/// (2288 / 2048 for Arial) and rounds that cell to whole pixels, so an em
+/// of 12 (cell 13.4) cannot be drawn. The 14-pixel cell, em 12.53, is the
+/// nearer: the tips of A0 build-selection/tip-*, tooltip/01 and /02 are
+/// within five pixels of its widths, where the 15-pixel cell drew them up
+/// to 13 wider.
+const FONT_SIZE: f32 = 14.0 * 2048.0 / 2288.0;
 
 /// The tip's fill, `COLOR_INFOBK` of A0 (Windows 10 in 256 colours).
 pub const FILL: egui::Color32 = egui::Color32::from_rgb(255, 251, 240);
@@ -662,10 +667,40 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_text_is_twelve_pixels_to_the_em() {
-        // Arial's cell is 2288 of its 2048 units: an em of 12 is egui size
-        // 13.40625.
-        assert!((FONT_SIZE - 13.406_25).abs() < 1e-4);
+    fn tips_are_within_five_pixels_of_their_a0_widths() {
+        // A0 tip boxes, borders included: build-selection/tip-* (TEXTSTRA
+        // 0x1903, 0x190a, 0x1907, 0x1908, 0x190c, 0x190b, 0x1906) and
+        // tooltip/01, /02. epaint scales egui's size, the em, by the cell
+        // over the em and rounds the cell to whole pixels (fonts.rs 843):
+        // the 15-pixel cell drew "Raw Materials Monitor" 137 wide.
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut widths = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            for (text, a0) in [
+                ("Close", 35.0),
+                ("Cancel", 42.0),
+                ("Increase", 49.0),
+                ("Decrease", 53.0),
+                ("Edit Number", 73.0),
+                ("Encyclopedia", 76.0),
+                ("Items to Build", 79.0),
+                ("Raw Materials Monitor", 124.0),
+                ("Refined Materials Monitor", 143.0),
+            ] {
+                let galley = ctx.fonts(|fonts| {
+                    fonts.layout_no_wrap(
+                        text.to_owned(),
+                        egui::FontId::proportional(FONT_SIZE),
+                        TEXT,
+                    )
+                });
+                widths.push((text, tip_rect((0.0, 0.0), galley.size().x).width(), a0));
+            }
+        });
+        for (text, width, a0) in widths {
+            assert!((width - a0).abs() <= 5.0, "{text}: {width} vs A0 {a0}");
+        }
     }
 
     #[test]
@@ -775,8 +810,9 @@ pub(crate) mod tests {
     #[test]
     fn the_tip_paints_over_the_client_below_the_pointer() {
         // A0 tooltip/01.png: the pointer at (175, 25), the tip's box at
-        // (175, 46), 19 high, a grey border round the light fill, the text
-        // 3 by 2 into the box's line.
+        // (175, 46), 19 high, a grey border round the light fill, the text's
+        // line 3 by 3 into the box (its capitals 5 down, as in A0 tooltip/01
+        // and build-selection/tip-*).
         let ctx = egui::Context::default();
         let origin = egui::pos2(10.0, 20.0);
         let pointer = origin + egui::vec2(175.0, 25.0) * 2.0;
@@ -786,7 +822,7 @@ pub(crate) mod tests {
         let (rect, text_pos, text) = tip_shapes(&shapes).expect("a tip");
         assert_eq!(rect.min, origin + egui::vec2(175.0, 46.0) * 2.0);
         assert_eq!(rect.height(), 38.0);
-        assert_eq!(text_pos, rect.min + egui::vec2(6.0, 4.0));
+        assert_eq!(text_pos, rect.min + egui::vec2(6.0, 6.0));
         assert_eq!(text, "Raw Materials Monitor");
         let border = shapes.iter().any(|shape| {
             matches!(shape,
