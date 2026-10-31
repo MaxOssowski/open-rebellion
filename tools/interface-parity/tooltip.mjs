@@ -188,6 +188,41 @@ async function run(browser, base, faction) {
         ["rail-chat", [618, 318], "28-rail-chat.png"]]) await probe(label, point, capture, none);
     }
 
+    // The reshow delay (TTDT_AUTOMATIC: 100 ms) holds between tools of one
+    // window: from a shown monitor tip to the next monitor, a tip shows
+    // within 250 ms (A0 controls/reshow2). Between cockpit controls, each a
+    // window of its own, the next tip waits the full 500 ms (A0
+    // controls/reshow). A click hides the tip (A0 controls/
+    // tip-troop-pressed).
+    if (faction.name === "empire") {
+      const settle = async (point) => {
+        await page.mouse.move(320, 300, { steps: 4 });
+        await frames(page, 4);
+        await page.mouse.move(...point, { steps: 4 });
+        await page.waitForTimeout(900);
+      };
+      await settle([400, 25]);
+      await page.mouse.move(520, 25);
+      await page.waitForTimeout(250);
+      const reshown = tipBox(await shot("reshow-monitor"), [520, 25]);
+      assert.ok(reshown, "the next monitor's tip did not show within 250 ms");
+      await settle([217, 446]);
+      await page.mouse.move(270, 444);
+      await page.waitForTimeout(250);
+      assert.equal(tipBox(await shot("reshow-control"), [270, 444]), null,
+        "the next control's tip showed within 250 ms");
+      await page.waitForTimeout(500);
+      assert.ok(tipBox(await shot("reshow-control-late"), [270, 444]), "the next control's tip never showed");
+      await page.mouse.down();
+      await frames(page, 3);
+      assert.equal(tipBox(await shot("click-hides"), [270, 444]), null, "a press left the tip");
+      // Released off the control, nothing opens (FUN_006030f0).
+      await page.mouse.move(320, 300, { steps: 4 });
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+      others.push({ label: "reshow", monitor: reshown });
+    }
+
     // Modal: with the System Finder open the monitor shows no tip.
     await page.mouse.move(320, 300, { steps: 4 });
     await page.keyboard.press("F2");

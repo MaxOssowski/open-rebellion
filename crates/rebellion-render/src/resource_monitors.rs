@@ -221,9 +221,12 @@ pub fn top_bar_tooltips(
         let Some(text) = crate::win_tooltip::string(tool.string) else {
             continue;
         };
+        // The top bar's monitors are rectangle tools of one window
+        // (FUN_00422ce0), so they share the reshow delay.
         crate::win_tooltip::chrome_tool(
             ctx,
             egui::Id::new(("top-bar-tooltip", tool.id)),
+            egui::Id::new("top-bar-tooltips"),
             logical_rect_to_screen(layout, tool.rect(faction)),
             &text,
             enabled,

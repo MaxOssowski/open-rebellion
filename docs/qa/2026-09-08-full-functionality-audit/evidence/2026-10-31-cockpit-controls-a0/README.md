@@ -73,3 +73,29 @@ pixel, opens nothing (`globe-key-click`). A click on the pixel beside it,
 The globe spans x 3 to 29. In A0 a click at (30, 375) opens nothing
 (`globe-edge-out`) and one at (29, 375) opens Game Options
 (`globe-edge-in`). `audit-batch.mjs` (Alliance, Linux) asserts the same.
+
+## Tip timing between tools (fifth stage)
+
+A0 screen dumps every ~57 ms after the pointer jumps from one tool to the
+next:
+- **Top bar** (`reshow2`). From the shown maintenance tip to the speed
+  monitor, two rectangle tools of one window (`FUN_00422ce0`), the next
+  tip shows by 0.205 s. That is the reshow delay.
+- **Cockpit controls** (`reshow`). From the shown Fleet Finder tip to the
+  Troop Finder control, each a window of its own (`FUN_00427270`), the
+  old tip hides at once and the next shows only at about 0.61 s. That is
+  the full initial delay.
+- **A press** hides the tip (`tip-troop-pressed`).
+
+The port used the reshow delay between any two tools. `TipTimer` now keeps
+each tool's window (`step_in`, `tool_in`). The reshow delay applies only
+within one window: the top bar's monitors share theirs, and every cockpit
+control is its own. Unit tests cover both cases.
+
+`tooltip.mjs` (Empire, Linux) checks three things:
+- from monitor to monitor, the next tip shows within 250 ms;
+- from control to control, there is no tip at 250 ms and one at 750 ms;
+- a press hides the tip.
+
+hyp: other windows' rectangle tools (the sector tracks, for one) are
+treated as separate windows until measured.

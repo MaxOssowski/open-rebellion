@@ -22,7 +22,11 @@ pub const INITIAL_DELAY: f64 = 0.5;
 /// `TTDT_AUTOMATIC` 500: the tip hides after ten times the initial delay.
 pub const AUTOPOP_DELAY: f64 = 5.0;
 /// `TTDT_AUTOMATIC` 500: the delay from one shown tip to the next, a fifth
-/// of the initial delay.
+/// of the initial delay. It applies only between tools of one window: A0
+/// shows the next top-bar tip about 0.15 s after the pointer moves from
+/// one monitor to another (`controls/reshow2`), but the next cockpit
+/// control's tip only after about 0.55 s (`controls/reshow`), each control
+/// being a window of its own.
 pub const RESHOW_DELAY: f64 = 0.1;
 
 /// How far below the pointer's hot spot the tip's top sits, in client
@@ -121,6 +125,8 @@ pub fn string(id: u16) -> Option<String> {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TipTimer {
     tool: Option<egui::Id>,
+    /// The window the tool belongs to (a control is its own window).
+    owner: Option<egui::Id>,
     text: String,
     /// When the pointer last came onto the tool or moved on it unshown.
     rest_since: f64,
@@ -143,14 +149,34 @@ impl TipTimer {
         moved: bool,
         pressed: bool,
     ) -> Option<(&str, (f32, f32))> {
-        let Some((id, text)) = hovered else {
+        self.step_in(
+            now,
+            hovered.map(|(id, text)| (id, id, text)),
+            pointer,
+            moved,
+            pressed,
+        )
+    }
+
+    /// [`Self::step`] with each tool's window: the reshow delay applies only
+    /// when the next tool is in the window of the tip shown.
+    pub fn step_in(
+        &mut self,
+        now: f64,
+        hovered: Option<(egui::Id, egui::Id, &str)>,
+        pointer: (f32, f32),
+        moved: bool,
+        pressed: bool,
+    ) -> Option<(&str, (f32, f32))> {
+        let Some((id, owner, text)) = hovered else {
             *self = Self::default();
             return None;
         };
         if self.tool != Some(id) {
-            let shown = self.shown_at.is_some() && !self.done;
+            let shown = self.shown_at.is_some() && !self.done && self.owner == Some(owner);
             *self = Self {
                 tool: Some(id),
+                owner: Some(owner),
                 rest_since: now,
                 delay: if shown { RESHOW_DELAY } else { INITIAL_DELAY },
                 ..Self::default()
@@ -212,7 +238,8 @@ pub fn tip_rect(pointer: (f32, f32), width: f32) -> egui::Rect {
 
 #[derive(Clone, Default)]
 struct Frame {
-    hovered: Option<(egui::Id, String)>,
+    /// The tool, its window and its text.
+    hovered: Option<(egui::Id, egui::Id, String)>,
 }
 
 fn frame_id() -> egui::Id {
@@ -222,8 +249,15 @@ fn frame_id() -> egui::Id {
 /// Register the control under the pointer this frame. Call it only while the
 /// pointer is over the control and nothing covers it; the last call wins.
 pub fn tool(ctx: &egui::Context, id: egui::Id, text: &str) {
+    tool_in(ctx, id, id, text);
+}
+
+/// [`tool`] for a rectangle tool of window `owner`, which shares the
+/// reshow delay with the window's other tools.
+pub fn tool_in(ctx: &egui::Context, id: egui::Id, owner: egui::Id, text: &str) {
     ctx.data_mut(|data| {
-        data.get_temp_mut_or_default::<Frame>(frame_id()).hovered = Some((id, text.to_owned()));
+        data.get_temp_mut_or_default::<Frame>(frame_id()).hovered =
+            Some((id, owner, text.to_owned()));
     });
 }
 
@@ -240,6 +274,7 @@ pub fn attach(response: &egui::Response, text: &str) {
 pub fn chrome_tool(
     ctx: &egui::Context,
     id: egui::Id,
+    owner: egui::Id,
     screen_rect: egui::Rect,
     text: &str,
     enabled: bool,
@@ -248,7 +283,7 @@ pub fn chrome_tool(
         .input(|input| input.pointer.latest_pos())
         .is_some_and(|p| pt_in_rect(screen_rect, p));
     if enabled && over && !ctx.is_pointer_over_area() {
-        tool(ctx, id, text);
+        tool_in(ctx, id, owner, text);
     }
 }
 
@@ -339,9 +374,11 @@ pub fn paint(ctx: &egui::Context, origin: egui::Pos2, scale: f32) {
     let timer_id = egui::Id::new("original-tooltip-timer");
     let mut timer = ctx.data_mut(|data| data.get_temp::<TipTimer>(timer_id).unwrap_or_default());
     let shown = timer
-        .step(
+        .step_in(
             now,
-            hovered.as_ref().map(|(id, text)| (*id, text.as_str())),
+            hovered
+                .as_ref()
+                .map(|(id, owner, text)| (*id, *owner, text.as_str())),
             pointer,
             moved,
             pressed,
@@ -489,35 +526,124 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_next_control_shows_its_tip_after_a_tenth_of_a_second() {
-        // TTDT_AUTOMATIC: the reshow delay is a fifth of the initial 500 ms.
+    fn the_next_tool_of_the_same_window_shows_its_tip_after_a_tenth_of_a_second() {
+        // TTDT_AUTOMATIC: the reshow delay is a fifth of the initial 500 ms,
+        // between tools of one window (A0 controls/reshow2: the top bar's
+        // next monitor tip about 0.15 s after the move).
+        let bar = id(100);
         let mut timer = TipTimer::default();
-        timer.step(0.0, Some((id(1), "Raw")), (175.0, 25.0), false, false);
+        timer.step_in(0.0, Some((id(1), bar, "Raw")), (175.0, 25.0), false, false);
         assert!(timer
-            .step(0.5, Some((id(1), "Raw")), (175.0, 25.0), false, false)
+            .step_in(0.5, Some((id(1), bar, "Raw")), (175.0, 25.0), false, false)
             .is_some());
         assert_eq!(
-            timer.step(0.6, Some((id(2), "Refined")), (273.0, 25.0), false, false),
+            timer.step_in(
+                0.6,
+                Some((id(2), bar, "Refined")),
+                (273.0, 25.0),
+                false,
+                false
+            ),
             None
         );
         assert_eq!(
-            timer.step(0.69, Some((id(2), "Refined")), (273.0, 25.0), false, false),
+            timer.step_in(
+                0.69,
+                Some((id(2), bar, "Refined")),
+                (273.0, 25.0),
+                false,
+                false
+            ),
             None
         );
         assert_eq!(
-            timer.step(0.71, Some((id(2), "Refined")), (273.0, 25.0), false, false),
+            timer.step_in(
+                0.71,
+                Some((id(2), bar, "Refined")),
+                (273.0, 25.0),
+                false,
+                false
+            ),
             Some(("Refined", (273.0, 25.0)))
         );
-        // Without a shown tip the next control waits the full delay.
+        // Without a shown tip the next tool waits the full delay.
         let mut cold = TipTimer::default();
-        cold.step(0.0, Some((id(1), "Raw")), (175.0, 25.0), false, false);
-        cold.step(0.2, Some((id(2), "Refined")), (273.0, 25.0), false, false);
+        cold.step_in(0.0, Some((id(1), bar, "Raw")), (175.0, 25.0), false, false);
+        cold.step_in(
+            0.2,
+            Some((id(2), bar, "Refined")),
+            (273.0, 25.0),
+            false,
+            false,
+        );
         assert_eq!(
-            cold.step(0.4, Some((id(2), "Refined")), (273.0, 25.0), false, false),
+            cold.step_in(
+                0.4,
+                Some((id(2), bar, "Refined")),
+                (273.0, 25.0),
+                false,
+                false
+            ),
             None
         );
         assert!(cold
-            .step(0.75, Some((id(2), "Refined")), (273.0, 25.0), false, false)
+            .step_in(
+                0.75,
+                Some((id(2), bar, "Refined")),
+                (273.0, 25.0),
+                false,
+                false
+            )
+            .is_some());
+    }
+
+    #[test]
+    fn a_control_of_another_window_waits_the_full_delay() {
+        // Each cockpit control is a window of its own (FUN_00427270): A0
+        // controls/reshow shows the next control's tip about 0.55 s after
+        // the move, not 0.1 s.
+        let mut timer = TipTimer::default();
+        timer.step(
+            0.0,
+            Some((id(1), "Fleet Finder")),
+            (170.0, 415.0),
+            false,
+            false,
+        );
+        assert!(timer
+            .step(
+                0.5,
+                Some((id(1), "Fleet Finder")),
+                (170.0, 415.0),
+                false,
+                false
+            )
+            .is_some());
+        timer.step(
+            0.6,
+            Some((id(2), "Troop Finder")),
+            (222.0, 413.0),
+            false,
+            false,
+        );
+        assert_eq!(
+            timer.step(
+                0.75,
+                Some((id(2), "Troop Finder")),
+                (222.0, 413.0),
+                false,
+                false
+            ),
+            None
+        );
+        assert!(timer
+            .step(
+                1.11,
+                Some((id(2), "Troop Finder")),
+                (222.0, 413.0),
+                false,
+                false
+            )
             .is_some());
     }
 
@@ -746,7 +872,14 @@ pub(crate) mod tests {
                                 );
                             });
                     }
-                    chrome_tool(ctx, egui::Id::new("chrome"), control, "Chrome", enabled);
+                    chrome_tool(
+                        ctx,
+                        egui::Id::new("chrome"),
+                        egui::Id::new("chrome"),
+                        control,
+                        "Chrome",
+                        enabled,
+                    );
                 },
             );
             tip_shapes(&shapes).map(|(_, _, text)| text)

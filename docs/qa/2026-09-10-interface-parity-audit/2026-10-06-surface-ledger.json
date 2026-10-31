@@ -3870,14 +3870,16 @@
         {
           "id": "CMD-11-C003",
           "requirement": "reshow and click hide",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/tooltips.md",
-            "crates/rebellion-render/src/win_tooltip.rs"
+            "crates/rebellion-render/src/win_tooltip.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "TTDT_AUTOMATIC 500 implies a 100 ms reshow from one shown tip to the next, and a click hides the tip (tooltips_class32 relay); unit tests cover both. No A0 capture of either.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "TTDT_AUTOMATIC 500's 100 ms reshow and a click's hide (tooltips_class32 relay). 2026-10-31: A0 shows the reshow only between tools of one window (the top bar's monitors, next tip by 0.2 s) and the full 500 ms between cockpit controls, each its own window (0.61 s); a press hides the tip. The port now keeps each tool's window (TipTimer::step_in) and tooltip.mjs asserts the three on Linux.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-11-C004",

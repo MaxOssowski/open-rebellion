@@ -680,9 +680,13 @@ pub fn cockpit_tooltips(
         else {
             continue;
         };
+        // Each control is a window of its own (FUN_00427270): no reshow
+        // from one to the next (A0 controls/reshow).
+        let id = egui::Id::new(("cockpit-control-tooltip", command));
         crate::win_tooltip::chrome_tool(
             ctx,
-            egui::Id::new(("cockpit-control-tooltip", command)),
+            id,
+            id,
             logical_rect_to_screen(layout, rect),
             &text,
             enabled,
