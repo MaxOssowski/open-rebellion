@@ -10,7 +10,9 @@
 // each step it compares, pixel for pixel with the A0 frame, each sector
 // window's title-bar buttons (side switch and close; there is no minimize
 // box, FUN_004593e0) and the window's outer frame (its fixed place), and
-// the sector name's ink box within the accepted text deviation. The
+// the sector name's ink box within the accepted text deviation. In Churba
+// (04-left) the unexplored planets' pictures and the rows below them must
+// match A0 exactly: no map-item marker. The
 // windows' contents show each game's state and are left out.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
@@ -49,6 +51,32 @@ const window = (x) => ({
   frame: [[x, 35, 235, 2], [x, 393, 235, 2], [x, 35, 2, 360], [x + 233, 35, 2, 360]],
   title: [x + 20, 37, 180, 20],
 });
+// Churba's unexplored planets on the left half (A0 04-left): each 37 by 37
+// picture and the 4 rows below it, where FUN_0045bbb0 blits the system's
+// map-item bitmap, which an unexplored system's item does not hold
+// (FUN_0042b330). Only the planets clear of the galaxy's own markers
+// (each game's state) behind the window.
+const CHURBA_PLANETS = { Lelmra: [70, 58], Deyer: [159, 132], Gentes: [85, 157], Allyuen: [70, 241],
+  Hoth: [139, 241], Storthus: [93, 315] };
+// Churba's ten names, white (an unexplored system's), their A0 ink boxes
+// (left, top, right, bottom inclusive).
+const CHURBA_NAMES = { Lelmra: [76, 110, 106, 117], Tokmia: [136, 117, 166, 124], Anoat: [224, 152, 251, 159],
+  Deyer: [167, 184, 194, 193], Gentes: [89, 209, 122, 216], Bespin: [201, 258, 232, 267],
+  Allyuen: [74, 293, 108, 302], Hoth: [150, 293, 170, 300], "New Cov": [204, 332, 247, 339],
+  Storthus: [95, 367, 134, 374] };
+function whiteBox(png, [l, t, r, b]) {
+  let box = null;
+  for (let y = t - 3; y <= b + 3; y += 1) {
+    for (let x = l - 8; x <= r + 8; x += 1) {
+      const i = (y * png.width + x) * 4;
+      if (png.data[i] > 200 && png.data[i + 1] > 200 && png.data[i + 2] > 200) {
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+          : [x, y, x, y];
+      }
+    }
+  }
+  return box;
+}
 // [A0 frame, the click before it, the halves holding a window]
 const STEPS = [
   ["01-first", [252, 162], ["left"]],
@@ -165,7 +193,27 @@ try {
         ink: { a0: inkBox(a0, shape.title), port: inkBox(port, shape.title) },
       };
     }
+    if (frame === "04-left") {
+      step.planets = Object.fromEntries(Object.entries(CHURBA_PLANETS)
+        .map(([name, [x, y]]) => [name, differing(port, a0, [x, y, 37, 41], 0)]));
+      step.names = Object.fromEntries(Object.entries(CHURBA_NAMES)
+        .map(([name, box]) => [name, { a0: box, port: whiteBox(port, box) }]));
+    }
     result.steps.push(step);
+    if (step.planets) {
+      assert.ok(Object.values(step.planets).every((count) => count === 0),
+        `04-left planets: ${JSON.stringify(step.planets)}`);
+      // Each name in white, centred and topped as in A0 within a pixel or
+      // two. The widths are recorded only: A0 draws GDI's hinted Arial,
+      // 10 to 26 % narrower here (the open text-rendering finding).
+      for (const [name, entry] of Object.entries(step.names)) {
+        const { a0: a, port: p } = entry;
+        assert.ok(p, `${name}: no white name`);
+        assert.ok(Math.abs((a[0] + a[2]) / 2 - (p[0] + p[2]) / 2) <= 2.5 && Math.abs(a[1] - p[1]) <= 1
+          && Math.abs(a[3] - p[3]) <= 1, `${name}: ink ${p} vs A0 ${a}`);
+        entry.width_ratio = Number(((p[2] - p[0] + 1) / (a[2] - a[0] + 1)).toFixed(3));
+      }
+    }
     for (const [half, { expected, differing: counts, ink }] of Object.entries(step.halves)) {
       if (!expected) {
         assert.equal(ink.port, null, `${frame} ${half}: the port shows a window A0 does not`);

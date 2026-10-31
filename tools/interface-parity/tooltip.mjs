@@ -158,7 +158,7 @@ async function run(browser, base, faction) {
       if (want && point[1] + 40 > 440) want.y = point[1] - 19;
       // Without an A0 file, the rule's own right edge: a tip that would pass
       // x 639 ends there (A0 25-gid.png).
-      if (want && got && !capture) want.x = Math.min(point[0], 639 - got.width);
+      if (want && got && !(args.a0 && capture)) want.x = Math.min(point[0], 639 - got.width);
       if (args.a0 && capture) {
         const reference = PNG.sync.read(await fs.readFile(path.join(args.a0, capture)));
         want = tipBox(reference, point);

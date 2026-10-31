@@ -1,0 +1,557 @@
+{
+  "status": "pass",
+  "steps": [
+    {
+      "frame": "01-first",
+      "sha256": "ec9bb87d753658f1cdde68d98a1cec2aabda335bac486d132391eae0116fd46a",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              147,
+              42,
+              211,
+              51
+            ],
+            "port": [
+              142,
+              42,
+              214,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": false,
+          "differing": [
+            0,
+            0,
+            0,
+            8,
+            0
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        }
+      }
+    },
+    {
+      "frame": "02-second",
+      "sha256": "7295133240261d2e7cc91c8c303c86433f716eac6208f94fcbb9f86eed08906a",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              147,
+              42,
+              211,
+              51
+            ],
+            "port": [
+              142,
+              42,
+              214,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              398,
+              42,
+              440,
+              51
+            ],
+            "port": [
+              394,
+              42,
+              442,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "03-flip",
+      "sha256": "00f217874fce838514e0c426c757446005b786b4189f873494231c854f766d6e",
+      "halves": {
+        "left": {
+          "expected": false,
+          "differing": [
+            146,
+            0,
+            0,
+            0,
+            3
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "04-left",
+      "sha256": "b7df42a2d1bd20a6b64aa2675e0201da007580693e4cd12d3c5195af95cdb503",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              160,
+              42,
+              198,
+              51
+            ],
+            "port": [
+              155,
+              42,
+              200,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      },
+      "planets": {
+        "Lelmra": 0,
+        "Deyer": 0,
+        "Gentes": 0,
+        "Allyuen": 0,
+        "Hoth": 0,
+        "Storthus": 0
+      },
+      "names": {
+        "Lelmra": {
+          "a0": [
+            76,
+            110,
+            106,
+            117
+          ],
+          "port": [
+            75,
+            109,
+            111,
+            117
+          ],
+          "width_ratio": 1.194
+        },
+        "Tokmia": {
+          "a0": [
+            136,
+            117,
+            166,
+            124
+          ],
+          "port": [
+            134,
+            116,
+            172,
+            124
+          ],
+          "width_ratio": 1.258
+        },
+        "Anoat": {
+          "a0": [
+            224,
+            152,
+            251,
+            159
+          ],
+          "port": [
+            223,
+            151,
+            254,
+            159
+          ],
+          "width_ratio": 1.143
+        },
+        "Deyer": {
+          "a0": [
+            167,
+            184,
+            194,
+            193
+          ],
+          "port": [
+            167,
+            183,
+            198,
+            193
+          ],
+          "width_ratio": 1.143
+        },
+        "Gentes": {
+          "a0": [
+            89,
+            209,
+            122,
+            216
+          ],
+          "port": [
+            88,
+            208,
+            126,
+            216
+          ],
+          "width_ratio": 1.147
+        },
+        "Bespin": {
+          "a0": [
+            201,
+            258,
+            232,
+            267
+          ],
+          "port": [
+            201,
+            257,
+            236,
+            268
+          ],
+          "width_ratio": 1.125
+        },
+        "Allyuen": {
+          "a0": [
+            74,
+            293,
+            108,
+            302
+          ],
+          "port": [
+            72,
+            292,
+            111,
+            302
+          ],
+          "width_ratio": 1.143
+        },
+        "Hoth": {
+          "a0": [
+            150,
+            293,
+            170,
+            300
+          ],
+          "port": [
+            150,
+            292,
+            173,
+            300
+          ],
+          "width_ratio": 1.143
+        },
+        "New Cov": {
+          "a0": [
+            204,
+            332,
+            247,
+            339
+          ],
+          "port": [
+            203,
+            331,
+            251,
+            339
+          ],
+          "width_ratio": 1.114
+        },
+        "Storthus": {
+          "a0": [
+            95,
+            367,
+            134,
+            374
+          ],
+          "port": [
+            95,
+            366,
+            138,
+            374
+          ],
+          "width_ratio": 1.1
+        }
+      }
+    },
+    {
+      "frame": "05-closed-left",
+      "sha256": "00f217874fce838514e0c426c757446005b786b4189f873494231c854f766d6e",
+      "halves": {
+        "left": {
+          "expected": false,
+          "differing": [
+            146,
+            0,
+            0,
+            0,
+            3
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "06-same-sector",
+      "sha256": "00f217874fce838514e0c426c757446005b786b4189f873494231c854f766d6e",
+      "halves": {
+        "left": {
+          "expected": false,
+          "differing": [
+            146,
+            0,
+            0,
+            0,
+            3
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "07-both",
+      "sha256": "b7df42a2d1bd20a6b64aa2675e0201da007580693e4cd12d3c5195af95cdb503",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              160,
+              42,
+              198,
+              51
+            ],
+            "port": [
+              155,
+              42,
+              200,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "09-third",
+      "sha256": "2317fa3fc5a11488a49cdc95c3470cdc597e0dce8399a6dec4002c2a923ab847",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              160,
+              42,
+              198,
+              51
+            ],
+            "port": [
+              155,
+              42,
+              200,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              398,
+              42,
+              440,
+              51
+            ],
+            "port": [
+              394,
+              42,
+              442,
+              51
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

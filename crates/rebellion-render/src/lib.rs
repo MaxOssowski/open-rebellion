@@ -305,9 +305,10 @@ pub struct GalaxyMapState {
     pub viewport: Option<(f32, f32, f32, f32)>,
     /// Uniform scale of the original 640×480 strategic canvas.
     pub display_scale: f32,
-    /// Each system's GID marker bitmap this frame, empty with the display
-    /// off. The sector window copies it into its planet's bitmap
-    /// (`FUN_0042d860`).
+    /// Each system's map-item bitmap (`+0x20`) this frame, empty with the
+    /// display off and absent where the item shows the unexplored mark
+    /// ([`gid_item_bitmap`]). The sector window copies it into its planet's
+    /// bitmap (`FUN_0042d860`).
     pub gid_markers: std::collections::HashMap<SystemKey, u32>,
     /// The markers the galaxy view drew this frame and their screen centres,
     /// which a sector window's copy of the view shows shaded.
@@ -493,7 +494,9 @@ pub fn draw_galaxy_map(
     if gid_mode.is_active() {
         for (key, system) in &world.systems {
             let resource_id = gid_marker_for_system(world, key, system, faction, gid_mode, gid);
-            state.gid_markers.insert(key, resource_id);
+            if let Some(bitmap) = gid_item_bitmap(gid_mode, system, resource_id) {
+                state.gid_markers.insert(key, bitmap);
+            }
             let (sx, sy) = cam.to_screen(f32::from(system.x), f32::from(system.y));
             if !cam.contains_with_margin(sx, sy, cam.scale_pixels(20.0)) {
                 continue;
@@ -711,6 +714,16 @@ fn gid_briefing_marker(
 /// unexplored system (`FUN_0042b330`'s `bVar3`).
 fn gid_counts_unexplored(mode: GidMode) -> bool {
     matches!(mode, GidMode::FleetsEnRoute | GidMode::ActivePersonnel)
+}
+
+/// The bitmap a system's map item holds (`+0x20`), which a sector window
+/// copies into its planet's picture (`FUN_0045bbb0` through `FUN_0042d860`).
+/// Where the item shows the unexplored mark, `FUN_0042b330` sets its flag
+/// 0x80 and hands `FUN_0060bd20` bitmap 0 (`LAB_0042b4f5` to
+/// `LAB_0042c1c3`); `FUN_0042cde0` draws that mark from the flag, so the
+/// sector window shows none (A0 sector-windows/04-left, Churba).
+fn gid_item_bitmap(mode: GidMode, system: &System, marker: u32) -> Option<u32> {
+    (!gid_shows_unexplored(mode, system)).then_some(marker)
 }
 
 /// Whether a system shows the unexplored mark before its display counts
@@ -2625,6 +2638,53 @@ mod interaction_tests {
         let metric = |mode| gid_metric(&world, here, &world.systems[here], false, mode, &gid);
         assert_eq!(metric(GidMode::IdleFleets), 2);
         assert_eq!(metric(GidMode::FleetsEnRoute), 0);
+    }
+
+    #[test]
+    fn an_unexplored_systems_map_item_holds_no_bitmap_for_the_sector_window() {
+        // FUN_0042b330 gives the unexplored mark's item bitmap 0; A0
+        // sector-windows/04-left shows Churba's unexplored planets bare.
+        use rebellion_core::dat::ExplorationStatus;
+        let mut system = System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Lelmra".into(),
+            sector: Default::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Unexplored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+        };
+        assert_eq!(
+            gid_item_bitmap(GidMode::PopularSupport, &system, 10200),
+            None
+        );
+        // Unexplored Systems (0x17) counts it instead, and an explored one
+        // holds its mark.
+        assert_eq!(
+            gid_item_bitmap(GidMode::UnexploredSystems, &system, 10200),
+            Some(10200)
+        );
+        system.exploration_status = ExplorationStatus::Explored;
+        assert_eq!(
+            gid_item_bitmap(GidMode::PopularSupport, &system, 10200),
+            Some(10200)
+        );
     }
 
     #[test]

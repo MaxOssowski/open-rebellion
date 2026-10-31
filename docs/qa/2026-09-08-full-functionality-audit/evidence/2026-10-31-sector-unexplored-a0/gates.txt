@@ -1,0 +1,12 @@
+Linux Chromium (Arch 155), test WASM with gid_item_bitmap, 2026-10-31:
+sector-windows (--a0=.artifacts/a0-vm/sector-windows)  pass; without the fix: fail, 04-left planets 9 pixels each
+sector-quadrants  pass
+fleet-window      pass
+mission-dialog    pass
+status-window     pass
+personnel-orders  pass
+tooltip           pass with --a0=.artifacts/a0-vm/tooltip, and without it after its right-edge rule was applied there too
+system-finder     pass
+fleet-finder      pass
+message-display   pass
+run --all (GID)   pass, 152 of 152

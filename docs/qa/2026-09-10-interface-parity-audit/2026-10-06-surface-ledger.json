@@ -2003,14 +2003,17 @@
         {
           "id": "CMD-03-C005",
           "requirement": "unexplored",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-track-visibility/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-unexplored-a0/",
+            "ghidra/notes/sector-quadrants.md",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "Unexplored planets show no tracks, no icons and a white name, as A0 Moddell shows (FUN_0045c240); unit-tested only, with no browser comparison of the unexplored case.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Unexplored planets show no tracks, no icons and a white name, as A0 Moddell shows (FUN_0045c240); unit-tested only, with no browser comparison of the unexplored case. 2026-10-31: A0 sector-windows/04-left (Churba, ten unexplored planets) against sector-windows.mjs on Linux. The port drew the galaxy view's unexplored '+' at each planet's bottom left; FUN_0042b330 leaves an unexplored system's map item without a bitmap, so FUN_0045bbb0 adds none, and the port now does the same (gid_item_bitmap). Six planets clear of each game's galaxy markers match A0 pixel for pixel, picture and marker rows (9 pixels each before the fix); the ten names are white, centred and placed as in A0. No tracks or icons show in either. The names are 10-26 % wider than A0's (GDI hinted Arial; open text-rendering finding).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-03-C006",

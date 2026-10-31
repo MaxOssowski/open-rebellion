@@ -540,6 +540,19 @@ system, and its name takes the unheld colour.
   - Sesswenna: a small cyan diamond at the bottom left of Chandrila and
     Yaga Minor, and Averam's red sparkle;
   - Moddell: Vjun's red sparkle.
+- An unexplored system's item holds no bitmap (read 2026-10-31).
+  `FUN_0042b330` sends a system whose record is unexplored (`+0x88` bit 1
+  clear; Unexplored Systems, 0x17, turns this round), or a destroyed one
+  outside the fleet and personnel displays, to `LAB_0042b4f5`. There it
+  sets the item's flag `0x80` and jumps to `LAB_0042c1c3`, which calls
+  `FUN_0060bd20(0, ...)`: the bitmap `+0x20` stays 0. `FUN_0042cde0` draws
+  the unexplored mark from the flag, so the galaxy view shows it, but
+  `FUN_0042d860` returns 0 and the sector window blits nothing.
+  - A0 sector-windows/04-left (Churba), build-selection/05 (Sumitra) and
+    07 (Orus): the unexplored planets carry no marker. Yavin and Kimanan,
+    the player's, carry theirs.
+  - The port drew the unexplored "+" at every unexplored planet until
+    2026-10-31 (`gid_item_bitmap`).
 
 ## When the status tracks show (read 2026-10-28)
 
