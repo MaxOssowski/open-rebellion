@@ -708,7 +708,7 @@ pub mod wasm_impl {
         Ok(out)
     }
 
-    fn storage_set(key: &str, value: &str) -> anyhow::Result<()> {
+    pub(crate) fn storage_set(key: &str, value: &str) -> anyhow::Result<()> {
         let status =
             unsafe { rebellion_storage_set(key.as_ptr(), key.len(), value.as_ptr(), value.len()) };
         if status == 0 {
@@ -718,7 +718,7 @@ pub mod wasm_impl {
         }
     }
 
-    fn storage_get(key: &str) -> anyhow::Result<Option<String>> {
+    pub(crate) fn storage_get(key: &str) -> anyhow::Result<Option<String>> {
         let required =
             unsafe { rebellion_storage_get(key.as_ptr(), key.len(), std::ptr::null_mut(), 0) };
         match required {

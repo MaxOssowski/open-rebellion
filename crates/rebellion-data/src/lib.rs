@@ -44,6 +44,7 @@ pub mod replay;
 pub mod replay_fixture;
 pub mod save;
 pub mod seeds;
+pub mod settings;
 pub mod simulation;
 
 /// Load selected named `WAVE` resources from an original Win32 DLL.

@@ -205,6 +205,49 @@ const fn new_game_cutscene(alliance: bool) -> &'static str {
 /// The movie the game's end plays (`FUN_00425c90`, states 0x10..0x13):
 /// the Alliance player sees 105 for its victory and 106 for the Empire's;
 /// the Empire player 108 for its victory and 107 for the Alliance's.
+/// The Game Options as the original stores them (`DisplayOpts` and the
+/// volumes, rebellion_data::settings).
+fn current_settings(
+    audio: &AudioVolumeState,
+    options: &GameOptionsState,
+) -> rebellion_data::settings::Settings {
+    use rebellion_data::settings::display;
+    let flags = [
+        (audio.music_enabled(), display::MUSIC),
+        (options.show_starfield, display::STARFIELD),
+        (options.show_planet, display::PLANET),
+        (options.show_pyrotechnics, display::PYROTECHNICS),
+        (options.high_detail_models, display::HIGH_DETAIL),
+        (options.display_holocube, display::HOLOCUBE),
+    ];
+    rebellion_data::settings::Settings {
+        music_volume: audio.music_volume,
+        effects_volume: audio.sfx_volume,
+        display_options: flags
+            .into_iter()
+            .filter(|(set, _)| *set)
+            .fold(0, |word, (_, bit)| word | bit),
+    }
+}
+
+/// Restore stored Game Options.
+fn apply_settings(
+    settings: &rebellion_data::settings::Settings,
+    audio: &mut AudioVolumeState,
+    options: &mut GameOptionsState,
+) {
+    use rebellion_data::settings::display;
+    audio.music_volume = settings.music_volume;
+    audio.sfx_volume = settings.effects_volume;
+    audio.music_muted = !settings.shows(display::MUSIC);
+    audio.dirty = true;
+    options.show_starfield = settings.shows(display::STARFIELD);
+    options.show_planet = settings.shows(display::PLANET);
+    options.show_pyrotechnics = settings.shows(display::PYROTECHNICS);
+    options.high_detail_models = settings.shows(display::HIGH_DETAIL);
+    options.display_holocube = settings.shows(display::HOLOCUBE);
+}
+
 const fn ending_cutscene(alliance_won: bool, player_is_alliance: bool) -> u32 {
     match (player_is_alliance, alliance_won) {
         (true, true) => 105,
@@ -1383,6 +1426,16 @@ async fn main() {
         audio_vol.dirty = true;
     }
     let mut game_options_state = GameOptionsState::default();
+    // The Game Options kept from the last run (the original's registry
+    // values, rebellion_data::settings). A muted acceptance run neither
+    // reads nor writes them.
+    let persist_settings = !audio_vol.muted;
+    let mut stored_settings = persist_settings
+        .then(|| rebellion_data::settings::load(&saves_dir))
+        .flatten();
+    if let Some(settings) = stored_settings {
+        apply_settings(&settings, &mut audio_vol, &mut game_options_state);
+    }
     let mut quit_requested = false;
     let sounds_dir = PathBuf::from("data/sounds");
 
@@ -8120,6 +8173,16 @@ async fn main() {
             }
         }
 
+        if persist_settings {
+            let settings = current_settings(&audio_vol, &game_options_state);
+            if stored_settings != Some(settings) {
+                if let Err(error) = rebellion_data::settings::store(&saves_dir, &settings) {
+                    macroquad::logging::warn!("[settings] store failed: {}", error);
+                }
+                stored_settings = Some(settings);
+            }
+        }
+
         // Apply audio volume changes on both native and WebAudio backends.
         if audio_vol.dirty {
             #[cfg(not(target_arch = "wasm32"))]
@@ -9217,6 +9280,41 @@ mod advisor_now_tests {
         let day = GameSpeed::Medium.seconds_per_day().unwrap();
         assert_eq!(clock.advance(day * 1.01).len(), 1);
         assert_eq!(advisor_now(&clock), 13);
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::{apply_settings, current_settings, AudioVolumeState, GameOptionsState};
+    use rebellion_data::settings::display;
+
+    #[test]
+    fn the_game_options_round_trip_through_their_stored_settings() {
+        // FUN_004082b0 masks; FUN_004173c0 reads them back at start-up.
+        let mut audio = AudioVolumeState {
+            music_volume: 0.49,
+            sfx_volume: 0.2,
+            music_muted: true,
+            ..AudioVolumeState::default()
+        };
+        let mut options = GameOptionsState::default();
+        options.show_planet = false;
+        options.display_holocube = false;
+        let stored = current_settings(&audio, &options);
+        assert_eq!(
+            stored.display_options,
+            display::STARFIELD | display::PYROTECHNICS | display::HIGH_DETAIL
+        );
+        assert_eq!((stored.music_volume, stored.effects_volume), (0.49, 0.2));
+        let (mut restored_audio, mut restored) =
+            (AudioVolumeState::default(), GameOptionsState::default());
+        apply_settings(&stored, &mut restored_audio, &mut restored);
+        assert_eq!(current_settings(&restored_audio, &restored), stored);
+        assert!(restored_audio.music_muted && restored_audio.dirty);
+        audio.music_muted = false;
+        options.show_planet = true;
+        let flipped = current_settings(&audio, &options);
+        assert!(flipped.shows(display::MUSIC) && flipped.shows(display::PLANET));
     }
 }
 

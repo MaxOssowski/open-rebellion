@@ -17,7 +17,9 @@
 //   within 15 per cent. The version label is the port's own (port:) and is
 //   left out.
 // It then drags the music slider to slider x 100 and checks the thumb
-// centre at floor(201 * 49 / 100) = 98 (FUN_00604950, FUN_00604a50).
+// centre at floor(201 * 49 / 100) = 98 (FUN_00604950, FUN_00604a50),
+// reloads the page and checks the slider kept its place (the stored
+// settings).
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node game-options.mjs --a0=.artifacts/a0-vm/tooltip [--out=DIR]
@@ -247,6 +249,27 @@ try {
   // The thumb's own columns, 392 + 93 .. 392 + 103, are the first run.
   assert.equal(thumb[0], 392 + 93, `the dragged thumb starts at ${thumb[0]}`);
   assert.ok(thumb.filter((x) => x <= 392 + 103).length === 11, "the dragged thumb is 11 columns wide");
+
+  // The settings outlive the page (rebellion_data::settings, the original's
+  // registry values): reload, reopen, and the thumb is where it was left.
+  result.stored_settings = await page.evaluate(() => localStorage.getItem("rebellion_settings_v1"));
+  assert.ok(result.stored_settings?.includes('"music_volume":0.49'), `stored ${result.stored_settings}`);
+  await page.reload();
+  await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
+    null, { timeout: 30_000 });
+  await page.locator("#glcanvas").focus();
+  await page.waitForTimeout(500);
+  await page.keyboard.press("F1");
+  await page.waitForTimeout(1000);
+  await page.mouse.move(330, 250);
+  await page.waitForTimeout(300);
+  const reloaded = await shot("reloaded");
+  let reloadedDiffering = 0;
+  for (let y = 134; y < 181; y += 1) {
+    for (let x = 392; x < 593; x += 1) if (!same(reloaded, x, y, dragged, x, y)) reloadedDiffering += 1;
+  }
+  result.reloaded_slider_differing = reloadedDiffering;
+  assert.equal(reloadedDiffering, 0, "the music slider did not keep its position across a reload");
   assert.deepEqual(errors, []);
   result.status = "pass";
 } catch (error) {
@@ -258,5 +281,6 @@ try {
 await fs.writeFile(path.join(OUT, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify({ out: OUT, status: result.status, compared: result.compared,
   differing: result.differing, crest_differing: result.crest_differing, sliders: result.sliders,
-  dragged_columns: result.dragged_columns, error: result.error }, null, 2));
+  dragged_columns: result.dragged_columns, reloaded_slider_differing: result.reloaded_slider_differing,
+  error: result.error }, null, 2));
 if (result.status !== "pass") process.exitCode = 1;

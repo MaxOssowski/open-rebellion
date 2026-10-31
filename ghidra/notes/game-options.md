@@ -88,6 +88,28 @@ REBDLOG bitmap 10623, 412 by 176. `00416e90` constructs yes/no at (138,135)
 and (229,135), with bitmap pairs 10624/10625 and 10626/10627; both are 57 by
 28. Upstream stages all 23 numeric REBDLOG bitmaps; the unused named corner is excluded. This contribution requires 10623–10627 at packaging time and provides a visible fallback for older packs.
 
+## Persistence
+
+The options outlive the run in `HKLM\SOFTWARE\LucasArts Entertainment
+Company\...` (`FUN_005f4250` writes, `FUN_005f41b0` reads a DWORD, 0 when
+absent):
+
+| Value | Written by | Read by | Meaning |
+|---|---|---|---|
+| `MusicVolume` | `FUN_00417670` | `FUN_004173c0` | music, negated hundredths of a dB |
+| `Volume` | `FUN_00416360` | `FUN_00413000` | effects, negated hundredths of a dB |
+| `MusicSwitch` | `FUN_004176e0` | `FUN_004173c0` | 1 when the music is off |
+| `DisplayOpts` | `FUN_004163a0` | `FUN_00413000` | the window's flag word `+0xa0` |
+
+The slider's percent v becomes `floor(2000 * log10(v / 100))` hundredths of
+a dB (`FUN_00406b80`), so the DirectSound amplitude `10^(dB / 20)` is v / 100
+less at most 0.12 per cent: the port's linear gain v / 100 matches it. The
+port keeps the same four values (`rebellion_data::settings`) in
+`saves/settings.json` and in the browser's `localStorage`
+(`rebellion_settings_v1`). port: an absent store keeps the port's defaults
+(all display options on, as the manual says, music 0.8) rather than the
+registry's zeros.
+
 ## Compatibility and evidence gaps
 
 - The authentic window has six rows. The compatibility panel retains all ten
@@ -98,8 +120,8 @@ and (229,135), with bitmap pairs 10624/10625 and 10626/10627; both are 57 by
   until its native gesture is recovered.
 - Upstream display flags, including Holocube, are preserved. Their full original
   visual behavior remains outside this save/confirmation checkpoint.
-- The slider transfer function and the text objects are recovered
-  (`game-options-text.md`); settings persistence, the battle context in A0
-  and lossless A0 interaction captures remain to verify.
+- The slider transfer function, the text objects and persistence are
+  recovered (`game-options-text.md`, above); the battle context in A0 and
+  lossless A0 interaction captures remain to verify.
 - The Rust confirmation guard tests are implementation evidence only; they
   do not establish original pixel, audio, or full PRE-03 acceptance.

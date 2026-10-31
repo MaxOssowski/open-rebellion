@@ -7,7 +7,8 @@
   "shots": {
     "empty": "bd8c19acaa9a95a95ed2f67d6cf9b86f474366a942bd0c37681025f9354fbd4d",
     "saved": "0623bc27afb74f64cc0939ba2f639c145fae892ce5d1ff49d0e49b1a9abd06b2",
-    "dragged": "6e3081f68816b41f04a0ea3ddab388d15a00eca78c036ac2dd68cc565d8837fe"
+    "dragged": "6e3081f68816b41f04a0ea3ddab388d15a00eca78c036ac2dd68cc565d8837fe",
+    "reloaded": "6e3081f68816b41f04a0ea3ddab388d15a00eca78c036ac2dd68cc565d8837fe"
   },
   "compared": 201491,
   "differing": 0,
@@ -296,5 +297,7 @@
   "dragged_columns": [
     485,
     592
-  ]
+  ],
+  "stored_settings": "{\"music_volume\":0.49,\"effects_volume\":1.0,\"display_options\":319881216}",
+  "reloaded_slider_differing": 0
 }

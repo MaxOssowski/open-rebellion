@@ -90,4 +90,22 @@ Also run after the change:
   It is left out of the comparison.
 - **Battle context.** The grey labels and the 10026 Return art from a
   battle have no A0 capture; a unit test covers the art choice.
-- **Settings persistence.** Not checked here.
+
+## Settings (second stage, same day)
+
+The original keeps the options in the registry (`MusicVolume`, `Volume`,
+`MusicSwitch`, `DisplayOpts`; `ghidra/notes/game-options.md`,
+"Persistence"). The port kept nothing. `rebellion_data::settings` now
+stores the same four values, natively in `saves/settings.json` and in the
+browser in `localStorage` (`rebellion_settings_v1`). `main.rs` restores them
+at start-up and writes them when they change. A muted acceptance run
+(`OPEN_REBELLION_MUTE`) leaves them alone.
+
+The gate now also reloads the page after the drag. The stored settings
+hold `"music_volume":0.49`, and the reopened music slider is identical to
+the one before the reload (`reloaded_slider_differing: 0`).
+
+The slider's transfer to DirectSound (`floor(2000 * log10(v / 100))`
+hundredths of a dB) gives an amplitude within 0.12 per cent of v / 100,
+which is the port's linear gain. The audible level was not measured against
+A0.

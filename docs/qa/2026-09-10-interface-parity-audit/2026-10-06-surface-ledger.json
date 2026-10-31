@@ -661,7 +661,7 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md"
           ],
-          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's dB transfer (100*10^(vol/2000)) and persistence are not ported.",
+          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -678,7 +678,7 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md"
           ],
-          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer and persistence gaps as the music slider.",
+          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -697,7 +697,7 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md"
           ],
-          "note": "Five display switches (masks per FUN_004082b0) default on and are disabled in battle; P58-B12 browser journey 2/2; A0 tactical captures exist but not for this screen. Browser run on macOS only; rerun on Linux. 2026-10-31: the five switches (on = pressed art 10044) and their labels and On/Off match A0 in a galaxy context (bitmaps pixel-identical, text ink within 1 px). The battle context (grey 0x505050, 10045) has no A0 capture.",
+          "note": "Five display switches (masks per FUN_004082b0) default on and are disabled in battle; P58-B12 browser journey 2/2; A0 tactical captures exist but not for this screen. Browser run on macOS only; rerun on Linux. 2026-10-31: the five switches (on = pressed art 10044) and their labels and On/Off match A0 in a galaxy context (bitmaps pixel-identical, text ink within 1 px). The battle context (grey 0x505050, 10045) has no A0 capture. The switches persist like the registry's DisplayOpts (rebellion_data::settings, unit test settings_tests).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
