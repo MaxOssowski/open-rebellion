@@ -1174,7 +1174,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
           ],
-          "note": "STRATEGY 901 shell with aperture 120,40,480,355 renders in Linux browser gates; A0 Empire captures exist (.artifacts/a0-vm/status, build-orders) but no shell comparison is recorded, and none at the initial state.",
+          "note": "STRATEGY 901 shell with aperture 120,40,480,355. 2026-10-31: the Empire shell of a real Linux browser game (agent-objectives.mjs speed-menu.png, emsprite advisor) against A0 status/00-resume.png: top bar 99.1%, left 96.0%, right 96.5%, bottom 92.9% identical; outside the aperture, droids, readouts and the speed menu, the 2,544 differing pixels of 97,380 are the Game Controls globe, the rail's unread lights, the holoprojector's frame and an A0 window's edge (state or animation). No A0 capture of the initial frame of a new Empire game. The interface fixtures show the Alliance droids on the Empire cockpit (fixture-only: the fixture loads alsprite-dll).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1187,7 +1187,7 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/"
           ],
-          "note": "Alliance apertures (galaxy, top bar, cockpit bottom/left) match A0 in galaxy-composition-a0 except state-dependent pixels; the Empire apertures are not compared, and the ledger notes exact population as open.",
+          "note": "Alliance apertures (galaxy, top bar, cockpit bottom/left) match A0 in galaxy-composition-a0 except state-dependent pixels; the Empire apertures are not compared, and the ledger notes exact population as open. 2026-10-31: the Empire shell apertures compared as in CMD-01-C002 (state and animation differences only).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
