@@ -270,6 +270,9 @@ pub struct SystemWindowState {
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
     created: bool,
+    /// The last press on the rail: its time and screen point, which the
+    /// next press pairs with into a double click.
+    rail_press: Option<(f64, egui::Pos2)>,
 }
 
 impl Default for SystemWindowState {
@@ -279,6 +282,7 @@ impl Default for SystemWindowState {
             windows: Vec::new(),
             rail: Vec::new(),
             created: false,
+            rail_press: None,
         }
     }
 }
@@ -817,6 +821,7 @@ fn draw_reference_rail(
 ) -> Option<SystemWindowAction> {
     let entries = state.rail.clone();
     let mut restored = None;
+    let mut slots = Vec::new();
     for (index, entry) in entries.iter().enumerate() {
         let Some(system) = world.systems.get(entry.system()) else {
             continue;
@@ -827,7 +832,7 @@ fn draw_reference_rail(
             .fixed_pos(screen_rect.min)
             .order(egui::Order::Middle)
             .show(ctx, |ui| {
-                let (slot_rect, response) =
+                let (slot_rect, _) =
                     ui.allocate_exact_size(screen_rect.size(), egui::Sense::click());
                 // FUN_00428d70: the window's icon (slot `+0x74`) at the
                 // slot's corner, then its system's name after the icon in
@@ -870,10 +875,47 @@ fn draw_reference_rail(
                     crate::theme::original_font(10, layout.scale),
                     RAIL_NAME_COLOR,
                 );
-                if exact_clicked(&response, slot_rect) {
-                    restored = Some(*entry);
-                }
+                slots.push((slot_rect, ui.layer_id(), *entry));
             });
+    }
+    // FUN_00422ce0: WM_LBUTTONDBLCLK (0x203) in one of the twelve slot
+    // rectangles (+0xb8) restores its window (FUN_00429020); a single click
+    // does nothing (A0 system-windows/10-restored, 12-rail-dbl). Windows
+    // sends it for a second press on the rail within the double-click time
+    // and rectangle of the first, so each press of the frame pairs in turn.
+    let (time, presses) = ctx.input(|input| {
+        let presses: Vec<egui::Pos2> = input
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    ..
+                } => Some(*pos),
+                _ => None,
+            })
+            .collect();
+        (input.time, presses)
+    });
+    for point in presses {
+        let slot = slots.iter().find(|(rect, layer, _)| {
+            rect_contains(*rect, point) && ctx.layer_id_at(point) == Some(*layer)
+        });
+        let Some((_, _, entry)) = slot else {
+            state.rail_press = None;
+            continue;
+        };
+        let paired = state
+            .rail_press
+            .is_some_and(|(at, first)| is_double_click(time - at, (point - first) / layout.scale));
+        if paired {
+            restored = Some(*entry);
+            state.rail_press = None;
+        } else {
+            state.rail_press = Some((time, point));
+        }
     }
     match restored? {
         RailEntry::System(window) => {
@@ -1523,6 +1565,14 @@ pub(crate) fn logical_rect(
 
 fn logical_point(parent: egui::Rect, scale: f32, x: f32, y: f32) -> egui::Pos2 {
     egui::pos2(parent.min.x + x * scale, parent.min.y + y * scale)
+}
+
+/// Whether a second press pairs with the first into a double click: within
+/// the default double-click time (`GetDoubleClickTime`, 500 ms) and inside
+/// the 4 by 4 rectangle around the first (`SM_CXDOUBLECLK`,
+/// `SM_CYDOUBLECLK`), in original pixels.
+fn is_double_click(seconds: f64, offset: egui::Vec2) -> bool {
+    seconds <= 0.5 && offset.x.abs() <= 2.0 && offset.y.abs() <= 2.0
 }
 
 pub(crate) fn exact_clicked(response: &egui::Response, rect: egui::Rect) -> bool {
@@ -2572,8 +2622,11 @@ mod tests {
             vec![
                 vec![egui::Event::PointerMoved(point)],
                 vec![egui::Event::PointerMoved(point)],
+                // WM_LBUTTONDBLCLK, the second press, restores
+                // (FUN_00422ce0 0x203).
                 vec![press(true)],
                 vec![press(false)],
+                vec![press(true)],
             ],
         );
         let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
@@ -2592,6 +2645,225 @@ mod tests {
         );
         assert_eq!(state.rail_count(), 1);
         assert!(matches!(state.rail[0], RailEntry::Fleet { .. }));
+    }
+
+    #[test]
+    fn a_rail_double_click_pairs_presses_within_its_time_and_rectangle() {
+        // Windows' defaults for WM_LBUTTONDBLCLK: 500 ms and 4 by 4 pixels.
+        assert!(is_double_click(0.5, egui::vec2(2.0, -2.0)));
+        assert!(!is_double_click(0.51, egui::Vec2::ZERO));
+        assert!(!is_double_click(0.1, egui::vec2(2.5, 0.0)));
+        assert!(!is_double_click(0.1, egui::vec2(0.0, -2.5)));
+    }
+
+    #[test]
+    fn a_press_off_the_rail_then_one_on_a_slot_restores_nothing() {
+        // The minimize box's press and a slot's are not one double click
+        // (they are in different windows; FUN_00422ce0 hears only 0x201).
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
+        let off = egui::pos2(point.x - 300.0, point.y + 200.0);
+        let press = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let (actions, _) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(off)],
+                vec![press(off, true)],
+                vec![press(off, false)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![press(point, true)],
+                vec![press(point, false)],
+            ],
+        );
+        assert!(actions.is_empty(), "{actions:?}");
+        assert_eq!(state.rail_count(), 1);
+    }
+
+    #[test]
+    fn a_double_click_inside_one_frame_restores_the_rail_window() {
+        // Both presses of a fast WM_LBUTTONDBLCLK (FUN_00422ce0 0x203) can
+        // reach one frame; the second still pairs with the first.
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
+        let press = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let (actions, _) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(point)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![press(true), press(false), press(true), press(false)],
+            ],
+        );
+        assert_eq!(
+            actions,
+            [SystemWindowAction::RestoreDefensesWindow {
+                system: systems[0],
+                logical_position: (90, 70),
+            }]
+        );
+        assert_eq!(state.rail_count(), 0);
+    }
+
+    /// Runs `frames` of input on a rail holding one Defenses window and
+    /// returns the actions and the rail's remaining count.
+    fn rail_presses(
+        frames: impl Fn(egui::Pos2) -> Vec<Vec<egui::Event>>,
+    ) -> (Vec<SystemWindowAction>, usize) {
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
+        let (actions, _) = run_rail(&world, &mut state, frames(point));
+        (actions, state.rail_count())
+    }
+
+    fn primary(pos: egui::Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        }
+    }
+
+    #[test]
+    fn a_double_click_on_a_window_over_a_rail_slot_restores_nothing() {
+        // The presses go to the window on top, not the rail (FUN_00422ce0
+        // hears only its own messages).
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0));
+        let point = slot.center();
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let fog = FogState::new(Faction::Alliance);
+        let mut actions = Vec::new();
+        for events in [
+            vec![egui::Event::PointerMoved(point)],
+            vec![egui::Event::PointerMoved(point)],
+            vec![primary(point, true), primary(point, false)],
+            vec![primary(point, true)],
+        ] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1000.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                actions.extend(draw_system_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &MissionState::new(),
+                    &ManufacturingState::new(),
+                    &DeliveryState::new(),
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                ));
+                egui::Area::new(egui::Id::new("window-over-the-rail"))
+                    .fixed_pos(slot.min)
+                    .order(egui::Order::Foreground)
+                    .show(ctx, |ui| {
+                        ui.allocate_exact_size(slot.size(), egui::Sense::click());
+                    });
+            });
+        }
+        assert!(actions.is_empty(), "{actions:?}");
+        assert_eq!(state.rail_count(), 1);
+    }
+
+    #[test]
+    fn a_late_double_click_pairs_presses_a_scaled_pixel_apart() {
+        // SM_CXDOUBLECLK counts original pixels: three screen pixels on the
+        // scale 2 layout are 1.5 of them. Forty frames (two thirds of a
+        // second) pass first, so the pair is timed from the first press.
+        let (actions, left) = rail_presses(|point| {
+            let mut frames = vec![vec![egui::Event::PointerMoved(point)]; 40];
+            let near = point + egui::vec2(3.0, -3.0);
+            frames.extend([
+                vec![primary(point, true)],
+                vec![primary(point, false)],
+                vec![egui::Event::PointerMoved(near)],
+                vec![primary(near, true)],
+            ]);
+            frames
+        });
+        assert_eq!(actions.len(), 1, "{actions:?}");
+        assert_eq!(left, 0);
+    }
+
+    #[test]
+    fn presses_more_than_half_a_second_apart_restore_nothing() {
+        // GetDoubleClickTime's default is 500 ms: forty frames lie between.
+        let (actions, left) = rail_presses(|point| {
+            let mut frames = vec![
+                vec![egui::Event::PointerMoved(point)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![primary(point, true)],
+                vec![primary(point, false)],
+            ];
+            frames.extend(vec![vec![egui::Event::PointerMoved(point)]; 40]);
+            frames.push(vec![primary(point, true)]);
+            frames
+        });
+        assert!(actions.is_empty(), "{actions:?}");
+        assert_eq!(left, 1);
+    }
+
+    #[test]
+    fn a_single_click_on_a_rail_slot_restores_nothing() {
+        // FUN_00422ce0 restores only on WM_LBUTTONDBLCLK (0x203); A0
+        // system-windows/10-restored: a click leaves the slot.
+        let (world, systems) = fixture_world(1);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70));
+        let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
+        let press = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        let (actions, _) = run_rail(
+            &world,
+            &mut state,
+            vec![
+                vec![egui::Event::PointerMoved(point)],
+                vec![egui::Event::PointerMoved(point)],
+                vec![press(true)],
+                vec![press(false)],
+            ],
+        );
+        assert!(actions.is_empty(), "{actions:?}");
+        assert_eq!(state.rail_count(), 1);
     }
 
     #[test]
@@ -2625,8 +2897,11 @@ mod tests {
             vec![
                 vec![egui::Event::PointerMoved(point)],
                 vec![egui::Event::PointerMoved(point)],
+                // WM_LBUTTONDBLCLK, the second press, restores
+                // (FUN_00422ce0 0x203).
                 vec![press(true)],
                 vec![press(false)],
+                vec![press(true)],
             ],
         );
         let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
@@ -2715,8 +2990,11 @@ mod tests {
             vec![
                 vec![egui::Event::PointerMoved(point)],
                 vec![egui::Event::PointerMoved(point)],
+                // WM_LBUTTONDBLCLK, the second press, restores
+                // (FUN_00422ce0 0x203).
                 vec![press(true)],
                 vec![press(false)],
+                vec![press(true)],
             ],
         );
         assert!(actions.contains(&SystemWindowAction::RestoreFleetWindow {

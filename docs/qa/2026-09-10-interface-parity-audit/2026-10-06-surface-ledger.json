@@ -2286,14 +2286,16 @@
         {
           "id": "CMD-04-C004",
           "requirement": "restored",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-reference-rail/",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-rail-double-click-a0/",
+            "ghidra/notes/reference-rail-restore.md"
           ],
-          "note": "fleet-window.mjs chrome restores from the rail on Linux, keeping tab, selection and scroll; A0 rail-vjun1.png exists but was never compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "fleet-window.mjs chrome restores from the rail on Linux, keeping tab, selection and scroll; A0 rail-vjun1.png exists but was never compared. 2026-10-31: A0 system-windows/10 and 12: a single click on the slot does nothing, and a double click restores the System window to its place and page (FUN_00422ce0 0x203). The port restored on a single click; it now pairs two presses within 500 ms and 2 original pixels, as Windows does. fleet-window.mjs and sector-quadrants.mjs restore with a double click and pass on Linux.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "CMD-04-C005",
@@ -2315,9 +2317,10 @@
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
-            "tools/interface-parity/sector-windows.mjs"
+            "tools/interface-parity/sector-windows.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-rail-double-click-a0/"
           ],
-          "note": "Close works in the browser gates; not compared with A0, and the UIP-B01 run was on macOS only. 2026-10-31: a sector window's close box closes it in A0 and in the port alike (sector-windows/05, sector-windows.mjs on Linux).",
+          "note": "Close works in the browser gates; not compared with A0, and the UIP-B01 run was on macOS only. 2026-10-31: a sector window's close box closes it in A0 and in the port alike (sector-windows/05, sector-windows.mjs on Linux). A0 system-windows/11: the Fleet window's close box closes it; the System window's close box was not captured.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

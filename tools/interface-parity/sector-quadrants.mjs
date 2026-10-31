@@ -259,16 +259,13 @@ async function frames(page, count = 1) {
   }
 }
 
-// Two clicks inside egui's double-click time.
+// Two clicks inside egui's double-click time (0.3 s); a slow software
+// frame between them would let it pass.
 async function doubleClick(page, point) {
   await page.mouse.move(point.x, point.y);
   await frames(page);
-  for (let index = 0; index < 2; index += 1) {
-    await page.mouse.down();
-    await frames(page);
-    await page.mouse.up();
-    await frames(page);
-  }
+  await page.mouse.dblclick(point.x, point.y);
+  await frames(page, 2);
 }
 
 function observations(page) {
@@ -588,7 +585,8 @@ const cases = [
       const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "rail-icon", directory) }];
       assertExact(railChecks);
 
-      await click(page, { x: slot[0] + slot[2] / 2, y: slot[1] + slot[3] / 2 });
+      // The rail slot restores on a double click (FUN_00422ce0 0x203).
+      await doubleClick(page, { x: slot[0] + slot[2] / 2, y: slot[1] + slot[3] / 2 });
       const restored = defensesWindow(await until(page, "the rail slot restores the window",
         (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat), dat);
@@ -692,7 +690,8 @@ const cases = [
       const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "rail-icon", directory) }];
       assertExact(railChecks);
 
-      await click(page, { x: slot[0] + slot[2] / 2, y: slot[1] + slot[3] / 2 });
+      // The rail slot restores on a double click (FUN_00422ce0 0x203).
+      await doubleClick(page, { x: slot[0] + slot[2] / 2, y: slot[1] + slot[3] / 2 });
       const restored = missionsWindow(await until(page, "the rail slot restores the window",
         (o, value) => o.missions_windows.some((w) => w.system_dat_id === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "missions"), dat), dat);

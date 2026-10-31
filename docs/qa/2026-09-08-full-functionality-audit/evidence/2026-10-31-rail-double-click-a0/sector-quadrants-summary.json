@@ -1,0 +1,19 @@
+{
+  "run_dir": "/home/retromax/Games/open-rebellion/.artifacts/interface-parity/sector-quadrants-2026-10-31T08-51-28-474Z-2490667",
+  "status": "pass",
+  "cases": [
+    "alliance/icons",
+    "alliance/selected",
+    "alliance/open-system",
+    "alliance/defenses",
+    "alliance/defenses-other-side",
+    "alliance/missions",
+    "empire/icons",
+    "empire/selected",
+    "empire/open-system",
+    "empire/defenses",
+    "empire/defenses-other-side",
+    "empire/missions"
+  ],
+  "wasm_sha256": "02bb335600dc5cbd5ea4baef710ab6c7883837471919e5d6e5155b7ffa200a61"
+}

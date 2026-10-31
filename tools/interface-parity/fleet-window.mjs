@@ -311,16 +311,13 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Two clicks inside egui's double-click time.
+// Two clicks inside egui's double-click time (0.3 s); a slow software
+// frame between them would let it pass.
 async function doubleClick(page, point) {
   await page.mouse.move(point.x, point.y);
   await frames(page);
-  for (let index = 0; index < 2; index += 1) {
-    await page.mouse.down();
-    await frames(page);
-    await page.mouse.up();
-    await frames(page);
-  }
+  await page.mouse.dblclick(point.x, point.y);
+  await frames(page, 2);
 }
 
 function observations(page) {
@@ -542,7 +539,8 @@ const cases = [
       await click(page, { x: origin.x + 204 + 7, y: origin.y + 3 + 7 });
       const minimized = await until(page, "the minimize button hides the window", (o) => !o.window_open);
       const { rail } = faction;
-      await click(page, { x: rail.x + rail.width / 2, y: rail.y + rail.height / 2 });
+      // The rail slot restores on a double click (FUN_00422ce0 0x203).
+      await doubleClick(page, { x: rail.x + rail.width / 2, y: rail.y + rail.height / 2 });
       const restored = await until(page, "the rail restores the window", (o) => o.window_open);
       assert.deepEqual(restored.origin, opened.origin);
       for (const check of [openCheck, selectedCheck]) {
