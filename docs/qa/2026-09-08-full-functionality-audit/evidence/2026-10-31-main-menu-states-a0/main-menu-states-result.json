@@ -1,0 +1,130 @@
+{
+  "status": "pass",
+  "steps": [
+    {
+      "frame": "01-menu",
+      "sha256": "0144f64b34c876ae07c34220e69073d12651a2a18fec02ac4177ce55339bdfc2",
+      "differing": [
+        0,
+        0,
+        0
+      ],
+      "ink": {
+        "a0": [
+          288,
+          377,
+          361,
+          384
+        ],
+        "port": [
+          288,
+          377,
+          362,
+          384
+        ]
+      }
+    },
+    {
+      "frame": "02-lever-1",
+      "sha256": "63dc1a97cce125d3b9dde232f8dd470a00cfec1b2e2719da83a057d6359d7265",
+      "differing": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": "03-lever-2",
+      "sha256": "90efed833a00d6c28cd5847e06830fb534ca4479816ecee7c67879b3cdb544d2",
+      "differing": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": "04-lever-3",
+      "sha256": "63c54c6cfca30655849f572ca52a0ed7b81cd314df6fc0f573fced14b97e1552",
+      "differing": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": "05-type-2",
+      "sha256": "4a8cffa3b46d87ddda01b795ff50065ed2829cd8b618994ed36669b5129ab851",
+      "differing": [
+        0,
+        0,
+        0
+      ],
+      "ink": {
+        "a0": [
+          274,
+          377,
+          376,
+          386
+        ],
+        "port": [
+          275,
+          377,
+          374,
+          386
+        ]
+      }
+    },
+    {
+      "frame": "06-type-1",
+      "sha256": "8bc2091445bb6db58fd840bb38a71b69bd71ac604a9dd766a66ccb4bff7cfee5",
+      "differing": [
+        0,
+        0,
+        0
+      ],
+      "ink": {
+        "a0": [
+          288,
+          377,
+          361,
+          384
+        ],
+        "port": [
+          288,
+          377,
+          362,
+          384
+        ]
+      }
+    },
+    {
+      "frame": "07-intermediate",
+      "sha256": "c8a2c7f302b3660366974bb332a8a5861ca959bd73ff7e2dba330c79e63a6964",
+      "differing": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": "08-expert",
+      "sha256": "680086bd2e3af73a5ea5de4321b23d1ad54f3f9592e1338537aa5def5e9c8643",
+      "differing": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "frame": "09-easy",
+      "sha256": "a7cec77f2eb92f5b5f7b42a402e67a595313de20f0e786cada29fc6cfec55e40",
+      "differing": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "empire_held_differing": 0,
+  "errors": []
+}

@@ -97,7 +97,7 @@ impl MainMenuControl {
             Self::SmallGalaxy => "Small galaxy",
             Self::MediumGalaxy => "Medium galaxy",
             Self::LargeGalaxy => "Large galaxy",
-            Self::GameType => "Toggle Standard or Headquarters Only game",
+            Self::GameType => "Toggle Standard or Headquarters Victory game",
             Self::Empire => "Start as the Galactic Empire",
             Self::Alliance => "Start as the Rebel Alliance",
             Self::LoadOptions => "Load game and options",
@@ -202,6 +202,9 @@ pub const CONTROL_RECTS: &[(MainMenuControl, LogicalRect)] = &[
 pub struct MainMenuState {
     pub difficulty: Difficulty,
     pub galaxy_size: GalaxySize,
+    /// The lever's direction (`+0x138`): it swings to Huge and back
+    /// rather than wrapping round.
+    pub lever_returning: bool,
     pub headquarters_only: bool,
     /// How the next new game names its fleets, set in the Fleet Registry.
     pub fleet_naming: FleetNaming,
@@ -218,6 +221,7 @@ impl Default for MainMenuState {
         Self {
             difficulty: Difficulty::Easy,
             galaxy_size: GalaxySize::Standard,
+            lever_returning: false,
             headquarters_only: false,
             fleet_naming: FleetNaming::Original,
             registry: None,
@@ -459,17 +463,30 @@ fn draw_texture(
     }
 }
 
+/// The lever's next position and direction (`Class_0066dfc8_vt24`): its
+/// position `+0x134` (2 Standard, 1 Large, 0 Huge, command 0x6a) steps by
+/// one in its direction `+0x138`; past either end it turns back to 1. From
+/// Standard it runs Large, Huge, Large, Standard, Large... (A0
+/// main-menu-states 01..04).
+const fn next_lever_position(size: GalaxySize, returning: bool) -> (GalaxySize, bool) {
+    match (size, returning) {
+        (GalaxySize::Huge, false) => (GalaxySize::Large, false),
+        (GalaxySize::Large, false) => (GalaxySize::Standard, false),
+        (GalaxySize::Standard, false) => (GalaxySize::Large, true),
+        (GalaxySize::Standard, true) => (GalaxySize::Large, true),
+        (GalaxySize::Large, true) => (GalaxySize::Huge, true),
+        (GalaxySize::Huge, true) => (GalaxySize::Large, false),
+    }
+}
+
 fn activate(control: MainMenuControl, state: &mut MainMenuState) -> Option<MainMenuAction> {
     match control {
         MainMenuControl::Easy => state.difficulty = Difficulty::Easy,
         MainMenuControl::Intermediate => state.difficulty = Difficulty::Medium,
         MainMenuControl::Expert => state.difficulty = Difficulty::Hard,
         MainMenuControl::GalaxyLever => {
-            state.galaxy_size = match state.galaxy_size {
-                GalaxySize::Standard => GalaxySize::Large,
-                GalaxySize::Large => GalaxySize::Huge,
-                GalaxySize::Huge => GalaxySize::Standard,
-            }
+            (state.galaxy_size, state.lever_returning) =
+                next_lever_position(state.galaxy_size, state.lever_returning);
         }
         MainMenuControl::SmallGalaxy => state.galaxy_size = GalaxySize::Standard,
         MainMenuControl::MediumGalaxy => state.galaxy_size = GalaxySize::Large,
@@ -1364,5 +1381,28 @@ mod tests {
         assert_eq!(sfx_for(MainMenuControl::Quit), SfxKind::MenuQuit);
         assert_eq!(sfx_for(MainMenuControl::Credits), SfxKind::MenuSelect);
         assert_eq!(sfx_for(MainMenuControl::Alliance), SfxKind::MenuSelect);
+    }
+
+    #[test]
+    fn the_galaxy_lever_swings_to_huge_and_back() {
+        // Class_0066dfc8_vt24 (+0x134 position, +0x138 direction); A0
+        // main-menu-states 01..04: Standard, Large, Huge, Large.
+        let mut state = MainMenuState::default();
+        let mut sizes = Vec::new();
+        for _ in 0..6 {
+            activate(MainMenuControl::GalaxyLever, &mut state);
+            sizes.push(state.galaxy_size);
+        }
+        assert_eq!(
+            sizes,
+            [
+                GalaxySize::Large,
+                GalaxySize::Huge,
+                GalaxySize::Large,
+                GalaxySize::Standard,
+                GalaxySize::Large,
+                GalaxySize::Huge,
+            ]
+        );
     }
 }

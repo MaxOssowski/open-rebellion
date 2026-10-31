@@ -292,16 +292,18 @@
         {
           "id": "PRE-02-C004",
           "requirement": "pressed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
-            "agent_docs/main-menu-parity.md"
+            "agent_docs/main-menu-parity.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
+            "tools/interface-parity/main-menu-states.mjs"
           ],
-          "note": "Pressed/selected resources mapped (main-menu-parity.md) and button effects COMMON WAVE 8000-8004 (FUN_00405560) verified in the browser; no A0 pressed capture. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Pressed/selected resources mapped (main-menu-parity.md) and button effects COMMON WAVE 8000-8004 (FUN_00405560) verified in the browser. 2026-10-31: the held Empire button shows A0's pressed art pixel for pixel (main-menu-states.mjs, Linux; A0 main-menu-states/10), and a release off it starts nothing, as in A0.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-02-C005",
@@ -324,21 +326,23 @@
         {
           "id": "PRE-02-C006",
           "requirement": "three difficulties",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
-            "agent_docs/main-menu-parity.md"
+            "agent_docs/main-menu-parity.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
+            "tools/interface-parity/main-menu-states.mjs"
           ],
-          "note": "Easy/Intermediate/Expert transitions verified in Astra R2 (two campaigns: Expert and Easy); no A0 comparison. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Easy/Intermediate/Expert transitions verified in Astra R2 (two campaigns: Expert and Easy). 2026-10-31: Intermediate, Expert and Easy chosen in turn match A0 main-menu-states/07..09 (the selected difficulty's pressed art, pixel for pixel) on Linux (main-menu-states.mjs).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-02-C007",
           "requirement": "three galaxy sizes",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
@@ -348,15 +352,17 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/galaxy-sizes-corrected-2026-09-11.png",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
             "tools/interface-parity/main-menu-rest.mjs",
-            "crates/rebellion-render/src/main_menu.rs"
+            "crates/rebellion-render/src/main_menu.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
+            "tools/interface-parity/main-menu-states.mjs"
           ],
-          "note": "The lever's art follows FUN_00603cd0's state order (Standard 10003, Large 10002, Huge 10001; fixed 2026-10-31, A0 at rest shows 10003); the size indicators 10019/10018/10017; no A0 capture of Large or Huge.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The lever's art follows FUN_00603cd0's state order (Standard 10003, Large 10002, Huge 10001; fixed 2026-10-31, A0 at rest shows 10003); the size indicators 10019/10018/10017. 2026-10-31: A0 main-menu-states/01..04 show the lever swinging Standard, Large, Huge, Large (Class_0066dfc8_vt24 +0x134/+0x138); the port wrapped round and now swings the same way; lever and size lights match A0 pixel for pixel at each step on Linux (main-menu-states.mjs).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-02-C008",
           "requirement": "two game types",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
@@ -366,10 +372,12 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-game-setup-propagation.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
             "tools/interface-parity/main-menu-rest.mjs",
-            "crates/rebellion-render/src/main_menu.rs"
+            "crates/rebellion-render/src/main_menu.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
+            "tools/interface-parity/main-menu-states.mjs"
           ],
-          "note": "Standard and Headquarters Victory propagate to the campaign (F-016B). The label reads TEXTCOMM 0x1060 / 0x1061 (FUN_00406000); the port showed 'Headquarters Only' until 2026-10-31. No A0 capture of the second type.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Standard and Headquarters Victory propagate to the campaign (F-016B). The label reads TEXTCOMM 0x1060 / 0x1061 (FUN_00406000); the port showed 'Headquarters Only' until 2026-10-31. 2026-10-31: the second type, TEXTCOMM 0x1061 'Headquarters Victory', and back to 0x1060 match A0 main-menu-states/05, 06 (label ink within 1 px, width within the accepted text deviation) on Linux (main-menu-states.mjs).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-02-C015",
