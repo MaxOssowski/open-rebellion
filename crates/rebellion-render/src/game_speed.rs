@@ -226,8 +226,6 @@ const ALERT_BUTTON_RECT: CockpitViewport = CockpitViewport {
     width: 57.0,
     height: 28.0,
 };
-/// Game-font entry 5: a 16-pixel cell, bold (`theme::original_font`).
-const ALERT_FONT_HEIGHT: f32 = 16.0;
 const SPEED_MENU_ID: &str = "original_game_speed_menu";
 /// Text color `0x2f0fbff`.
 const ALERT_TEXT_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 251, 240);
@@ -313,20 +311,17 @@ pub fn draw_pause_alert(
             }
             // Class_00658950_vt3c: the one string centred on a line of the
             // 16-pixel cell, DT_VCENTER in whole pixels.
-            let text_rect = local(ALERT_TEXT_RECT);
-            let galley = ui.painter().layout_no_wrap(
-                RESUME_GAME_PLAY.to_owned(),
-                crate::theme::original_font(5, scale),
+            crate::theme::paint_gdi_text(
+                ui.painter(),
+                local(ALERT_TEXT_RECT),
+                scale,
+                5,
+                RESUME_GAME_PLAY,
                 ALERT_TEXT_COLOR,
-            );
-            let line_top = ((ALERT_TEXT_RECT.height - ALERT_FONT_HEIGHT) / 2.0).floor() * scale;
-            ui.painter().galley(
-                egui::pos2(
-                    text_rect.center().x - galley.size().x / 2.0,
-                    text_rect.top() + line_top,
+                (
+                    crate::theme::GdiAlign::Center,
+                    crate::theme::GdiVAlign::VCenter,
                 ),
-                galley,
-                ALERT_TEXT_COLOR,
             );
             let button = local(ALERT_BUTTON_RECT);
             let response = ui.interact(
@@ -1064,37 +1059,25 @@ mod tests {
                 draw_pause_alert(ctx, &paused, &mut cache, layout, true);
             });
         }
-        let text = shapes
-            .into_iter()
-            .find_map(|clipped| match clipped.shape {
-                egui::Shape::Text(text) if text.galley.text() == RESUME_GAME_PLAY => Some(text),
-                _ => None,
-            })
+        let lines = crate::theme::test_lines(&shapes);
+        let text = lines
+            .iter()
+            .find(|line| line.text == RESUME_GAME_PLAY)
             .expect("the message is painted");
+        // DT_CENTER: the line's GDI width's spare halved; its baseline font
+        // 5's tmAscent 13 below the line's top.
         let (x, y) = pause_alert_origin();
-        let centre_top = screen(
+        let (_, width) = crate::theme::gdi_pen_positions(5, RESUME_GAME_PLAY).unwrap();
+        let pen = screen(
             layout,
             (
-                x + ALERT_TEXT_RECT.x + ALERT_TEXT_RECT.width / 2.0,
-                y + ALERT_TEXT_RECT.y + 35.0,
+                x + ALERT_TEXT_RECT.x + ((ALERT_TEXT_RECT.width - width) / 2.0).floor(),
+                y + ALERT_TEXT_RECT.y + 35.0 + 13.0,
             ),
         );
-        let painted = text.pos + egui::vec2(text.galley.size().x / 2.0, 0.0);
-        assert!(
-            (painted - centre_top).length() < 0.5,
-            "{painted:?} vs {centre_top:?}"
-        );
-        assert_eq!(text.fallback_color, ALERT_TEXT_COLOR);
-        let expected = ctx.fonts(|fonts| {
-            fonts
-                .layout_no_wrap(
-                    RESUME_GAME_PLAY.to_owned(),
-                    crate::theme::original_font(5, 2.0),
-                    ALERT_TEXT_COLOR,
-                )
-                .size()
-        });
-        assert_eq!(text.galley.size(), expected);
+        assert!((text.pen - pen).length() < 0.5, "{:?} vs {pen:?}", text.pen);
+        assert_eq!(text.color, ALERT_TEXT_COLOR);
+        assert_eq!(text.size, crate::theme::gdi_font(5, 2.0).size);
         // FUN_00417020: the 412 by 176 alert, at twice the size.
         let rect = ctx
             .memory(|memory| memory.area_rect(egui::Id::new("original_pause_alert")))

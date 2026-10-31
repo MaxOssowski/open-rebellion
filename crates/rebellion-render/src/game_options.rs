@@ -1150,32 +1150,37 @@ pub fn draw_game_options_overlay(
                 // 0x2f0fbff, centred and word-wrapped from the top of (43, 25)
                 // to (368, 86); the second centred on one line in (43, 87) to
                 // (368, 112), or in (43, 25) to (368, 112) alone.
-                let font = crate::theme::original_font(5, canvas.scale);
+                // DrawTextA through theme::paint_gdi_text(_block).
                 let cream = Color32::from_rgb(255, 251, 240);
                 let (left, top) = (114.0 + 43.0, 152.0);
                 if let Some(first) = &first {
-                    let mut job = egui::text::LayoutJob::simple(
-                        first.clone(),
-                        font.clone(),
+                    let _ = crate::theme::paint_gdi_text_block(
+                        ui.painter(),
+                        rect(left, top + 25.0, 325.0, 61.0),
+                        canvas.scale,
+                        5,
+                        first,
                         cream,
-                        325.0 * canvas.scale,
+                        crate::theme::GdiAlign::Center,
                     );
-                    job.halign = egui::Align::Center;
-                    let galley = ui.painter().layout_job(job);
-                    let anchor = rect(left + 162.5, top + 25.0, 0.0, 0.0).min;
-                    ui.painter().galley(anchor, galley, cream);
                 }
                 let (band_top, band_height) = if first.is_some() {
                     (87.0, 25.0)
                 } else {
                     (25.0, 87.0)
                 };
-                let galley = ui.painter().layout_no_wrap(second, font, cream);
-                // DT_VCENTER: (height - 16) / 2 whole pixels.
-                let line_top = top + band_top + ((band_height - 16.0) / 2.0_f32).floor();
-                let anchor = rect(left + 162.5, line_top, 0.0, 0.0).min
-                    - Vec2::new(galley.size().x / 2.0, 0.0);
-                ui.painter().galley(anchor, galley, cream);
+                crate::theme::paint_gdi_text(
+                    ui.painter(),
+                    rect(left, top + band_top, 325.0, band_height),
+                    canvas.scale,
+                    5,
+                    &second,
+                    cream,
+                    (
+                        crate::theme::GdiAlign::Center,
+                        crate::theme::GdiVAlign::VCenter,
+                    ),
+                );
                 // FUN_00416e90: Yes shows 0x2981 and 0x2980 when held, No 0x2983
                 // and 0x2982 (A0 tooltip/211, 212 show 10625 and 10627). The
                 // message's one button (Class_006589a8_vt40) has Yes's art at
