@@ -1,0 +1,43 @@
+file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:561
+    throw new Error(JSON.stringify(results.filter((result) => result.status !== "pass")
+          ^
+
+Error: [
+  {
+    "faction": "alliance",
+    "case": "confirmed-move",
+    "error": "AssertionError [ERR_ASSERTION]: no bare map point lies within the pick radius of a system\n    at probe (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:233:10)\n    at Object.run (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:311:21)\n    at inspect (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:469:35)\n    at async main (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:536:22)\n    at async file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:567:1",
+    "observations": [
+      {
+        "status": "fleet-move",
+        "code": 302,
+        "in_transit": false,
+        "destination_dat_id": null,
+        "confirmation_open": false,
+        "selected_system_dat_id": null,
+        "last_message": null
+      }
+    ]
+  },
+  {
+    "faction": "empire",
+    "case": "confirmed-move",
+    "error": "AssertionError [ERR_ASSERTION]: no bare map point lies within the pick radius of a system\n    at probe (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:233:10)\n    at Object.run (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:311:21)\n    at inspect (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:469:35)\n    at async main (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:536:22)\n    at async file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:567:1",
+    "observations": [
+      {
+        "status": "fleet-move",
+        "code": 558,
+        "in_transit": false,
+        "destination_dat_id": null,
+        "confirmation_open": false,
+        "selected_system_dat_id": null,
+        "last_message": null
+      }
+    ]
+  }
+]
+    at main (file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:561:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file://<repo>/tools/interface-parity/.gate-fleet-move-linux.mjs:567:1
+
+Node.js v26.11.1

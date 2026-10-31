@@ -225,12 +225,29 @@ function probeCandidates(faction, setup, area) {
     }
     if (best) candidates.push({ dat_id: system.dat_id, x: best.x, y: best.y, distance: best.distance });
   }
-  return candidates.sort((a, b) => a.distance - b.distance);
+  candidates.sort((a, b) => a.distance - b.distance);
+  // Where the windows leave no bare map in the area, a planet in the sector
+  // window selects its system too (SectorWindowAction::SelectSystem).
+  if (area) {
+    const fleets = grown({
+      x: faction.galaxy.x + faction.galaxy.width - fleetWindow.width - 5,
+      y: faction.galaxy.y + 5,
+      ...fleetWindow,
+    }, PICK_RADIUS);
+    for (const planet of setup.sector_planets || []) {
+      if (avoided.some((system) => system.dat_id === planet.dat_id)) continue;
+      const point = { x: Math.round(planet.x), y: Math.round(planet.y) };
+      if (inside(point, area) && !inside(point, fleets)) {
+        candidates.push({ dat_id: planet.dat_id, ...point, distance: null, sector_planet: true });
+      }
+    }
+  }
+  return candidates;
 }
 
 function probe(faction, setup, area = null) {
   const [first] = probeCandidates(faction, setup, area);
-  assert.ok(first, "no bare map point lies within the pick radius of a system");
+  assert.ok(first, "no bare map point near a system, nor a sector planet, lies in reach");
   return first;
 }
 

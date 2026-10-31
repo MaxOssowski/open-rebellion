@@ -1,0 +1,19 @@
+{
+  "run_dir": "<repo>/.artifacts/interface-parity/fleet-move-2026-10-31T23-11-49-640Z-801855",
+  "status": "pass",
+  "cases": [
+    "alliance/move",
+    "alliance/confirmed-move",
+    "alliance/confirmed-move-cancelled",
+    "alliance/drag",
+    "alliance/drag-to-bare-map",
+    "alliance/blockade-drag",
+    "empire/move",
+    "empire/confirmed-move",
+    "empire/confirmed-move-cancelled",
+    "empire/drag",
+    "empire/drag-to-bare-map",
+    "empire/blockade-drag"
+  ],
+  "wasm_sha256": "f249eb4c5b643b20efd2d8abe67b11d46ad7c992809c47866340793617394626"
+}

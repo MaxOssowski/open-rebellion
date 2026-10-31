@@ -2649,7 +2649,8 @@ struct FixtureSystemPoint {
 }
 
 /// Where the fleet-move gate presses and releases: the moving fleet's cell,
-/// the target planet in the sector window, and every system on the map.
+/// the target planet in the sector window, every system on the map, and
+/// each planet the open sector windows show.
 #[derive(Debug, Serialize, PartialEq)]
 struct FixtureFleetMoveSetup {
     status: &'static str,
@@ -2661,6 +2662,7 @@ struct FixtureFleetMoveSetup {
     target_screen_x: f32,
     target_screen_y: f32,
     systems: Vec<FixtureSystemPoint>,
+    sector_planets: Vec<FixtureSystemPoint>,
 }
 
 fn fleet_move_setup(
@@ -2697,6 +2699,22 @@ fn fleet_move_setup(
                     x,
                     y,
                 }
+            })
+            .collect(),
+        sector_planets: world
+            .systems
+            .iter()
+            .filter_map(|(key, system)| {
+                let center = sectors.planet_screen_rect(world, layout, key)?.center();
+                // A planet placed past its window's edge is clipped away.
+                if !sectors.contains_screen_point(layout, (center.x, center.y)) {
+                    return None;
+                }
+                Some(FixtureSystemPoint {
+                    dat_id: system.dat_id.raw(),
+                    x: center.x,
+                    y: center.y,
+                })
             })
             .collect(),
     })
@@ -6058,6 +6076,16 @@ mod tests {
                 (0x9000_0001, 0x9000_0002)
             );
             assert_eq!(setup.systems.len(), 3);
+            // The sector window's planets, the target's among them, give the
+            // gate points that select a system where no bare map is left.
+            assert!(!setup.sector_planets.is_empty());
+            assert!(setup.sector_planets.iter().all(|point| applied
+                .sectors
+                .contains_screen_point(layout, (point.x, point.y))));
+            assert!(setup
+                .sector_planets
+                .iter()
+                .any(|point| point.dat_id == setup.target_dat_id && (point.x, point.y) == planet));
 
             let observed =
                 fleet_move_observation(request, world, &applied.movement, false, &applied.map, &[])
