@@ -24,8 +24,8 @@ on their first pixel (`bmp_cache::uses_first_pixel_key`).
 ## Comparisons after the fix (Linux)
 
 - **Pressed globe.** The GID gate's `game-options-pressed` frame matches
-  `globe-held` (leaving out A0's pointer) on all 0 of the globe's other
-  pixels.
+  `globe-held`; leaving out A0's pointer, none of the globe's pixels
+  differ.
 - **Empire controls.** Against A0 `gid/d-popular-support.png`, the bottom
   controls (140..560 by 430..460) and the globe (79..114 by 192..249)
   differ in 0 pixels.
