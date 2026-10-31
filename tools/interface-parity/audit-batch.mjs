@@ -5,7 +5,8 @@
 // the Personnel Finder (0x12f) with their STRATEGY.DLL rails; F6 (0x75) and
 // a rail light (0x136) open the Message Index, which opens only while none
 // is open (FUN_0042a240) and closes from its Close button (0x28); Alt+1..9
-// select a GID mode (0xbca..0xbd2); Alt+G toggles Manage Garrisons
+// select their GID modes (0xbca..0xbd2) each; Alt+G toggles Manage Garrisons
+// and Alt+U Manage Production
 // (0xbc5 -> 0x115); and a right click on the agent's droid opens the Agent
 // menu (list 0xdead, FUN_004420b0). The viewport is the cockpit's own
 // 640x480, so every point below is a logical cockpit point.
@@ -326,11 +327,18 @@ async function inspect(server, source, faction, executable) {
     await key(page, "Escape");
     await stableShot(page, directory, "personnel-closed");
 
-    // Alt+2 then Alt+1: 0xbcb/0xbca select GID modes 0x12 and 0x11; the
-    // current mode returns early, so at least one selects.
-    await altKey(page, "2");
-    await altKey(page, "1");
-    checks.gid_log = await logged("Alt+digit selects a GID mode", /destination=gid status=selected .* source=accelerator/);
+    // Alt+2..Alt+9 then Alt+1: commands 0xbcb..0xbd2 and 0xbca (TEXTCOMM
+    // accelerator table 11) select the nine GID modes in turn
+    // (FUN_00422ce0: 0x11, 0x12, 0x21, 0x22, 0x43, 0x44, 0x65, 0x66, 0x67);
+    // each differs from the one before, so each selects.
+    const MODES = [0x11, 0x12, 0x21, 0x22, 0x43, 0x44, 0x65, 0x66, 0x67];
+    checks.gid_log = [];
+    for (const digit of [2, 3, 4, 5, 6, 7, 8, 9, 1]) {
+      await altKey(page, String(digit));
+      const mode = MODES[digit - 1].toString(16);
+      checks.gid_log.push(await logged(`Alt+${digit} selects GID mode 0x${mode}`,
+        new RegExp(`command=0x${mode} destination=gid status=selected .* source=accelerator`)));
+    }
 
     // Alt+G: 0xbc5 -> 0x115 toggles Manage Garrisons on, then off.
     await altKey(page, "g");
@@ -339,6 +347,14 @@ async function inspect(server, source, faction, executable) {
     await altKey(page, "g");
     checks.garrisons_off = await logged("Alt+G turns it off again",
       /\[agent\] command=manage_garrisons status=off source=accelerator/);
+
+    // Alt+U: 0xbc6 -> 0x116 toggles Manage Production on, then off.
+    await altKey(page, "u");
+    checks.production_on = await logged("Alt+U turns Manage Production on",
+      /\[agent\] command=manage_production status=on source=accelerator/);
+    await altKey(page, "u");
+    checks.production_off = await logged("Alt+U turns it off again",
+      /\[agent\] command=manage_production status=off source=accelerator/);
 
     // F6: case 0x75 -> FUN_0042a240(.., 0x79), All. A second F6 while it
     // is open does nothing; Close (0x28) closes it, and F6 opens it again.
@@ -433,7 +449,7 @@ async function main() {
   const summary = {
     schema_version: 1,
     family: "audit-batch",
-    scope: "test-only: F4 Troop Finder and F5 Personnel Finder rails against STRATEGY.DLL and Escape; F6 and a rail light open the Message Index once, Close closes it; Alt+digit GID; Alt+G Manage Garrisons on and off; right click on the agent droid opens the Agent menu; on both sides",
+    scope: "test-only: F4 Troop Finder and F5 Personnel Finder rails against STRATEGY.DLL and Escape; F6 and a rail light open the Message Index once, Close closes it; Alt+1..9 each select their GID mode; Alt+G Manage Garrisons and Alt+U Manage Production on and off; right click on the agent droid opens the Agent menu; on both sides",
     status: passed ? "pass" : "fail",
     browser_version: browserManifest.version,
     browser_executable: executable,

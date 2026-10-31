@@ -124,9 +124,15 @@ async function tipShows(page, at) {
   const top = at.y + 21 + 19 > 440 ? at.y - 19 : at.y + 21;
   const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
     && pixel(at.x + 2, top + 2) === "255,251,240";
+  // The tip's box: the run of its grey bottom border (clear of the
+  // pointer) through the pointer's column.
+  let left = at.x;
+  let right = at.x;
+  while (left > 0 && pixel(left - 1, top + 18) === "128,128,128") left -= 1;
+  while (right < png.width - 1 && pixel(right + 1, top + 18) === "128,128,128") right += 1;
   await page.mouse.move(2, 2, { steps: 4 });
   await page.waitForTimeout(100);
-  return shown;
+  return shown && { left, top, right };
 }
 
 async function startServer() {
@@ -944,7 +950,27 @@ const cases = [
         ...tabYs.map((y, index) => [`tab-${index}`, [tabX, y]])]) {
         alertTips[name] = await tipShows(page, { x: origin[0] + x, y: origin[1] + y });
       }
-      assert.ok(Object.values(alertTips).every(Boolean), JSON.stringify(alertTips));
+      // Retreat (0x194a) shows its tip only while enabled (FUN_0044f860).
+      alertTips.retreat = await tipShows(page, { x: origin[0] + 79, y: origin[1] + 309 });
+      assert.ok(Object.entries(alertTips).every(([name, box]) => name === "retreat" || box),
+        JSON.stringify(alertTips));
+      if (faction.name === "empire") {
+        // A0 tooltip/340..346 (Windows 10 VM, an Empire Battle Alert at
+        // Yavin, the same window origin): each tip's box (left, top, right
+        // inclusive, from its bottom border). The tops and the left edges
+        // (or the right edge at 638, FUN_006008e0's shift) must match; the
+        // widths may differ by the accepted text deviation.
+        const A0_TIPS = { simulate: [338, 382, 429], "take-command": [472, 382, 561], retreat: [204, 382, 246],
+          "tab-0": [549, 110, 638], "tab-1": [554, 173, 638], "tab-2": [553, 236, 638], "tab-3": [559, 299, 638] };
+        for (const [name, [left, top, right]] of Object.entries(A0_TIPS)) {
+          const box = alertTips[name];
+          assert.equal(box.top, top, `${name} tip top ${box.top} vs A0 ${top}`);
+          if (right === 638) assert.equal(box.right, 638, `${name} tip ends at ${box.right}`);
+          else assert.equal(box.left, left, `${name} tip starts at ${box.left} vs A0 ${left}`);
+          const ratio = (box.right - box.left + 1) / (right - left + 1);
+          assert.ok(ratio > 0.85 && ratio < 1.15, `${name} tip width ratio ${ratio.toFixed(3)}`);
+        }
+      }
       // The battle alert's middle button simulates the battle (resource
       // 1110 row, BattleAlertControl::Simulate); the group's survivors land.
       await click(page, { x: 275, y: 362 });
@@ -953,7 +979,38 @@ const cases = [
       assert.ok(after.enemy_planet_squadrons <= 2, JSON.stringify(after));
       await frames(page, 10);
       await shot(page, directory, "squadron-battle-after");
-      return { before, speed, battle, alertTips, after };
+      // The Battle Summary (FUN_0046f360): its rail's tabs tip TEXTSTRA
+      // 0x1922, 0x1937, 0x1938, 0x1939 and its close box none; on a forces
+      // page the four category buttons tip 0x1928..0x1931. A0 tooltip/
+      // 350..358 (the Empire's summary at Yavin, same window origin).
+      const summaryTips = {};
+      const at = ([x, y]) => ({ x: origin[0] + x, y: origin[1] + y });
+      summaryTips.close = await tipShows(page, at([450, 38]));
+      for (const [index, y] of [108, 168, 228, 286].entries()) {
+        summaryTips[`tab-${index}`] = await tipShows(page, at([450, y]));
+      }
+      await click(page, at([450, 168]));
+      await frames(page, 10);
+      for (const index of [0, 1, 2, 3]) {
+        summaryTips[`category-${index}`] = await tipShows(page, at([154 + 49 * index, 79]));
+      }
+      assert.equal(summaryTips.close, false, "the summary's close box has no tip");
+      assert.ok(Object.entries(summaryTips).every(([name, box]) => name === "close" || box),
+        JSON.stringify(summaryTips));
+      if (faction.name === "empire") {
+        const A0_SUMMARY = { "tab-0": [549, 181, 638], "tab-1": [554, 241, 638], "tab-2": [553, 301, 638],
+          "tab-3": [575, 359, 618], "category-0": [279, 152, 352], "category-1": [328, 152, 429],
+          "category-2": [377, 152, 482], "category-3": [426, 152, 483] };
+        for (const [name, [left, top, right]] of Object.entries(A0_SUMMARY)) {
+          const box = summaryTips[name];
+          assert.equal(box.top, top, `${name} tip top ${box.top} vs A0 ${top}`);
+          if (right === 638) assert.equal(box.right, 638, `${name} tip ends at ${box.right}`);
+          else assert.equal(box.left, left, `${name} tip starts at ${box.left} vs A0 ${left}`);
+          const ratio = (box.right - box.left + 1) / (right - left + 1);
+          assert.ok(ratio > 0.85 && ratio < 1.15, `${name} tip width ratio ${ratio.toFixed(3)}`);
+        }
+      }
+      return { before, speed, battle, alertTips, after, summaryTips };
     },
   },
   {

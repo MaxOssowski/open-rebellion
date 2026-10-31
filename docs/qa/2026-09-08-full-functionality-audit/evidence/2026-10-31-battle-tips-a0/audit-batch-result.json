@@ -1,0 +1,42 @@
+{
+  "status": "pass",
+  "scope": "test-only: F4 Troop Finder and F5 Personnel Finder rails against STRATEGY.DLL and Escape; F6 and a rail light open the Message Index once, Close closes it; Alt+1..9 each select their GID mode; Alt+G Manage Garrisons and Alt+U Manage Production on and off; right click on the agent droid opens the Agent menu; on both sides",
+  "wasm_sha256": "08951b851d4690a0c92ec8063748515d37fe725dd73f0c40b3ea74aa9f829bd7",
+  "browser_version": "155.0.8059.84",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "gid_log": [
+        "[interface] command=0x12 destination=gid status=selected label=Uprisings source=accelerator",
+        "[interface] command=0x21 destination=gid status=selected label=Idle Fleets source=accelerator",
+        "[interface] command=0x22 destination=gid status=selected label=Fleets Enroute source=accelerator",
+        "[interface] command=0x43 destination=gid status=selected label=Idle Personnel source=accelerator",
+        "[interface] command=0x44 destination=gid status=selected label=Active Personnel source=accelerator",
+        "[interface] command=0x65 destination=gid status=selected label=Idle Shipyards source=accelerator",
+        "[interface] command=0x66 destination=gid status=selected label=Idle Training Facilities source=accelerator",
+        "[interface] command=0x67 destination=gid status=selected label=Idle Construction Yards source=accelerator",
+        "[interface] command=0x11 destination=gid status=selected label=Popular Support source=accelerator"
+      ],
+      "production_on": "[agent] command=manage_production status=on source=accelerator",
+      "production_off": "[agent] command=manage_production status=off source=accelerator"
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "gid_log": [
+        "[interface] command=0x12 destination=gid status=selected label=Uprisings source=accelerator",
+        "[interface] command=0x21 destination=gid status=selected label=Idle Fleets source=accelerator",
+        "[interface] command=0x22 destination=gid status=selected label=Fleets Enroute source=accelerator",
+        "[interface] command=0x43 destination=gid status=selected label=Idle Personnel source=accelerator",
+        "[interface] command=0x44 destination=gid status=selected label=Active Personnel source=accelerator",
+        "[interface] command=0x65 destination=gid status=selected label=Idle Shipyards source=accelerator",
+        "[interface] command=0x66 destination=gid status=selected label=Idle Training Facilities source=accelerator",
+        "[interface] command=0x67 destination=gid status=selected label=Idle Construction Yards source=accelerator",
+        "[interface] command=0x11 destination=gid status=selected label=Popular Support source=accelerator"
+      ],
+      "production_on": "[agent] command=manage_production status=on source=accelerator",
+      "production_off": "[agent] command=manage_production status=off source=accelerator"
+    }
+  ]
+}

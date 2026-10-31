@@ -1260,112 +1260,128 @@
         {
           "id": "CMD-01-C007",
           "requirement": "Alt+1 selects Popular Support",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
             "ghidra/notes/gid-markers.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/audit-batch.json"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/audit-batch.json",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/"
           ],
-          "note": "TEXTCOMM accelerator table 11, command 0xbca -> FUN_00425d00 mode 0x11; audit-batch.mjs Alt+1 passes on Arch Chromium 155 (2026-10-22). No A0 capture of the key.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "TEXTCOMM accelerator table 11, command 0xbca -> FUN_00425d00 mode 0x11; audit-batch.mjs Alt+1 passes on Arch Chromium 155 (2026-10-22). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C008",
           "requirement": "Alt+2 selects Uprisings",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
             "ghidra/notes/gid-markers.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/audit-batch.json"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/audit-batch.json",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/"
           ],
-          "note": "Command 0xbcb -> mode 0x12; audit-batch.mjs Alt+2 passes on Linux (2026-10-22). No A0 capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbcb -> mode 0x12; audit-batch.mjs Alt+2 passes on Linux (2026-10-22). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C009",
           "requirement": "Alt+3 selects Idle Fleets",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbcc -> mode 0x21 (Idle Fleets) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbcc -> mode 0x21 (Idle Fleets) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C010",
           "requirement": "Alt+4 selects Fleets En Route",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbcd -> mode 0x22 (Fleets En Route) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbcd -> mode 0x22 (Fleets En Route) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C011",
           "requirement": "Alt+5 selects Idle Personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbce -> mode 0x43 (Idle Personnel) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbce -> mode 0x43 (Idle Personnel) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C012",
           "requirement": "Alt+6 selects Active Personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbcf -> mode 0x44 (Active Personnel) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbcf -> mode 0x44 (Active Personnel) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C013",
           "requirement": "Alt+7 selects Idle Shipyards",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbd0 -> mode 0x65 (Idle Shipyards) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbd0 -> mode 0x65 (Idle Shipyards) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C014",
           "requirement": "Alt+8 selects Idle Training Facilities",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbd1 -> mode 0x66 (Idle Training Facilities) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbd1 -> mode 0x66 (Idle Training Facilities) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C015",
           "requirement": "Alt+9 selects Idle Construction Yards",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/cockpit.rs",
-            "ghidra/notes/gid-markers.md"
+            "ghidra/notes/gid-markers.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Command 0xbd2 -> mode 0x67 (Idle Construction Yards) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. No browser key press (audit-batch only presses Alt+1 and Alt+2) and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Command 0xbd2 -> mode 0x67 (Idle Construction Yards) by FUN_00422ce0; unit test alt_digits_select_the_nine_accelerator_displays_in_order. 2026-10-31: audit-batch.mjs on Linux presses Alt+2..Alt+9 and Alt+1 and logs each mode selected (both sides). 2026-10-31: in A0 (.artifacts/a0-vm/alt-keys) the same key selects the same display: Alt+2..Alt+9 then Alt+1 step the title through Uprisings, Idle Fleets, Fleets Enroute, Idle Personnel, Active Personnel, Idle Shipyards, Idle Training Facilities, Idle Construction Yards and Popular Support, the port's labels in the same order.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-01-C016",
@@ -1387,9 +1403,11 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/agent-advice.md",
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "0xbc6 -> 0x116 -> FUN_00439d60 toggles Manage Production (implemented in 8fc9d983); no browser key press and no A0.",
+          "note": "0xbc6 -> 0x116 -> FUN_00439d60 toggles Manage Production (implemented in 8fc9d983); no A0. 2026-10-31: audit-batch.mjs on Linux turns Manage Production on and off with Alt+U (both sides). No A0 capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -3944,26 +3962,30 @@
         {
           "id": "CMD-11-C015",
           "requirement": "Battle Alert",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
-            "crates/rebellion-render/src/tactical_view.rs"
+            "crates/rebellion-render/src/tactical_view.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/fleet-window.mjs"
           ],
-          "note": "FUN_0044f860's tips (tabs 0x1922..0x1925, Simulate Results, Take Command; Retreat while enabled) show at the shared placement in fleet-window.mjs's squadron-battle case on both sides (Linux); no A0 capture of the alert's tips.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_0044f860's tips (tabs 0x1922..0x1925, Simulate Results, Take Command; Retreat while enabled) show at the shared placement in fleet-window.mjs's squadron-battle case on both sides (Linux); no A0 capture of the alert's tips. 2026-10-31: A0 tooltip/340..346 (Empire Battle Alert at Yavin): Simulate Results, Take Command, Retreat and the four tabs tip the same TEXTSTRA strings at the same tops and left/right edges as the port on Linux (fleet-window.mjs asserts them); widths within the accepted text deviation.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-11-C016",
           "requirement": "Battle Summary",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
-            "crates/rebellion-render/src/tactical_view.rs"
+            "crates/rebellion-render/src/tactical_view.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-battle-tips-a0/",
+            "tools/interface-parity/fleet-window.mjs"
           ],
-          "note": "FUN_0046f360's tab and category tips are registered (tactical_view.rs); no browser case reaches the Battle Summary with the pointer on them, and no A0 capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_0046f360's tab and category tips are registered (tactical_view.rs); no browser case reaches the Battle Summary with the pointer on them, and no A0 capture. 2026-10-31: A0 tooltip/350..358 (the Empire's Battle Summary): the four tabs and four category buttons tip as the port does on Linux, the close box none; fleet-window.mjs now reaches the summary and asserts each box against A0 (tops, edges exact; widths within the accepted text deviation).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-11-C017",

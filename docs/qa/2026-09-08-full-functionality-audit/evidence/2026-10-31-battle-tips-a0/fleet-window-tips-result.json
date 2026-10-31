@@ -1,0 +1,178 @@
+{
+  "gate": "tools/interface-parity/fleet-window.mjs --only=empire/squadron-battle --only=alliance/squadron-battle",
+  "status": "pass",
+  "wasm_sha256": "08951b851d4690a0c92ec8063748515d37fe725dd73f0c40b3ea74aa9f829bd7",
+  "browser_version": "155.0.8059.84",
+  "results": [
+    {
+      "faction": "alliance",
+      "case": "squadron-battle",
+      "status": "pass",
+      "alertTips": {
+        "simulate": {
+          "left": 275,
+          "top": 379,
+          "right": 370
+        },
+        "take-command": {
+          "left": 409,
+          "top": 379,
+          "right": 499
+        },
+        "tab-0": {
+          "left": 500,
+          "top": 111,
+          "right": 590
+        },
+        "tab-1": {
+          "left": 500,
+          "top": 171,
+          "right": 587
+        },
+        "tab-2": {
+          "left": 500,
+          "top": 233,
+          "right": 587
+        },
+        "tab-3": {
+          "left": 500,
+          "top": 295,
+          "right": 584
+        },
+        "retreat": {
+          "left": 141,
+          "top": 379,
+          "right": 185
+        }
+      },
+      "summaryTips": {
+        "close": false,
+        "tab-0": {
+          "left": 512,
+          "top": 178,
+          "right": 602
+        },
+        "tab-1": {
+          "left": 512,
+          "top": 238,
+          "right": 599
+        },
+        "tab-2": {
+          "left": 512,
+          "top": 298,
+          "right": 599
+        },
+        "tab-3": {
+          "left": 512,
+          "top": 356,
+          "right": 556
+        },
+        "category-0": {
+          "left": 216,
+          "top": 149,
+          "right": 291
+        },
+        "category-1": {
+          "left": 265,
+          "top": 149,
+          "right": 368
+        },
+        "category-2": {
+          "left": 314,
+          "top": 149,
+          "right": 421
+        },
+        "category-3": {
+          "left": 363,
+          "top": 149,
+          "right": 422
+        }
+      }
+    },
+    {
+      "faction": "empire",
+      "case": "squadron-battle",
+      "status": "pass",
+      "alertTips": {
+        "simulate": {
+          "left": 338,
+          "top": 382,
+          "right": 433
+        },
+        "take-command": {
+          "left": 472,
+          "top": 382,
+          "right": 562
+        },
+        "tab-0": {
+          "left": 548,
+          "top": 110,
+          "right": 638
+        },
+        "tab-1": {
+          "left": 551,
+          "top": 173,
+          "right": 638
+        },
+        "tab-2": {
+          "left": 551,
+          "top": 236,
+          "right": 638
+        },
+        "tab-3": {
+          "left": 554,
+          "top": 299,
+          "right": 638
+        },
+        "retreat": {
+          "left": 204,
+          "top": 382,
+          "right": 248
+        }
+      },
+      "summaryTips": {
+        "close": false,
+        "tab-0": {
+          "left": 548,
+          "top": 181,
+          "right": 638
+        },
+        "tab-1": {
+          "left": 550,
+          "top": 241,
+          "right": 638
+        },
+        "tab-2": {
+          "left": 551,
+          "top": 301,
+          "right": 638
+        },
+        "tab-3": {
+          "left": 575,
+          "top": 359,
+          "right": 619
+        },
+        "category-0": {
+          "left": 279,
+          "top": 152,
+          "right": 354
+        },
+        "category-1": {
+          "left": 328,
+          "top": 152,
+          "right": 431
+        },
+        "category-2": {
+          "left": 377,
+          "top": 152,
+          "right": 484
+        },
+        "category-3": {
+          "left": 426,
+          "top": 152,
+          "right": 485
+        }
+      }
+    }
+  ]
+}
