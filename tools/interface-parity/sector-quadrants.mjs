@@ -18,6 +18,9 @@ const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json
 const noBuild = process.argv.includes("--no-build");
 // `--only=alliance/icons` runs the named cases alone.
 const only = process.argv.filter((arg) => arg.startsWith("--only=")).map((arg) => arg.slice(7));
+// `--a0=DIR` (.artifacts/a0-vm/system-windows) compares the System window's
+// text with A0 07-icon-dbl (Yavin's window at (315, 87), the Alliance).
+const a0Dir = process.argv.find((arg) => arg.startsWith("--a0="))?.slice(5);
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const QUADRANTS = 50;
@@ -268,6 +271,42 @@ async function doubleClick(page, point) {
   await frames(page, 2);
 }
 
+// The System window's fixed lines and counts (FUN_00458080, FUN_00457690)
+// against A0 07-icon-dbl: each ink box within a pixel of A0's, relative to
+// the window. The port's window stands one pixel right of and below its
+// reported origin, as the tab strip's art shows. DrawTextA sets these
+// lines (theme::paint_gdi_text); the glyphs are Liberation's.
+async function systemWindowText(page, origin) {
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(800);
+  const port = PNG.sync.read(await page.screenshot());
+  const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Dir, "07-icon-dbl.png")));
+  const white = (png, x, y) => {
+    const i = (y * png.width + x) * 4;
+    return Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 200;
+  };
+  const ink = (png, [ox, oy], [x0, y0, x1, y1]) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        if (!white(png, ox + x, oy + y)) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const checks = {};
+  for (const [name, region] of [["no-ships", [57, 72, 200, 88]], ["no-troops", [57, 153, 200, 169]],
+    ["no-facilities", [57, 234, 200, 250]], ["count-troops", [8, 197, 52, 213]],
+    ["count-facilities", [8, 278, 52, 294]]]) {
+    const a = ink(a0, [315, 87], region);
+    const p = ink(port, [origin[0] + 1, origin[1] + 1], region);
+    checks[name] = { a0: a, port: p };
+    assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1), `${name}: ${JSON.stringify(checks[name])}`);
+  }
+  return checks;
+}
+
 function observations(page) {
   return page.evaluate(() => window.__openRebellionInterfaceQuadrants || []);
 }
@@ -508,6 +547,7 @@ const cases = [
       // slot's corner, the system's name after it.
       const dat = setup.primary_dat_id;
       const [, origin] = opened.system_windows.find(([system]) => system === dat);
+      const textChecks = faction.side === 1 && a0Dir ? await systemWindowText(page, origin) : null;
       await click(page, { x: origin[0] + 195 + 7, y: origin[1] + 3 + 7 });
       const railed = await until(page, "minimize sends the System window to the rail",
         (o, value) => !o.system_windows.some(([system]) => system === value)
@@ -517,7 +557,7 @@ const cases = [
       const icon = faction.side === 1 ? 11530 : 11531;
       const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "system-rail-icon", directory) }];
       assertExact(railChecks);
-      return { at, opened, railChecks };
+      return { at, opened, railChecks, textChecks };
     },
   },
   {

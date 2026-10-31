@@ -54,6 +54,7 @@ const CLOSE_X: f32 = 209.0;
 /// The title label `+0x49`: from the sector button's width plus 5, 179 by
 /// 16, font 5, black, format `0x24` (left-aligned, vertically centred).
 const TITLE: (f32, f32, f32) = (19.0, 2.0, 16.0);
+const TITLE_WIDTH: f32 = 179.0;
 /// The tab strip (`FUN_0060d590`) at (0, 20); each button is 36 by 33.
 const TAB_STRIP_Y: f32 = 20.0;
 const TAB_SIZE: (f32, f32) = (36.0, 33.0);
@@ -868,12 +869,21 @@ fn draw_reference_rail(
                 let icon_width = cache
                     .original_resource_size(DllSource::Strategy, icon)
                     .map_or(0.0, |[width, _]| width as f32);
-                painter.text(
-                    logical_point(slot_rect, layout.scale, icon_width, 0.0),
-                    egui::Align2::LEFT_TOP,
+                crate::theme::paint_gdi_text(
+                    &painter,
+                    logical_rect(
+                        slot_rect,
+                        layout.scale,
+                        icon_width,
+                        0.0,
+                        slot_rect.width() / layout.scale - icon_width,
+                        slot_rect.height() / layout.scale,
+                    ),
+                    layout.scale,
+                    10,
                     &system.name,
-                    crate::theme::original_font(10, layout.scale),
                     RAIL_NAME_COLOR,
+                    (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                 );
                 slots.push((slot_rect, ui.layer_id(), *entry));
             });
@@ -1024,12 +1034,17 @@ fn draw_system_window(
                 2.0,
                 2.0,
             );
-            painter.text(
-                logical_rect(local, scale, TITLE.0, TITLE.1 + TITLE.2 / 2.0, 0.0, 0.0).min,
-                egui::Align2::LEFT_CENTER,
+            crate::theme::paint_gdi_text(
+                &painter,
+                logical_rect(local, scale, TITLE.0, TITLE.1, TITLE_WIDTH, TITLE.2),
+                scale,
+                5,
                 &system.name,
-                crate::theme::original_font(5, scale),
                 egui::Color32::BLACK,
+                (
+                    crate::theme::GdiAlign::Left,
+                    crate::theme::GdiVAlign::VCenter,
+                ),
             );
 
             let buttons = [
@@ -1112,12 +1127,14 @@ fn draw_system_window(
                         .as_deref()
                         .unwrap_or_default();
                         let (x, y) = COUNT_ORIGINS[index];
-                        painter.text(
-                            logical_point(local, scale, x + COUNT_WIDTH / 2.0, y),
-                            egui::Align2::CENTER_TOP,
-                            yard_count(cells),
-                            crate::theme::original_font(COUNT_FONT, scale),
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            logical_rect(local, scale, x, y, COUNT_WIDTH, 16.0),
+                            scale,
+                            COUNT_FONT,
+                            &yard_count(cells),
                             egui::Color32::WHITE,
+                            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                         );
 
                         // FUN_00458080: the band's frame, its strip and its
@@ -1139,12 +1156,14 @@ fn draw_system_window(
                         // (0x2000000, FUN_00601930), the others white
                         // (0x2ffffff).
                         let line = |text: &str, (x, y): (f32, f32), colour| {
-                            painter.text(
-                                logical_point(local, scale, bx + x, by + y),
-                                egui::Align2::LEFT_TOP,
+                            crate::theme::paint_gdi_text(
+                                &painter,
+                                logical_rect(local, scale, bx + x, by + y, 160.0, 14.0),
+                                scale,
+                                10,
                                 text,
-                                crate::theme::original_font(10, scale),
                                 colour,
+                                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                             );
                         };
                         let white = egui::Color32::WHITE;
@@ -1211,12 +1230,14 @@ fn draw_system_window(
                 }
                 Some(_) => {
                     // The page label, then the list (FUN_004568a0).
-                    painter.text(
-                        logical_point(local, scale, SYSTEM_WINDOW_WIDTH / 2.0, PAGE_LABEL_Y),
-                        egui::Align2::CENTER_TOP,
+                    crate::theme::paint_gdi_text(
+                        &painter,
+                        logical_rect(local, scale, 0.0, PAGE_LABEL_Y, SYSTEM_WINDOW_WIDTH, 16.0),
+                        scale,
+                        4,
                         window.tab.name(),
-                        crate::theme::original_font(4, scale),
                         egui::Color32::WHITE,
+                        (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                     );
                     let cells = pages[SystemWindowTab::ALL
                         .iter()
@@ -1700,8 +1721,60 @@ mod tests {
         FacilityItem::Production(key)
     }
 
-    /// A painted text's words, top-left corner, width and font size.
+    /// A painted text's words, its pen's left and baseline, width and font
+    /// size.
     type RailText = (String, egui::Pos2, f32, f32);
+
+    /// One painted line of text: `paint_gdi_text` paints it a character at
+    /// a time, so each run of one size, colour, baseline and clip is
+    /// joined.
+    struct TextLine {
+        text: String,
+        pos: egui::Pos2,
+        width: f32,
+        size: f32,
+        colour: egui::Color32,
+        baseline: f32,
+        clip: egui::Rect,
+    }
+
+    fn text_lines(shapes: &[egui::epaint::ClippedShape]) -> Vec<TextLine> {
+        let mut lines: Vec<TextLine> = Vec::new();
+        for clipped in shapes {
+            let egui::Shape::Text(text) = &clipped.shape else {
+                continue;
+            };
+            let format = &text.galley.job.sections[0].format;
+            let baseline = text.pos.y
+                + text
+                    .galley
+                    .rows
+                    .first()
+                    .and_then(|row| row.glyphs.first())
+                    .map_or(0.0, |glyph| glyph.pos.y);
+            let right = text.pos.x + text.galley.size().x;
+            if let Some(line) = lines.last_mut().filter(|line| {
+                line.size == format.font_id.size
+                    && line.colour == format.color
+                    && line.baseline == baseline
+                    && line.clip == clipped.clip_rect
+            }) {
+                line.text.push_str(text.galley.text());
+                line.width = right - line.pos.x;
+                continue;
+            }
+            lines.push(TextLine {
+                text: text.galley.text().to_owned(),
+                pos: text.pos,
+                width: text.galley.size().x,
+                size: format.font_id.size,
+                colour: format.color,
+                baseline,
+                clip: clipped.clip_rect,
+            });
+        }
+        lines
+    }
 
     #[derive(Default)]
     struct Run {
@@ -1757,26 +1830,14 @@ mod tests {
                 ));
             });
             run.painted = PAINTED.with(|painted| painted.take());
-            run.clips = output
-                .shapes
+            let lines = text_lines(&output.shapes);
+            run.clips = lines
                 .iter()
-                .filter_map(|clipped| match &clipped.shape {
-                    egui::Shape::Text(text) => {
-                        Some((text.galley.text().to_owned(), clipped.clip_rect))
-                    }
-                    _ => None,
-                })
+                .map(|line| (line.text.clone(), line.clip))
                 .collect();
-            run.colours = output
-                .shapes
+            run.colours = lines
                 .iter()
-                .filter_map(|clipped| match &clipped.shape {
-                    egui::Shape::Text(text) => Some((
-                        text.galley.text().to_owned(),
-                        text.galley.job.sections[0].format.color,
-                    )),
-                    _ => None,
-                })
+                .map(|line| (line.text.clone(), line.colour))
                 .collect();
             run.fills = output
                 .shapes
@@ -1786,17 +1847,15 @@ mod tests {
                     _ => None,
                 })
                 .collect();
-            run.texts = output
-                .shapes
+            run.texts = lines
                 .into_iter()
-                .filter_map(|clipped| match clipped.shape {
-                    egui::Shape::Text(text) => Some((
-                        text.galley.text().to_owned(),
-                        text.pos,
-                        text.galley.size().x,
-                        text.galley.job.sections[0].format.font_id.size,
-                    )),
-                    _ => None,
+                .map(|line| {
+                    (
+                        line.text,
+                        egui::pos2(line.pos.x, line.baseline),
+                        line.width,
+                        line.size,
+                    )
                 })
                 .collect();
         }
@@ -1823,6 +1882,13 @@ mod tests {
             10.0 + (f32::from(ORIGIN.0) + x) * 2.0,
             20.0 + (f32::from(ORIGIN.1) + y) * 2.0,
         )
+    }
+
+    /// Where DT_TOP puts a line of font `font` whose box starts at (`x`,
+    /// `y`) in the window: its pen's left and its baseline, `tmAscent`
+    /// below the top (theme::original_font_metrics).
+    fn line_at(x: f32, y: f32, font: u16) -> egui::Pos2 {
+        at(x, y + crate::theme::original_font_metrics(font).0)
     }
 
     fn opened(world: &GameWorld, system: SystemKey) -> SystemWindowState {
@@ -2213,7 +2279,7 @@ mod tests {
         let title = text(&run, "System 0");
         assert_eq!(
             (title.1.x, title.3),
-            (at(19.0, 0.0).x, crate::theme::original_font(5, 2.0).size)
+            (at(19.0, 0.0).x, crate::theme::gdi_font(5, 2.0).size)
         );
         let heading = text(&run, "Ship Construction");
         // FUN_00458080: the title keeps the text object's black
@@ -2231,16 +2297,25 @@ mod tests {
             Some(egui::Color32::WHITE)
         );
         assert!(run.texts.iter().any(|value| value.0.contains(':')
-            && value.3 == crate::theme::original_font(COUNT_FONT, 2.0).size));
+            && value.3 == crate::theme::gdi_font(COUNT_FONT, 2.0).size));
         assert_eq!(
             (heading.1, heading.3),
-            (at(60.0, 58.0), crate::theme::original_font(10, 2.0).size)
+            (
+                line_at(60.0, 58.0, 10),
+                crate::theme::gdi_font(10, 2.0).size
+            )
         );
-        assert_eq!(text(&run, "No Ships are being built").1, at(60.0, 73.0));
-        assert_eq!(text(&run, "No Troops in training").1, at(60.0, 154.0));
+        assert_eq!(
+            text(&run, "No Ships are being built").1,
+            line_at(60.0, 73.0, 10)
+        );
+        assert_eq!(
+            text(&run, "No Troops in training").1,
+            line_at(60.0, 154.0, 10)
+        );
         assert_eq!(
             text(&run, "Facilities Under Construction").1,
-            at(60.0, 220.0)
+            line_at(60.0, 220.0, 10)
         );
         assert_eq!(
             run.texts
@@ -2254,8 +2329,11 @@ mod tests {
             .iter()
             .find(|value| value.0 == "1:1")
             .unwrap_or_else(|| panic!("{:?}", run.texts));
-        assert_eq!(ships.1.y, at(0.0, 119.0).y);
-        assert!((ships.1.x + ships.2 / 2.0 - at(29.0, 0.0).x).abs() < 0.01);
+        // DT_CENTER | DT_TOP in the 46-wide count box from (6, 119), the
+        // default font: the baseline 13 below, the GDI width's spare halved.
+        assert_eq!(ships.1.y, line_at(0.0, 119.0, COUNT_FONT).y);
+        let (_, width) = crate::theme::gdi_pen_positions(COUNT_FONT, "1:1").unwrap();
+        assert_eq!(ships.1.x, at(6.0 + ((46.0 - width) / 2.0).floor(), 0.0).x);
         assert_eq!(run.texts.iter().filter(|value| value.0 == "0:0").count(), 2);
         assert!(!run.texts.iter().any(|value| value.0 == "Manufacturing"));
     }
@@ -2278,8 +2356,8 @@ mod tests {
         );
         let mut state = opened(&world, systems[0]);
         let run = run_with(&world, &manufacturing, &mut state, hover(at(150.0, 10.0)));
-        assert_eq!(text(&run, "Corellian Corvette").1, at(60.0, 73.0));
-        assert_eq!(text(&run, "Building: 2").1, at(60.0, 104.0));
+        assert_eq!(text(&run, "Corellian Corvette").1, line_at(60.0, 73.0, 10));
+        assert_eq!(text(&run, "Building: 2").1, line_at(60.0, 104.0, 10));
         let mini = crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
         assert!(
             run.painted.contains(&(mini, at(95.0, 72.0))),
@@ -2446,11 +2524,14 @@ mod tests {
         assert!(after.painted.contains(&(10_262, at(9.0, 79.0))));
         assert!(after.painted.contains(&(10_320, at(190.0, 20.0))));
         let label = text(&after, "Mines");
-        assert!((label.1.x + label.2 / 2.0 - at(113.0, 0.0).x).abs() < 0.01);
+        // DT_CENTER in the window's 226: the line's GDI width, its spare
+        // halved in whole pixels.
+        let (_, width) = crate::theme::gdi_pen_positions(4, "Mines").unwrap();
+        assert_eq!(label.1.x, at(((226.0 - width) / 2.0).floor(), 0.0).x);
         // The page label `+0x5f` is font 4.
         assert_eq!(
             (label.1.y, label.3),
-            (at(0.0, 58.0).y, crate::theme::original_font(4, 2.0).size)
+            (line_at(0.0, 58.0, 4).y, crate::theme::gdi_font(4, 2.0).size)
         );
         assert!(run
             .actions
@@ -2960,8 +3041,9 @@ mod tests {
                 vec![egui::Event::PointerMoved(away)],
             ],
         );
-        let font = crate::theme::original_font(10, 2.0).size;
-        for corner in [slot.min, second.min] {
+        let font = crate::theme::gdi_font(10, 2.0).size;
+        // DT_TOP: the baseline tmAscent (11) below the slot's top.
+        for corner in [slot.min, second.min].map(|corner| corner + egui::vec2(0.0, 22.0)) {
             assert!(
                 run.texts
                     .iter()
