@@ -388,6 +388,22 @@ async function inspect(server, source, faction, executable) {
       checks.release_outside = "nothing opened";
     }
 
+    // The globe's keyed corner (its first DIB pixel, magenta) takes no
+    // click (FUN_005fca00 / FUN_005fd170); the pixel beside it does. A0
+    // controls/globe-key-click.png (3, 395) and globe-near-key-click.png
+    // (4, 394), Alliance.
+    if (faction.name === "alliance") {
+      const options = /command=0x133 destination=game_options status=opened_original/;
+      const before = countOf(options);
+      await click(page, { x: 3, y: 395 });
+      await page.waitForTimeout(400);
+      assert.equal(countOf(options), before, "the globe's keyed corner opened Game Options");
+      await click(page, { x: 4, y: 394 });
+      checks.globe_key = await logged("the pixel beside the key opens Game Options", options, before + 1);
+      await key(page, "Escape");
+      await page.waitForTimeout(500);
+    }
+
     // Alt+2..Alt+9 then Alt+1: commands 0xbcb..0xbd2 and 0xbca (TEXTCOMM
     // accelerator table 11) select the nine GID modes in turn
     // (FUN_00422ce0: 0x11, 0x12, 0x21, 0x22, 0x43, 0x44, 0x65, 0x66, 0x67);

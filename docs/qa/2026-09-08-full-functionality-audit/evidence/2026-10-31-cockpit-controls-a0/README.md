@@ -60,3 +60,10 @@ on their first pixel (`bmp_cache::uses_first_pixel_key`).
   moves off it. The control keeps its pressed art; for the Alliance its
   pixels equal A0's `fleet-held-out` (0 differing). The release opens
   nothing.
+
+## The keyed corner takes no click (third stage)
+
+In A0 a click on the globe's keyed corner (3, 395), its magenta first
+pixel, opens nothing (`globe-key-click`). A click on the pixel beside it,
+(4, 394), opens Game Options (`globe-near-key-click`). `audit-batch.mjs`
+(Alliance, Linux) asserts the same for the port.

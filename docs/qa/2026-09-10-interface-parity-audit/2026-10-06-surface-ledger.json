@@ -3621,13 +3621,15 @@
         {
           "id": "CMD-10-C008",
           "requirement": "palette-key miss",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-cockpit-controls-a0/",
+            "tools/interface-parity/audit-batch.mjs"
           ],
-          "note": "Palette-key rejection (FUN_005fca00, FUN_005fd170) passed in the September Astra review, browser run on macOS only; rerun on Linux. No A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Palette-key rejection (FUN_005fca00, FUN_005fd170) passed in the September Astra review,. 2026-10-31: in A0 a click on the globe's keyed corner (3, 395) opens nothing and one on (4, 394) opens Game Options (controls/globe-key-click, globe-near-key-click); audit-batch.mjs asserts both on Linux (Alliance).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-10-C009",
