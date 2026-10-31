@@ -35,15 +35,6 @@ const CLOSE_PRESSED: u32 = 10109;
 const SWITCH_SIDE_NORMAL: u32 = 10210;
 const SWITCH_SIDE_PRESSED: u32 = 10211;
 
-const BORDER_TOP_LEFT: u32 = 10100;
-const BORDER_TOP_RIGHT: u32 = 10101;
-const BORDER_BOTTOM_LEFT: u32 = 10102;
-const BORDER_BOTTOM_RIGHT: u32 = 10103;
-const BORDER_TOP: u32 = 10104;
-const BORDER_LEFT: u32 = 10105;
-const BORDER_RIGHT: u32 = 10106;
-const BORDER_BOTTOM: u32 = 10107;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WindowColumn {
     Primary,
@@ -712,7 +703,10 @@ fn draw_sector_window(
                     }
                 }
             }
-            paint_window_border(ui.painter(), ctx, cache, window_rect, layout.scale);
+            // FUN_00459e30 frames the window with FUN_00607740's tiles, as
+            // the GID's menus are (A0 sector-windows/02-second: solid top
+            // and bottom, sides on every second row).
+            crate::cockpit::paint_gid_frame_border(ui, cache, window_rect, layout.scale);
 
             // FUN_00459e30: the sector's name in font 4, 0x200f0f0 (yellow),
             // centred (0x25: DT_CENTER | DT_VCENTER | DT_SINGLELINE) in the
@@ -1317,158 +1311,6 @@ fn paint_resource(
         egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
         egui::Color32::WHITE,
     );
-}
-
-fn paint_window_border(
-    painter: &egui::Painter,
-    ctx: &egui::Context,
-    cache: &mut BmpCache,
-    rect: egui::Rect,
-    scale: f32,
-) {
-    paint_resource(
-        painter,
-        ctx,
-        cache,
-        BORDER_TOP_LEFT,
-        logical_rect(rect, scale, 0.0, 0.0, 2.0, 2.0),
-    );
-    paint_resource(
-        painter,
-        ctx,
-        cache,
-        BORDER_TOP_RIGHT,
-        logical_rect(rect, scale, SECTOR_WINDOW_WIDTH - 2.0, 0.0, 2.0, 2.0),
-    );
-    paint_resource(
-        painter,
-        ctx,
-        cache,
-        BORDER_BOTTOM_LEFT,
-        logical_rect(rect, scale, 0.0, SECTOR_WINDOW_HEIGHT - 2.0, 2.0, 2.0),
-    );
-    paint_resource(
-        painter,
-        ctx,
-        cache,
-        BORDER_BOTTOM_RIGHT,
-        logical_rect(
-            rect,
-            scale,
-            SECTOR_WINDOW_WIDTH - 2.0,
-            SECTOR_WINDOW_HEIGHT - 2.0,
-            2.0,
-            2.0,
-        ),
-    );
-    paint_tiled_horizontal(
-        painter,
-        ctx,
-        cache,
-        BORDER_TOP,
-        rect,
-        scale,
-        2.0,
-        SECTOR_WINDOW_WIDTH - 2.0,
-        0.0,
-    );
-    paint_tiled_horizontal(
-        painter,
-        ctx,
-        cache,
-        BORDER_BOTTOM,
-        rect,
-        scale,
-        2.0,
-        SECTOR_WINDOW_WIDTH - 2.0,
-        SECTOR_WINDOW_HEIGHT - 1.0,
-    );
-    paint_tiled_vertical(
-        painter,
-        ctx,
-        cache,
-        BORDER_LEFT,
-        rect,
-        scale,
-        0.0,
-        2.0,
-        SECTOR_WINDOW_HEIGHT - 2.0,
-    );
-    paint_tiled_vertical(
-        painter,
-        ctx,
-        cache,
-        BORDER_RIGHT,
-        rect,
-        scale,
-        SECTOR_WINDOW_WIDTH - 1.0,
-        2.0,
-        SECTOR_WINDOW_HEIGHT - 2.0,
-    );
-}
-
-#[allow(clippy::too_many_arguments)]
-fn paint_tiled_horizontal(
-    painter: &egui::Painter,
-    ctx: &egui::Context,
-    cache: &mut BmpCache,
-    resource_id: u32,
-    parent: egui::Rect,
-    scale: f32,
-    start: f32,
-    end: f32,
-    y: f32,
-) {
-    let Some(texture_id) = cache
-        .get(ctx, DllSource::Strategy, resource_id)
-        .map(egui_macroquad::egui::TextureHandle::id)
-    else {
-        return;
-    };
-    let mut mesh = egui::Mesh::with_texture(texture_id);
-    let mut x = start;
-    while x < end {
-        let width = (end - x).min(2.0);
-        mesh.add_rect_with_uv(
-            logical_rect(parent, scale, x, y, width, 1.0),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(width / 2.0, 1.0)),
-            egui::Color32::WHITE,
-        );
-        x += 2.0;
-    }
-    painter.add(mesh);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn paint_tiled_vertical(
-    painter: &egui::Painter,
-    ctx: &egui::Context,
-    cache: &mut BmpCache,
-    resource_id: u32,
-    parent: egui::Rect,
-    scale: f32,
-    x: f32,
-    start: f32,
-    end: f32,
-) {
-    let Some(texture_id) = cache
-        .get(ctx, DllSource::Strategy, resource_id)
-        .map(egui_macroquad::egui::TextureHandle::id)
-    else {
-        return;
-    };
-    let mut mesh = egui::Mesh::with_texture(texture_id);
-    let mut y = start;
-    while y < end {
-        let height = (end - y).min(2.0);
-        mesh.add_rect_with_uv(
-            logical_rect(parent, scale, x, y, 1.0, height),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, height / 2.0)),
-            egui::Color32::WHITE,
-        );
-        y += 2.0;
-    }
-    painter.add(mesh);
 }
 
 /// A system's three status tracks under its planet (`FUN_00459e30`), as

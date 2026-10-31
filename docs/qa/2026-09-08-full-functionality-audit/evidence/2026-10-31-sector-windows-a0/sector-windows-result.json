@@ -1,0 +1,201 @@
+{
+  "status": "pass",
+  "steps": [
+    {
+      "frame": "01-first",
+      "sha256": "6e2f8ab9e5b938dc39e844c8c9cef945ff2d8c17b76a53d8f84979afea8717c9",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              147,
+              42,
+              211,
+              51
+            ],
+            "port": [
+              142,
+              42,
+              214,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": false,
+          "differing": [
+            0,
+            0,
+            0,
+            8,
+            0
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        }
+      }
+    },
+    {
+      "frame": "02-second",
+      "sha256": "a20127585943c67b636a778a3290f52e5916a8fa41bf749fbe8326669a665fa8",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              147,
+              42,
+              211,
+              51
+            ],
+            "port": [
+              142,
+              42,
+              214,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              398,
+              42,
+              440,
+              51
+            ],
+            "port": [
+              394,
+              42,
+              442,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "03-flip",
+      "sha256": "6e6fc02930f8b403a65d4f43bd207a34732462dbd05f740e5454d19fa57932dc",
+      "halves": {
+        "left": {
+          "expected": false,
+          "differing": [
+            146,
+            0,
+            0,
+            0,
+            3
+          ],
+          "ink": {
+            "a0": null,
+            "port": null
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    },
+    {
+      "frame": "04-left",
+      "sha256": "26eda63a3a7f46b0da9d1d742ef7ef44ce5f7f7daad911e310d37da159e11cb5",
+      "halves": {
+        "left": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              160,
+              42,
+              198,
+              51
+            ],
+            "port": [
+              155,
+              42,
+              200,
+              51
+            ]
+          }
+        },
+        "right": {
+          "expected": true,
+          "differing": [
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "ink": {
+            "a0": [
+              387,
+              42,
+              451,
+              51
+            ],
+            "port": [
+              382,
+              42,
+              454,
+              51
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1516,9 +1516,11 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-window-background/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-planet-markers/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-track-visibility/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "Opening a sector over the GID: the sector window's title, names, shading and markers were compared with A0 sector-a.png/sector-b.png piece by piece, and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no whole-window A0 comparison of the sector state.",
+          "note": "Opening a sector over the GID: the sector window's title, names, shading and markers were compared with A0 sector-a.png/sector-b.png piece by piece, and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no whole-window A0 comparison of the sector state. 2026-10-31: the sector window's frame now uses FUN_00607740's tiles (the port's border was from the wrong tiles); frames, buttons and places match A0 in sector-windows.mjs.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2342,26 +2344,30 @@
         {
           "id": "CMD-04-C009",
           "requirement": "sector windows have fixed positions",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-window-background/",
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "The sector window keeps its own press and does not move (FUN_004593e0 0x201); the shaded colours match A0 sector-a.png at the same canvas place, but the window's position was not compared explicitly.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The sector window keeps its own press and does not move (FUN_004593e0 0x201); the shaded colours match A0 sector-a.png at the same canvas place, but the window's position was not compared explicitly. 2026-10-31: A0 sector-windows: the left and right windows at (60, 35) and (300, 35), 235 by 360; sector-windows.mjs (Linux) matches their frames, buttons and places pixel for pixel at every step.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-04-C010",
           "requirement": "sector windows cannot minimize",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "The sector window exposes only flip and close, as A0 sector-a.png shows; not compared and no browser check.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The sector window exposes only flip and close, as A0 sector-a.png shows; not compared and no browser check. 2026-10-31: A0 shows only the side switch and the close box (no minimize); the port's two buttons match A0 pixel for pixel (sector-windows.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-04-C011",
@@ -2369,21 +2375,25 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "A third sector request replaces the window on its own half (FUN_00429ce0, commit 8fc9d983); unit test only.",
+          "note": "A third sector request replaces the window on its own half (FUN_00429ce0, commit 8fc9d983); unit test only. 2026-10-31: sector-windows.mjs shows two windows on the two halves and a flip replacing the other half's window, matching A0; a third sector request with both halves full was not exercised in A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-04-C012",
           "requirement": "sector-window side flip",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
+            "tools/interface-parity/sector-windows.mjs"
           ],
-          "note": "The side switch moves the window between two columns (sector_window.rs switch_side); the A0 flip state was not captured.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The side switch moves the window between two columns (sector_window.rs switch_side); the A0 flip state was not captured. 2026-10-31: A0 sector-windows/03: the side switch moves Sesswenna to the right half and closes Sumitra there; the port does the same, frames and buttons pixel-identical (sector-windows.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-04-C013",

@@ -286,9 +286,14 @@ pub fn frame_tiles(size: egui::Vec2) -> Vec<(u32, egui::Rect)> {
         tiles.push((FRAME_TOP, rect(corner.x, 0.0, inner.x, 2.0)));
         tiles.push((FRAME_BOTTOM, rect(corner.x, size.y - 2.0, inner.x, 2.0)));
     }
-    if inner.y > 0.0 {
-        tiles.push((FRAME_LEFT, rect(0.0, corner.y, 2.0, inner.y)));
-        tiles.push((FRAME_RIGHT, rect(size.x - 2.0, corner.y, 2.0, inner.y)));
+    // The sides go on every second row from the third (the loop steps by
+    // two rows; A0 sector-windows and the GID menus show the rows between
+    // as the window's fill, `cockpit::frame_tiles`).
+    let mut y = corner.y;
+    while y < size.y - corner.y {
+        tiles.push((FRAME_LEFT, rect(0.0, y, 2.0, 1.0)));
+        tiles.push((FRAME_RIGHT, rect(size.x - 2.0, y, 2.0, 1.0)));
+        y += 2.0;
     }
     tiles
 }
@@ -682,7 +687,8 @@ mod tests {
 
     #[test]
     fn the_frame_is_two_pixels_of_tiles_around_the_window() {
-        // FUN_00607740: corners, then the edges tiled between them.
+        // FUN_00607740: corners, then the edges tiled between them, the
+        // sides on every second row (A0 sector-windows/02-second).
         let tiles = frame_tiles(egui::vec2(180.0, 135.0));
         let at = |id| {
             tiles
@@ -702,8 +708,13 @@ mod tests {
         );
         assert_eq!(at(0x2778).min, egui::pos2(178.0, 2.0));
         assert_eq!(at(0x277a).min, egui::pos2(2.0, 133.0));
-        assert_eq!(at(0x277b).size(), egui::vec2(2.0, 131.0));
-        assert_eq!(tiles.len(), 8);
+        // The sides on every second row: 2 by 1 at y 2, 4, .. 132.
+        assert_eq!(
+            at(0x277b),
+            egui::Rect::from_min_size(egui::pos2(0.0, 2.0), egui::vec2(2.0, 1.0))
+        );
+        assert_eq!(tiles.iter().filter(|(id, _)| *id == 0x277b).count(), 66);
+        assert_eq!(tiles.len(), 4 + 2 + 2 * 66);
     }
 
     #[test]
