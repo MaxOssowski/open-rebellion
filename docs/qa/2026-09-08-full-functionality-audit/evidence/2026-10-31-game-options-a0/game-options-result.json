@@ -6,9 +6,21 @@
   },
   "shots": {
     "empty": "bd8c19acaa9a95a95ed2f67d6cf9b86f474366a942bd0c37681025f9354fbd4d",
+    "saved-notice": "4f765c6c9d3fe0d96181e507dc491cdf8c3445e175727bb8172ddd9fe9897c76",
     "saved": "0623bc27afb74f64cc0939ba2f639c145fae892ce5d1ff49d0e49b1a9abd06b2",
     "dragged": "6e3081f68816b41f04a0ea3ddab388d15a00eca78c036ac2dd68cc565d8837fe",
-    "reloaded": "6e3081f68816b41f04a0ea3ddab388d15a00eca78c036ac2dd68cc565d8837fe"
+    "reloaded": "2ba2e3b142dddee266c172485b3560793cf766125ed30f525558eff6dc97daf0",
+    "overwrite-confirmation": "0fb3d4e5a6ece7ac83723d7d3dbd3b617c8eb7fce5a1217f9bba494c29085e42",
+    "overwrite-refused": "2ba2e3b142dddee266c172485b3560793cf766125ed30f525558eff6dc97daf0",
+    "overwrite-accept-confirmation": "0fb3d4e5a6ece7ac83723d7d3dbd3b617c8eb7fce5a1217f9bba494c29085e42",
+    "overwrite-notice": "7fb387d39729ea6617c6fdbf9e36a7689dd27368bbb229c49111238016ac5839",
+    "overwrite-notice-escape": "7fb387d39729ea6617c6fdbf9e36a7689dd27368bbb229c49111238016ac5839",
+    "overwrite-notice-closed": "2ba2e3b142dddee266c172485b3560793cf766125ed30f525558eff6dc97daf0",
+    "exit-confirmation": "d1c0d6ee7a2e81c7e584064da02cddc688ff197d4e43cc08fb50937dbdf8a690",
+    "exit-refused": "2ba2e3b142dddee266c172485b3560793cf766125ed30f525558eff6dc97daf0",
+    "restart-confirmation": "2b5eda523cdf3c411d1b40b60d4a31c16fbaf8b46da68de43e97468edf4e5911",
+    "restart-refused": "2ba2e3b142dddee266c172485b3560793cf766125ed30f525558eff6dc97daf0",
+    "load-confirmation": "c3ffc4a6eac81ff67ebae24755b47222269799fe5db1cb3b95fb3ee23fef36fe"
   },
   "compared": 201491,
   "differing": 0,
@@ -299,5 +311,46 @@
     592
   ],
   "stored_settings": "{\"music_volume\":0.49,\"effects_volume\":1.0,\"display_options\":319881216}",
-  "reloaded_slider_differing": 0
+  "reloaded_slider_differing": 0,
+  "restart_dialog": {
+    "differing": 0,
+    "first": [],
+    "texts": [
+      {
+        "a0": [
+          159,
+          180,
+          478,
+          208
+        ],
+        "port": [
+          175,
+          180,
+          464,
+          208
+        ]
+      },
+      {
+        "a0": [
+          247,
+          246,
+          390,
+          258
+        ],
+        "port": [
+          240,
+          246,
+          399,
+          258
+        ]
+      }
+    ]
+  },
+  "confirmations": [
+    "overwrite No",
+    "overwrite Yes",
+    "exit No",
+    "restart No",
+    "load Yes"
+  ]
 }

@@ -4520,7 +4520,7 @@ async fn main() {
                     is_key_pressed(KeyCode::F8) || (control && is_key_pressed(KeyCode::L));
                 let legacy_save =
                     is_key_pressed(KeyCode::F9) || (control && is_key_pressed(KeyCode::S));
-                if game_options_state.pending.is_none()
+                if !game_options_state.modal()
                     && origin != GameOptionsOrigin::TacticalBattle
                     && (legacy_load || (legacy_save && origin == GameOptionsOrigin::CommandCenter))
                 {
@@ -7794,6 +7794,8 @@ async fn main() {
                             save_slots = read_save_slots(&saves_dir);
                             game_options_state.refresh_saves(&save_slots);
                             game_options_state.error = None;
+                            // FUN_00408240: "Selected Game Saved Successfully".
+                            game_options_state.saved_notice = Some(true);
                             msg_log.push(GameMessage::new(
                                 clock.tick,
                                 format!("Saved game to slot {}", slot + 1),
@@ -7802,7 +7804,9 @@ async fn main() {
                         }
                         Err(error) => {
                             save_load_panel_state.error_message = Some(error.to_string());
-                            game_options_state.error = Some(error.to_string());
+                            macroquad::logging::warn!("[save] slot={} failed: {}", slot, error);
+                            // FUN_00408240: "Selected Game Failed To Save".
+                            game_options_state.saved_notice = Some(false);
                         }
                     }
                 }

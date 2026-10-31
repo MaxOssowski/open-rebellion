@@ -561,7 +561,7 @@
         {
           "id": "PRE-03-C003",
           "requirement": "save",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -572,8 +572,8 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md"
           ],
-          "note": "Save with naming and overwrite confirmation passes game-options-smoke (both factions); no A0 comparison. Browser run on macOS only; rerun on Linux. 2026-10-31: saving from the original row (name box then Save, FUN_00406b80 0x6f) passes on the Linux browser (save_state_fingerprint slot=0); blank names save as in the original (FUN_00408000). Overwrite confirmation not rerun on Linux; no A0 of the confirmation.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Save with naming and overwrite confirmation passes game-options-smoke (both factions); no A0 comparison. Browser run on macOS only; rerun on Linux. 2026-10-31: saving from the original row (name box then Save, FUN_00406b80 0x6f) passes on the Linux browser (save_state_fingerprint slot=0); blank names save as in the original (FUN_00408000). Overwrite confirmation not rerun on Linux; no A0 of the confirmation. 2026-10-31 (third stage): on the Linux browser a save from the row shows the original's \"Selected Game Saved Successfully\" (FUN_00408240, REBDLOG 10622), a refused overwrite keeps the stored save and an accepted one saves again (game-options.mjs); the question's dialog matches A0 tooltip/211 outside its text.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-03-C004",
@@ -585,9 +585,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs"
           ],
-          "note": "Fingerprint-verified load passes game-options-smoke (macOS) and native Linux acceptance 2026-10-18 (load_state_fingerprint slot=1); no A0 and no Linux browser run.",
+          "note": "Fingerprint-verified load passes game-options-smoke (macOS) and native Linux acceptance 2026-10-18 (load_state_fingerprint slot=1); no A0 and no Linux browser run. 2026-10-31: Load Yes on the Linux browser reads the saved fingerprint and restores the Empire campaign (game-options.mjs); no A0 of a load.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -622,16 +624,18 @@
         {
           "id": "PRE-03-C007",
           "requirement": "confirmation",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs"
           ],
-          "note": "REBDLOG 10623 confirmation with yes/no 10624-10627 (FUN_00416c50/00416e90); cancel/accept pass in game-options-smoke; no A0 comparison. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "REBDLOG 10623 confirmation with yes/no 10624-10627 (FUN_00416c50/00416e90); cancel/accept pass in game-options-smoke; no A0 comparison. Browser run on macOS only; rerun on Linux. 2026-10-31 (third stage): the Restart question against A0 tooltip/211: dialog pixels outside the two REBDLOG lines identical (palette-mapped 10623, Yes 10625, No 10627), lines within 1 px; the wider text breaks the first line one word earlier (accepted text deviation). Yes/No/Enter/Escape answered on the Linux browser for overwrite, Exit, Restart and Load.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-03-C008",
@@ -714,7 +718,7 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md"
           ],
-          "note": "Restart (0x91) waits for confirmation (unit tests); no browser assertion of Restart itself and no A0. 2026-10-31: Restart art 10035 at (76,381), keyed on white index 11, is pixel-identical to A0 (game-options.mjs). No Linux browser or A0 run of Restart itself.",
+          "note": "Restart (0x91) waits for confirmation (unit tests); no browser assertion of Restart itself and no A0. 2026-10-31: Restart art 10035 at (76,381), keyed on white index 11, is pixel-identical to A0 (game-options.mjs). No Linux browser or A0 run of Restart itself. 2026-10-31: Restart's question matches A0 tooltip/211 (game-options.mjs); Restart Yes itself is not run on Linux.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -748,7 +752,7 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md"
           ],
-          "note": "Exit with confirmation: browser exit/restart (macOS smoke) and native exit cleanup log; no A0 comparison. 2026-10-31: Exit art 10038 at (248,381), keyed, pixel-identical to A0 (game-options.mjs). Exit confirmation not compared in A0.",
+          "note": "Exit with confirmation: browser exit/restart (macOS smoke) and native exit cleanup log; no A0 comparison. 2026-10-31: Exit art 10038 at (248,381), keyed, pixel-identical to A0 (game-options.mjs). Exit confirmation not compared in A0. 2026-10-31: Exit asks the quit question 0x1202 (FUN_00401110(0x470, 0, 0x1202); hyp: the quit path) on the Linux browser; no A0 of it.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]

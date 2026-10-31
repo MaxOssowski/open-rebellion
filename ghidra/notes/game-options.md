@@ -83,10 +83,33 @@ Shuttle, not replaying a battle. Return is unavailable from the Shuttle.
 These are navigation operations; opening/closing options must not mutate a
 battle roster, apply results, advance simulation, or reset a paused state.
 
+Questions and the saved message (recovered 2026-10-31):
+- `FUN_00408170` asks with `FUN_00416c50(msg, window, first, second)`:
+  Restart 0x476 (REBDLOG 0x121a "Returning to the shuttle cockpit will
+  cause unsaved changes to be lost" / 0x121b "Return without saving?"), Load
+  0x477 (0x121c / 0x121d), Save 0x478 (0x121e / 0x121f). Exit (0x8f) leaves
+  for the quit question, 0x1202 "Are you sure you want to quit?" alone
+  (`FUN_00401110(0x470, 0, 0x1202)`; hyp: that call is the quit path).
+- `Class_00658950_vt3c` draws the first string in font 5, `0x2f0fbff`,
+  `DT_CENTER|DT_WORDBREAK` in (43, 25)-(368, 86) and the second centred on
+  one line in (43, 87)-(368, 112), or in (43, 25)-(368, 112) alone
+  (`DAT_00658920..0065894f`).
+- `FUN_00416e90`: Yes at (138, 135) shows 0x2981 (10625), held 0x2980
+  (10624); No at (229, 135) shows 0x2983 (10627), held 0x2982 (10626). Enter
+  answers Yes and Escape No (`Class_00658950_vt4c`).
+- After a save `FUN_00415600` -> `FUN_00408240` refreshes the rows and,
+  through `FUN_00417020`, shows REBDLOG 10622 with 0x1217 "Selected Game
+  Saved Successfully" (or 0x1219 "Selected Game Failed To Save") and one
+  button at (176, 134) with Yes's art (`Class_006589a8_vt40`); only Enter
+  or the button closes it (`Class_006589a8_vt4c`). The window stays open.
+- The screen is 8-bit: A0 `tooltip/211` and `212` show every pixel of
+  10623, 10625 and 10627 as its nearest entry of the window's palette
+  (COMMON 20002's, entry 254 white).
+
 Native confirmation construction is `FUN_00416c50` / `FUN_00416b90`:
 REBDLOG bitmap 10623, 412 by 176. `00416e90` constructs yes/no at (138,135)
-and (229,135), with bitmap pairs 10624/10625 and 10626/10627; both are 57 by
-28. Upstream stages all 23 numeric REBDLOG bitmaps; the unused named corner is excluded. This contribution requires 10623–10627 at packaging time and provides a visible fallback for older packs.
+and (229,135), with bitmap pairs 10625/10624 and 10627/10626 (normal,
+held); both are 57 by 28. Upstream stages all 23 numeric REBDLOG bitmaps; the unused named corner is excluded. This contribution requires 10623–10627 at packaging time and provides a visible fallback for older packs.
 
 ## Persistence
 

@@ -133,6 +133,10 @@ impl OptionsCanvas {
 #[derive(Debug, Clone)]
 pub struct GameOptionsState {
     pub pending: Option<GameOptionsAction>,
+    /// The one-button message after a save (`FUN_00408240`): `Some(true)`
+    /// "Selected Game Saved Successfully", `Some(false)` "Selected Game
+    /// Failed To Save".
+    pub saved_notice: Option<bool>,
     pub occupied: [bool; 10],
     pub names: [String; 6],
     pub suspended: bool,
@@ -153,6 +157,7 @@ impl Default for GameOptionsState {
     fn default() -> Self {
         Self {
             pending: None,
+            saved_notice: None,
             occupied: [false; 10],
             names: std::array::from_fn(|_| String::new()),
             suspended: false,
@@ -201,8 +206,14 @@ impl GameOptionsState {
         }
     }
 
+    /// Whether a question or a message holds the window.
+    #[must_use]
+    pub const fn modal(&self) -> bool {
+        self.pending.is_some() || self.saved_notice.is_some()
+    }
+
     pub fn request(&mut self, action: GameOptionsAction) -> GameOptionsAction {
-        if self.suspended || self.pending.is_some() || !self.enabled(&action) {
+        if self.suspended || self.modal() || !self.enabled(&action) {
             return GameOptionsAction::None;
         }
         let confirm = match &action {
@@ -230,7 +241,9 @@ impl GameOptionsState {
     }
 
     pub fn escape(&mut self) -> GameOptionsAction {
-        if self.pending.take().is_some() {
+        // The message takes only Enter (Class_006589a8_vt4c); a question
+        // takes Escape as No (Class_00658950_vt4c).
+        if self.saved_notice.is_some() || self.pending.take().is_some() {
             GameOptionsAction::None
         } else {
             GameOptionsAction::Return
@@ -249,6 +262,7 @@ impl GameOptionsState {
         self.origin = origin;
         self.pressed = None;
         self.pending = None;
+        self.saved_notice = None;
         self.suspended = false;
         self.error = None;
     }
@@ -267,6 +281,42 @@ impl GameOptionsState {
             self.high_detail_models,
             self.display_holocube,
         ]
+    }
+}
+
+/// A question's two REBDLOG strings (`FUN_00408170`): Restart 0x121a and
+/// 0x121b, Load 0x121c and 0x121d, Save 0x121e and 0x121f; Exit asks
+/// 0x1202 alone (`FUN_00401110(0x470, 0, 0x1202)`, the quit question).
+/// port: Delete has no original question.
+fn confirmation_strings(action: &GameOptionsAction) -> (Option<String>, String) {
+    let dialog = |id: u16, shipped: &str| {
+        crate::win_tooltip::module_string(crate::win_tooltip::StringModule::Dialog, id)
+            .unwrap_or_else(|| shipped.to_owned())
+    };
+    match action {
+        GameOptionsAction::Restart => (
+            Some(dialog(
+                0x121a,
+                "Returning to the shuttle cockpit will cause unsaved changes to be lost",
+            )),
+            dialog(0x121b, "Return without saving?"),
+        ),
+        GameOptionsAction::Load { .. } => (
+            Some(dialog(
+                0x121c,
+                "Loading the selected game will destroy unsaved changes",
+            )),
+            dialog(0x121d, "Load without saving?"),
+        ),
+        GameOptionsAction::Save { .. } => (
+            Some(dialog(
+                0x121e,
+                "Saving the selected game will destroy a previously saved game",
+            )),
+            dialog(0x121f, "Save anyway?"),
+        ),
+        GameOptionsAction::Exit => (None, dialog(0x1202, "Are you sure you want to quit?")),
+        _ => (None, "Delete the selected saved game?".to_owned()),
     }
 }
 
@@ -933,7 +983,7 @@ pub fn draw_game_options(
         EXIT_RECT.y,
     );
 
-    if state.pending.is_some() || state.suspended {
+    if state.modal() || state.suspended {
         state.pressed = None;
         return GameOptionsAction::None;
     }
@@ -985,7 +1035,7 @@ pub fn draw_game_options_overlay(
         Pos2::new(canvas.offset_x, canvas.offset_y),
         canvas.scale,
     );
-    if state.pending.is_none() && !state.suspended {
+    if !state.modal() && !state.suspended {
         if let Some(pointer) = ctx.input(|input| input.pointer.latest_pos()) {
             let x = (pointer.x - canvas.offset_x) / canvas.scale;
             let y = (pointer.y - canvas.offset_y) / canvas.scale;
@@ -998,84 +1048,213 @@ pub fn draw_game_options_overlay(
             }
         }
     }
-    egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
-        // The area itself must not claim the entire canvas; only actual controls do.
-        if state.origin == GameOptionsOrigin::CommandCenter {
-            for slot in 0..6 {
-                ui.add_enabled_ui(state.pending.is_none() && !state.suspended, |ui| {
-                    // The name box (FUN_00604cf0: (119, y) 160 by 20) in
-                    // the default font.
-                    ui.put(rect(119.0, 81.0 + slot as f32 * 42.0, 160.0, 20.0),
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
+            // The area itself must not claim the entire canvas; only actual controls do.
+            if state.origin == GameOptionsOrigin::CommandCenter {
+                // The name boxes (FUN_00604cf0: (119, y) 160 by 20) in the
+                // default font; under a question they stay white and take
+                // no input (A0 tooltip/211).
+                let editable = !state.modal() && !state.suspended;
+                for slot in 0..6 {
+                    ui.put(
+                        rect(119.0, 81.0 + slot as f32 * 42.0, 160.0, 20.0),
                         egui::TextEdit::singleline(&mut state.names[slot])
-                            .id_source(("options_save_name", slot)).frame(false)
+                            .id_source(("options_save_name", slot))
+                            .frame(false)
+                            .interactive(editable)
                             .margin(egui::Margin::ZERO)
                             .vertical_align(egui::Align::Center)
-                            .font(crate::theme::original_font(10, canvas.scale)).text_color(Color32::WHITE));
-                });
-            }
-        }
-        if let Some(action) = &state.pending {
-            let assets = [10623, 10624, 10625, 10626, 10627];
-            let complete = assets.iter().all(|id| cache.get(ctx, DllSource::Rebdlog, *id).is_some() && cache.original_resource_size(DllSource::Rebdlog, *id).is_some());
-            let bounds = rect(114.0, 152.0, 412.0, 176.0);
-            let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-            if complete {
-                ui.painter().image(cache.get(ctx, DllSource::Rebdlog, 10623).unwrap().id(), bounds, uv, Color32::WHITE);
-            } else {
-                ui.painter().rect_filled(bounds, 4.0, Color32::from_rgb(30, 30, 35));
-            }
-            let message = match action {
-                GameOptionsAction::Save { .. } => "Saving the selected game will destroy a previously saved game. Save anyway?",
-                GameOptionsAction::Load { .. } => "Loading the selected game will destroy unsaved changes. Load without saving?",
-                GameOptionsAction::Delete { .. } => "Delete the selected saved game?",
-                GameOptionsAction::Restart => "Returning to the shuttle cockpit will cause unsaved changes to be lost. Return without saving?",
-                GameOptionsAction::Exit => "Unsaved changes will be lost. Exit the game?",
-                _ => "Return?",
-            };
-            let text = ui.painter().layout(message.into(), FontId::monospace(12.0 * canvas.scale), Color32::GREEN, 310.0 * canvas.scale);
-            ui.painter().galley(rect(160.0, 177.0, 320.0, 75.0).center() - text.size() / 2.0, text, Color32::GREEN);
-            for (x, normal, pressed, value, label) in [(252.0,10624,10625,true,"Yes"),(343.0,10626,10627,false,"No")] {
-                let bounds = rect(x, 287.0, 57.0, 28.0);
-                if complete {
-                    let response = ui.interact(bounds, ui.id().with(normal), egui::Sense::click());
-                    // FUN_00416e90: REBDLOG 0x1300 "Yes", 0x1301 "No" (A0
-                    // tooltip/211, 212).
-                    if let Some(text) = crate::win_tooltip::module_string(
-                        crate::win_tooltip::StringModule::Dialog,
-                        if value { 0x1300 } else { 0x1301 },
-                    ) {
-                        if response.hovered() {
-                            crate::win_tooltip::tool(ctx, response.id, &text);
-                        }
-                    }
-                    let id = if response.is_pointer_button_down_on() { pressed } else { normal };
-                    ui.painter().image(cache.get(ctx, DllSource::Rebdlog, id).unwrap().id(), bounds, uv, Color32::WHITE);
-                    let capture_id = ui.id().with((normal, "source_capture"));
-                    if ctx.input(|i| i.pointer.primary_pressed()) {
-                        let hit = ctx.pointer_latest_pos().is_some_and(|pos| bounds.contains(pos)
-                            && cache.is_resource_hit(DllSource::Rebdlog, normal,
-                                ((pos.x - bounds.left()) / canvas.scale) as usize,
-                                ((pos.y - bounds.top()) / canvas.scale) as usize));
-                        ui.data_mut(|data| data.insert_temp(capture_id, hit));
-                    }
-                    let captured = ui.data(|data| data.get_temp::<bool>(capture_id).unwrap_or(false));
-                    if captured && response.clicked() && response.interact_pointer_pos().is_some_and(|pos| {
-                        cache.is_resource_hit(DllSource::Rebdlog, normal,
-                            ((pos.x - bounds.left()) / canvas.scale) as usize,
-                            ((pos.y - bounds.top()) / canvas.scale) as usize)
-                    }) { answer = Some(value); }
-                } else {
-                    let response = ui.put(bounds, egui::Button::new(label).min_size(bounds.size()));
-                    if response.clicked() { answer = Some(value); }
+                            .font(crate::theme::original_font(10, canvas.scale))
+                            .text_color(Color32::WHITE),
+                    );
                 }
             }
+            // A question (FUN_00416c50: REBDLOG 10623, Yes and No) or the
+            // message after a save (FUN_00417020: 10622, one button at
+            // (176, 134) in the dialog).
+            let dialog = match (&state.pending, state.saved_notice) {
+                (Some(action), _) => Some((10623, confirmation_strings(action), false)),
+                (None, Some(saved)) => Some((10622, (None, saved_notice_string(saved)), true)),
+                (None, None) => None,
+            };
+            if let Some((background, (first, second), notice)) = dialog {
+                let assets = [background, 10624, 10625, 10626, 10627];
+                let complete = assets.iter().all(|id| {
+                    cache.get(ctx, DllSource::Rebdlog, *id).is_some()
+                        && cache
+                            .original_resource_size(DllSource::Rebdlog, *id)
+                            .is_some()
+                });
+                let bounds = rect(114.0, 152.0, 412.0, 176.0);
+                let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+                // The screen is 8-bit: GDI shows the dialog's DIBs in the
+                // window's realized palette, COMMON 20002's with entry 254 white
+                // (A0 tooltip/211, 212: every pixel of 10623, 10625 and 10627
+                // is its nearest entry).
+                let palette: Vec<[u8; 3]> = cache
+                    .original_palette_rgba(DllSource::Common, resources::common::GAME_OPTIONS_BG)
+                    .map(|entries| {
+                        let mut palette: Vec<[u8; 3]> =
+                            entries.iter().map(|[r, g, b, _]| [*r, *g, *b]).collect();
+                        palette[254] = [255, 255, 255];
+                        palette
+                    })
+                    .unwrap_or_default();
+                let dialog_texture = |cache: &mut BmpCache, id: u32| {
+                    if palette.is_empty() {
+                        cache
+                            .get(ctx, DllSource::Rebdlog, id)
+                            .map(|texture| texture.id())
+                    } else {
+                        cache
+                            .get_in_screen_palette(ctx, DllSource::Rebdlog, id, "options", &palette)
+                            .map(|texture| texture.id())
+                    }
+                };
+                if complete {
+                    if let Some(texture) = dialog_texture(cache, background) {
+                        ui.painter().image(texture, bounds, uv, Color32::WHITE);
+                    }
+                } else {
+                    ui.painter()
+                        .rect_filled(bounds, 4.0, Color32::from_rgb(30, 30, 35));
+                }
+                // Class_00658950_vt3c: the question's first string in font 5,
+                // 0x2f0fbff, centred and word-wrapped from the top of (43, 25)
+                // to (368, 86); the second centred on one line in (43, 87) to
+                // (368, 112), or in (43, 25) to (368, 112) alone.
+                let font = crate::theme::original_font(5, canvas.scale);
+                let cream = Color32::from_rgb(255, 251, 240);
+                let (left, top) = (114.0 + 43.0, 152.0);
+                if let Some(first) = &first {
+                    let mut job = egui::text::LayoutJob::simple(
+                        first.clone(),
+                        font.clone(),
+                        cream,
+                        325.0 * canvas.scale,
+                    );
+                    job.halign = egui::Align::Center;
+                    let galley = ui.painter().layout_job(job);
+                    let anchor = rect(left + 162.5, top + 25.0, 0.0, 0.0).min;
+                    ui.painter().galley(anchor, galley, cream);
+                }
+                let (band_top, band_height) = if first.is_some() {
+                    (87.0, 25.0)
+                } else {
+                    (25.0, 87.0)
+                };
+                let galley = ui.painter().layout_no_wrap(second, font, cream);
+                // DT_VCENTER: (height - 16) / 2 whole pixels.
+                let line_top = top + band_top + ((band_height - 16.0) / 2.0_f32).floor();
+                let anchor = rect(left + 162.5, line_top, 0.0, 0.0).min
+                    - Vec2::new(galley.size().x / 2.0, 0.0);
+                ui.painter().galley(anchor, galley, cream);
+                // FUN_00416e90: Yes shows 0x2981 and 0x2980 when held, No 0x2983
+                // and 0x2982 (A0 tooltip/211, 212 show 10625 and 10627). The
+                // message's one button (Class_006589a8_vt40) has Yes's art at
+                // (290, 286).
+                let buttons: &[(f32, f32, u32, u32, bool, &str)] = if notice {
+                    &[(290.0, 286.0, 10625, 10624, true, "Yes")]
+                } else {
+                    &[
+                        (252.0, 287.0, 10625, 10624, true, "Yes"),
+                        (343.0, 287.0, 10627, 10626, false, "No"),
+                    ]
+                };
+                // Class_00658950_vt4c / Class_006589a8_vt4c: Enter answers Yes.
+                if ctx.input(|input| input.key_pressed(egui::Key::Enter)) {
+                    answer = Some(true);
+                }
+                for &(x, y, normal, pressed, value, label) in buttons {
+                    let bounds = rect(x, y, 57.0, 28.0);
+                    if complete {
+                        let response =
+                            ui.interact(bounds, ui.id().with(normal), egui::Sense::click());
+                        // FUN_00416e90: REBDLOG 0x1300 "Yes", 0x1301 "No" (A0
+                        // tooltip/211, 212).
+                        if let Some(text) = crate::win_tooltip::module_string(
+                            crate::win_tooltip::StringModule::Dialog,
+                            if value { 0x1300 } else { 0x1301 },
+                        ) {
+                            if response.hovered() {
+                                crate::win_tooltip::tool(ctx, response.id, &text);
+                            }
+                        }
+                        let id = if response.is_pointer_button_down_on() {
+                            pressed
+                        } else {
+                            normal
+                        };
+                        if let Some(texture) = dialog_texture(cache, id) {
+                            ui.painter().image(texture, bounds, uv, Color32::WHITE);
+                        }
+                        let capture_id = ui.id().with((normal, "source_capture"));
+                        if ctx.input(|i| i.pointer.primary_pressed()) {
+                            let hit = ctx.pointer_latest_pos().is_some_and(|pos| {
+                                bounds.contains(pos)
+                                    && cache.is_resource_hit(
+                                        DllSource::Rebdlog,
+                                        normal,
+                                        ((pos.x - bounds.left()) / canvas.scale) as usize,
+                                        ((pos.y - bounds.top()) / canvas.scale) as usize,
+                                    )
+                            });
+                            ui.data_mut(|data| data.insert_temp(capture_id, hit));
+                        }
+                        let captured =
+                            ui.data(|data| data.get_temp::<bool>(capture_id).unwrap_or(false));
+                        if captured
+                            && response.clicked()
+                            && response.interact_pointer_pos().is_some_and(|pos| {
+                                cache.is_resource_hit(
+                                    DllSource::Rebdlog,
+                                    normal,
+                                    ((pos.x - bounds.left()) / canvas.scale) as usize,
+                                    ((pos.y - bounds.top()) / canvas.scale) as usize,
+                                )
+                            })
+                        {
+                            answer = Some(value);
+                        }
+                    } else {
+                        let response =
+                            ui.put(bounds, egui::Button::new(label).min_size(bounds.size()));
+                        if response.clicked() {
+                            answer = Some(value);
+                        }
+                    }
+                }
+            }
+            if let Some(error) = &state.error {
+                ui.painter().text(
+                    rect(25.0, 440.0, 590.0, 20.0).left_center(),
+                    Align2::LEFT_CENTER,
+                    error,
+                    FontId::monospace(11.0 * canvas.scale),
+                    Color32::LIGHT_RED,
+                );
+            }
+        });
+    if state.saved_notice.is_some() {
+        if answer.is_some() {
+            state.saved_notice = None;
         }
-        if let Some(error) = &state.error {
-            ui.painter().text(rect(25.0, 440.0, 590.0, 20.0).left_center(), Align2::LEFT_CENTER,
-                error, FontId::monospace(11.0 * canvas.scale), Color32::LIGHT_RED);
-        }
-    });
+        return GameOptionsAction::None;
+    }
     answer.map_or(GameOptionsAction::None, |accepted| state.confirm(accepted))
+}
+
+/// The message after a save (`FUN_00408240`): REBDLOG 0x1217 or 0x1219.
+fn saved_notice_string(saved: bool) -> String {
+    let (id, shipped) = if saved {
+        (0x1217, "Selected Game Saved Successfully")
+    } else {
+        (0x1219, "Selected Game Failed To Save")
+    };
+    crate::win_tooltip::module_string(crate::win_tooltip::StringModule::Dialog, id)
+        .unwrap_or_else(|| shipped.to_owned())
 }
 
 #[cfg(test)]
@@ -1211,6 +1390,7 @@ mod tests {
         use egui_macroquad::egui::{self, Pos2, Rect, Vec2};
         for accepted in [false, true] {
             let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
             let mut cache = BmpCache::new();
             let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
             state.request(GameOptionsAction::Exit);
@@ -1415,5 +1595,67 @@ mod tests {
         }]);
         assert_eq!(state.names[2], "Campaign");
         assert!(state.names[1].is_empty() && state.names[3].is_empty());
+    }
+
+    #[test]
+    fn the_saved_message_holds_the_window_until_it_is_answered() {
+        // FUN_00408240 -> FUN_00417020; Class_006589a8_vt4c closes it on
+        // Enter only.
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        state.saved_notice = Some(true);
+        assert!(state.modal());
+        assert_eq!(state.escape(), GameOptionsAction::None);
+        assert_eq!(state.saved_notice, Some(true));
+        assert_eq!(
+            state.request(GameOptionsAction::Exit),
+            GameOptionsAction::None
+        );
+        assert!(state.pending.is_none());
+        state.set_origin(GameOptionsOrigin::CommandCenter);
+        assert!(!state.modal());
+        assert_eq!(
+            saved_notice_string(true),
+            "Selected Game Saved Successfully"
+        );
+        assert_eq!(saved_notice_string(false), "Selected Game Failed To Save");
+    }
+
+    #[test]
+    fn each_question_asks_the_originals_strings() {
+        // FUN_00408170 (0x476..0x478) and the quit question 0x1202.
+        let line =
+            |first: Option<&str>, second: &str| (first.map(str::to_owned), second.to_owned());
+        assert_eq!(
+            confirmation_strings(&GameOptionsAction::Restart),
+            line(
+                Some("Returning to the shuttle cockpit will cause unsaved changes to be lost"),
+                "Return without saving?"
+            )
+        );
+        assert_eq!(
+            confirmation_strings(&GameOptionsAction::Load { slot: 0 }),
+            line(
+                Some("Loading the selected game will destroy unsaved changes"),
+                "Load without saving?"
+            )
+        );
+        assert_eq!(
+            confirmation_strings(&GameOptionsAction::Save {
+                slot: 0,
+                name: String::new()
+            }),
+            line(
+                Some("Saving the selected game will destroy a previously saved game"),
+                "Save anyway?"
+            )
+        );
+        assert_eq!(
+            confirmation_strings(&GameOptionsAction::Exit),
+            line(None, "Are you sure you want to quit?")
+        );
+        assert_eq!(
+            confirmation_strings(&GameOptionsAction::Delete { slot: 0 }),
+            line(None, "Delete the selected saved game?")
+        );
     }
 }

@@ -109,3 +109,41 @@ The slider's transfer to DirectSound (`floor(2000 * log10(v / 100))`
 hundredths of a dB) gives an amplitude within 0.12 per cent of v / 100,
 which is the port's linear gain. The audible level was not measured against
 A0.
+
+## Questions and the saved message (third stage, same day)
+
+A0 `tooltip/211-dlg-yes-base.png` and `212-dlg-no-base.png` show the
+Restart question. Against them, the port's questions had three faults:
+- green monospace text in the wrong place;
+- Yes and No with their held art (10624, 10626) where the original shows
+  10625 and 10627 (`FUN_00416e90`);
+- the dialog's own DIB colours, where the 8-bit screen shows each pixel as
+  its nearest entry of the window's palette.
+
+The original also stays in the window after a save and says "Selected Game
+Saved Successfully" (`FUN_00408240`). The port showed nothing. The port now:
+- draws the two REBDLOG strings of each question as `Class_00658950_vt3c`
+  does;
+- uses the right art;
+- maps the dialog through COMMON 20002's palette
+  (`BmpCache::get_in_screen_palette`);
+- answers Enter with Yes;
+- shows the one-button saved or failed message, which only Enter or its
+  button closes.
+
+`game-options.mjs` now also checks:
+- **Saved message.** Shown after the first save and closed with its button.
+- **Overwrite.** No keeps the stored save and Yes saves again. Its message
+  survives Escape and closes on Enter.
+- **Exit and Restart.** No closes the question.
+- **Load.** Yes reads the saved fingerprint and restores the Empire
+  campaign.
+- **Restart question against A0.** The dialog's pixels outside its two
+  texts and A0's pointer all match (0 differing). The text lines are within
+  1 pixel at their centres, tops and bottoms.
+
+The port's wider text (the accepted deviation) breaks the first line one
+word earlier: "unsaved" starts the second line, where A0 fits it on the
+first.
+
+`tooltip.mjs` still passes.

@@ -4,6 +4,7 @@
 // Opens Game Options (F1) from the Empire Fleet Finder fixture, checks the
 // empty list (no names, no crests), types "test" into the first row's name
 // box and presses its Save button (the original row, FUN_00406b80 0x6f),
+// checks the saved message (FUN_00408240) and closes it,
 // reopens the window and compares it with A0 tooltip/200-options.png (an
 // Empire game from the galaxy, six saves, the first named "test"):
 // - every pixel outside the texts, the five rows A0 has filled and the port
@@ -19,7 +20,8 @@
 // It then drags the music slider to slider x 100 and checks the thumb
 // centre at floor(201 * 49 / 100) = 98 (FUN_00604950, FUN_00604a50),
 // reloads the page and checks the slider kept its place (the stored
-// settings).
+// settings). Last it answers the confirmations: overwrite No and Yes, Exit
+// and Restart No, and Load Yes, which restores the saved campaign.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node game-options.mjs --a0=.artifacts/a0-vm/tooltip [--out=DIR]
@@ -160,6 +162,16 @@ try {
   await page.mouse.click(55, 91);
   await page.waitForTimeout(1500);
   assert.ok(consoleLog.some((line) => line.includes("save_state_fingerprint slot=0")), "the first row's Save saves slot 0");
+  // FUN_00408240: the window stays and says "Selected Game Saved
+  // Successfully" (REBDLOG 10622, one button at (290, 286)).
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(300);
+  const notice = await shot("saved-notice");
+  let noticeChanged = 0;
+  for (let y = 152; y < 328; y += 4) for (let x = 114; x < 526; x += 4) if (!same(notice, x, y, empty, x, y)) noticeChanged += 1;
+  assert.ok(noticeChanged > 2000, "a save shows its message");
+  await page.mouse.click(318, 300);
+  await page.waitForTimeout(500);
   await page.keyboard.press("F1");
   await page.waitForTimeout(1000);
   await page.mouse.move(330, 250);
@@ -270,6 +282,96 @@ try {
   }
   result.reloaded_slider_differing = reloadedDiffering;
   assert.equal(reloadedDiffering, 0, "the music slider did not keep its position across a reload");
+
+  // The confirmations (FUN_00416c50: REBDLOG 10623 with Yes 10624 at
+  // (252, 287) and No 10626 at (343, 287), FUN_00416e90).
+  const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
+  const DIALOG = [114, 152, 412, 176];
+  const dialogShown = (png) => {
+    let changed = 0;
+    for (let y = DIALOG[1]; y < DIALOG[1] + DIALOG[3]; y += 4) {
+      for (let x = DIALOG[0]; x < DIALOG[0] + DIALOG[2]; x += 4) if (!same(png, x, y, reloaded, x, y)) changed += 1;
+    }
+    return changed > 2000;
+  };
+  const YES = [280, 301];
+  const NO = [371, 301];
+  const confirm = async (label, point, answer, check = null) => {
+    await page.mouse.click(...point);
+    await page.waitForTimeout(500);
+    await page.mouse.move(2, 470);
+    await page.waitForTimeout(200);
+    const asked = await shot(`${label}-confirmation`);
+    assert.ok(dialogShown(asked), `${label} asks for confirmation`);
+    if (check) check(asked);
+    await page.mouse.click(...(answer ? YES : NO));
+    await page.waitForTimeout(1000);
+  };
+  // The Restart question against A0 tooltip/211-dlg-yes-base (REBDLOG
+  // 0x121a / 0x121b, Class_00658950_vt3c): the dialog's pixels outside its
+  // two texts and A0's pointer must match; each text's ink box within the
+  // accepted text deviation.
+  const a0Dialog = PNG.sync.read(await fs.readFile(path.join(args.a0, "211-dlg-yes-base.png")));
+  const cream = ([r, g, b]) => r > 200 && g > 200 && b > 180;
+  const QUESTION = [[157, 177, 325, 61], [157, 239, 325, 25]];
+  const A0_POINTER = [280, 296, 24, 30];
+  const compareRestart = (png) => {
+    const differing = [];
+    for (let y = DIALOG[1]; y < DIALOG[1] + DIALOG[3]; y += 1) {
+      for (let x = DIALOG[0]; x < DIALOG[0] + DIALOG[2]; x += 1) {
+        if (QUESTION.some((rect) => inside(x, y, rect)) || inside(x, y, A0_POINTER)) continue;
+        if (!same(png, x, y, a0Dialog, x, y)) differing.push([x, y]);
+      }
+    }
+    result.restart_dialog = { differing: differing.length, first: differing.slice(0, 10),
+      texts: QUESTION.map((rect) => ({ a0: inkBox(a0Dialog, rect, cream), port: inkBox(png, rect, cream) })) };
+    assert.equal(differing.length, 0, `${differing.length} dialog pixels differ from A0`);
+    for (const { a0: a, port: p } of result.restart_dialog.texts) {
+      assert.ok(a && p, "a question line has no ink");
+      const near = (u, v) => Math.abs(u - v) <= 1;
+      assert.ok(near((a[0] + a[2]) / 2, (p[0] + p[2]) / 2) && near(a[1], p[1]) && near(a[3], p[3]),
+        `question ink ${p} vs A0 ${a}`);
+      const ratio = (p[2] - p[0] + 1) / (a[2] - a[0] + 1);
+      assert.ok(ratio > 0.85 && ratio < 1.15, `question width ratio ${ratio.toFixed(3)}`);
+    }
+  };
+  const before = await storage();
+  const saves = () => consoleLog.filter((line) => line.includes("save_state_fingerprint slot=0")).length;
+  const savedOnce = saves();
+  // Overwrite: No keeps the save, Yes writes it again.
+  await confirm("overwrite", [55, 91], false);
+  assert.equal(saves(), savedOnce, "a refused overwrite does not save");
+  assert.deepEqual(await storage(), before, "a refused overwrite keeps the stored save");
+  const afterNo = await shot("overwrite-refused");
+  assert.ok(!dialogShown(afterNo), "No closes the confirmation");
+  await confirm("overwrite-accept", [55, 91], true);
+  assert.equal(saves(), savedOnce + 1, "an accepted overwrite saves");
+  const overwritten = await shot("overwrite-notice");
+  assert.ok(dialogShown(overwritten), "the overwrite shows the saved message");
+  // Escape leaves it (Class_006589a8_vt4c), Enter closes it.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  assert.ok(dialogShown(await shot("overwrite-notice-escape")), "Escape leaves the saved message");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+  assert.ok(!dialogShown(await shot("overwrite-notice-closed")), "Enter closes the saved message");
+  // Exit and Restart: No leaves the window as it was.
+  await page.keyboard.press("F1");
+  await page.waitForTimeout(1000);
+  for (const [label, point] of [["exit", [269, 402]], ["restart", [97, 402]]]) {
+    await confirm(label, point, false, label === "restart" ? compareRestart : null);
+    const after = await shot(`${label}-refused`);
+    assert.ok(!dialogShown(after), `No closes the ${label} confirmation`);
+  }
+  // Load: Yes restores the saved campaign and checks its fingerprint.
+  await confirm("load", [305, 91], true);
+  const fingerprint = consoleLog.filter((line) => line.includes("save_state_fingerprint slot=0")).at(-1)
+    ?.match(/fingerprint=(\S+)/)?.[1];
+  assert.ok(consoleLog.some((line) => line.includes("load_state_fingerprint slot=0")
+    && line.includes(`fingerprint=${fingerprint}`)), "the accepted load reads the saved fingerprint");
+  assert.ok(consoleLog.some((line) => line.includes("[campaign] restored slot=0")
+    && line.includes(`fingerprint=${fingerprint}`) && line.includes("faction=Empire")), "the load restores the campaign");
+  result.confirmations = ["overwrite No", "overwrite Yes", "exit No", "restart No", "load Yes"];
   assert.deepEqual(errors, []);
   result.status = "pass";
 } catch (error) {
@@ -282,5 +384,6 @@ await fs.writeFile(path.join(OUT, "result.json"), `${JSON.stringify(result, null
 console.log(JSON.stringify({ out: OUT, status: result.status, compared: result.compared,
   differing: result.differing, crest_differing: result.crest_differing, sliders: result.sliders,
   dragged_columns: result.dragged_columns, reloaded_slider_differing: result.reloaded_slider_differing,
+  confirmations: result.confirmations, restart_dialog: result.restart_dialog,
   error: result.error }, null, 2));
 if (result.status !== "pass") process.exitCode = 1;

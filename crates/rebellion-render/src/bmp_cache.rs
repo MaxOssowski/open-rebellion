@@ -1364,6 +1364,9 @@ pub struct BmpCache {
     /// Original bitmaps through the sector window's shading table
     /// ([`shade_bitmap`]).
     shaded_textures: HashMap<(DllSource, u32), Option<TextureHandle>>,
+    /// Original bitmaps in a screen's palette
+    /// ([`BmpCache::get_in_screen_palette`]), by the palette's name.
+    screen_palette_textures: HashMap<(DllSource, u32, &'static str), Option<TextureHandle>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1458,6 +1461,7 @@ impl BmpCache {
             repaletted_textures: HashMap::new(),
             hit_masks: HashMap::new(),
             shaded_textures: HashMap::new(),
+            screen_palette_textures: HashMap::new(),
         }
     }
 
@@ -1471,6 +1475,7 @@ impl BmpCache {
         self.repaletted_textures.clear();
         self.hit_masks.clear();
         self.shaded_textures.clear();
+        self.screen_palette_textures.clear();
     }
 
     /// Set an optional HD PNG directory.
@@ -1639,6 +1644,41 @@ impl BmpCache {
             self.repaletted_textures.insert(key, texture);
         }
         self.repaletted_textures.get(&key)?.as_ref()
+    }
+
+    /// The original bitmap as an 8-bit screen shows it: each colour becomes
+    /// the nearest entry of the realized palette `palette` (GDI's
+    /// `GetNearestPaletteIndex`, the lowest index on a tie). `name` names
+    /// the palette for the cache.
+    pub fn get_in_screen_palette(
+        &mut self,
+        ctx: &egui::Context,
+        source: DllSource,
+        resource_id: u32,
+        name: &'static str,
+        palette: &[[u8; 3]],
+    ) -> Option<&TextureHandle> {
+        let key = (source, resource_id, name);
+        if !self.screen_palette_textures.contains_key(&key) {
+            let handle = self
+                .load_original_bytes(source, resource_id)
+                .and_then(|bytes| decode_rgba_image(&bytes, source, resource_id).ok())
+                .map(|rgba| {
+                    let (width, height) = rgba.dimensions();
+                    let mut pixels = rgba.into_raw();
+                    map_to_palette(&mut pixels, palette);
+                    ctx.load_texture(
+                        format!("{}_{}_{}", source.texture_prefix(), resource_id, name),
+                        egui::ColorImage::from_rgba_unmultiplied(
+                            [width as usize, height as usize],
+                            &pixels,
+                        ),
+                        AssetVariant::Original.texture_options(),
+                    )
+                });
+            self.screen_palette_textures.insert(key, handle);
+        }
+        self.screen_palette_textures.get(&key)?.as_ref()
     }
 
     /// The original bitmap through the sector window's shading table
@@ -2199,6 +2239,29 @@ fn bmp_palette(bytes: &[u8]) -> Option<Vec<[u8; 3]>> {
 /// own palette, as `FUN_005fe050` maps the sector window's copy of the
 /// galaxy view. A keyed bitmap keeps its matte transparent: the copy holds
 /// only what the view drew.
+/// Replace each RGBA pixel's colour with its nearest `palette` entry
+/// (squared distance, the lowest index on a tie).
+fn map_to_palette(pixels: &mut [u8], palette: &[[u8; 3]]) {
+    let mut nearest: HashMap<[u8; 3], [u8; 3]> = HashMap::new();
+    for pixel in pixels.chunks_exact_mut(4) {
+        let color = [pixel[0], pixel[1], pixel[2]];
+        let mapped = *nearest.entry(color).or_insert_with(|| {
+            palette
+                .iter()
+                .copied()
+                .min_by_key(|entry| {
+                    entry
+                        .iter()
+                        .zip(color)
+                        .map(|(&a, b)| (i32::from(a) - i32::from(b)).pow(2))
+                        .sum::<i32>()
+                })
+                .unwrap_or(color)
+        });
+        pixel[..3].copy_from_slice(&mapped);
+    }
+}
+
 fn shade_bitmap(bytes: &[u8], source: DllSource, resource_id: u32) -> Option<egui::ColorImage> {
     let palette = bmp_palette(bytes)?;
     let table = sector_shade_table(&palette);
@@ -2360,6 +2423,21 @@ pub(crate) mod tests {
         bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
         bmp[14..18].copy_from_slice(&12u32.to_le_bytes());
         assert!(set_bmp_palette_entry(&mut bmp, 254, [1, 2, 3]).is_none());
+    }
+
+    #[test]
+    fn a_bitmap_takes_the_nearest_entry_of_the_screens_palette() {
+        let palette = [[0, 0, 0], [100, 100, 100], [100, 100, 100], [255, 255, 255]];
+        let mut pixels = vec![
+            98, 103, 99, 255, //
+            240, 250, 255, 0, //
+            10, 0, 0, 255,
+        ];
+        map_to_palette(&mut pixels, &palette);
+        assert_eq!(pixels, [100, 100, 100, 255, 255, 255, 255, 0, 0, 0, 0, 255]);
+        let mut empty = vec![7, 8, 9, 255];
+        map_to_palette(&mut empty, &[]);
+        assert_eq!(empty, [7, 8, 9, 255]);
     }
 
     #[test]
