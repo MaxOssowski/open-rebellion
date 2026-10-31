@@ -18,6 +18,9 @@ const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json
 const noBuild = process.argv.includes("--no-build");
 // `--only=alliance/load` runs the named cases alone.
 const only = process.argv.filter((arg) => arg.startsWith("--only=")).map((arg) => arg.slice(7));
+// `--a0=DIR` (.artifacts/a0-vm/system-windows) compares the left list's
+// fleet name with A0 09-fleet (the Alliance's Fleet window over Yavin).
+const a0Dir = process.argv.find((arg) => arg.startsWith("--a0="))?.slice(5);
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const FLEET_LOAD = 48;
@@ -320,6 +323,46 @@ async function doubleClick(page, point) {
   await frames(page, 2);
 }
 
+// The left list's first fleet name against A0 09-fleet ("Fleet 4"; the
+// port's fixture shows "Fleet 1"): the ink of "Fleet", relative to each
+// window's red title strip, within a pixel on every side. DrawTextA sets
+// it (theme::paint_gdi_text); the glyphs are Liberation's.
+async function fleetNameAgainstA0(page) {
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(800);
+  const port = PNG.sync.read(await page.screenshot());
+  const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Dir, "09-fleet.png")));
+  const rgb = (png, x, y) => {
+    const i = (y * png.width + x) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]];
+  };
+  const strip = (png) => {
+    for (let y = 60; y < 120; y += 1) {
+      const xs = [];
+      for (let x = 290; x < 560; x += 1) {
+        const [r, g, b] = rgb(png, x, y);
+        if (r === 255 && g === 0 && b === 0) xs.push(x);
+      }
+      if (xs.length > 100) return [Math.min(...xs), y];
+    }
+    throw new Error("no title strip");
+  };
+  const ink = (png, [ox, oy]) => {
+    let box = null;
+    for (let y = 28; y < 46; y += 1) {
+      for (let x = 8; x < 33; x += 1) {
+        if (Math.min(...rgb(png, ox + x, oy + y)) <= 235) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const check = { a0: ink(a0, strip(a0)), port: ink(port, strip(port)) };
+  assert.ok(check.a0 && check.port && check.a0.every((value, k) => Math.abs(value - check.port[k]) <= 1),
+    `the fleet name: ${JSON.stringify(check)}`);
+  return check;
+}
+
 function observations(page) {
   return page.evaluate(() => window.__openRebellionInterfaceFleetLoads || []);
 }
@@ -527,6 +570,7 @@ const cases = [
       // fleet is damaged (FUN_004feab0).
       const openCheck = compare(await stableWindow(page, origin, directory, "open"),
         composeExpected(source, faction, { selected: false, damaged: true }), masks.open, "open", directory);
+      const nameCheck = faction.name === "alliance" && a0Dir ? await fleetNameAgainstA0(page) : null;
       const selected = await selectFleet(page, opened);
       assert.equal(selected.tab, "CapitalShips");
       assert.deepEqual(selected.enabled, [true, false, false, false]);
@@ -546,7 +590,7 @@ const cases = [
       for (const check of [openCheck, selectedCheck]) {
         assert.equal(check.different_pixels, 0, `${check.label}: ${check.different_pixels} of ${check.pixels_checked} pixels differ`);
       }
-      return { opened, selected, compares: [openCheck, selectedCheck], minimized, restored };
+      return { opened, selected, compares: [openCheck, selectedCheck], minimized, restored, nameCheck };
     },
   },
   {

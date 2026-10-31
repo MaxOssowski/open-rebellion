@@ -243,6 +243,8 @@ pub enum GdiAlign {
     Left,
     /// `DT_CENTER`: the rectangle's spare width halved, in whole pixels.
     Center,
+    /// `DT_RIGHT`: the line ends at the rectangle's right edge.
+    Right,
 }
 
 /// `DrawTextA`'s vertical format for one line.
@@ -269,6 +271,7 @@ pub fn gdi_text_origin(
     let left = match align {
         GdiAlign::Left => x,
         GdiAlign::Center => x + ((w - width.round()) / 2.0).floor(),
+        GdiAlign::Right => x + w - width.round(),
     };
     let top = match valign {
         GdiVAlign::Top => y,
@@ -555,6 +558,15 @@ mod tests {
                 (GdiAlign::Center, GdiVAlign::Top)
             ),
             (44.0, 59.0)
+        );
+        assert_eq!(
+            gdi_text_origin(
+                (10.0, 5.0, 100.0, 21.0),
+                10,
+                31.4,
+                (GdiAlign::Right, GdiVAlign::Top)
+            ),
+            (79.0, 16.0)
         );
         assert_eq!(
             gdi_text_origin(

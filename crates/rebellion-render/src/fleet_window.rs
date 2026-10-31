@@ -1730,12 +1730,17 @@ fn draw_fleet_window(
             // The title label starts after the restore-sector button: its
             // width plus 5, at y 2, 16 high, in font 5, black, format 0x24
             // (one line, left-aligned, vertically centred; FUN_004a4b10).
-            painter.text(
-                logical_rect(local, scale, 19.0, 2.0 + 8.0, 0.0, 0.0).min,
-                egui::Align2::LEFT_CENTER,
+            crate::theme::paint_gdi_text(
+                &painter,
+                logical_rect(local, scale, 19.0, 2.0, 180.0, 16.0),
+                scale,
+                5,
                 &system.name,
-                crate::theme::original_font(5, scale),
                 egui::Color32::BLACK,
+                (
+                    crate::theme::GdiAlign::Left,
+                    crate::theme::GdiVAlign::VCenter,
+                ),
             );
 
             let buttons = [
@@ -1778,7 +1783,7 @@ fn draw_fleet_window(
             let list_painter = painter.with_clip_rect(list);
             // Both lists write in font 10, white (FUN_004a4b10: the list's
             // slot +0x18 with 10, FUN_00609940/FUN_00609950 with 0xffffff).
-            let font = crate::theme::original_font(10, scale);
+            let font = crate::theme::gdi_font(10, scale);
             let click = ctx.input(|input| {
                 input
                     .pointer
@@ -1851,12 +1856,20 @@ fn draw_fleet_window(
                             paint_dotted(&list_painter, item, scale, (2.0, 6.0), (2.0, 50.0));
                         }
                         if let Some(label) = fleet_label(world, fleet) {
-                            list_painter.text(
-                                logical_rect(item, scale, 4.0, 5.0, 0.0, 0.0).min,
-                                egui::Align2::LEFT_TOP,
-                                label,
-                                font.clone(),
+                            // port: FUN_004c7e10's item draws the name;
+                            // its rectangle is untraced. A0
+                            // system-windows/09-fleet sets "Fleet 4" with its
+                            // pen 7 into the row and its line's top 3 down
+                            // (the window's x 11 and baseline 43, tmAscent
+                            // 11, from the list at (4, 29)).
+                            crate::theme::paint_gdi_text(
+                                &list_painter,
+                                logical_rect(item, scale, 7.0, 3.0, 84.0, 14.0),
+                                scale,
+                                10,
+                                &label,
                                 egui::Color32::WHITE,
+                                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                             );
                         }
                     }
@@ -1993,12 +2006,14 @@ fn draw_fleet_window(
                     // format 0 (left, top), font 5. The A0 capture shows
                     // "Fleet 2" red, bold, from x 101.
                     if let Some(label) = fleet_label(world, fleet) {
-                        painter.text(
-                            logical_rect(local, scale, 100.0, 29.0, 0.0, 0.0).min,
-                            egui::Align2::LEFT_TOP,
-                            label,
-                            crate::theme::original_font(5, scale),
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            logical_rect(local, scale, 100.0, 29.0, 128.0, 25.0),
+                            scale,
+                            5,
+                            &label,
                             label_color(viewer),
+                            (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                         );
                     }
                 }
@@ -2050,36 +2065,39 @@ fn draw_fleet_window(
                 {
                     // The count fonts +0x1a4 and +0x1a8 are font 10
                     // (FUN_006002b0(10), FUN_004a4b10).
-                    let count_font = crate::theme::original_font(10, scale);
-                    painter.text(
+                    // The aboard count from the panel's left, the capacity
+                    // ending 2 short of its right (DT_RIGHT).
+                    crate::theme::paint_gdi_text(
+                        &painter,
                         logical_rect(
                             local,
                             scale,
                             PICTURE_PANEL.0 + 1.0,
                             PICTURE_PANEL.1 + 2.0,
-                            0.0,
-                            0.0,
-                        )
-                        .min,
-                        egui::Align2::LEFT_TOP,
-                        aboard.to_string(),
-                        count_font.clone(),
+                            61.0,
+                            14.0,
+                        ),
+                        scale,
+                        10,
+                        &aboard.to_string(),
                         egui::Color32::WHITE,
+                        (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                     );
-                    painter.text(
+                    crate::theme::paint_gdi_text(
+                        &painter,
                         logical_rect(
                             local,
                             scale,
-                            PICTURE_PANEL.0 + 123.0,
+                            PICTURE_PANEL.0 + 62.0,
                             PICTURE_PANEL.1 + 2.0,
-                            0.0,
-                            0.0,
-                        )
-                        .min,
-                        egui::Align2::RIGHT_TOP,
-                        capacity.to_string(),
-                        count_font,
+                            61.0,
+                            14.0,
+                        ),
+                        scale,
+                        10,
+                        &capacity.to_string(),
                         egui::Color32::WHITE,
+                        (crate::theme::GdiAlign::Right, crate::theme::GdiVAlign::Top),
                     );
                 }
 
@@ -2194,12 +2212,14 @@ fn draw_fleet_window(
                             23.0,
                         );
                     }
-                    right_painter.text(
-                        logical_rect(cell, scale, 62.5, 37.0, 0.0, 0.0).min,
-                        egui::Align2::CENTER_TOP,
+                    crate::theme::paint_gdi_text(
+                        &right_painter,
+                        logical_rect(cell, scale, 0.0, 37.0, 125.0, 14.0),
+                        scale,
+                        10,
                         &item.label,
-                        font.clone(),
                         egui::Color32::WHITE,
+                        (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                     );
                     let response = ui.interact(
                         cell.intersect(right),
@@ -2986,23 +3006,35 @@ pub(crate) mod tests {
     #[derive(Debug, Clone, PartialEq)]
     struct Text {
         text: String,
-        /// The top-left corner and size of the laid-out text.
+        /// The line's pen at its first character and its baseline;
+        /// `paint_gdi_text` paints it a character at a time, so each run of
+        /// one size, colour and baseline is joined.
         pos: egui::Pos2,
-        width: f32,
-        height: f32,
+        /// Where the last character's layout ends.
+        end: f32,
         size: f32,
         color: egui::Color32,
     }
 
     impl Text {
-        /// Whether `painter.text` placed this at `anchor` with `align`.
-        fn anchored(&self, anchor: egui::Pos2, align: egui::Align) -> bool {
-            let x = match align {
-                egui::Align::Min => self.pos.x,
-                egui::Align::Center => self.pos.x + self.width / 2.0,
-                egui::Align::Max => self.pos.x + self.width,
-            };
-            (x - anchor.x).abs() < 0.01 && self.pos.y == anchor.y
+        /// Whether DrawTextA set this line in the window's box (`x`, `y`,
+        /// `w`, `h`) with font `font` and `align`, from the box's top
+        /// (theme::gdi_text_origin).
+        fn set_in(
+            &self,
+            (x, y, w, h): (f32, f32, f32, f32),
+            font: u16,
+            align: crate::theme::GdiAlign,
+        ) -> bool {
+            let width =
+                crate::theme::gdi_pen_positions(font, &self.text).map_or(0.0, |(_, width)| width);
+            let (left, baseline) = crate::theme::gdi_text_origin(
+                (x, y, w, h),
+                font,
+                width,
+                (align, crate::theme::GdiVAlign::Top),
+            );
+            self.pos == egui::pos2(at(left, 0.0).x, at(0.0, baseline).y)
         }
     }
 
@@ -3093,14 +3125,31 @@ pub(crate) mod tests {
                 match clipped.shape {
                     egui::Shape::Text(text) => {
                         let format = &text.galley.job.sections[0].format;
-                        result.texts.push(Text {
-                            text: text.galley.text().to_owned(),
-                            pos: text.pos,
-                            width: text.galley.size().x,
-                            height: text.galley.size().y,
-                            size: format.font_id.size,
-                            color: format.color,
-                        });
+                        let baseline = text.pos.y
+                            + text
+                                .galley
+                                .rows
+                                .first()
+                                .and_then(|row| row.glyphs.first())
+                                .map_or(0.0, |glyph| glyph.pos.y);
+                        match result.texts.last_mut() {
+                            Some(line)
+                                if line.size == format.font_id.size
+                                    && line.color == format.color
+                                    && line.pos.y == baseline
+                                    && (text.pos.x - line.end).abs() < line.size =>
+                            {
+                                line.text.push_str(text.galley.text());
+                                line.end = text.pos.x + text.galley.size().x;
+                            }
+                            _ => result.texts.push(Text {
+                                text: text.galley.text().to_owned(),
+                                pos: egui::pos2(text.pos.x, baseline),
+                                end: text.pos.x + text.galley.size().x,
+                                size: format.font_id.size,
+                                color: format.color,
+                            }),
+                        }
                     }
                     // White, faded in with its area (premultiplied).
                     egui::Shape::Rect(rect)
@@ -4116,8 +4165,10 @@ pub(crate) mod tests {
     fn the_window_writes_its_names_and_counts_where_the_original_does() {
         // FUN_004a4b10: the title label 5 past the restore button, black; the
         // selected name centred at x 164, red (0x20000ff) for side 1 and green
-        // otherwise; FUN_004a5c00's counts in the picture panel. Our own: the
-        // list label's place and the right list's centred names.
+        // otherwise; FUN_004a5c00's counts in the picture panel. The list
+        // label's place is A0 system-windows/09-fleet's ("Fleet 4": pen 7 in,
+        // line 3 down in its row); the right list's centred names are our
+        // own.
         for (faction, color) in [
             (CockpitFaction::Alliance, egui::Color32::from_rgb(255, 0, 0)),
             (CockpitFaction::Empire, egui::Color32::from_rgb(0, 255, 0)),
@@ -4143,44 +4194,45 @@ pub(crate) mod tests {
             )
             .texts;
             let white = egui::Color32::WHITE;
-            let (left, centre, right) = (egui::Align::Min, egui::Align::Center, egui::Align::Max);
+            use crate::theme::GdiAlign::{Center, Left, Right};
             // FUN_004a4b10: the lists and counts in font 10, the selected
-            // label +0x190 at (100, 29), left and top, in font 5.
-            let font10 = crate::theme::original_font(10, 2.0).size;
-            let font5 = crate::theme::original_font(5, 2.0).size;
-            for (label, anchor, align, size, color) in [
-                ("Fleet 1", at(8.0, 34.0), left, font10, white),
-                ("Fleet 1", at(100.0, 29.0), left, font5, color),
-                ("1", at(101.0, 44.0), left, font10, white),
-                ("2", at(223.0, 44.0), right, font10, white),
+            // label +0x190 at (100, 29), 128 by 25, left and top, in font 5.
+            // DrawTextA sets each line from its box's top.
+            let font10 = crate::theme::gdi_font(10, 2.0).size;
+            let font5 = crate::theme::gdi_font(5, 2.0).size;
+            for (label, rect, font, align, size, color) in [
+                ("Fleet 1", (11.0, 32.0, 84.0, 14.0), 10, Left, font10, white),
+                ("Fleet 1", (100.0, 29.0, 128.0, 25.0), 5, Left, font5, color),
+                ("1", (101.0, 44.0, 61.0, 14.0), 10, Left, font10, white),
+                ("2", (162.0, 44.0, 61.0, 14.0), 10, Right, font10, white),
                 (
                     "Alliance Fleet Regiment",
-                    at(163.5, 164.0),
-                    centre,
+                    (101.0, 164.0, 125.0, 14.0),
+                    10,
+                    Center,
                     font10,
                     white,
                 ),
             ] {
                 assert!(
                     texts.iter().any(|text| text.text == label
-                        && text.anchored(anchor, align)
+                        && text.set_in(rect, font, align)
                         && text.size == size
                         && text.color == color),
-                    "{faction:?}: {label} at {anchor:?} in {texts:?}"
+                    "{faction:?}: {label} in {rect:?} in {texts:?}"
                 );
             }
-            // FUN_004a4b10: the title from x 19, centred in rows 2..18, font 5,
-            // black.
+            // FUN_004a4b10: the title from x 19, centred in rows 2..18
+            // (DT_VCENTER: (16 - 16) / 2, then tmAscent 13), font 5, black.
             let title = texts.iter().find(|text| text.text == "Sluis Van").unwrap();
             assert_eq!(
-                (title.pos.x, title.size, title.color),
+                (title.pos, title.size, title.color),
                 (
-                    at(19.0, 0.0).x,
-                    crate::theme::original_font(5, 2.0).size,
+                    egui::pos2(at(19.0, 0.0).x, at(0.0, 2.0 + 13.0).y),
+                    crate::theme::gdi_font(5, 2.0).size,
                     egui::Color32::BLACK
                 )
             );
-            assert_eq!(title.pos.y + title.height / 2.0, at(0.0, 10.0).y);
         }
     }
 
@@ -4634,7 +4686,7 @@ pub(crate) mod tests {
                 .count()
         };
         // FUN_004a4b10: both lists write in font 10.
-        let font = crate::theme::original_font(10, 2.0).size;
+        let font = crate::theme::gdi_font(10, 2.0).size;
         assert_eq!(count("Fleet ", font), 6);
         assert_eq!(count("Alliance Fleet Regiment", font), 4);
     }
