@@ -715,6 +715,14 @@ mod tests {
         );
         assert_eq!(tiles.iter().filter(|(id, _)| *id == 0x277b).count(), 66);
         assert_eq!(tiles.len(), 4 + 2 + 2 * 66);
+        // An even height stops the sides two rows above the bottom corners.
+        let even = frame_tiles(egui::vec2(180.0, 136.0));
+        let last = even
+            .iter()
+            .filter(|(id, _)| *id == 0x277b)
+            .map(|(_, rect)| rect.min.y)
+            .fold(0.0, f32::max);
+        assert_eq!(last, 132.0);
     }
 
     #[test]
