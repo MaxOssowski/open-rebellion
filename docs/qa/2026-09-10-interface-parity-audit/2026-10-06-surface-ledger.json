@@ -1201,9 +1201,10 @@
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-shell-canvas.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
           ],
-          "note": "A0 (Windows 10 VM, day-7 save, galaxy-a.png) against the Linux GID gate capture: shell, aperture and controls pixel-identical, 98.28% overall. That is not the initial state (day 0, Display Off, briefing), which has no A0 capture.",
+          "note": "A0 (Windows 10 VM, day-7 save, galaxy-a.png) against the Linux GID gate capture: shell, aperture and controls pixel-identical, 98.28% overall. That is not the initial state (day 0, Display Off, briefing), which has no A0 capture. 2026-10-31: A0 now has a new Alliance game's first frame (new-alliance/t18): against briefing.mjs first-voice (Linux) the shell, galaxy, legend button (fixed: the port hid it on Display Off), day field and time bar are identical; the droids' frames, maintenance and the pointer differ; the advisor button at (0, 355) is lit in the port, unlit in A0, unexplained.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1735,9 +1736,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-legend-layouts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-legend-window/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-legend-drop-and-display-senders/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
           ],
-          "note": "The 22 legend layouts (FUN_004522f0, RCDATA 0x27c7..0x27d8, 0x2d50..0x2d57) draw in the legend window (FUN_00426d00), checked by the Linux GID gate; no A0 legend comparison per display.",
+          "note": "The 22 legend layouts (FUN_004522f0, RCDATA 0x27c7..0x27d8, 0x2d50..0x2d57) draw in the legend window (FUN_00426d00), checked by the Linux GID gate; no A0 legend comparison per display. 2026-10-31: FUN_00426d00 builds the legend under the galaxy view (HWND_BOTTOM): A0 shows only the button after each display chosen (gid/d-*.png, gid-displays/alt-*.png), and the port now does the same; the legend window opened from the button has no A0 capture (a QMP click on it opened nothing visible).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2672,28 +2674,30 @@
         {
           "id": "CMD-05-C012",
           "requirement": "campaign begins on day 0",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/game_speed.rs",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-maintenance-monitor/",
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
           ],
-          "note": "draw_day_readout and time_bar_shown stay blank on day 0 (FUN_00422ce0 creates the text empty); Linux browser day-0 captures (2026-10-13). Compared only with SquakeNet/pravus reference frames, not A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "draw_day_readout and time_bar_shown stay blank on day 0 (FUN_00422ce0 creates the text empty); Linux browser day-0 captures (2026-10-13). Compared only with SquakeNet/pravus reference frames, not A0. 2026-10-31: the first frame of a new Alliance game in A0 (.artifacts/a0-vm/new-alliance/t18.png, the briefing starting) and the port's briefing.mjs first-voice frame (Linux) are identical over the day field and time bar (95..240 x 10..34: 0 of 3,480 pixels differ), both blank.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-05-C013",
           "requirement": "briefing time bar remains blank",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/game_speed.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
           ],
-          "note": "The briefing plays on day 0, where time_bar_shown returns None; briefing.mjs on Linux runs it. Not asserted directly and not compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The briefing plays on day 0, where time_bar_shown returns None; briefing.mjs on Linux runs it. Not asserted directly and not compared with A0. 2026-10-31: the first frame of a new Alliance game in A0 (.artifacts/a0-vm/new-alliance/t18.png, the briefing starting) and the port's briefing.mjs first-voice frame (Linux) are identical over the day field and time bar (95..240 x 10..34: 0 of 3,480 pixels differ), both blank.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         }
       ]
     },
@@ -4192,14 +4196,16 @@
         {
           "id": "CMD-11-C031",
           "requirement": "GID legend button",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/gid_legend.rs",
-            "ghidra/notes/tooltips.md"
+            "ghidra/notes/tooltips.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "FUN_004286b0 gives the legend button (command 0x134) TEXTSTRA 0x173c \"Legend\"; the port attaches it (test the_legend_button_shows_its_tooltip_while_input_is_on). No A0: in the VM save a sector window covers the button (tooltip/29-legend.png).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_004286b0 gives the legend button (command 0x134) TEXTSTRA 0x173c \"Legend\"; the port attaches it (test the_legend_button_shows_its_tooltip_while_input_is_on). 2026-10-31: A0 tooltip/360 (a new Alliance game) shows the tip at (70, 86); tooltip.mjs (Linux, Popular Support fixture) matches its placement.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         }
       ]
     },

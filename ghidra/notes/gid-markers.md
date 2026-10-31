@@ -182,7 +182,14 @@ How the legend window behaves (read 2026-10-22):
   keys (inside `FUN_00425d00`, which returns early for the shown
   display). Display Off destroys the legend and hides the button; any
   other display shows the button and creates the legend at `+0x11c`,
-  `+0x120`, moved in so 180 x 240 fits the client.
+  `+0x120`, moved in so 180 x 240 fits the client. It then puts the new
+  legend at the bottom of the z-order (`SetWindowPos(.., HWND_BOTTOM,
+  .., SWP_NOSIZE|SWP_NOMOVE)`), under the galaxy view. A0 shows only the
+  button after every display chosen from the menu or by Alt+1..9
+  (`.artifacts/a0-vm/gid/d-*.png`, `gid-displays/alt-*.png`; 2026-10-31).
+  A new game, on Display Off without `FUN_00426d00` having run, shows the
+  button too (`new-alliance/t18.png`). A QMP click on the button showed
+  its "Legend" tip but opened nothing visible.
 - `FUN_00421c70` starts that position at (150, 120) and the display at
   `0x80`, Display Off. `FUN_00425d00` keeps the visible legend's
   position before destroying it.

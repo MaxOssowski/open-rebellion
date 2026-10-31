@@ -344,6 +344,19 @@ async function run(browser, base, faction) {
         await probe(label, point, capture);
       }
 
+      // The GID legend button (FUN_004286b0, command 0x134, TEXTSTRA
+      // 0x173c "Legend") at (55, 50) for the Alliance, in the Popular
+      // Support fixture (code 5, no window over it): A0 tooltip/360 (a new
+      // Alliance game, gid-displays/all-legend-hover.png).
+      if (faction.name === "alliance") {
+        await page.goto(`${base}?fixture-code=${5 | (faction.byte << 8)}`);
+        await page.waitForFunction(() => Boolean(window.__openRebellionInterfaceReady), null,
+          { timeout: 15_000 });
+        await page.locator("#glcanvas").focus();
+        await frames(page, 6);
+        await probe("legend", [70, 65], "360-legend.png");
+      }
+
       // Game Options (§1c, FUN_00407180, TEXTCOMM) from the galaxy (F1),
       // against A0 tooltip/201..209: Save, Load, the two sliders, Restart,
       // Return and Exit tipped, Play Music and the tactical toggles not.

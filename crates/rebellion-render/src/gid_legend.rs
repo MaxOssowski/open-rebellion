@@ -136,8 +136,12 @@ impl Default for GidLegendWindow {
 
 impl GidLegendWindow {
     /// A display was chosen (`FUN_00426d00`): Display Off closes the legend
-    /// and hides the button; any other display opens the legend at its kept
-    /// position, moved in so a 180 x 240 window fits, and shows the button.
+    /// and hides the button; any other display shows the button and builds
+    /// the legend at its kept position, moved in so a 180 x 240 window
+    /// fits, but puts it at the bottom of the z-order (`SetWindowPos`
+    /// `HWND_BOTTOM`), under the galaxy view: A0 shows only the button after
+    /// every display chosen from the menu or by Alt+1..9 (`gid/d-*.png`,
+    /// `gid-displays/alt-*.png`).
     pub fn show_display(&mut self, mode: GidMode) {
         self.drag_anchor = None;
         if mode == GidMode::DisplayOff {
@@ -150,7 +154,7 @@ impl GidLegendWindow {
             STRATEGIC_LOGICAL_HEIGHT - CLAMP_SIZE.y,
         );
         self.position = self.position.min(limit);
-        self.open = true;
+        self.open = false;
         self.button_shown = true;
     }
 
@@ -192,26 +196,16 @@ impl GidLegendWindow {
         pointer: (f32, f32),
     ) -> bool {
         let size = legend_resource(mode, faction).and_then(legend_size);
-        self.covers(
-            layout,
-            mode,
-            faction,
-            size,
-            egui::pos2(pointer.0, pointer.1),
-        )
+        self.covers(layout, faction, size, egui::pos2(pointer.0, pointer.1))
     }
 
     fn covers(
         &self,
         layout: CockpitLayout,
-        mode: GidMode,
         faction: CockpitFaction,
         size: Option<egui::Vec2>,
         pointer: egui::Pos2,
     ) -> bool {
-        if mode == GidMode::DisplayOff {
-            return false;
-        }
         let logical = egui::pos2(
             (pointer.x - layout.canvas.x) / layout.scale,
             (pointer.y - layout.canvas.y) / layout.scale,
@@ -354,7 +348,10 @@ pub fn draw_gid_legend(
     let scale = layout.scale;
     let full_uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0));
 
-    if window.button_shown && mode != GidMode::DisplayOff {
+    // Only FUN_00426d00 hides the button (choosing Display Off); a new
+    // game starts on Display Off with the button shown (A0
+    // new-alliance/t18).
+    if window.button_shown {
         let rect = rect_to_screen(
             layout,
             egui::Rect::from_min_size(
@@ -575,15 +572,16 @@ mod tests {
     }
 
     #[test]
-    fn choosing_a_display_opens_the_legend_inside_the_command_centre() {
-        // FUN_00426d00: a display opens the legend and shows the button; the
+    fn choosing_a_display_shows_the_button_and_keeps_the_legend_inside() {
+        // FUN_00426d00: a display shows the button and builds the legend
+        // under the galaxy view (A0 gid/d-*.png show the button alone); the
         // kept position moves in so 180 x 240 fits in 640 x 480.
         let mut window = GidLegendWindow::default();
         assert!(!window.open && window.button_shown);
         assert_eq!(window.position, egui::pos2(150.0, 120.0));
         window.position = egui::pos2(500.0, 300.0);
         window.show_display(GidMode::Mines);
-        assert!(window.open && window.button_shown);
+        assert!(!window.open && window.button_shown);
         assert_eq!(window.position, egui::pos2(460.0, 240.0));
         // Display Off closes both.
         window.show_display(GidMode::DisplayOff);
@@ -609,31 +607,32 @@ mod tests {
         let at = |x: f32, y: f32| egui::pos2(10.0 + x * 2.0, 20.0 + y * 2.0);
         let mut window = GidLegendWindow::default();
         window.show_display(GidMode::Mines);
-        let covers = |window: &GidLegendWindow, mode, point| {
-            window.covers(layout, mode, CockpitFaction::Alliance, size, point)
+        let covers = |window: &GidLegendWindow, point| {
+            window.covers(layout, CockpitFaction::Alliance, size, point)
         };
-        assert!(covers(&window, GidMode::Mines, at(150.0, 120.0)));
-        assert!(covers(&window, GidMode::Mines, at(329.0, 254.0)));
-        assert!(!covers(&window, GidMode::Mines, at(331.0, 200.0)));
-        assert!(!covers(&window, GidMode::Mines, at(200.0, 256.0)));
-        // The button, (55, 50) and 30 x 30 for the Alliance.
-        assert!(covers(&window, GidMode::Mines, at(60.0, 60.0)));
-        assert!(!covers(&window, GidMode::Mines, at(86.0, 60.0)));
-        window.close();
-        assert!(!covers(&window, GidMode::Mines, at(200.0, 200.0)));
-        assert!(covers(&window, GidMode::Mines, at(60.0, 60.0)));
+        // The button, (55, 50) and 30 x 30 for the Alliance; the legend it
+        // opens, 180 by 135 at (150, 120).
+        assert!(covers(&window, at(60.0, 60.0)));
+        assert!(!covers(&window, at(86.0, 60.0)));
+        assert!(!covers(&window, at(150.0, 120.0)));
         window.restore();
-        assert!(!covers(&window, GidMode::Mines, at(60.0, 60.0)));
-        assert!(covers(&window, GidMode::Mines, at(200.0, 200.0)));
-        // Display Off shows neither, nor a legend without its layout.
-        assert!(!covers(&window, GidMode::DisplayOff, at(200.0, 200.0)));
-        assert!(!window.covers(
-            layout,
-            GidMode::Mines,
-            CockpitFaction::Alliance,
-            None,
-            at(200.0, 200.0)
-        ));
+        assert!(covers(&window, at(150.0, 120.0)));
+        assert!(covers(&window, at(329.0, 254.0)));
+        assert!(!covers(&window, at(331.0, 200.0)));
+        assert!(!covers(&window, at(200.0, 256.0)));
+        window.close();
+        assert!(!covers(&window, at(200.0, 200.0)));
+        assert!(covers(&window, at(60.0, 60.0)));
+        window.restore();
+        assert!(!covers(&window, at(60.0, 60.0)));
+        assert!(covers(&window, at(200.0, 200.0)));
+        // Display Off has no layout, so no legend; a legend without its
+        // layout covers nothing. The button follows only `button_shown`
+        // (A0 new-alliance/t18: a new game on Display Off shows it).
+        assert!(legend_resource(GidMode::DisplayOff, CockpitFaction::Alliance).is_none());
+        window.close();
+        assert!(covers(&window, at(60.0, 60.0)));
+        assert!(!window.covers(layout, CockpitFaction::Alliance, None, at(200.0, 200.0)));
     }
 
     #[test]
@@ -642,6 +641,7 @@ mod tests {
         // legend is visible.
         let mut window = GidLegendWindow::default();
         window.show_display(GidMode::Mines);
+        window.restore();
         assert!(window.close_for_map_click());
         assert!(!window.open && window.button_shown);
         assert!(!window.close_for_map_click());
@@ -770,6 +770,7 @@ mod tests {
         assert_eq!(legend(0x27ce).map(|legend| legend.height), Some(95));
         let mut window = GidLegendWindow::default();
         window.show_display(GidMode::Mines);
+        window.restore();
         let contains = |window: &GidLegendWindow, mode, x: f32, y: f32| {
             window.contains_screen_point(
                 layout(),
@@ -781,6 +782,7 @@ mod tests {
         assert!(contains(&window, GidMode::Mines, 200.0, 214.0));
         assert!(!contains(&window, GidMode::Mines, 200.0, 216.0));
         // A display without an installed layout leaves only the button.
+        window.close();
         assert!(!contains(&window, GidMode::Refineries, 200.0, 200.0));
         assert!(contains(&window, GidMode::Refineries, 60.0, 60.0));
     }

@@ -670,10 +670,12 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   }
 
   if (scenario.category !== null && scenario.mode !== null) {
-    // FUN_00426d00 opens the legend at (150, 120); FUN_00607740 frames it
+    // FUN_00426d00 builds the legend at (150, 120) under the galaxy view,
+    // so a chosen display shows only the legend button (A0 gid/d-*.png);
+    // the button (command 0x134) shows the legend. FUN_00607740 frames it
     // grey outside, white inside; its close button (FUN_004522f0) sits at
-    // width - 14 - 3, 3. Closing leaves the legend button (FUN_00422ce0
-    // 0x405 case 3), which restores it (command 0x134).
+    // width - 14 - 3, 3. Closing leaves the button (FUN_00422ce0 0x405
+    // case 3), which restores it.
     const exact = viewport.width === 640 && viewport.height === 480
       && viewport.device_scale_factor === 1;
     const pixelAt = (bytes, x, y) => {
@@ -681,6 +683,12 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       const at = (y * png.width + x) * 4;
       return Array.from(png.data.subarray(at, at + 3));
     };
+    const chosen = await stableInteractionFrame(page, folder, "legend-chosen");
+    if (exact) {
+      assert.notDeepEqual(pixelAt(chosen, 151, 121), [255, 255, 255], "choosing the display opened the legend");
+    }
+    const legendButton = point((faction === "alliance" ? 55 : 113) + 15, 50 + 15);
+    await page.mouse.click(legendButton.x, legendButton.y);
     const open = await stableInteractionFrame(page, folder, "legend-open");
     if (exact) {
       assert.deepEqual(pixelAt(open, 150, 120), [192, 192, 192], "legend frame corner is not grey");
@@ -698,7 +706,8 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     await page.mouse.click(button.x, button.y);
     const restored = await stableInteractionFrame(page, folder, "legend-restored");
     assert.notEqual(sha256(restored), sha256(closed), `${scenario.slug}: the legend button did nothing`);
-    assert.notEqual(sha256(restored), sha256(open), `${scenario.slug}: the legend button stayed`);
+    // The button opened the legend both times, so the frames agree.
+    assert.equal(sha256(restored), sha256(open), `${scenario.slug}: the restored legend differs from the opened one`);
     if (exact) {
       assert.deepEqual(pixelAt(restored, 151, 121), [255, 255, 255], "the legend did not return");
     }

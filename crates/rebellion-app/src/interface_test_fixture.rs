@@ -434,6 +434,9 @@ pub fn apply(
     };
     cockpit.faction = request.faction;
     cockpit.gid_mode = request.scenario.mode();
+    // As chosen from the GID menu (FUN_00426d00): Display Off hides the
+    // legend's button (A0 gid/d-display-off.png).
+    cockpit.gid_legend.show_display(cockpit.gid_mode);
     cockpit.gid_ui.menu_open = false;
     cockpit.gid_ui.category = None;
 
