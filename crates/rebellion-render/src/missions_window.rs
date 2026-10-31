@@ -1046,12 +1046,12 @@ fn draw_missions_window(
                 ui.allocate_exact_size(screen_rect.size(), egui::Sense::click_and_drag());
             let painter = ui.painter().clone();
             let white = egui::Color32::WHITE;
-            // The window's labels are font 5 (16 rows, bold).
-            let label_font = crate::theme::original_font(5, scale);
-            // The mission list writes in font 10 (FUN_0049f540: its slot
-            // +0x18 with 10); the member rows' names are drawn in font 10
-            // into their images (FUN_004a1ba0).
-            let list_font = crate::theme::original_font(10, scale);
+            // The window's labels are font 5 (16 rows, bold); the mission
+            // list writes in font 10 (FUN_0049f540: its slot +0x18 with 10)
+            // and the member rows' names are drawn in font 10 into their
+            // images (FUN_004a1ba0). DrawTextA sets each
+            // (theme::paint_gdi_text).
+            use crate::theme::{paint_gdi_text, paint_gdi_text_block, GdiAlign, GdiVAlign};
 
             painter.rect_filled(local, 0.0, egui::Color32::BLACK);
             paint_native(
@@ -1077,41 +1077,38 @@ fn draw_missions_window(
                 }
                 // `+0x174`: font 5, format 0x11 (centred, word-wrapped).
                 let name = view.map_or_else(|| "Target Unknown".to_string(), |(_, _, name)| name);
-                let mut job = egui::text::LayoutJob::simple(
-                    name,
-                    label_font.clone(),
-                    white,
-                    TARGET_NAME.2 * scale,
-                );
-                job.halign = egui::Align::Center;
-                painter.galley(
+                let _ = paint_gdi_text_block(
+                    &painter,
                     logical_rect(
                         local,
                         scale,
-                        TARGET_NAME.0 + TARGET_NAME.2 / 2.0,
+                        TARGET_NAME.0,
                         TARGET_NAME.1,
-                        0.0,
-                        0.0,
-                    )
-                    .min,
-                    painter.layout_job(job),
+                        TARGET_NAME.2,
+                        32.0,
+                    ),
+                    scale,
+                    5,
+                    &name,
                     white,
+                    GdiAlign::Center,
                 );
                 // `+0x178`: font 5, format 1 (centred), TEXTSTRA 34081.
-                painter.text(
+                paint_gdi_text(
+                    &painter,
                     logical_rect(
                         local,
                         scale,
-                        TARGET_LABEL.0 + TARGET_LABEL.2 / 2.0,
+                        TARGET_LABEL.0,
                         TARGET_LABEL.1,
-                        0.0,
-                        0.0,
-                    )
-                    .min,
-                    egui::Align2::CENTER_TOP,
+                        TARGET_LABEL.2,
+                        16.0,
+                    ),
+                    scale,
+                    5,
                     "Target:",
-                    label_font.clone(),
                     white,
+                    (GdiAlign::Center, GdiVAlign::Top),
                 );
             }
             paint_native(
@@ -1127,12 +1124,14 @@ fn draw_missions_window(
             );
             // `+0x17c`: TEXTSTRA 34085 and the system name, font 5, format
             // 0x24 (one line, left-aligned, vertically centred).
-            painter.text(
-                logical_rect(local, scale, TITLE.0, TITLE.1 + TITLE.3 / 2.0, 0.0, 0.0).min,
-                egui::Align2::LEFT_CENTER,
-                format!("Mission at {}", system.name),
-                label_font,
+            paint_gdi_text(
+                &painter,
+                logical_rect(local, scale, TITLE.0, TITLE.1, TITLE.2, TITLE.3),
+                scale,
+                5,
+                &format!("Mission at {}", system.name),
                 egui::Color32::BLACK,
+                (GdiAlign::Left, GdiVAlign::VCenter),
             );
 
             let buttons = [
@@ -1214,16 +1213,21 @@ fn draw_missions_window(
                         0.0,
                     );
                 }
-                let galley = list_painter.layout(
-                    row.label.to_string(),
-                    list_font.clone(),
+                let _ = paint_gdi_text_block(
+                    &list_painter,
+                    logical_rect(
+                        cell,
+                        scale,
+                        TEXT_OFFSET.0,
+                        TEXT_OFFSET.1,
+                        MISSION_ROW.0 - TEXT_RIGHT_TRIM,
+                        MISSION_ROW.1 - TEXT_OFFSET.1,
+                    ),
+                    scale,
+                    10,
+                    &row.label,
                     white,
-                    (MISSION_ROW.0 - TEXT_RIGHT_TRIM) * scale,
-                );
-                list_painter.galley(
-                    logical_rect(cell, scale, TEXT_OFFSET.0, TEXT_OFFSET.1, 0.0, 0.0).min,
-                    galley,
-                    white,
+                    GdiAlign::Left,
                 );
                 let response = ui.interact(
                     cell.intersect(list),
@@ -1316,20 +1320,21 @@ fn draw_missions_window(
                     }
                     // Format 0x21: one line, centred in the cell less 2 on
                     // each side, under the mini (item `+0x34`), font 10.
-                    member_painter.text(
+                    paint_gdi_text(
+                        &member_painter,
                         logical_rect(
                             cell,
                             scale,
-                            TEXT_OFFSET.0 + MEMBER_ROW.0 / 2.0,
+                            TEXT_OFFSET.0,
                             member_text_top(size.map_or(0, |size| size[1])),
-                            0.0,
-                            0.0,
-                        )
-                        .min,
-                        egui::Align2::CENTER_TOP,
+                            MEMBER_ROW.0,
+                            16.0,
+                        ),
+                        scale,
+                        10,
                         &member.label,
-                        list_font.clone(),
                         white,
+                        (GdiAlign::Center, GdiVAlign::Top),
                     );
                     let response = ui.interact(
                         cell.intersect(members),
@@ -2078,13 +2083,12 @@ mod tests {
     }
 
     #[derive(Debug, Clone, PartialEq)]
+    /// A painted line ([`crate::theme::TestLine`]): `pos` is its pen's left
+    /// and its baseline.
     struct Text {
         text: String,
         pos: egui::Pos2,
-        size: egui::Vec2,
-        rect: egui::Rect,
         font: f32,
-        wrap: f32,
     }
 
     #[derive(Default)]
@@ -2131,20 +2135,14 @@ mod tests {
                 ));
             });
             result.painted = PAINTED.with(|painted| painted.take());
-            result.texts.clear();
-            for clipped in output.shapes {
-                if let egui::Shape::Text(text) = clipped.shape {
-                    let format = &text.galley.job.sections[0].format;
-                    result.texts.push(Text {
-                        text: text.galley.text().to_owned(),
-                        pos: text.pos,
-                        size: text.galley.size(),
-                        rect: text.galley.rect,
-                        font: format.font_id.size,
-                        wrap: text.galley.job.wrap.max_width,
-                    });
-                }
-            }
+            result.texts = crate::theme::test_lines(&output.shapes)
+                .into_iter()
+                .map(|line| Text {
+                    text: line.text,
+                    pos: line.pen,
+                    font: line.size,
+                })
+                .collect();
         }
         result
     }
@@ -2224,32 +2222,33 @@ mod tests {
             .painted
             .contains(&(planet_resource_id(DatId::new(100)), at(108.0, 37.0))));
 
+        // DrawTextA (theme::paint_gdi_text): each line's pen and baseline,
+        // tmAscent 13 below a font-5 box's top and 11 below a font-10 one;
+        // DT_CENTER halves the spare width in whole pixels.
+        let centred = |words: &str, font: u16, x: f32, w: f32| {
+            let (_, width) = crate::theme::gdi_pen_positions(font, words).unwrap();
+            at(x + ((w - width) / 2.0).floor(), 0.0).x
+        };
         let title = text(&run, "Mission at Sluis Van");
         assert_eq!(
-            (title.pos.x, title.font),
-            (at(21.0, 0.0).x, crate::theme::original_font(5, 2.0).size)
+            (title.pos, title.font),
+            (at(21.0, 2.0 + 13.0), crate::theme::gdi_font(5, 2.0).size)
         );
-        assert_eq!(title.pos.y + title.size.y / 2.0, at(0.0, 10.0).y);
-        let row = text(&run, "Diplomacy");
         // Font 10 (FUN_0049f540: the list's slot +0x18 with 10).
+        let row = text(&run, "Diplomacy");
         assert_eq!(
-            (row.pos, row.font, row.wrap),
-            (
-                at(6.0, 24.0),
-                crate::theme::original_font(10, 2.0).size,
-                174.0
-            )
+            (row.pos, row.font),
+            (at(6.0, 24.0 + 11.0), crate::theme::gdi_font(10, 2.0).size)
         );
         let member = text(&run, "Leia");
-        assert_eq!(member.pos.x + member.size.x / 2.0, at(165.5, 0.0).x);
-        assert_eq!(member.pos.y, at(0.0, 166.0).y);
+        assert_eq!(member.pos.x, centred("Leia", 10, 108.0, 115.0));
+        assert_eq!(member.pos.y, at(0.0, 166.0 + 11.0).y);
         let label = text(&run, "Target:");
-        assert_eq!(label.pos.x + label.size.x / 2.0, at(165.5, 0.0).x);
-        assert_eq!(label.pos.y, at(0.0, 25.0).y);
+        assert_eq!(label.pos.x, centred("Target:", 5, 109.0, 113.0));
+        assert_eq!(label.pos.y, at(0.0, 25.0 + 13.0).y);
         let name = text(&run, "Sluis Van");
-        assert_eq!(name.pos.x + name.rect.center().x, at(165.5, 0.0).x);
-        assert_eq!(name.pos.y, at(0.0, 91.0).y);
-        assert_eq!(name.wrap, 226.0);
+        assert_eq!(name.pos.x, centred("Sluis Van", 5, 109.0, 113.0));
+        assert_eq!(name.pos.y, at(0.0, 91.0 + 13.0).y);
     }
 
     #[test]

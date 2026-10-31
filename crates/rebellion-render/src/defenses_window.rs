@@ -1011,12 +1011,17 @@ fn draw_defenses_window(
             // The title label `+0x49` starts after the sector button, in
             // font 5 with format `0x24`: one line, left-aligned and
             // vertically centred (`FUN_004a8790`).
-            painter.text(
-                logical_rect(local, scale, TITLE.0, TITLE.1 + TITLE.2 / 2.0, 0.0, 0.0).min,
-                egui::Align2::LEFT_CENTER,
+            crate::theme::paint_gdi_text(
+                &painter,
+                logical_rect(local, scale, TITLE.0, TITLE.1, 180.0, TITLE.2),
+                scale,
+                5,
                 &system.name,
-                crate::theme::original_font(5, scale),
                 egui::Color32::BLACK,
+                (
+                    crate::theme::GdiAlign::Left,
+                    crate::theme::GdiVAlign::VCenter,
+                ),
             );
 
             let buttons = [
@@ -1071,37 +1076,28 @@ fn draw_defenses_window(
 
             // `+0x5b` and `+0x5c`: white, font 4, format `0x25`: one line,
             // centred both ways in its rect.
-            let label_font = crate::theme::original_font(4, scale);
-            painter.text(
-                logical_rect(
-                    local,
-                    scale,
-                    TAB_NAME.0 + TAB_NAME.2 / 2.0,
-                    TAB_NAME.1 + TAB_NAME.3 / 2.0,
-                    0.0,
-                    0.0,
-                )
-                .min,
-                egui::Align2::CENTER_CENTER,
+            let centred = (
+                crate::theme::GdiAlign::Center,
+                crate::theme::GdiVAlign::VCenter,
+            );
+            crate::theme::paint_gdi_text(
+                &painter,
+                logical_rect(local, scale, TAB_NAME.0, TAB_NAME.1, TAB_NAME.2, TAB_NAME.3),
+                scale,
+                4,
                 window.page.name(),
-                label_font.clone(),
                 egui::Color32::WHITE,
+                centred,
             );
             if let Some(line) = garrison_line(world, economy, player, window.system, window.page) {
-                painter.text(
-                    logical_rect(
-                        local,
-                        scale,
-                        GARRISON.0 + GARRISON.2 / 2.0,
-                        GARRISON.1 + GARRISON.3 / 2.0,
-                        0.0,
-                        0.0,
-                    )
-                    .min,
-                    egui::Align2::CENTER_CENTER,
-                    line,
-                    label_font,
+                crate::theme::paint_gdi_text(
+                    &painter,
+                    logical_rect(local, scale, GARRISON.0, GARRISON.1, GARRISON.2, GARRISON.3),
+                    scale,
+                    4,
+                    &line,
                     egui::Color32::WHITE,
+                    centred,
                 );
             }
 
@@ -1139,7 +1135,6 @@ fn draw_defenses_window(
             }
             // The list writes in font 10 (FUN_004a8790: its slot +0x18
             // with 10).
-            let font = crate::theme::original_font(10, scale);
             let frame = if side == 1 {
                 ROW_FRAME[0]
             } else {
@@ -1179,16 +1174,22 @@ fn draw_defenses_window(
                 } else {
                     egui::Color32::WHITE
                 };
-                let galley = list_painter.layout(
-                    row.label.clone(),
-                    font.clone(),
+                // DT_WORDBREAK in the cell less its trim, font 10.
+                let _ = crate::theme::paint_gdi_text_block(
+                    &list_painter,
+                    logical_rect(
+                        cell,
+                        scale,
+                        TEXT_OFFSET.0,
+                        TEXT_OFFSET.1,
+                        CELL - TEXT_RIGHT_TRIM,
+                        CELL - TEXT_OFFSET.1,
+                    ),
+                    scale,
+                    10,
+                    &row.label,
                     color,
-                    (CELL - TEXT_RIGHT_TRIM) * scale,
-                );
-                list_painter.galley(
-                    logical_rect(cell, scale, TEXT_OFFSET.0, TEXT_OFFSET.1, 0.0, 0.0).min,
-                    galley,
-                    color,
+                    crate::theme::GdiAlign::Left,
                 );
                 let response = ui.interact(
                     cell.intersect(list),
@@ -1773,13 +1774,13 @@ mod tests {
     }
 
     #[derive(Debug, Clone, PartialEq)]
+    /// A painted line ([`crate::theme::TestLine`]): `pos` is its pen's left
+    /// and its baseline.
     struct Text {
         text: String,
         pos: egui::Pos2,
         color: egui::Color32,
         font: f32,
-        size: egui::Vec2,
-        wrap: f32,
     }
 
     #[derive(Default)]
@@ -1843,20 +1844,15 @@ mod tests {
                 ));
             });
             result.painted = PAINTED.with(|painted| painted.take());
-            result.texts.clear();
-            for clipped in output.shapes {
-                if let egui::Shape::Text(text) = clipped.shape {
-                    let format = &text.galley.job.sections[0].format;
-                    result.texts.push(Text {
-                        text: text.galley.text().to_owned(),
-                        pos: text.pos,
-                        color: format.color,
-                        font: format.font_id.size,
-                        size: text.galley.size(),
-                        wrap: text.galley.job.wrap.max_width,
-                    });
-                }
-            }
+            result.texts = crate::theme::test_lines(&output.shapes)
+                .into_iter()
+                .map(|line| Text {
+                    text: line.text,
+                    pos: line.pen,
+                    color: line.color,
+                    font: line.size,
+                })
+                .collect();
         }
         result
     }
@@ -1969,27 +1965,30 @@ mod tests {
             );
         }
         assert!(!run.painted.iter().any(|(id, _)| ROW_FRAME.contains(id)));
+        // The label from the cell's (1, 27), broken in the cell less 3
+        // (FUN_00609ae0's text rect, theme::paint_gdi_text_block), in font
+        // 10 (FUN_004a8790: the list's slot +0x18 with 10); the baseline
+        // tmAscent 11 below.
         let idle = text(&run, "Idle");
-        assert_eq!(idle.pos, at(8.0, 108.0));
-        // The cell less 3 (FUN_00609ae0's text rect), at scale 2.
-        // Font 10 (FUN_004a8790: the list's slot +0x18 with 10).
-        assert_eq!(
-            (idle.font, idle.wrap),
-            (crate::theme::original_font(10, 2.0).size, 134.0)
-        );
+        assert_eq!(idle.pos, at(8.0, 108.0 + 11.0));
+        assert_eq!(idle.font, crate::theme::gdi_font(10, 2.0).size);
         assert_eq!(text(&run, "Hidden").color, egui::Color32::WHITE);
-        // `+0x49` at (19, 2), 16 high: left-aligned, vertically centred.
+        // `+0x49` at (19, 2), 16 high: left-aligned, vertically centred
+        // ((16 - 16) / 2, then tmAscent 13).
         let title = text(&run, "Sluis Van");
         assert_eq!(
-            (title.pos.x, title.font),
-            (at(19.0, 0.0).x, crate::theme::original_font(5, 2.0).size)
+            (title.pos, title.font),
+            (at(19.0, 2.0 + 13.0), crate::theme::gdi_font(5, 2.0).size)
         );
-        assert_eq!(title.pos.y + title.size.y / 2.0, at(0.0, 10.0).y);
-        // `+0x5b` at (2, 51), 231 by 16: centred both ways.
+        // `+0x5b` at (2, 51), 231 by 16: centred both ways, in font 4
+        // (FUN_004a8790, FUN_00601c60(4)).
         let name = text(&run, "Personnel");
-        // Font 4 (FUN_004a8790, FUN_00601c60(4)).
-        assert_eq!(name.font, crate::theme::original_font(4, 2.0).size);
-        assert_eq!(name.pos + name.size / 2.0, at(117.5, 59.0));
+        assert_eq!(name.font, crate::theme::gdi_font(4, 2.0).size);
+        let (_, width) = crate::theme::gdi_pen_positions(4, "Personnel").unwrap();
+        assert_eq!(
+            name.pos,
+            at(2.0 + ((231.0 - width) / 2.0).floor(), 51.0 + 13.0)
+        );
         assert!(!run
             .texts
             .iter()
@@ -2102,7 +2101,11 @@ mod tests {
         // The regiment page of the player's own system shows the garrison.
         // `+0x5c` at (2, 63), 228 by 17: centred both ways.
         let garrison = text(&regiments, "Garrison Requirement: 2");
-        assert_eq!(garrison.pos + garrison.size / 2.0, at(116.0, 71.5));
+        let (_, width) = crate::theme::gdi_pen_positions(4, "Garrison Requirement: 2").unwrap();
+        assert_eq!(
+            garrison.pos,
+            at(2.0 + ((228.0 - width) / 2.0).floor(), 63.0 + 13.0)
+        );
         assert!(regiments.painted.contains(&(10564, at(64.0, 20.0))));
         assert!(regiments.painted.contains(&(17_473, at(7.0, 81.0))));
     }
