@@ -601,29 +601,37 @@ pub fn draw_fleet_finder(
             // name label in font 4, the tab's label in font 5, all white
             // (0x2ffffff); the list and the name box in font 10.
             let (title, label) = window.mode.titles();
-            let title_font = crate::theme::original_font(5, scale);
-            let label_font = crate::theme::original_font(4, scale);
-            let font = crate::theme::original_font(10, scale);
-            painter.text(
-                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::CENTER_TOP,
+            let font = crate::theme::gdi_font(10, scale);
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 350.0, 17.0)),
+                scale,
+                5,
                 title,
-                title_font.clone(),
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(
+                    frame,
+                    scale,
+                    (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 100.0, 16.0),
+                ),
+                scale,
+                4,
                 label,
-                label_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (TAB_LABEL_AT.0, TAB_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TAB_LABEL_AT.0, TAB_LABEL_AT.1, 300.0, 16.0)),
+                scale,
+                5,
                 window.tab.label(window.mode),
-                title_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
 
             // hyp: the tab and mode groups show their current member in its
@@ -803,17 +811,21 @@ pub fn draw_fleet_finder(
                 } else {
                     ROW_COLOR
                 };
-                list_painter.text(
+                crate::theme::paint_gdi_text(
+                    &list_painter,
                     at(
                         frame,
                         scale,
-                        (LIST.0 + ROW_TEXT_X, y + ROW_HEIGHT / 2.0, 0.0, 0.0),
-                    )
-                    .min,
-                    egui::Align2::LEFT_CENTER,
+                        (LIST.0 + ROW_TEXT_X, y, LIST.2 - ROW_TEXT_X, ROW_HEIGHT),
+                    ),
+                    scale,
+                    10,
                     &row.name,
-                    font.clone(),
                     colour,
+                    (
+                        crate::theme::GdiAlign::Left,
+                        crate::theme::GdiVAlign::VCenter,
+                    ),
                 );
                 let response = ui.interact(
                     row_rect,
@@ -1687,11 +1699,11 @@ mod tests {
         }
     }
 
+    /// A painted line ([`crate::theme::TestLine`]): `pos` is its pen's left
+    /// and its baseline.
     struct Text {
         text: String,
         pos: egui::Pos2,
-        width: f32,
-        height: f32,
         size: f32,
         color: egui::Color32,
     }
@@ -1758,22 +1770,13 @@ mod tests {
                 }
             });
             result.painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.take());
-            result.texts = output
-                .shapes
+            result.texts = crate::theme::test_lines(&output.shapes)
                 .into_iter()
-                .filter_map(|clipped| match clipped.shape {
-                    egui::Shape::Text(text) => {
-                        let format = &text.galley.job.sections[0].format;
-                        Some(Text {
-                            text: text.galley.text().to_owned(),
-                            pos: text.pos,
-                            width: text.galley.size().x,
-                            height: text.galley.size().y,
-                            size: format.font_id.size,
-                            color: format.color,
-                        })
-                    }
-                    _ => None,
+                .map(|line| Text {
+                    text: line.text,
+                    pos: line.pen,
+                    size: line.size,
+                    color: line.color,
                 })
                 .collect();
         }
@@ -1878,22 +1881,29 @@ mod tests {
 
         let drawn = idle(&galaxy, &mut state);
 
+        // DrawTextA from each box's top: the baselines tmAscent 13 (fonts
+        // 4 and 5) below; the title's spare width halved.
         let white = egui::Color32::WHITE;
-        let font = |id| crate::theme::original_font(id, 2.0).size;
-        let title = drawn.texts.iter().find(|shown| shown.text == "Fleet Finder").unwrap();
-        assert!(
-            (title.pos.x + title.width / 2.0 - origin.x - (36.0 + 175.0) * 2.0).abs() < 0.01,
-            "{:?}",
-            title.pos
+        let font = |id| crate::theme::gdi_font(id, 2.0).size;
+        let (_, width) = crate::theme::gdi_pen_positions(5, "Fleet Finder").unwrap();
+        assert_eq!(
+            shown(&drawn, "Fleet Finder"),
+            Some((
+                egui::vec2(
+                    (36.0 + ((350.0 - width) / 2.0).floor()) * 2.0,
+                    (14.0 + 13.0) * 2.0
+                ),
+                font(5),
+                white
+            ))
         );
-        assert_eq!((title.pos.y - origin.y, title.size, title.color), (28.0, font(5), white));
         assert_eq!(
             shown(&drawn, "Fleet Name"),
-            Some((egui::vec2(72.0, 96.0), font(4), white))
+            Some((egui::vec2(72.0, (48.0 + 13.0) * 2.0), font(4), white))
         );
         assert_eq!(
             shown(&drawn, "All Fleets"),
-            Some((egui::vec2(80.0, 238.0), font(5), white))
+            Some((egui::vec2(80.0, (119.0 + 13.0) * 2.0), font(5), white))
         );
 
         state.set_mode(FinderMode::Ships);
@@ -1954,10 +1964,12 @@ mod tests {
         assert_eq!(shown.len(), 9);
         for (line, text) in shown.iter().enumerate() {
             assert_eq!(text.text, list[2 + line].name);
-            let middle = text.pos.y + text.height / 2.0 - origin.y;
+            // DT_VCENTER in the 20-pixel row from 138 + 20 * line: 3 down,
+            // then tmAscent 11.
+            let baseline = text.pos.y - origin.y;
             assert!(
-                (middle - (296.0 + 40.0 * line as f32)).abs() < 0.01,
-                "{line}: {middle}"
+                (baseline - (138.0 + 3.0 + 11.0 + 20.0 * line as f32) * 2.0).abs() < 0.01,
+                "{line}: {baseline}"
             );
             let colour = if line == 1 {
                 egui::Color32::WHITE

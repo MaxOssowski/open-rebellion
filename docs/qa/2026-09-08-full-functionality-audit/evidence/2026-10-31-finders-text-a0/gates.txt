@@ -1,0 +1,9 @@
+system-finder   pass
+fleet-finder   pass
+encyclopedia-placement --window=finders --a0=../../.artifacts/a0-vm  pass
+encyclopedia-placement --a0=../../.artifacts/a0-vm/encyclopedia  pass
+tooltip --a0=../../.artifacts/a0-vm/tooltip  pass
+audit-batch   pass
+personnel-orders --a0=../../.artifacts/a0-vm/tooltip  pass
+run --all  pass
+run --all: 152 of 152

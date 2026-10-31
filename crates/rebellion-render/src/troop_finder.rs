@@ -536,29 +536,37 @@ pub fn draw_troop_finder(
             // Title (TEXTSTRA 0x1900) centred in its 350 in font 5, label
             // (0x1901) in font 4, the tab's label in font 5; the list and
             // the name box in font 10 (A0 2026-10-29).
-            let title_font = crate::theme::original_font(5, scale);
-            let label_font = crate::theme::original_font(4, scale);
-            let font = crate::theme::original_font(10, scale);
-            painter.text(
-                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::CENTER_TOP,
+            let font = crate::theme::gdi_font(10, scale);
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 350.0, 17.0)),
+                scale,
+                5,
                 "Troop Finder",
-                title_font.clone(),
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(
+                    frame,
+                    scale,
+                    (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 100.0, 16.0),
+                ),
+                scale,
+                4,
                 "Troop Location",
-                label_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (TAB_LABEL_AT.0, TAB_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TAB_LABEL_AT.0, TAB_LABEL_AT.1, 300.0, 16.0)),
+                scale,
+                5,
                 window.tab.label(),
-                title_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
 
             // Side tabs.
@@ -707,12 +715,17 @@ pub fn draw_troop_finder(
                 } else {
                     ROW_COLOR
                 };
-                list_painter.text(
-                    full_row.left_top() + egui::vec2(ROW_TEXT_X * scale, 0.0),
-                    egui::Align2::LEFT_TOP,
+                crate::theme::paint_gdi_text(
+                    &list_painter,
+                    egui::Rect::from_min_max(
+                        full_row.min + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                        full_row.max,
+                    ),
+                    scale,
+                    10,
                     &row.name,
-                    font.clone(),
                     name_colour,
+                    (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                 );
 
                 // Five count columns at x = 194 + 28*i, y = 2 within the row
@@ -1285,16 +1298,34 @@ mod tests {
             );
             shapes = output.shapes;
         }
-        shapes
-            .iter()
-            .filter_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) => {
-                    let format = &text.galley.job.sections[0].format;
-                    Some((text.galley.text().to_owned(), text.pos, text.galley.size(), format.font_id.size, format.color))
-                }
-                _ => None,
+        // Each line's text, pen and baseline, width, font size and colour.
+        crate::theme::test_lines(&shapes)
+            .into_iter()
+            .map(|line| {
+                (
+                    line.text,
+                    line.pen,
+                    egui::vec2(line.width, 0.0),
+                    line.size,
+                    line.color,
+                )
             })
             .collect()
+    }
+
+    /// Whether `shapes` hold a line reading `name`.
+    fn named(shapes: &[egui::epaint::ClippedShape], name: &str) -> bool {
+        crate::theme::test_lines(shapes)
+            .iter()
+            .any(|line| line.text == name)
+    }
+
+    /// The pen and baseline of the line reading `name` in `shapes`.
+    fn pen(shapes: &[egui::epaint::ClippedShape], name: &str) -> Option<egui::Pos2> {
+        crate::theme::test_lines(shapes)
+            .into_iter()
+            .find(|line| line.text == name)
+            .map(|line| line.pen)
     }
 
     #[test]
@@ -1310,13 +1341,23 @@ mod tests {
         let origin = window_rect(layout()).min;
         let shown = texts(&galaxy.world, &mut state);
         let find = |name: &str| shown.iter().find(|(text, ..)| text == name).cloned().unwrap();
-        let (_, pos, size, font, _) = find("Troop Finder");
-        assert!((pos.x + size.x / 2.0 - origin.x - 211.0).abs() < 0.01, "{pos:?}");
-        assert_eq!(font, crate::theme::original_font(5, 1.0).size);
-        assert_eq!(find("Troop Location").3, crate::theme::original_font(4, 1.0).size);
+        // DrawTextA from each box's top: the title's spare width halved and
+        // its baseline tmAscent 13 down; a row's text from the row's top
+        // (format 0x20), tmAscent 11 down.
+        let (_, width) = crate::theme::gdi_pen_positions(5, "Troop Finder").unwrap();
+        let (_, pos, _, font, _) = find("Troop Finder");
+        assert_eq!(
+            pos,
+            origin + egui::vec2(36.0 + ((350.0 - width) / 2.0).floor(), 14.0 + 13.0)
+        );
+        assert_eq!(font, crate::theme::gdi_font(5, 1.0).size);
+        assert_eq!(
+            find("Troop Location").3,
+            crate::theme::gdi_font(4, 1.0).size
+        );
         let (_, pos, _, font, colour) = find("Yavin");
-        assert_eq!(pos, origin + egui::vec2(LIST.0 + 5.0, LIST.1));
-        assert_eq!(font, crate::theme::original_font(10, 1.0).size);
+        assert_eq!(pos, origin + egui::vec2(LIST.0 + 5.0, LIST.1 + 11.0));
+        assert_eq!(font, crate::theme::gdi_font(10, 1.0).size);
         // The opening chooses the first row (FUN_0046df90 case 100).
         assert_eq!(colour, egui::Color32::WHITE);
         state.window.as_mut().unwrap().chosen = None;
@@ -1369,20 +1410,14 @@ mod tests {
                 .shapes;
         }
         assert_eq!(state.window.as_ref().unwrap().scroll, 10);
-        let first = shapes
-            .iter()
-            .find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text() == "S0" => Some(text.pos),
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(first, origin + egui::vec2(LIST.0 + 5.0, LIST.1 - 10.0));
+        let first = pen(&shapes, "S0").unwrap();
+        assert_eq!(
+            first,
+            origin + egui::vec2(LIST.0 + 5.0, LIST.1 - 10.0 + 11.0)
+        );
         // Row 6 (140..165) shows; row 7 (165..190) is below the list.
-        let named = |name: &str| {
-            shapes.iter().any(|clipped| matches!(&clipped.shape, egui::Shape::Text(text) if text.galley.text() == name))
-        };
-        assert!(named("S6"));
-        assert!(!named("S7"));
+        assert!(named(&shapes, "S6"));
+        assert!(!named(&shapes, "S7"));
         let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone());
         assert!(painted.contains(&(10_685, origin + egui::vec2(374.0, 144.0))), "{painted:?}");
         assert!(painted.contains(&(10_687, origin + egui::vec2(374.0, 294.0))), "{painted:?}");
@@ -1447,10 +1482,7 @@ mod tests {
                 let _ = draw_troop_finder(ctx, &world, &mut state, layout(), &mut cache, &transport);
             },
         );
-        assert!(!output
-            .shapes
-            .iter()
-            .any(|clipped| matches!(&clipped.shape, egui::Shape::Text(text) if text.galley.text() == "S0")));
+        assert!(!named(&output.shapes, "S0"));
     }
 
     #[test]
@@ -1492,14 +1524,11 @@ mod tests {
                 )
                 .shapes;
         }
-        let yavin = shapes
-            .iter()
-            .find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text() == "Yavin" => Some(text.pos),
-                _ => None,
-            })
-            .unwrap();
-        assert_eq!(yavin, window_rect(layout).min + egui::vec2(LIST.0 + 5.0, LIST.1) * 2.0);
+        let yavin = pen(&shapes, "Yavin").unwrap();
+        assert_eq!(
+            yavin,
+            window_rect(layout).min + egui::vec2(LIST.0 + 5.0, LIST.1 + 11.0) * 2.0
+        );
         // The bar reads the pointer in window pixels: eight systems, a click
         // on the down arrow at scale 2 steps 10.
         let mut world = GameWorld::default();

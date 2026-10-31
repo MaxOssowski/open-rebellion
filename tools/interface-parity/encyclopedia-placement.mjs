@@ -60,6 +60,13 @@ const INDEX_TEXT = [["title", [200, 66, 480, 82], white], ["topic", [158, 100, 2
   ["adar-tallon", [164, 250, 400, 269], grey], ["advanced-construction-yard", [164, 290, 400, 309], grey]];
 const TOPIC_TEXT = [["title", [161, 66, 511, 83], white], ["body-1", [142, 283, 537, 299], white],
   ["body-2", [142, 299, 537, 315], white], ["body-3", [142, 315, 537, 331], white]];
+// The Finders' title (font 5, centred in 350), label (font 4) and tab label
+// (font 5) against A0's Empire Finders (--a0=.artifacts/a0-vm with
+// --window=finders), all at (125, 52).
+const FINDER_A0 = { "fleet-finder": "fleet-finder-empire-day167.png",
+  "troop-finder": "troop-finder-empire-day167-f4.png", "personnel-finder": "personnel-finder-empire-day167-f5.png" };
+const FINDER_TEXT = [["title", [161, 66, 511, 83], white], ["label", [155, 98, 255, 116], white],
+  ["tab-label", [163, 169, 300, 187], white]];
 async function textAgainstA0(portFile, a0File, regions) {
   const port = PNG.sync.read(await fs.readFile(portFile));
   const a0 = PNG.sync.read(await fs.readFile(path.join(args.a0, a0File)));
@@ -187,6 +194,7 @@ async function run(browser, base, faction) {
     }
     await page.mouse.move(2, 2);
     if (args.window === "finders") {
+      const finderText = {};
       // F3 the Fleet Finder, F4 the Troop Finder, F5 the Personnel Finder
       // (FUN_00422ce0; A0 2026-10-29 opens them so), each closed by Escape.
       for (const [key, label] of [["F3", "fleet-finder"], ["F4", "troop-finder"], ["F5", "personnel-finder"]]) {
@@ -195,6 +203,10 @@ async function run(browser, base, faction) {
         await page.keyboard.up(key);
         await page.waitForTimeout(800);
         await shot(label);
+        if (args.a0 && faction.name === "empire") {
+          finderText[label] = await textAgainstA0(path.join(directory, `${label}.png`),
+            FINDER_A0[label], FINDER_TEXT);
+        }
         await page.keyboard.press("Escape");
         await page.waitForTimeout(400);
       }
@@ -211,7 +223,7 @@ async function run(browser, base, faction) {
       await page.mouse.move(2, 2);
       await page.waitForTimeout(800);
       await shot("fleet-window");
-      return { faction: faction.name, status: "pass", shots };
+      return { faction: faction.name, status: "pass", shots, finderText };
     }
     await page.keyboard.down("F7");
     await frames(page);

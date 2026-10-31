@@ -741,30 +741,38 @@ pub fn draw_personnel_finder(
             // Title (0x1890) centred in its 350 in font 5, label (0x1891
             // "Name") in font 4, the tab's label in font 5; the list and the
             // name box in font 10 (A0 2026-10-29).
-            let title_font = crate::theme::original_font(5, scale);
-            let label_font = crate::theme::original_font(4, scale);
-            let font = crate::theme::original_font(10, scale);
-            painter.text(
-                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::CENTER_TOP,
+            let font = crate::theme::gdi_font(10, scale);
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 350.0, 17.0)),
+                scale,
+                5,
                 "Personnel Finder",
-                title_font.clone(),
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(
+                    frame,
+                    scale,
+                    (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 100.0, 16.0),
+                ),
+                scale,
+                4,
                 "Name",
-                label_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
             let label_y = window.view.label_y();
-            painter.text(
-                at(frame, scale, (40.0, label_y, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (40.0, label_y, 300.0, 16.0)),
+                scale,
+                5,
                 window.tab.label(),
-                title_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
 
             // Side tabs.
@@ -948,21 +956,37 @@ pub fn draw_personnel_finder(
 
                 match row {
                     PersonnelFinderRow::Character { name, .. } => {
-                        list_painter.text(
-                            full_row.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
-                            egui::Align2::LEFT_CENTER,
+                        crate::theme::paint_gdi_text(
+                            &list_painter,
+                            egui::Rect::from_min_max(
+                                full_row.min + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                                full_row.max,
+                            ),
+                            scale,
+                            10,
                             name,
-                            font.clone(),
                             name_colour,
+                            (
+                                crate::theme::GdiAlign::Left,
+                                crate::theme::GdiVAlign::VCenter,
+                            ),
                         );
                     }
                     PersonnelFinderRow::SpecForces { name, counts, .. } => {
-                        list_painter.text(
-                            full_row.left_center() + egui::vec2(ROW_TEXT_X * scale, 0.0),
-                            egui::Align2::LEFT_CENTER,
+                        crate::theme::paint_gdi_text(
+                            &list_painter,
+                            egui::Rect::from_min_max(
+                                full_row.min + egui::vec2(ROW_TEXT_X * scale, 0.0),
+                                full_row.max,
+                            ),
+                            scale,
+                            10,
                             name,
-                            font.clone(),
                             name_colour,
+                            (
+                                crate::theme::GdiAlign::Left,
+                                crate::theme::GdiVAlign::VCenter,
+                            ),
                         );
                         // Four columns at x = 222 + 28*i (FUN_00465540).
                         let (box_colour, text_on_box) = sf_cell_colours(window.tab);
@@ -1681,18 +1705,19 @@ mod tests {
         let mut state = opened();
         let in_bar = origin + egui::vec2(380.0, LIST.1 + 50.0);
         let shapes = run(&mut state, in_bar, vec![press(in_bar, true), press(in_bar, false)]);
-        let centre = |name: &str| {
-            shapes.iter().find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text().starts_with(name) => {
-                    Some(text.pos.y + text.galley.size().y / 2.0 - origin.y)
-                }
-                _ => None,
-            })
+        // Each row DT_VCENTER in its 20 (3 down, then tmAscent 11); row k's
+        // top at LIST.1 + 20 k - 30.
+        let lines = crate::theme::test_lines(&shapes);
+        let baseline = |name: &str| {
+            lines
+                .iter()
+                .find(|line| line.text.starts_with(name))
+                .map(|line| line.pen.y - origin.y)
         };
-        assert_eq!(centre("C00 "), None);
-        assert!((centre("C01 ").unwrap() - LIST.1).abs() < 0.01);
-        assert!((centre("C09 ").unwrap() - (LIST.1 + 160.0)).abs() < 0.01);
-        assert_eq!(centre("C10 "), None);
+        assert_eq!(baseline("C00 "), None);
+        assert!((baseline("C01 ").unwrap() - (LIST.1 - 10.0 + 14.0)).abs() < 0.01);
+        assert!((baseline("C09 ").unwrap() - (LIST.1 + 150.0 + 14.0)).abs() < 0.01);
+        assert_eq!(baseline("C10 "), None);
         assert_eq!(state.window.as_ref().unwrap().chosen, None);
 
         let mut state = opened();
@@ -1873,23 +1898,25 @@ mod tests {
             );
             shapes = output.shapes;
         }
+        let lines = crate::theme::test_lines(&shapes);
         let find = |wanted: &str| {
-            shapes.iter().find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text() == wanted => Some((
-                    text.pos,
-                    text.galley.size(),
-                    text.galley.job.sections[0].format.font_id.size,
-                )),
-                _ => None,
-            })
+            lines
+                .iter()
+                .find(|line| line.text == wanted)
+                .map(|line| (line.pen, line.size))
         };
+        // DrawTextA from each box's top, the baselines tmAscent 13 below.
         let origin = window_rect(layout()).min;
-        let (pos, size, font) = find("Personnel Finder").unwrap();
-        assert!((pos.x + size.x / 2.0 - origin.x - 211.0).abs() < 0.01, "{pos:?}");
-        assert_eq!(font, crate::theme::original_font(5, 1.0).size);
-        let (pos, _, font) = find("Name").unwrap();
-        assert_eq!(pos, origin + egui::vec2(36.0, 48.0));
-        assert_eq!(font, crate::theme::original_font(4, 1.0).size);
+        let (_, width) = crate::theme::gdi_pen_positions(5, "Personnel Finder").unwrap();
+        let (pen, font) = find("Personnel Finder").unwrap();
+        assert_eq!(
+            pen,
+            origin + egui::vec2(36.0 + ((350.0 - width) / 2.0).floor(), 14.0 + 13.0)
+        );
+        assert_eq!(font, crate::theme::gdi_font(5, 1.0).size);
+        let (pen, font) = find("Name").unwrap();
+        assert_eq!(pen, origin + egui::vec2(36.0, 48.0 + 13.0));
+        assert_eq!(font, crate::theme::gdi_font(4, 1.0).size);
         assert!(find("Character Name").is_none());
     }
 
@@ -1946,34 +1973,31 @@ mod tests {
                     )
                     .shapes;
             }
-            shapes
-                .iter()
-                .find_map(|clipped| match &clipped.shape {
-                    egui::Shape::Text(text)
-                        if (text.pos.x - origin.x - (LIST.0 + 5.0) * 2.0).abs() < 0.01 =>
-                    {
-                        Some((
-                            text.galley.text().to_owned(),
-                            text.pos.y + text.galley.size().y / 2.0 - origin.y,
-                            text.galley.job.sections[0].format.color,
-                        ))
-                    }
-                    _ => None,
-                })
+            crate::theme::test_lines(&shapes)
+                .into_iter()
+                .find(|line| (line.pen.x - origin.x - (LIST.0 + 5.0) * 2.0).abs() < 0.01)
+                .map(|line| (line.text, line.pen.y - origin.y, line.color))
                 .unwrap()
         };
-        let (text, middle, colour) = row(&mut state);
+        // DT_VCENTER in the 20-pixel row: 3 down, then tmAscent 11.
+        let (text, baseline, colour) = row(&mut state);
         assert!(text.starts_with("Luke Skywalker"), "{text}");
-        assert!((middle - (LIST.1 + 10.0) * 2.0).abs() < 0.01, "{middle}");
+        assert!(
+            (baseline - (LIST.1 + 14.0) * 2.0).abs() < 0.01,
+            "{baseline}"
+        );
         assert_eq!(colour, ROW_COLOR);
         state.window.as_mut().unwrap().chosen = Some(0);
         assert_eq!(row(&mut state).2, egui::Color32::WHITE);
         let window = state.window.as_mut().unwrap();
         window.view = PersonnelView::SpecForces;
         window.chosen = None;
-        let (text, middle, colour) = row(&mut state);
+        let (text, baseline, colour) = row(&mut state);
         assert!(text.starts_with("Yavin"), "{text}");
-        assert!((middle - (LIST.1 + 10.0) * 2.0).abs() < 0.01, "{middle}");
+        assert!(
+            (baseline - (LIST.1 + 14.0) * 2.0).abs() < 0.01,
+            "{baseline}"
+        );
         assert_eq!(colour, ROW_COLOR);
     }
 

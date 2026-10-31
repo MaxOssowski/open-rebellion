@@ -470,29 +470,37 @@ pub fn draw_system_finder(
 
             // The title, bold font 5 centred in its 350; the label font 4;
             // the tab's heading font 5; all white (0x2ffffff).
-            let title_font = crate::theme::original_font(5, scale);
-            let label_font = crate::theme::original_font(4, scale);
-            let font = crate::theme::original_font(10, scale);
-            painter.text(
-                at(frame, scale, (TITLE_AT.0 + 175.0, TITLE_AT.1, 0.0, 0.0)).min,
-                egui::Align2::CENTER_TOP,
+            let font = crate::theme::gdi_font(10, scale);
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TITLE_AT.0, TITLE_AT.1, 350.0, 17.0)),
+                scale,
+                5,
                 TITLE,
-                title_font.clone(),
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(
+                    frame,
+                    scale,
+                    (NAME_LABEL_AT.0, NAME_LABEL_AT.1, 100.0, 16.0),
+                ),
+                scale,
+                4,
                 NAME_LABEL,
-                label_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
-            painter.text(
-                at(frame, scale, (TAB_LABEL_AT.0, TAB_LABEL_AT.1, 0.0, 0.0)).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(frame, scale, (TAB_LABEL_AT.0, TAB_LABEL_AT.1, 300.0, 16.0)),
+                scale,
+                5,
                 window.tab.label(),
-                title_font,
                 egui::Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
 
             for candidate in SystemTab::ALL {
@@ -637,17 +645,21 @@ pub fn draw_system_finder(
                 } else {
                     ROW_COLOR
                 };
-                list_painter.text(
+                crate::theme::paint_gdi_text(
+                    &list_painter,
                     at(
                         frame,
                         scale,
-                        (LIST.0 + ROW_TEXT_X, y + ROW_HEIGHT / 2.0, 0.0, 0.0),
-                    )
-                    .min,
-                    egui::Align2::LEFT_CENTER,
+                        (LIST.0 + ROW_TEXT_X, y, LIST.2 - ROW_TEXT_X, ROW_HEIGHT),
+                    ),
+                    scale,
+                    10,
                     &row.name,
-                    font.clone(),
                     colour,
+                    (
+                        crate::theme::GdiAlign::Left,
+                        crate::theme::GdiVAlign::VCenter,
+                    ),
                 );
                 let response = ui.interact(
                     row_rect,

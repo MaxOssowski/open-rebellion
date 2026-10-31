@@ -1,0 +1,185 @@
+{
+  "status": "pass",
+  "wasm_sha256": "df0652072e36cca8e2db4773ca13d1577071698179e2e7cf0f97581fea906183",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "fleet-finder",
+          "sha256": "90b9f265763dd25cd35c0ac47a591930af99ecc47f99ecb8d6fff9ba27a358b9"
+        },
+        {
+          "label": "troop-finder",
+          "sha256": "dcc4ae10d78e759d5fd8c252b1554081a9b746833c230ba297c5bfc8a552a15a"
+        },
+        {
+          "label": "personnel-finder",
+          "sha256": "3378e2df7076daf612038da91a1aea67267705dbcd34839dda17d1f3d1bf6864"
+        },
+        {
+          "label": "fleet-window",
+          "sha256": "cbe909bcc27209a5d821c3687bdd802472e46d71ca57f908a75c9739c8f5c273"
+        }
+      ],
+      "finderText": {}
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "fleet-finder",
+          "sha256": "f351a5e63958779755a2d6f979c50e2ec9f524f64d17ec14f3c2df5668fff338"
+        },
+        {
+          "label": "troop-finder",
+          "sha256": "a72607fdb1ae5b8cd6239b797f630edb9f99d9f46701814cc7ef8bb72e7a5ca3"
+        },
+        {
+          "label": "personnel-finder",
+          "sha256": "c9872991b837b4ab12661339b987ff2a6c9dee71c85a27c5b8b12f0d92adabb4"
+        },
+        {
+          "label": "fleet-window",
+          "sha256": "33fda50fc36f4c39e899b271d8fb6d0166849c4019d86095405faf22200c68bc"
+        }
+      ],
+      "finderText": {
+        "fleet-finder": {
+          "title": {
+            "a0": [
+              298,
+              69,
+              373,
+              78
+            ],
+            "port": [
+              298,
+              69,
+              373,
+              78
+            ]
+          },
+          "label": {
+            "a0": [
+              156,
+              103,
+              241,
+              112
+            ],
+            "port": [
+              156,
+              103,
+              241,
+              112
+            ]
+          },
+          "tab-label": {
+            "a0": [
+              165,
+              170,
+              299,
+              183
+            ],
+            "port": [
+              166,
+              170,
+              299,
+              183
+            ]
+          }
+        },
+        "troop-finder": {
+          "title": {
+            "a0": [
+              295,
+              69,
+              375,
+              81
+            ],
+            "port": [
+              295,
+              69,
+              375,
+              81
+            ]
+          },
+          "label": {
+            "a0": [
+              156,
+              103,
+              244,
+              115
+            ],
+            "port": [
+              156,
+              103,
+              245,
+              115
+            ]
+          },
+          "tab-label": {
+            "a0": [
+              166,
+              174,
+              263,
+              186
+            ],
+            "port": [
+              166,
+              174,
+              264,
+              186
+            ]
+          }
+        },
+        "personnel-finder": {
+          "title": {
+            "a0": [
+              282,
+              69,
+              389,
+              78
+            ],
+            "port": [
+              282,
+              69,
+              389,
+              78
+            ]
+          },
+          "label": {
+            "a0": [
+              156,
+              103,
+              241,
+              112
+            ],
+            "port": [
+              156,
+              103,
+              241,
+              112
+            ]
+          },
+          "tab-label": {
+            "a0": [
+              166,
+              170,
+              284,
+              182
+            ],
+            "port": [
+              166,
+              170,
+              284,
+              182
+            ]
+          }
+        }
+      }
+    }
+  ]
+}
