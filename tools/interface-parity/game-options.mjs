@@ -335,6 +335,14 @@ try {
       assert.ok(ratio > 0.85 && ratio < 1.15, `question width ratio ${ratio.toFixed(3)}`);
     }
   };
+  // Exit and Restart: No leaves the window as it was. Restart asks only
+  // while nothing was saved in this visit (FUN_00406b80 0x91), so before
+  // the overwrite.
+  for (const [label, point] of [["exit", [269, 402]], ["restart", [97, 402]]]) {
+    await confirm(label, point, false, label === "restart" ? compareRestart : null);
+    const after = await shot(`${label}-refused`);
+    assert.ok(!dialogShown(after), `No closes the ${label} confirmation`);
+  }
   const before = await storage();
   const saves = () => consoleLog.filter((line) => line.includes("save_state_fingerprint slot=0")).length;
   const savedOnce = saves();
@@ -355,14 +363,6 @@ try {
   await page.keyboard.press("Enter");
   await page.waitForTimeout(500);
   assert.ok(!dialogShown(await shot("overwrite-notice-closed")), "Enter closes the saved message");
-  // Exit and Restart: No leaves the window as it was.
-  await page.keyboard.press("F1");
-  await page.waitForTimeout(1000);
-  for (const [label, point] of [["exit", [269, 402]], ["restart", [97, 402]]]) {
-    await confirm(label, point, false, label === "restart" ? compareRestart : null);
-    const after = await shot(`${label}-refused`);
-    assert.ok(!dialogShown(after), `No closes the ${label} confirmation`);
-  }
   // Load: Yes restores the saved campaign and checks its fingerprint.
   await confirm("load", [305, 91], true);
   const fingerprint = consoleLog.filter((line) => line.includes("save_state_fingerprint slot=0")).at(-1)

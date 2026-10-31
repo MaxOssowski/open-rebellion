@@ -24,8 +24,11 @@ impl GameOptionsOrigin {
         !matches!(self, Self::ShuttleCockpit)
     }
 
+    /// `FUN_00407180` never disables Restart; from the shuttle cockpit it
+    /// shows 10035 and returns there at once (A0 main-menu-states/12).
+    /// port: a battle's Restart stays off until an A0 capture shows it.
     const fn can_restart(self) -> bool {
-        matches!(self, Self::CommandCenter)
+        !matches!(self, Self::TacticalBattle)
     }
 
     const fn tactical_toggles_enabled(self) -> bool {
@@ -137,6 +140,9 @@ pub struct GameOptionsState {
     /// "Selected Game Saved Successfully", `Some(false)` "Selected Game
     /// Failed To Save".
     pub saved_notice: Option<bool>,
+    /// A save succeeded since the window opened (`FUN_00408240` sets the
+    /// slot's flag at `+0xac + 4k`); Restart then asks nothing.
+    pub saved_this_visit: bool,
     pub occupied: [bool; 10],
     pub names: [String; 6],
     pub suspended: bool,
@@ -158,6 +164,7 @@ impl Default for GameOptionsState {
         Self {
             pending: None,
             saved_notice: None,
+            saved_this_visit: false,
             occupied: [false; 10],
             names: std::array::from_fn(|_| String::new()),
             suspended: false,
@@ -219,9 +226,11 @@ impl GameOptionsState {
         let confirm = match &action {
             GameOptionsAction::Save { slot, .. } => self.occupied[*slot],
             GameOptionsAction::Load { .. } => self.origin.has_live_campaign(),
-            GameOptionsAction::Restart
-            | GameOptionsAction::Exit
-            | GameOptionsAction::Delete { .. } => true,
+            // FUN_00406b80 command 0x91: a game in progress (+0xa8) with
+            // no save made in this visit asks 0x476 (FUN_00408170); else
+            // Restart goes straight to the shuttle cockpit.
+            GameOptionsAction::Restart => self.origin.has_live_campaign() && !self.saved_this_visit,
+            GameOptionsAction::Exit | GameOptionsAction::Delete { .. } => true,
             _ => false,
         };
         self.error = None;
@@ -263,6 +272,7 @@ impl GameOptionsState {
         self.pressed = None;
         self.pending = None;
         self.saved_notice = None;
+        self.saved_this_visit = false;
         self.suspended = false;
         self.error = None;
     }
@@ -1381,7 +1391,8 @@ mod tests {
             assert!(state.pending.is_none());
         }
         assert!(!GameOptionsOrigin::TacticalBattle.can_restart());
-        assert!(!GameOptionsOrigin::ShuttleCockpit.can_restart());
+        // A0 main-menu-states/12: Restart is on from the shuttle cockpit.
+        assert!(GameOptionsOrigin::ShuttleCockpit.can_restart());
         assert!(GameOptionsOrigin::CommandCenter.can_restart());
     }
 
@@ -1503,8 +1514,14 @@ mod tests {
 
     #[test]
     fn shuttle_and_tactical_contexts_disable_original_controls() {
+        // A0 main-menu-states/12: from the shuttle cockpit Restart (76,
+        // 381) is on and Return (162, 382) off.
         assert_eq!(
             control_at(GameOptionsOrigin::ShuttleCockpit, 80.0, 400.0),
+            Some(GameOptionsControl::Restart)
+        );
+        assert_eq!(
+            control_at(GameOptionsOrigin::ShuttleCockpit, 175.0, 400.0),
             None
         );
         assert_eq!(
@@ -1657,5 +1674,29 @@ mod tests {
             confirmation_strings(&GameOptionsAction::Delete { slot: 0 }),
             line(None, "Delete the selected saved game?")
         );
+    }
+
+    #[test]
+    fn restart_asks_only_in_a_game_with_nothing_saved_this_visit() {
+        // FUN_00406b80 command 0x91 -> FUN_00408170 0x476.
+        let mut shuttle = GameOptionsState::new(GameOptionsOrigin::ShuttleCockpit);
+        assert_eq!(
+            shuttle.request(GameOptionsAction::Restart),
+            GameOptionsAction::Restart
+        );
+        let mut game = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        assert_eq!(
+            game.request(GameOptionsAction::Restart),
+            GameOptionsAction::None
+        );
+        assert_eq!(game.pending, Some(GameOptionsAction::Restart));
+        game.confirm(false);
+        game.saved_this_visit = true;
+        assert_eq!(
+            game.request(GameOptionsAction::Restart),
+            GameOptionsAction::Restart
+        );
+        game.set_origin(GameOptionsOrigin::CommandCenter);
+        assert!(!game.saved_this_visit);
     }
 }

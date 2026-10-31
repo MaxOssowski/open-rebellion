@@ -10,7 +10,9 @@
 // step, pixel for pixel: the lever, the three size lights, the selected
 // difficulty (its pressed art, FUN_00602d30) and the held Empire button.
 // The game-type label's ink box must match A0's within the accepted text
-// deviation. Releasing off the button must not start a game.
+// deviation. Releasing off the button must not start a game. Last it opens
+// Load/Options and compares Game Options' buttons with A0, then checks that
+// Restart returns to the menu without a question.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node main-menu-states.mjs --a0=.artifacts/a0-vm/main-menu-states [--out=DIR]
@@ -177,6 +179,35 @@ try {
   await page.waitForTimeout(1500);
   assert.ok(await page.locator("#main-menu-semantics[data-active=true]").count() > 0,
     "releasing off the Empire button left the main menu");
+  // Load/Options (command 0x68) opens Game Options from the shuttle
+  // cockpit (A0 main-menu-states/12): Restart on (10035), Return off
+  // (10022), Exit on, the six Save buttons off (10048), as FUN_00407180
+  // builds them for that state.
+  await page.mouse.move(431, 250);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(500);
+  const options = await shot("12-load-options");
+  const a0Options = PNG.sync.read(await fs.readFile(path.join(args.a0, "12-load-options.png")));
+  const OPTION_BUTTONS = { restart: [76, 381, 42, 42], return: [162, 382, 42, 42], exit: [248, 381, 42, 42],
+    ...Object.fromEntries([81, 123, 165, 207, 249, 291].map((y, k) => [`save-${k + 1}`, [34, y, 42, 20]])) };
+  result.options = Object.fromEntries(Object.entries(OPTION_BUTTONS)
+    .map(([name, rect]) => [name, differing(options.png, a0Options, rect)]));
+  assert.ok(Object.values(result.options).every((count) => count === 0), JSON.stringify(result.options));
+  // Restart from the shuttle cockpit asks nothing and returns to it
+  // (FUN_00406b80 0x91 with no game in progress).
+  await page.mouse.move(97, 402);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  assert.ok(await page.locator("#main-menu-semantics[data-active=true]").count() > 0,
+    "Restart from the shuttle cockpit did not return to the main menu");
   result.errors = errors;
   assert.deepEqual(errors, []);
   result.status = "pass";
@@ -188,5 +219,5 @@ try {
 }
 await fs.writeFile(path.join(OUT, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify({ out: OUT, status: result.status, steps: result.steps.map(({ frame, differing, ink }) => ({ frame, differing, ink })),
-  empire_held_differing: result.empire_held_differing, error: result.error }, null, 2));
+  empire_held_differing: result.empire_held_differing, options: result.options, error: result.error }, null, 2));
 if (result.status !== "pass") process.exitCode = 1;

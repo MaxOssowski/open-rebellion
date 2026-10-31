@@ -7796,6 +7796,7 @@ async fn main() {
                             game_options_state.error = None;
                             // FUN_00408240: "Selected Game Saved Successfully".
                             game_options_state.saved_notice = Some(true);
+                            game_options_state.saved_this_visit = true;
                             msg_log.push(GameMessage::new(
                                 clock.tick,
                                 format!("Saved game to slot {}", slot + 1),

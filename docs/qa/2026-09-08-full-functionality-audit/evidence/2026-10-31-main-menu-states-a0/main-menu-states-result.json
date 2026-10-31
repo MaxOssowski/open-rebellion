@@ -3,7 +3,7 @@
   "steps": [
     {
       "frame": "01-menu",
-      "sha256": "0144f64b34c876ae07c34220e69073d12651a2a18fec02ac4177ce55339bdfc2",
+      "sha256": "c48dffd2f16c25d7b04e23f31491396c31d963ec66df233ccc621fae750bbea5",
       "differing": [
         0,
         0,
@@ -26,7 +26,7 @@
     },
     {
       "frame": "02-lever-1",
-      "sha256": "63dc1a97cce125d3b9dde232f8dd470a00cfec1b2e2719da83a057d6359d7265",
+      "sha256": "3c8159c47c1c2a5d49365fa6c9764e8c7e8532eaa679229e6953baf93ba9abfe",
       "differing": [
         0,
         0,
@@ -35,7 +35,7 @@
     },
     {
       "frame": "03-lever-2",
-      "sha256": "90efed833a00d6c28cd5847e06830fb534ca4479816ecee7c67879b3cdb544d2",
+      "sha256": "a3dd20789cf1e5f9875ac982ee6a1ceab6ce80738807bef694450cc610dfaed6",
       "differing": [
         0,
         0,
@@ -44,7 +44,7 @@
     },
     {
       "frame": "04-lever-3",
-      "sha256": "63c54c6cfca30655849f572ca52a0ed7b81cd314df6fc0f573fced14b97e1552",
+      "sha256": "800cfa8a67db684cc1e309943ff1b5f8885d8185361a77a67ea690fbfc3709fd",
       "differing": [
         0,
         0,
@@ -53,7 +53,7 @@
     },
     {
       "frame": "05-type-2",
-      "sha256": "4a8cffa3b46d87ddda01b795ff50065ed2829cd8b618994ed36669b5129ab851",
+      "sha256": "2946270f9a947052771d91b2d748bbffa94ea9f476832f734215218ba7ef994b",
       "differing": [
         0,
         0,
@@ -76,7 +76,7 @@
     },
     {
       "frame": "06-type-1",
-      "sha256": "8bc2091445bb6db58fd840bb38a71b69bd71ac604a9dd766a66ccb4bff7cfee5",
+      "sha256": "51be85d7c2695ebbda3591e96b1f92ef7a59d136b34495a5c58ea3ccbdf83fda",
       "differing": [
         0,
         0,
@@ -99,7 +99,7 @@
     },
     {
       "frame": "07-intermediate",
-      "sha256": "c8a2c7f302b3660366974bb332a8a5861ca959bd73ff7e2dba330c79e63a6964",
+      "sha256": "efe22299a4cc27d14dbeaccab29c8333c60d9ae62120c648f871d84c5d73fcad",
       "differing": [
         0,
         0,
@@ -108,7 +108,7 @@
     },
     {
       "frame": "08-expert",
-      "sha256": "680086bd2e3af73a5ea5de4321b23d1ad54f3f9592e1338537aa5def5e9c8643",
+      "sha256": "a7e92abd8a28f98006e64b9d4dca3af5715b61e19ce41ac246c76530cfb9e2a1",
       "differing": [
         0,
         0,
@@ -117,7 +117,7 @@
     },
     {
       "frame": "09-easy",
-      "sha256": "a7cec77f2eb92f5b5f7b42a402e67a595313de20f0e786cada29fc6cfec55e40",
+      "sha256": "d92de40a96c34f190b67fa5832cc700c1ed371eb3faaa3db0563d52746bce359",
       "differing": [
         0,
         0,
@@ -126,5 +126,16 @@
     }
   ],
   "empire_held_differing": 0,
+  "options": {
+    "restart": 0,
+    "return": 0,
+    "exit": 0,
+    "save-1": 0,
+    "save-2": 0,
+    "save-3": 0,
+    "save-4": 0,
+    "save-5": 0,
+    "save-6": 0
+  },
   "errors": []
 }

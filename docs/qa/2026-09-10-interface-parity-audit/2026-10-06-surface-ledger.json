@@ -428,7 +428,7 @@
         {
           "id": "PRE-02-C011",
           "requirement": "load/options",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
@@ -439,10 +439,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
+            "tools/interface-parity/main-menu-states.mjs"
           ],
-          "note": "Load/Options (command 0x68, FUN_00406000) opens the COMMON 20002 Game Options screen; browser 2026-09 (macOS), native Linux acceptance 2026-10-18 loaded a save through it. No A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Load/Options (command 0x68, FUN_00406000) opens the COMMON 20002 Game Options screen; browser 2026-09 (macOS), native Linux acceptance 2026-10-18 loaded a save through it. 2026-10-31: from the menu, Load/Options opens Game Options with Restart on, Return off and the Save buttons off, pixel-identical to A0 main-menu-states/12 on Linux (main-menu-states.mjs); Restart returns to the menu without a question, as FUN_00406b80 does with no game in progress.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-02-C012",
@@ -624,9 +626,10 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-game-options-empty-space.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-game-options-empty-space.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/"
           ],
-          "note": "Disabled states for shuttle/tactical contexts follow FUN_00407180 (test shuttle_and_tactical_contexts_disable_original_controls) and the P58-B12 in-battle journey; no A0 capture. Browser run on macOS only; rerun on Linux.",
+          "note": "Disabled states for shuttle/tactical contexts follow FUN_00407180 (test shuttle_and_tactical_contexts_disable_original_controls) and the P58-B12 in-battle journey; no A0 capture. Browser run on macOS only; rerun on Linux. 2026-10-31: the shuttle-cockpit context against A0 main-menu-states/12: Restart on (FUN_00407180 never disables it; the port had it off), Return off, Save off, each pixel-identical on Linux (main-menu-states.mjs). The battle context has no A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -724,9 +727,10 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
-            "ghidra/notes/game-options-text.md"
+            "ghidra/notes/game-options-text.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/"
           ],
-          "note": "Restart (0x91) waits for confirmation (unit tests); no browser assertion of Restart itself and no A0. 2026-10-31: Restart art 10035 at (76,381), keyed on white index 11, is pixel-identical to A0 (game-options.mjs). No Linux browser or A0 run of Restart itself. 2026-10-31: Restart's question matches A0 tooltip/211 (game-options.mjs); Restart Yes itself is not run on Linux.",
+          "note": "Restart (0x91) waits for confirmation (unit tests); no browser assertion of Restart itself and no A0. 2026-10-31: Restart art 10035 at (76,381), keyed on white index 11, is pixel-identical to A0 (game-options.mjs). No Linux browser or A0 run of Restart itself. 2026-10-31: Restart's question matches A0 tooltip/211 (game-options.mjs); Restart Yes itself is not run on Linux. 2026-10-31: FUN_00406b80 0x91 asks only while a game is in progress and nothing was saved in this visit; otherwise Restart goes straight to the shuttle cockpit. The port now does the same (unit test restart_asks_only_in_a_game_with_nothing_saved_this_visit; main-menu-states.mjs checks the cockpit case on Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

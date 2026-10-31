@@ -45,3 +45,32 @@ Chromium and compares each step with its A0 frame
 - **Release off the button.** Nothing starts.
 
 `main-menu-rest.mjs` still passes.
+
+## Load/Options from the menu (second stage)
+
+A0 `12-load-options` shows Game Options opened from the shuttle cockpit
+(command 0x68):
+- Restart is on (10035).
+- Return is off (10022).
+- The six Save buttons are off (10048).
+
+`FUN_00407180` never disables Restart. Command 0x91 (`FUN_00406b80`) asks
+the 0x476 question only while a game is in progress (`+0xa8`) and nothing
+has been saved in this visit (the slot flags `+0xac..`, which
+`FUN_00408240` sets). Otherwise it goes straight to the shuttle cockpit.
+
+The port had Restart off from the cockpit, and in a game it always asked.
+It now:
+- turns Restart on from the cockpit, where it returns without a question;
+- skips the question after a save made in the same visit
+  (`GameOptionsState::saved_this_visit`, unit test
+  `restart_asks_only_in_a_game_with_nothing_saved_this_visit`).
+
+port: a battle's Restart stays off; no A0 capture of a battle's Game
+Options exists.
+
+`main-menu-states.mjs` now opens Load/Options and compares Restart,
+Return, Exit and the six Save buttons with A0 (0 differing pixels each).
+It then checks that Restart returns to the menu at once. `game-options.mjs`
+now asks Restart's question before its save, since the original asks
+nothing after one.
