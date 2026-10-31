@@ -1201,7 +1201,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
           ],
-          "note": "STRATEGY 901 shell with aperture 120,40,480,355. 2026-10-31: the Empire shell of a real Linux browser game (agent-objectives.mjs speed-menu.png, emsprite advisor) against A0 status/00-resume.png: top bar 99.1%, left 96.0%, right 96.5%, bottom 92.9% identical; outside the aperture, droids, readouts and the speed menu, the 2,544 differing pixels of 97,380 are the Game Controls globe, the rail's unread lights, the holoprojector's frame and an A0 window's edge (state or animation). No A0 capture of the initial frame of a new Empire game. The interface fixtures show the Alliance droids on the Empire cockpit (fixture-only: the fixture loads alsprite-dll).",
+          "note": "STRATEGY 901 shell with aperture 120,40,480,355. 2026-10-31: the Empire shell of a real Linux browser game (agent-objectives.mjs speed-menu.png, emsprite advisor) against A0 status/00-resume.png: top bar 99.1%, left 96.0%, right 96.5%, bottom 92.9% identical; outside the aperture, droids, readouts and the speed menu, the 2,544 differing pixels of 97,380 are the Game Controls globe, the rail's unread lights, the holoprojector's frame and an A0 window's edge (state or animation). No A0 capture of the initial frame of a new Empire game. The interface fixtures showed the Alliance droids on the Empire cockpit; since 2026-10-31 (74a00db9) every fixture sets its own side's advisor (GID catalog 152/152).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
