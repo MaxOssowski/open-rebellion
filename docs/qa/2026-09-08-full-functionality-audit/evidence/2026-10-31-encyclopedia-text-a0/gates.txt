@@ -1,0 +1,7 @@
+Linux Chromium (Arch 155), 2026-10-31:
+encyclopedia-placement --a0  pass (both sides)
+status-window --a0          pass
+message-display             pass
+tooltip --a0                pass
+run.mjs --all               pass, 152 of 152
+encyclopedia-index-shell    fail as before (51-62 / 107-398 pixels)

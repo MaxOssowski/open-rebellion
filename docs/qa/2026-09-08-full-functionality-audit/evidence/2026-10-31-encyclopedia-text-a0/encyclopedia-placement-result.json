@@ -1,0 +1,188 @@
+{
+  "status": "pass",
+  "wasm_sha256": "8e1e9449a9ce47614e411eb3b20d0e76885bef5f0c03fe870b90dc6da30696a6",
+  "results": [
+    {
+      "faction": "alliance",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "encyclopedia-index",
+          "sha256": "b5943f754d574237e4af8ff96ceb07832fa71d08dd131cdf6139d7c9b9a9565b"
+        },
+        {
+          "label": "encyclopedia-index-scrolled",
+          "sha256": "68291ca930f230cc5fced6ae7516924e4568f935e40317fc106dfb6d5e2d58c3"
+        },
+        {
+          "label": "encyclopedia-topic",
+          "sha256": "702b967343521b93d3a7e12e94f0f7c4af26ab25b6803d070efa6c00e2cf1539"
+        }
+      ],
+      "indexText": null,
+      "topicText": null
+    },
+    {
+      "faction": "empire",
+      "status": "pass",
+      "shots": [
+        {
+          "label": "encyclopedia-index",
+          "sha256": "9643c5ce49e5bea52fa149f39e804b7828a76ce69c42a236183791bbfccdb449"
+        },
+        {
+          "label": "encyclopedia-index-scrolled",
+          "sha256": "a4062e69014f9758487855f8ac8046e9f02086c87c284c819e7b2d39bf1bff5c"
+        },
+        {
+          "label": "encyclopedia-topic",
+          "sha256": "71b9623e23adeaf423e3202517e6b25160e8a24610362c34112663a91bb4f259"
+        }
+      ],
+      "indexText": {
+        "title": {
+          "a0": [
+            266,
+            69,
+            404,
+            81
+          ],
+          "port": [
+            266,
+            69,
+            404,
+            81
+          ]
+        },
+        "topic": {
+          "a0": [
+            161,
+            103,
+            189,
+            115
+          ],
+          "port": [
+            162,
+            103,
+            189,
+            115
+          ]
+        },
+        "all-databases": {
+          "a0": [
+            165,
+            174,
+            250,
+            183
+          ],
+          "port": [
+            166,
+            174,
+            251,
+            183
+          ]
+        },
+        "ackbar": {
+          "a0": [
+            166,
+            234,
+            206,
+            243
+          ],
+          "port": [
+            167,
+            235,
+            206,
+            243
+          ]
+        },
+        "adar-tallon": {
+          "a0": [
+            166,
+            254,
+            228,
+            263
+          ],
+          "port": [
+            167,
+            255,
+            228,
+            263
+          ]
+        },
+        "advanced-construction-yard": {
+          "a0": [
+            166,
+            294,
+            327,
+            303
+          ],
+          "port": [
+            167,
+            295,
+            327,
+            303
+          ]
+        }
+      },
+      "topicText": {
+        "title": {
+          "a0": [
+            304,
+            69,
+            366,
+            78
+          ],
+          "port": [
+            305,
+            69,
+            366,
+            78
+          ]
+        },
+        "body-1": {
+          "a0": [
+            142,
+            286,
+            516,
+            298
+          ],
+          "port": [
+            142,
+            286,
+            516,
+            298
+          ]
+        },
+        "body-2": {
+          "a0": [
+            142,
+            302,
+            508,
+            314
+          ],
+          "port": [
+            143,
+            302,
+            508,
+            314
+          ]
+        },
+        "body-3": {
+          "a0": [
+            143,
+            318,
+            532,
+            330
+          ],
+          "port": [
+            143,
+            318,
+            533,
+            330
+          ]
+        }
+      }
+    }
+  ]
+}

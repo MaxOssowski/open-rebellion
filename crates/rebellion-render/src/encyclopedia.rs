@@ -1236,44 +1236,30 @@ pub fn draw_encyclopedia_topic(
             }
             // The title label +0x120 (FUN_0045fa60's FUN_00601aa0), font 5,
             // as in the index (A0 2026-10-29: bold).
-            let title_font = crate::theme::original_font(5, scale);
-            ui.painter()
-                .with_clip_rect(encyclopedia_rect(
-                    window_rect,
-                    scale,
-                    36.0,
-                    14.0,
-                    350.0,
-                    17.0,
-                ))
-                .text(
-                    encyclopedia_point(window_rect, scale, 211.0, 14.0),
-                    egui::Align2::CENTER_TOP,
-                    &topic.title,
-                    title_font,
-                    Color32::WHITE,
-                );
+            let title_rect = encyclopedia_rect(window_rect, scale, 36.0, 14.0, 350.0, 17.0);
+            crate::theme::paint_gdi_text(
+                &ui.painter().with_clip_rect(title_rect),
+                title_rect,
+                scale,
+                5,
+                &topic.title,
+                Color32::WHITE,
+                (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
+            );
             if let Some(body) = &topic.body {
                 let body_rect = encyclopedia_rect(window_rect, scale, 17.0, 231.0, 395.0, 80.0);
-                // hyp: the body's text object (FUN_0041ecf0) font is not
-                // read. A0 2026-10-29 measures it: lines 16 apart from
-                // (17, 234), the first line 374 wide, which Arial's metrics
-                // give at a 13-pixel em (Liberation Sans: 372).
-                let mut job = egui::text::LayoutJob::single_section(
-                    body.clone(),
-                    egui::TextFormat {
-                        font_id: egui::FontId::proportional(13.0 * scale),
-                        color: Color32::WHITE,
-                        line_height: Some(16.0 * scale),
-                        ..egui::TextFormat::default()
-                    },
-                );
-                job.wrap.max_width = body_rect.width();
-                let galley = ui.fonts(|fonts| fonts.layout_job(job));
-                ui.painter().with_clip_rect(body_rect).galley(
-                    body_rect.min,
-                    galley,
+                // hyp: the body's text object (FUN_0041ecf0) keeps the
+                // default font. A0 2026-10-29 measures lines 16 apart with
+                // capitals from y 234 and a 13-pixel em: font 4 as GDI draws
+                // it (13 ppem, tmHeight 16, tmAscent 13 from 231).
+                let _ = crate::theme::paint_gdi_text_block(
+                    &ui.painter().with_clip_rect(body_rect),
+                    body_rect,
+                    scale,
+                    crate::DEFAULT_FONT,
+                    body,
                     Color32::WHITE,
+                    crate::theme::GdiAlign::Left,
                 );
             }
         });
@@ -1476,39 +1462,46 @@ fn draw_original_index_content(
     let painter = ui.painter();
     // FUN_0045ddc0: the title TEXTSTRA 0x1842 in font 5, centred in
     // (36, 14, 350); "Topic" 0x1843 at (36, 48) in font 4; the category
-    // label at (40, 119) in font 5; the list in font 10. hyp: the
-    // selector's font 100 (FUN_00604cf0, +0x24) is not mapped; font 10
-    // stands in.
-    let title_font = crate::theme::original_font(5, scale);
-    let topic_font = crate::theme::original_font(4, scale);
-    let list_font = crate::theme::original_font(10, scale);
-    painter.text(
-        encyclopedia_point(window_rect, scale, 211.0, 14.0),
-        egui::Align2::CENTER_TOP,
+    // label at (40, 119) in font 5; the list in the default font. The
+    // selector's font 100 (FUN_00604cf0, +0x24) is not in FUN_0060eed0's
+    // table, so it falls to the default: A0 encyclopedia/index-empire-day143
+    // sets "Advanced Construction Yard" 162 wide, Arial at 13 ppem (font
+    // 4), where font 10 gives 140.
+    use crate::theme::{GdiAlign, GdiVAlign};
+    let text = |rect: (f32, f32, f32, f32), font: u16, words: &str, align: GdiAlign| {
+        crate::theme::paint_gdi_text(
+            painter,
+            encyclopedia_rect(window_rect, scale, rect.0, rect.1, rect.2, rect.3),
+            scale,
+            font,
+            words,
+            Color32::WHITE,
+            (align, GdiVAlign::Top),
+        );
+    };
+    text(
+        (36.0, 14.0, 350.0, 17.0),
+        5,
         content.title,
-        title_font.clone(),
-        Color32::WHITE,
+        GdiAlign::Center,
     );
-    painter.text(
-        encyclopedia_point(window_rect, scale, 36.0, 48.0),
-        egui::Align2::LEFT_TOP,
+    text(
+        (36.0, 48.0, 100.0, 16.0),
+        4,
         content.topic_label,
-        topic_font,
-        Color32::WHITE,
+        GdiAlign::Left,
     );
-    painter.text(
-        encyclopedia_point(window_rect, scale, 143.0, 47.0),
-        egui::Align2::LEFT_TOP,
-        content.selected_name,
-        list_font.clone(),
-        Color32::WHITE,
+    text(
+        (143.0, 47.0, 240.0, 16.0),
+        crate::DEFAULT_FONT,
+        &content.selected_name,
+        GdiAlign::Left,
     );
-    painter.text(
-        encyclopedia_point(window_rect, scale, 40.0, 119.0),
-        egui::Align2::LEFT_TOP,
-        content.category_label,
-        title_font,
-        Color32::WHITE,
+    text(
+        (40.0, 119.0, 340.0, 16.0),
+        5,
+        &content.category_label,
+        GdiAlign::Left,
     );
 
     let list_rect = original_index_list_rect(window_rect, scale);
@@ -1595,21 +1588,25 @@ fn draw_original_index_content(
             ui.id().with(("encyclopedia-index-row", entry.object_id)),
             egui::Sense::click(),
         );
-        list_painter.text(
-            encyclopedia_point(
+        crate::theme::paint_gdi_text(
+            &list_painter,
+            encyclopedia_rect(
                 window_rect,
                 scale,
                 36.0 + ORIGINAL_INDEX_TEXT_X,
-                y + ORIGINAL_INDEX_ROW_HEIGHT / 2.0,
+                y,
+                350.0 - ORIGINAL_INDEX_TEXT_X,
+                ORIGINAL_INDEX_ROW_HEIGHT,
             ),
-            egui::Align2::LEFT_CENTER,
+            scale,
+            crate::DEFAULT_FONT,
             &entry.name,
-            list_font.clone(),
             if selected {
                 Color32::WHITE
             } else {
                 ORIGINAL_INDEX_ROW_COLOR
             },
+            (GdiAlign::Left, GdiVAlign::VCenter),
         );
         if response.clicked() {
             outcome.selected_object_id = Some(entry.object_id);
@@ -2575,15 +2572,10 @@ mod tests {
                     );
                 },
             );
-            texts = output
-                .shapes
-                .iter()
-                .filter_map(|clipped| match &clipped.shape {
-                    egui::Shape::Text(text) => {
-                        Some((text.galley.text().to_owned(), text.pos, text.galley.size()))
-                    }
-                    _ => None,
-                })
+            // Each line's text, pen and baseline, and width by font size.
+            texts = crate::theme::test_lines(&output.shapes)
+                .into_iter()
+                .map(|line| (line.text, line.pen, egui::vec2(line.width, line.size)))
                 .collect();
         }
         let painted = crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow().clone());
@@ -2632,25 +2624,26 @@ mod tests {
 
     #[test]
     fn the_index_list_scrolls_by_pixels_and_clips_its_rows() {
-        // The list scrolls by pixels (FUN_0060a490): scrolled 30, E01 sits
-        // at 137 + 20 - 30 = 127, centred on 137; E00 is gone; E09, at
-        // 287, still shows its top; E10 does not.
+        // The list scrolls by pixels (FUN_0060a490): scrolled 30, E01's row
+        // sits at 137 + 20 - 30 = 127; E00 is gone; E09, at 287, still shows
+        // its top; E10 does not. Each name is DT_VCENTER in its 20 rows:
+        // (20 - 16) / 2 = 2 down, then the default font's tmAscent 13.
         let catalog = twelve_entry_catalog();
         let mut state = EncyclopediaState {
             original_scroll: 30,
             ..EncyclopediaState::default()
         };
         let (texts, _) = run_index(&mut state, &catalog, (0.0, 0.0), vec![]);
-        let centre = |name: &str| {
+        let baseline = |name: &str| {
             texts
                 .iter()
                 .find(|(text, ..)| text == name)
-                .map(|(_, pos, size)| pos.y + size.y / 2.0)
+                .map(|(_, pen, _)| pen.y)
         };
-        assert_eq!(centre("E00"), None);
-        assert_eq!(centre("E01"), Some(20.0 + 137.0));
-        assert_eq!(centre("E09"), Some(20.0 + 297.0));
-        assert_eq!(centre("E10"), None);
+        assert_eq!(baseline("E00"), None);
+        assert_eq!(baseline("E01"), Some(20.0 + 127.0 + 15.0));
+        assert_eq!(baseline("E09"), Some(20.0 + 287.0 + 15.0));
+        assert_eq!(baseline("E10"), None);
         assert_eq!(state.original_scroll, 30);
     }
 
@@ -2728,37 +2721,35 @@ mod tests {
         // The selector also names the selected object; the rows start at
         // the cell's x 5.
         let row_x = 10.0 + 41.0 * 2.0;
+        let lines = crate::theme::test_lines(&shapes);
         let text = |wanted: &str| {
-            shapes
+            lines
                 .iter()
-                .filter(|clipped| match &clipped.shape {
-                    egui::Shape::Text(text) => {
-                        !wanted.starts_with("Alliance") || text.pos.x == row_x
-                    }
-                    _ => false,
-                })
-                .find_map(|clipped| match &clipped.shape {
-                    egui::Shape::Text(text) if text.galley.text() == wanted => Some((
-                        text.pos,
-                        text.galley.size(),
-                        text.galley.job.sections[0].format.font_id.size,
-                        text.galley.job.sections[0].format.color,
-                    )),
-                    _ => None,
-                })
-                .unwrap_or_else(|| panic!("{wanted} not drawn"))
+                .filter(|line| !wanted.starts_with("Alliance") || line.pen.x == row_x)
+                .find(|line| line.text == wanted)
+                .unwrap_or_else(|| panic!("{wanted} not drawn in {lines:?}"))
         };
-        let (pos, size, font, color) = text("Ackbar");
-        assert_eq!(pos.x, row_x);
-        assert!((pos.y + size.y / 2.0 - (20.0 + 147.0 * 2.0)).abs() < 0.01, "{pos:?}");
-        assert_eq!(font, crate::theme::original_font(10, 2.0).size);
-        assert_eq!(color, ORIGINAL_INDEX_ROW_COLOR);
-        let (pos, size, _, color) = text("Alliance Army Regiment");
-        assert!((pos.y + size.y / 2.0 - (20.0 + 167.0 * 2.0)).abs() < 0.01, "{pos:?}");
-        assert_eq!(color, Color32::WHITE);
-        assert_eq!(text("Galactic Encyclopedia").2, crate::theme::original_font(5, 2.0).size);
-        assert_eq!(text("All Databases").2, crate::theme::original_font(5, 2.0).size);
-        assert_eq!(text("Topic").2, crate::theme::original_font(4, 2.0).size);
+        // The default font (A0: 13 ppem): DT_VCENTER in 20 rows is
+        // (20 - 16) / 2 = 2 down, then tmAscent 13.
+        let ackbar = text("Ackbar");
+        assert_eq!(ackbar.pen, egui::pos2(row_x, 20.0 + (137.0 + 15.0) * 2.0));
+        assert_eq!(
+            ackbar.size,
+            crate::theme::gdi_font(crate::DEFAULT_FONT, 2.0).size
+        );
+        assert_eq!(ackbar.color, ORIGINAL_INDEX_ROW_COLOR);
+        let regiment = text("Alliance Army Regiment");
+        assert_eq!(regiment.pen.y, 20.0 + (157.0 + 15.0) * 2.0);
+        assert_eq!(regiment.color, Color32::WHITE);
+        assert_eq!(
+            text("Galactic Encyclopedia").size,
+            crate::theme::gdi_font(5, 2.0).size
+        );
+        assert_eq!(
+            text("All Databases").size,
+            crate::theme::gdi_font(5, 2.0).size
+        );
+        assert_eq!(text("Topic").size, crate::theme::gdi_font(4, 2.0).size);
     }
 
     #[test]
@@ -2777,54 +2768,36 @@ mod tests {
             .expect("the topic window");
         assert_eq!(area.min, egui::pos2(10.0, 20.0));
         assert_eq!(area.size(), egui::vec2(470.0 * 2.0, 330.0 * 2.0));
-        let texts: Vec<(String, egui::Pos2, egui::Rect)> = shapes
+        // The title in font 5 (the label +0x120), from its box's top
+        // (tmAscent 13); the body in the default font, which GDI draws at 13
+        // ppem on 16-pixel lines (A0 2026-10-29: lines 16 apart), white.
+        let lines = crate::theme::test_lines(&shapes);
+        let title = lines
             .iter()
-            .filter_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) => {
-                    Some((text.galley.text().to_owned(), text.pos, clipped.clip_rect))
-                }
-                _ => None,
-            })
-            .collect();
-        // The title in font 5 (the label +0x120); the body at a 13-pixel
-        // em, lines 16 apart (A0 2026-10-29).
-        let font_size = |wanted: &str| {
-            shapes.iter().find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text().starts_with(wanted) => {
-                    Some(text.galley.job.sections[0].format.font_id.size)
-                }
-                _ => None,
-            })
-        };
-        assert_eq!(font_size("Ackbar"), Some(crate::theme::original_font(5, 2.0).size));
-        assert_eq!(font_size("A Mon Calamari"), Some(26.0));
-        // The body's lines 16 apart (A0 2026-10-29), white.
-        let body = shapes
-            .iter()
-            .find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text().starts_with("A Mon Calamari") => {
-                    Some(text.galley.clone())
-                }
-                _ => None,
-            })
-            .expect("the body");
-        assert_eq!(body.job.sections[0].format.line_height, Some(32.0));
-        assert_eq!(body.job.sections[0].format.color, Color32::WHITE);
-        let (_, title_pos, title_clip) = texts
-            .iter()
-            .find(|(text, _, _)| text == "Ackbar")
+            .find(|line| line.text == "Ackbar")
             .expect("the title");
-        assert_eq!(title_pos.y, 20.0 + 14.0 * 2.0);
+        assert_eq!(title.size, crate::theme::gdi_font(5, 2.0).size);
+        assert_eq!(title.pen.y, 20.0 + (14.0 + 13.0) * 2.0);
         assert_eq!(
-            *title_clip,
+            title.clip,
             egui::Rect::from_min_size(egui::pos2(10.0 + 36.0 * 2.0, 48.0), egui::vec2(700.0, 34.0))
         );
-        let (_, body_pos, body_clip) = texts
+        // The body's later lines step by tmHeight
+        // (theme::a_text_block_steps_its_lines_by_tm_height).
+        let body = lines
             .iter()
-            .find(|(text, _, _)| text.starts_with("A Mon Calamari"))
+            .find(|line| line.text.starts_with("A Mon Calamari"))
             .expect("the body");
-        assert_eq!(*body_pos, egui::pos2(10.0 + 17.0 * 2.0, 20.0 + 231.0 * 2.0));
-        assert_eq!(body_clip.size(), egui::vec2(395.0 * 2.0, 80.0 * 2.0));
+        assert_eq!(
+            body.size,
+            crate::theme::gdi_font(crate::DEFAULT_FONT, 2.0).size
+        );
+        assert_eq!(
+            body.pen,
+            egui::pos2(10.0 + 17.0 * 2.0, 20.0 + (231.0 + 13.0) * 2.0)
+        );
+        assert_eq!(body.color, Color32::WHITE);
+        assert_eq!(body.clip.size(), egui::vec2(395.0 * 2.0, 80.0 * 2.0));
     }
 
     #[test]

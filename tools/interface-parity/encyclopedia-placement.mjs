@@ -19,6 +19,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const WEB = path.join(ROOT, "web");
@@ -44,6 +45,44 @@ const FACTIONS = [
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
+
+// The Encyclopedia's text against A0 (--a0=.artifacts/a0-vm/encyclopedia,
+// the Empire): each [name, region, ink] box within a pixel of A0's, both
+// windows at the Empire's (125, 52). DrawTextA sets them
+// (theme::paint_gdi_text): the title and "All Databases" in font 5, the
+// rows in the default font (13 ppem), the topic's body DT_WORDBREAK in the
+// default font. Index rows A-wing and Abduction are left out: A0's pointer
+// and bar touch their regions.
+const white = ([r, g, b]) => Math.min(r, g, b) > 200;
+const grey = ([r, g, b]) => r > 110 && Math.abs(r - g) < 20 && Math.abs(g - b) < 30 && b > 100;
+const INDEX_TEXT = [["title", [200, 66, 480, 82], white], ["topic", [158, 100, 200, 116], white],
+  ["all-databases", [164, 172, 300, 188], white], ["ackbar", [164, 230, 400, 249], grey],
+  ["adar-tallon", [164, 250, 400, 269], grey], ["advanced-construction-yard", [164, 290, 400, 309], grey]];
+const TOPIC_TEXT = [["title", [161, 66, 511, 83], white], ["body-1", [142, 283, 537, 299], white],
+  ["body-2", [142, 299, 537, 315], white], ["body-3", [142, 315, 537, 331], white]];
+async function textAgainstA0(portFile, a0File, regions) {
+  const port = PNG.sync.read(await fs.readFile(portFile));
+  const a0 = PNG.sync.read(await fs.readFile(path.join(args.a0, a0File)));
+  const ink = (png, [x0, y0, x1, y1], pred) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = (y * png.width + x) * 4;
+        if (!pred([png.data[i], png.data[i + 1], png.data[i + 2]])) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const checks = {};
+  for (const [name, region, pred] of regions) {
+    const a = ink(a0, region, pred);
+    const p = ink(port, region, pred);
+    checks[name] = { a0: a, port: p };
+    assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1), `${a0File} ${name}: ${JSON.stringify(checks[name])}`);
+  }
+  return checks;
+}
 
 function serve(root) {
   const server = http.createServer(async (req, res) => {
@@ -181,6 +220,8 @@ async function run(browser, base, faction) {
       () => log.some((line) => line.includes("destination=encyclopedia status=opened_original")), 5_000);
     await page.waitForTimeout(800);
     await shot("encyclopedia-index");
+    const indexText = args.a0 && faction.name === "empire"
+      ? await textAgainstA0(path.join(directory, "encyclopedia-index.png"), "index-empire-day143.png", INDEX_TEXT) : null;
     // The bar: three clicks on the down arrow scroll the list.
     const [ox, oy] = ORIGINS[faction.name];
     const list = { x: ox + 36, y: oy + 137, width: 338, height: 160 };
@@ -202,10 +243,12 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(800);
     await shot("encyclopedia-topic");
+    const topicText = args.a0 && faction.name === "empire"
+      ? await textAgainstA0(path.join(directory, "encyclopedia-topic.png"), "topic-abduction-empire-day166.png", TOPIC_TEXT) : null;
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", shots };
+    return { faction: faction.name, status: "pass", shots, indexText, topicText };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };

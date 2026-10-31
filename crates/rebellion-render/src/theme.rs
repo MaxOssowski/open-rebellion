@@ -462,10 +462,7 @@ pub fn paint_gdi_text_block(
         let top = rect.min.y + index as f32 * pitch * scale;
         paint_gdi_text(
             painter,
-            egui::Rect::from_min_size(
-                egui::pos2(rect.min.x, top),
-                egui::vec2(rect.width(), pitch * scale),
-            ),
+            egui::Rect::from_min_max(egui::pos2(rect.min.x, top), rect.max),
             scale,
             font,
             line,
@@ -476,6 +473,61 @@ pub fn paint_gdi_text_block(
     #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
     let height = lines.len() as f32 * pitch;
     height
+}
+
+/// One painted line of text in a test: [`paint_gdi_text`] paints a line a
+/// character at a time, so each run of one size, colour, baseline and clip,
+/// one character after the other, is joined. `pen` is the first
+/// character's left and the baseline.
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) struct TestLine {
+    pub text: String,
+    pub pen: egui::Pos2,
+    pub width: f32,
+    pub size: f32,
+    pub color: Color32,
+    pub clip: egui::Rect,
+}
+
+/// The lines among `shapes` ([`TestLine`]).
+#[cfg(test)]
+pub(crate) fn test_lines(shapes: &[egui::epaint::ClippedShape]) -> Vec<TestLine> {
+    let mut lines: Vec<TestLine> = Vec::new();
+    for clipped in shapes {
+        let egui::Shape::Text(text) = &clipped.shape else {
+            continue;
+        };
+        let format = &text.galley.job.sections[0].format;
+        let baseline = text.pos.y
+            + text
+                .galley
+                .rows
+                .first()
+                .and_then(|row| row.glyphs.first())
+                .map_or(0.0, |glyph| glyph.pos.y);
+        let right = text.pos.x + text.galley.size().x;
+        if let Some(line) = lines.last_mut().filter(|line| {
+            line.size == format.font_id.size
+                && line.color == format.color
+                && line.pen.y == baseline
+                && line.clip == clipped.clip_rect
+                && (text.pos.x - (line.pen.x + line.width)).abs() < line.size
+        }) {
+            line.text.push_str(text.galley.text());
+            line.width = right - line.pen.x;
+            continue;
+        }
+        lines.push(TestLine {
+            text: text.galley.text().to_owned(),
+            pen: egui::pos2(text.pos.x, baseline),
+            width: text.galley.size().x,
+            size: format.font_id.size,
+            color: format.color,
+            clip: clipped.clip_rect,
+        });
+    }
+    lines
 }
 
 // ── Theme application ────────────────────────────────────────────────────────
@@ -824,6 +876,28 @@ mod tests {
             ["aaaaaaaaaaaa", "b", "c"]
         );
         assert_eq!(gdi_word_break("", 10.0, measure), [""]);
+    }
+
+    #[test]
+    fn gdi_width_is_the_pens_or_egui_layout_in_logical_pixels() {
+        // cp1252 text takes GDI's width; other text egui's, over the scale.
+        let ctx = egui::Context::default();
+        load_fonts(&ctx);
+        let mut widths = (0.0, 0.0, 0.0);
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let painter = ctx.layer_painter(egui::LayerId::background());
+            widths = (
+                gdi_text_width(&painter, 10, "Tokmia", 2.0),
+                gdi_text_width(&painter, 10, "ΩΩ", 2.0),
+                painter
+                    .layout_no_wrap("ΩΩ".to_owned(), gdi_font(10, 2.0), Color32::WHITE)
+                    .size()
+                    .x,
+            );
+        });
+        assert_eq!(widths.0, 32.0);
+        assert!(widths.2 > 0.0);
+        assert_eq!(widths.1, widths.2 / 2.0);
     }
 
     #[test]
