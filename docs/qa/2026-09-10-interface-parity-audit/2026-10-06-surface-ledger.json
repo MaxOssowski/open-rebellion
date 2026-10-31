@@ -513,7 +513,7 @@
         74,
         75
       ],
-      "current_implementation": "Implementation checkpoint: shared COMMON 20002 options surface with original controls and REBDLOG confirmations; campaign/main-menu/tactical entry, six original rows and ten-slot compatibility management. Upstream P58-B12 display controls and geometry are preserved. Exact original visual/audio parity, persistence and independent browser acceptance remain pending. See evidence/2026-09-26-game-options-review.md.",
+      "current_implementation": "Implementation checkpoint: shared COMMON 20002 options surface with original controls and REBDLOG confirmations; campaign/main-menu/tactical entry, six original rows and ten-slot compatibility management. Upstream P58-B12 display controls and geometry are preserved. Exact original visual/audio parity, persistence and independent browser acceptance remain pending. See evidence/2026-09-26-game-options-review.md. 2026-10-31: the window's controls, texts, crests and sliders follow FUN_00407180/FUN_004084b0 and match A0 200-options (evidence/2026-10-31-game-options-a0).",
       "finding_ids": [
         "UIP-F-005",
         "UIP-F-007"
@@ -533,24 +533,30 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Six COMMON 20002 rows from FUN_00407180 implemented; an empty list was not asserted on its own in any browser run; no A0 capture.",
+          "note": "Six COMMON 20002 rows from FUN_00407180 implemented; an empty list was not asserted on its own in any browser run; no A0 capture. 2026-10-31: game-options.mjs (Linux browser) asserts six blank rows with no name and no crest, as FUN_00407180 draws an empty slot (ghidra/notes/game-options-text.md); A0 has no empty-list capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-03-C002",
           "requirement": "save list populated",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "game-options-smoke.mjs (2026-09-26, both factions) saves, overwrites and loads populated slots; no A0 capture. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "game-options-smoke.mjs (2026-09-26, both factions) saves, overwrites and loads populated slots; no A0 capture. Browser run on macOS only; rerun on Linux. 2026-10-31: A0 tooltip/200-options against game-options.mjs (Linux browser): a saved Empire row shows its name (ink box within 1 px, accepted text deviation), crest COMMON 10055 identical to A0's Empire row, enabled Load identical; every pixel outside the texts, rows A0 fills and the port does not, sliders and pointer identical (201,491 of 201,491).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "PRE-03-C003",
@@ -561,9 +567,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Save with naming and overwrite confirmation passes game-options-smoke (both factions); no A0 comparison. Browser run on macOS only; rerun on Linux.",
+          "note": "Save with naming and overwrite confirmation passes game-options-smoke (both factions); no A0 comparison. Browser run on macOS only; rerun on Linux. 2026-10-31: saving from the original row (name box then Save, FUN_00406b80 0x6f) passes on the Linux browser (save_state_fingerprint slot=0); blank names save as in the original (FUN_00408000). Overwrite confirmation not rerun on Linux; no A0 of the confirmation.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -647,9 +656,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0.",
+          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's dB transfer (100*10^(vol/2000)) and persistence are not ported.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -661,9 +673,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider.",
+          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer and persistence gaps as the music slider.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -677,9 +692,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-game-options-empty-space.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p58-b12-tactical-game-options-empty-space/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p58-b12-tactical-game-options-empty-space/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Five display switches (masks per FUN_004082b0) default on and are disabled in battle; P58-B12 browser journey 2/2; A0 tactical captures exist but not for this screen. Browser run on macOS only; rerun on Linux.",
+          "note": "Five display switches (masks per FUN_004082b0) default on and are disabled in battle; P58-B12 browser journey 2/2; A0 tactical captures exist but not for this screen. Browser run on macOS only; rerun on Linux. 2026-10-31: the five switches (on = pressed art 10044) and their labels and On/Off match A0 in a galaxy context (bitmaps pixel-identical, text ink within 1 px). The battle context (grey 0x505050, 10045) has no A0 capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -691,9 +709,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Restart (0x91) waits for confirmation (unit tests); no browser assertion of Restart itself and no A0.",
+          "note": "Restart (0x91) waits for confirmation (unit tests); no browser assertion of Restart itself and no A0. 2026-10-31: Restart art 10035 at (76,381), keyed on white index 11, is pixel-identical to A0 (game-options.mjs). No Linux browser or A0 run of Restart itself.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -705,9 +726,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Return/re-entry passes game-options-smoke; context-specific Return art 10020-10031 not verified; no A0. Browser run on macOS only; rerun on Linux.",
+          "note": "Return/re-entry passes game-options-smoke; context-specific Return art 10020-10031 not verified; no A0. Browser run on macOS only; rerun on Linux. 2026-10-31: Return art by window mode and side (FUN_00407180): 10023 at (162,382) pixel-identical to A0 in an Empire galaxy game; Alliance 10020 seen on the Linux browser; battle 10026 by unit test only. Return/re-entry behaviour smoke-tested on macOS only.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -719,9 +743,12 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
+            "tools/interface-parity/game-options.mjs",
+            "ghidra/notes/game-options-text.md"
           ],
-          "note": "Exit with confirmation: browser exit/restart (macOS smoke) and native exit cleanup log; no A0 comparison.",
+          "note": "Exit with confirmation: browser exit/restart (macOS smoke) and native exit cleanup log; no A0 comparison. 2026-10-31: Exit art 10038 at (248,381), keyed, pixel-identical to A0 (game-options.mjs). Exit confirmation not compared in A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]

@@ -1,0 +1,300 @@
+{
+  "status": "pass",
+  "a0": {
+    "file": "200-options.png",
+    "sha256": "4466ded7e8b37c5120190f1e696f7d8beeed1d0f6026cfe711a098b950edce3e"
+  },
+  "shots": {
+    "empty": "bd8c19acaa9a95a95ed2f67d6cf9b86f474366a942bd0c37681025f9354fbd4d",
+    "saved": "0623bc27afb74f64cc0939ba2f639c145fae892ce5d1ff49d0e49b1a9abd06b2",
+    "dragged": "6e3081f68816b41f04a0ea3ddab388d15a00eca78c036ac2dd68cc565d8837fe"
+  },
+  "compared": 201491,
+  "differing": 0,
+  "first_differing": [],
+  "crest_differing": 0,
+  "sliders": [
+    [
+      [
+        547,
+        557
+      ],
+      [
+        588,
+        592
+      ]
+    ],
+    [
+      [
+        473,
+        483
+      ],
+      [
+        588,
+        592
+      ]
+    ]
+  ],
+  "texts": [
+    {
+      "name": "Saved Games",
+      "a0": [
+        130,
+        41,
+        225,
+        51
+      ],
+      "port": [
+        127,
+        41,
+        229,
+        52
+      ],
+      "centred": true
+    },
+    {
+      "name": "Sound Options",
+      "a0": [
+        430,
+        41,
+        533,
+        54
+      ],
+      "port": [
+        426,
+        41,
+        538,
+        55
+      ],
+      "centred": true
+    },
+    {
+      "name": "Tactical Display Options",
+      "a0": [
+        399,
+        277,
+        565,
+        290
+      ],
+      "port": [
+        389,
+        277,
+        573,
+        291
+      ],
+      "centred": true
+    },
+    {
+      "name": "Play Music",
+      "a0": [
+        377,
+        89,
+        449,
+        102
+      ],
+      "port": [
+        377,
+        90,
+        457,
+        103
+      ],
+      "centred": false
+    },
+    {
+      "name": "Off",
+      "a0": [
+        582,
+        89,
+        603,
+        99
+      ],
+      "port": [
+        582,
+        90,
+        603,
+        100
+      ],
+      "centred": false
+    },
+    {
+      "name": "Show Starfield",
+      "a0": [
+        395,
+        316,
+        495,
+        326
+      ],
+      "port": [
+        394,
+        316,
+        503,
+        327
+      ],
+      "centred": false
+    },
+    {
+      "name": "On 1",
+      "a0": [
+        578,
+        316,
+        596,
+        326
+      ],
+      "port": [
+        578,
+        317,
+        597,
+        327
+      ],
+      "centred": false
+    },
+    {
+      "name": "Show Planet",
+      "a0": [
+        395,
+        343,
+        481,
+        353
+      ],
+      "port": [
+        394,
+        343,
+        488,
+        354
+      ],
+      "centred": false
+    },
+    {
+      "name": "On 2",
+      "a0": [
+        578,
+        343,
+        596,
+        353
+      ],
+      "port": [
+        578,
+        344,
+        597,
+        354
+      ],
+      "centred": false
+    },
+    {
+      "name": "Show Pyrotechnics",
+      "a0": [
+        395,
+        370,
+        527,
+        383
+      ],
+      "port": [
+        394,
+        370,
+        540,
+        384
+      ],
+      "centred": false
+    },
+    {
+      "name": "On 3",
+      "a0": [
+        578,
+        370,
+        596,
+        380
+      ],
+      "port": [
+        578,
+        371,
+        597,
+        381
+      ],
+      "centred": false
+    },
+    {
+      "name": "Use High Detail Models",
+      "a0": [
+        395,
+        397,
+        558,
+        410
+      ],
+      "port": [
+        395,
+        397,
+        569,
+        411
+      ],
+      "centred": false
+    },
+    {
+      "name": "On 4",
+      "a0": [
+        578,
+        397,
+        596,
+        407
+      ],
+      "port": [
+        578,
+        398,
+        597,
+        408
+      ],
+      "centred": false
+    },
+    {
+      "name": "Display Holocube",
+      "a0": [
+        395,
+        424,
+        515,
+        437
+      ],
+      "port": [
+        395,
+        424,
+        527,
+        438
+      ],
+      "centred": false
+    },
+    {
+      "name": "On 5",
+      "a0": [
+        578,
+        424,
+        596,
+        434
+      ],
+      "port": [
+        578,
+        425,
+        597,
+        435
+      ],
+      "centred": false
+    },
+    {
+      "name": "test",
+      "a0": [
+        119,
+        86,
+        139,
+        94
+      ],
+      "port": [
+        119,
+        87,
+        137,
+        94
+      ],
+      "centred": false
+    }
+  ],
+  "dragged_columns": [
+    485,
+    592
+  ]
+}

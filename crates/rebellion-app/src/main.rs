@@ -460,6 +460,7 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
                 format!("{hours:02}:{minutes:02}")
             },
             game_tick: meta.game_tick,
+            player_is_alliance: meta.player_is_alliance,
         })
         .collect();
     for slot in 0..rebellion_data::save::MAX_SAVE_SLOTS {
@@ -471,6 +472,7 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
                 name: "Unreadable save".into(),
                 timestamp: "Load to inspect error".into(),
                 game_tick: 0,
+                player_is_alliance: None,
             });
         }
     }
@@ -7311,6 +7313,8 @@ async fn main() {
                         if btn == CockpitButton::GameOptions {
                             save_slots = read_save_slots(&saves_dir);
                             game_options_state.set_origin(GameOptionsOrigin::CommandCenter);
+                            game_options_state.player_is_alliance =
+                                player_faction == MissionFaction::Alliance;
                             game_options_state.refresh_saves(&save_slots);
                             game_mode = GameMode::GameOptions {
                                 origin: GameOptionsOrigin::CommandCenter,

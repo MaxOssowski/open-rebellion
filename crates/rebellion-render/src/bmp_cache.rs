@@ -385,14 +385,16 @@ pub mod resources {
         /// Unified in-game Game Options screen.
         pub const GAME_OPTIONS_BG: u32 = 20002;
 
-        /// Game Options music toggle: normal, pressed, and disabled.
+        /// Game Options Play Music switch (FUN_00407180): off, pressed or
+        /// on (state 4), and disabled (state 2).
         pub const OPTIONS_MUSIC_NORMAL: u32 = 10040;
         pub const OPTIONS_MUSIC_PRESSED: u32 = 10041;
         pub const OPTIONS_MUSIC_DISABLED: u32 = 10042;
-        /// Game Options tactical toggle: on, pressed, and off or disabled.
-        pub const OPTIONS_TOGGLE_ON: u32 = 10043;
+        /// Game Options display switch (FUN_00407180): off, pressed or on
+        /// (state 4), and disabled during a battle (state 2).
+        pub const OPTIONS_TOGGLE_NORMAL: u32 = 10043;
         pub const OPTIONS_TOGGLE_PRESSED: u32 = 10044;
-        pub const OPTIONS_TOGGLE_OFF: u32 = 10045;
+        pub const OPTIONS_TOGGLE_DISABLED: u32 = 10045;
         /// Per-slot save control: normal, pressed, and disabled.
         pub const OPTIONS_SAVE_NORMAL: u32 = 10046;
         pub const OPTIONS_SAVE_PRESSED: u32 = 10047;
@@ -1354,6 +1356,9 @@ pub struct BmpCache {
     textures: HashMap<(DllSource, u32), Option<TextureHandle>>,
     /// Macroquad textures used below the egui interface layers.
     macroquad_textures: HashMap<(DllSource, u32), Option<Texture2D>>,
+    /// Original bitmaps with one palette entry replaced
+    /// ([`BmpCache::get_macroquad_with_entry`]).
+    repaletted_textures: HashMap<(DllSource, u32, u8, [u8; 3]), Option<Texture2D>>,
     /// Native-style per-pixel hit masks decoded from the original BMPs.
     hit_masks: HashMap<(DllSource, u32), Option<BitmapHitMask>>,
     /// Original bitmaps through the sector window's shading table
@@ -1450,6 +1455,7 @@ impl BmpCache {
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
             macroquad_textures: HashMap::new(),
+            repaletted_textures: HashMap::new(),
             hit_masks: HashMap::new(),
             shaded_textures: HashMap::new(),
         }
@@ -1462,6 +1468,7 @@ impl BmpCache {
         self.base_path = Some(path.into());
         self.textures.clear();
         self.macroquad_textures.clear();
+        self.repaletted_textures.clear();
         self.hit_masks.clear();
         self.shaded_textures.clear();
     }
@@ -1608,6 +1615,30 @@ impl BmpCache {
         }
 
         self.macroquad_textures.get(&key)?.as_ref()
+    }
+
+    /// An original 8-bit bitmap with palette entry `index` set to `rgb`,
+    /// as a nearest-neighbor Macroquad texture: the colour the active
+    /// screen palette gives that index where it differs from the DIB's own
+    /// table.
+    pub fn get_macroquad_with_entry(
+        &mut self,
+        source: DllSource,
+        resource_id: u32,
+        index: u8,
+        rgb: [u8; 3],
+    ) -> Option<&Texture2D> {
+        let key = (source, resource_id, index, rgb);
+        if !self.repaletted_textures.contains_key(&key) {
+            let texture = self
+                .load_original_bytes(source, resource_id)
+                .and_then(|mut bytes| {
+                    set_bmp_palette_entry(&mut bytes, index, rgb)?;
+                    decode_macroquad_texture(&bytes, source, resource_id)
+                });
+            self.repaletted_textures.insert(key, texture);
+        }
+        self.repaletted_textures.get(&key)?.as_ref()
     }
 
     /// The original bitmap through the sector window's shading table
@@ -2007,6 +2038,15 @@ fn uses_black_key_transparency(source: DllSource, resource_id: u32) -> bool {
 /// legend button 10168 (`FUN_00427270`'s 30 x 30 button), whose white
 /// border A0 `gid/d-mines.png` does not show.
 fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
+    // The Game Options buttons and switches (`FUN_00407180` makes each a
+    // CoolStrobeButton, blitted keyed), the sliders' tracks and thumb
+    // (`FUN_00604a50` draws both with `FUN_005fd0f0`, keyed) and the save
+    // rows' crests: A0 200-options shows the window's background through
+    // Restart's and Exit's white key (index 11), the tracks' magenta corner
+    // and the blue corner pixel of Return and of each crest.
+    if source == DllSource::Common {
+        return matches!(resource_id, 10_020..=10_057);
+    }
     source == DllSource::Strategy
         && matches!(
             resource_id,
@@ -2027,9 +2067,14 @@ fn first_pixel_colour(bytes: &[u8]) -> Option<[u8; 3]> {
     if compression != 0 {
         return None;
     }
-    let palette = decode_bmp_palette(bytes)?;
+    if bytes.get(0..2)? != b"BM" || u16::from_le_bytes(bytes.get(28..30)?.try_into().ok()?) != 8 {
+        return None;
+    }
+    // Read the entry itself: COMMON's buttons carry 255-colour tables.
+    let dib_size = u32::from_le_bytes(bytes.get(14..18)?.try_into().ok()?) as usize;
     let offset = u32::from_le_bytes(bytes.get(10..14)?.try_into().ok()?) as usize;
-    let [r, g, b, _] = palette[usize::from(*bytes.get(offset)?)];
+    let entry = 14 + dib_size + usize::from(*bytes.get(offset)?) * 4;
+    let [b, g, r] = bytes.get(entry..entry + 3)?.try_into().ok()?;
     Some([r, g, b])
 }
 
@@ -2044,6 +2089,26 @@ fn decode_macroquad_texture(
     let texture = Texture2D::from_rgba8(width, height, rgba.as_raw());
     texture.set_filter(FilterMode::Nearest);
     Some(texture)
+}
+
+/// Overwrite palette entry `index` of an 8-bit BMP with `rgb`.
+fn set_bmp_palette_entry(bytes: &mut [u8], index: u8, rgb: [u8; 3]) -> Option<()> {
+    if bytes.get(0..2)? != b"BM" {
+        return None;
+    }
+    let dib_size = u32::from_le_bytes(bytes.get(14..18)?.try_into().ok()?) as usize;
+    let bits_per_pixel = u16::from_le_bytes(bytes.get(28..30)?.try_into().ok()?);
+    // The tracks 10052 and 10053 carry 255 colours (biClrUsed).
+    let colors_used = u32::from_le_bytes(bytes.get(46..50)?.try_into().ok()?) as usize;
+    let colors = if colors_used == 0 { 256 } else { colors_used };
+    if dib_size < 40 || bits_per_pixel != 8 || usize::from(index) >= colors {
+        return None;
+    }
+    let entry = 14 + dib_size + usize::from(index) * 4;
+    bytes
+        .get_mut(entry..entry + 3)?
+        .copy_from_slice(&[rgb[2], rgb[1], rgb[0]]);
+    Some(())
 }
 
 fn decode_bmp_palette(bytes: &[u8]) -> Option<[[u8; 4]; 256]> {
@@ -2274,6 +2339,50 @@ fn load_image_bytes_as_texture(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn a_palette_entry_can_be_replaced_in_an_eight_bit_bitmap() {
+        let mut bmp = vec![0u8; 14 + 40 + 1024 + 4];
+        bmp[..2].copy_from_slice(b"BM");
+        bmp[14..18].copy_from_slice(&40u32.to_le_bytes());
+        bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
+        let entry = 14 + 40 + 254 * 4;
+        bmp[entry..entry + 3].copy_from_slice(&[255, 255, 0]);
+        set_bmp_palette_entry(&mut bmp, 254, [255, 255, 255]).unwrap();
+        assert_eq!(decode_bmp_palette(&bmp).unwrap()[254], [255, 255, 255, 255]);
+        assert_eq!(decode_bmp_palette(&bmp).unwrap()[253], [0, 0, 0, 255]);
+        bmp[46..50].copy_from_slice(&255u32.to_le_bytes());
+        set_bmp_palette_entry(&mut bmp, 254, [1, 2, 3]).unwrap();
+        assert_eq!(bmp[entry..entry + 3], [3, 2, 1]);
+        assert!(set_bmp_palette_entry(&mut bmp, 255, [1, 2, 3]).is_none());
+        bmp[46..50].copy_from_slice(&0u32.to_le_bytes());
+        bmp[28..30].copy_from_slice(&24u16.to_le_bytes());
+        assert!(set_bmp_palette_entry(&mut bmp, 254, [1, 2, 3]).is_none());
+        bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
+        bmp[14..18].copy_from_slice(&12u32.to_le_bytes());
+        assert!(set_bmp_palette_entry(&mut bmp, 254, [1, 2, 3]).is_none());
+    }
+
+    #[test]
+    fn the_first_pixels_colour_comes_from_a_short_palette() {
+        // COMMON 10035 carries 255 colours; its first pixel's index keys it
+        // (FUN_005fd170).
+        let offset = 14 + 40 + 255 * 4;
+        let mut bmp = vec![0u8; offset + 4];
+        bmp[..2].copy_from_slice(b"BM");
+        bmp[10..14].copy_from_slice(&(offset as u32).to_le_bytes());
+        bmp[14..18].copy_from_slice(&40u32.to_le_bytes());
+        bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
+        bmp[46..50].copy_from_slice(&255u32.to_le_bytes());
+        bmp[14 + 40 + 11 * 4..14 + 40 + 11 * 4 + 3].copy_from_slice(&[30, 20, 10]);
+        bmp[offset] = 11;
+        assert_eq!(first_pixel_colour(&bmp), Some([10, 20, 30]));
+        bmp[28..30].copy_from_slice(&24u16.to_le_bytes());
+        assert_eq!(first_pixel_colour(&bmp), None);
+        bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
+        bmp[0] = b'X';
+        assert_eq!(first_pixel_colour(&bmp), None);
+    }
+
     use super::*;
 
     #[test]

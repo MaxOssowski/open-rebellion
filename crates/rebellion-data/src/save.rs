@@ -289,6 +289,9 @@ pub struct SaveMeta {
     pub mod_hash: u64,
     /// Fingerprint of the canonical logical state, verified on load.
     pub state_fingerprint: StateFingerprint,
+    /// The player's side, when known: the Game Options row shows its crest
+    /// (`FUN_00407180`: COMMON 10056 Alliance, 10055 Empire).
+    pub player_is_alliance: Option<bool>,
 }
 
 // ---------------------------------------------------------------------------
@@ -523,6 +526,7 @@ mod native {
             mod_names,
             mod_hash,
             state_fingerprint,
+            player_is_alliance: Some(state.player_is_alliance),
         };
 
         Ok((meta, state))
@@ -618,6 +622,9 @@ pub mod wasm_impl {
         name: String,
         game_tick: u64,
         state_fingerprint: BrowserStateFingerprint,
+        /// Absent in metadata written before 2026-10-31.
+        #[serde(default)]
+        player_is_alliance: Option<bool>,
     }
 
     #[link(wasm_import_module = "env")]
@@ -796,6 +803,7 @@ pub mod wasm_impl {
             name: name.to_string(),
             game_tick: state.clock.tick,
             state_fingerprint: BrowserStateFingerprint::from_fingerprint(state_fingerprint),
+            player_is_alliance: Some(state.player_is_alliance),
         })?;
         if let Err(error) = storage_set(&meta_key(slot), &meta) {
             // Drop the orphaned body so it is never paired with stale metadata.
@@ -837,6 +845,7 @@ pub mod wasm_impl {
             mod_names: vec![],
             mod_hash: compute_mod_hash(&[]),
             state_fingerprint,
+            player_is_alliance: Some(state.player_is_alliance),
         };
 
         Ok((meta, state))
@@ -863,6 +872,7 @@ pub mod wasm_impl {
                         mod_names: vec![],
                         mod_hash: compute_mod_hash(&[]),
                         state_fingerprint: meta.state_fingerprint.to_fingerprint()?,
+                        player_is_alliance: meta.player_is_alliance,
                     })
                 })),
                 Err(error) => Some(Err(error)),

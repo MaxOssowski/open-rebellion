@@ -18,26 +18,51 @@ through `FUN_00401040`. Cockpit/F1 uses command 0x133.
 
 ## Controls
 
-Coordinates below follow upstream P58-B12 placement in logical source pixels.
-The recovered IDs/commands are retained. Bitmap triples mean normal,
-pressed/selected, disabled. The six save rows start at y=81 and increment 42.
+Coordinates below are `FUN_00407180`'s literal arguments (corrected
+2026-10-31 from the upstream P58-B12 placement, which was off by one to
+three pixels). A0 `tooltip/200-options.png` shows the Save, Load, Restart,
+Return, Exit, Play Music and display-switch bitmaps at exactly these
+positions. Bitmap triples mean normal, pressed or set (state 4), disabled
+(state 2). The six save rows start at y=81 and increment 42.
 
 | Control | Rectangle | Command | COMMON bitmaps |
 |---|---|---|---|
-| Save row 1–6 | (35,y,42,20) | 0x6f–0x74 | 10046/10047/10048 |
-| Save name 1–6 | (116,y,162,20) | 0x83–0x88 | native edit control |
-| Load row 1–6 | (285,y,41,20) | 0x79–0x7e | 10049/10050/10051 |
-| Effects volume | origin (391,192) | 0x8e | 10053, thumb 10054 |
-| Music volume | origin (391,130) | 0x8d | 10052, thumb 10054 |
-| Restart | (77,383,42,42) | 0x91 | 10035/10036 |
-| Return | (164,383,42,42) | 0x90 | context-specific 10020–10031 |
-| Exit | (251,383,42,42) | 0x8f | 10038/10039 |
-| Play music | (351,76,19,35) | 0x99 | 10040/10041/10042 |
-| Starfield | (359,310,35,22) | 0xa1 | 10043/10044/10045 |
-| Planet | (359,337,35,22) | 0xa2 | same |
-| Pyrotechnics | (359,364,35,22) | 0xa3 | same |
-| High detail | (359,391,35,22) | 0xa4 | same |
-| Holocube | (359,418,35,22) | 0xa6 | same |
+| Save row 1–6 | (34,y,42,20) | 0x6f–0x74 | 10046/10047/10048 |
+| Save name 1–6 | (119,y,160,20) | 0x83–0x88 | native edit control |
+| Side crest 1–6 | (85,y+2), 26x19 | — | 10056 Alliance, 10055 Empire, 10057 multiplayer |
+| Load row 1–6 | (287,y,41,20) | 0x79–0x7e | 10049/10050/10051 |
+| Effects volume | origin (392,190), 201x54 | 0x8e | 10053, thumb 10054 |
+| Music volume | origin (392,130), 201x54 | 0x8d | 10052, thumb 10054 |
+| Restart | (76,381,42,42) | 0x91 | 10035/10036/10037 |
+| Return | (162,382,42,42) | 0x90 | by window mode, below |
+| Exit | (248,381,42,42) | 0x8f | 10038/10039 |
+| Play music | (352,76,19,35) | 0x99 | 10040/10041/10042 |
+| Starfield | (357,311,35,22) | 0xa1 | 10043/10044/10045 |
+| Planet | (357,337,35,22) | 0xa2 | same |
+| Pyrotechnics | (357,365,35,22) | 0xa3 | same |
+| High detail | (357,392,35,22) | 0xa4 | same |
+| Holocube | (357,419,35,22) | 0xa6 | same |
+
+A switch that is on shows its pressed art: `FUN_00603150(4, 0x2739)` for
+music and `FUN_00603150(4, 0x273c)` for the display switches, so an "on"
+display switch shows 10044 (A0: all five) and an "off" one 10043; 10045 is
+the disabled art in a battle (`FUN_00603150(2, 0x273d)`).
+
+Return's art (`FUN_00407180`, switch on the window's mode `+0x9c`):
+
+| Mode | Art | Note |
+|---|---|---|
+| 8, player not the Alliance (`FUN_00401060() != 1`) | 10023/10024/10025 | A0: an Empire game from the galaxy |
+| 8, Alliance; and the default | 10020/10021/10022 | |
+| 9 | 10026/10027/10028 | the holocube; hyp: the battle |
+| 4, 0xc | 10029/10030/10031 | multiplayer (modes 4/5 tip TEXTCOMM 0x1019 "Disconnect from Opponent") |
+
+All these buttons are CoolStrobeButtons and blit keyed on their first DIB
+pixel's colour (`FUN_00602d30`): white index 11 for Restart and Exit, blue
+for Return's corner. The slider tracks and thumb (`FUN_00604a50` ->
+`FUN_005fd0f0`) and the crests key the same way (magenta, blue corner).
+
+Text, slider and version details are in `game-options-text.md`.
 
 `FUN_004084b0` maps labels to TEXTCOMM 0x1025 (music), 0x101f–0x1022
 (first four display switches), 0x1024 (Holocube), and 0x1031/0x1032 (On/Off).
@@ -73,7 +98,8 @@ and (229,135), with bitmap pairs 10624/10625 and 10626/10627; both are 57 by
   until its native gesture is recovered.
 - Upstream display flags, including Holocube, are preserved. Their full original
   visual behavior remains outside this save/confirmation checkpoint.
-- Exact text metrics, slider transfer function, complete context identities,
-  settings persistence and lossless A0 interaction captures remain to verify.
+- The slider transfer function and the text objects are recovered
+  (`game-options-text.md`); settings persistence, the battle context in A0
+  and lossless A0 interaction captures remain to verify.
 - The Rust confirmation guard tests are implementation evidence only; they
   do not establish original pixel, audio, or full PRE-03 acceptance.
