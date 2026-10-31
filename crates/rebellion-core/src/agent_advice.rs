@@ -126,8 +126,14 @@ impl AgentAdvice {
                 number: record.number,
                 kind: record.kind,
             }));
-        let (posted, kept) = self.entries.iter().partition(|entry| entry.kind == 7);
+        let (mut posted, kept): (Vec<_>, Vec<_>) =
+            self.entries.iter().partition(|entry| entry.kind == 7);
         self.entries = kept;
+        // FUN_00439f20 walks from the last node (thunk_FUN_005f5080) back
+        // by predecessors (FUN_005f5c60), so the highest key posts first and
+        // Victory Conditions last: newest, it heads the Advice list (A0
+        // new-alliance/t25).
+        posted.reverse();
         posted
     }
 
@@ -246,9 +252,12 @@ mod tests {
         let records = alliance_records();
         let mut advice = AgentAdvice::default();
 
+        // Posted from the last node back (FUN_00439f20; A0
+        // new-alliance/t25 lists Victory Conditions, the last posted, on
+        // top).
         assert_eq!(
             numbers(&advice.build(&records)),
-            (1..=9).collect::<Vec<_>>()
+            (1..=9).rev().collect::<Vec<_>>()
         );
         assert_eq!(advice.entries().len(), 22);
         assert!(advice.build(&records).is_empty());
@@ -274,7 +283,8 @@ mod tests {
 
         let posted = advice.window_opened(AdviceWindow::Fleet, 12, &records);
 
-        assert_eq!(numbers(&posted), [1, 2, 3, 4, 5, 6, 7, 8, 9, 18]);
+        // The kind-7 advice post from the last node back (FUN_00439f20).
+        assert_eq!(numbers(&posted), [9, 8, 7, 6, 5, 4, 3, 2, 1, 18]);
         assert_eq!(advice.last, 12);
         assert!(
             advice
@@ -317,7 +327,7 @@ mod tests {
         // The first check builds the list but reads it before.
         assert_eq!(
             numbers(&advice.check(300, &records)),
-            (1..=9).collect::<Vec<_>>()
+            (1..=9).rev().collect::<Vec<_>>()
         );
         assert_eq!(advice.last, 300);
         assert!(advice.check(599, &records).is_empty());

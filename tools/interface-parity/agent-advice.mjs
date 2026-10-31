@@ -148,8 +148,10 @@ async function run(browser, base, faction) {
       () => log.some((line) => /clip finished kind=2 code=0xd /.test(line)), 60_000);
     await waitFor(page, log, "the index opens on Advice",
       () => log.some((line) => line.includes("category=0x82 status=opened_by_briefing")), 5_000);
-    // FUN_00439f20: the kind-7 advice 1..9, in key order, all titled.
-    assert.deepEqual(posted().map(({ number }) => number), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // FUN_00439f20: the kind-7 advice, posted from the last node back (9
+    // down to 1), all titled, so Victory Conditions heads the list (A0
+    // new-alliance/t25).
+    assert.deepEqual(posted().map(({ number }) => number), [9, 8, 7, 6, 5, 4, 3, 2, 1]);
     assert.ok(posted().every(({ kind, reason, titled }) => kind === 7 && reason === "briefing" && titled),
       JSON.stringify(posted()));
     await page.mouse.move(2, 2);

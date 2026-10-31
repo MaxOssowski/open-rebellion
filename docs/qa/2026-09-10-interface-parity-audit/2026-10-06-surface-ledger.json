@@ -3260,13 +3260,14 @@
         {
           "id": "CMD-08-C021",
           "requirement": "Agent Advice defaults on for Easy",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-new-game-a0/"
           ],
-          "note": "FUN_00439320; agent-advice.mjs starts at Easy with advice on.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00439320; agent-advice.mjs starts at Easy with advice on. 2026-10-31: A0 starts a new Easy Alliance game with the index open on Advice and the nine kind-7 advice listed Victory Conditions first (new-alliance/t25); FUN_00439f20 posts them from the last node back, and the port, which had them reversed, now lists them in A0's order (agent-advice.mjs, Linux).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-08-C022",

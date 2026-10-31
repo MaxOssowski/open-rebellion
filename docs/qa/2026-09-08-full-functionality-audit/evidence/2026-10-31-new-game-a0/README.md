@@ -64,3 +64,20 @@ release WASM with the fix): 2,696 of 307,200 pixels differ.
 `tooltip.mjs` checks the legend button's tip in the Alliance Popular
 Support fixture against A0 `tooltip/360-legend.png` (a copy of
 `gid-displays/all-legend-hover.png`): box (70, 86), 19 pixels high.
+
+## The opening advice's order
+
+A0 `t19..t29`: on a new Easy game the Message Index opens on Advice. It
+lists the nine kind-7 advice with Victory Conditions on top and Advice
+Available at the bottom. The port had them the other way round.
+- `FUN_00439f20` posts the kind-7 nodes walking from the list's last node
+  back by predecessors (`thunk_FUN_005f5080`, `FUN_005f5c60`), so key 90
+  posts first and key 10 last.
+- The index shows the newest post first (`FUN_005f5440` keys each message
+  with the list's running count).
+
+`rebellion_core::agent_advice::AgentAdvice::build` now returns them in
+that order. Its unit tests and `agent-advice.mjs` (Linux, both sides)
+expect 9 down to 1. The port's `advice-index` frame now lists the rows in
+A0's order. Its differences from `t25` are the rows' text (the accepted
+deviation), the droids, and the day and time bar (A0 had run to day 2).
