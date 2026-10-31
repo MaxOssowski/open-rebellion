@@ -25,6 +25,10 @@ const root = path.resolve(here, "../..");
 const site = path.join(root, ".artifacts/interface-parity/site");
 const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json"), "utf8"));
 const noBuild = process.argv.includes("--no-build");
+// `--a0=DIR` (.artifacts/a0-vm/status) compares the Alliance's Fleet Status
+// text with A0 06-fleet, whose window stands at (170, 81) (its Close button
+// matches the port's there).
+const a0Dir = process.argv.find((arg) => arg.startsWith("--a0="))?.slice(5);
 const dimensions = { width: 379, height: 272 };
 // Fixture 45 (Scenario::MissionTargeting + 1) opens a Defenses window with the
 // player's agent first on its personnel page; `galaxy` is the galaxy view's top-left and width at 640 by
@@ -260,6 +264,34 @@ async function openFleetWindow(page) {
 // The fixture's 235-pixel Defenses window sits 5 pixels in from the galaxy
 // view's top-right corner; the agent's cell is centred 42 by 116 into it
 // (mission-dialog.mjs).
+// The Fleet Status title, the first four labels and the first value (font
+// 5 and font 10, set by theme::paint_gdi_text) against A0 06-fleet: each
+// ink box within a pixel of A0's, relative to the window.
+function fleetStatusText(port, rect) {
+  const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Dir, "06-fleet.png")));
+  const ink = (png, ox, oy, [x0, y0, x1, y1]) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = ((oy + y) * png.width + ox + x) * 4;
+        if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 230) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const checks = {};
+  for (const [name, region] of [["title", [15, 18, 226, 36]], ["status", [16, 47, 118, 61]],
+    ["admiral", [16, 61, 118, 75]], ["general", [16, 75, 118, 89]], ["commander", [16, 89, 118, 103]],
+    ["status-value", [119, 47, 226, 61]]]) {
+    const a = ink(a0, 170, 81, region);
+    const p = ink(port, rect.x, rect.y, region);
+    checks[name] = { a0: a, port: p };
+    assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1), `${name}: ${JSON.stringify(checks[name])}`);
+  }
+  return checks;
+}
+
 const cases = [
   {
     name: "character",
@@ -361,6 +393,8 @@ async function inspect(server, source, faction, testCase, executable) {
     assert.equal(comparison.different_pixels, 0, JSON.stringify(comparison));
     for (const name of Object.keys(masks)) assert.ok(comparison.changed_in_masks[name] > 0, `${name} shows nothing`);
     assert.equal(comparison.picture_blue_pixels, 0, "the picture's blue matte is not keyed");
+    const textChecks = a0Dir && faction.name === "alliance" && testCase.name === "fleet"
+      ? fleetStatusText(PNG.sync.read(second), rect) : null;
 
     // FUN_00443020's tips (A0 a0-vm/tooltip/122-st-ency.png,
     // 123-st-close.png): a (255, 251, 240) tip with a (128, 128, 128)
@@ -428,7 +462,7 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.deepEqual(closes, { close: "close" });
     }
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, tips, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, tips, textChecks, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

@@ -399,6 +399,85 @@ pub fn paint_gdi_text(
     painter.galley(pos, galley, color);
 }
 
+/// `DrawTextA`'s `DT_WORDBREAK` lines of `text` in `width` logical pixels:
+/// as many words as fit on each line, measured by `measure`, breaking at
+/// spaces; a word wider than the line stands alone on its own line.
+#[must_use]
+pub fn gdi_word_break(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        let mut line = String::new();
+        for word in paragraph.split(' ').filter(|word| !word.is_empty()) {
+            let joined = if line.is_empty() {
+                word.to_owned()
+            } else {
+                format!("{line} {word}")
+            };
+            if line.is_empty() || measure(&joined) <= width {
+                line = joined;
+            } else {
+                lines.push(std::mem::replace(&mut line, word.to_owned()));
+            }
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+/// The logical width GDI gives `text` in font `font`, or egui's when GDI's
+/// advances are not known.
+#[must_use]
+pub fn gdi_text_width(painter: &egui::Painter, font: u16, text: &str, scale: f32) -> f32 {
+    gdi_pen_positions(font, text).map_or_else(
+        || {
+            painter
+                .layout_no_wrap(text.to_owned(), gdi_font(font, scale), Color32::WHITE)
+                .size()
+                .x
+                / scale
+        },
+        |(_, width)| width,
+    )
+}
+
+/// Paint `text` as `DrawTextA` with `DT_WORDBREAK` from the screen
+/// rectangle `rect`'s top: its [`gdi_word_break`] lines one `tmHeight`
+/// apart, each aligned by `align`. Returns the logical height they take.
+pub fn paint_gdi_text_block(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    scale: f32,
+    font: u16,
+    text: &str,
+    color: Color32,
+    align: GdiAlign,
+) -> f32 {
+    let (ascent, descent) = original_font_metrics(font);
+    let pitch = ascent + descent;
+    let lines = gdi_word_break(text, rect.width() / scale, |line| {
+        gdi_text_width(painter, font, line, scale)
+    });
+    for (index, line) in lines.iter().enumerate() {
+        #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
+        let top = rect.min.y + index as f32 * pitch * scale;
+        paint_gdi_text(
+            painter,
+            egui::Rect::from_min_size(
+                egui::pos2(rect.min.x, top),
+                egui::vec2(rect.width(), pitch * scale),
+            ),
+            scale,
+            font,
+            line,
+            color,
+            (align, GdiVAlign::Top),
+        );
+    }
+    #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
+    let height = lines.len() as f32 * pitch;
+    height
+}
+
 // ── Theme application ────────────────────────────────────────────────────────
 
 /// Apply the Star Wars Rebellion theme to the egui context.
@@ -721,6 +800,56 @@ mod tests {
         assert_eq!(centred[0].1.x, 10.0 + spare * 2.0);
         // DT_VCENTER: (16 - 14) / 2 = 1 down, then tmAscent.
         assert!((centred[0].2 - (20.0 + 12.0 * 2.0)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn word_break_fills_each_line_with_the_words_that_fit() {
+        // DT_WORDBREAK: a 10-pixel word each, a space 1.
+        let measure = |text: &str| {
+            text.chars()
+                .map(|ch| if ch == ' ' { 1.0 } else { 2.0 })
+                .sum()
+        };
+        assert_eq!(
+            gdi_word_break("aaaaa bbbbb ccccc", 21.0, measure),
+            ["aaaaa bbbbb", "ccccc"]
+        );
+        assert_eq!(
+            gdi_word_break("aaaaa bbbbb ccccc", 20.0, measure),
+            ["aaaaa", "bbbbb", "ccccc"]
+        );
+        // A word wider than the line stands alone; a newline breaks.
+        assert_eq!(
+            gdi_word_break("aaaaaaaaaaaa b\nc", 10.0, measure),
+            ["aaaaaaaaaaaa", "b", "c"]
+        );
+        assert_eq!(gdi_word_break("", 10.0, measure), [""]);
+    }
+
+    #[test]
+    fn a_text_block_steps_its_lines_by_tm_height() {
+        // Font 10's line is 11 + 3 = 14: "Not Assigned" breaks before
+        // "Assigned" in 30 pixels and its second line sits 14 lower.
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(60.0, 80.0));
+        let mut height = 0.0;
+        let shapes = painted_text(|painter| {
+            height = paint_gdi_text_block(
+                painter,
+                rect,
+                2.0,
+                10,
+                "Not Assigned",
+                Color32::WHITE,
+                GdiAlign::Left,
+            );
+        });
+        assert_eq!(height, 28.0);
+        let baselines: Vec<f32> = shapes.iter().map(|(_, _, baseline)| *baseline).collect();
+        assert_eq!(baselines.first(), Some(&22.0));
+        assert_eq!(baselines.last(), Some(&50.0));
+        // The second line's last character at its own pen.
+        let (pens, _) = gdi_pen_positions(10, "Assigned").unwrap();
+        assert_eq!(shapes.last().map(|(_, pos, _)| pos.x), Some(pens[7] * 2.0));
     }
 
     #[test]
