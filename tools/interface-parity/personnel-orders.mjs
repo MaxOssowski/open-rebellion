@@ -14,6 +14,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 import { launchBrowser } from "./browser-launch.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,26 @@ function mimeType(file) {
   if (file.endsWith(".js")) return "text/javascript; charset=utf-8";
   if (file.endsWith(".wasm")) return "application/wasm";
   return "application/octet-stream";
+}
+
+
+// The original's tooltip (win_tooltip.rs): rest the pointer on a control for
+// a second; a (255, 251, 240) tip with a (128, 128, 128) border, 19 high,
+// shows at the pointer plus (0, 21).
+async function tipShows(page, at) {
+  await page.mouse.move(at.x, at.y, { steps: 4 });
+  await page.waitForTimeout(1000);
+  const png = PNG.sync.read(await page.screenshot());
+  const pixel = (x, y) => {
+    const i = (y * png.width + x) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]].join(",");
+  };
+  const top = at.y + 21;
+  const shown = pixel(at.x, top) === "128,128,128" && pixel(at.x, top + 18) === "128,128,128"
+    && pixel(at.x + 2, top + 2) === "255,251,240";
+  await page.mouse.move(2, 2, { steps: 4 });
+  await page.waitForTimeout(100);
+  return shown;
 }
 
 async function startServer() {
@@ -279,6 +300,10 @@ const cases = [
       // missions, well inside Diplomacy's five-day minimum timer.
       await page.waitForTimeout(2_600);
       await setSpeed(page, setup, SPEED_ROWS.pause);
+      // "Resume Game Play?" (FUN_00415e60) is open: its button's tip is its
+      // REBDLOG label "Resume" (A0 a0-vm/tooltip/321-resume-box.png, the
+      // pointer at (320, 298), the tip at (320, 319)).
+      assert.ok(await tipShows(page, { x: 320, y: 298 }), "the Resume button shows no tip");
       const running = await openMenu(page, at, directory, "running");
       assert.equal(running.abort_enabled, true, `a running mission takes Abort: ${JSON.stringify(running)}`);
       await choose(page, running, running.abort_row, "Abort");

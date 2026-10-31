@@ -261,12 +261,22 @@ fn pt_in_rect(rect: egui::Rect, p: egui::Pos2) -> bool {
 /// `string` while the response is hovered (egui's hit test, so nothing
 /// covers it) and the pointer is inside `rect` (`PtInRect`).
 pub fn response_tool(response: &egui::Response, rect: egui::Rect, string: u16) {
+    response_tool_module(response, rect, StringModule::Strategy, string);
+}
+
+/// [`response_tool`] with a string of `module`.
+pub fn response_tool_module(
+    response: &egui::Response,
+    rect: egui::Rect,
+    module: StringModule,
+    string: u16,
+) {
     let inside = response
         .ctx
         .input(|input| input.pointer.latest_pos())
         .is_some_and(|p| pt_in_rect(rect, p));
     if response.hovered() && inside {
-        if let Some(text) = self::string(string) {
+        if let Some(text) = module_string(module, string) {
             tool(&response.ctx, response.id, &text);
         }
     }

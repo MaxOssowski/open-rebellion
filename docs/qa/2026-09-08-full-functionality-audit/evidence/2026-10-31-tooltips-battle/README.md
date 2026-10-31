@@ -72,3 +72,16 @@ fixes (`battle-catalog-first-rerun.txt` is the run before the last two):
 "Task Force 1" below the pointer on the first task force. The Windows 10
 VM gave no battle capture in this session, so the battle-window and
 tactical cells stay partial.
+
+## The pause box's Resume (CMD-11-C029)
+
+The pause question "Resume Game Play?" (`FUN_00415e60`, a REBDLOG
+one-button box from `FUN_00417020`) uses its button's label as the tip.
+A0 `.artifacts/a0-vm/tooltip/321-resume-box.png` shows "Resume" at
+(320, 319), with the pointer at (320, 298); its hash is in
+`a0-resume-box.sha256`.
+
+In the port, `game_speed::draw_pause_alert` registers REBDLOG 0x190d
+through the new `win_tooltip::response_tool_module`. `personnel-orders.mjs`
+pauses the game from the speed menu and finds the tip at A0's spot on both
+sides (Linux).

@@ -324,6 +324,14 @@ pub fn draw_pause_alert(
                 ui.id().with("pause_alert_resume"),
                 egui::Sense::click(),
             );
+            // FUN_00415e60: the button's label, REBDLOG 0x190d "Resume", is
+            // also its tip (FUN_00417020; A0 tooltip/321).
+            crate::win_tooltip::response_tool_module(
+                &response,
+                button,
+                crate::win_tooltip::StringModule::Dialog,
+                0x190d,
+            );
             let resource = if response.is_pointer_button_down_on() {
                 ALERT_RESUME_PRESSED
             } else {

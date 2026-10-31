@@ -4076,9 +4076,12 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-shell/",
-            "crates/rebellion-render/src/game_options.rs"
+            "crates/rebellion-render/src/game_options.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "crates/rebellion-render/src/game_speed.rs",
+            "tools/interface-parity/personnel-orders.mjs"
           ],
-          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212); the other message boxes (FUN_00417020's one-button boxes) are not checked.",
+          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
