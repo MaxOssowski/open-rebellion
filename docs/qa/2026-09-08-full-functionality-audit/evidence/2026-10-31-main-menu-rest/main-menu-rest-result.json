@@ -1,0 +1,42 @@
+{
+  "status": "pass",
+  "compared": 278351,
+  "animated": 966,
+  "differing": 0,
+  "first_differing": [],
+  "a0_ink": [
+    288,
+    377,
+    361,
+    384
+  ],
+  "port_ink": [
+    288,
+    377,
+    362,
+    384
+  ],
+  "shots": [
+    "8b19ae6bb8daaf92f5924766c8dc24099503e06eb1f8080262ac9dab03ea8efa",
+    "8cb63cca2a4079f415f10e85047dc730e70f1b816976961de133da74248a0d93",
+    "6573f72a6959e072197a9ac0158abcc3bda66b32213cbeac0c4407d74297e293",
+    "4384b4a41b5b3e85797b8ff64174cbc7be20b34dcdc4a726ec2c225ecf020a42"
+  ],
+  "errors": [],
+  "a0_frames": [
+    "221-mm-novice-base.png",
+    "222-mm-intermediate-base.png",
+    "223-mm-expert-base.png",
+    "224-mm-lever-base.png",
+    "225-mm-standard-base.png",
+    "226-mm-large-base.png",
+    "227-mm-huge-base.png",
+    "228-mm-victory-base.png",
+    "229-mm-empire-base.png",
+    "230-mm-alliance-base.png",
+    "231-mm-load-base.png",
+    "232-mm-credits-base.png",
+    "233-mm-h2h-base.png",
+    "234-mm-exit-base.png"
+  ]
+}

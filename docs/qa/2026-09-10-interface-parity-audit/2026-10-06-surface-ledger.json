@@ -241,17 +241,20 @@
         {
           "id": "PRE-02-C001",
           "requirement": "idle",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
+            "tools/interface-parity/main-menu-rest.mjs",
+            "crates/rebellion-render/src/main_menu.rs"
           ],
-          "note": "COMMON 20001 cockpit composed from the mapped resources (bitmap-comparison.json against resources, not A0); Astra browser runs 2026-09-09 at 640x480 and wider. A0 capture main-menu.png (sha256 deb0bfa0...) exists but is not compared. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "main-menu-rest.mjs (Linux): 278,351 still pixels of the menu at rest equal A0's 14 base frames (tooltip/221..234), animated buttons and the port's two extension chips masked; the buttons loop on one 66 ms clock as FUN_00603870/FUN_00603b90 do, the lever shows 10003 for Standard, and the game-type label's ink box matches A0's (right edge within one pixel).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "PRE-02-C002",
@@ -278,9 +281,12 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-music-toggle.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-music-toggle.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
+            "tools/interface-parity/main-menu-rest.mjs",
+            "crates/rebellion-render/src/main_menu.rs"
           ],
-          "note": "Hover/animated resources are mapped and exercised by Astra; no A0 hover capture. Browser run on macOS only; rerun on Linux.",
+          "note": "The original has no hover art (FUN_006028c0 has no WM_MOUSEMOVE; its buttons animate always on a 66 ms clock, A0 tooltip/221..234). Since 2026-10-31 the port animates always and changes nothing on hover; only the tooltip shows. No browser assertion checks the art under the pointer.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -300,17 +306,20 @@
         {
           "id": "PRE-02-C005",
           "requirement": "selected",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/bitmap-comparison.json"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/bitmap-comparison.json",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
+            "tools/interface-parity/main-menu-rest.mjs",
+            "crates/rebellion-render/src/main_menu.rs"
           ],
-          "note": "Selected bitmaps (e.g. galaxy sizes 10019/10018/10017) checked against resources and in Astra; A0 main-menu.png shows Easy/Small/Standard selected but is not compared. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The selected states at rest (Easy 11273, the Standard galaxy indicator 10019, the Standard game type 10158, the lever 10003) are among the still pixels main-menu-rest.mjs finds equal to A0 (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "PRE-02-C006",
@@ -336,9 +345,12 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/galaxy-sizes-corrected-2026-09-11.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/galaxy-sizes-corrected-2026-09-11.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
+            "tools/interface-parity/main-menu-rest.mjs",
+            "crates/rebellion-render/src/main_menu.rs"
           ],
-          "note": "Small/Medium/Large use COMMON 10019/10018/10017; browser verified; no A0 comparison. Browser run on macOS only; rerun on Linux.",
+          "note": "The lever's art follows FUN_00603cd0's state order (Standard 10003, Large 10002, Huge 10001; fixed 2026-10-31, A0 at rest shows 10003); the size indicators 10019/10018/10017; no A0 capture of Large or Huge.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -351,22 +363,27 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-game-setup-propagation.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-game-setup-propagation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
+            "tools/interface-parity/main-menu-rest.mjs",
+            "crates/rebellion-render/src/main_menu.rs"
           ],
-          "note": "Standard and Headquarters Only propagate to the campaign (F-016B); no A0 comparison. Browser run on macOS only; rerun on Linux.",
+          "note": "Standard and Headquarters Victory propagate to the campaign (F-016B). The label reads TEXTCOMM 0x1060 / 0x1061 (FUN_00406000); the port showed 'Headquarters Only' until 2026-10-31. No A0 capture of the second type.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-02-C015",
           "requirement": "Easy difficulty is the default",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu.rs",
-            "agent_docs/main-menu-parity.md"
+            "agent_docs/main-menu-parity.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-rest/",
+            "tools/interface-parity/main-menu-rest.mjs"
           ],
-          "note": "MainMenuState defaults to Difficulty::Easy (difficulty 0, main-menu-parity.md row 0x6e; manual p.21); unit-tested. The A0 capture main-menu.png shows Easy selected at rest but has not been compared with a browser capture; the executable default is not yet traced.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "MainMenuState defaults to Easy (FUN_00404c30; manual p.21); A0's menu at rest shows Easy selected (11273) and main-menu-rest.mjs finds the port's Easy button equal to it (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "PRE-02-C009",

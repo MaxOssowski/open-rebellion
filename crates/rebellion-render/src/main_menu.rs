@@ -6,8 +6,7 @@
 //! `agent_docs/main-menu-parity.md`.
 
 use egui_macroquad::egui::{
-    self, Color32, FontFamily, FontId, Pos2, Rect, Sense, Shape, Stroke, Vec2, WidgetInfo,
-    WidgetType,
+    self, Color32, Pos2, Rect, Sense, Shape, Stroke, Vec2, WidgetInfo, WidgetType,
 };
 use rebellion_core::dat::GalaxySize;
 use rebellion_core::missions::MissionFaction;
@@ -24,7 +23,6 @@ pub const ORIGINAL_CONTROL_COUNT: usize = 14;
 pub const MUSIC_TOGGLE_RECT: LogicalRect = LogicalRect::new(594.0, 10.0, 30.0, 22.0);
 /// The Fleet Registry chip, a port extension, left of the music toggle.
 pub const FLEET_REGISTRY_RECT: LogicalRect = LogicalRect::new(558.0, 10.0, 30.0, 22.0);
-const ANIMATION_FPS: f64 = 15.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -349,111 +347,95 @@ pub fn hit_test(canvas: Rect, pointer: Pos2) -> Option<MainMenuControl> {
         .find_map(|(control, rect)| rect.contains(logical).then_some(*control))
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
-)]
-fn animation_resource(start: u32, count: u32, elapsed: f64) -> u32 {
-    start + ((elapsed * ANIMATION_FPS) as u32 % count)
-}
+/// The menu's animation clock (`FUN_00405560` -> `FUN_00603b90`): one
+/// periodic `timeSetEvent` of 66 ms whose callback (`LAB_004054a0`) steps
+/// every animated button to its next frame (`FUN_00603a50`), so they run
+/// in lockstep, looping, whether or not the pointer is on them (A0
+/// tooltip/221..234: Load, Exit, Empire, Alliance, Head to Head and the
+/// unselected difficulties all show moving frames at rest).
+const ANIMATION_TICK_SECONDS: f64 = 0.066;
 
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "Rendering uses floating pixel coordinates and fixed-width resource IDs; retain existing rounding and narrowing."
+    reason = "The tick count is a small positive frame index."
 )]
-fn texture_for(
-    control: MainMenuControl,
-    state: &MainMenuState,
-    hovered: bool,
-    elapsed: f64,
-) -> u32 {
+fn animation_resource(start: u32, count: u32, now: f64) -> u32 {
+    start + ((now / ANIMATION_TICK_SECONDS).max(0.0) as u64 % u64::from(count)) as u32
+}
+
+/// The game-type label's text: TEXTCOMM 0x1060 "Standard Game" or 0x1061
+/// "Headquarters Victory" (`FUN_00406000` command 0x71), as shipped when
+/// the table is not loaded.
+fn game_type_label(headquarters_only: bool) -> String {
+    let (id, shipped) = if headquarters_only {
+        (0x1061, "Headquarters Victory")
+    } else {
+        (0x1060, "Standard Game")
+    };
+    crate::win_tooltip::module_string(crate::win_tooltip::StringModule::Common, id)
+        .unwrap_or_else(|| shipped.to_owned())
+}
+
+/// The bitmap a control shows at `now` (seconds on the menu's clock).
+///
+/// The animated buttons (`FUN_00603870`: first frame, frame count, and as
+/// their pressed art the id the port used to show at rest) loop on the
+/// clock and show the pressed art only while held (`FUN_00602d30`). A
+/// difficulty button is a toggle (`FUN_006030c0(8)`) whose selected and
+/// pressed art is 11273 / 11275 / 11274; the unselected ones animate.
+/// Credits (`FUN_00602150`) shows 11271, pressed 11272; the game type 10158,
+/// 10159 when selected or pressed.
+fn texture_for(control: MainMenuControl, state: &MainMenuState, pressed: bool, now: f64) -> u32 {
+    let animated = |first, count, rest| {
+        if pressed {
+            rest
+        } else {
+            animation_resource(first, count, now)
+        }
+    };
+    let difficulty = |level, first, selected| {
+        if pressed || state.difficulty == level {
+            selected
+        } else {
+            animation_resource(first, 30, now)
+        }
+    };
     match control {
-        MainMenuControl::Easy => {
-            if state.difficulty == Difficulty::Easy {
-                11273
-            } else if hovered {
-                animation_resource(11061, 30, elapsed)
-            } else {
-                11061
-            }
-        }
-        MainMenuControl::Intermediate => {
-            if state.difficulty == Difficulty::Medium {
-                11275
-            } else if hovered {
-                animation_resource(11091, 30, elapsed)
-            } else {
-                11091
-            }
-        }
-        MainMenuControl::Expert => {
-            if state.difficulty == Difficulty::Hard {
-                11274
-            } else if hovered {
-                animation_resource(11121, 30, elapsed)
-            } else {
-                11121
-            }
-        }
+        MainMenuControl::Easy => difficulty(Difficulty::Easy, 11061, 11273),
+        MainMenuControl::Intermediate => difficulty(Difficulty::Medium, 11091, 11275),
+        MainMenuControl::Expert => difficulty(Difficulty::Hard, 11121, 11274),
+        // FUN_00405560 builds the lever (FUN_00603cd0) with its states in
+        // the order 0x2713, 0x2712, 0x2711; its position starts at 2, which
+        // command 0x6a turns into galaxy size 1 (FUN_00404c30's default):
+        // Standard shows 10003 (A0 tooltip/221..234 base frames).
         MainMenuControl::GalaxyLever => match state.galaxy_size {
-            GalaxySize::Standard => 10001,
+            GalaxySize::Standard => 10003,
             GalaxySize::Large => 10002,
-            GalaxySize::Huge => 10003,
+            GalaxySize::Huge => 10001,
         },
         MainMenuControl::SmallGalaxy => 10019,
         MainMenuControl::MediumGalaxy => 10018,
         MainMenuControl::LargeGalaxy => 10017,
         MainMenuControl::GameType => {
-            if state.headquarters_only {
+            if state.headquarters_only || pressed {
                 10159
             } else {
                 10158
             }
         }
-        MainMenuControl::Empire => {
-            if hovered {
-                animation_resource(11001, 15, elapsed)
-            } else {
-                10009
-            }
-        }
-        MainMenuControl::Alliance => {
-            if hovered {
-                animation_resource(11031, 15, elapsed)
-            } else {
-                10007
-            }
-        }
-        MainMenuControl::Multiplayer => {
-            if hovered {
-                animation_resource(11151, 30, elapsed)
-            } else {
-                10005
-            }
-        }
-        MainMenuControl::LoadOptions => {
-            if hovered {
-                animation_resource(11241, 15, elapsed)
-            } else {
-                10013
-            }
-        }
+        MainMenuControl::Empire => animated(11001, 15, 10009),
+        MainMenuControl::Alliance => animated(11031, 15, 10007),
+        MainMenuControl::Multiplayer => animated(11151, 30, 10005),
+        MainMenuControl::LoadOptions => animated(11241, 15, 10013),
         MainMenuControl::Credits => {
-            if hovered && ((elapsed * 5.0) as u32 % 2 == 1) {
+            if pressed {
                 11272
             } else {
                 11271
             }
         }
-        MainMenuControl::Quit => {
-            if hovered {
-                animation_resource(11181, 30, elapsed)
-            } else {
-                10011
-            }
-        }
+        MainMenuControl::Quit => animated(11181, 30, 10011),
         MainMenuControl::MusicToggle | MainMenuControl::FleetRegistry => {
             unreachable!("the Open Rebellion extension chips use vector cockpit chrome")
         }
@@ -828,8 +810,8 @@ pub fn draw_main_menu(
                     let resource_id = texture_for(
                         *control,
                         state,
-                        state.hovered == Some(*control),
-                        hover_elapsed,
+                        response.is_pointer_button_down_on() && state.hovered == Some(*control),
+                        now,
                     );
                     draw_texture(ui.painter(), cache, ctx, resource_id, rect);
                 }
@@ -854,24 +836,27 @@ pub fn draw_main_menu(
                 }
             }
 
+            // FUN_00405560: a text object at (271, 374), 110 by 14 (its
+            // FUN_00601620 arguments), colour 0x200ff00, format 0x25 (centred,
+            // one line), showing TEXTCOMM 0x1060 "Standard Game"; command
+            // 0x71 swaps in 0x1061 "Headquarters Victory" (FUN_00406000).
+            // The A0 ink is 8 rows tall and 74 wide (tooltip/221..234 base
+            // frames): the 12-pixel cell, game font 8. egui's centring of
+            // that face lands one pixel right of and above A0's ink.
             let label_rect = control_rect(canvas, LogicalRect::new(271.0, 374.0, 110.0, 14.0));
             let scale = canvas.width() / LOGICAL_WIDTH;
             ui.painter().text(
-                label_rect.center(),
+                label_rect.center() + Vec2::new(-1.0, 1.0) * scale,
                 egui::Align2::CENTER_CENTER,
-                if state.headquarters_only {
-                    "Headquarters Only"
-                } else {
-                    "Standard Game"
-                },
-                FontId::new((10.0 * scale).max(8.0), FontFamily::Monospace),
-                Color32::from_rgb(80, 255, 80),
+                game_type_label(state.headquarters_only),
+                crate::theme::original_font(8, scale),
+                Color32::from_rgb(0, 255, 0),
             );
         });
     if let Some(registry) = state.registry.as_mut() {
         let canvas = main_menu_canvas_rect(ctx.screen_rect());
         let emblems = [MainMenuControl::Empire, MainMenuControl::Alliance].map(|control| {
-            let resource_id = texture_for(control, &MainMenuState::default(), false, 0.0);
+            let resource_id = texture_for(control, &MainMenuState::default(), true, 0.0);
             cache
                 .get(ctx, DllSource::Common, resource_id)
                 .map(|texture| texture.id())
@@ -1047,14 +1032,16 @@ mod tests {
                     Pos2::new(475.0, 256.0),
                     MainMenuControl::Credits,
                     MainMenuAction::Credits,
-                    11271,
+                    11272,
                 ),
             ] {
                 let hit = hit_test(canvas, Pos2::new(point.x * scale, point.y * scale));
                 assert_eq!(hit, Some(control));
                 let mut state = MainMenuState::default();
                 assert_eq!(state.activate_control(hit.unwrap()), Some(action));
-                assert_eq!(texture_for(control, &state, false, 0.0), bitmap);
+                // The art under the held pointer (FUN_00602d30's pressed
+                // art, FUN_00603870's last id).
+                assert_eq!(texture_for(control, &state, true, 0.0), bitmap);
                 assert_eq!(
                     MainMenuControl::from_index(
                         u32::try_from(control.index()).expect("menu control index fits in u32"),
@@ -1110,33 +1097,41 @@ mod tests {
 
     #[test]
     fn resource_families_match_binary_mapping() {
-        // Source: COMMON.DLL bitmap resource mapping (agent_docs/main-menu-parity.md).
+        // FUN_00405560 / FUN_00603870 (main-menu-anim RE): the animated
+        // buttons loop from their first frame on the 66 ms clock and show
+        // their last id only while held; A0 tooltip/221 shows Load 11243,
+        // Exit 11197, Empire 11002 and Alliance 11032 at rest.
         let state = MainMenuState::default();
+        let at = |control, pressed, now| texture_for(control, &state, pressed, now);
+        assert_eq!(at(MainMenuControl::Easy, false, 0.0), 11273);
+        assert_eq!(at(MainMenuControl::Intermediate, false, 0.0), 11091);
+        assert_eq!(at(MainMenuControl::Intermediate, true, 0.0), 11275);
+        assert_eq!(at(MainMenuControl::Expert, false, 0.7), 11131);
+        assert_eq!(at(MainMenuControl::Empire, false, 0.0), 11001);
+        assert_eq!(at(MainMenuControl::Empire, true, 0.0), 10009);
+        assert_eq!(at(MainMenuControl::Alliance, false, 0.07), 11032);
+        assert_eq!(at(MainMenuControl::Alliance, true, 0.0), 10007);
+        // 15 frames loop in 15 ticks; 30 frames in 30.
+        assert_eq!(at(MainMenuControl::LoadOptions, false, 0.066 * 16.5), 11242);
+        assert_eq!(at(MainMenuControl::Quit, false, 0.066 * 31.5), 11182);
+        assert_eq!(at(MainMenuControl::Quit, true, 1.0), 10011);
+        assert_eq!(at(MainMenuControl::Multiplayer, false, 0.066 * 29.5), 11180);
+        assert_eq!(at(MainMenuControl::Credits, false, 1.0), 11271);
+        assert_eq!(at(MainMenuControl::GameType, true, 0.0), 10159);
+        assert_eq!(at(MainMenuControl::GalaxyLever, false, 0.0), 10003);
+        assert_eq!(at(MainMenuControl::SmallGalaxy, false, 0.0), 10019);
+        assert_eq!(at(MainMenuControl::MediumGalaxy, false, 0.0), 10018);
+        assert_eq!(at(MainMenuControl::LargeGalaxy, false, 0.0), 10017);
+        let huge = MainMenuState {
+            galaxy_size: GalaxySize::Huge,
+            ..MainMenuState::default()
+        };
         assert_eq!(
-            texture_for(MainMenuControl::Easy, &state, false, 0.0),
-            11273
+            texture_for(MainMenuControl::GalaxyLever, &huge, false, 0.0),
+            10001
         );
-        assert_eq!(
-            texture_for(MainMenuControl::Empire, &state, false, 0.0),
-            10009
-        );
-        assert_eq!(
-            texture_for(MainMenuControl::Alliance, &state, true, 0.0),
-            11031
-        );
-        assert_eq!(
-            texture_for(MainMenuControl::SmallGalaxy, &state, false, 0.0),
-            10019
-        );
-        assert_eq!(
-            texture_for(MainMenuControl::MediumGalaxy, &state, false, 0.0),
-            10018
-        );
-        assert_eq!(
-            texture_for(MainMenuControl::LargeGalaxy, &state, false, 0.0),
-            10017
-        );
-        assert_eq!(texture_for(MainMenuControl::Quit, &state, true, 1.0), 11196);
+        assert_eq!(game_type_label(false), "Standard Game");
+        assert_eq!(game_type_label(true), "Headquarters Victory");
     }
 
     #[test]
