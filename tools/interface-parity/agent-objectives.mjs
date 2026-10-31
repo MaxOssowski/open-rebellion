@@ -117,11 +117,14 @@ async function run(browser, base, faction) {
   const context = await browser.newContext({ viewport: { width: 640, height: 480 } });
   const page = await context.newPage();
   const log = [];
+  // The wall-clock times of the [ai] day lines at Fast.
+  const fastDays = [];
   const errors = [];
   const network = [];
   const shots = [];
   page.on("console", (message) => {
     log.push(message.text());
+    if (/\[ai\] day=\d+ speed=Fast/.test(message.text())) fastDays.push(Date.now());
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
@@ -243,7 +246,7 @@ async function run(browser, base, faction) {
     // 0x80000000 (FUN_00439ef0) and the advisor rolls FUN_005f5700(12)
     // below 6. The port's generator rolls 6, 7, then 4 from its seed, so
     // the third idle end plays message 0x54 / 0x52, record 905 (op 0x13).
-    // The game opens paused, so Fast (0.4 s a day) comes from the Game
+    // The game opens paused, so Fast (1 s a day) comes from the Game
     // Speed menu on the day readout (FUN_0042d190, game_speed.rs).
     await click(page, faction.dayReadout, "right");
     await page.waitForTimeout(300);
@@ -271,10 +274,18 @@ async function run(browser, base, faction) {
     }
     await page.waitForTimeout(300);
     await shot("quip");
+    // Fast is 1 s a day (4 quarter-second sub-ticks, FUN_00415e20; A0 1.26
+    // s, ghidra/notes/game-speed-timing.md). A battle's alert stops the
+    // clock, so only the median spacing is asserted.
+    const spacing = fastDays.slice(1).map((at, index) => (at - fastDays[index]) / 1000).sort((a, b) => a - b);
+    const median = spacing[Math.floor(spacing.length / 2)];
+    assert.ok(spacing.length >= 4 && median > 0.85 && median < 1.15,
+      `Fast days ${JSON.stringify(spacing)} s apart, median ${median}, not 1 s`);
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", agent: log.filter((line) => line.startsWith("[agent]")), shots };
+    return { faction: faction.name, status: "pass", agent: log.filter((line) => line.startsWith("[agent]")), shots,
+      fast_day_median_seconds: median };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error),

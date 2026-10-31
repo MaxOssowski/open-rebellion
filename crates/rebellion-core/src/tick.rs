@@ -89,10 +89,14 @@ impl GameSpeed {
 
 /// Real seconds represented by one unit of [`GameSpeed::original_rate`].
 ///
-/// Inferred, not yet recovered: 0.1 s makes Very Slow one day per minute,
-/// matching reported play of one to two hours per 100 days. An A0 timing
-/// capture replaces this inference.
-pub const ORIGINAL_RATE_UNIT_SECONDS: f32 = 0.1;
+/// A sub-tick runs once more than 0.25 s have passed since the last
+/// (`FUN_00415e20`: `FUN_005fbbe0`, seconds from `timeGetTime` x 0.001 or
+/// the performance counter, against the float 0.25 at `0x6588f0`;
+/// `FUN_0041e390` resets it), and a day has the speed's rate of sub-ticks
+/// (`FUN_0051dea0`). A0 (Windows 10 VM, 2026-10-31) took about 1.26 s a day
+/// at Fast, 3.2 s at Medium and 15 s at Slow: the rate's quarter-seconds
+/// plus the day's own work.
+pub const ORIGINAL_RATE_UNIT_SECONDS: f32 = 0.25;
 
 /// A single completed game-day tick.
 ///
@@ -334,18 +338,18 @@ mod tests {
     fn pause_finishes_the_current_day_then_holds() {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Medium);
-        assert!(clock.advance(0.6).is_empty());
+        assert!(clock.advance(1.5).is_empty());
         assert!(clock.pause());
         // The half-finished day completes; the next never starts.
-        assert_eq!(clock.advance(0.6), vec![TickEvent { tick: 1 }]);
+        assert_eq!(clock.advance(1.5), vec![TickEvent { tick: 1 }]);
         assert!(clock.advance(10.0).is_empty());
         assert_eq!(clock.tick, 1);
         assert_eq!(clock.speed, GameSpeed::Medium);
 
         clock.resume();
         assert!(!clock.pause_requested());
-        assert!(clock.advance(1.1).is_empty());
-        assert_eq!(clock.advance(0.2), vec![TickEvent { tick: 2 }]);
+        assert!(clock.advance(2.75).is_empty());
+        assert_eq!(clock.advance(0.5), vec![TickEvent { tick: 2 }]);
     }
 
     #[test]
@@ -374,10 +378,10 @@ mod tests {
     fn a_pause_later_in_the_game_stops_one_day_ahead() {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Fast);
-        clock.advance(1.3);
+        clock.advance(3.25);
         assert_eq!(clock.tick, 3);
         clock.pause();
-        assert_eq!(clock.advance(4.0), vec![TickEvent { tick: 4 }]);
+        assert_eq!(clock.advance(10.0), vec![TickEvent { tick: 4 }]);
         assert_eq!(clock.tick, 4);
     }
 
@@ -387,7 +391,7 @@ mod tests {
         clock.set_speed(GameSpeed::Medium);
         assert!(clock.advance(-5.0).is_empty());
         assert!(clock.advance(0.0).is_empty());
-        assert_eq!(clock.advance(1.3), vec![TickEvent { tick: 1 }]);
+        assert_eq!(clock.advance(3.25), vec![TickEvent { tick: 1 }]);
     }
 
     #[test]
@@ -415,14 +419,14 @@ mod tests {
     fn a_queued_day_spends_no_real_time_and_passes_a_pause() {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Medium);
-        assert!(clock.advance(0.6).is_empty());
+        assert!(clock.advance(1.5).is_empty());
         clock.pause();
         clock.queue_days(2);
         clock.queue_days(u64::MAX);
         assert_eq!(clock.queued_days(), u64::MAX, "the queue saturates");
         // Half a day was banked; the queued days leave it alone.
-        assert_eq!(clock.advance(0.6), vec![TickEvent { tick: 1 }]);
-        assert_eq!(clock.advance(0.6), vec![TickEvent { tick: 2 }]);
+        assert_eq!(clock.advance(1.5), vec![TickEvent { tick: 1 }]);
+        assert_eq!(clock.advance(1.5), vec![TickEvent { tick: 2 }]);
         assert_eq!(clock.tick, 2);
     }
 
@@ -453,7 +457,8 @@ mod tests {
         );
         let seconds = GameSpeed::ALL.map(GameSpeed::seconds_per_day);
         assert!(seconds[0].is_none());
-        for (actual, expected) in seconds[1..].iter().zip([60.0, 6.0, 1.2, 0.4]) {
+        // Quarter-second sub-ticks (FUN_00415e20).
+        for (actual, expected) in seconds[1..].iter().zip([150.0, 15.0, 3.0, 1.0]) {
             assert!(close(actual.unwrap(), expected));
         }
     }
@@ -464,7 +469,7 @@ mod tests {
         clock.set_speed(GameSpeed::Medium);
 
         // Just under a full day — no event yet.
-        let events = clock.advance(1.19);
+        let events = clock.advance(2.99);
         assert!(events.is_empty());
         assert_eq!(clock.tick, 0);
 
@@ -476,21 +481,21 @@ mod tests {
     }
 
     #[test]
-    fn fast_speed_completes_five_days_in_two_seconds() {
+    fn fast_speed_completes_five_days_in_five_seconds() {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Fast);
 
-        let events = clock.advance(2.01);
+        let events = clock.advance(5.01);
         assert_eq!(events.len(), 5);
         assert_eq!(clock.tick, 5);
     }
 
     #[test]
-    fn very_slow_speed_needs_a_minute_per_day() {
+    fn very_slow_speed_needs_two_and_a_half_minutes_per_day() {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::VerySlow);
 
-        assert!(clock.advance(59.9).is_empty());
+        assert!(clock.advance(149.9).is_empty());
         assert_eq!(clock.advance(0.2).len(), 1);
     }
 
@@ -499,8 +504,8 @@ mod tests {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Fast);
 
-        // 2.41 s at 0.4 s/day = 6 days.
-        let events = clock.advance(2.41);
+        // 6.01 s at 1 s/day = 6 days.
+        let events = clock.advance(6.01);
         assert_eq!(events.len(), 6);
         for (i, event) in events.iter().enumerate() {
             assert_eq!(event.tick, (i + 1) as u64);
@@ -512,15 +517,15 @@ mod tests {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Slow);
 
-        // 3.6 s of a 6 s day — no tick yet.
-        assert!(clock.advance(3.6).is_empty());
+        // 9 s of a 15 s day — no tick yet.
+        assert!(clock.advance(9.0).is_empty());
 
-        // 7.2 s total — one tick fires, 1.2 s remains.
-        assert_eq!(clock.advance(3.6).len(), 1);
+        // 18 s total — one tick fires, 3 s remains.
+        assert_eq!(clock.advance(9.0).len(), 1);
         assert_eq!(clock.tick, 1);
 
-        // 4.8 s of the next day — no tick yet.
-        assert!(clock.advance(3.6).is_empty());
+        // 12 s of the next day — no tick yet.
+        assert!(clock.advance(9.0).is_empty());
         assert_eq!(clock.tick, 1);
     }
 
@@ -528,11 +533,11 @@ mod tests {
     fn speed_change_keeps_partial_day() {
         let mut clock = GameClock::new();
         clock.set_speed(GameSpeed::Slow);
-        clock.advance(3.0); // half of a 6 s day
+        clock.advance(7.5); // half of a 15 s day
 
         clock.set_speed(GameSpeed::Fast);
-        // 0.21 s at 0.4 s/day adds just over half a day.
-        let events = clock.advance(0.21);
+        // 0.51 s at 1 s/day adds just over half a day.
+        let events = clock.advance(0.51);
         assert_eq!(events.len(), 1);
     }
 

@@ -539,6 +539,8 @@ pub fn draw_game_speed_menu(
 ) -> Option<GameSpeed> {
     let anchor = ui_state.menu_anchor?;
     let items = game_speed_menu_items(faction);
+    // FUN_0042d190 adds every row with flags 0, which FUN_00442590 makes
+    // enabled (only flag 4 disables): no speed row is ever greyed.
     let entries = items.map(|item| GameMenuEntry {
         label: item.label,
         icon: Some(item.icon_resource),

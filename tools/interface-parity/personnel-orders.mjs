@@ -299,10 +299,17 @@ const cases = [
       await page.keyboard.press("Escape");
       await frames(page, 2);
       await setSpeed(page, setup, SPEED_ROWS.medium);
-      // Medium is 1.2 s a day (game_speed.rs); two days start the
+      // Medium is 3 s a day (12 quarter-second sub-ticks, FUN_00415e20;
+      // A0 3.22 s, ghidra/notes/game-speed-timing.md); two days start the
       // missions, well inside Diplomacy's five-day minimum timer.
-      await page.waitForTimeout(2_600);
+      await page.waitForTimeout(9_600);
       await setSpeed(page, setup, SPEED_ROWS.pause);
+      // The days' wall-clock spacing at Medium ([ai] day= lines).
+      const medium = log.times(/\[ai\] day=\d+ speed=Medium/);
+      const spacing = medium.slice(1).map((at, index) => (at - medium[index]) / 1000);
+      assert.ok(spacing.length >= 2, `Medium ran ${medium.length} days`);
+      assert.ok(spacing.every((seconds) => seconds > 2.6 && seconds < 3.4),
+        `Medium days ${JSON.stringify(spacing)} s apart, not 3 s`);
       // The alert against A0 tooltip/321-resume-box-base (an Empire game;
       // REBDLOG 10622 at (114, 152), checkmark 10625 at (290, 286)): its
       // pixels outside the message's line and A0's pointer match, and the
@@ -356,7 +363,7 @@ const cases = [
       await click(page, confirmationCheckmark(faction));
       const aborted = await log.logged("the checkmark aborts the mission",
         /command=0x250 destination=abort mission=\d+ result=true$/);
-      return { before, running, asked, aborted, alert };
+      return { before, running, asked, aborted, alert, medium_day_seconds: spacing };
     },
   },
 ];
@@ -404,7 +411,7 @@ async function inspect(server, faction, testCase, executable) {
     });
     page.on("pageerror", (error) => errors.push(`pageerror:${error.stack || error.message}`));
     page.on("console", (message) => {
-      consoleLines.push({ type: message.type(), text: message.text() });
+      consoleLines.push({ type: message.type(), text: message.text(), at: Date.now() });
       if (message.type() === "error" || /\[bmp_cache\] asset unavailable/i.test(message.text())) {
         errors.push(`console:${message.type()}:${message.text()}`);
       }
@@ -427,6 +434,10 @@ async function inspect(server, faction, testCase, executable) {
 
     // Wait for the first console line matching `pattern`.
     const log = {
+      // The wall-clock times of the lines matching `pattern`.
+      times(pattern) {
+        return consoleLines.filter((entry) => pattern.test(entry.text)).map((entry) => entry.at);
+      },
       async logged(description, pattern, timeout = 10_000) {
         const started = Date.now();
         while (Date.now() - started < timeout) {

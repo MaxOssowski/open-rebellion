@@ -2532,9 +2532,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/"
           ],
-          "note": "Very Slow is index 1, value 600 (FUN_00487eb0); no browser run observed it, A0 build-orders/18-veryslow.png exists uncompared; the wall-clock unit is inferred.",
+          "note": "Very Slow is index 1, value 600 (FUN_00487eb0); no browser run observed it, A0 build-orders/18-veryslow.png exists uncompared; the wall-clock unit is inferred. 2026-10-31: the sub-tick is 0.25 s (FUN_00415e20, float 0.25 at 0x6588f0; ghidra/notes/game-speed-timing.md), so Very Slow is 600 x 0.25 = 150 s a day; the port's unit is now 0.25 s (was an inferred 0.1). Very Slow itself was not timed in A0 or a browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2544,36 +2545,41 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/"
           ],
-          "note": "Slow, value 60; P60 observed about 6 s a day (macOS); no A0 timing. Browser run on macOS only; rerun on Linux.",
+          "note": "Slow, value 60; P60 observed about 6 s a day (macOS); no A0 timing. Browser run on macOS only; rerun on Linux. 2026-10-31: A0 timed Slow at about 15 s a day (60 x 0.25 s; evidence 2026-10-31-speed-timing-a0); the port now runs 15 s a day (was 6 s). No Linux browser timing of Slow.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-05-C004",
           "requirement": "medium",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
+            "tools/interface-parity/personnel-orders.mjs"
           ],
-          "note": "Medium, value 12; P60 (macOS) and Linux gates personnel-orders.mjs/fleet-window.mjs choose it from the menu; A0 build-orders/13-medium.png exists but no timing or menu comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Medium, value 12; P60 (macOS) and Linux gates personnel-orders.mjs/fleet-window.mjs choose it from the menu; A0 build-orders/13-medium.png exists but no timing or menu comparison. 2026-10-31: A0 timed Medium at 3.22 s a day (12 x 0.25 s plus the day's work); the port now runs 3 s a day (was 1.2 s). personnel-orders.mjs on Linux asserts 3 s days at Medium (measured 2.98..3.00 s). port: A0's extra ~0.2 s a day is the original's per-day work time, which depends on the machine.",
+          "scope": "Verified against the original's code, A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-05-C005",
           "requirement": "fast",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
+            "tools/interface-parity/agent-objectives.mjs"
           ],
-          "note": "Fast, value 4; P60 (macOS) and Linux agent-objectives.mjs choose it; no A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Fast, value 4; P60 (macOS) and Linux agent-objectives.mjs choose it; no A0 comparison. 2026-10-31: A0 timed Fast at 1.26 s a day (4 x 0.25 s plus the day's work); the port now runs 1 s a day (was 0.4 s). agent-objectives.mjs on Linux asserts 1 s days at Fast (median 0.999..1.000 s). port: A0's extra ~0.26 s a day is the original's per-day work time, which depends on the machine.",
+          "scope": "Verified against the original's code, A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-05-C006",
@@ -2641,13 +2647,15 @@
         {
           "id": "CMD-05-C011",
           "requirement": "disabled",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/"
           ],
-          "note": "Disabled colour 0x2808080 is recovered, but no state that disables a speed row is traced or tested."
+          "note": "Disabled colour 0x2808080 is recovered. 2026-10-31: no state disables a speed row: FUN_0042d190 adds all five rows with flags 0, and FUN_00442590 disables an item only with flag 4 (a submenu's child); A0 build-orders/12-speed.png and speed-timing/menu.png show all five enabled, and the port's menu (game_speed.rs draw_game_speed_menu) never disables one (agent-objectives.mjs speed-menu shot, Linux).",
+          "scope": "Verified against the original's code, A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-05-C012",
