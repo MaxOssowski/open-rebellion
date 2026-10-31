@@ -11293,13 +11293,16 @@ fn draw_story_caption(caption: &str) {
                 egui::Id::new("story-caption"),
             ))
             .with_clip_rect(rect);
-        let galley = painter.layout(
-            caption.to_owned(),
-            rebellion_render::theme::original_font(4, scale),
+        // DrawTextA with DT_WORDBREAK (theme::paint_gdi_text_block).
+        let _ = rebellion_render::theme::paint_gdi_text_block(
+            &painter,
+            rect,
+            scale,
+            4,
+            caption,
             egui::Color32::WHITE,
-            rect.width(),
+            rebellion_render::theme::GdiAlign::Left,
         );
-        painter.galley(rect.min, galley, egui::Color32::WHITE);
     });
     egui_macroquad::draw();
 }

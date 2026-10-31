@@ -143,9 +143,8 @@ const ARIAL_CELL_UNITS: f32 = 1854.0 + 434.0;
 /// these numbers are kept (ghidra/notes/gdi-font-sizes.md). A0 confirms 11
 /// (sector-windows/04-left, planet names in font 10), 13 (the sector title
 /// in font 4) and bold 13 (the pause box in font 5, tooltip/321): drawn at
-/// those sizes, the names and the title match A0 pixel for pixel.
-/// [`original_font`] still sizes egui by the cell; moving it to these
-/// sizes moves every text, window by window against A0.
+/// those sizes, the names and the title match A0 pixel for pixel. Every
+/// game text is set at these sizes ([`paint_gdi_text`]).
 #[must_use]
 pub fn original_font_ppem(font: u16) -> f32 {
     // Fonts 1 and 5, bold 16, share the regular 16's 13 (the default).
@@ -161,22 +160,6 @@ pub fn original_font_ppem(font: u16) -> f32 {
         13 => 10.0,
         _ => 13.0,
     }
-}
-
-/// The egui font for the original's font `font` at `scale`. GDI's positive
-/// `lfHeight` is the cell, ascent plus descent; egui's size is the em
-/// (epaint scales it by the face's height over its em), so the cell
-/// becomes `cell x 2048 / 2288`: 14.3 for the 16-pixel cell.
-#[must_use]
-pub fn original_font(font: u16, scale: f32) -> egui::FontId {
-    let (cell, bold) = original_font_cell(font);
-    let em = cell * ARIAL_UNITS_PER_EM / ARIAL_CELL_UNITS;
-    let family = if bold {
-        FontFamily::Name(ARIAL_BOLD_FAMILY.into())
-    } else {
-        FontFamily::Proportional
-    };
-    egui::FontId::new((em * scale).max(1.0), family)
 }
 
 /// GDI's `tmAscent` and `tmDescent` for font `font`: Arial's VDMX `yMax`
@@ -635,15 +618,6 @@ mod tests {
                 (16.0, false),
             ]
         );
-        // egui takes the em: the cell x 2048 / 2288, scaled; bold takes the
-        // bold face.
-        let regular = original_font(10, 2.0);
-        assert_eq!(regular.family, FontFamily::Proportional);
-        assert!((regular.size - 28.0 * 2048.0 / 2288.0).abs() < 1e-4);
-        assert!((original_font(4, 1.0).size - 14.3217).abs() < 1e-3);
-        let bold = original_font(7, 1.0);
-        assert_eq!(bold.family, FontFamily::Name(ARIAL_BOLD_FAMILY.into()));
-        assert!((bold.size - 18.0 * 2048.0 / 2288.0).abs() < 1e-4);
     }
 
     #[test]

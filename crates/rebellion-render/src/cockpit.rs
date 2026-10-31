@@ -1387,12 +1387,17 @@ fn paint_gid_row(
     } else {
         x
     };
-    ui.painter().text(
-        origin + egui::vec2(text_x, top) * scale,
-        egui::Align2::LEFT_TOP,
+    crate::theme::paint_gdi_text(
+        ui.painter(),
+        egui::Rect::from_min_size(
+            origin + egui::vec2(text_x, top) * scale,
+            egui::vec2(200.0 * scale, 20.0 * scale),
+        ),
+        scale,
+        0,
         label,
-        crate::theme::original_font(0, scale),
         color,
+        (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
     );
 }
 

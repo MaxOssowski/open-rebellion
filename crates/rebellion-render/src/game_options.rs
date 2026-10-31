@@ -1082,16 +1082,40 @@ pub fn draw_game_options_overlay(
                 // default font; under a question they stay white and take
                 // no input (A0 tooltip/211).
                 let editable = !state.modal() && !state.suspended;
+                // The default font, as the shown name (A0 200-options: "test"
+                // at 13 ppem). The EDIT control sets its line 1 below the
+                // box's top (A0: baseline at y + 14, tmAscent 13); the box
+                // moves up by egui's own baseline in the line.
+                let font = crate::theme::gdi_font(crate::DEFAULT_FONT, canvas.scale);
+                let egui_baseline = ui
+                    .painter()
+                    .layout_no_wrap("A".to_owned(), font.clone(), Color32::WHITE)
+                    .rows
+                    .first()
+                    .and_then(|row| row.glyphs.first())
+                    .map_or(0.0, |glyph| glyph.pos.y);
                 for slot in 0..6 {
+                    let (x, y, w, h) = (119.0, 81.0 + slot as f32 * 42.0, 160.0, 20.0);
+                    let (_, baseline) = crate::theme::gdi_text_origin(
+                        (x, y + 1.0, w, h),
+                        crate::DEFAULT_FONT,
+                        0.0,
+                        (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
+                    );
+                    let mut box_rect = rect(x, y, w, h);
+                    box_rect = box_rect.translate(egui::vec2(
+                        0.0,
+                        rect(x, baseline, 0.0, 0.0).min.y - egui_baseline - box_rect.min.y,
+                    ));
                     ui.put(
-                        rect(119.0, 81.0 + slot as f32 * 42.0, 160.0, 20.0),
+                        box_rect,
                         egui::TextEdit::singleline(&mut state.names[slot])
                             .id_source(("options_save_name", slot))
                             .frame(false)
                             .interactive(editable)
                             .margin(egui::Margin::ZERO)
-                            .vertical_align(egui::Align::Center)
-                            .font(crate::theme::original_font(10, canvas.scale))
+                            .vertical_align(egui::Align::Min)
+                            .font(font.clone())
                             .text_color(Color32::WHITE),
                     );
                 }

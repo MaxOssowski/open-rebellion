@@ -20,6 +20,7 @@ pub mod fog;
 pub mod game_menu;
 pub mod game_options;
 pub mod game_speed;
+mod gdi_metrics;
 pub mod gid_legend;
 pub mod list_prefix;
 pub mod list_scroll_bar;
@@ -48,7 +49,6 @@ mod tactical_asset_cache;
 mod tactical_assets;
 pub mod tactical_view;
 pub mod targeting;
-mod gdi_metrics;
 pub mod theme;
 pub mod troop_finder;
 pub mod video_player;
@@ -545,12 +545,17 @@ pub fn draw_gid_caption(
     }
     let painter = ctx.layer_painter(egui::LayerId::background());
     // A briefing mark names its system instead (FUN_0041d890).
-    painter.text(
-        gid_caption_anchor(cam),
-        egui::Align2::CENTER_TOP,
+    theme::paint_gdi_text(
+        &painter,
+        egui::Rect::from_center_size(
+            gid_caption_anchor(cam) + egui::vec2(0.0, 15.0 * cam.display_scale),
+            egui::vec2(cam.viewport_width, 30.0 * cam.display_scale),
+        ),
+        cam.display_scale,
+        DEFAULT_FONT,
         caption.unwrap_or(mode.caption(faction == CockpitFaction::Alliance)),
-        theme::original_font(DEFAULT_FONT, cam.display_scale),
         crate::game_menu::faction_text_color(faction),
+        (theme::GdiAlign::Center, theme::GdiVAlign::Top),
     );
 }
 
@@ -2088,33 +2093,28 @@ mod interaction_tests {
             let output = ctx.run(egui::RawInput::default(), |ctx| {
                 draw_gid_caption(ctx, camera, CockpitFaction::Empire, mode, None);
             });
-            output
-                .shapes
-                .into_iter()
-                .filter_map(|clipped| match clipped.shape {
-                    egui::Shape::Text(text) => Some((
-                        text.galley.text().to_owned(),
-                        text.galley.job.sections[0].format.color,
-                        text.galley.job.sections[0].format.font_id.size,
-                        text.pos.y,
-                        text.pos.x + text.galley.size().x / 2.0,
-                    )),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
+            theme::test_lines(&output.shapes)
         };
         let anchor = gid_caption_anchor(camera);
         let texts = caption(GidMode::Uprisings);
         assert_eq!(texts.len(), 1, "{texts:?}");
-        let (text, colour, size, top, centre) = &texts[0];
-        assert_eq!(text, "Uprisings");
-        assert_eq!(*colour, egui::Color32::from_rgb(0, 255, 0));
+        let line = &texts[0];
+        assert_eq!(line.text, "Uprisings");
+        assert_eq!(line.color, egui::Color32::from_rgb(0, 255, 0));
         // FUN_00420550(4): the default font is font 4, a 16-row regular
-        // cell (FUN_0060eed0), the A0 captions' capital height.
+        // cell (FUN_0060eed0), the A0 captions' capital height; DT_CENTER
+        // across the view from its top, the baseline tmAscent 13 below.
         assert_eq!(theme::original_font_cell(DEFAULT_FONT), (16.0, false));
-        assert_eq!(*size, theme::original_font(4, 2.0).size);
-        assert_eq!(*top, anchor.y);
-        assert!((centre - anchor.x).abs() < 0.01);
+        assert_eq!(line.size, theme::gdi_font(4, 2.0).size);
+        assert_eq!(line.pen.y, anchor.y + 13.0 * 2.0);
+        let (_, width) = theme::gdi_pen_positions(4, "Uprisings").unwrap();
+        let left = anchor.x - camera.viewport_width / 2.0;
+        assert!(
+            (line.pen.x - (left + ((camera.viewport_width / 2.0 - width) / 2.0).floor() * 2.0))
+                .abs()
+                < 0.01,
+            "{line:?}"
+        );
         assert!(caption(GidMode::DisplayOff).is_empty());
     }
     #[test]

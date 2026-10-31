@@ -467,10 +467,28 @@ pub fn draw_gid_legend(
                         font,
                         rgb,
                     } => {
-                        let font_id = crate::theme::original_font(*font, scale);
                         let colour = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
                         let (offset, align) = text_anchor(*x, *y, size.x);
-                        painter.text(at(offset), align, text, font_id, colour);
+                        // DrawTextA from the anchor's top: centred across
+                        // the legend, or from its point.
+                        let (left, gdi_align) = if align == egui::Align2::CENTER_TOP {
+                            (0.0, crate::theme::GdiAlign::Center)
+                        } else {
+                            (offset.x, crate::theme::GdiAlign::Left)
+                        };
+                        let start = at(egui::vec2(left, offset.y));
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            egui::Rect::from_min_size(
+                                start,
+                                egui::vec2((size.x - left) * scale, 30.0 * scale),
+                            ),
+                            scale,
+                            *font,
+                            text,
+                            colour,
+                            (gdi_align, crate::theme::GdiVAlign::Top),
+                        );
                     }
                 }
             }
