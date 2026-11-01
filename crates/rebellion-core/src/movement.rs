@@ -562,27 +562,27 @@ pub fn validate_fleet_dispatch(
 
 /// The fleets an order built on a sector window's fleet icon acts on: the
 /// system's fleets (`FUN_00512700`, kind `0x10` → `FUN_004ffe70`) of the
-/// order's side (`FUN_00553350`), in the system's order
-/// (`ghidra/notes/sector-icon-menus.md`).
+/// order's side (`FUN_00553350`; `ghidra/notes/sector-icon-menus.md`). A
+/// move puts a fleet in its destination at once (`FUN_00556390`), so those
+/// en route there are members too ([`listed_fleets`]); each refuses the
+/// order, as A0 menus3/23 greys the icon's Move and Scrap over a fleet
+/// arriving at Chandrila. port: in key order.
 #[must_use]
 pub fn system_side_fleets(
+    state: &MovementState,
     world: &GameWorld,
     system: SystemKey,
     expected_is_alliance: bool,
 ) -> Vec<FleetKey> {
-    world.systems.get(system).map_or_else(Vec::new, |value| {
-        value
-            .fleets
-            .iter()
-            .copied()
-            .filter(|fleet| {
-                world
-                    .fleets
-                    .get(*fleet)
-                    .is_some_and(|value| value.is_alliance == expected_is_alliance)
-            })
-            .collect()
-    })
+    listed_fleets(state, world, system)
+        .into_iter()
+        .filter(|fleet| {
+            world
+                .fleets
+                .get(*fleet)
+                .is_some_and(|value| value.is_alliance == expected_is_alliance)
+        })
+        .collect()
 }
 
 /// Whether Move and Confirmed Move are enabled for a team of fleets:
@@ -1533,8 +1533,8 @@ mod tests {
         let second = add_test_fleet(&mut world, origin, ship_key);
         add_test_fleet(&mut world, destination, ship_key);
 
-        assert_eq!(system_side_fleets(&world, origin, true), [first, second]);
-        assert_eq!(system_side_fleets(&world, origin, false), [enemy]);
+        assert_eq!(system_side_fleets(&MovementState::new(), &world, origin, true), [first, second]);
+        assert_eq!(system_side_fleets(&MovementState::new(), &world, origin, false), [enemy]);
     }
 
     #[test]

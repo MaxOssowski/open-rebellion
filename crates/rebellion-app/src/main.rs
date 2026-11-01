@@ -5680,6 +5680,7 @@ async fn main() {
                                     point,
                                 ) {
                                     let fleets = system_side_fleets(
+                                        &movement_state,
                                         &world,
                                         system,
                                         player_faction == MissionFaction::Alliance,
@@ -6194,6 +6195,7 @@ async fn main() {
                         // selection's system by its fleets.
                         Some((ObjectMenuCommand::Assault, selection)) => {
                             if let Some((fleets, system)) = bombard_team(
+                                &movement_state,
                                 &world,
                                 selection,
                                 player_faction == MissionFaction::Alliance,
@@ -6211,6 +6213,7 @@ async fn main() {
                         }
                         Some((ObjectMenuCommand::BombardmentTarget(kind), selection)) => {
                             if let Some((fleets, system)) = bombard_team(
+                                &movement_state,
                                 &world,
                                 selection,
                                 player_faction == MissionFaction::Alliance,
@@ -6344,7 +6347,7 @@ async fn main() {
                             let side = Faction::of_alliance(
                                 player_faction == MissionFaction::Alliance,
                             );
-                            let team = object.scrap_team(&world, side);
+                            let team = object.scrap_team(&movement_state, &world, side);
                             if !team.is_empty() {
                                 let allowed = team.iter().try_for_each(|&target| {
                                     rebellion_core::scrap::check_with_movement(
@@ -6456,6 +6459,7 @@ async fn main() {
                         )) => {
                             targeting = Some(Targeting::new(TargetOrder::FleetMove {
                                 fleets: system_side_fleets(
+                                    &movement_state,
                                     &world,
                                     system,
                                     player_faction == MissionFaction::Alliance,
@@ -9184,7 +9188,7 @@ fn order_gates(
             }) => fleets_move_enabled(
                 movement_state,
                 world,
-                &system_side_fleets(world, system, is_alliance),
+                &system_side_fleets(movement_state, world, system, is_alliance),
                 is_alliance,
             ),
             _ => false,
@@ -9319,7 +9323,7 @@ fn order_gates(
             }
             _ => false,
         },
-        bombard: bombard_team(world, selection, is_alliance).map_or(
+        bombard: bombard_team(movement_state, world, selection, is_alliance).map_or(
             [false; 4],
             |(team, system)| {
                 [0x220, 0x221, 0x222, 0x223].map(|kind| {
@@ -9334,7 +9338,7 @@ fn order_gates(
                 })
             },
         ),
-        assault: bombard_team(world, selection, is_alliance).is_some_and(|(team, system)| {
+        assault: bombard_team(movement_state, world, selection, is_alliance).is_some_and(|(team, system)| {
             rebellion_core::assault::order_enabled(
                 world,
                 movement_state,
@@ -9359,7 +9363,7 @@ fn order_gates(
         // icon's team is its kind's objects of the side (FUN_00512700),
         // and an empty team refuses (FUN_0053c4b0). A0 menus3/06-13.
         scrap: selection.is_some_and(|object| {
-            let team = object.scrap_team(world, side);
+            let team = object.scrap_team(movement_state, world, side);
             !team.is_empty()
                 && team.iter().all(|&target| {
                     rebellion_core::scrap::check_with_movement(world, movement_state, side, target)
@@ -9424,6 +9428,7 @@ fn retire_check(
 /// fleet at its system, or a fleet icon's system with its fleets of the
 /// player's side (`FUN_00512700`, kind `0x10`).
 fn bombard_team(
+    movement: &MovementState,
     world: &GameWorld,
     selection: Option<MenuObject>,
     is_alliance: bool,
@@ -9434,7 +9439,7 @@ fn bombard_team(
             system,
             quadrant: Quadrant::Fleets,
         } => Some((
-            rebellion_core::movement::system_side_fleets(world, system, is_alliance),
+            rebellion_core::movement::system_side_fleets(movement, world, system, is_alliance),
             system,
         )),
         _ => None,
@@ -12293,19 +12298,19 @@ mod fleet_move_tests {
             })
         };
         assert_eq!(
-            bombard_team(&world, Some(MenuObject::Fleet(fleets[1])), true),
+            bombard_team(&MovementState::new(), &world, Some(MenuObject::Fleet(fleets[1])), true),
             Some((vec![fleets[1]], origin))
         );
         assert_eq!(
-            bombard_team(&world, icon(Quadrant::Fleets), true),
+            bombard_team(&MovementState::new(), &world, icon(Quadrant::Fleets), true),
             Some((fleets.clone(), origin))
         );
         assert_eq!(
-            bombard_team(&world, icon(Quadrant::Fleets), false),
+            bombard_team(&MovementState::new(), &world, icon(Quadrant::Fleets), false),
             Some((vec![enemy], origin))
         );
-        assert_eq!(bombard_team(&world, icon(Quadrant::Defenses), true), None);
-        assert_eq!(bombard_team(&world, None, true), None);
+        assert_eq!(bombard_team(&MovementState::new(), &world, icon(Quadrant::Defenses), true), None);
+        assert_eq!(bombard_team(&MovementState::new(), &world, None, true), None);
     }
 
     fn world_with_two_fleets() -> (GameWorld, Vec<FleetKey>, SystemKey) {
@@ -12615,7 +12620,7 @@ mod fleet_move_tests {
             quadrant: rebellion_render::quadrant_icons::Quadrant::Fleets,
         };
         assert_eq!(
-            icon.scrap_team(&world, Faction::Alliance),
+            icon.scrap_team(&movement, &world, Faction::Alliance),
             fleets
                 .iter()
                 .map(|&fleet| rebellion_core::scrap::ScrapTarget::Fleet(fleet))
@@ -12631,6 +12636,35 @@ mod fleet_move_tests {
         .unwrap();
         // The en-route fleet left the orbit index; the other still may go.
         assert!(gates(&world, &movement, origin, MissionFaction::Alliance));
+        // At its destination it is a member that refuses (FUN_00556390 puts
+        // it there at once): A0 menus3/23 greys the icon's Move and Scrap
+        // over a fleet arriving at Chandrila.
+        assert!(!gates(&world, &movement, destination, MissionFaction::Alliance));
+        let move_gate = |world: &GameWorld, movement: &MovementState, system| {
+            order_gates(
+                Some(MenuObject::SystemIcon {
+                    system,
+                    quadrant: rebellion_render::quadrant_icons::Quadrant::Fleets,
+                }),
+                world,
+                &MissionState::new(),
+                movement,
+                &TroopTransportState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                MissionFaction::Alliance,
+            )
+            .fleet_move
+        };
+        assert!(move_gate(&world, &movement, origin));
+        assert!(!move_gate(&world, &movement, destination));
+        // One orbiting there too: the arriving member still refuses them all.
+        let staying = fleets[1];
+        world.systems[origin].fleets.retain(|&f| f != staying);
+        world.fleets[staying].location = destination;
+        world.systems[destination].fleets.push(staying);
+        assert!(!gates(&world, &movement, destination, MissionFaction::Alliance));
+        assert!(!move_gate(&world, &movement, destination));
     }
 
     #[test]

@@ -74,6 +74,19 @@ without the team), `build_selections_buttons_key_out_their_first_pixels_colour` 
 `scrap.rs` 5 caught, 1 unviable; `object_menu.rs`/`quadrant_icons.rs`
 7 caught, 2 unviable.
 
+3. **A fleet icon's team holds the fleets arriving there.** A0 `23`: the
+   fleet icon over Chandrila, where Fleet 1 is arriving from Averam (`20`,
+   `21`: the menu before leaving, and Averam's window empty after), greys
+   every order but Encyclopedia, Move and Scrap included. A move puts the
+   fleet in its destination at once (`FUN_00556390`), so `FUN_004ffe70`
+   gives it as a member, and a member en route refuses the whole order
+   (`FUN_0053c1a0`). `movement::system_side_fleets` and the fleets
+   icon's `scrap::icon_targets` now take the fleets `listed_fleets` gives
+   (orbit and arriving), so an icon over one orbiting and one arriving
+   fleet refuses Move, the bombardments, Assault and Scrap.
+   `a_sector_icons_scrap_takes_its_kinds_objects_of_the_side` fails with
+   the orbit-only team.
+
 ## Open
 
 - The fleets icon's and facilities icon's Scrap have no browser case

@@ -421,13 +421,16 @@ pub(crate) fn disband_if_empty(world: &mut GameWorld, fleet: crate::ids::FleetKe
 ///   production facilities (`FUN_0053b6e0`);
 /// - the defenses icon (kind 8) its regiments, squadrons and defense
 ///   facilities, one target a squadron;
-/// - the fleets icon (`0x10`) its fleets (`FUN_004ffe70`).
+/// - the fleets icon (`0x10`) its fleets (`FUN_004ffe70`), those en route
+///   there included ([`crate::movement::system_side_fleets`]), which
+///   refuse (A0 menus3/23).
 ///
 /// A0 menus3/08, 12 and 13 list Fleet 1; three Stormtrooper Regiments;
 /// Training Facility, Construction Yard and Mine.
 /// port: the order within each list follows the port's system lists.
 #[must_use]
 pub fn icon_targets(
+    movement: &crate::movement::MovementState,
     world: &GameWorld,
     system: SystemKey,
     kind: u8,
@@ -468,7 +471,10 @@ pub fn icon_targets(
                     .map(|&key| ScrapTarget::Facility(FacilityRef::Defense(key))),
             )
             .collect(),
-        0x10 => value.fleets.iter().map(|&key| ScrapTarget::Fleet(key)).collect(),
+        0x10 => crate::movement::listed_fleets(movement, world, system)
+            .into_iter()
+            .map(ScrapTarget::Fleet)
+            .collect(),
         _ => Vec::new(),
     };
     candidates
@@ -654,7 +660,8 @@ mod tests {
         };
         let ours = fleet(&mut f, false);
         let _rebel_fleet = fleet(&mut f, true);
-        let targets = |kind| icon_targets(&f.world, f.system, kind, Faction::Empire);
+        let movement = crate::movement::MovementState::new();
+        let targets = |kind| icon_targets(&movement, &f.world, f.system, kind, Faction::Empire);
 
         assert_eq!(
             targets(4),
@@ -678,7 +685,9 @@ mod tests {
         );
         assert_eq!(targets(0x10), [ScrapTarget::Fleet(ours)]);
         assert!(targets(0x40).is_empty());
-        assert!(icon_targets(&f.world, SystemKey::default(), 4, Faction::Empire).is_empty());
+        assert!(
+            icon_targets(&movement, &f.world, SystemKey::default(), 4, Faction::Empire).is_empty()
+        );
     }
 
     #[test]

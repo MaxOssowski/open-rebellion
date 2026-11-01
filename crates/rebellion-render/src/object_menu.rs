@@ -164,13 +164,18 @@ impl MenuObject {
     #[must_use]
     pub fn scrap_team(
         self,
+        movement: &rebellion_core::movement::MovementState,
         world: &rebellion_core::world::GameWorld,
         side: rebellion_core::dat::Faction,
     ) -> Vec<ScrapTarget> {
         match self {
-            Self::SystemIcon { system, quadrant } => {
-                rebellion_core::scrap::icon_targets(world, system, quadrant.kind(), side)
-            }
+            Self::SystemIcon { system, quadrant } => rebellion_core::scrap::icon_targets(
+                movement,
+                world,
+                system,
+                quadrant.kind(),
+                side,
+            ),
             other => other.scrap_target().into_iter().collect(),
         }
     }
@@ -1757,7 +1762,11 @@ mod tests {
         world.systems[system].manufacturing_facilities.push(yard);
         let team = |quadrant| {
             MenuObject::SystemIcon { system, quadrant }
-                .scrap_team(&world, rebellion_core::dat::Faction::Alliance)
+                .scrap_team(
+                    &rebellion_core::movement::MovementState::new(),
+                    &world,
+                    rebellion_core::dat::Faction::Alliance,
+                )
         };
         assert_eq!(team(Quadrant::Defenses), [ScrapTarget::Troop(troop)]);
         assert_eq!(
@@ -1769,7 +1778,11 @@ mod tests {
         assert!(team(Quadrant::Fleets).is_empty());
         assert!(team(Quadrant::Missions).is_empty());
         assert_eq!(
-            MenuObject::Troop(troop).scrap_team(&world, rebellion_core::dat::Faction::Alliance),
+            MenuObject::Troop(troop).scrap_team(
+                    &rebellion_core::movement::MovementState::new(),
+                    &world,
+                    rebellion_core::dat::Faction::Alliance,
+                ),
             [ScrapTarget::Troop(troop)]
         );
         assert_eq!(
