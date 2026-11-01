@@ -1,0 +1,9 @@
+{
+  "run_dir": "<repo>/.artifacts/interface-parity/fleet-window-2026-10-31T23-28-30-743Z-835220",
+  "status": "pass",
+  "cases": [
+    "alliance/scrap",
+    "empire/scrap"
+  ],
+  "wasm_sha256": "d0f00420a1a0245ad10898ba8d2224308b9bb8afd3308da0caa23255b1d17ece"
+}

@@ -7342,9 +7342,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
           ],
-          "note": "Fighter squadron menu ported; A0 20-fighter-menu.png exists but no browser case opens it and no comparison is recorded.",
+          "note": "Fighter squadron menu ported; A0 20-fighter-menu.png exists but no browser case opens it and no comparison is recorded. 2026-11-01: Scrap is enabled on the player's squadron as in A0 20-fighter-menu.png (unit test; no browser case).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7368,9 +7369,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/fleet-window.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
           ],
-          "note": "Regiment menu reaches Status in status-window.mjs (Arch Chromium); A0 11-troop-menu.png exists. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
+          "note": "Regiment menu reaches Status in status-window.mjs (Arch Chromium); A0 11-troop-menu.png exists. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-window.mjs scrap case opens the regiment menu: Scrap at row 4 enabled as in A0 11-troop-menu.png, X keeps it, the checkmark scraps it (0x7050 confirmation).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7379,9 +7381,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
           ],
-          "note": "Facility menus offer Scrap (disabled), Encyclopedia, Status (FUN_005399e0/FUN_0051d990); unit tests only, A0 22-battery-menu.png and 28-fac-menu.png exist uncompared.",
+          "note": "Facility menus offer Scrap (disabled), Encyclopedia, Status (FUN_005399e0/FUN_0051d990); unit tests only, A0 22-battery-menu.png and 28-fac-menu.png exist uncompared. 2026-11-01: Scrap is now enabled on the player's battery and facility as in A0 22-battery-menu.png and 28-fac-menu.png (scrap::check; unit tests), replacing the disabled row.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7503,9 +7506,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
-            "ghidra/notes/object-popup-menu.md"
+            "ghidra/notes/object-popup-menu.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
           ],
-          "note": "Disabled (grey) items: A0 shows Status greyed for a planet and the port matches in code (FUN_0051d990); A0 02/05-menu.png show greyed items on enemy objects; no browser case checks a disabled item.",
+          "note": "Disabled (grey) items: A0 shows Status greyed for a planet and the port matches in code (FUN_0051d990); A0 02/05-menu.png show greyed items on enemy objects; no browser case checks a disabled item. 2026-11-01: the scrap gate shows a disabled item failing the case when the row is forced off; enemy objects keep Scrap greyed (A0 02-menu.png).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

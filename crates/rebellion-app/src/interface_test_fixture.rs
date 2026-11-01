@@ -2051,6 +2051,9 @@ struct FixtureObjectMenu<'a> {
     retire_enabled: bool,
     abort_row: Option<usize>,
     abort_enabled: bool,
+    /// Scrap (`0x200`) and whether its row is enabled.
+    scrap_row: Option<usize>,
+    scrap_enabled: bool,
     /// The Planetary Bombardment or Command submenu while it is shown.
     submenu: Option<FixtureSubmenu>,
     target_dat_id: u32,
@@ -2149,6 +2152,10 @@ fn object_menu_report<'a>(
         abort_row: menu.row_of(ObjectMenuCommand::Abort),
         abort_enabled: menu
             .row_of(ObjectMenuCommand::Abort)
+            .is_some_and(|row| menu.row_enabled(row)),
+        scrap_row: menu.row_of(ObjectMenuCommand::Scrap),
+        scrap_enabled: menu
+            .row_of(ObjectMenuCommand::Scrap)
             .is_some_and(|row| menu.row_enabled(row)),
         assault_row: menu
             .row_of(ObjectMenuCommand::Assault)

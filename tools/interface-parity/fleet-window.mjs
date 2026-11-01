@@ -57,6 +57,8 @@ const factions = [
 // (0x14, fleet-move.mjs).
 const confirmation = { width: 424, height: 331 };
 const checkmark = { x: 355 + 25.5, y: 244 + 17.5 };
+// The X (0x15) under it (FUN_0044f180).
+const cross = { x: 355 + 25.5, y: 281 + 17.5 };
 // Text the port draws with its own font, the tree's dotted pen, and the
 // right list's GOKRES minis and names stay out of the pixel check.
 const masks = {
@@ -555,6 +557,14 @@ function confirmationCheckmark(faction) {
   return {
     x: Math.round(galaxy.x + galaxy.width / 2 - confirmation.width / 2 + checkmark.x),
     y: Math.round(galaxy.y + galaxy.height / 2 - confirmation.height / 2 + checkmark.y),
+  };
+}
+
+function confirmationCross(faction) {
+  const { galaxy } = faction;
+  return {
+    x: Math.round(galaxy.x + galaxy.width / 2 - confirmation.width / 2 + cross.x),
+    y: Math.round(galaxy.y + galaxy.height / 2 - confirmation.height / 2 + cross.y),
   };
 }
 
@@ -1316,6 +1326,39 @@ const cases = [
       const joined = await until(page, "the checkmark joins the fleets",
         (o) => !o.confirmation_open && JSON.stringify(o.fleets.map((f) => f.ships)) === "[3]");
       return { opened, menu, open, joined };
+    },
+  },
+  {
+    name: "scrap",
+    code: FLEET_LOAD,
+    // Scrap (0x200, TEXTSTRA 12295) on the player's regiment: its +0x18 is
+    // the regiment's check (FUN_004f9860), and FUN_00487cc0 always asks.
+    // The X keeps the regiment; the checkmark scraps it (FUN_00534c00) and
+    // refunds half its refined cost (FUN_00530270; manual p. 86).
+    async run(page, faction, setup, directory) {
+      const before = await until(page, "the regiment stands on its planet",
+        (o, primary) => o.troop_system_dat_id === primary, setup.primary_dat_id);
+      const menu = await openMenu(page, point(setup.troop_item), directory, "regiment");
+      // FUN_00504b30's Move, Confirmed Move and Scrap with FUN_0051d990's
+      // Encyclopedia and Status, by sort key: Scrap (2000) last, as A0
+      // status/11-troop-menu.png shows.
+      assert.equal(menu.scrap_row, 4, JSON.stringify(menu));
+      assert.equal(menu.scrap_enabled, true, JSON.stringify(menu));
+      await choose(page, menu, menu.scrap_row, "Scrap");
+      const asked = await until(page, "the Scrap confirmation opens", (o) => o.confirmation_open);
+      assert.equal(asked.troop_system_dat_id, setup.primary_dat_id, "the regiment went before the answer");
+      await shot(page, directory, "scrap-confirmation");
+      await click(page, confirmationCross(faction));
+      const kept = await until(page, "the X keeps the regiment", (o) => !o.confirmation_open);
+      assert.equal(kept.troop_system_dat_id, setup.primary_dat_id, "the X scrapped the regiment");
+      const again = await openMenu(page, point(setup.troop_item), directory, "regiment-again");
+      await choose(page, again, again.scrap_row, "Scrap");
+      await until(page, "the Scrap confirmation opens again", (o) => o.confirmation_open);
+      await click(page, confirmationCheckmark(faction));
+      const scrapped = await until(page, "the checkmark scraps the regiment",
+        (o) => !o.confirmation_open && o.troop_system_dat_id === null);
+      await shot(page, directory, "scrapped");
+      return { before, menu, asked, kept, scrapped };
     },
   },
   {

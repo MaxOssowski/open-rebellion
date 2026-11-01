@@ -9,6 +9,7 @@
 use egui_macroquad::egui;
 use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey, SystemKey};
 use rebellion_core::missions::MissionFaction;
+use rebellion_core::scrap::ScrapTarget;
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::CockpitLayout;
@@ -39,6 +40,11 @@ const RETIRE: &str = "Are you sure you want to retire the following characters?"
 /// The Retire order's picture `+0x2e`: `0x40a` for side 1, `0x40b`
 /// otherwise (`FUN_0049a350`).
 const RETIRE_PICTURE: [u32; 2] = [1034, 1035];
+/// TEXTSTRA `RT_RCDATA` 0x7050, the Scrap order's template (`FUN_0049a350`).
+const SCRAP: &str = "Are you sure you want to scrap the following units?";
+/// The Scrap order's picture `+0x2e`: `0x408` for side 1, `0x409`
+/// otherwise (`FUN_0049a350`).
+const SCRAP_PICTURE: [u32; 2] = [1032, 1033];
 /// TEXTSTRA `RT_RCDATA` 0x7052, the Abort order's text (`FUN_0049a350`).
 const ABORT: &str = "Are you sure you want to abort this mission?";
 /// The Abort order's picture `+0x2e`: `0x40c` for side 1, `0x40d` otherwise.
@@ -57,6 +63,9 @@ pub enum ConfirmedOrder {
     Retire,
     /// An Abort (`0x250`): the missions end.
     Abort,
+    /// A Scrap (`0x200`): the units are destroyed for half their refined
+    /// cost.
+    Scrap,
 }
 
 /// An order waiting for the player's answer: a fleet move, a character's
@@ -73,6 +82,8 @@ pub struct MoveConfirmation {
     pub special_forces: Vec<SpecialForceKey>,
     /// An Abort's missions.
     pub missions: Vec<u64>,
+    /// A Scrap's units.
+    pub scrap: Vec<ScrapTarget>,
     /// The first member is not a fleet and its container is a blockaded
     /// system (`FUN_0049a350`): the evacuation warning.
     pub blockaded: bool,
@@ -92,15 +103,20 @@ impl MoveConfirmation {
     /// `FUN_0049a350` takes the blockade warning 0x7056 and pictures
     /// 1030/1031 only when the first member is not a fleet and its container
     /// is a blockaded system, so a fleet's move always shows 0x7057.
-    /// A Retire's template is 0x7051, then 0x7054 ("\n{1:1}") with each
-    /// character's name.
+    /// A Retire's template is 0x7051 and a Scrap's 0x7050, then 0x7054
+    /// ("\n{1:1}") with each object's name (`FUN_0049a880` for a Scrap).
     #[must_use]
     pub fn text(&self) -> String {
         if self.order == ConfirmedOrder::Abort {
             return ABORT.to_string();
         }
-        if self.order == ConfirmedOrder::Retire {
-            let mut text = RETIRE.to_string();
+        if matches!(self.order, ConfirmedOrder::Retire | ConfirmedOrder::Scrap) {
+            let mut text = if self.order == ConfirmedOrder::Scrap {
+                SCRAP
+            } else {
+                RETIRE
+            }
+            .to_string();
             for (name, _) in &self.lines {
                 text.push_str(&format!("\n{name}"));
             }
@@ -127,6 +143,9 @@ impl MoveConfirmation {
         }
         if self.order == ConfirmedOrder::Abort {
             return ABORT_PICTURE[side(self.faction)];
+        }
+        if self.order == ConfirmedOrder::Scrap {
+            return SCRAP_PICTURE[side(self.faction)];
         }
         if self.blockaded {
             BLOCKADE_PICTURE[side(self.faction)]
@@ -155,6 +174,8 @@ pub enum MoveConfirmationAction {
     },
     /// The checkmark on an Abort: the missions end.
     Abort { missions: Vec<u64> },
+    /// The checkmark on a Scrap: the units are scrapped.
+    Scrap { targets: Vec<ScrapTarget> },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
 }
@@ -194,6 +215,10 @@ impl MoveConfirmationState {
         Some(if confirm && window.order == ConfirmedOrder::Abort {
             MoveConfirmationAction::Abort {
                 missions: window.missions,
+            }
+        } else if confirm && window.order == ConfirmedOrder::Scrap {
+            MoveConfirmationAction::Scrap {
+                targets: window.scrap,
             }
         } else if confirm && window.order == ConfirmedOrder::Retire {
             MoveConfirmationAction::Retire {
@@ -318,6 +343,7 @@ mod tests {
             characters: Vec::new(),
             special_forces: Vec::new(),
             missions: Vec::new(),
+            scrap: Vec::new(),
             blockaded: false,
             destination: SystemKey::default(),
             join: None,
@@ -390,6 +416,44 @@ mod tests {
                 special_forces: Vec::new(),
             })
         );
+    }
+
+    #[test]
+    fn a_scrap_asks_with_its_own_text_and_picture_and_scraps_on_the_checkmark() {
+        // FUN_0049a350 case 0x200: template 0x7050, then FUN_0049a880 adds
+        // 0x7054 ("\n{1:1}") with each unit's name; picture 0x408 (side 1)
+        // / 0x409. FUN_00487cc0 asks for 0x200 always.
+        let target = ScrapTarget::Troop(rebellion_core::ids::TroopKey::default());
+        let window = MoveConfirmation {
+            order: ConfirmedOrder::Scrap,
+            fleets: Vec::new(),
+            scrap: vec![target],
+            lines: vec![("Stormtrooper Regiment".into(), 0)],
+            ..confirmation(MissionFaction::Empire)
+        };
+        assert_eq!(
+            window.text(),
+            "Are you sure you want to scrap the following units?\nStormtrooper Regiment"
+        );
+        assert_eq!(window.picture(), 1033);
+        let alliance = MoveConfirmation {
+            faction: MissionFaction::Alliance,
+            ..window.clone()
+        };
+        assert_eq!(alliance.picture(), 1032);
+
+        let mut state = MoveConfirmationState::default();
+        state.open(window.clone());
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+        assert_eq!(
+            action,
+            Some(MoveConfirmationAction::Scrap {
+                targets: vec![target]
+            })
+        );
+        state.open(window);
+        let action = click(&mut state, (355.0 + 25.0, 281.0 + 17.0));
+        assert_eq!(action, Some(MoveConfirmationAction::Cancel));
     }
 
     #[test]

@@ -17,6 +17,8 @@ use rebellion_core::ids::{
 };
 use rebellion_core::manufacturing::ProductionArea;
 use rebellion_core::missions::MissionMember;
+use rebellion_core::scrap::ScrapTarget;
+use rebellion_core::world::FacilityRef;
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::{CockpitFaction, CockpitLayout, CockpitViewport};
@@ -125,6 +127,34 @@ impl MenuObject {
             | Self::DefenseFacility(_)
             | Self::ManufacturingFacility(_)
             | Self::ProductionFacility(_) => None,
+        }
+    }
+
+    /// What a Scrap order (`0x200`) names for the object
+    /// (`rebellion_core::scrap`). port: a fleet, a squadron aboard a fleet
+    /// and a sector window's icon take Scrap in the original
+    /// (`FUN_004fdbc0`, `FUN_005575f0`, `FUN_00512700`) but are not ported.
+    #[must_use]
+    pub const fn scrap_target(self) -> Option<ScrapTarget> {
+        match self {
+            Self::Troop(key) => Some(ScrapTarget::Troop(key)),
+            Self::Ship { fleet, index, .. } => Some(ScrapTarget::Ship { fleet, index }),
+            Self::PlanetFighter { system, class } => {
+                Some(ScrapTarget::PlanetFighter { system, class })
+            }
+            Self::DefenseFacility(key) => Some(ScrapTarget::Facility(FacilityRef::Defense(key))),
+            Self::ManufacturingFacility(key) => {
+                Some(ScrapTarget::Facility(FacilityRef::Manufacturing(key)))
+            }
+            Self::ProductionFacility(key) => {
+                Some(ScrapTarget::Facility(FacilityRef::Production(key)))
+            }
+            Self::Character(_)
+            | Self::SpecialForce(_)
+            | Self::Fleet(_)
+            | Self::SystemIcon { .. }
+            | Self::Producer { .. }
+            | Self::Fighter { .. } => None,
         }
     }
 
@@ -553,6 +583,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         Some(MenuObject::Character(_) | MenuObject::SpecialForce(_))
                     ) && gates.retire
                 }
+                ObjectMenuCommand::Scrap => {
+                    selection.and_then(MenuObject::scrap_target).is_some() && gates.scrap
+                }
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
                 ObjectMenuCommand::Status => {
@@ -656,6 +689,9 @@ pub struct OrderGates {
     /// `rebellion_core::character_retire::order_allowed`) or a special
     /// force (`FUN_00533ba0`, `special_force_allowed`).
     pub retire: bool,
+    /// Scrap (`0x200`): the object passes its slot `+0x5c` check, the
+    /// player's and not a headquarters (`rebellion_core::scrap::check`).
+    pub scrap: bool,
 }
 
 /// An open object pop-up menu.
@@ -836,6 +872,7 @@ mod tests {
         assault: false,
         command: [false; 4],
         retire: false,
+        scrap: false,
         abort: false,
     };
 
@@ -1030,6 +1067,7 @@ mod tests {
             assault: false,
             command: [false; 4],
             retire: false,
+            scrap: false,
             abort: false,
         };
         assert_eq!(
@@ -1292,6 +1330,7 @@ mod tests {
             assault: false,
             command: [false; 4],
             retire: false,
+            scrap: false,
             abort: false,
         };
         assert_eq!(
@@ -1558,7 +1597,8 @@ mod tests {
     fn a_facility_lists_scrap_encyclopedia_and_status() {
         // Every facility class keeps the base order list (slot +0x3c,
         // FUN_005399e0): order 0x200, Scrap (FUN_00539c20). FUN_0051d990
-        // adds 0x100 and 0x103. port: Scrap stays disabled.
+        // adds 0x100 and 0x103. Scrap follows its gate
+        // (`a_scrap_row_follows_its_gate_for_the_units_it_names`).
         for (selection, status) in [
             (
                 MenuObject::DefenseFacility(DefenseFacilityKey::default()),
@@ -1579,6 +1619,48 @@ mod tests {
             assert_eq!(selection.mission_member(), None);
             assert_eq!(selection.status_object(), Some(status));
         }
+    }
+
+    #[test]
+    fn a_scrap_row_follows_its_gate_for_the_units_it_names() {
+        // 0x200 (TEXTSTRA 12295) is enabled by its +0x18 (the object's slot
+        // +0x5c, scrap::check). A0 status/11, 20, 22 and 28 show it enabled
+        // on the player's regiment, planet squadron, battery and training
+        // facility; status/02 shows it disabled on an enemy ship.
+        let gates = OrderGates {
+            scrap: true,
+            ..OrderGates::default()
+        };
+        for selection in [
+            MenuObject::Troop(TroopKey::default()),
+            MenuObject::Ship {
+                fleet: FleetKey::default(),
+                index: 0,
+                roster: 0,
+            },
+            MenuObject::PlanetFighter {
+                system: SystemKey::default(),
+                class: FighterKey::default(),
+            },
+            MenuObject::DefenseFacility(DefenseFacilityKey::default()),
+            MenuObject::ManufacturingFacility(ManufacturingFacilityKey::default()),
+            MenuObject::ProductionFacility(ProductionFacilityKey::default()),
+        ] {
+            assert!(selection.scrap_target().is_some(), "{selection:?}");
+            assert!(
+                enabled(&object_menu_rows(Some(selection), gates)).contains(&"Scrap"),
+                "{selection:?}"
+            );
+            assert!(
+                !enabled(&object_menu_rows(Some(selection), OrderGates::default()))
+                    .contains(&"Scrap"),
+                "{selection:?}"
+            );
+        }
+        // port: a fleet's Scrap (FUN_004fdbc0) is not ported.
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        assert_eq!(MenuObject::Fleet(FleetKey::default()).scrap_target(), None);
+        assert!(!enabled(&object_menu_rows(fleet, gates)).contains(&"Scrap"));
     }
 
     #[test]

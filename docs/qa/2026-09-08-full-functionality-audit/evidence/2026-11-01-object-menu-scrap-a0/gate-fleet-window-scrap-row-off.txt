@@ -1,0 +1,72 @@
+file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1591
+    throw new Error(JSON.stringify(results.filter((result) => result.status !== "pass")
+          ^
+
+Error: [
+  {
+    "faction": "alliance",
+    "case": "scrap",
+    "error": "AssertionError [ERR_ASSERTION]: {\"status\":\"object-menu\",\"code\":304,\"left\":102,\"top\":161,\"width\":116.96875,\"height\":102,\"rows\":5,\"mission_row\":null,\"move_row\":0,\"confirmed_move_row\":1,\"create_fleet_row\":null,\"rename_row\":null,\"destination_row\":null,\"status_window_row\":3,\"build_row\":null,\"stop_row\":null,\"bombardment_row\":null,\"assault_row\":null,\"command_row\":null,\"retire_row\":null,\"retire_enabled\":false,\"abort_row\":null,\"abort_enabled\":false,\"scrap_row\":4,\"scrap_enabled\":false,\"submenu\":null,\"target_dat_id\":121,\"target_name\":\"F'tral\",\"target_screen_x\":473.5,\"target_screen_y\":334.5}\n\nfalse !== true\n\n    at Object.run (file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1346:14)\n    at async inspect (file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1487:20)\n    at async main (file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1565:22)\n    at async file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1597:1",
+    "observations": [
+      {
+        "status": "fleet-load",
+        "code": 304,
+        "window_open": false,
+        "origin": null,
+        "entries": 0,
+        "selected": null,
+        "tab": null,
+        "enabled": [
+          false,
+          false,
+          false,
+          false
+        ],
+        "items": [],
+        "counts": null,
+        "fleet_entry": null,
+        "fleets": [],
+        "troops_tab": null,
+        "first_item": null,
+        "aboard": false,
+        "cargo": 0,
+        "troop_system_dat_id": 120,
+        "fleet_system_dat_id": 120,
+        "in_transit": false,
+        "regiment_travelling": false,
+        "confirmation_open": false,
+        "last_message": null,
+        "last_regiment_message": null,
+        "planet_squadrons": 0,
+        "fleet_squadrons": 0,
+        "fighters_tab": null,
+        "enemy_planet_squadrons": 0,
+        "enemy_fleets": 0,
+        "enemy_regiments": 0,
+        "last_bombardment_message": null,
+        "last_assault_message": null,
+        "primary_destroyed": false,
+        "fleet_present": true,
+        "adrift_characters": 0,
+        "last_destroy_message": null,
+        "last_departure_message": null,
+        "last_arrival_message": null,
+        "target_ships": 0,
+        "last_idle_title": null,
+        "primary_in_revolt": false,
+        "last_incident_message": null,
+        "last_disaster_message": null,
+        "last_disaster_title": null,
+        "last_blockade_title": null,
+        "last_joins_title": null,
+        "assault_summary": null
+      }
+    ]
+  },
+  {
+    "faction": "empire",
+    "case": "scrap",
+    "error": "AssertionError [ERR_ASSERTION]: {\"status\":\"object-menu\",\"code\":560,\"left\":167,\"top\":161,\"width\":116.96875,\"height\":102,\"rows\":5,\"mission_row\":null,\"move_row\":0,\"confirmed_move_row\":1,\"create_fleet_row\":null,\"rename_row\":null,\"destination_row\":null,\"status_window_row\":3,\"build_row\":null,\"stop_row\":null,\"bombardment_row\":null,\"assault_row\":null,\"command_row\":null,\"retire_row\":null,\"retire_enabled\":false,\"abort_row\":null,\"abort_enabled\":false,\"scrap_row\":4,\"scrap_enabled\":false,\"submenu\":null,\"target_dat_id\":121,\"target_name\":\"F'tral\",\"target_screen_x\":538.5,\"target_screen_y\":339.5}\n\nfalse !== true\n\n    at Object.run (file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1346:14)\n    at async inspect (file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1487:20)\n    at async main (file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1565:22)\n    at async file://<repo>/tools/interface-parity/.gate-fleet-window-linux.mjs:1597:1",
+    "observations": [
+      {
+    

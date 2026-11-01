@@ -6290,6 +6290,7 @@ async fn main() {
                                             characters,
                                             special_forces,
                                             missions: Vec::new(),
+                                            scrap: Vec::new(),
                                             blockaded: false,
                                             destination: SystemKey::default(),
                                             join: None,
@@ -6304,6 +6305,43 @@ async fn main() {
                                         ));
                                     }
                                     None => {}
+                                }
+                            }
+                        }
+                        // FUN_00487740: the Scrap validates (each member's
+                        // +0x5c, scrap::check), then FUN_00487cc0 always
+                        // asks for 0x200 (FUN_0049a350, case 0x200).
+                        Some((ObjectMenuCommand::Scrap, Some(object))) => {
+                            if let Some(target) = object.scrap_target() {
+                                let side = Faction::of_alliance(
+                                    player_faction == MissionFaction::Alliance,
+                                );
+                                let allowed = rebellion_core::scrap::check(&world, side, target);
+                                macroquad::logging::info!(
+                                    "[interface] command=0x200 target={target:?} result={allowed:?}"
+                                );
+                                if allowed.is_ok() {
+                                    let name = rebellion_core::scrap::target_name(&world, target)
+                                        .unwrap_or_default();
+                                    move_confirmation_state.open(MoveConfirmation {
+                                        order: ConfirmedOrder::Scrap,
+                                        faction: player_faction,
+                                        fleets: Vec::new(),
+                                        characters: Vec::new(),
+                                        special_forces: Vec::new(),
+                                        missions: Vec::new(),
+                                        scrap: vec![target],
+                                        blockaded: false,
+                                        destination: SystemKey::default(),
+                                        join: None,
+                                        lines: vec![(name, 0)],
+                                    });
+                                } else {
+                                    msg_log.push(GameMessage::new(
+                                        clock.tick,
+                                        "Scrap refused".to_string(),
+                                        MessageCategory::Event,
+                                    ));
                                 }
                             }
                         }
@@ -6329,6 +6367,7 @@ async fn main() {
                                     characters: Vec::new(),
                                     special_forces: Vec::new(),
                                     missions,
+                                    scrap: Vec::new(),
                                     blockaded: false,
                                     destination: SystemKey::default(),
                                     join: None,
@@ -6907,6 +6946,35 @@ async fn main() {
                                 id,
                                 aborted
                             );
+                        }
+                    }
+                    // FUN_0041ce20(order, 1): the Scrap validates every
+                    // member again (FUN_0051ff30), then destroys each with
+                    // reason 0x14 and refunds half its refined cost
+                    // (FUN_00534c00, FUN_00530270); a refusal goes to
+                    // FUN_00487c90.
+                    if let Some(MoveConfirmationAction::Scrap { targets }) = &answer {
+                        let side = Faction::of_alliance(player_faction == MissionFaction::Alliance);
+                        let result = rebellion_core::scrap::scrap_team(
+                            &mut world,
+                            &mut production_state,
+                            side,
+                            targets,
+                        );
+                        // A scrapped ship's regiments beyond the room left
+                        // are lost.
+                        troop_transport_state.destroy_untransportable_cargo(&mut world);
+                        macroquad::logging::info!(
+                            "[interface] command=0x200 destination=scrap targets={:?} result={:?}",
+                            targets,
+                            result
+                        );
+                        if result.is_err() {
+                            msg_log.push(GameMessage::new(
+                                clock.tick,
+                                "Scrap refused".to_string(),
+                                MessageCategory::Event,
+                            ));
                         }
                     }
                     if let Some(MoveConfirmationAction::Retire {
@@ -8468,6 +8536,7 @@ fn issue_fleet_move(
         characters: Vec::new(),
         special_forces: Vec::new(),
         missions: Vec::new(),
+        scrap: Vec::new(),
         blockaded: false,
         destination,
         join,
@@ -8523,6 +8592,7 @@ fn confirm_character_move(
         characters: vec![character],
         special_forces: Vec::new(),
         missions: Vec::new(),
+        scrap: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,
@@ -8791,6 +8861,7 @@ fn confirm_special_force_move(
         characters: Vec::new(),
         special_forces: vec![unit],
         missions: Vec::new(),
+        scrap: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,
@@ -9003,6 +9074,11 @@ fn order_gates(
             .and_then(MenuObject::mission_member)
             .and_then(|member| retire_check(world, mission_state, member, is_alliance))
             .is_some_and(|result| result.is_ok()),
+        // The Scrap command's +0x18 is the object's slot +0x5c
+        // (FUN_005796c0; scrap::check).
+        scrap: selection
+            .and_then(MenuObject::scrap_target)
+            .is_some_and(|target| rebellion_core::scrap::check(world, side, target).is_ok()),
     }
 }
 

@@ -107,7 +107,34 @@ port:
 
 - Scrap for ships, fighter squadrons, fleets and regiments aboard a fleet
   (`FUN_005575f0`, `FUN_004fdbc0` → `FUN_004ffa70`).
-- The player's menu item: `object_menu.rs` still draws Scrap disabled.
 - Reason `0x16` (queue scrap) does not refund yet. Reason `0x15` does,
   in `autoscrap.rs` (2026-10-17).
 - The autorouting of characters in a scrapped fleet (`FUN_004ef2e0`).
+
+## The player's order (2026-11-01)
+
+`FUN_00487cc0` returns 1 for kind `0x200` with no condition, so a Scrap from
+the menu always asks. `FUN_0049a350` case `0x200` fills the confirmation:
+
+- the text: RCDATA 0x7050 "Are you sure you want to scrap the following
+  units?", then `FUN_0049a880` appends 0x7054 ("\n{1:1}") with each
+  member's name (`+0x30`);
+- the picture `+0x2e`: `0x408` (1032) for side 1, `0x409` (1033) otherwise;
+- `+0x30`: `0x461` / `0x462`, as a Retire's.
+
+The window is the move confirmation's (`move-order.md`); its checkmark
+resubmits with force 1.
+
+A0 (`.artifacts/a0-vm/status/`) shows the row enabled on the player's own
+regiment (11), planet squadron (20), battery (22) and training facility (28),
+and disabled on an enemy ship (02) and fleet (05). Its place follows the sort
+key: Scrap (2000) after Encyclopedia and Status.
+
+Ported: `MenuObject::scrap_target`, `OrderGates::scrap` (`scrap::check`),
+`ConfirmedOrder::Scrap` and `scrap::target_name`; the checkmark runs
+`scrap_team`. `fleet-window.mjs` "scrap" checks it on a regiment in the
+browser.
+
+port: a fleet, a squadron aboard a fleet and a sector window icon still
+draw Scrap disabled (`FUN_004fdbc0`, `FUN_005575f0`, `FUN_00512700` are not
+ported).

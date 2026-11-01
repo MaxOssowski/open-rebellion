@@ -142,6 +142,27 @@ fn resolve(world: &GameWorld, target: ScrapTarget) -> Option<(SystemKey, Faction
     Some((system, side, class))
 }
 
+/// The name the confirmation lists for `target` (`FUN_0049a880` passes
+/// the object's `+0x30`): a ship's own name, else its class's
+/// (`FUN_004f6270`), and every other unit's class name.
+#[must_use]
+pub fn target_name(world: &GameWorld, target: ScrapTarget) -> Option<String> {
+    match target {
+        ScrapTarget::Ship { fleet, index } => {
+            let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
+            let class = world.capital_ship_classes.get(ship.class)?;
+            Some(ship.name.clone().unwrap_or_else(|| class.name.clone()))
+        }
+        ScrapTarget::PlanetFighter { class, .. } => {
+            Some(world.fighter_classes.get(class)?.name.clone())
+        }
+        _ => {
+            let (_, _, class) = resolve(world, target)?;
+            Some(world.buildable_classes.get(&class)?.name.clone())
+        }
+    }
+}
+
 /// `FUN_004f2980` → `FUN_0053b860`: the class's refined material cost
 /// (`+0x48`), 0 without a class.
 fn refined_cost(world: &GameWorld, class: DatId) -> i32 {
@@ -389,6 +410,57 @@ mod tests {
         assert!(f.world.systems[f.system].production_facilities.is_empty());
         assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 5);
         assert_eq!(production.stock(Faction::Empire).unwrap().refined, 0);
+    }
+
+    #[test]
+    fn the_confirmation_names_a_facility_by_its_class_and_a_ship_by_its_own_name() {
+        // FUN_0049a880 lists each object's +0x30 name; FUN_004f6270 gives
+        // a ship's own name before its class's.
+        let mut f = fixture();
+        let target = ScrapTarget::Facility(mine(&mut f, Faction::Alliance, 7));
+        f.world
+            .buildable_classes
+            .get_mut(&DatId::new(0x2c00_0001))
+            .unwrap()
+            .name = "Mine".into();
+        assert_eq!(target_name(&f.world, target).as_deref(), Some("Mine"));
+
+        let class = f
+            .world
+            .capital_ship_classes
+            .insert(crate::world::CapitalShipClass {
+                is_alliance: true,
+                name: "Corellian Corvette".into(),
+                ..Default::default()
+            });
+        let mut ships = crate::world::ShipInstance::make(class, 10, true, 2);
+        ships[1].name = Some("Tantive IV".into());
+        let fleet = f.world.insert_fleet(crate::world::Fleet {
+            location: f.system,
+            capital_ships: ships,
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let ship = |index| target_name(&f.world, ScrapTarget::Ship { fleet, index });
+        assert_eq!(ship(0).as_deref(), Some("Corellian Corvette"));
+        assert_eq!(ship(1).as_deref(), Some("Tantive IV"));
+        assert_eq!(ship(2), None);
+
+        // A planet's squadron goes by its fighter class's name.
+        let x_wing = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: true,
+            name: "X-wing".into(),
+            ..Default::default()
+        });
+        crate::squadrons::add(&mut f.world.systems[f.system].fighters, x_wing, 1);
+        let squadron = ScrapTarget::PlanetFighter {
+            system: f.system,
+            class: x_wing,
+        };
+        assert_eq!(target_name(&f.world, squadron).as_deref(), Some("X-wing"));
     }
 
     #[test]
