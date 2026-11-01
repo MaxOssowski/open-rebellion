@@ -541,6 +541,7 @@ pub fn draw_game_speed_menu(
         icon: Some(item.icon_resource),
         enabled: true,
         submenu: false,
+        check: false,
     });
     match draw_game_menu(
         ctx,

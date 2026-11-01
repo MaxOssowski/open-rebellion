@@ -438,7 +438,13 @@ const PRODUCER_RENAME: ObjectMenuItem = item(
 pub struct ObjectMenuRow {
     pub item: ObjectMenuItem,
     pub enabled: bool,
+    /// Drawn with the record's check mark (`FUN_00442590` flags bit 1).
+    pub checked: bool,
 }
+
+/// The check mark a checked row shows: the Reserved record's word 10,
+/// STRATEGY 11902 (`ghidra/notes/sector-icon-menus.md`; A0 menus3/33).
+const CHECK_MARK: u32 = 11_902;
 
 impl ObjectMenuRow {
     #[must_use]
@@ -446,13 +452,14 @@ impl ObjectMenuRow {
         GameMenuEntry {
             label: self.item.label,
             // FUN_00442590 flags bit 1: checked when the order's `+0x14`
-            // says so. No order the port offers is ever checked: the
-            // menu's fresh order (FUN_0051d990) leaves its `+0x40` list
-            // empty, so FUN_0051fd30 (and the Command orders' FUN_00580d80
-            // over it) answers 0.
-            icon: None,
+            // says so. The menu's fresh order (FUN_0051d990) leaves its
+            // `+0x40` list empty, so the Command orders' FUN_00580d80
+            // answers 0; a band's Reserved shows its manager's mark (A0
+            // menus3/33).
+            icon: if self.checked { Some(CHECK_MARK) } else { None },
             enabled: self.enabled,
             submenu: self.item.submenu,
+            check: self.checked,
         }
     }
 }
@@ -575,6 +582,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         .chain(&[ENCYCLOPEDIA, STATUS])
         .map(|&item| ObjectMenuRow {
             item,
+            checked: item.command == ObjectMenuCommand::Reserved && producer && gates.reserved_checked,
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
@@ -588,6 +596,10 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
                 ObjectMenuCommand::Destination => gates.destination,
+                // A band's Reserved (0x216, ManuMgr_vt1fc after +0x1dc).
+                // port: the facility icon's (FUN_00512700 kind 4, every
+                // manager of the system) is not ported.
+                ObjectMenuCommand::Reserved => producer && gates.reserved,
                 ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::Build => producer && gates.build,
                 ObjectMenuCommand::ConfirmedMove => {
@@ -646,7 +658,11 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
         let mut rows: Vec<ObjectMenuRow> = COMMAND_KINDS
             .iter()
             .zip(gates.command)
-            .map(|(&item, enabled)| ObjectMenuRow { item, enabled })
+            .map(|(&item, enabled)| ObjectMenuRow {
+                item,
+                enabled,
+                checked: false,
+            })
             .collect();
         rows.sort_by_key(|row| row.item.sort_key);
         return rows;
@@ -670,6 +686,7 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
         .map(|(&item, enabled)| ObjectMenuRow {
             item,
             enabled,
+            checked: false,
         })
         .collect()
 }
@@ -698,6 +715,12 @@ pub struct OrderGates {
     /// areas of the player's (`FUN_00512700` kind 4); on a band, the band's
     /// area is the player's.
     pub destination: bool,
+    /// Reserved (0x216) on a band: enabled as Destination is (hyp: its
+    /// `+0x1dc` is not read; A0 menus3/30-32 enable it on every band of
+    /// the player's system, Destination too), and checked while the band's
+    /// manager is Reserved.
+    pub reserved: bool,
+    pub reserved_checked: bool,
     /// Stop (0x213) on a band: the band's area is the player's and is
     /// building something.
     pub stop: bool,
@@ -786,6 +809,14 @@ impl ObjectMenuState {
     #[must_use]
     pub fn row_enabled(&self, row: usize) -> bool {
         self.rows.get(row).is_some_and(|row| row.enabled)
+    }
+
+    /// Whether the row that issues `command` carries its check mark.
+    #[must_use]
+    pub fn row_checked(&self, command: ObjectMenuCommand) -> bool {
+        self.rows
+            .iter()
+            .any(|row| row.item.command == command && row.checked)
     }
 
     /// Each row's label and whether it is enabled, top to bottom.
@@ -902,6 +933,8 @@ mod tests {
         ship_move: false,
         rename: false,
         destination: false,
+        reserved: false,
+        reserved_checked: false,
         stop: false,
         build: false,
         bombard: [false; 4],
@@ -928,6 +961,7 @@ mod tests {
         let selection = Some(MenuObject::Character(CharacterKey::default()));
         let rows = object_menu_rows(selection, MISSION_GATE);
         let menu = ObjectMenuState::new(selection, MISSION_GATE, (0, 0));
+        assert!(!menu.row_checked(ObjectMenuCommand::Move));
         let states: Vec<_> = menu.row_states().collect();
         assert_eq!(
             states,
@@ -1110,6 +1144,8 @@ mod tests {
             ship_move: true,
             rename: false,
             destination: false,
+            reserved: false,
+            reserved_checked: false,
             stop: false,
             build: false,
             bombard: [false; 4],
@@ -1264,6 +1300,50 @@ mod tests {
                 ["Encyclopedia", "Status"]
             );
         }
+        // A0 menus3/30-33: Reserved is enabled on the player's bands and
+        // carries the check mark (STRATEGY 11902) while the manager is
+        // Reserved; a checked row draws the mark in the icon column.
+        let reserve = OrderGates {
+            reserved: true,
+            ..OrderGates::default()
+        };
+        let row = |gates: OrderGates| {
+            object_menu_rows(band(ProductionArea::ConstructionYard), gates)
+                .into_iter()
+                .find(|row| row.item.command == ObjectMenuCommand::Reserved)
+                .unwrap()
+        };
+        assert!(row(reserve).enabled && !row(reserve).checked);
+        assert_eq!(row(reserve).entry().icon, None);
+        let checked = row(OrderGates {
+            reserved_checked: true,
+            ..reserve
+        });
+        assert!(checked.checked);
+        assert_eq!(checked.entry().icon, Some(11_902));
+        let menu = ObjectMenuState::new(
+            band(ProductionArea::ConstructionYard),
+            OrderGates {
+                reserved_checked: true,
+                ..reserve
+            },
+            (0, 0),
+        );
+        assert!(menu.row_checked(ObjectMenuCommand::Reserved));
+        assert!(!menu.row_checked(ObjectMenuCommand::Destination));
+        assert!(!row(OrderGates::default()).enabled);
+        // An icon's Reserved is not ported.
+        let icon_reserved = object_menu_rows(
+            icon(Quadrant::System),
+            OrderGates {
+                reserved_checked: true,
+                ..reserve
+            },
+        )
+        .into_iter()
+        .find(|row| row.item.command == ObjectMenuCommand::Reserved)
+        .unwrap();
+        assert!(!icon_reserved.enabled && !icon_reserved.checked);
         // Build and Stop belong to the bands alone.
         let icon_rows = enabled(&object_menu_rows(icon(Quadrant::System), gates));
         assert!(!icon_rows.contains(&"Stop") && !icon_rows.contains(&"Build"));
@@ -1366,6 +1446,8 @@ mod tests {
             ship_move: true,
             rename: false,
             destination: false,
+            reserved: false,
+            reserved_checked: false,
             stop: true,
             build: true,
             bombard: [false; 4],
@@ -1851,6 +1933,7 @@ mod tests {
                 icon: None,
                 enabled: true,
                 submenu: true,
+                check: false,
             }
         );
         let mission = rows.iter().find(|row| row.item.label == "Mission").unwrap();

@@ -2035,6 +2035,9 @@ struct FixtureObjectMenu<'a> {
     rows: usize,
     /// Each row's label and whether it is enabled, top to bottom.
     row_states: Vec<(&'static str, bool)>,
+    reserved_row: Option<usize>,
+    /// Whether the Reserved row carries its check mark.
+    reserved_checked: bool,
     mission_row: Option<usize>,
     move_row: Option<usize>,
     confirmed_move_row: Option<usize>,
@@ -2139,6 +2142,8 @@ fn object_menu_report<'a>(
         height: rect.height(),
         rows: menu.row_count(),
         row_states: menu.row_states().collect(),
+        reserved_row: menu.row_of(ObjectMenuCommand::Reserved),
+        reserved_checked: menu.row_checked(ObjectMenuCommand::Reserved),
         mission_row: menu.row_of(ObjectMenuCommand::Mission),
         move_row: menu.row_of(ObjectMenuCommand::Move),
         confirmed_move_row: menu.row_of(ObjectMenuCommand::ConfirmedMove),

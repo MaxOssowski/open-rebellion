@@ -6599,6 +6599,13 @@ async fn main() {
                             ObjectMenuCommand::Stop,
                             Some(MenuObject::Producer { system, area }),
                         )) => panel_actions.push(PanelAction::StopProduction { system, area }),
+                        // ManuMgr_vt1fc (0x216) sets the manager's Reserved
+                        // to the order's value: the row's mark flips (A0
+                        // menus3/32, 33).
+                        Some((
+                            ObjectMenuCommand::Reserved,
+                            Some(MenuObject::Producer { system, area }),
+                        )) => panel_actions.push(PanelAction::ToggleReserved { system, area }),
                         // FUN_00486fb0 0x203 → FUN_0041d600 → FUN_00429350:
                         // the edit opens in the window that lists the object.
                         // port: with no Fleet window open there, one opens.
@@ -9273,11 +9280,27 @@ fn order_gates(
             Some(MenuObject::Producer { system, .. }) => holds(system),
             _ => false,
         },
+        // A band's Reserved (0x216): as Destination; checked while its
+        // manager is Reserved (A0 menus3/30-33).
+        reserved: matches!(selection, Some(MenuObject::Producer { system, .. }) if holds(system)),
+        reserved_checked: match selection {
+            Some(MenuObject::Producer { system, area }) => manufacturing.is_reserved(system, area),
+            _ => false,
+        },
         // Build opens Build Selection on what the band's manager lists
-        // (FUN_0052e580).
+        // (FUN_0052e580). Its validation (+0x1bc, FUN_00527d00) refuses a
+        // manager with no usable yard: A0 menus3/30, 31 grey Build on
+        // Coruscant's ship and troop bands (0:0 yards), not on its
+        // facilities band (1:1).
         build: match selection {
             Some(MenuObject::Producer { system, area }) => {
                 holds(system)
+                    && rebellion_core::ai_module1::has_yard(
+                        world,
+                        rebellion_core::dat::Faction::of_alliance(is_alliance),
+                        system,
+                        rebellion_core::build_selection::area_family(area),
+                    )
                     && !rebellion_core::build_selection::listed_classes(
                         world,
                         research,
@@ -9967,6 +9990,14 @@ fn apply_panel_action(
                     ));
                 }
             }
+        }
+        PanelAction::ToggleReserved { system, area } => {
+            let reserved = !mfg_state.is_reserved(system, area);
+            mfg_state.set_reserved(system, area, reserved);
+            macroquad::logging::info!(
+                "[interface] command=0x216 destination=production_reserved status=set reserved={reserved} area={area:?} system={}",
+                world.systems.get(system).map_or("", |value| value.name.as_str())
+            );
         }
         PanelAction::StopProduction { system, area } => {
             mfg_state.stop(system, area);
@@ -12540,8 +12571,37 @@ mod fleet_move_tests {
                     player,
                 )
             };
+            // Build's validation (FUN_00527d00) wants a usable yard: A0
+            // menus3/30 greys Build on a ship band with no shipyard (0:0).
+            let bare = gates(&world, &manufacturing, holder);
+            assert!(bare.destination && !bare.build && !bare.stop);
+            let yard = world.manufacturing_facilities.insert(
+                rebellion_core::world::ManufacturingFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                    side: match holder {
+                        MissionFaction::Alliance => Faction::Alliance,
+                        MissionFaction::Empire => Faction::Empire,
+                    },
+                    is_shipyard: true,
+                },
+            );
+            world.systems[system].manufacturing_facilities.push(yard);
             let idle = gates(&world, &manufacturing, holder);
             assert!(idle.destination && idle.build && !idle.stop);
+            // Reserved (0x216) as Destination, checked while the manager is
+            // Reserved (A0 menus3/30-33).
+            assert!(idle.reserved && !idle.reserved_checked);
+            manufacturing.set_reserved(
+                system,
+                rebellion_core::manufacturing::ProductionArea::Shipyard,
+                true,
+            );
+            assert!(gates(&world, &manufacturing, holder).reserved_checked);
+            manufacturing.set_reserved(
+                system,
+                rebellion_core::manufacturing::ProductionArea::Shipyard,
+                false,
+            );
             manufacturing.build(
                 system,
                 &QueueItem::new(
@@ -12553,7 +12613,7 @@ mod fleet_move_tests {
             let building = gates(&world, &manufacturing, holder);
             assert!(building.destination && building.stop);
             let foreign = gates(&world, &manufacturing, other);
-            assert!(!foreign.destination && !foreign.build && !foreign.stop);
+            assert!(!foreign.destination && !foreign.build && !foreign.stop && !foreign.reserved);
             // With nothing its side may build, Build stays off.
             world.capital_ship_classes[class].research_order = 1;
             assert!(!gates(&world, &manufacturing, holder).build);

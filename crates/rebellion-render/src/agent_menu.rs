@@ -251,6 +251,7 @@ pub fn draw_agent_menu(
             icon: item.checked.then_some(CHECK_BITMAP),
             enabled: item.enabled,
             submenu: false,
+            check: true,
         })
         .collect();
     match draw_game_menu(
@@ -442,12 +443,14 @@ pub fn draw_alerts_menu(
             icon: None,
             enabled: true,
             submenu: false,
+            check: false,
         },
         GameMenuEntry {
             label: "Message Alerts",
             icon: None,
             enabled: true,
             submenu: true,
+            check: false,
         },
     ];
     let alerts = alert_entries(silent);
@@ -458,6 +461,7 @@ pub fn draw_alerts_menu(
             icon: checked.then_some(CHECK_BITMAP),
             enabled: true,
             submenu: false,
+            check: true,
         })
         .collect();
     match draw_game_menu_with_submenu(

@@ -443,6 +443,28 @@ async function inspect(server, source, faction, executable) {
       ?.find(({ area }) => area === "troops")?.queued === 0, null, { timeout: 10_000 });
     fs.writeFileSync(path.join(directory, "stopped-screen.png"), await page.screenshot({ animations: "disabled" }));
 
+    // Reserved (0x216) on the band: enabled, unchecked; chosen, the
+    // manager is Reserved and the row shows the check mark 11902 in the
+    // menu's icon column (A0 menus3/32, 33).
+    const reserveMenu = await bandOrder(page, built, "reserved_row", directory, "reserve");
+    assert.deepEqual(reserveMenu.row_states.at(-1), ["Reserved", true], JSON.stringify(reserveMenu));
+    assert.equal(reserveMenu.reserved_checked, false, JSON.stringify(reserveMenu));
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+    await click(page, { x: built.left + built.width / 2, y: built.top + built.height / 2 }, "right");
+    await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+      null, { timeout: 10_000 });
+    const reservedMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+    fs.writeFileSync(path.join(directory, "reserved-menu.png"), await page.screenshot({ animations: "disabled" }));
+    assert.equal(reservedMenu.reserved_checked, true, JSON.stringify(reservedMenu));
+    // The check mark widens the menu by its icon column but leaves the rows
+    // their height (FUN_004abbf0): A0 menus3/32, 33 are 122 tall both.
+    assert.ok(reservedMenu.width > reserveMenu.width, JSON.stringify([reserveMenu.width, reservedMenu.width]));
+    assert.equal(reservedMenu.height, reserveMenu.height, JSON.stringify([reserveMenu.height, reservedMenu.height]));
+    await page.keyboard.press("Escape");
+    await page.mouse.move(2, 2);
+    await frames(page);
+
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
     // (FUN_005399e0), all enabled on the player's own yard as in A0
@@ -474,6 +496,8 @@ async function inspect(server, source, faction, executable) {
       origin,
       build_menu: buildMenu,
       stop_menu: stopMenu,
+      reserve_menu: reserveMenu,
+      reserved_menu: reservedMenu,
       facility_menu: facilityMenu,
       built: { product: built.product, queued: built.queued },
       comparisons,

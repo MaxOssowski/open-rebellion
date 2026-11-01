@@ -128,6 +128,12 @@ pub enum PanelAction {
         system: SystemKey,
         area: rebellion_core::manufacturing::ProductionArea,
     },
+    /// Reserved (`0x216`): toggle `system`'s `area` manager's Reserved
+    /// (`ManuMgr_SetReserved`).
+    ToggleReserved {
+        system: SystemKey,
+        area: rebellion_core::manufacturing::ProductionArea,
+    },
     /// Build Selection's Confirm (`FUN_00438980`): `count` units of `kind`
     /// replace what `system`'s `area` was building.
     BuildProduction {

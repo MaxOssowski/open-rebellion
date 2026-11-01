@@ -366,6 +366,10 @@ pub struct ManufacturingState {
         deserialize_with = "crate::serde_ordered::deserialize_hash_map"
     )]
     destinations: HashMap<(SystemKey, ProductionArea), SystemKey>,
+    /// The production areas whose manager is Reserved (`0x216`,
+    /// `ManuMgr_SetReserved` `FUN_00529710`, the manager's `Reserved`): the
+    /// player's agent leaves them alone (manual p. 86).
+    reserved: std::collections::BTreeSet<(SystemKey, ProductionArea)>,
 }
 
 impl ManufacturingState {
@@ -374,6 +378,22 @@ impl ManufacturingState {
         ManufacturingState {
             queues: HashMap::new(),
             destinations: HashMap::new(),
+            reserved: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Whether `system`'s `area` manager is Reserved.
+    #[must_use]
+    pub fn is_reserved(&self, system: SystemKey, area: ProductionArea) -> bool {
+        self.reserved.contains(&(system, area))
+    }
+
+    /// Set `system`'s `area` manager's Reserved (`ManuMgr_SetReserved`).
+    pub fn set_reserved(&mut self, system: SystemKey, area: ProductionArea, reserved: bool) {
+        if reserved {
+            self.reserved.insert((system, area));
+        } else {
+            self.reserved.remove(&(system, area));
         }
     }
 
@@ -932,6 +952,22 @@ mod tests {
 
         q.enqueue(cap_ship_item(10));
         assert_eq!(q.active().unwrap().cost, 10);
+    }
+
+    #[test]
+    fn each_production_area_keeps_its_own_reserved_mark() {
+        // ManuMgr_SetReserved (FUN_00529710) sets one manager's Reserved;
+        // A0 menus3/33 shows the facilities band's Reserved checked after
+        // it was chosen, the other bands' not.
+        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let (home, away) = (systems.insert(()), systems.insert(()));
+        let mut state = ManufacturingState::new();
+        state.set_reserved(home, ProductionArea::ConstructionYard, true);
+        assert!(state.is_reserved(home, ProductionArea::ConstructionYard));
+        assert!(!state.is_reserved(home, ProductionArea::Shipyard));
+        assert!(!state.is_reserved(away, ProductionArea::ConstructionYard));
+        state.set_reserved(home, ProductionArea::ConstructionYard, false);
+        assert!(!state.is_reserved(home, ProductionArea::ConstructionYard));
     }
 
     #[test]

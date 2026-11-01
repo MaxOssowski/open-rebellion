@@ -63,6 +63,13 @@ pub struct GameMenuEntry<'a> {
     pub enabled: bool,
     /// A submenu parent (`FUN_00442590` flags 8), which widens the icon column.
     pub submenu: bool,
+    /// `icon` is the record's second bitmap (word 10), the check mark a
+    /// checked item draws (`FUN_004aba60`'s `+0x1c` on `+0x5c`): it widens
+    /// the icon column (`FUN_004abf60`) but not the row, whose height
+    /// counts only the item's own icon `+0x14` (`FUN_004abbf0`). A0
+    /// agent-menu/empire-agent-menu-day137.png keeps its checked rows 20
+    /// pixels tall.
+    pub check: bool,
 }
 
 /// The color `FUN_004aba60` draws an entry's text in.
@@ -79,6 +86,16 @@ pub fn entry_text_color(
     } else {
         NORMAL_COLOR
     }
+}
+
+/// The width `FUN_004abf60` and the height `FUN_004abbf0` count for an
+/// entry's icon of `size`: a check mark widens the column only.
+#[must_use]
+pub fn entry_icon_size(entry: &GameMenuEntry<'_>, size: Option<(f32, f32)>) -> (f32, f32) {
+    (
+        entry_icon_width(entry, size.map(|size| size.0)),
+        size.filter(|_| !entry.check).map_or(0.0, |size| size.1),
+    )
 }
 
 /// The width `FUN_004abf60` measures for an entry's icon column.
@@ -345,10 +362,7 @@ fn measure(
                     .get(ctx, DllSource::Strategy, id)
                     .map(|texture| texture.size_vec2())
             });
-            (
-                entry_icon_width(entry, icon.map(|size| size.x)),
-                icon.map_or(0.0, |size| size.y),
-            )
+            entry_icon_size(entry, icon.map(|size| (size.x, size.y)))
         })
         .collect();
     (game_menu_geometry(&icon_sizes, &text_sizes), text_sizes)
@@ -611,6 +625,7 @@ mod tests {
             icon: None,
             enabled,
             submenu,
+            check: false,
         }
     }
 
@@ -708,6 +723,7 @@ mod tests {
             icon: None,
             enabled,
             submenu: false,
+            check: false,
         }
     }
 
@@ -1079,6 +1095,21 @@ mod tests {
     fn a_submenu_parent_without_an_icon_reserves_twenty_pixels() {
         // Source: FUN_004abf60 returns 0x14 for an item whose flags carry 8.
         assert_eq!(entry_icon_width(&entry(true, true), None), 20.0);
+        // FUN_004abbf0 counts the item's own icon (+0x14) in the row's
+        // height, never the check mark (+0x1c): A0's Agent menu keeps its
+        // checked rows 20 pixels tall.
+        let icon = GameMenuEntry {
+            icon: Some(10_116),
+            ..entry(true, false)
+        };
+        assert_eq!(entry_icon_size(&icon, Some((20.0, 20.0))), (20.0, 20.0));
+        let check = GameMenuEntry {
+            icon: Some(11_902),
+            check: true,
+            ..entry(true, false)
+        };
+        assert_eq!(entry_icon_size(&check, Some((20.0, 20.0))), (20.0, 0.0));
+        assert_eq!(entry_icon_size(&entry(true, false), None), (0.0, 0.0));
         assert_eq!(entry_icon_width(&entry(true, false), None), 0.0);
         assert_eq!(entry_icon_width(&entry(true, true), Some(16.0)), 16.0);
     }
@@ -1262,6 +1293,7 @@ mod tests {
                 icon: None,
                 enabled: true,
                 submenu: true,
+                check: false,
             },
             labelled("Status", true),
         ];
