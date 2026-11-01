@@ -43,7 +43,8 @@ const controls = [
   { x: 141, y: 224, width: 66, height: 33, id: 10596, keyed: true, native: [66, 33] },
   // port: the close box sits 17 pixels in from the right, as the mission
   // dialog's (hyp: the source chrome's placement is untraced).
-  { x: 193, y: 3, width: 14, height: 14, id: 10108, native: [14, 14] },
+  // A CoolStrobeButton, keyed on its first pixel (A0 menus2/11).
+  { x: 193, y: 3, width: 14, height: 14, id: 10108, keyed: true, native: [14, 14] },
 ];
 // Dynamic content, kept as captures: the title, the selected class, the
 // labels, the four values and the number to build (FUN_00437f80,

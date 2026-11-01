@@ -207,11 +207,18 @@ function blueKey(data, offset) {
 }
 
 // FUN_00602d30 blits at the bitmap's own size; a control clips the rest.
-function blit(destination, image, x, y, { width = image.width, height = image.height, keyed = false } = {}) {
+function blit(destination, image, x, y, { width = image.width, height = image.height, keyed = false, firstPixel = false } = {}) {
+  // A CoolStrobeButton (the close box 10108) blits keyed on its DIB's first
+  // pixel, the bottom row's first (FUN_00602d30 -> FUN_005fd0f0; A0
+  // menus2/11 shows the title bar there).
+  const keyAt = ((image.height - 1) * image.width) * 4;
+  const key = image.data.subarray(keyAt, keyAt + 3);
   for (let row = 0; row < Math.min(height, image.height); row += 1) {
     for (let column = 0; column < Math.min(width, image.width); column += 1) {
       const from = (row * image.width + column) * 4;
       if (keyed && blueKey(image.data, from)) continue;
+      if (firstPixel && image.data[from] === key[0] && image.data[from + 1] === key[1]
+        && image.data[from + 2] === key[2]) continue;
       const to = ((y + row) * destination.width + x + column) * 4;
       destination.data.set(image.data.subarray(from, from + 4), to);
     }
@@ -230,7 +237,7 @@ function composeExpected(source, faction, state) {
   blit(expected, resource(source, faction.title), 2, 2);
   blit(expected, resource(source, 10209), 3, 3);
   blit(expected, resource(source, 10253), 204, 3);
-  blit(expected, resource(source, 10108), 218, 3);
+  blit(expected, resource(source, 10108), 218, 3, { firstPixel: true });
   if (state.selected) {
     blit(expected, resource(source, 10407 + faction.art), 97, 29);
     blit(expected, resource(source, 10401 + faction.art), 4, 29, { keyed: true });
