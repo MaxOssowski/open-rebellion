@@ -149,9 +149,9 @@ impl MenuObject {
             Self::ProductionFacility(key) => {
                 Some(ScrapTarget::Facility(FacilityRef::Production(key)))
             }
+            Self::Fleet(fleet) => Some(ScrapTarget::Fleet(fleet)),
             Self::Character(_)
             | Self::SpecialForce(_)
-            | Self::Fleet(_)
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
             | Self::Fighter { .. } => None,
@@ -1624,7 +1624,8 @@ mod tests {
         // 0x200 (TEXTSTRA 12295) is enabled by its +0x18 (the object's slot
         // +0x5c, scrap::check). A0 status/11, 20, 22 and 28 show it enabled
         // on the player's regiment, planet squadron, battery and training
-        // facility; status/02 shows it disabled on an enemy ship.
+        // facility; status/02 shows it disabled on an enemy ship. A0
+        // menus/24-fleet1-menu.png shows it enabled on the player's fleet.
         let gates = OrderGates {
             scrap: true,
             ..OrderGates::default()
@@ -1643,6 +1644,7 @@ mod tests {
             MenuObject::DefenseFacility(DefenseFacilityKey::default()),
             MenuObject::ManufacturingFacility(ManufacturingFacilityKey::default()),
             MenuObject::ProductionFacility(ProductionFacilityKey::default()),
+            MenuObject::Fleet(FleetKey::default()),
         ] {
             assert!(selection.scrap_target().is_some(), "{selection:?}");
             assert!(
@@ -1655,10 +1657,10 @@ mod tests {
                 "{selection:?}"
             );
         }
-        // port: a fleet's Scrap (FUN_004fdbc0) is not ported.
-        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
-        assert_eq!(MenuObject::Fleet(FleetKey::default()).scrap_target(), None);
-        assert!(!enabled(&object_menu_rows(fleet, gates)).contains(&"Scrap"));
+        assert_eq!(
+            MenuObject::Fleet(FleetKey::default()).scrap_target(),
+            Some(ScrapTarget::Fleet(FleetKey::default()))
+        );
     }
 
     #[test]

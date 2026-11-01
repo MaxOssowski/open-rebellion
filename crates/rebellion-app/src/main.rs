@@ -6318,7 +6318,12 @@ async fn main() {
                                 let side = Faction::of_alliance(
                                     player_faction == MissionFaction::Alliance,
                                 );
-                                let allowed = rebellion_core::scrap::check(&world, side, target);
+                                let allowed = rebellion_core::scrap::check_with_movement(
+                                    &world,
+                                    &movement_state,
+                                    side,
+                                    target,
+                                );
                                 macroquad::logging::info!(
                                     "[interface] command=0x200 target={target:?} result={allowed:?}"
                                 );
@@ -6969,12 +6974,27 @@ async fn main() {
                     // FUN_00487c90.
                     if let Some(MoveConfirmationAction::Scrap { targets }) = &answer {
                         let side = Faction::of_alliance(player_faction == MissionFaction::Alliance);
-                        let result = rebellion_core::scrap::scrap_team(
-                            &mut world,
-                            &mut production_state,
-                            side,
-                            targets,
-                        );
+                        // FUN_0041ce20(order, 1) validates the order again:
+                        // a fleet gone into hyperspace meanwhile refuses.
+                        let result = targets
+                            .iter()
+                            .try_for_each(|&target| {
+                                rebellion_core::scrap::check_with_movement(
+                                    &world,
+                                    &movement_state,
+                                    side,
+                                    target,
+                                )
+                            })
+                            .and_then(|()| {
+                                rebellion_core::scrap::scrap_team(
+                                    &mut world,
+                                    &mut production_state,
+                                    &mut troop_transport_state,
+                                    side,
+                                    targets,
+                                )
+                            });
                         // A scrapped ship's regiments beyond the room left
                         // are lost.
                         troop_transport_state.destroy_untransportable_cargo(&mut world);
@@ -9280,10 +9300,13 @@ fn order_gates(
             .and_then(|member| retire_check(world, mission_state, member, is_alliance))
             .is_some_and(|result| result.is_ok()),
         // The Scrap command's +0x18 is the object's slot +0x5c
-        // (FUN_005796c0; scrap::check).
+        // (FUN_005796c0; scrap::check, a fleet en route refused).
         scrap: selection
             .and_then(MenuObject::scrap_target)
-            .is_some_and(|target| rebellion_core::scrap::check(world, side, target).is_ok()),
+            .is_some_and(|target| {
+                rebellion_core::scrap::check_with_movement(world, movement_state, side, target)
+                    .is_ok()
+            }),
     }
 }
 
@@ -11229,6 +11252,7 @@ fn apply_ai_actions(
                 let scrapped = rebellion_core::scrap::scrap_team(
                     world,
                     production_state,
+                    troop_transport_state,
                     side.as_faction(),
                     team,
                 );

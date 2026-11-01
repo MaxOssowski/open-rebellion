@@ -2492,9 +2492,14 @@ fn apply_ai_actions_inner(
                 true
             }
             AIAction::Scrap { team } => ai_state.faction.is_some_and(|side| {
-                let done =
-                    rebellion_core::scrap::scrap_team(world, production, side.as_faction(), team)
-                        .is_ok();
+                let done = rebellion_core::scrap::scrap_team(
+                    world,
+                    production,
+                    troop_transport,
+                    side.as_faction(),
+                    team,
+                )
+                .is_ok();
                 // A scrapped ship's regiments beyond the room left are lost.
                 troop_transport.destroy_untransportable_cargo(world);
                 done

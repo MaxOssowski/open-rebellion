@@ -1,0 +1,6 @@
+7f58f18cbb09fcb3ff442592726f54adecc4a4e22547ba9524c541345b15e13f  alliance-fleet-scrap/fleet-menu.png
+90f6b58771b5536f5644b780551f7edb6431c85e5ba39f6c7a3fff9a30aa043c  alliance-fleet-scrap/fleet-scrap-confirmation.png
+761d6287129ef541ce47fa25da11ad9d261aa24e3fd8c91769215fecb7777d7a  alliance-fleet-scrap/fleet-scrapped.png
+873f9d0e2a6bd61b8237e023685b68c12e2f5afcf88a28aecf6338183adb5ca8  empire-fleet-scrap/fleet-menu.png
+300acb4885e70cfdb877047ae9652b0766ef45213e24e74c8729b18092fcb42b  empire-fleet-scrap/fleet-scrap-confirmation.png
+6ea801c171176b3f245d5e03382ec7c942212ad6b6826214c046c8d79415f472  empire-fleet-scrap/fleet-scrapped.png

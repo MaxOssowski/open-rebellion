@@ -105,11 +105,12 @@ port:
 
 ## Open
 
-- Scrap for ships, fighter squadrons, fleets and regiments aboard a fleet
-  (`FUN_005575f0`, `FUN_004fdbc0` → `FUN_004ffa70`).
+- Scrap for fighter squadrons and regiments aboard a fleet on their own
+  (`FUN_005575f0`).
 - Reason `0x16` (queue scrap) does not refund yet. Reason `0x15` does,
   in `autoscrap.rs` (2026-10-17).
-- The autorouting of characters in a scrapped fleet (`FUN_004ef2e0`).
+- The autorouting of characters in a scrapped fleet (`FUN_004ef2e0`):
+  the port sets them adrift at the fleet's system instead.
 
 ## The player's order (2026-11-01)
 
@@ -138,3 +139,22 @@ browser.
 port: a fleet, a squadron aboard a fleet and a sector window icon still
 draw Scrap disabled (`FUN_004fdbc0`, `FUN_005575f0`, `FUN_00512700` are not
 ported).
+
+## A fleet (2026-11-01)
+
+The fleet's check `FUN_004fdbc0` → `FUN_004ffa70`: the object check
+`FUN_004f9860` (own side; status 4 en route), then each ship must be
+completed (else `0x10`) and not en route (else `0x11`). A0 greys an
+arriving fleet's Scrap (`.artifacts/a0-vm/menus/22-fleet4-menu.png`).
+
+Destroyed with reason `0x14`, the fleet hands the reason to every child
+(`FUN_004fb520`, `FUN_004f8710`), so each ship, squadron and regiment
+aboard is scrapped and refunds half its refined cost. A0, day 318 (evidence
+`2026-11-01-fleet-scrap-a0`): Fleet 1 (corvette 14, transport 10, two
+regiments 8) returned 20 refined and freed 47 maintenance the same day; the
+confirmation lists only "Fleet 1".
+
+Ported: `ScrapTarget::Fleet`, `scrap::check_with_movement` (the en-route
+refusal), and the refund and removal in `scrap::scrap`, which now takes the
+troop transport state for the cargo. The characters aboard go adrift
+(port, for the autorouting) and the special forces land at the system.

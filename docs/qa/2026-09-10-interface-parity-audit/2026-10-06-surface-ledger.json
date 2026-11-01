@@ -7313,7 +7313,7 @@
         {
           "id": "OBJ-14-C002",
           "requirement": "fleet",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
@@ -7321,9 +7321,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-own-system-bombardment-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-own-system-bombardment-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-scrap-a0/"
           ],
-          "note": "Fleet menu (Move, Confirmed Move, Bombardment, Assault, Rename, Encyclopedia, Status, Scrap) drives fleet-window.mjs on Arch Chromium; A0 05-fleet-menu.png shows an enemy fleet's menu. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: new A0 capture of the player's own fleet menu (a0-vm/menus/12) matches the port row for row except Scrap (fleet scrap not ported); bombardment over one's own system is enabled and carried out in A0 (menus/13, 15), and the port's port: rule refusing it is removed.",
+          "note": "Compared with A0 on 2026-11-01: the player's fleet menu (new capture a0-vm/menus/12-own-fleet-menu.png) and the port's (fleet-window.mjs fleet-scrap, fleet-menu.png) list Move, Confirmed Move, Planetary Bombardment, Planetary Assault, Rename, Encyclopedia, Status, Scrap with the same enabled states (Assault grey); an enemy fleet's rows grey but Encyclopedia and Status (status/05) follow the same gates (own side). Text and frame as 2026-11-01-object-menu-text-a0. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: Fleet menu (Move, Confirmed Move, Bombardment, Assault, Rename, Encyclopedia, Status, Scrap) drives fleet-window.mjs on Arch Chromium; A0 05-fleet-menu.png shows an enemy fleet's menu. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: new A0 capture of the player's own fleet menu (a0-vm/menus/12) matches the port row for row except Scrap (fleet scrap not ported); bombardment over one's own system is enabled and carried out in A0 (menus/13, 15), and the port's port: rule refusing it is removed. 2026-11-01 (later): fleet Scrap ported (A0 menus/24-26: enabled, confirmation 'Fleet 1', everything aboard refunded); fleet-window.mjs fleet-scrap passes; the own-fleet menu now matches A0 menus/12 row for row.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

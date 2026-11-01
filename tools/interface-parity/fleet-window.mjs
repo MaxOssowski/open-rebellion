@@ -1429,6 +1429,30 @@ const cases = [
     },
   },
   {
+    name: "fleet-scrap",
+    code: FLEET_LOAD,
+    // Scrap (0x200) on the player's fleet, enabled as A0
+    // menus/24-fleet1-menu.png shows: the confirmation names the fleet
+    // (menus/25), and the checkmark scraps it with everything aboard, the
+    // regiment loaded here included (FUN_004fb520 hands reason 0x14 to
+    // every child; evidence 2026-11-01-fleet-scrap-a0).
+    async run(page, faction, setup, directory, source, log) {
+      const { opened, loaded } = await loadRegiment(page, setup, directory);
+      assert.equal(loaded.cargo, 1);
+      const menu = await openMenu(page, point(opened.fleet_entry), directory, "fleet");
+      assert.equal(menu.scrap_enabled, true, JSON.stringify(menu));
+      await choose(page, menu, menu.scrap_row, "Scrap");
+      const asked = await until(page, "the Scrap confirmation opens", (o) => o.confirmation_open);
+      assert.equal(asked.cargo, 1, "the fleet went before the answer");
+      await shot(page, directory, "fleet-scrap-confirmation");
+      await click(page, confirmationCheckmark(faction));
+      const done = await log.logged("the checkmark scraps the fleet",
+        /command=0x200 destination=scrap targets=\[Fleet\(.*result=Ok/);
+      await shot(page, directory, "fleet-scrapped");
+      return { menu, asked, done };
+    },
+  },
+  {
     name: "rename",
     code: FLEET_LOAD,
     // Rename (0x203, FUN_00486fb0 -> FUN_0041d600 -> FUN_00429350) puts an
