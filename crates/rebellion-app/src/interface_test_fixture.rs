@@ -2676,6 +2676,9 @@ struct FixtureFleetMoveSetup {
     target_dat_id: u32,
     target_screen_x: f32,
     target_screen_y: f32,
+    /// The target planet's fleet icon, which opens its Fleet window.
+    target_fleet_icon_x: f32,
+    target_fleet_icon_y: f32,
     systems: Vec<FixtureSystemPoint>,
     sector_planets: Vec<FixtureSystemPoint>,
 }
@@ -2695,6 +2698,7 @@ fn fleet_move_setup(
     // The fleet is the only one at its system: the Fleet window's first entry.
     let item = fleets.entry_screen_rect(layout, primary, 0)?.center();
     let planet = sectors.planet_screen_rect(world, layout, target)?.center();
+    let icon = sectors.fleet_icon_screen_rect(world, layout, target)?.center();
     Some(FixtureFleetMoveSetup {
         status: "fleet-move-setup",
         code: request.code,
@@ -2704,6 +2708,8 @@ fn fleet_move_setup(
         target_dat_id: world.systems[target].dat_id.raw(),
         target_screen_x: planet.x,
         target_screen_y: planet.y,
+        target_fleet_icon_x: icon.x,
+        target_fleet_icon_y: icon.y,
         systems: world
             .systems
             .values()
@@ -2760,6 +2766,9 @@ struct FleetMoveObservation {
     confirmation_open: bool,
     selected_system_dat_id: Option<u32>,
     last_message: Option<String>,
+    /// The fleet's entry in its destination's Fleet window, once that
+    /// window is open and lists it.
+    destination_entry: Option<[f32; 2]>,
 }
 
 fn fleet_move_observation(
@@ -2768,6 +2777,7 @@ fn fleet_move_observation(
     movement: &MovementState,
     confirmation_open: bool,
     map: &GalaxyMapState,
+    (fleets, fog, transport): (&FleetWindowState, &FogState, &TroopTransportState),
     messages: &[GameMessage],
 ) -> Option<FleetMoveObservation> {
     if !request.scenario.moves_a_fleet() {
@@ -2775,6 +2785,18 @@ fn fleet_move_observation(
     }
     let fleet = world.fleets.keys().next()?;
     let dat_id = |key| world.systems.get(key).map(|system| system.dat_id.raw());
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let destination_entry = movement.get(fleet).and_then(|order| {
+        let report = fleets.report(world, movement, fog, transport, order.destination)?;
+        let row = report
+            .fleet_rows
+            .iter()
+            .find_map(|&(listed, row)| (listed == fleet).then_some(row))?;
+        let center = fleets
+            .entry_screen_rect(layout, order.destination, row)?
+            .center();
+        Some([center.x, center.y])
+    });
     Some(FleetMoveObservation {
         status: "fleet-move",
         code: request.code,
@@ -2785,6 +2807,7 @@ fn fleet_move_observation(
         confirmation_open,
         selected_system_dat_id: map.selected_system.and_then(dat_id),
         last_message: messages.last().map(|message| message.text.clone()),
+        destination_entry,
     })
 }
 
@@ -2810,10 +2833,18 @@ impl FleetMoveWatch {
         movement: &MovementState,
         confirmation_open: bool,
         map: &GalaxyMapState,
+        windows: (&FleetWindowState, &FogState, &TroopTransportState),
         messages: &[GameMessage],
     ) {
-        let now =
-            fleet_move_observation(request, world, movement, confirmation_open, map, messages);
+        let now = fleet_move_observation(
+            request,
+            world,
+            movement,
+            confirmation_open,
+            map,
+            windows,
+            messages,
+        );
         let Some(report) = self.changed(now) else {
             return;
         };
@@ -6103,8 +6134,20 @@ mod tests {
                 .any(|point| point.dat_id == setup.target_dat_id && (point.x, point.y) == planet));
 
             let observed =
-                fleet_move_observation(request, world, &applied.movement, false, &applied.map, &[])
-                    .unwrap();
+                fleet_move_observation(
+                    request,
+                    world,
+                    &applied.movement,
+                    false,
+                    &applied.map,
+                    (
+                        &applied.fleets,
+                        &FogState::new(Faction::Alliance),
+                        &applied.transport,
+                    ),
+                    &[],
+                )
+                .unwrap();
             assert_eq!(
                 (
                     observed.in_transit,
@@ -6168,15 +6211,22 @@ mod tests {
             rebellion_render::MessageCategory::Event,
         );
 
-        let observed = fleet_move_observation(
-            request,
-            &applied.world,
-            &applied.movement,
-            true,
-            &applied.map,
-            &[message],
-        )
-        .unwrap();
+        let fog = FogState::new(Faction::Alliance);
+        let observe = |applied: &Applied, message: &GameMessage| {
+            fleet_move_observation(
+                request,
+                &applied.world,
+                &applied.movement,
+                true,
+                &applied.map,
+                (&applied.fleets, &fog, &applied.transport),
+                std::slice::from_ref(message),
+            )
+            .unwrap()
+        };
+        let observed = observe(&applied, &message);
+        // No window at the destination is open yet.
+        assert_eq!(observed.destination_entry, None);
 
         assert_eq!(
             (
@@ -6194,6 +6244,25 @@ mod tests {
                 Some("Fleet move rejected")
             )
         );
+
+        // move-order.md: the destination's Fleet window lists the fleet
+        // en route (a0-vm/menus/18-fleet4.png), so the gate can open its
+        // menu there.
+        let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+        let point = applied
+            .sectors
+            .fleet_window_point(&applied.world, layout, target)
+            .unwrap();
+        assert!(applied.fleets.open(
+            &applied.world,
+            target,
+            point,
+            request.faction,
+            layout
+        ));
+        let [x, y] = observe(&applied, &message).destination_entry.unwrap();
+        let window = applied.fleets.screen_rect(layout, target).unwrap();
+        assert!(window.contains(egui_macroquad::egui::pos2(x, y)));
     }
 
     #[test]
@@ -6212,6 +6281,11 @@ mod tests {
                 &applied.movement,
                 false,
                 &applied.map,
+                (
+                    &applied.fleets,
+                    &FogState::new(Faction::Alliance),
+                    &applied.transport
+                ),
                 &[]
             ),
             None
@@ -6868,6 +6942,7 @@ mod tests {
             confirmation_open: false,
             selected_system_dat_id: None,
             last_message: None,
+            destination_entry: None,
         };
         let second = FleetMoveObservation {
             in_transit: true,

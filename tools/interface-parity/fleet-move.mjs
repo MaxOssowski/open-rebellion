@@ -321,6 +321,44 @@ const cases = [
     },
   },
   {
+    name: "en-route-menu",
+    code: FLEET_MOVE,
+    // The move puts the fleet in its destination at once (FUN_00556390), so
+    // the destination's Fleet window lists it; there A0 greys its Rename
+    // and Scrap (a0-vm/menus/18-fleet4.png, 22-fleet4-menu.png).
+    async run(page, faction, setup, directory) {
+      const menu = await openMenu(page, setup, directory);
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, targetPoint(setup));
+      await until(page, "the fleet departs for the target",
+        (target) => (window.__openRebellionInterfaceFleetMoves || []).some(
+          (o) => o.in_transit && o.destination_dat_id === target), setup.target_dat_id);
+      // Past egui's double-click time (0.3 s), so the target's click and
+      // the icon's first make no pair.
+      await page.waitForTimeout(600);
+      await page.mouse.move(setup.target_fleet_icon_x, setup.target_fleet_icon_y);
+      await frames(page);
+      await page.mouse.dblclick(setup.target_fleet_icon_x, setup.target_fleet_icon_y);
+      await frames(page, 2);
+      const listed = await until(page, "the destination's Fleet window lists the fleet",
+        () => (window.__openRebellionInterfaceFleetMoves || []).at(-1)?.destination_entry);
+      assert.ok(listed.in_transit, JSON.stringify(listed));
+      const [x, y] = listed.destination_entry;
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await click(page, { x: Math.round(x), y: Math.round(y) }, "right");
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const away = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      const opened = await shot(page, directory, "en-route-menu");
+      assert.deepEqual(
+        [away.rename_enabled, away.scrap_enabled, away.confirmed_move_enabled],
+        [false, false, false],
+        JSON.stringify(away),
+      );
+      return { menu, listed, away, opened };
+    },
+  },
+  {
     name: "confirmed-move",
     code: FLEET_MOVE,
     // Confirmed Move always asks (0x202); the window takes the pointer, and

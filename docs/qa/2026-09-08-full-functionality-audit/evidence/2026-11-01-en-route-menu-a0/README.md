@@ -37,13 +37,32 @@ bombardment targets for a fleet in transit.
 - `fleet-move.mjs` `move` checks the fleet's Rename and Scrap are on
   before it leaves.
 
-## Open
+## Browser (Linux Chromium 155)
 
-In A0 Fleet 4, withdrawn to Kimanan after the Battle at Yavin and en
-route there, is already listed in Kimanan's Fleet window. In the port a
-fleet in transit is in neither system's Fleet window, so its menu cannot
-be opened there and no browser case reaches the greyed rows. Which
-window lists a fleet in transit is not settled.
+`fleet-move.mjs en-route-menu`, both sides: Move sends the fleet to the
+target, a double click on the target planet's fleet icon opens its Fleet
+window, which lists the fleet en route (`listed_fleets`, as A0 lists
+Fleet 4 at Kimanan, `18-fleet4.png`), and its right-click menu greys
+Move, Confirmed Move, Planetary Bombardment, Planetary Assault, Rename
+and Scrap, leaving Encyclopedia and Status, row for row as
+`22-fleet4-menu.png`. The fixture reports the fleet's entry in the
+destination window (`destination_entry`, from `FleetWindowReport`).
+
+Run `fleet-move-2026-11-01T08-46-29-577Z-7638` (Arch Chromium
+155.0.8059.84, not the pinned build), test WASM
+`6dee2dba830f5d4ccae135f33ffe763098c9549986b49347d642ff683e5777f3`:
+
+```
+03af061603da473fa1adc9dfdf52b226b421252699446abfc1c96b7181bc2381  alliance-en-route-menu/en-route-menu.png
+c89de6cb0d9bd580b2ab1bd115363bbb8239786851c86ea5744313a205780625  empire-en-route-menu/en-route-menu.png
+```
+
+The earlier note that a fleet in transit is in no Fleet window was
+wrong: the port lists it at its destination since `8fc9d983`
+(`a_fleet_in_hyperspace_shows_its_overlays_where_it_is_bound`); the gate
+only had no case that opened that window. The case waits 0.6 s before
+the double click, or the target's click and the icon's first make a
+triple click in egui.
 
 ## Mutants
 

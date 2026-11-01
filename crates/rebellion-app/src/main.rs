@@ -8422,6 +8422,15 @@ async fn main() {
                     &movement_state,
                     move_confirmation_state.is_open(),
                     &map_state,
+                    (
+                        &fleet_window_state,
+                        if player_faction == MissionFaction::Alliance {
+                            &fog_alliance_state
+                        } else {
+                            &fog_empire_state
+                        },
+                        &troop_transport_state,
+                    ),
                     msg_log.messages(),
                 );
                 fleet_load_watch.observe(
