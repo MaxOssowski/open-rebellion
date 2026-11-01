@@ -67,3 +67,11 @@ order's validation (`ManuMgr_vt1bc` -> `FUN_004f9860`, a status other
 than -1). Which check reads the side's maintenance
 (`SideMaintState - MaintCapacityAllocated`, `FUN_0051b1f0`) is not yet
 traced.
+
+The Alliance save (slot 1, Vjun, day 9-15) shows "n/a" and a grey
+Confirm too (`22`-`26`): from the facilities band and from the agent's
+Build Facilities, for a Construction Yard (refined 10, maintenance 10)
+and GenCore, with refined 12-20 and maintenance +239 on the top bar but
+its first counter at 0. A0 `build-orders/15-t01` (Empire, day 193,
+counters 58 / 191 / 189) shows the values. The refusal therefore
+follows a side resource the port does not check; which one stays open.
