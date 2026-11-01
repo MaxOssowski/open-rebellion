@@ -443,6 +443,25 @@ async function inspect(server, source, faction, executable) {
       ?.find(({ area }) => area === "troops")?.queued === 0, null, { timeout: 10_000 });
     fs.writeFileSync(path.join(directory, "stopped-screen.png"), await page.screenshot({ animations: "disabled" }));
 
+    // A manufacturing facility's menu: its page cell's right click lists
+    // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
+    // (FUN_005399e0), all enabled on the player's own yard as in A0
+    // status/28-fac-menu.png.
+    const [tx, ty, tw, th] = (await production(page)).training_tab;
+    await click(page, { x: tx + tw / 2, y: ty + th / 2 });
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(400);
+    const [cx, cy, cw, ch] = (await production(page)).first_cell;
+    await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+    await click(page, { x: cx + cw / 2, y: cy + ch / 2 }, "right");
+    await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+      null, { timeout: 10_000 });
+    const facilityMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+    fs.writeFileSync(path.join(directory, "facility-menu.png"), await page.screenshot({ animations: "disabled" }));
+    assert.deepEqual(facilityMenu.row_states, [["Encyclopedia", true], ["Status", true], ["Scrap", true]],
+      JSON.stringify(facilityMenu));
+
     assert.ok(comparisons.every(({ different_pixels: d }) => d === 0),
       JSON.stringify(comparisons.filter(({ different_pixels: d }) => d !== 0)));
     assert.deepEqual(requests.map(({ url }) => url).sort(), [...expectedRequests].sort());
@@ -455,6 +474,7 @@ async function inspect(server, source, faction, executable) {
       origin,
       build_menu: buildMenu,
       stop_menu: stopMenu,
+      facility_menu: facilityMenu,
       built: { product: built.product, queued: built.queued },
       comparisons,
       textChecks,

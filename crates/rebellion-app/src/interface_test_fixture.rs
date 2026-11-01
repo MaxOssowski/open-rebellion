@@ -2242,6 +2242,10 @@ struct FixtureProduction {
     build_selection_open: bool,
     build_selection_left: f32,
     build_selection_top: f32,
+    /// The Training Facilities tab and its page's first cell, as
+    /// `[left, top, width, height]`.
+    training_tab: Option<[f32; 4]>,
+    first_cell: Option<[f32; 4]>,
 }
 
 fn production_report(
@@ -2277,6 +2281,7 @@ fn production_report(
         })
         .collect();
     let window = rebellion_render::build_selection::window_rect(layout);
+    let ltwh = |rect: egui_macroquad::egui::Rect| [rect.min.x, rect.min.y, rect.width(), rect.height()];
     Some(FixtureProduction {
         status: "production",
         code: request.code,
@@ -2284,6 +2289,14 @@ fn production_report(
         build_selection_open: build_selection.is_open(),
         build_selection_left: window.min.x,
         build_selection_top: window.min.y,
+        training_tab: systems
+            .tab_screen_rect(
+                layout,
+                primary,
+                rebellion_render::system_window::SystemWindowTab::TrainingFacilities,
+            )
+            .map(ltwh),
+        first_cell: systems.cell_screen_rect(layout, primary, 0).map(ltwh),
     })
 }
 
