@@ -605,16 +605,22 @@ fn draw_window(
             let paint = |cache: &mut BmpCache, source: DllSource, id: u32, x: f32, y: f32| {
                 paint_native(&painter, ctx, cache, source, id, local, scale, x, y);
             };
-            let text = |text: &str, x: f32, y: f32, width: f32, size: f32, color| {
-                let galley = painter.layout(
-                    text.to_owned(),
-                    egui::FontId::proportional((size * scale).max(6.0)),
-                    color,
-                    width * scale,
-                );
+            let text_in = |text: &str, x: f32, y: f32, width: f32, font: egui::FontId, color| {
+                let galley = painter.layout(text.to_owned(), font, color, width * scale);
                 let rect = logical_rect(local, scale, x, y, width, 0.0);
                 let left = rect.min.x + (rect.width() - galley.size().x) / 2.0;
                 painter.galley(egui::pos2(left, rect.min.y), galley, color);
+            };
+            // port: the texts whose font is not traced keep a pixel size.
+            let text = |text: &str, x: f32, y: f32, width: f32, size: f32, color| {
+                let font = egui::FontId::proportional((size * scale).max(6.0));
+                text_in(text, x, y, width, font, color);
+            };
+            // FUN_0044c630 and FUN_0044e290 set each text's font
+            // (FUN_00601c60): the title 11, the outcome and the rail label 6,
+            // the category label and the column heads 4.
+            let gdi_text = |text: &str, x: f32, y: f32, width: f32, font: u16, color| {
+                text_in(text, x, y, width, crate::theme::gdi_font(font, scale), color);
             };
 
             painter.rect_filled(local, 0.0, egui::Color32::BLACK);
@@ -627,11 +633,11 @@ fn draw_window(
                     // wide, centred, and the outcome +0x50 at (25, 225),
                     // 350 wide, over its black shadow at (26, 226).
                     paint(cache, DllSource::Strategy, report.picture(), PAGE.0, PAGE.1);
-                    text(&window.title, 12.0, 13.0, 400.0, 14.0, color);
+                    gdi_text(&window.title, 12.0, 13.0, 400.0, 11, color);
                     let body = |x: f32, y: f32, color| {
                         let galley = painter.layout(
                             window.body.clone(),
-                            egui::FontId::proportional((11.0 * scale).max(6.0)),
+                            crate::theme::gdi_font(6, scale),
                             color,
                             350.0 * scale,
                         );
@@ -648,17 +654,17 @@ fn draw_window(
                         FORCES_TWO_COLUMNS
                     };
                     paint(cache, DllSource::Strategy, art, PAGE.0, PAGE.1);
-                    text(&window.title, 12.0, 13.0, 400.0, 14.0, color);
+                    gdi_text(&window.title, 12.0, 13.0, 400.0, 11, color);
                     // FUN_0044e290: the page's rail label at (12, 36), 347 wide,
                     // centred, in the attacker's colour; the category's label at
                     // (38, 100), white, left-aligned.
                     let (_, _, page_label) = rail_art(window.page, report, viewer);
-                    text(&page_label, 12.0, 36.0, 347.0, 11.0, color);
+                    gdi_text(&page_label, 12.0, 36.0, 347.0, 6, color);
                     painter.text(
                         logical_rect(local, scale, 38.0, 100.0, 0.0, 0.0).min,
                         egui::Align2::LEFT_TOP,
                         category_label(window.category),
-                        egui::FontId::proportional((10.0 * scale).max(6.0)),
+                        crate::theme::gdi_font(4, scale),
                         egui::Color32::WHITE,
                     );
                     for (index, category) in ReportCategory::ALL.into_iter().enumerate() {
@@ -683,7 +689,7 @@ fn draw_window(
                         }
                     }
                     for &(x, label) in heads(window.category) {
-                        text(label, x, 117.0, 165.0, 10.0, egui::Color32::WHITE);
+                        gdi_text(label, x, 117.0, 165.0, 4, egui::Color32::WHITE);
                     }
                     if let Some(forces) = shown_forces(window) {
                         let columns = shown_columns(forces, window.category);
@@ -1225,6 +1231,7 @@ mod tests {
     /// texts are kept.
     fn run(state: &mut AssaultSummaryState, frames: Vec<Vec<egui::Event>>) -> Frame {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut frame = Frame {
             actions: Vec::new(),
@@ -1361,13 +1368,15 @@ mod tests {
         let (title, color) = has(&frame, "Assault on Hoth").unwrap();
         assert_eq!(color, egui::Color32::from_rgb(0, 255, 0));
         assert_eq!(layout().scale, 2.0);
+        // FUN_0044c630: the title in font 11, the outcome in font 6 (A0
+        // menus3/29: "Assault on Chandrila" 15 pixels tall).
         let (font, size, wrap) = metrics(&frame, "Assault on Hoth");
-        assert_eq!((font, wrap), (28.0, 800.0));
+        assert_eq!((font, wrap), (crate::theme::gdi_font(11, 2.0).size, 800.0));
         let centred = at(12.0, 0.0).x + (800.0 - size.x) / 2.0;
         assert_eq!(title, egui::pos2(centred, at(0.0, 13.0).y));
         let body = "Alliance Troops have defended Hoth from an Imperial assault.";
         let (font, _, wrap) = metrics(&frame, body);
-        assert_eq!((font, wrap), (22.0, 700.0));
+        assert_eq!((font, wrap), (crate::theme::gdi_font(6, 2.0).size, 700.0));
         // The frame and the attacker's picture (FUN_0044c630).
         assert_eq!(painted(&frame, FRAME[0]), [at(0.0, 0.0)]);
         assert_eq!(painted(&frame, 0x2b99), [at(12.0, 13.0)]);
@@ -1437,8 +1446,9 @@ mod tests {
         assert_eq!((font, wrap), (18.0, 330.0));
         assert_eq!(first.y, at(0.0, 136.0 + 70.0 - 14.0).y);
         assert_eq!(first.x, at(37.0 + 165.0 / 2.0, 0.0).x - size.x / 2.0);
+        // FUN_0044e290: the category label in font 4.
         let (font, ..) = metrics(&frame, "Trooper Regiments");
-        assert_eq!(font, 20.0);
+        assert_eq!(font, crate::theme::gdi_font(4, 2.0).size);
         assert!(has(&frame, "None").is_none());
         // The wheel scrolls the third into view.
         let wheel = egui::Event::MouseWheel {

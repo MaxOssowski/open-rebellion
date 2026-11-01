@@ -7465,13 +7465,14 @@
         {
           "id": "OBJ-14-C012",
           "requirement": "assault",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus3-a0/"
           ],
-          "note": "Planetary Assault (0x234) passes fleet-window.mjs 'assault' on Arch Chromium 153; no A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/20-29): a fleet with regiments aboard over an enemy system enables Planetary Assault, which runs at once and opens the Assault Summary in the attacker's colour. fleet-window.mjs assault takes the same path on Linux Chromium for both sides; the summary's title and outcome now use FUN_0044c630's fonts 11 and 6 and land within a pixel of A0 vertically. Earlier: Planetary Assault (0x234) passes fleet-window.mjs 'assault' on Arch Chromium 153; no A0 comparison.",
+          "scope": "Passed against A0 (Windows 10 VM, editor-assisted Death Star save) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-14-C013",

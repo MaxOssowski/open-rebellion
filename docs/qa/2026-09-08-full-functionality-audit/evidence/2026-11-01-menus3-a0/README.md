@@ -87,8 +87,27 @@ without the team), `build_selections_buttons_key_out_their_first_pixels_colour` 
    `a_sector_icons_scrap_takes_its_kinds_objects_of_the_side` fails with
    the orbit-only team.
 
+4. **Planetary Assault and its summary.** A0 `20`-`29`: Fleet 1 (Victory
+   Destroyer 2 and the Death Star, four regiments aboard) moved from
+   Averam to Alliance-held Chandrila (`26`, the speed menu set to Fast on
+   the way). Over Chandrila its menu enables Planetary Assault (`27`);
+   chosen, the order runs at once and opens the Assault Summary, "Assault
+   on Chandrila" / "Imperial troops have taken control of the Alliance
+   system Chandrila" in the Empire's green (`29-assault-1..4`). The
+   port's `fleet-window.mjs assault` takes the same path. `FUN_0044c630`
+   sets the summary's title in font 11 and the outcome in font 6;
+   `FUN_0044e290` the rail label in font 6 and the category label and
+   column heads in font 4. The port drew them 14, 11 and 10 pixels. Now in
+   those fonts (`theme::gdi_font`): the title's ink spans y 69 to 83 as
+   A0's does, the outcome's y 280 to 313 against A0's 280 to 312. Run
+   `fleet-window-2026-11-01T12-07-37-740Z-295473` (Linux Chromium 155):
+
+   ```
+a4096480f32e69e301565010ded1149110827046bf9ee7367e77c6daf9ec88b1  alliance-assault/assault-summary.png
+8a265c80e01704c14a31ab40eef3d369b7aa7933b9e3ad76a632117acfcaabf4  empire-assault/assault-summary.png
+   ```
+
 ## Open
 
 - The fleets icon's and facilities icon's Scrap have no browser case
   (the defenses icon's does); their teams are unit-tested.
-- Planetary Assault (C012): no A0 capture of it enabled yet.
