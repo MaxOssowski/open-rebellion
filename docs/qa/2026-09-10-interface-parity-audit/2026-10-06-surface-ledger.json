@@ -6620,40 +6620,43 @@
         {
           "id": "OBJ-11-C006",
           "requirement": "Diplomacy",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-diplomacy-planner/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-diplomacy-planner/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-kinds-a0/"
           ],
-          "note": "Diplomacy is a dialog kind (mission_dialog.rs kind_name). Offered and dispatched in the object-targeting browser run (Arch Chromium 153). No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/53, kinds/12): Diplomacy is offered for a team on its own system; its icon (GOKRES 7184) matches the box and the Mission Status row for row, keyed as A0 draws it, and its name white along the box's top. Earlier: Diplomacy is a dialog kind (mission_dialog.rs kind_name). Offered and dispatched in the object-targeting browser run (Arch Chromium 153). No A0 capture of the dialog for this kind.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C007",
           "requirement": "Espionage",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-espionage-planner/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-espionage-planner/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-kinds-a0/"
           ],
-          "note": "Espionage is a dialog kind (mission_dialog.rs kind_name). Covered by object-targeting runs on Arch Chromium 153 where offered. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (kinds/03, 23): Espionage is offered on the team's own and on an enemy system; its icon (GOKRES 7187) matches A0's drop-down row for row, keyed. Earlier: Espionage is a dialog kind (mission_dialog.rs kind_name). Covered by object-targeting runs on Arch Chromium 153 where offered. No A0 capture of the dialog for this kind.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C008",
           "requirement": "Incite Uprising",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-kinds-a0/"
           ],
-          "note": "Incite Uprising is a dialog kind (mission_dialog.rs kind_name). Covered by object-targeting runs where offered. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (kinds/20): Incite Uprising is offered first on an enemy-held system; its icon (GOKRES 7232) matches A0's box row for row, its blue last row keyed as A0 shows. Earlier: Incite Uprising is a dialog kind (mission_dialog.rs kind_name). Covered by object-targeting runs where offered. No A0 capture of the dialog for this kind.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C009",
@@ -6692,15 +6695,16 @@
         {
           "id": "OBJ-11-C012",
           "requirement": "Recruitment",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-recruitment-planner/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-kinds-a0/"
           ],
-          "note": "Recruitment is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind. 2026-11-01: A0 menus2/11-13 show Recruitment offered for a release on the team's own system (Vjun), its name white along the box's top over the icon; the port draws the name so since 2026-11-01.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (kinds/01, menus2/12): Recruitment is offered on the team's own system for both sides; its icons (GOKRES 7190, 3094) match A0 but the pointer and tooltip over them. Earlier: Recruitment is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind. 2026-11-01: A0 menus2/11-13 show Recruitment offered for a release on the team's own system (Vjun), its name white along the box's top over the icon; the port draws the name so since 2026-11-01.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C013",

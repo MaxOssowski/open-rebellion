@@ -2015,6 +2015,13 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 265..=1_412
                 | 1_600..=1_935
                 | 2_112..=2_715
+                // The mission kinds' 130 by 65 icons (TEXTSTRA id & 0xfff,
+                // + 0x1000 for the Empire), which the mission dialog's item
+                // (FUN_0046a9c0 -> FUN_005fd0f0) and the Status window blit
+                // keyed: A0 menus3/53, kinds/01 and kinds/12 show the
+                // background under their blue last row.
+                | 3_072..=3_330
+                | 7_168..=7_426
                 | 5_696..=6_031
                 // The craft portraits' and minis' damage marks (`+0x2000`,
                 // `0x2640..0x278f` and `0x6640..0x678f`, `FUN_0042c3b0`).
@@ -3458,14 +3465,17 @@ pub(crate) mod tests {
                 "{resource_id}"
             );
         }
+        // The mission kind icons, keyed (A0 kinds/12): 3088 Diplomacy, 7190
+        // the Empire's Recruitment, 3330 and 7426 the ranges' ends.
         for resource_id in [
-            1_600, 1_935, 2_112, 2_715, 5_696, 6_031, 20_480, 21_569, 22_336, 22_527, 23_552,
-            23_568, 23_807,
+            1_600, 1_935, 2_112, 2_715, 3_072, 3_088, 3_330, 5_696, 6_031, 7_168, 7_190, 7_426,
+            20_480, 21_569, 22_336, 22_527, 23_552, 23_568, 23_807,
         ] {
             assert_eq!(alpha(DllSource::Gokres, resource_id), 0, "{resource_id}");
         }
         for resource_id in [
-            1_599, 1_936, 2_111, 2_716, 5_695, 6_032, 22_528, 23_551, 23_808,
+            1_599, 1_936, 2_111, 2_716, 3_071, 3_331, 5_695, 6_032, 7_167, 7_427, 22_528, 23_551,
+            23_808,
         ] {
             assert_eq!(alpha(DllSource::Gokres, resource_id), 255, "{resource_id}");
         }
@@ -3484,9 +3494,10 @@ pub(crate) mod tests {
             )
             .unwrap();
         // GOKRES 2112 was used here until the Status window's trace showed
-        // it is a character portrait blitted keyed (FUN_00443130); 3088 is
+        // it is a character portrait blitted keyed (FUN_00443130), and 3088
+        // until A0 showed the mission kind icons keyed (kinds/12); 2900 is
         // outside every keyed range.
-        let decoded = decode_color_image(&encoded, DllSource::Gokres, 3088).unwrap();
+        let decoded = decode_color_image(&encoded, DllSource::Gokres, 2900).unwrap();
 
         assert_eq!(decoded.pixels[0].a(), 255);
     }
