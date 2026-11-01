@@ -902,6 +902,21 @@ mod tests {
     }
 
     #[test]
+    fn the_menu_reports_each_rows_label_and_state_in_order() {
+        let selection = Some(MenuObject::Character(CharacterKey::default()));
+        let rows = object_menu_rows(selection, MISSION_GATE);
+        let menu = ObjectMenuState::new(selection, MISSION_GATE, (0, 0));
+        let states: Vec<_> = menu.row_states().collect();
+        assert_eq!(
+            states,
+            rows.iter()
+                .map(|row| (row.item.label, row.enabled))
+                .collect::<Vec<_>>()
+        );
+        assert!(states.iter().any(|&(_, on)| on) && states.iter().any(|&(_, on)| !on));
+    }
+
+    #[test]
     fn a_characters_menu_matches_the_manual_and_the_strategy_records() {
         // Manual p. 99 and Fig. 3.45; STRATEGY RT_RCDATA words 2 and 5;
         // FUN_004f2400 over FUN_00536bc0.
