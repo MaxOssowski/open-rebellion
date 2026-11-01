@@ -144,9 +144,14 @@ the menu. For a system window that is `FUN_004ac730`, which calls
 
 `FUN_00442860` builds a window for the menu and, recursively, one for
 each parent item's children (`FUN_004ab3a0` ties the child window to its
-parent item, `+0x3c`). `FUN_00442590` sets the item flags: a parent
-(flags 8) is always enabled; a child's bit 0 disables it and bit 1 checks
-it (`FUN_004ac5c0`).
+parent item, `+0x3c`). `FUN_00442590` sets the item flags: a child's bit 0 disables it and bit 1
+checks it (`FUN_004ac5c0`). Its recursion builds a related item with
+flags 8 (enabled) on one path and flags 4 (disabled) on the other. A0
+shows the parent grey, never lighting or opening its submenu, when no row
+is enabled: Planetary Bombardment on an enemy fleet
+(`status/05-fleet-menu.png`) and on the player's fleet icon at its own
+system (`menus/08-fleet-icon-menu.png`, `09-parent-hover.png`). hyp: a
+parent is enabled when one of its rows is (2026-11-01).
 
 `FUN_004ab3a0` places a child window of width `w` and height `h` beside
 its parent window (x, y, width, height) for the parent row (top, bottom):

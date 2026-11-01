@@ -7318,9 +7318,10 @@
             "ghidra/notes/object-popup-menu.md",
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/"
           ],
-          "note": "Fleet menu (Move, Confirmed Move, Bombardment, Assault, Rename, Encyclopedia, Status, Scrap) drives fleet-window.mjs on Arch Chromium; A0 05-fleet-menu.png shows an enemy fleet's menu. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
+          "note": "Fleet menu (Move, Confirmed Move, Bombardment, Assault, Rename, Encyclopedia, Status, Scrap) drives fleet-window.mjs on Arch Chromium; A0 05-fleet-menu.png shows an enemy fleet's menu. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7440,9 +7441,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/"
           ],
-          "note": "Planetary Bombardment submenu (FUN_004ab3a0 child window) passes fleet-window.mjs 'bombardment' on Arch Chromium 153; A0 05-fleet-menu.png shows the item, uncompared.",
+          "note": "Planetary Bombardment submenu (FUN_004ab3a0 child window) passes fleet-window.mjs 'bombardment' on Arch Chromium 153; A0 05-fleet-menu.png shows the item, uncompared. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7530,9 +7532,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/",
             "ghidra/notes/object-popup-menu.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/"
           ],
-          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting).",
+          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting). 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

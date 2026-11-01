@@ -481,7 +481,8 @@ impl ObjectMenuRow {
 /// - Encyclopedia is enabled for a single selection.
 /// - Status is enabled for any single selection that is not a system
 ///   (`FUN_0051d990`, `ghidra/notes/status-window.md`).
-/// - Command, a submenu parent, is enabled (`FUN_00442590`); its rows are
+/// - Planetary Bombardment and Command, submenu parents, are enabled when
+///   one of their rows is (hyp, from A0); the rows are
 ///   [`object_submenu_rows`].
 /// - A character's Move and Confirmed Move are enabled when
 ///   `gates.character_move` says so; a character's or a special force's
@@ -574,8 +575,15 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (character && gates.character_move)
                         || (special_force && gates.special_force_move)
                 }
-                // FUN_00442590: a submenu parent (flags 8) is enabled.
-                ObjectMenuCommand::Bombardment | ObjectMenuCommand::Command => true,
+                // hyp: a submenu parent is enabled when one of its
+                // children is. A0 shows Planetary Bombardment grey, its
+                // submenu never opening, on an enemy fleet
+                // (status/05-fleet-menu.png) and on the player's fleet
+                // icon at its own system (menus/08-fleet-icon-menu.png),
+                // where no target is enabled; FUN_004aba60 greys a row
+                // whose +0x58 is clear.
+                ObjectMenuCommand::Bombardment => gates.bombard.contains(&true),
+                ObjectMenuCommand::Command => gates.command.contains(&true),
                 ObjectMenuCommand::Assault => gates.assault,
                 ObjectMenuCommand::Abort => gates.abort,
                 ObjectMenuCommand::Retire => {
@@ -1040,11 +1048,9 @@ mod tests {
             ["Planetary Bombardment"]
         );
         // A fleet is no mission member, so Mission's gate never reaches it.
-        // The bombardment parent is enabled (FUN_00442590 flags 8).
-        assert_eq!(
-            enabled(&rows),
-            ["Planetary Bombardment", "Encyclopedia", "Status"]
-        );
+        // No bombardment target is enabled, so neither is their parent
+        // (A0 status/05-fleet-menu.png).
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
     }
 
     #[test]
@@ -1073,24 +1079,18 @@ mod tests {
         };
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
-            [
-                "Move",
-                "Confirmed Move",
-                "Planetary Bombardment",
-                "Encyclopedia",
-                "Status"
-            ]
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
         );
         assert_eq!(
             enabled(&object_menu_rows(fleet, OrderGates::default())),
-            ["Planetary Bombardment", "Encyclopedia", "Status"]
+            ["Encyclopedia", "Status"]
         );
-        // A character's Move follows its own gate; Command is a submenu
-        // parent, enabled (FUN_00442590).
+        // A character's Move follows its own gate; Command, a submenu
+        // parent, follows its rows (none enabled here).
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
-            ["Command", "Encyclopedia", "Status"]
+            ["Encyclopedia", "Status"]
         );
     }
 
@@ -1106,7 +1106,7 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
-            ["Move", "Confirmed Move", "Command", "Encyclopedia", "Status"]
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
         );
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
         assert!(!enabled(&object_menu_rows(unit, gates)).contains(&"Move"));
@@ -1145,7 +1145,7 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, gates)),
-            ["Command", "Encyclopedia", "Status", "Retire"]
+            ["Encyclopedia", "Status", "Retire"]
         );
         let unit = Some(MenuObject::SpecialForce(SpecialForceKey::default()));
         assert!(enabled(&object_menu_rows(unit, gates)).contains(&"Retire"));
@@ -1299,12 +1299,11 @@ mod tests {
         // Status only when that object is not a system (0x90..0x97). An
         // icon's selection is its system (item +0x68, FUN_004f5b10).
         for quadrant in Quadrant::ALL {
-            // The fleet icon's bombardment parent is enabled (flags 8).
-            let parent = (quadrant == Quadrant::Fleets).then_some("Planetary Bombardment");
-            let expected: Vec<&str> = parent.into_iter().chain(["Encyclopedia"]).collect();
+            // With no target enabled the fleet icon's bombardment parent is
+            // disabled too (A0 menus/08-fleet-icon-menu.png).
             assert_eq!(
                 enabled(&object_menu_rows(icon(quadrant), OrderGates::default())),
-                expected,
+                ["Encyclopedia"],
                 "{quadrant:?}"
             );
         }
@@ -1336,12 +1335,7 @@ mod tests {
         };
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Fleets), every_gate)),
-            [
-                "Move",
-                "Confirmed Move",
-                "Planetary Bombardment",
-                "Encyclopedia"
-            ]
+            ["Move", "Confirmed Move", "Encyclopedia"]
         );
         for quadrant in [Quadrant::System, Quadrant::Defenses, Quadrant::Missions] {
             assert_eq!(
@@ -1405,7 +1399,7 @@ mod tests {
         let fleet = Some(MenuObject::Fleet(FleetKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(fleet, gates)),
-            ["Planetary Bombardment", "Encyclopedia", "Status"]
+            ["Encyclopedia", "Status"]
         );
     }
 
@@ -1457,7 +1451,7 @@ mod tests {
                 Some(MenuObject::Fleet(FleetKey::default())),
                 gates
             )),
-            ["Planetary Bombardment", "Encyclopedia", "Status"]
+            ["Encyclopedia", "Status"]
         );
     }
 
@@ -1490,11 +1484,11 @@ mod tests {
         let character = Some(MenuObject::Character(CharacterKey::default()));
         assert_eq!(
             enabled(&object_menu_rows(character, MISSION_GATE)),
-            ["Mission", "Command", "Encyclopedia", "Status"]
+            ["Mission", "Encyclopedia", "Status"]
         );
         assert_eq!(
             enabled(&object_menu_rows(character, OrderGates::default())),
-            ["Command", "Encyclopedia", "Status"]
+            ["Encyclopedia", "Status"]
         );
     }
 
@@ -1677,11 +1671,47 @@ mod tests {
     }
 
     #[test]
+    fn a_submenu_parent_is_enabled_only_while_one_of_its_rows_is() {
+        // hyp from A0: Planetary Bombardment is grey with every target
+        // disabled (status/05-fleet-menu.png, menus/08-fleet-icon-menu.png)
+        // and white beside an enabled one; Command likewise.
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        let bombard = |index: usize| OrderGates {
+            bombard: std::array::from_fn(|at| at == index),
+            ..OrderGates::default()
+        };
+        for index in 0..4 {
+            assert!(
+                enabled(&object_menu_rows(fleet, bombard(index)))
+                    .contains(&"Planetary Bombardment"),
+                "{index}"
+            );
+        }
+        assert!(!enabled(&object_menu_rows(fleet, OrderGates::default()))
+            .contains(&"Planetary Bombardment"));
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        let command = |index: usize| OrderGates {
+            command: std::array::from_fn(|at| at == index),
+            ..OrderGates::default()
+        };
+        for index in 0..4 {
+            assert!(
+                enabled(&object_menu_rows(character, command(index))).contains(&"Command"),
+                "{index}"
+            );
+        }
+        assert!(!enabled(&object_menu_rows(character, OrderGates::default())).contains(&"Command"));
+    }
+
+    #[test]
     fn a_row_becomes_a_menu_entry_without_an_icon() {
         // The character records carry no icon (words 7 and 8 are zero).
         let rows = object_menu_rows(
             Some(MenuObject::Character(CharacterKey::default())),
-            MISSION_GATE,
+            OrderGates {
+                command: [true, false, false, false],
+                ..MISSION_GATE
+            },
         );
         let command = rows.iter().find(|row| row.item.label == "Command").unwrap();
         assert_eq!(
