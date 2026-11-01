@@ -52,3 +52,18 @@ cd2ba3d6c85e99533d0c584f332ca00685abdd5be9696e16182ac181e1da11b0  empire/constru
 8ff8519271c3f620e7353cad62937068d2625188b32a5cad2cc3f9c12a3b5260  empire/shipyards-page.png
 66ee77bcdded143f2480b4cbc8b434281cb7fcf46604030e2d5a5b19036f245f  empire/training-page.png
 ```
+
+## Open: Build Selection with the side over its maintenance
+
+In the same save the Empire's maintenance reads -402 (the Death Star
+retyped from a Star Destroyer, `2026-10-24-death-star-a0`). A0
+`11`, `12`: Build on the troops band (1:1) and on the facilities band
+(1:1) opens Build Selection with "n/a" in all four values and Confirm
+grey. The port computes the times from the yards alone and enables
+Confirm (`estimate`, "maintenance is shown, not charged"). Coruscant
+shows no uprising or blockade mark, so the yards are not suspended by
+`FUN_0050bbb0` (system `+0x88 & 0x24`); the refusal comes from the
+order's validation (`ManuMgr_vt1bc` -> `FUN_004f9860`, a status other
+than -1). Which check reads the side's maintenance
+(`SideMaintState - MaintCapacityAllocated`, `FUN_0051b1f0`) is not yet
+traced.
