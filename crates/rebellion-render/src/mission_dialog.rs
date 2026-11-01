@@ -62,8 +62,11 @@ const TARGET_NAME: (f32, f32, f32) = (37.0, 294.0, 185.0);
 /// `FUN_00607ea0`).
 const ITEM_TEXT: egui::Color32 = egui::Color32::from_rgb(0x78, 0x78, 0x78);
 const ITEM_TEXT_SELECTED: egui::Color32 = egui::Color32::WHITE;
-/// A mission kind's name color (item `+0x60`, `FUN_0046a9c0`).
-const KIND_TEXT: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
+/// A mission kind's name color in the box and its drop-down: the box's
+/// `+0x94`, white (`FUN_0060bed0`, set again by `FUN_0046a9c0`), which
+/// `FUN_0060c210` draws the shown item's name in. The item's own `+0x60`
+/// gray is not the one shown; A0 menus2/11-13 show the name white.
+const KIND_TEXT: egui::Color32 = egui::Color32::WHITE;
 
 /// The two tabs of control `0x96` (`FUN_0046c8a0`, page at `+0x118`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -935,7 +938,9 @@ pub fn draw_mission_dialog(
 }
 
 /// One mission kind item: the 130 by 65 GOKRES icon centered in the box, and
-/// its name. hyp: the name sits under the icon, centered.
+/// its name centered along the box's top edge, as A0 menus2/11-13 show it.
+/// port: placed from the captures; `FUN_0060c210`'s rectangle comes from
+/// the item's `+0x30`/`+0x34`, not traced.
 #[expect(
     clippy::too_many_arguments,
     reason = "Keep explicit painter, cache and geometry inputs at this drawing boundary."
@@ -950,7 +955,7 @@ fn paint_kind(
     scale: f32,
     font: &egui::FontId,
 ) {
-    let icon = paint_centered(
+    let _ = paint_centered(
         painter,
         ctx,
         cache,
@@ -959,13 +964,15 @@ fn paint_kind(
         bounds,
         scale,
     );
-    let top = icon.map_or(bounds.center().y, |rect| rect.max.y + 2.0 * scale);
-    painter.text(
-        egui::pos2(bounds.center().x, top),
-        egui::Align2::CENTER_TOP,
+    let _ = font;
+    crate::theme::paint_gdi_text(
+        painter,
+        bounds,
+        scale,
+        crate::DEFAULT_FONT,
         kind_name(kind),
-        font.clone(),
         KIND_TEXT,
+        (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
     );
 }
 
@@ -1701,6 +1708,54 @@ mod tests {
             member_layers(&world, MissionMember::Character(luke), 18_496),
             [backdrop, (DllSource::Strategy, 11_502)]
         );
+    }
+
+    #[test]
+    fn the_kind_name_is_white_along_the_box_top() {
+        // A0 menus2/11-13: the shown kind's name is white (the box's +0x94,
+        // FUN_0060bed0 and FUN_0046a9c0), centered along the box's top,
+        // with the icon centered below it.
+        let (world, _, mut state) = dialog_in_world(1);
+        let name = kind_name(state.dialog().unwrap().kind());
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let origin = dialog_rect(layout).min;
+        let (x, y, w, h) = KIND_BOX;
+        let bounds = egui::Rect::from_min_size(origin + egui::vec2(x, y), egui::vec2(w, h));
+        // paint_gdi_text lays one galley a character.
+        let mut glyphs: Vec<(egui::Pos2, String, egui::Color32)> = output
+            .unwrap()
+            .shapes
+            .into_iter()
+            .filter_map(|clipped| match clipped.shape {
+                egui::Shape::Text(text) if bounds.contains(text.pos) => Some((
+                    text.pos,
+                    text.galley.text().to_owned(),
+                    text.galley.job.sections[0].format.color,
+                )),
+                _ => None,
+            })
+            .collect();
+        glyphs.sort_by(|a, b| a.0.x.total_cmp(&b.0.x));
+        let text: String = glyphs.iter().map(|(_, ch, _)| ch.as_str()).collect();
+        assert_eq!(text, name);
+        assert!(glyphs.iter().all(|(_, _, color)| *color == egui::Color32::WHITE));
+        // One 16-pixel line (font 4's 13 + 3) from the box's top.
+        assert!(
+            glyphs
+                .iter()
+                .all(|(pos, _, _)| pos.y >= bounds.min.y && pos.y < bounds.min.y + 16.0),
+            "{glyphs:?}"
+        );
+        let left = glyphs[0].0.x - bounds.min.x;
+        assert!((left - (w - (glyphs.last().unwrap().0.x - glyphs[0].0.x)) / 2.0).abs() < 8.0);
     }
 
     #[test]

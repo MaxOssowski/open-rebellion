@@ -92,6 +92,27 @@ capture comes from the batch run of 2026-11-01 (Linux Chromium 155, run
 7a4617df01af5228af0fbb558de894dbf0f211f2160d5f1bd1fa91a6e24f155c  alliance-bombardment/bombardment-submenu.png
 ```
 
+## The mission kind's name
+
+A0 `11`-`13` draw the shown kind's name white, centered along the box's
+top, its capitals from y 103 to 112, over the icon centered in the box.
+The box's text color is its `+0x94`, white (`FUN_0060bed0`, set again by
+`FUN_0046a9c0`), which `FUN_0060c210` draws the shown item's name in; the
+item's `+0x60` gray is not the one shown. The port drew it gray, small and
+under the icon (a `hyp:`). It now draws it white in the default font 4
+(13 ppem, `paint_gdi_text`), centered from the box's top: the capitals of
+"Espionage" span y 103 to 112 as A0's "Recruitment" do.
+`the_kind_name_is_white_along_the_box_top` fails without either part.
+`mission-dialog.mjs` passes on Linux Chromium 155 (run
+`mission-dialog-2026-11-01T10-16-58-353Z-147573`, test WASM `fe29f4ae5e377b14d1ce00a1533a9eec6df899a1190a2f0f049134fb2c6a852f`):
+
+```
+4c10372a95f08fd068d762624af1af63e57c4dcefa98f0ba88606de6be493ab9  alliance-targeting/opened-screen.png
+```
+
+Still open on the dialog: A0's title "Create Mission" is bold and larger
+than the port's.
+
 ## Open
 
 - Which list item an arrow from Fleet takes in the port's galaxy differs

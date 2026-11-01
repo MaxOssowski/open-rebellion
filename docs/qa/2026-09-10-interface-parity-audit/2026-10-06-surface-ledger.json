@@ -6562,9 +6562,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists.",
+          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. Open: A0's title is bold and larger.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6693,9 +6694,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-recruitment-planner/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-recruitment-planner/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Recruitment is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind.",
+          "note": "Recruitment is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind. 2026-11-01: A0 menus2/11-13 show Recruitment offered for a release on the team's own system (Vjun), its name white along the box's top over the icon; the port draws the name so since 2026-11-01.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6768,9 +6770,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-native-mission-targets/",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Legal targets (FUN_005422f0 MISSNSD records) are offered and dispatched in the Arch Chromium 153 targeting runs and natively via cua-driver; no A0 comparison.",
+          "note": "Legal targets (FUN_005422f0 MISSNSD records) are offered and dispatched in the Arch Chromium 153 targeting runs and natively via cua-driver; no A0 comparison. 2026-11-01: A0 menus2/11, 12: a release on the team's own cell or on its own planet in the sector window opens the dialog at that system.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6842,9 +6845,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "With no MISSNSD record FUN_0042a320 hands the order back and no dialog opens; checked by the 'nodialog' browser mode (Chromium 153). No A0 capture of this state.",
+          "note": "With no MISSNSD record FUN_0042a320 hands the order back and no dialog opens; checked by the 'nodialog' browser mode (Chromium 153). No A0 capture of this state. 2026-11-01: A0 menus2/08, 09: Mon Mothma's and Garm Bel Iblis's Mission released on neutral Adega and Basilisk opened no dialog, the order handed back as FUN_0042a320 does with no legal kind.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -7425,7 +7429,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Mission item (0x240) opens the targeting cursor and the dialog in Linux browser runs; missions icon offers Abort. No A0 capture of the menu. 2026-11-01: A0 captures (menus2/06-15): the character's Mission row, the targeting cursor, Create Mission from a release on the team's own cell or planet, and the mission icon's menu Encyclopedia, Status (grey), Abort, which the port's rows match (each_sector_icons_menu_lists_its_kinds_orders). Open: the port's dialog and cursor not yet compared to these captures in the browser.",
+          "note": "Mission item (0x240) opens the targeting cursor and the dialog in Linux browser runs; missions icon offers Abort. No A0 capture of the menu. 2026-11-01: A0 captures (menus2/06-15): the character's Mission row, the targeting cursor, Create Mission from a release on the team's own cell or planet, and the mission icon's menu Encyclopedia, Status (grey), Abort, which the port's rows match (each_sector_icons_menu_lists_its_kinds_orders). Open: the port's dialog and cursor not yet compared to these captures in the browser. 2026-11-01: the kind box's name now matches A0 menus2/11-13 (white, top, font 4).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
