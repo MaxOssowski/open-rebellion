@@ -6558,27 +6558,29 @@
         {
           "id": "OBJ-11-C001",
           "requirement": "Main tab",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. 2026-11-01: the title, \"Target\" and the target's name are now font 5 (bold 13 ppem) as FUN_0046a9c0 sets; the title's ink is within a pixel of A0's. 2026-11-01: the static chrome now matches A0 to the pixel (title strip 255x16, keyed close box and tabs).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01: the Mission page's chrome matches menus2/11 to the pixel (0 of 47,985, text and art masked); the kind's name is white along the box's top and the title, Target and target name in font 5, as A0. Earlier: Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. 2026-11-01: the title, \"Target\" and the target's name are now font 5 (bold 13 ppem) as FUN_0046a9c0 sets; the title's ink is within a pixel of A0's. 2026-11-01: the static chrome now matches A0 to the pixel (title strip 255x16, keyed close box and tabs).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C002",
           "requirement": "Decoy tab",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Agents page (tab 0x98) with agent/decoy lists (11121..11124) is checked by mission-dialog.mjs; the ledger's 'Decoy tab' is this page. No A0 capture of this state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/54): the Agents page matches but 11 of 44,237 pixels (small hue steps at the tab and frame edges) after the move arrows were keyed; mission-dialog.mjs agents passes on Linux Chromium for both sides. Earlier: Agents page (tab 0x98) with agent/decoy lists (11121..11124) is checked by mission-dialog.mjs; the ledger's 'Decoy tab' is this page. No A0 capture of this state.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C003",
@@ -6764,92 +6766,99 @@
         {
           "id": "OBJ-11-C018",
           "requirement": "legal target",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-native-mission-targets/",
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Legal targets (FUN_005422f0 MISSNSD records) are offered and dispatched in the Arch Chromium 153 targeting runs and natively via cua-driver; no A0 comparison. 2026-11-01: A0 menus2/11, 12: a release on the team's own cell or on its own planet in the sector window opens the dialog at that system.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/11, 12; menus3/53): a release on the team's own cell or planet opens the dialog at that system, as the port's targeting run does. Earlier: Legal targets (FUN_005422f0 MISSNSD records) are offered and dispatched in the Arch Chromium 153 targeting runs and natively via cua-driver; no A0 comparison. 2026-11-01: A0 menus2/11, 12: a release on the team's own cell or on its own planet in the sector window opens the dialog at that system.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C019",
           "requirement": "illegal target",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-refusal-reactions/",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "An illegal target opens no dialog (ship-and-fleet-targets 'nodialog' mode) and a refused order plays the advisor reaction (FUN_00487c90); browser run on Chromium 153, no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/09): a release where no kind is legal opens nothing; the port's nodialog runs do the same. Earlier: An illegal target opens no dialog (ship-and-fleet-targets 'nodialog' mode) and a refused order plays the advisor reaction (FUN_00487c90); browser run on Chromium 153, no A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C020",
           "requirement": "agent",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Agents list (FUN_0042c3b0 minis) checked masked in mission-dialog.mjs on Arch Chromium; No A0 capture of this state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/54, 55): the team is listed as agents and a click selects one; the port lists and selects the same (mission-dialog.mjs agents, unit tests). Earlier: Agents list (FUN_0042c3b0 minis) checked masked in mission-dialog.mjs on Arch Chromium; No A0 capture of this state.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C021",
           "requirement": "decoy",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-refusal-reactions/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-refusal-reactions/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Decoys list and To Decoys/To Agents arrows (11117..11120) checked in mission-dialog.mjs; decoys-without-target refusal ported. No A0 capture of this state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/56): the To Decoys arrow moves the selected agent to the decoys and clears the selection, as the port's unit tests check; the arrows are keyed as A0 draws them. Earlier: Decoys list and To Decoys/To Agents arrows (11117..11120) checked in mission-dialog.mjs; decoys-without-target refusal ported. No A0 capture of this state.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C022",
           "requirement": "accept",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Begin Mission dispatches the mission in the Linux targeting runs; chrome of the button compared exactly to STRATEGY, not to A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/59, 60): accepting with an agent starts the mission and the agent leaves the Personnel list; accepting with decoys only closes the dialog with no mission (57, 58), as the port's EmptyTeam refusal. Earlier: Begin Mission dispatches the mission in the Linux targeting runs; chrome of the button compared exactly to STRATEGY, not to A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C023",
           "requirement": "cancel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/mission-dialog.mjs",
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "Cancel button (10596) chrome is compared in mission-dialog.mjs; no browser case asserts Cancel's behaviour and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/61, 62): Cancel closes the dialog and starts nothing; mission-dialog.mjs targeting now clicks Cancel and checks the dialog closed with no mission on Linux Chromium for both sides. Earlier: Cancel button (10596) chrome is compared in mission-dialog.mjs; no browser case asserts Cancel's behaviour and no A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C024",
           "requirement": "no eligible target",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/",
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-mission-dialog-a0/"
           ],
-          "note": "With no MISSNSD record FUN_0042a320 hands the order back and no dialog opens; checked by the 'nodialog' browser mode (Chromium 153). No A0 capture of this state. 2026-11-01: A0 menus2/08, 09: Mon Mothma's and Garm Bel Iblis's Mission released on neutral Adega and Basilisk opened no dialog, the order handed back as FUN_0042a320 does with no legal kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/09): with no legal kind the order is handed back and no dialog opens, as the port does. Earlier: With no MISSNSD record FUN_0042a320 hands the order back and no dialog opens; checked by the 'nodialog' browser mode (Chromium 153). No A0 capture of this state. 2026-11-01: A0 menus2/08, 09: Mon Mothma's and Garm Bel Iblis's Mission released on neutral Adega and Basilisk opened no dialog, the order handed back as FUN_0042a320 does with no legal kind.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },

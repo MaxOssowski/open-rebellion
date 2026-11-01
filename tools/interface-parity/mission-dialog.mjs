@@ -327,8 +327,9 @@ function composeExpected(source, faction, page) {
   } else {
     blitClipped(expected, resource(source, faction.headers[0], 108, 27), 8, 65);
     blitClipped(expected, resource(source, faction.headers[1], 108, 27), 136, 65);
-    blitClipped(expected, resource(source, 11117, 16, 16), 120, 136);
-    blitClipped(expected, resource(source, 11119, 16, 16), 120, 221);
+    // The move arrows are CoolStrobeButtons too (A0 menus3/54).
+    blitClipped(expected, resource(source, 11117, 16, 16), 120, 136, 16, 16, true);
+    blitClipped(expected, resource(source, 11119, 16, 16), 120, 221, 16, 16, true);
   }
   for (const button of bottomButtons) {
     blitClipped(expected, resource(source, button.id, ...button.native), button.x, button.y, button.width, button.height, true);
@@ -470,7 +471,22 @@ async function inspect(server, source, faction, scenario, executable) {
       comparisons.push(compare(switched, composeExpected(source, faction, "agents"), "agents", "agents-tab-clicked", directory));
     }
 
-    if (targeting) comparisons.push(targeting.cursorCheck);
+    let cancelled = null;
+    if (targeting) {
+      comparisons.push(targeting.cursorCheck);
+      // Cancel (0x15, the right bottom button at (170, 320)) closes the
+      // dialog and starts nothing (FUN_0046c3c0; A0 menus3/61, 62).
+      await page.mouse.move(origin.x + 170 + 32, origin.y + 320 + 16);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.up();
+      await frames(page);
+      await page.waitForFunction(() => window.__openRebellionInterfaceMissionFlow?.dialog_open === false,
+        null, { timeout: 10_000 });
+      cancelled = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+      assert.deepEqual(cancelled.missions, [], JSON.stringify(cancelled));
+    }
     assert.ok(comparisons.every(({ different_pixels: differentPixels }) => differentPixels === 0),
       JSON.stringify(comparisons.filter(({ different_pixels: differentPixels }) => differentPixels !== 0)));
     assert.deepEqual(requests.map(({ url }) => url).sort(), [...expectedRequests].sort());
@@ -482,7 +498,7 @@ async function inspect(server, source, faction, scenario, executable) {
       scenario: scenario.name,
       fixture_code: fixtureCode,
       ready,
-      ...(targeting ? { object_menu: targeting.menu, target_pointer: targeting.pointer } : {}),
+      ...(targeting ? { object_menu: targeting.menu, target_pointer: targeting.pointer, cancelled } : {}),
       comparisons,
       requests,
       errors,

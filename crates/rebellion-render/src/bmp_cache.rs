@@ -2102,7 +2102,8 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     // The windows' close box 10108/10109 and the mission dialog's tabs
     // 11103..11110, CoolStrobeButtons (FUN_00602d30): A0 menus2/11 shows
     // the red title bar at the close box's bottom-left pixel (its green
-    // key) and the panel's white at each tab's (its magenta key).
+    // key) and the panel's white at each tab's (its magenta key); menus3/54
+    // the starfield around the move arrows 11117..11120.
     // A destroyed system's asteroid field 10240, loaded keyed
     // (`FUN_0060bd20` → `FUN_005fbd20(.., 0x2800, 2)`, as the marks
     // 0x388..0x38a are): A0 menus3/05 shows the sector window's background
@@ -2120,6 +2121,7 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 10_606..=10_607
                 | 10_610..=10_613
                 | 11_103..=11_110
+                | 11_117..=11_120
         )
 }
 
@@ -3142,13 +3144,13 @@ pub(crate) mod tests {
         // it keyed; A0 menus3/05).
         for keyed in [
             10108, 10109, 10117, 10118, 10128, 10129, 10240, 10592, 10594, 10597, 10606, 10607,
-            10610, 10613, 11103, 11110,
+            10610, 10613, 11103, 11110, 11117, 11120,
         ] {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
         for opaque in [
             10107, 10110, 10116, 10119, 10127, 10130, 10239, 10241, 10591, 10598, 10605, 10608,
-            10609, 10614, 10800, 11102, 11111,
+            10609, 10614, 10800, 11102, 11111, 11116, 11121,
         ] {
             assert_eq!(alpha(opaque), [255, 255], "{opaque}");
         }
