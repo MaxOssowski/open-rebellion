@@ -7446,7 +7446,7 @@
         {
           "id": "OBJ-14-C011",
           "requirement": "bombard",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
@@ -7454,8 +7454,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-own-system-bombardment-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Planetary Bombardment submenu (FUN_004ab3a0 child window) passes fleet-window.mjs 'bombardment' on Arch Chromium 153; A0 05-fleet-menu.png shows the item, uncompared. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: new A0 capture of the player's own fleet menu (a0-vm/menus/12) matches the port row for row except Scrap (fleet scrap not ported); bombardment over one's own system is enabled and carried out in A0 (menus/13, 15), and the port's port: rule refusing it is removed. 2026-11-01: A0 menus2/02 shows the bombardment submenu over the player's own system on the parent's left, three pixels above the row, Destroy System grey, as submenu_origin (FUN_004ab3a0) places it. Open: the browser case's submenu frame against this capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/02): the Planetary Bombardment submenu and its parent measure 149 by 82 and 172 by 142 pixels in both, the submenu's right edge two pixels right of the parent's left edge and its top 39 pixels below the parent's top, the same four rows with Destroy System grey and the highlighted parent's text red; fleet-window.mjs bombardment opens it and carries out General Bombardment on Linux Chromium for both sides. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: Planetary Bombardment submenu (FUN_004ab3a0 child window) passes fleet-window.mjs 'bombardment' on Arch Chromium 153; A0 05-fleet-menu.png shows the item, uncompared. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: new A0 capture of the player's own fleet menu (a0-vm/menus/12) matches the port row for row except Scrap (fleet scrap not ported); bombardment over one's own system is enabled and carried out in A0 (menus/13, 15), and the port's port: rule refusing it is removed. 2026-11-01: A0 menus2/02 shows the bombardment submenu over the player's own system on the parent's left, three pixels above the row, Destroy System grey, as submenu_origin (FUN_004ab3a0) places it. Open: the browser case's submenu frame against this capture.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-14-C012",
@@ -7539,7 +7539,7 @@
         {
           "id": "OBJ-14-C018",
           "requirement": "nested submenu",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
@@ -7549,8 +7549,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting). 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: A0 menus2/02: the submenu opens left of its parent; the highlighted parent's text is red.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/02): the Planetary Bombardment submenu and its parent measure 149 by 82 and 172 by 142 pixels in both, the submenu's right edge two pixels right of the parent's left edge and its top 39 pixels below the parent's top, the same four rows with Destroy System grey and the highlighted parent's text red; fleet-window.mjs bombardment opens it and carries out General Bombardment on Linux Chromium for both sides. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting). 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: A0 menus2/02: the submenu opens left of its parent; the highlighted parent's text is red.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-14-C019",

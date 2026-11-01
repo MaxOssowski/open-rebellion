@@ -72,6 +72,26 @@ Mutants: `encyclopedia.rs` 19 caught, 1 unviable, 1 missed:
 equal name, which no evidence settles. `encyclopedia_topics.rs` 1
 caught, 4 unviable.
 
+## The bombardment submenu's frame
+
+Measured on the frames' (192, 192, 192) borders:
+
+| | parent | submenu |
+|---|---|---|
+| A0 `02` | (266, 136)-(437, 277), 172 by 142 | (120, 175)-(268, 256), 149 by 82 |
+| port `fleet-window.mjs bombardment` | (347, 75)-(518, 216), 172 by 142 | (201, 114)-(349, 195), 149 by 82 |
+
+In both the submenu's right edge is two pixels right of the parent's
+left edge and its top 39 pixels below the parent's top (the row's top
+less three, `submenu_origin`), the rows are the same four with Destroy
+System grey, and the highlighted parent's text is red. The port's
+capture comes from the batch run of 2026-11-01 (Linux Chromium 155, run
+`fleet-window-2026-11-01T09-00-15-435Z-22304`):
+
+```
+7a4617df01af5228af0fbb558de894dbf0f211f2160d5f1bd1fa91a6e24f155c  alliance-bombardment/bombardment-submenu.png
+```
+
 ## Open
 
 - Which list item an arrow from Fleet takes in the port's galaxy differs
