@@ -659,8 +659,6 @@ pub fn draw_mission_dialog(
                 MissionDialogPage::Mission => egui::Color32::BLACK,
                 MissionDialogPage::Agents => egui::Color32::WHITE,
             };
-            let font = egui::FontId::proportional((11.0 * scale).max(7.0));
-            let small = egui::FontId::proportional((8.0 * scale).max(5.0));
             crate::theme::paint_gdi_text(
                 &painter,
                 at(5.0, 2.0, 240.0, 16.0),
@@ -721,7 +719,6 @@ pub fn draw_mission_dialog(
                         dialog.faction,
                         at(x, y, w, h),
                         scale,
-                        &small,
                     );
                     // An object target shows its name; port: its portrait
                     // (FUN_0042c3b0(.., 1, 1)) is not drawn.
@@ -817,7 +814,7 @@ pub fn draw_mission_dialog(
                             list,
                             scale,
                             to_decoys,
-                            &small,
+                            &egui::FontId::proportional((8.0 * scale).max(5.0)),
                         );
                         if let Some(member) = result.clicked {
                             dialog.toggle(member);
@@ -930,7 +927,6 @@ pub fn draw_mission_dialog(
                     dialog.faction,
                     item,
                     scale,
-                    &small,
                 );
                 // hyp: choosing an item closes the list, as a click outside
                 // does (command 0x3e9 -> FUN_0060cbf0).
@@ -965,7 +961,6 @@ fn paint_kind(
     faction: MissionFaction,
     bounds: egui::Rect,
     scale: f32,
-    font: &egui::FontId,
 ) {
     let _ = paint_centered(
         painter,
@@ -976,7 +971,6 @@ fn paint_kind(
         bounds,
         scale,
     );
-    let _ = font;
     crate::theme::paint_gdi_text(
         painter,
         bounds,
