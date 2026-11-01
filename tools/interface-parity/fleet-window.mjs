@@ -37,6 +37,12 @@ const PRODUCTION_DELIVERY = 75;
 const UPRISING_INCIDENT = 76;
 const BLOCKADE_ARRIVAL = 77;
 const SUPPORT_FLIP = 78;
+const FLEET_WINDOW_A0 = 80;
+// `--a0-menus=DIR` (.artifacts/a0-vm/menus) compares the a0-kimanan case's
+// window with A0 23-fleet1-{ships,fighters,troops,personnel}.png.
+// It defaults to the local captures when they are present.
+const a0MenusDir = process.argv.find((arg) => arg.startsWith("--a0-menus="))?.slice(11)
+  ?? [path.join(root, ".artifacts/a0-vm/menus")].find((dir) => fs.existsSync(path.join(dir, "23-fleet1-ships.png")));
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -253,7 +259,7 @@ function composeExpected(source, faction, state) {
     blit(expected, picture, left, 42, { keyed: true });
     const base = 10409 + faction.art;
     [1, 33, 65, 97].forEach((x, k) => {
-      const id = !state.enabled[k] ? base + 3 + k : k === state.tab ? base + 7 + k : base + k;
+      const id = k === state.tab ? base + 7 + k : !state.enabled[k] ? base + 3 + k : base + k;
       blit(expected, resource(source, id), 99 + x, 96, { width: 31, height: 28 });
     });
   }
@@ -1314,6 +1320,47 @@ const cases = [
     },
   },
   {
+    name: "a0-kimanan",
+    code: FLEET_WINDOW_A0,
+    factions: ["alliance"],
+    standalone: true,
+    // A0's Alliance Fleet window over Kimanan (menus/23-fleet1-*.png,
+    // day 318): Fleet 1 selected, each tab in turn. With --a0-menus the
+    // window's 235 by 304 pixels are compared with A0's at (305, 86).
+    async run(page, faction, setup, directory) {
+      const origin = { x: 305, y: 86 };
+      const tabs = ["ships", "fighters", "troops", "personnel"];
+      const checks = {};
+      for (const [index, tab] of tabs.entries()) {
+        // TAB_STRIP (99, 96) + TAB_X, 31 by 28 (fleet_window.rs).
+        await click(page, { x: origin.x + 99 + [1, 33, 65, 97][index] + 15, y: origin.y + 96 + 14 });
+        const port = await stableWindow(page, origin, directory, `a0-kimanan-${tab}`);
+        fs.writeFileSync(path.join(directory, `a0-kimanan-${tab}.png`), PNG.sync.write(port));
+        if (!a0MenusDir) continue;
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(a0MenusDir, `23-fleet1-${tab}.png`)));
+        const diff = new PNG({ width: windowSize.width, height: windowSize.height });
+        let differing = 0;
+        for (let y = 0; y < windowSize.height; y += 1) {
+          for (let x = 0; x < windowSize.width; x += 1) {
+            const p = (y * windowSize.width + x) * 4;
+            const q = ((origin.y + y) * a0.width + origin.x + x) * 4;
+            const same = [0, 1, 2].every((k) => port.data[p + k] === a0.data[q + k]);
+            if (!same) differing += 1;
+            diff.data.set(same ? [0, 0, 0, 255] : [255, 0, 255, 255], p);
+          }
+        }
+        fs.writeFileSync(path.join(directory, `a0-kimanan-${tab}-diff.png`), PNG.sync.write(diff));
+        checks[tab] = { differing, total: windowSize.width * windowSize.height };
+        // What differs (2026-11-01): the GDI text's hinting (title, fleet
+        // names, counters, item names), A0's cursor over the clicked tab,
+        // and A0's 10424 overlay on Fleet 4's entry (19 pixels).
+        const ceiling = { ships: 2200, fighters: 1200, troops: 2600, personnel: 1100 }[tab];
+        assert.ok(differing <= ceiling, `the ${tab} tab differs from A0 in ${differing} pixels (> ${ceiling})`);
+      }
+      return checks;
+    },
+  },
+  {
     name: "join-fleet",
     code: FLEET_JOIN,
     // A fleet's Move released on another fleet's entry: its ships join that
@@ -1614,17 +1661,21 @@ async function inspect(server, source, faction, testCase, executable) {
     const ready = await page.evaluate(() => window.__openRebellionInterfaceReady);
     assert.equal(ready.status, "ready", JSON.stringify(ready));
     assert.equal(ready.code, fixtureCode);
-    await page.waitForFunction(() => window.__openRebellionInterfaceFleetLoadSetup
-      && (window.__openRebellionInterfaceFleetLoads || []).length > 0, null, { timeout: 10_000 });
-    const setup = await page.evaluate(() => window.__openRebellionInterfaceFleetLoadSetup);
-    assert.equal(setup.code, fixtureCode);
-    assert.ok(setup.capacity > 0, "the fleet carries regiments");
-    const start = await latest(page);
-    assert.equal(start.window_open, false, JSON.stringify(start));
-    // The refused variant's regiment starts aboard (interface_test_fixture.rs).
-    const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED;
-    assert.equal(start.aboard, startsAboard, JSON.stringify(start));
-    assert.equal(start.troop_system_dat_id, startsAboard ? null : setup.primary_dat_id, JSON.stringify(start));
+    let setup = null;
+    // A standalone case opens its own window and reports no fleet load.
+    if (!testCase.standalone) {
+      await page.waitForFunction(() => window.__openRebellionInterfaceFleetLoadSetup
+        && (window.__openRebellionInterfaceFleetLoads || []).length > 0, null, { timeout: 10_000 });
+      setup = await page.evaluate(() => window.__openRebellionInterfaceFleetLoadSetup);
+      assert.equal(setup.code, fixtureCode);
+      assert.ok(setup.capacity > 0, "the fleet carries regiments");
+      const start = await latest(page);
+      assert.equal(start.window_open, false, JSON.stringify(start));
+      // The refused variant's regiment starts aboard (interface_test_fixture.rs).
+      const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED;
+      assert.equal(start.aboard, startsAboard, JSON.stringify(start));
+      assert.equal(start.troop_system_dat_id, startsAboard ? null : setup.primary_dat_id, JSON.stringify(start));
+    }
     await page.evaluate(() => document.fonts.ready);
     const { bytes: _ready, ...before } = await shot(page, directory, "ready");
 
@@ -1656,7 +1707,7 @@ async function inspect(server, source, faction, testCase, executable) {
       ready,
       setup,
       checks,
-      observations: await observations(page),
+      observations: testCase.standalone ? [] : await observations(page),
       screenshots: [before, after],
       requests,
       errors,
@@ -1719,6 +1770,7 @@ async function main() {
     for (const faction of factions) {
       for (const testCase of cases) {
         if (only.length && !only.includes(`${faction.name}/${testCase.name}`)) continue;
+        if (testCase.factions && !testCase.factions.includes(faction.name)) continue;
         results.push(await inspect(server, source, faction, testCase, executable));
       }
     }

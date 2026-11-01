@@ -85,6 +85,79 @@ fn fleet_entry_layers(side: u8, en_route: bool, damaged: bool) -> Vec<u32> {
     .collect()
 }
 
+/// `FUN_004a66a0`'s content flags of an object: 1 squadrons, 2 regiments
+/// and 4 personnel aboard (`FUN_005039d0`, `FUN_00504c40`,
+/// `FUN_00536da0` over the object's contents).
+const CONTENT_SQUADRONS: u8 = 1;
+const CONTENT_REGIMENTS: u8 = 2;
+/// The indicators `FUN_004a67a0` blits for those flags: STRATEGY 10404,
+/// 10405 and 10406 (`0x28a4`..`0x28a6`, +50 for side 2) at x 25, 41 and
+/// 57, and y 33 in the left list or 23 in the right.
+const CONTENT_INDICATORS: [(u8, u32, f32); 3] = [
+    (CONTENT_SQUADRONS, 10_404, 25.0),
+    (CONTENT_REGIMENTS, 10_405, 41.0),
+    (4, 10_406, 57.0),
+];
+
+/// Each capital ship's content flags, by index in `fleet`.
+///
+/// port: the port keeps a fleet's regiments and squadrons as the fleet's;
+/// hyp: they fill its live ships' capacities (`+0x270`, `+0x26c`) in fleet
+/// order, so A0's Fleet 1 shows its two regiments under Medium Transport 1
+/// (capacity 2) and none under Corellian Corvette 1 (capacity 0)
+/// (`.artifacts/a0-vm/menus/23-fleet1-ships.png`). Personnel are not
+/// placed on a ship (flag 4 untraced).
+fn ship_contents(world: &GameWorld, transport: &TroopTransportState, fleet: FleetKey) -> Vec<u8> {
+    let Some(value) = world.fleets.get(fleet) else {
+        return Vec::new();
+    };
+    let mut regiments = transport.carried_count(fleet);
+    let mut squadrons: usize = value.fighters.iter().map(|entry| entry.count as usize).sum();
+    value
+        .capital_ships
+        .iter()
+        .map(|ship| {
+            let Some(class) = world.capital_ship_classes.get(ship.class).filter(|_| ship.alive) else {
+                return 0;
+            };
+            let mut flags = 0;
+            for (left, capacity, flag) in [
+                (&mut regiments, class.troop_capacity, CONTENT_REGIMENTS),
+                (&mut squadrons, class.fighter_capacity, CONTENT_SQUADRONS),
+            ] {
+                let aboard = (*left).min(capacity as usize);
+                if aboard > 0 {
+                    *left -= aboard;
+                    flags |= flag;
+                }
+            }
+            flags
+        })
+        .collect()
+}
+
+/// Paint `flags`' content indicators into `item` at height `y`.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The painter, art cache, the item's place and the indicators' row."
+)]
+fn paint_contents(
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    item: egui::Rect,
+    scale: f32,
+    side: u8,
+    flags: u8,
+    y: f32,
+) {
+    for (flag, id, x) in CONTENT_INDICATORS {
+        if flags & flag != 0 {
+            paint_native(painter, ctx, cache, DllSource::Strategy, side_art(id, side), item, scale, x, y);
+        }
+    }
+}
+
 /// A fleet picture's layers bottom to top (`FUN_004a5c00`).
 fn fleet_picture_layers(side: u8, en_route: bool, damaged: bool) -> Vec<u32> {
     [
@@ -1218,6 +1291,8 @@ struct RightItem {
     kind: MiniObject,
     label: String,
     no_hyperdrive: bool,
+    /// The ship's content flags (`FUN_004a66a0`).
+    contents: u8,
     /// A damaged ship (`+0x50` bit `0x200`, `FUN_00501c00`).
     damaged: bool,
     /// A captive character (`+0xac` bit 0), marked over its mini.
@@ -1305,6 +1380,7 @@ fn right_items(
         return Vec::new();
     };
     let roster = fleet_join::roster(world, fleet).unwrap_or_default();
+    let contents = ship_contents(world, transport, fleet);
     match tab {
         FleetWindowTab::CapitalShips => value
             .capital_ships
@@ -1323,6 +1399,7 @@ fn right_items(
                     .unwrap_or(&class.name)
                     .to_owned(),
                 no_hyperdrive: class.hyperdrive == 0,
+                contents: contents.get(index).copied().unwrap_or(0),
                 damaged: crate::status_rows::damaged(ship, class),
                 captive: false,
                 object: Some(ItemObject::Ship {
@@ -1346,6 +1423,7 @@ fn right_items(
                     kind: MiniObject::Craft,
                     label: class.name.clone(),
                     no_hyperdrive: false,
+                contents: 0,
                     damaged: false,
                     captive: false,
                     object: Some(ItemObject::Fighter { fleet, index }),
@@ -1364,6 +1442,7 @@ fn right_items(
                 kind: MiniObject::Regiment(class),
                 label: label.to_owned(),
                 no_hyperdrive: false,
+                contents: 0,
                 damaged: false,
                 captive: false,
                 object: Some(ItemObject::Regiment(key)),
@@ -1378,6 +1457,7 @@ fn right_items(
                 kind: MiniObject::Character,
                 label: character.name.clone(),
                 no_hyperdrive: false,
+                contents: 0,
                 // FUN_004f7800: an injured character is damaged.
                 damaged: character.injury > 0,
                 captive: character.is_captive,
@@ -1392,6 +1472,7 @@ fn right_items(
                     kind: MiniObject::SpecialForce(unit.class_dat_id),
                     label: label.to_owned(),
                     no_hyperdrive: false,
+                contents: 0,
                     damaged: false,
                     captive: false,
                     object: Some(ItemObject::SpecialForce(key)),
@@ -1442,12 +1523,15 @@ fn picture_x(width: f32) -> f32 {
 
 /// Tab `k`'s bitmap from a strip's base: normal `b + k`, disabled
 /// `b + 3 + k`, selected `b + 7 + k` (`FUN_004a4b10`).
+/// A tab's art: the shown tab's selected art even while disabled (A0
+/// menus/23-fleet1-fighters: Fighters 10417 over a fleet with none aboard),
+/// else the disabled or the normal art.
 fn tab_resource(base: u32, tab: FleetWindowTab, selected: bool, enabled: bool) -> u32 {
     let k = tab.index();
-    if !enabled {
-        base + 3 + k
-    } else if selected {
+    if selected {
         base + 7 + k
+    } else if !enabled {
+        base + 3 + k
     } else {
         base + k
     }
@@ -1874,6 +1958,13 @@ fn draw_fleet_window(
                                 5.0,
                             );
                         }
+                        // hyp: the entry shows its ships' indicators, as
+                        // A0 menus/23 marks Fleet 1's regiments under its
+                        // frame at (41, 33) (FUN_004a3d40 draws the ships').
+                        let flags = ship_contents(world, transport, fleet)
+                            .into_iter()
+                            .fold(0, |all, flags| all | flags);
+                        paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
                         paint_dotted(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
                         if expanded {
                             paint_dotted(&list_painter, item, scale, (2.0, 6.0), (2.0, 50.0));
@@ -1943,6 +2034,11 @@ fn draw_fleet_window(
                                     );
                                 }
                             }
+                            let flags = ship_contents(world, transport, fleet)
+                                .get(index)
+                                .copied()
+                                .unwrap_or(0);
+                            paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
                             if class.hyperdrive == 0 {
                                 paint_native(
                                     &list_painter,
@@ -2144,20 +2240,17 @@ fn draw_fleet_window(
                         0.0,
                         0.0,
                     );
-                    let response = ui.interact(
-                        rect,
-                        ui.id().with((window.system, tab)),
-                        if enabled {
-                            egui::Sense::click()
-                        } else {
-                            egui::Sense::hover()
-                        },
-                    );
+                    let response =
+                        ui.interact(rect, ui.id().with((window.system, tab)), egui::Sense::click());
                     // A disabled tab (FUN_004a6980) shows no tip.
                     if enabled {
                         crate::win_tooltip::response_tool(&response, rect, tab.tooltip_string());
                     }
-                    if enabled && exact_clicked(&response, rect) {
+                    // A disabled tab (state 0x40) still takes the click:
+                    // A0 menus/23-fleet1-fighters and -personnel show the
+                    // empty Fighters and Personnel lists of a fleet with
+                    // neither aboard.
+                    if exact_clicked(&response, rect) {
                         result.tab = Some(tab);
                         result.focus = true;
                     }
@@ -2222,6 +2315,7 @@ fn draw_fleet_window(
                             );
                         }
                     }
+                    paint_contents(&right_painter, ctx, cache, cell, scale, side, item.contents, 23.0);
                     if item.no_hyperdrive {
                         paint_native(
                             &right_painter,
@@ -2821,6 +2915,7 @@ pub(crate) mod tests {
                 kind: MiniObject::Regiment(DatId::new(0x1000_0001)),
                 label: "Alliance Fleet Regiment".into(),
                 no_hyperdrive: false,
+                contents: 0,
                 damaged: false,
                 captive: false,
                 object: Some(ItemObject::Regiment(troop)),
@@ -3996,8 +4091,8 @@ pub(crate) mod tests {
 
     #[test]
     fn a_click_selects_a_fleet_then_a_lit_tab_and_the_close_button_closes_the_window() {
-        // FUN_004a4b10: the list selection fills the right pane; a disabled
-        // tab takes no click; control 0x277c closes.
+        // FUN_004a4b10: the list selection fills the right pane; control
+        // 0x277c closes.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
         let fleet = add_fleet(&mut world, system, true, 2);
         let troop = add_troop(&mut world, system);
@@ -4074,6 +4169,70 @@ pub(crate) mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn a_disabled_tab_takes_the_click_and_shows_its_empty_list_selected() {
+        // A0 menus/23-fleet1-fighters and -personnel: Fleet 1, with no
+        // squadron or character aboard, shows the clicked Fighters and
+        // Personnel tabs' empty lists, each button in its selected art
+        // (10417, 10419), the others normal (10409) or disabled.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        let tabs = |state: &mut FleetWindowState, x: f32| {
+            run(&world, &transport, state, CockpitFaction::Alliance, click(at(x, 110.0)));
+            state.selection(system).unwrap().1
+        };
+        run(&world, &transport, &mut state, CockpitFaction::Alliance, click(at(40.0, 50.0)));
+        assert_eq!(state.selection(system).unwrap().0, Some(FleetWindowEntry::Fleet(fleet)));
+        assert!(!tab_enabled(&world, &transport, Some(FleetWindowEntry::Fleet(fleet)), FleetWindowTab::Fighters));
+        assert_eq!(tabs(&mut state, 147.0), FleetWindowTab::Fighters);
+        let report = state
+            .report(&world, &rebellion_core::movement::MovementState::default(), &fog(system), &transport, system)
+            .unwrap();
+        assert!(report.items.is_empty(), "{:?}", report.items);
+        assert_eq!(report.counts, Some((0, 0)));
+        assert_eq!(tabs(&mut state, 211.0), FleetWindowTab::Personnel);
+        assert_eq!(tab_resource(10409, FleetWindowTab::Fighters, true, false), 10417);
+        assert_eq!(tab_resource(10409, FleetWindowTab::Personnel, true, false), 10419);
+        assert_eq!(tab_resource(10409, FleetWindowTab::Fighters, false, false), 10413);
+        assert_eq!(tab_resource(10409, FleetWindowTab::CapitalShips, false, true), 10409);
+    }
+
+    #[test]
+    fn a_ship_s_indicators_mark_the_regiments_it_holds_by_capacity_in_fleet_order() {
+        // A0 menus/23-fleet1-ships: Fleet 1's two regiments mark Medium
+        // Transport 1 (CAPSHPSD troop capacity 2) with 10405, not
+        // Corellian Corvette 1 (capacity 0) (FUN_004a66a0 flag 2,
+        // FUN_004a67a0).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 3);
+        let ship = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.extend([ship.clone(), ship]);
+        let capacities = [0, 2, 2];
+        for (index, capacity) in capacities.into_iter().enumerate() {
+            let mut class = world.capital_ship_classes[world.fleets[fleet].capital_ships[index].class].clone();
+            class.troop_capacity = capacity;
+            class.fighter_capacity = 0;
+            let key = world.capital_ship_classes.insert(class);
+            world.fleets[fleet].capital_ships[index].class = key;
+        }
+        let mut transport = TroopTransportState::default();
+        assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, 0]);
+        let troops: Vec<_> = (0..3).map(|_| add_troop(&mut world, system)).collect();
+        transport.embark(&mut world, fleet, &troops[..2]).unwrap();
+        // Two fill the second ship and leave none for the third.
+        assert_eq!(ship_contents(&world, &transport, fleet), [0, CONTENT_REGIMENTS, 0]);
+        transport.embark(&mut world, fleet, &troops[2..]).unwrap();
+        // The third goes to the third.
+        assert_eq!(
+            ship_contents(&world, &transport, fleet),
+            [0, CONTENT_REGIMENTS, CONTENT_REGIMENTS]
+        );
+        world.fleets[fleet].capital_ships[1].alive = false;
+        assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, CONTENT_REGIMENTS]);
     }
 
     #[test]
@@ -4346,6 +4505,37 @@ pub(crate) mod tests {
             !painted.iter().any(|(id, _)| *id == 10302),
             "the window is focused"
         );
+    }
+
+    #[test]
+    fn a_fleet_carrying_regiments_shows_10405_under_its_entry_its_ship_and_its_item() {
+        // FUN_004a67a0 flag 2: 10405 at (41, 33) in a left-list entry (the
+        // fleet's, as A0 menus/23 shows, and its ship's) and at (41, 23) in
+        // the right item; no squadron or personnel indicator.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let troop = add_troop(&mut world, system);
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, fleet, &[troop]).unwrap();
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.expanded.push(fleet);
+        }
+        let painted = run_moving(
+            &world,
+            &MovementState::default(),
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        )
+        .painted;
+        for (x, y) in [(45.0, 62.0), (45.0, 112.0), (142.0, 150.0)] {
+            assert!(painted.contains(&(10405, at(x, y))), "({x}, {y}) in {painted:?}");
+        }
+        assert_eq!(painted.iter().filter(|(id, _)| *id == 10405).count(), 3);
+        assert!(!painted.iter().any(|(id, _)| *id == 10404 || *id == 10406), "{painted:?}");
     }
 
     #[test]

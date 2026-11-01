@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 79;
+const SCENARIO_COUNT: u8 = 80;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -216,6 +216,12 @@ pub enum Scenario {
     /// caption, `FUN_0048d470`); the clock runs Fast, so it plays at once
     /// (`FUN_00488b90`).
     StoryMovie = 78,
+    /// The Alliance's Fleet window over Kimanan as A0 shows it
+    /// (`.artifacts/a0-vm/menus/23-fleet1-*.png`, day 318): Fleet 1 with
+    /// Corellian Corvette 1, Medium Transport 1 and two Alliance Fleet
+    /// Regiments, selected; Fleet 4, Corellian Corvette 2, in hyperspace to
+    /// Kimanan; the window at A0's (305, 86).
+    FleetWindowA0 = 79,
 }
 
 impl Scenario {
@@ -300,6 +306,7 @@ impl Scenario {
             76 => Self::BlockadeArrival,
             77 => Self::SupportFlip,
             78 => Self::StoryMovie,
+            79 => Self::FleetWindowA0,
             _ => return None,
         })
     }
@@ -651,6 +658,9 @@ pub fn apply(
             primary,
         );
     }
+    if request.scenario == Scenario::FleetWindowA0 {
+        place_kimanan(request, world, cockpit, movement, troop_transport, fleets);
+    }
     if request.scenario == Scenario::ProductionDelivery {
         place_delivery(request, world, manufacturing, primary);
     }
@@ -928,6 +938,100 @@ fn place_sabotage_targets(
     }
     fleets.open(world, secondary, left, request.faction, layout);
     fleets.select(secondary, FleetWindowEntry::Fleet(fleet));
+}
+
+/// The `FleetWindowA0` scenario: A0's fleets at Kimanan, named as A0 names
+/// them, and its Fleet window open where A0's lay.
+fn place_kimanan(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleets: &mut FleetWindowState,
+) {
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let class = |world: &GameWorld, name: &str| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, value)| value.is_alliance && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(kimanan), Some(corvette), Some(transport)) = (
+        system(world, "Kimanan"),
+        class(world, "Corellian Corvette"),
+        class(world, "Medium Transport"),
+    ) else {
+        return;
+    };
+    // Fleet 4 sets out from another system of Kimanan's sector (Orus).
+    let sector = world.systems[kimanan].sector;
+    let Some(origin) = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != kimanan && value.sector == sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == kimanan {
+            value.location = origin;
+        }
+    }
+    let value = &mut world.systems[kimanan];
+    value.control = ControlKind::Controlled(Faction::Alliance);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.ground_units.clear();
+    value.special_forces.clear();
+    // At full hull: A0's ships carry no damage mark.
+    let ship = |world: &GameWorld, class| {
+        ShipInstance::new(class, world.capital_ship_classes[class].hull as i32, true)
+    };
+    let fleet = |capital_ships| rebellion_core::world::Fleet {
+        location: kimanan,
+        capital_ships,
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    };
+    let first = world.insert_fleet(fleet(vec![ship(world, corvette), ship(world, transport)]));
+    let mut fourth = fleet(vec![ship(world, corvette)]);
+    fourth.location = origin;
+    let fourth = world.insert_fleet(fourth);
+    world.rename_fleet(first, "Fleet 1");
+    world.rename_fleet(fourth, "Fleet 4");
+    world.rename_ship(first, 0, "Corellian Corvette 1");
+    world.rename_ship(first, 1, "Medium Transport 1");
+    world.rename_ship(fourth, 0, "Corellian Corvette 2");
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let regiments: Vec<_> = (0..2)
+        .map(|_| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+                is_alliance: true,
+                regiment_strength: 100,
+            })
+        })
+        .collect();
+    world.systems[kimanan].ground_units = regiments.clone();
+    let _ = troop_transport.embark(world, first, &regiments);
+    let ticks = rebellion_core::movement::fleet_transit_ticks(&world.fleets[fourth], world, origin, kimanan)
+        .unwrap_or(10);
+    movement.order(fourth, origin, kimanan, ticks);
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, kimanan, (305, 86), request.faction, layout);
+    fleets.select(kimanan, FleetWindowEntry::Fleet(first));
 }
 
 /// Whether the scenario runs the clock Fast from the start.
@@ -4928,6 +5032,46 @@ mod tests {
             &mut rebellion_core::uprising::UprisingState::new(),
         );
         applied
+    }
+
+    // port: the fixture's own layout, copying A0 menus/23-fleet1-*.png.
+    #[test]
+    fn the_a0_kimanan_scenario_lists_fleet_1_loaded_and_fleet_4_en_route() {
+        let request = request(Scenario::FleetWindowA0, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Kimanan".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            for name in ["Corellian Corvette", "Medium Transport"] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_alliance: true,
+                        hull: 100,
+                        hyperdrive: 80,
+                        troop_capacity: 1,
+                        ..Default::default()
+                    });
+            }
+        });
+        let world = &applied.world;
+        let kimanan = world.systems.keys().next().unwrap();
+        let listed = rebellion_core::movement::listed_fleets(&applied.movement, world, kimanan);
+        let names: Vec<_> = listed.iter().map(|&fleet| world.fleet_name(fleet).unwrap()).collect();
+        assert_eq!(names, ["Fleet 1", "Fleet 4"]);
+        let (first, fourth) = (listed[0], listed[1]);
+        assert_eq!(world.systems[kimanan].fleets, [first]);
+        assert!(applied.movement.is_in_transit(fourth));
+        assert_eq!(applied.transport.cargo(first).len(), 2);
+        assert_eq!(world.ship_name(first, 1), Some("Medium Transport 1"));
+        assert_eq!(world.ship_name(fourth, 0), Some("Corellian Corvette 2"));
+        assert!(applied.fleets.is_open(kimanan));
+        assert_eq!(
+            applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), kimanan).map(|rect| rect.min),
+            Some(egui_macroquad::egui::pos2(305.0, 86.0))
+        );
     }
 
     // FUN_00509710: the other side's squadrons make it present beside the

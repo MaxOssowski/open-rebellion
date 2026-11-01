@@ -1,0 +1,4 @@
+efab1a36df903cca696645a085b81b043d8210a2526c0c3fbbc28b7abe433821  menus/23-fleet1-fighters.png
+7ad83595ea4adf7d2e7385ce9f45b4616353b993be3fc084aa483e7525910a38  menus/23-fleet1-personnel.png
+717e30bf510a477c328cffd1f3b0e05296f51a762a7262d61530b57f7d9bcd80  menus/23-fleet1-ships.png
+60ea80dbb55e46bc3538780ea6ad0b7db85dd7496f5bf8bd60464a26fc92b6fc  menus/23-fleet1-troops.png
