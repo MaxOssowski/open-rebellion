@@ -1,0 +1,2 @@
+4510614f03e3b221ba046f8528d5b9b0f010c4848bdff4b70d2ea92f63a70f87  alliance-battery-menu/battery-menu-screen.png
+70a59cb50df606fc74eb75e4dbbfece43a7a0f072132f9986f22e83e31f38abd  empire-battery-menu/battery-menu-screen.png

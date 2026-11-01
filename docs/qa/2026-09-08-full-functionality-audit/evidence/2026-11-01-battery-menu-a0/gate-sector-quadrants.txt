@@ -1,0 +1,21 @@
+{
+  "run_dir": "<repo>/.artifacts/interface-parity/sector-quadrants-2026-11-01T04-15-57-489Z-1798236",
+  "status": "pass",
+  "cases": [
+    "alliance/icons",
+    "alliance/selected",
+    "alliance/open-system",
+    "alliance/defenses",
+    "alliance/battery-menu",
+    "alliance/defenses-other-side",
+    "alliance/missions",
+    "empire/icons",
+    "empire/selected",
+    "empire/open-system",
+    "empire/defenses",
+    "empire/battery-menu",
+    "empire/defenses-other-side",
+    "empire/missions"
+  ],
+  "wasm_sha256": "2496bb9016f267062e73f17c5fabd947324837bb1ce16fc7f34031c1fef5e16c"
+}

@@ -256,6 +256,15 @@ async function click(page, point) {
   await frames(page);
 }
 
+async function rightClick(page, point) {
+  await page.mouse.move(point.x, point.y);
+  await frames(page);
+  await page.mouse.down({ button: "right" });
+  await frames(page);
+  await page.mouse.up({ button: "right" });
+  await frames(page);
+}
+
 async function frames(page, count = 1) {
   for (let index = 0; index < count; index += 1) {
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -632,6 +641,33 @@ const cases = [
           && !o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat), dat);
       assert.deepEqual(restored.origin, window.origin);
       return { at, window, opening, regiments, regimentChecks, selectedChecks, railChecks, restored };
+    },
+  },
+  {
+    name: "battery-menu",
+    // A battery's pop-up menu: the facility's order list is FUN_00539c20's
+    // one 0x200 Scrap (FUN_005399e0), with FUN_0051d990's Encyclopedia and
+    // Status, sorted Encyclopedia, Status, Scrap and all enabled for the
+    // player's own battery, as A0 status/22-battery-menu.png shows.
+    async run(page, faction, setup, directory) {
+      const { dat, window } = await openDefenses(page, setup, "primary");
+      const batteriesTab = window.tabs.find(([name]) => name === "batteries")[1];
+      await click(page, { x: batteriesTab[0] + 18, y: batteriesTab[1] + 16 });
+      const batteries = defensesWindow(await until(page, "the battery tab opens its page",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value && w.page === "batteries"), dat), dat);
+      assert.equal(batteries.cells.length, 1, JSON.stringify(batteries));
+      const cell = batteries.cells[0];
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, { x: cell[0] + 20, y: cell[1] + 12 });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      await stableScreen(page, directory, "battery-menu");
+      assert.equal(menu.rows, 3, JSON.stringify(menu));
+      assert.deepEqual([menu.status_window_row, menu.scrap_row, menu.scrap_enabled], [1, 2, true],
+        JSON.stringify(menu));
+      assert.deepEqual([menu.move_row, menu.confirmed_move_row], [null, null], JSON.stringify(menu));
+      return { batteries, menu };
     },
   },
   {

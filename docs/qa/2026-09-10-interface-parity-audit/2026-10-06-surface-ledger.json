@@ -7388,9 +7388,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-squadron-confirmed-move-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-squadron-confirmed-move-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-battery-menu-a0/"
           ],
-          "note": "Facility menus offer Scrap (disabled), Encyclopedia, Status (FUN_005399e0/FUN_0051d990); unit tests only, A0 22-battery-menu.png and 28-fac-menu.png exist uncompared. 2026-11-01: Scrap is now enabled on the player's battery and facility as in A0 22-battery-menu.png and 28-fac-menu.png (scrap::check; unit tests), replacing the disabled row. 2026-11-01: A0 22-battery-menu.png rows (Encyclopedia, Status, Scrap) match the port's list.",
+          "note": "Facility menus offer Scrap (disabled), Encyclopedia, Status (FUN_005399e0/FUN_0051d990); unit tests only, A0 22-battery-menu.png and 28-fac-menu.png exist uncompared. 2026-11-01: Scrap is now enabled on the player's battery and facility as in A0 22-battery-menu.png and 28-fac-menu.png (scrap::check; unit tests), replacing the disabled row. 2026-11-01: A0 22-battery-menu.png rows (Encyclopedia, Status, Scrap) match the port's list. 2026-11-01: sector-quadrants.mjs battery-menu opens a battery's menu in the browser; frame 88x60 and rows match A0 22-battery-menu.png within a pixel. Open: no browser case for a manufacturing facility's menu (A0 28-fac-menu.png).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
