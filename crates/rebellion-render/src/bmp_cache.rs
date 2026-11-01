@@ -2099,6 +2099,10 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     // The command centre's controls (FUN_00427270 makes each a
     // CoolStrobeButton): A0 new-alliance/t18 and controls/globe-held show
     // the background through their magenta corner (10013 at (3, 395)).
+    // A destroyed system's asteroid field 10240, loaded keyed
+    // (`FUN_0060bd20` → `FUN_005fbd20(.., 0x2800, 2)`, as the marks
+    // 0x388..0x38a are): A0 menus3/05 shows the sector window's background
+    // around the asteroids, where its black first pixel is.
     source == DllSource::Strategy
         && matches!(
             resource_id,
@@ -2106,6 +2110,7 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 10_117..=10_118
                 | 10_128..=10_129
                 | 10_168
+                | 10_240
                 | 10_592..=10_597
                 | 10_606..=10_607
                 | 10_610..=10_613
@@ -3127,13 +3132,17 @@ pub(crate) mod tests {
             let decoded = decode_color_image(&bytes, DllSource::Strategy, resource_id).unwrap();
             [decoded.pixels[0].a(), decoded.pixels[1].a()]
         };
+        // 10240, the destroyed system's asteroid field (FUN_0060bd20 loads
+        // it keyed; A0 menus3/05).
         for keyed in [
-            10117, 10118, 10128, 10129, 10592, 10594, 10597, 10606, 10607, 10610, 10613,
+            10117, 10118, 10128, 10129, 10240, 10592, 10594, 10597, 10606, 10607, 10610,
+            10613,
         ] {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
         for opaque in [
-            10116, 10119, 10127, 10130, 10591, 10598, 10605, 10608, 10609, 10614, 10800,
+            10116, 10119, 10127, 10130, 10239, 10241, 10591, 10598, 10605, 10608, 10609, 10614,
+            10800,
         ] {
             assert_eq!(alpha(opaque), [255, 255], "{opaque}");
         }

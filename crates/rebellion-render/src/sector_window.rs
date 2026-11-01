@@ -1201,8 +1201,10 @@ fn sector_planet_position(
 /// STRATEGY 10240 (`0x2800`), the asteroid field `FUN_0045bbb0` shows in
 /// place of a destroyed system's planet (`+0x50` bit 3, item state `0x40`).
 const DESTROYED_PLANET: u32 = 10240;
-/// `FUN_0045bbb0`'s name colour for a destroyed system, `0x2ffff00`.
-const DESTROYED_NAME_COLOR: egui::Color32 = egui::Color32::from_rgb(0, 255, 255);
+/// `FUN_0045bbb0`'s name colour for a destroyed system, `0x2ffff00`, the
+/// one it gives an unheld system: A0 draws both white (menus3/05, Averam
+/// after the Death Star; menus3/00, the neutral systems).
+const DESTROYED_NAME_COLOR: egui::Color32 = egui::Color32::WHITE;
 
 /// A system's art in the sector window: its planet (`FUN_0045c970` of its
 /// SYSTEMSD picture), or the asteroid field once it is destroyed
@@ -1846,7 +1848,8 @@ mod tests {
         assert_eq!(planet_art(&world.systems[system]), 10224);
         world.systems[system].is_destroyed = true;
         assert_eq!(planet_art(&world.systems[system]), 10240);
-        assert_eq!(DESTROYED_NAME_COLOR, egui::Color32::from_rgb(0, 255, 255));
+        // A0 menus3/05 draws the 0x2ffff00 name white, as the unheld ones.
+        assert_eq!(DESTROYED_NAME_COLOR, egui::Color32::WHITE);
     }
 
     #[test]
