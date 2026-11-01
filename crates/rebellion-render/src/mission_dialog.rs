@@ -630,29 +630,21 @@ pub fn draw_mission_dialog(
             let at = |x: f32, y: f32, w: f32, h: f32| logical_rect(frame, scale, x, y, w, h);
 
             // The page panel, then the title strip: the 240-pixel bar laid
-            // twice, 30 pixels apart, at (2, 2), and the title over it.
+            // twice, 30 pixels apart (a 270 by 17 surface), of which
+            // FUN_005fcc30(.., 2, 2, 0, 0, 0xff, 0x10) copies 255 by 16 to
+            // (2, 2): A0 menus2/11 keeps the panel under the bar's last row
+            // and right of x 256.
             let panel = match dialog.page {
                 MissionDialogPage::Mission => PANEL_MISSION,
                 MissionDialogPage::Agents => PANEL_AGENTS,
             };
             paint(&painter, ctx, cache, panel, frame, scale);
             let title = [TITLE_ALLIANCE, TITLE_EMPIRE][side];
-            paint(
-                &painter,
-                ctx,
-                cache,
-                title,
-                at(2.0, 2.0, 240.0, 17.0),
-                scale,
-            );
-            paint(
-                &painter,
-                ctx,
-                cache,
-                title,
-                at(32.0, 2.0, 240.0, 17.0),
-                scale,
-            );
+            let strip =
+                painter.with_clip_rect(painter.clip_rect().intersect(at(2.0, 2.0, 255.0, 16.0)));
+            for x in [2.0, 32.0] {
+                paint(&strip, ctx, cache, title, at(x, 2.0, 240.0, 17.0), scale);
+            }
             // FUN_0046a9c0 draws the first page's title black and leaves the
             // white of "Target" set for the second page's.
             let title_color = match dialog.page {

@@ -6565,7 +6565,7 @@
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. 2026-11-01: the title, \"Target\" and the target's name are now font 5 (bold 13 ppem) as FUN_0046a9c0 sets; the title's ink is within a pixel of A0's.",
+          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. 2026-11-01: the title, \"Target\" and the target's name are now font 5 (bold 13 ppem) as FUN_0046a9c0 sets; the title's ink is within a pixel of A0's. 2026-11-01: the static chrome now matches A0 to the pixel (title strip 255x16, keyed close box and tabs).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7424,7 +7424,7 @@
         {
           "id": "OBJ-14-C009",
           "requirement": "mission",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
@@ -7432,13 +7432,13 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Mission item (0x240) opens the targeting cursor and the dialog in Linux browser runs; missions icon offers Abort. No A0 capture of the menu. 2026-11-01: A0 captures (menus2/06-15): the character's Mission row, the targeting cursor, Create Mission from a release on the team's own cell or planet, and the mission icon's menu Encyclopedia, Status (grey), Abort, which the port's rows match (each_sector_icons_menu_lists_its_kinds_orders). Open: the port's dialog and cursor not yet compared to these captures in the browser. 2026-11-01: the kind box's name now matches A0 menus2/11-13 (white, top, font 4).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/06-15): the character's Mission row, cursor 1002 (89 of 89 pixels where the resource puts them), and Create Mission whose static chrome matches the port's to the pixel (0 of 47,985, text and dynamic art masked) after the title strip's 255x16 copy and the keyed close box and tabs; the mission icon's menu (Encyclopedia, Status grey, Abort) matches. mission-dialog.mjs on Linux Chromium for both sides. Earlier: Mission item (0x240) opens the targeting cursor and the dialog in Linux browser runs; missions icon offers Abort. No A0 capture of the menu. 2026-11-01: A0 captures (menus2/06-15): the character's Mission row, the targeting cursor, Create Mission from a release on the team's own cell or planet, and the mission icon's menu Encyclopedia, Status (grey), Abort, which the port's rows match (each_sector_icons_menu_lists_its_kinds_orders). Open: the port's dialog and cursor not yet compared to these captures in the browser. 2026-11-01: the kind box's name now matches A0 menus2/11-13 (white, top, font 4).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-14-C010",
           "requirement": "move",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/move-order.md",
@@ -7447,8 +7447,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-move-gate-linux/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Move/Confirmed Move route in fleet-window.mjs and personnel-orders.mjs (Arch Chromium 155); A0 menus show Move disabled on enemy objects only. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-01: A0 captures menus2/16-18: the fleet icon's Move, the targeting cursor, and the release moving the fleet's icon to the target at once, as fleet-move.mjs move does in the port. Open: pixel comparison of the cursor.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/16-18): the fleet icon's Move takes cursor 1002 (pixel-identical to the resource, as the port's) and the release moves the fleet's icon to the target at once, as fleet-move.mjs move does in the port on Linux Chromium for both sides; Confirmed Move and the drags pass there too. Earlier: Move/Confirmed Move route in fleet-window.mjs and personnel-orders.mjs (Arch Chromium 155); A0 menus show Move disabled on enemy objects only. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-01: A0 captures menus2/16-18: the fleet icon's Move, the targeting cursor, and the release moving the fleet's icon to the target at once, as fleet-move.mjs move does in the port. Open: pixel comparison of the cursor.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-14-C011",

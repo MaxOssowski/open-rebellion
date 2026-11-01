@@ -2099,6 +2099,10 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     // The command centre's controls (FUN_00427270 makes each a
     // CoolStrobeButton): A0 new-alliance/t18 and controls/globe-held show
     // the background through their magenta corner (10013 at (3, 395)).
+    // The windows' close box 10108/10109 and the mission dialog's tabs
+    // 11103..11110, CoolStrobeButtons (FUN_00602d30): A0 menus2/11 shows
+    // the red title bar at the close box's bottom-left pixel (its green
+    // key) and the panel's white at each tab's (its magenta key).
     // A destroyed system's asteroid field 10240, loaded keyed
     // (`FUN_0060bd20` → `FUN_005fbd20(.., 0x2800, 2)`, as the marks
     // 0x388..0x38a are): A0 menus3/05 shows the sector window's background
@@ -2109,11 +2113,13 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
             10_001..=10_028
                 | 10_117..=10_118
                 | 10_128..=10_129
+                | 10_108..=10_109
                 | 10_168
                 | 10_240
                 | 10_592..=10_597
                 | 10_606..=10_607
                 | 10_610..=10_613
+                | 11_103..=11_110
         )
 }
 
@@ -3135,14 +3141,14 @@ pub(crate) mod tests {
         // 10240, the destroyed system's asteroid field (FUN_0060bd20 loads
         // it keyed; A0 menus3/05).
         for keyed in [
-            10117, 10118, 10128, 10129, 10240, 10592, 10594, 10597, 10606, 10607, 10610,
-            10613,
+            10108, 10109, 10117, 10118, 10128, 10129, 10240, 10592, 10594, 10597, 10606, 10607,
+            10610, 10613, 11103, 11110,
         ] {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }
         for opaque in [
-            10116, 10119, 10127, 10130, 10239, 10241, 10591, 10598, 10605, 10608, 10609, 10614,
-            10800,
+            10107, 10110, 10116, 10119, 10127, 10130, 10239, 10241, 10591, 10598, 10605, 10608,
+            10609, 10614, 10800, 11102, 11111,
         ] {
             assert_eq!(alpha(opaque), [255, 255], "{opaque}");
         }

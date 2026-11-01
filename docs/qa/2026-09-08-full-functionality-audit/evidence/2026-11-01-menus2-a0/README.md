@@ -128,6 +128,39 @@ a28a9df0f1fc149f66819141354051ce8a6463c8c054fffac6fea122d5aa5e36  alliance-targe
 80cc7e074e91832f7fbbf46772c4b9b1d99be23bae4d08ab538e8c6934f545b6  empire-targeting/opened-screen.png
 ```
 
+## The targeting cursor and the dialog against A0, pixel by pixel
+
+- **Cursor.** A0 `08` draws REBEXE cursor group 1002 with its hotspot
+  (12, 12) on the pointer: all 89 of its white pixels land where the
+  port's resource puts them (offset (140, 92) for the pointer at
+  (152, 104)). The port's `mission-dialog.mjs targeting` compares its
+  cursor with the same resource exactly.
+- **Dialog.** A0 `11` and the port's `targeting` capture, both at
+  (170, 40), compared over the 259 by 355 window with the text, the kind
+  box, the target art and A0's "Selected Mission" tooltip masked: 850
+  pixels differed. Two causes:
+  - the title strip: `FUN_0046a9c0` lays the 240-pixel bar twice, 30
+    apart, then copies 255 by 16 of it to (2, 2)
+    (`FUN_005fcc30(.., 0xff, 0x10)`). The port drew 17 rows and the
+    second bar to the window's edge; it now clips the strip to 255 by 16;
+  - the close box 10108/10109 and the tabs 11103..11110 are
+    CoolStrobeButtons, blitted keyed on their first pixel: A0 shows the
+    red bar at the close box's bottom-left pixel and the panel's white
+    at each tab's. They are now keyed (`uses_first_pixel_key`).
+
+  After both: **0 of 47,985 compared pixels differ**. The gate's composed
+  expectation follows the same rules. Run `mission-dialog-2026-11-01T14-06-01-130Z-819067` (Linux Chromium 155),
+  test WASM `f68acbfd4bc656a642635d5ffeff848574057709a615f039e6019898bf19d8fb`:
+
+  ```
+2e83d04e4e76931787d12c2c5f79d6f75e3f5b91f2e5bc6aa6b12b6ff50ac5d2  alliance-agents/opened-screen.png
+51719ebec13abcef0c293330d4782f139c50fa7617bf2f57a7d833cab4df4b28  alliance-mission/opened-screen.png
+c910db1d2b496224cdeb3ae0bf8b8b2b03f9834dd28f2e2018a1efc3feb43124  alliance-targeting/opened-screen.png
+8191b9e4b26b4fef2df42058eb2d6d6782dc569e843c0f1ecf0bc6b4a699b149  empire-agents/opened-screen.png
+28fbbc587e0eea6378f13ccccb2aae60918271104e26dc81166e9a86581af327  empire-mission/opened-screen.png
+45d376d7627ce4265538d9e7e24cb1ef2b70988f09b28bcba6fb1bb39318bcb0  empire-targeting/opened-screen.png
+  ```
+
 ## Open
 
 - Which list item an arrow from Fleet takes in the port's galaxy differs

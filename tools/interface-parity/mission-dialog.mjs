@@ -310,13 +310,18 @@ function sourceIdentity(source) {
 
 function composeExpected(source, faction, page) {
   const expected = resource(source, page === "mission" ? 11100 : 11101, dimensions.width, dimensions.height);
+  // FUN_0046a9c0 lays the 240-pixel bar twice, 30 pixels apart, then
+  // copies 255 by 16 of it to (2, 2) (FUN_005fcc30(.., 0xff, 0x10)): A0
+  // menus2/11 shows the panel under its last row and right of x 256.
   const title = resource(source, faction.title, 240, 17);
-  blitClipped(expected, title, 2, 2);
-  blitClipped(expected, title, 32, 2);
-  blitClipped(expected, resource(source, 10108, 14, 14), 242, 3);
+  blitClipped(expected, title, 2, 2, 240, 16);
+  blitClipped(expected, title, 32, 2, 225, 16);
+  // The close box and the tabs are CoolStrobeButtons, blitted keyed on
+  // their first pixel (A0 menus2/11).
+  blitClipped(expected, resource(source, 10108, 14, 14), 242, 3, 14, 14, true);
   const [missionTab, agentsTab] = faction.tabs;
-  blitClipped(expected, resource(source, missionTab[page === "mission" ? 1 : 0], 116, 33), 7, 20);
-  blitClipped(expected, resource(source, agentsTab[page === "agents" ? 1 : 0], 116, 33), 137, 20);
+  blitClipped(expected, resource(source, missionTab[page === "mission" ? 1 : 0], 116, 33), 7, 20, 116, 33, true);
+  blitClipped(expected, resource(source, agentsTab[page === "agents" ? 1 : 0], 116, 33), 137, 20, 116, 33, true);
   if (page === "mission") {
     blitClipped(expected, resource(source, 10606, 65, 18), 101, 174, 65, 18, true);
   } else {
