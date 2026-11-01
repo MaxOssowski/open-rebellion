@@ -70,11 +70,8 @@ const KIND_TEXT: egui::Color32 = egui::Color32::WHITE;
 /// The drop-down's other kinds keep the item's own `+0x60`, gray (A0
 /// kinds/31: "Espionage" under the shown "Diplomacy").
 const LIST_KIND_TEXT: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
-/// The drop-down's background tile (A0 kinds/31).
-const LIST_BACKGROUND: u32 = 10_598;
-/// The drop-down list's arrow step, as the Status window's list of the
-/// same bar takes it (hyp: `FUN_0060a490`'s step argument is not read).
-const LIST_STEP: f32 = 10.0;
+const LIST_BACKGROUND: u32 = crate::selection_list::BACKGROUND;
+const LIST_STEP: f32 = crate::selection_list::STEP;
 /// The title, "Target" and the target's name: `FUN_0046a9c0` sets font 5
 /// (`FUN_00601c60(5)`), bold Arial at 13 ppem, before each. A0
 /// menus2/11 draws the title 91 pixels wide, its capitals 10 tall.
@@ -916,93 +913,49 @@ pub fn draw_mission_dialog(
                 action = Some(MissionDialogAction::Encyclopedia);
             }
 
-            // The drop-down (FUN_0060cac0): a 200 by 117 window under the box
-            // holding a CoolDragList at (2, 2), 196 by 113, of 113-pixel
-            // items (the 200 by 113 surfaces FUN_0046a9c0 builds), with the
-            // scroll bar FUN_0060f640 makes from RCDATA 0x299a at its right.
-            // A0 kinds/02, 23: it scrolls by pixels while the down arrow is
-            // held; the wheel does nothing; the shown kind's name is white
-            // and the others' gray (the item's +0x60).
+            // The drop-down (FUN_0060cac0, selection_list): 113-pixel items,
+            // one visible, under the 200-wide box. The shown kind's name is
+            // white and the others' gray (the item's +0x60; A0 kinds/31).
             if dialog.list_open && dialog.page == MissionDialogPage::Mission {
                 let (x, y, w, h) = KIND_BOX;
-                let popup = at(x, y + h, w, h + 4.0);
-                let list = (x + 2.0, y + h + 2.0, w - 4.0, h);
-                let list_rect = at(list.0, list.1, list.2, list.3);
-                // A0 kinds/31: the window's background is STRATEGY 10598
-                // (195 by 61) tiled from its top-left, inside a white
-                // one-pixel frame at (0, 0)..(198, 115).
-                painter.rect_filled(popup, 0.0, egui::Color32::BLACK);
-                let inside = painter.with_clip_rect(painter.clip_rect().intersect(at(x, y + h, 199.0, 116.0)));
-                for (tx, ty) in [(0.0, 0.0), (195.0, 0.0), (0.0, 61.0), (195.0, 61.0)] {
-                    paint(&inside, ctx, cache, LIST_BACKGROUND, at(x + tx, y + h + ty, 195.0, 61.0), scale);
-                }
-                inside.rect_stroke(
-                    at(x + 0.5, y + h + 0.5, 198.0, 115.0),
-                    0.0,
-                    egui::Stroke::new(scale, egui::Color32::WHITE),
-                    egui::StrokeKind::Middle,
+                let drop = crate::selection_list::DropDown {
+                    x,
+                    top: y + h,
+                    width: w,
+                    item_height: h,
+                    visible: 1,
+                };
+                let kinds = dialog.kinds.clone();
+                let (shown, faction) = (dialog.kind, dialog.faction);
+                let mut scroll = dialog.list_scroll;
+                let mut hold = dialog.list_hold;
+                let outcome = crate::selection_list::draw(
+                    ui,
+                    &painter,
+                    cache,
+                    frame,
+                    scale,
+                    ui.id().with("kind-list"),
+                    drop,
+                    kinds.len(),
+                    &mut scroll,
+                    &mut hold,
+                    |items, cache, index, rect| {
+                        let colour = if index == shown {
+                            KIND_TEXT
+                        } else {
+                            LIST_KIND_TEXT
+                        };
+                        paint_kind(items, ctx, cache, kinds[index], faction, rect, scale, colour);
+                    },
                 );
-                let content = h * dialog.kinds.len() as f32;
-                let bar = crate::list_scroll_bar::ScrollBar::new(
-                    crate::status_window::BAR_ART,
-                    list.0,
-                    list.1,
-                    list.2,
-                    list.3,
-                    content,
-                    dialog.list_scroll,
-                );
-                let (bx, by, bw, bh) = bar.rect();
-                let bar_rect = at(bx, by, bw, bh);
-                let response = ui.interact(popup, ui.id().with("kind-list"), egui::Sense::click());
-                let items = painter.with_clip_rect(painter.clip_rect().intersect(list_rect));
-                for (index, &kind) in dialog.kinds.iter().enumerate() {
-                    let top = list.1 + h * index as f32 - dialog.list_scroll;
-                    if top + h <= list.1 || top >= list.1 + list.3 {
-                        continue;
-                    }
-                    let colour = if index == dialog.kind {
-                        KIND_TEXT
-                    } else {
-                        LIST_KIND_TEXT
-                    };
-                    paint_kind(
-                        &items,
-                        ctx,
-                        cache,
-                        kind,
-                        dialog.faction,
-                        at(list.0, top, w, h),
-                        scale,
-                        colour,
-                    );
+                dialog.list_scroll = scroll;
+                dialog.list_hold = hold;
+                if let Some(row) = outcome.chosen {
+                    dialog.select_kind(row);
                 }
-                if bar.visible() {
-                    dialog.list_scroll = crate::list_scroll_bar::ui_bar(
-                        ui,
-                        cache,
-                        frame,
-                        scale,
-                        crate::status_window::BAR_ART,
-                        list,
-                        content,
-                        dialog.list_scroll,
-                        &mut dialog.list_hold,
-                        LIST_STEP,
-                    );
-                }
-                // A click on an item chooses it (command 0xbba, FUN_0060c970)
-                // and closes the list; one on the bar only scrolls.
-                if exact_clicked(&response, popup) {
-                    let point = response.interact_pointer_pos();
-                    let on_bar = bar.visible() && point.is_some_and(|p| bar_rect.contains(p));
-                    if !on_bar {
-                        if let Some(point) = point.filter(|p| list_rect.contains(*p)) {
-                            let row = ((point.y - list_rect.min.y) / scale + dialog.list_scroll) / h;
-                            dialog.select_kind(row.floor() as usize);
-                        }
-                        dialog.list_open = false;
-                    }
+                if outcome.closed {
+                    dialog.list_open = false;
                 }
             }
         });

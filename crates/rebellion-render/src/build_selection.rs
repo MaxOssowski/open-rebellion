@@ -16,8 +16,8 @@ use rebellion_core::world::GameWorld;
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::CockpitLayout;
 use crate::manufacturing_window::product;
-use crate::mission_dialog::{button, galaxy_centered_rect, paint, paint_centered, scrolled};
-use crate::system_window::{exact_clicked, logical_rect, rect_contains};
+use crate::mission_dialog::{button, galaxy_centered_rect, paint, paint_centered};
+use crate::system_window::{logical_rect, rect_contains};
 
 pub const BUILD_SELECTION_WIDTH: f32 = 210.0;
 pub const BUILD_SELECTION_HEIGHT: f32 = 261.0;
@@ -66,6 +66,18 @@ const LABEL: egui::Color32 = egui::Color32::from_rgb(0xff, 0xfb, 0xf0);
 /// The most units one order builds (`FUN_00438c30`, `FUN_00438c60`).
 pub const MAX_QUANTITY: u32 = 255;
 
+/// The class list's box: under the 195 by 63 item at (6, 22).
+const CLASS_LIST: crate::selection_list::DropDown = crate::selection_list::DropDown {
+    x: 6.0,
+    top: 85.0,
+    width: 195.0,
+    item_height: 70.0,
+    visible: 2,
+};
+/// The shown class's name in the list: the item's `+0x60`
+/// (`FUN_00437880`), gray (A0 manufacturing/24).
+const LIST_SHOWN_TEXT: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
+
 /// One open window: the band it orders for and its controls' state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BuildSelection {
@@ -78,6 +90,10 @@ pub struct BuildSelection {
     quantity: u32,
     /// The class list is open (`CoolSelectionBoxClass +0xe8`).
     list_open: bool,
+    /// The class list's first visible pixel and the held press on its bar
+    /// (`selection_list`).
+    list_scroll: f32,
+    list_hold: Option<crate::list_scroll_bar::Hold>,
     /// The agent opened it on its Build order (`FUN_0049e6b0` phase 3,
     /// `agent+0x180`).
     agent: bool,
@@ -175,6 +191,8 @@ impl BuildSelectionState {
             selected,
             quantity: 1,
             list_open: false,
+            list_scroll: 0.0,
+            list_hold: None,
             agent: false,
         });
         true
@@ -495,6 +513,9 @@ pub fn draw_build_selection(
                 scale,
             ) {
                 dialog.list_open = !dialog.list_open;
+                // hyp: the list opens with the shown class at its top.
+                dialog.list_scroll = CLASS_LIST.scroll_to(dialog.selected);
+                dialog.list_hold = None;
             }
             if button(
                 ui,
@@ -551,22 +572,47 @@ pub fn draw_build_selection(
                 close = true;
             }
 
-            // The drop-down: a window under the box holding one item at a
-            // time. port: its scroll bar (base 0x299a) is not drawn; the
-            // wheel scrolls it, as the mission dialog's.
+            // The class list (FUN_00437f80: FUN_0060bed0(.., 6, 0x16, 0xc3,
+            // 0x3f, 2, ..), +0xa4 = 0x46): 70-pixel items, two visible,
+            // under the 195-wide box (selection_list). A0 manufacturing/24:
+            // each item's mini sits as in the box, its name 2 pixels lower;
+            // the shown class's name gray and the others' white. hyp: the
+            // mission dialog's list colours them the other way round (A0
+            // kinds/31); which item state picks the item's +0x60 gray is not
+            // traced.
             if dialog.list_open {
-                let (x, y, w, h) = ITEM_BOX;
-                let popup = at(x, y + h, w, h + 4.0);
-                let item = at(x + 2.0, y + h + 2.0, w - 4.0, h);
-                painter.rect_filled(popup, 0.0, egui::Color32::BLACK);
-                let response = ui.interact(popup, ui.id().with("class-list"), egui::Sense::click());
-                if response.hovered() {
-                    let wheel = ctx.input(|input| input.raw_scroll_delta.y);
-                    let row = scrolled(dialog.selected, dialog.kinds.len(), wheel);
+                let kinds = dialog.kinds.clone();
+                let shown = dialog.selected;
+                let mut scroll = dialog.list_scroll;
+                let mut hold = dialog.list_hold;
+                let outcome = crate::selection_list::draw(
+                    ui,
+                    &painter,
+                    cache,
+                    frame,
+                    scale,
+                    ui.id().with("class-list"),
+                    CLASS_LIST,
+                    kinds.len(),
+                    &mut scroll,
+                    &mut hold,
+                    |items, cache, index, rect| {
+                        let (_, _, w, h) = ITEM_BOX;
+                        let item = egui::Rect::from_min_size(rect.min, egui::vec2(w, h) * scale);
+                        let colour = if index == shown {
+                            LIST_SHOWN_TEXT
+                        } else {
+                            egui::Color32::WHITE
+                        };
+                        paint_item_with(items, ctx, cache, world, kinds[index], item, scale, colour, 2.0);
+                    },
+                );
+                dialog.list_scroll = scroll;
+                dialog.list_hold = hold;
+                if let Some(row) = outcome.chosen {
                     dialog.select(row);
                 }
-                paint_item(&painter, ctx, cache, world, dialog.kind(), item, scale);
-                if exact_clicked(&response, popup) {
+                if outcome.closed {
                     dialog.list_open = false;
                 }
             }
@@ -596,18 +642,37 @@ fn paint_item(
     bounds: egui::Rect,
     scale: f32,
 ) {
+    paint_item_with(painter, ctx, cache, world, kind, bounds, scale, egui::Color32::WHITE, 0.0);
+}
+
+/// [`paint_item`] with the name's colour and a drop of `text_dy` pixels.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep explicit painter, cache and geometry inputs at this drawing boundary."
+)]
+fn paint_item_with(
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    world: &GameWorld,
+    kind: BuildableKind,
+    bounds: egui::Rect,
+    scale: f32,
+    colour: egui::Color32,
+    text_dy: f32,
+) {
     let (name, mini) = product(world, kind);
     let image = mini
         .and_then(|id| paint_centered(painter, ctx, cache, DllSource::Gokres, id, bounds, scale));
     // The name in font 10, centred across the item under its mini.
-    let top = image.map_or(bounds.center().y, |rect| rect.max.y);
+    let top = image.map_or(bounds.center().y, |rect| rect.max.y) + text_dy * scale;
     crate::theme::paint_gdi_text(
         painter,
-        egui::Rect::from_min_max(egui::pos2(bounds.min.x, top), bounds.max),
+        egui::Rect::from_min_max(egui::pos2(bounds.min.x, top), egui::pos2(bounds.max.x, top + 16.0 * scale)),
         scale,
         10,
         &name,
-        egui::Color32::WHITE,
+        colour,
         (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
     );
 }
@@ -1059,7 +1124,54 @@ mod tests {
     // The drop-down (command 0x6c) opens under the class box; the wheel
     // walks the list and a click closes it.
     #[test]
-    fn the_class_list_opens_scrolls_and_closes() {
+    fn the_class_list_names_the_shown_class_gray_and_the_others_white() {
+        // A0 manufacturing/24: "Construction Yard", the shown class, gray
+        // (0x808080, the item's +0x60) in the list, "GenCore Level I"
+        // white; each name 2 pixels lower than the box's.
+        let (world, system) = galaxy(true);
+        let mut state = BuildSelectionState::default();
+        assert!(state.open(system, ProductionArea::TrainingFacility, true, kinds()));
+        state.dialog.as_mut().unwrap().list_open = true;
+        let layout = layout();
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let manufacturing = ManufacturingState::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_build_selection(ctx, &world, &manufacturing, &mut state, layout, &mut cache);
+            }));
+        }
+        let origin = window_rect(layout).min;
+        let lines = crate::theme::test_lines(&output.unwrap().shapes);
+        let named = |name: &str| -> Vec<(f32, egui::Color32)> {
+            lines
+                .iter()
+                .filter(|line| line.text == name)
+                .map(|line| (line.pen.y - origin.y, line.color))
+                .collect()
+        };
+        let first = named("Alliance Fleet Regiment");
+        let second = named("Alliance Army Regiment");
+        // The box's line, then the list's: gray and 2 lower than the box's
+        // relative to its item (box at 22, list item at 87).
+        assert_eq!(first.len(), 2, "{lines:?}");
+        assert_eq!(first[0].1, egui::Color32::WHITE);
+        assert_eq!(first[1].1, LIST_SHOWN_TEXT);
+        assert_eq!(first[1].0 - 87.0, first[0].0 - 22.0 + 2.0);
+        assert_eq!(second.len(), 1, "{lines:?}");
+        assert_eq!(second[0].1, egui::Color32::WHITE);
+        assert_eq!(second[0].0 - first[1].0, 70.0);
+    }
+
+    #[test]
+    fn the_class_list_opens_scrolls_on_its_bar_and_a_click_chooses_a_class() {
+        // FUN_00437f80: FUN_0060bed0(.., 6, 0x16, 0xc3, 0x3f, 2, ..), items
+        // 70 high (+0xa4 = 0x46), two visible: the list at (8, 87), 191 by
+        // 140, under the box. The same CoolSelectionBoxClass as the mission
+        // dialog's: A0 kinds/02 shows its wheel inert, manufacturing/24 its
+        // items' names 53 under each item's top.
         let (world, system) = galaxy(true);
         let mut state = BuildSelectionState::default();
         let regiments = kinds();
@@ -1070,62 +1182,34 @@ mod tests {
             regiments.clone()
         ));
         let at = egui::Pos2::ZERO;
-        drive(
-            &world,
-            &mut state,
-            (111.0, 99.0),
-            vec![vec![press(at, true)], vec![press(at, false)]],
-        );
+        let click = |state: &mut BuildSelectionState, point| {
+            drive(
+                &world,
+                state,
+                point,
+                vec![vec![press(at, true)], vec![press(at, false)]],
+            );
+        };
+        click(&mut state, (111.0, 99.0));
         assert!(state.dialog().unwrap().list_open());
-        // Down one notch over the list's last rows, below the box it hangs
-        // from (y 85..152).
         let wheel = egui::Event::MouseWheel {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, -1.0),
             modifiers: egui::Modifiers::default(),
         };
         drive(&world, &mut state, (100.0, 147.0), vec![vec![wheel]]);
-        assert_eq!(state.dialog().unwrap().kind(), regiments[1]);
-        // The list's item names the class in its own box, under the main one.
-        let (_, texts) = drive_at(&world, &mut state, 1.0, (100.0, 147.0), vec![]);
-        let origin = window_rect(layout()).min;
-        let item =
-            egui::Rect::from_min_size(origin + egui::vec2(8.0, 87.0), egui::vec2(191.0, 63.0));
-        // The class box above names it too; the list's copy is the lower.
-        let named = texts
-            .iter()
-            .filter(|(text, _, _)| text == "Alliance Army Regiment")
-            .map(|(_, top, _)| *top)
-            .max_by(|a, b| a.y.total_cmp(&b.y))
-            .unwrap();
-        // DT_CENTER across the item, its spare width halved; no mini is
-        // painted here, so the line hangs from the item's middle (tmAscent
-        // 11 to the baseline).
-        let (_, width) = crate::theme::gdi_pen_positions(10, "Alliance Army Regiment").unwrap();
-        assert_eq!(
-            named,
-            egui::pos2(
-                item.min.x + ((item.width() - width) / 2.0).floor(),
-                item.center().y + 11.0
-            ),
-            "{item:?}"
-        );
-        // The list is the box's height and four more (y 85..152): the wheel
-        // below it, up a notch, leaves the class alone.
-        let up = egui::Event::MouseWheel {
-            unit: egui::MouseWheelUnit::Line,
-            delta: egui::vec2(0.0, 1.0),
-            modifiers: egui::Modifiers::default(),
-        };
-        drive(&world, &mut state, (100.0, 155.0), vec![vec![up]]);
-        assert_eq!(state.dialog().unwrap().kind(), regiments[1]);
-        drive(
-            &world,
-            &mut state,
-            (100.0, 147.0),
-            vec![vec![press(at, true)], vec![press(at, false)]],
-        );
-        assert!(!state.dialog().unwrap().list_open());
+        let dialog = state.dialog().unwrap();
+        assert_eq!((dialog.kind(), dialog.list_scroll), (regiments[0], 0.0));
+        assert!(dialog.list_open());
+
+        // The second item's row (87 + 70 .. 87 + 140) chooses it and closes
+        // the list.
+        click(&mut state, (100.0, 87.0 + 100.0));
+        let dialog = state.dialog().unwrap();
+        assert!(!dialog.list_open());
+        assert_eq!(dialog.kind(), regiments[1]);
+        assert_eq!(CLASS_LIST.height(), 144.0);
+        assert_eq!(CLASS_LIST.list(), (8.0, 87.0, 191.0, 140.0));
     }
 
     #[test]

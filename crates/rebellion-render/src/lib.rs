@@ -43,6 +43,7 @@ pub mod sector_window;
 pub mod status_rows;
 pub mod status_window;
 pub mod story_messages;
+pub mod selection_list;
 pub mod system_window;
 mod window_move;
 mod tactical_asset_cache;

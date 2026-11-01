@@ -75,3 +75,32 @@ and GenCore, with refined 12-20 and maintenance +239 on the top bar but
 its first counter at 0. A0 `build-orders/15-t01` (Empire, day 193,
 counters 58 / 191 / 189) shows the values. The refusal therefore
 follows a side resource the port does not check; which one stays open.
+
+
+## Build Selection's class list
+
+A0 `24-list-open` (Vjun's Build Facilities): the list opens under the
+box at (6, 85), 195 by 144 with its white frame at (6, 85)..(199, 227):
+two 70-pixel items (`FUN_00437f80`: `FUN_0060bed0(.., 6, 0x16, 0xc3,
+0x3f, 2, ..)`, `+0xa4 = 0x46`), STRATEGY 10598 tiled behind them and the
+RCDATA 0x299a bar at the right. Each item's mini sits as in the box (19
+under its top), its name 2 pixels lower (53 under it); the shown class's
+name is gray (the item's `+0x60`, `FUN_00437880`) and the others white.
+The port showed one class at a time and scrolled it with the wheel.
+
+The mission dialog's and Build Selection's drop-downs now share
+`selection_list` (the window, tile, frame, items, bar and click), with
+each box's item height and visible count. hyp: the two lists colour the
+shown item oppositely in A0 (white in `kinds/31`, gray here); which item
+state picks the item's gray is not traced, so each follows its capture.
+The old test that scrolled the list with the wheel is replaced on A0's
+evidence (the same `CoolSelectionBoxClass`, wheel inert, `kinds/02`).
+
+`build-selection.mjs` now captures the open list: against A0 the frame
+and the bar match but the thumb's length (the fixture lists two
+classes). Run `build-selection-2026-11-01T16-38-56-685Z-1457249` (Linux Chromium 155):
+
+```
+4a295995f6cd48f73a2583e321f49e4d7caafb95cc47e11970483f240f3d82d5  alliance/class-list.png
+942f0078b607fea39c0d9d6d806afa02d713dc7c9abd9cb16d8918c051fcd74d  empire/class-list.png
+```

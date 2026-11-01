@@ -400,6 +400,18 @@ async function inspect(server, source, faction, executable) {
     const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
     const captured = await stableWindow(page, origin, directory, "opened");
     const comparisons = [compare(captured, composeExpected(source, faction), "opened", directory)];
+    // The class list (FUN_0060bed0, two 70-pixel items): its button at
+    // (79, 90) opens it under the box; captured, then closed again by the
+    // same button (A0 manufacturing/24).
+    await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(300);
+    await frames(page);
+    fs.writeFileSync(path.join(directory, "class-list.png"), await page.screenshot({ animations: "disabled" }));
+    await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+    await page.mouse.move(2, 2);
+    await frames(page);
     const textChecks = a0Dir && faction.name === "alliance"
       ? labelsAgainstA0(PNG.sync.read(fs.readFileSync(path.join(directory, "opened-screen.png"))), origin) : null;
     // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA 0x190c, 0x1906..0x190b,
