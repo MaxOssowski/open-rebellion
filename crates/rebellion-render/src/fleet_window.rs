@@ -328,6 +328,9 @@ fn logical_point(local: egui::Rect, scale: f32, point: egui::Pos2) -> (i32, i32)
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RenameEdit {
     entry: FleetWindowEntry,
+    /// The right list's row the edit stands in, for a ship the selected
+    /// fleet lists there; `None` puts it over the left entry.
+    item: Option<usize>,
     text: String,
     /// The first frame selects the whole name and takes the focus
     /// (`FUN_00605110(field, 0, -1)`, `SetFocus`).
@@ -511,7 +514,18 @@ impl FleetWindowState {
         let Some(text) = name else {
             return false;
         };
-        if !self.select(system, entry) {
+        // A0 menus3/41: a ship of the selected fleet is renamed in the
+        // right list, under its picture, the fleet staying selected.
+        let item = self.window_mut(system).and_then(|window| match entry {
+            FleetWindowEntry::Ship { fleet, index }
+                if window.selected == Some(FleetWindowEntry::Fleet(fleet))
+                    && window.tab == FleetWindowTab::CapitalShips =>
+            {
+                ship_item_row(world, fleet, index)
+            }
+            _ => None,
+        });
+        if item.is_none() && !self.select(system, entry) {
             return false;
         }
         for window in &mut self.windows {
@@ -520,6 +534,7 @@ impl FleetWindowState {
         if let Some(window) = self.window_mut(system) {
             window.rename = Some(RenameEdit {
                 entry,
+                item,
                 text,
                 fresh: true,
             });
@@ -1269,6 +1284,14 @@ fn right_target(
 }
 
 /// The current tab's objects aboard the selected fleet (`FUN_004a6be0`).
+/// The right list's row of `fleet`'s ship `index` on the Capital Ships
+/// tab: its place among the fleet's living ships.
+fn ship_item_row(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<usize> {
+    let ships = &world.fleets.get(fleet)?.capital_ships;
+    ships.get(index).filter(|ship| ship.alive)?;
+    Some(ships[..index].iter().filter(|ship| ship.alive).count())
+}
+
 fn right_items(
     world: &GameWorld,
     transport: &TroopTransportState,
@@ -2212,15 +2235,22 @@ fn draw_fleet_window(
                             23.0,
                         );
                     }
-                    crate::theme::paint_gdi_text(
-                        &right_painter,
-                        logical_rect(cell, scale, 0.0, 37.0, 125.0, 14.0),
-                        scale,
-                        10,
-                        &item.label,
-                        egui::Color32::WHITE,
-                        (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
-                    );
+                    // The edit stands in for the name being renamed.
+                    let editing = window
+                        .rename
+                        .as_ref()
+                        .is_some_and(|edit| edit.item == Some(row));
+                    if !editing {
+                        crate::theme::paint_gdi_text(
+                            &right_painter,
+                            logical_rect(cell, scale, 0.0, 37.0, 125.0, 14.0),
+                            scale,
+                            10,
+                            &item.label,
+                            egui::Color32::WHITE,
+                            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
+                        );
+                    }
                     let response = ui.interact(
                         cell.intersect(right),
                         ui.id().with((window.system, "item", row)),
@@ -2317,22 +2347,54 @@ fn draw_rename_edit(
     scale: f32,
     font: &egui::FontId,
 ) -> Option<RenameOutcome> {
-    let Some(row) = entries.iter().position(|entry| *entry == edit.entry) else {
-        // The entry left the list: the edit goes with it.
-        return Some(RenameOutcome::Cancel);
+    let rect = if let Some(item) = edit.item {
+        // The item's name line (+37, 125 wide) in the right list.
+        let top = RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * item as f32 + 37.0;
+        let right = logical_rect(local, scale, RIGHT_LIST.0, RIGHT_LIST.1, RIGHT_LIST.2, RIGHT_LIST.3);
+        logical_rect(local, scale, RIGHT_LIST.0, top, 125.0, 14.0).intersect(right)
+    } else {
+        let Some(row) = entries.iter().position(|entry| *entry == edit.entry) else {
+            // The entry left the list: the edit goes with it.
+            return Some(RenameOutcome::Cancel);
+        };
+        let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32;
+        logical_rect(local, scale, LEFT_LIST.0 + 4.0, top + 3.0, 85.0, 15.0).intersect(list)
     };
-    let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32;
-    let rect = logical_rect(local, scale, LEFT_LIST.0 + 4.0, top + 3.0, 85.0, 15.0).intersect(list);
     let id = ui.id().with((window.system, "rename"));
     let mut text = edit.text.clone();
     ui.painter().rect_filled(rect, 0.0, egui::Color32::BLACK);
+    // The selected name shows black on white, the edit's system colours
+    // (A0 menus3/41, 46); typed text is white on the list's black.
+    let all_selected = edit.fresh
+        || egui::TextEdit::load_state(ui.ctx(), id)
+            .and_then(|state| state.cursor.char_range())
+            .is_some_and(|range| {
+                let (from, to) = (
+                    range.primary.index.min(range.secondary.index),
+                    range.primary.index.max(range.secondary.index),
+                );
+                from == 0 && to == text.chars().count() && to > 0
+            });
+    ui.visuals_mut().selection.bg_fill = egui::Color32::WHITE;
+    // The right list centres its names; the left list starts them at the
+    // entry's left.
+    let align = if edit.item.is_some() {
+        egui::Align::Center
+    } else {
+        egui::Align::Min
+    };
     let response = ui.put(
         rect,
         egui::TextEdit::singleline(&mut text)
             .id(id)
             .frame(false)
             .font(font.clone())
-            .text_color(egui::Color32::WHITE)
+            .text_color(if all_selected {
+                egui::Color32::BLACK
+            } else {
+                egui::Color32::WHITE
+            })
+            .horizontal_align(align)
             .desired_width(rect.width()),
     );
     if edit.fresh {
@@ -4584,6 +4646,134 @@ pub(crate) mod tests {
         assert_eq!(renames(&run.actions), [(entry, "Rogue".to_owned())]);
         assert!(!state.renaming());
     }
+
+    #[test]
+    fn a_ship_of_the_selected_fleet_is_renamed_in_the_right_list() {
+        // A0 menus3/40-43: Rename on Victory Destroyer 2 from the right
+        // list opens the field on its name under its picture, Fleet 1
+        // staying selected, and Enter renames the ship.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.fleets[fleet]
+            .capital_ships
+            .insert(0, ShipInstance::new(class, 0, true));
+        world.fleets[fleet].capital_ships[0].alive = false;
+        world.fleets[fleet]
+            .capital_ships
+            .push(ShipInstance::new(class, 100, true));
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
+        let ship = FleetWindowEntry::Ship { fleet, index: 2 };
+        assert!(state.begin_rename(&world, system, ship));
+        assert_eq!(
+            state.selection(system).unwrap().0,
+            Some(FleetWindowEntry::Fleet(fleet))
+        );
+        // The dead first ship is not listed: index 2 is the second row.
+        assert_eq!(state.windows[0].rename.as_ref().unwrap().item, Some(1));
+        assert_eq!(ship_item_row(&world, fleet, 0), None);
+        assert_eq!(ship_item_row(&world, fleet, 1), Some(0));
+
+        let mut frames = hover(at(-50.0, 0.0));
+        frames.push(vec![egui::Event::Text("Rogue".into())]);
+        frames.push(vec![key(egui::Key::Enter)]);
+        frames.push(vec![]);
+        let run = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        assert_eq!(renames(&run.actions), [(ship, "Rogue".to_owned())]);
+
+        // With the ship itself chosen on the left, the field stays there.
+        let mut state = opened(&world, system);
+        assert!(state.begin_rename(&world, system, ship));
+        assert_eq!(state.selection(system).unwrap().0, Some(ship));
+        assert_eq!(state.windows[0].rename.as_ref().unwrap().item, None);
+    }
+
+    #[test]
+    fn the_rename_field_shows_the_selected_name_black_where_the_name_was() {
+        // A0 menus3/41 and 46: the field opens on the name line, the whole
+        // name selected black on white; a ship's in the right list's name
+        // line (+37 under the item, 125 wide, centred) with the item's own
+        // label hidden, a fleet's on its left entry from the entry's left.
+        // Typed text is white.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let _second = add_fleet(&mut world, system, true, 0);
+        let third = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        for _ in 0..2 {
+            world.fleets[fleet]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, true));
+        }
+        let transport = TroopTransportState::default();
+        let open_on = |entry| {
+            let mut state = opened(&world, system);
+            assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
+            assert!(state.begin_rename(&world, system, entry));
+            state
+        };
+        // The third ship: row 2 of the right list.
+        let ship = FleetWindowEntry::Ship { fleet, index: 2 };
+        let mut state = open_on(ship);
+        let shown = run(&world, &transport, &mut state, CockpitFaction::Alliance, hover(at(-50.0, 0.0)));
+        let named = |colour| -> Vec<egui::Pos2> {
+            shown
+                .texts
+                .iter()
+                .filter(|text| text.text == "Transport" && text.color == colour)
+                .map(|text| text.pos)
+                .collect()
+        };
+        let labels = named(egui::Color32::WHITE);
+        let [field] = named(egui::Color32::BLACK)[..] else {
+            panic!("one black field: {:?}", named(egui::Color32::BLACK));
+        };
+        // The first two rows keep their labels; the edited third has none.
+        assert_eq!(labels.len(), 2, "{labels:?}");
+        let pitch = RIGHT_ITEM_HEIGHT * 2.0;
+        assert!((labels[1].y - labels[0].y - pitch).abs() < 1.0, "{labels:?}");
+        assert!((field.y - labels[0].y - 2.0 * pitch).abs() < 4.0, "{field:?} {labels:?}");
+        let end = shown
+            .texts
+            .iter()
+            .find(|text| text.pos == field)
+            .unwrap()
+            .end;
+        let centre = at(RIGHT_LIST.0 + 62.5, 0.0).x;
+        assert!(((field.x + end) / 2.0 - centre).abs() < 4.0, "{field:?} {end} {centre}");
+
+        let mut state = open_on(ship);
+        let mut frames = hover(at(-50.0, 0.0));
+        frames.push(vec![egui::Event::Text("Ro".into())]);
+        frames.push(vec![]);
+        let typed = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        let ro = typed.texts.iter().find(|text| text.text == "Ro").unwrap();
+        assert_eq!(ro.color, egui::Color32::WHITE);
+
+        // The third fleet's left entry, row 2: the field sits on its
+        // label's line, from its left.
+        let mut state = opened(&world, system);
+        assert!(state.begin_rename(&world, system, FleetWindowEntry::Fleet(third)));
+        let shown = run(&world, &transport, &mut state, CockpitFaction::Alliance, hover(at(-50.0, 0.0)));
+        let name = world.fleet_name(third).unwrap().to_owned();
+        let find = |colour| {
+            shown
+                .texts
+                .iter()
+                .find(|text| text.text == name && text.color == colour)
+                .unwrap_or_else(|| panic!("{name:?} {colour:?}"))
+                .pos
+        };
+        let (field, label) = (find(egui::Color32::BLACK), find(egui::Color32::WHITE));
+        assert!((field.y - label.y).abs() < 4.0, "{field:?} {label:?}");
+        let entry = at(LEFT_LIST.0 + 4.0, LEFT_LIST.1 + 2.0 * LEFT_ITEM_HEIGHT + 3.0);
+        // The field's text starts just inside it (egui's margin).
+        assert!(field.x >= entry.x && field.x - entry.x < 6.0, "{field:?} {entry:?}");
+        assert!(field.y > entry.y, "{field:?} {entry:?}");
+    }
+
 
     #[test]
     fn an_empty_rename_keeps_its_field_and_escape_drops_it_unissued() {

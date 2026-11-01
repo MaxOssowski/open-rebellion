@@ -9863,8 +9863,9 @@ fn apply_panel_action(
                 None => world.rename_fleet(fleet, &name),
             };
             macroquad::logging::info!(
-                "[interface] command=0x203 destination=rename status={} name={name}",
-                if renamed { "applied" } else { "refused" }
+                "[interface] command=0x203 destination=rename status={} object={} name={name}",
+                if renamed { "applied" } else { "refused" },
+                if ship.is_some() { "ship" } else { "fleet" }
             );
         }
         PanelAction::CreateFleet {

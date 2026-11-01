@@ -1473,7 +1473,7 @@ const cases = [
       await frames(page, 2);
       await press(page, "Enter");
       const applied = await log.logged("Enter submits the typed name",
-        /command=0x203 destination=rename status=applied name=Rogue$/);
+        /command=0x203 destination=rename status=applied object=fleet name=Rogue$/);
       await shot(page, directory, "renamed");
       return { opened, menu, applied };
     },
@@ -1506,6 +1506,35 @@ const cases = [
       const back = await log.logged("the previous arrow comes back to Fleet",
         /\[encyclopedia\] command=0x83 topic_mode=true object=Some\(134217728\)$/);
       return { menu, topic, next, back };
+    },
+  },
+  {
+    name: "ship-rename",
+    code: FLEET_JOIN,
+    // A capital ship's Rename (0x203, FUN_00486fb0 -> FUN_0041d600): the
+    // edit opens over the ship's name in the right list, the name
+    // selected; Enter applies the typed name (A0 menus3/40-43: Victory
+    // Destroyer 2 renamed Rogue in place).
+    async run(page, faction, setup, directory, source, log) {
+      const selected = await openJoining(page, setup);
+      const menu = await openMenu(page, point(selected.first_item), directory, "ship");
+      assert.deepEqual(menu.row_states.map(([label]) => label),
+        ["Move", "Confirmed Move", "Create Fleet", "Rename", "Encyclopedia", "Status", "Scrap"],
+        JSON.stringify(menu));
+      assert.equal(menu.rename_enabled, true, JSON.stringify(menu));
+      await choose(page, menu, menu.rename_row, "Rename");
+      await frames(page, 2);
+      await shot(page, directory, "ship-rename-edit");
+      await page.keyboard.type("Rogue");
+      await frames(page, 2);
+      await press(page, "Enter");
+      const applied = await log.logged("Enter renames the ship",
+        /command=0x203 destination=rename status=applied object=ship name=Rogue$/);
+      // The fleet stays selected and the right list names the ship anew.
+      const listed = await until(page, "the right list shows the new name",
+        (o) => o.selected === "fleet" && (o.items || []).includes("Rogue"));
+      await shot(page, directory, "ship-renamed");
+      return { menu, applied, items: listed.items };
     },
   },
   {
