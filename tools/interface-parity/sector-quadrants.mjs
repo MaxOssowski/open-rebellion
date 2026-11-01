@@ -644,6 +644,60 @@ const cases = [
     },
   },
   {
+    name: "system-menu",
+    // A press on a planet hits no overlay, so FUN_004593e0 returns and the
+    // window's selection is kept (sector-icon-menus.md): the right release
+    // lists that selection's orders (FUN_004ac5c0, FUN_0051d990). With
+    // nothing selected, Encyclopedia (one object) and Status are both
+    // disabled. After a press selects the primary's mission icon, a right
+    // click on another planet shows the mission icon's menu, as A0
+    // menus/10-planet-right.png shows the kept fleet icon's menu.
+    async run(page, faction, setup, directory) {
+      const [left, top, width, height] = setup.headquarters;
+      const planet = { x: Math.round(left + width / 2), y: Math.round(top + height / 2) };
+      const openMenu = async (label) => {
+        await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+        await rightClick(page, planet);
+        await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+          null, { timeout: 10_000 });
+        const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+        return { menu, screenshot: await stableScreen(page, directory, label) };
+      };
+      // Rows are 20 pixels below a 2-pixel border; the text line is the 16
+      // pixels from 2 into the row (game_menu.rs). Disabled text is
+      // 0x808080 (FUN_004aba60).
+      const brightest = ({ menu, screenshot }, row) => {
+        const y0 = Math.round(menu.top) + 2 + 20 * row + 2;
+        let value = 0;
+        for (let y = y0; y < y0 + 16; y += 1) {
+          for (let x = Math.round(menu.left) + 4; x < menu.left + menu.width - 3; x += 1) {
+            const at = (y * screenshot.width + x) * 4;
+            value = Math.max(value, screenshot.data[at], screenshot.data[at + 1], screenshot.data[at + 2]);
+          }
+        }
+        return value;
+      };
+      const empty = await openMenu("no-selection");
+      assert.equal(empty.menu.rows, 2, JSON.stringify(empty.menu));
+      assert.equal(empty.menu.status_window_row, 1, JSON.stringify(empty.menu));
+      const emptyRows = [brightest(empty, 0), brightest(empty, 1)];
+      assert.deepEqual(emptyRows, [128, 128], `nothing selected: ${JSON.stringify(emptyRows)}`);
+      await page.keyboard.press("Escape");
+      await frames(page, 2);
+
+      const [missionLeft, missionTop] = quadrant(setup, "primary", "missions");
+      await click(page, { x: Math.round(missionLeft) + 4, y: Math.round(missionTop) + 9 });
+      const kept = await openMenu("kept-selection");
+      assert.equal(kept.menu.rows, 3, JSON.stringify(kept.menu));
+      assert.notEqual(kept.menu.abort_row, null, `the mission icon's Abort: ${JSON.stringify(kept.menu)}`);
+      // Encyclopedia is enabled for the one selected icon; an icon's
+      // Status is always disabled.
+      const keptRows = [brightest(kept, 0), brightest(kept, 1)];
+      assert.deepEqual(keptRows, [255, 128], `the kept icon: ${JSON.stringify(keptRows)}`);
+      return { empty: empty.menu, emptyRows, kept: kept.menu, keptRows };
+    },
+  },
+  {
     name: "battery-menu",
     // A battery's pop-up menu: the facility's order list is FUN_00539c20's
     // one 0x200 Scrap (FUN_005399e0), with FUN_0051d990's Encyclopedia and

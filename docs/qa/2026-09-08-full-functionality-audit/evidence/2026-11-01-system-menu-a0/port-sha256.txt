@@ -1,0 +1,4 @@
+66613bb9d218983572614cb43ab32e0d17e9c1ce364093b91723b4a3e94a0190  alliance-system-menu/kept-selection-screen.png
+6a1dcbab1d997344e3b7d92c99ba7b1ec2c18072c6f8e588184b5d829c18ec44  alliance-system-menu/no-selection-screen.png
+ab411d182a99c85eb3d3b8532d2d3c6ea11bc29dfa9e68e1746ea97a30eecded  empire-system-menu/kept-selection-screen.png
+f0e7c3ddacf88dd4dee429e4a2b1d967572a506a6af374a07d95311860ffb788  empire-system-menu/no-selection-screen.png

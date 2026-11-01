@@ -7299,14 +7299,15 @@
         {
           "id": "OBJ-14-C001",
           "requirement": "system",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/sector-icon-menus.md",
             "tools/interface-parity/sector-quadrants.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-system-menu-a0/"
           ],
-          "note": "System menu opens from sector quadrant icons (sector-quadrants.mjs 12/12, Arch Chromium); A0 07/25-sys-menu.png shows it greys Status for a planet, as object_menu.rs does (FUN_0051d990). A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
+          "note": "Compared with A0 on 2026-11-01: a right click on a planet keeps the sector window's selection and lists its orders (new capture a0-vm/menus/10-planet-right.png after selecting a fleet icon); Encyclopedia is enabled for one selected object and an icon's Status is grey (status/07, 25-sys-menu.png). sector-quadrants.mjs system-menu checks both states on Linux Chromium for both sides, and the icon menus run in its other cases. Menu text and frame as in 2026-11-01-object-menu-text-a0. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: System menu opens from sector quadrant icons (sector-quadrants.mjs 12/12, Arch Chromium); A0 07/25-sys-menu.png shows it greys Status for a planet, as object_menu.rs does (FUN_0051d990). A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
