@@ -67,6 +67,10 @@ const ITEM_TEXT_SELECTED: egui::Color32 = egui::Color32::WHITE;
 /// `FUN_0060c210` draws the shown item's name in. The item's own `+0x60`
 /// gray is not the one shown; A0 menus2/11-13 show the name white.
 const KIND_TEXT: egui::Color32 = egui::Color32::WHITE;
+/// The title, "Target" and the target's name: `FUN_0046a9c0` sets font 5
+/// (`FUN_00601c60(5)`), bold Arial at 13 ppem, before each. A0
+/// menus2/11 draws the title 91 pixels wide, its capitals 10 tall.
+const TEXT_FONT: u16 = 5;
 
 /// The two tabs of control `0x96` (`FUN_0046c8a0`, page at `+0x118`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -657,12 +661,14 @@ pub fn draw_mission_dialog(
             };
             let font = egui::FontId::proportional((11.0 * scale).max(7.0));
             let small = egui::FontId::proportional((8.0 * scale).max(5.0));
-            painter.text(
-                at(5.0, 2.0, 0.0, 0.0).min,
-                egui::Align2::LEFT_TOP,
+            crate::theme::paint_gdi_text(
+                &painter,
+                at(5.0, 2.0, 240.0, 16.0),
+                scale,
+                TEXT_FONT,
                 CREATE_MISSION,
-                font.clone(),
                 title_color,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
 
             if button(
@@ -696,12 +702,14 @@ pub fn draw_mission_dialog(
 
             match dialog.page {
                 MissionDialogPage::Mission => {
-                    painter.text(
-                        at(37.0, 195.0, 0.0, 0.0).min,
-                        egui::Align2::LEFT_TOP,
+                    crate::theme::paint_gdi_text(
+                        &painter,
+                        at(37.0, 195.0, 185.0, 16.0),
+                        scale,
+                        TEXT_FONT,
                         TARGET,
-                        font.clone(),
                         egui::Color32::WHITE,
+                        (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                     );
                     let kind = dialog.kind();
                     let (x, y, w, h) = KIND_BOX;
@@ -719,12 +727,14 @@ pub fn draw_mission_dialog(
                     // (FUN_0042c3b0(.., 1, 1)) is not drawn.
                     if let Some(name) = object_target_name(world, dialog.target) {
                         let (x, y, w) = TARGET_NAME;
-                        painter.text(
-                            at(x + w / 2.0, y, 0.0, 0.0).min,
-                            egui::Align2::CENTER_TOP,
-                            name,
-                            font.clone(),
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            at(x, y, w, 16.0),
+                            scale,
+                            TEXT_FONT,
+                            &name,
                             egui::Color32::WHITE,
+                            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                         );
                     } else if let Some(system) = world.systems.get(dialog.target.system) {
                         let (x, y, w, h) = TARGET_BOX;
@@ -738,12 +748,14 @@ pub fn draw_mission_dialog(
                             scale,
                         );
                         let (x, y, w) = TARGET_NAME;
-                        painter.text(
-                            at(x + w / 2.0, y, 0.0, 0.0).min,
-                            egui::Align2::CENTER_TOP,
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            at(x, y, w, 16.0),
+                            scale,
+                            TEXT_FONT,
                             &system.name,
-                            font.clone(),
                             egui::Color32::WHITE,
+                            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                         );
                     }
                     // FUN_0046a9c0: the mission box (+0x128) TEXTSTRA
@@ -1403,6 +1415,7 @@ mod tests {
         let layout = layout(1.0);
         let pos = dialog_rect(layout).min + egui::vec2(x, y);
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut emitted = None;
         for extra in [vec![], vec![]].into_iter().chain(frames) {
@@ -1543,6 +1556,7 @@ mod tests {
         let (world, _, mut state) = dialog_in_world(1);
         let layout = layout(1.0);
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let window = egui::Id::new("raising_window");
         for _ in 0..3 {
@@ -1719,6 +1733,7 @@ mod tests {
         let name = kind_name(state.dialog().unwrap().kind());
         let layout = layout(1.0);
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut output = None;
         for _ in 0..2 {
@@ -1756,6 +1771,56 @@ mod tests {
         );
         let left = glyphs[0].0.x - bounds.min.x;
         assert!((left - (w - (glyphs.last().unwrap().0.x - glyphs[0].0.x)) / 2.0).abs() < 8.0);
+    }
+
+    #[test]
+    fn the_title_and_target_label_are_in_font_5() {
+        // FUN_0046a9c0: FUN_00601c60(5) before the title at (5, 2) and
+        // "Target" at (37, 195); A0 menus2/11 draws the title bold, 91
+        // pixels wide.
+        let (world, _, mut state) = dialog_in_world(1);
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let origin = dialog_rect(layout).min;
+        let line = |y: f32| -> (String, Vec<egui::FontFamily>) {
+            let mut glyphs: Vec<(f32, String, egui::FontFamily)> = output
+                .as_ref()
+                .unwrap()
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text)
+                        if text.pos.y >= origin.y + y && text.pos.y < origin.y + y + 16.0 =>
+                    {
+                        Some((
+                            text.pos.x,
+                            text.galley.text().to_owned(),
+                            text.galley.job.sections[0].format.font_id.family.clone(),
+                        ))
+                    }
+                    _ => None,
+                })
+                .collect();
+            glyphs.sort_by(|a, b| a.0.total_cmp(&b.0));
+            (
+                glyphs.iter().map(|(_, ch, _)| ch.as_str()).collect(),
+                glyphs.into_iter().map(|(_, _, family)| family).collect(),
+            )
+        };
+        let bold = egui::FontFamily::Name(crate::theme::ARIAL_BOLD_FAMILY.into());
+        for (y, text) in [(2.0, CREATE_MISSION), (195.0, TARGET)] {
+            let (drawn, families) = line(y);
+            assert!(drawn.contains(text), "{drawn:?}");
+            assert!(families.iter().all(|family| *family == bold), "{families:?}");
+        }
     }
 
     #[test]

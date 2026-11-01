@@ -6565,7 +6565,7 @@
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. Open: A0's title is bold and larger.",
+          "note": "Mission page (tab 0x97). The original dialog (FUN_0046a750, 259x355) is ported and mission-dialog.mjs passes on Arch Chromium 155 (run 2026-10-22, chrome exact, text masked). No A0 capture of the dialog exists. 2026-11-01: A0 captures of the dialog now exist (a0-vm/menus2/11, 12; Alliance, Recruitment at Vjun): the window at (170, 40) and the kind box's dotted frame (199..399, 99..195) match the port's; the kind's name is now white along the box's top in font 4 as A0 shows. 2026-11-01: the title, \"Target\" and the target's name are now font 5 (bold 13 ppem) as FUN_0046a9c0 sets; the title's ink is within a pixel of A0's.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

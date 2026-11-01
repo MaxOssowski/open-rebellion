@@ -53,7 +53,8 @@ const masks = {
   ],
   mission: [
     { x: 35, y: 62, width: 200, height: 113 },
-    { x: 35, y: 193, width: 60, height: 16 },
+    // "Target" in font 5: its g descends to y 209, as in A0 menus2/11.
+    { x: 35, y: 193, width: 60, height: 17 },
     { x: 51, y: 211, width: 165, height: 79 },
     { x: 37, y: 292, width: 185, height: 18 },
   ],

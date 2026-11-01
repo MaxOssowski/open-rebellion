@@ -110,8 +110,23 @@ under the icon (a `hyp:`). It now draws it white in the default font 4
 4c10372a95f08fd068d762624af1af63e57c4dcefa98f0ba88606de6be493ab9  alliance-targeting/opened-screen.png
 ```
 
-Still open on the dialog: A0's title "Create Mission" is bold and larger
-than the port's.
+## The dialog's title, "Target" and target name
+
+`FUN_0046a9c0` sets font 5 (`FUN_00601c60(5)`), bold Arial at 13 ppem,
+before the title at (5, 2), "Target" at (37, 195) and the target's name
+(37, 294, 185 wide, centered). The port drew them in an 11-pixel regular
+face. Now through `paint_gdi_text` in font 5: the title's ink spans x 3
+to 95 and y 3 to 12 in the window against A0's 4 to 94 and 3 to 12, and
+"Target" x 35 to 74 (A0 the same) and y 197 to 209 (A0 196 to 209).
+`the_title_and_target_label_are_in_font_5` fails in font 4.
+`mission-dialog.mjs` passes on Linux Chromium 155 (run `mission-dialog-2026-11-01T10-22-23-743Z-152645`); its
+"Target" text mask grows one row, to y 209, where font 5's g descends
+in A0 too.
+
+```
+a28a9df0f1fc149f66819141354051ce8a6463c8c054fffac6fea122d5aa5e36  alliance-targeting/opened-screen.png
+80cc7e074e91832f7fbbf46772c4b9b1d99be23bae4d08ab538e8c6934f545b6  empire-targeting/opened-screen.png
+```
 
 ## Open
 
