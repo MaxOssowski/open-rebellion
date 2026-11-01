@@ -1,0 +1,2 @@
+704491d92f231be4911e1d9aa520f97698b024c3a3091fa8f14ab9c1d3dca600  alliance-abort/ordered-menu.png
+fac07b519079b0fe983964ea403c909b2ebd71c6f983c3743a88b6a721f33e20  empire-abort/ordered-menu.png

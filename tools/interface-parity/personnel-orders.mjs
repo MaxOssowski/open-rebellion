@@ -296,6 +296,32 @@ const cases = [
       const before = await openMenu(page, at, directory, "ordered");
       assert.notEqual(before.abort_row, null, JSON.stringify(before));
       assert.equal(before.abort_enabled, false, `an ordered mission is not yet abortable: ${JSON.stringify(before)}`);
+      // A disabled row is drawn in 0x808080 (FUN_004aba60), as A0
+      // status/02-menu.png greys an enemy ship's Move and Scrap with
+      // (128, 128, 128); an enabled row stays white.
+      const drawn = PNG.sync.read(fs.readFileSync(path.join(directory, "ordered-menu.png")));
+      const rowInk = (row) => {
+        // Rows are 20 pixels below a 2-pixel border; the text line is
+        // the 16 pixels from 2 into the row (game_menu.rs).
+        const top = Math.round(before.top + 2 + 20 * row);
+        const counts = { white: 0, grey: 0, brightest: 0 };
+        for (let y = top + 2; y < top + 18; y += 1) {
+          for (let x = Math.round(before.left) + 4; x < before.left + before.width - 3; x += 1) {
+            const at = (y * drawn.width + x) * 4;
+            const [r, g, b] = [drawn.data[at], drawn.data[at + 1], drawn.data[at + 2]];
+            if (r === 255 && g === 255 && b === 255) counts.white += 1;
+            if (r === 128 && g === 128 && b === 128) counts.grey += 1;
+            counts.brightest = Math.max(counts.brightest, r, g, b);
+          }
+        }
+        return counts;
+      };
+      const abortInk = rowInk(before.abort_row);
+      // The glyphs are anti-aliased, so only their cores reach 128.
+      assert.ok(abortInk.grey >= 10 && abortInk.brightest === 128,
+        `Abort is drawn grey: ${JSON.stringify(abortInk)}`);
+      const encyclopediaInk = rowInk(0);
+      assert.ok(encyclopediaInk.white > 20, `Encyclopedia is drawn white: ${JSON.stringify(encyclopediaInk)}`);
       await page.keyboard.press("Escape");
       await frames(page, 2);
       await setSpeed(page, setup, SPEED_ROWS.medium);

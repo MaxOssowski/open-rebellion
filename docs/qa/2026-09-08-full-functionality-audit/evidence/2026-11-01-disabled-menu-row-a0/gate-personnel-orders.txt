@@ -1,0 +1,19 @@
+{
+  "run_dir": "<repo>/.artifacts/interface-parity/personnel-orders-2026-11-01T04-19-47-897Z-1808523",
+  "status": "pass",
+  "cases": [
+    "alliance/character-move",
+    "alliance/character-move-refused",
+    "alliance/special-force-move-refused",
+    "alliance/character-retire",
+    "alliance/special-force-retire",
+    "alliance/abort",
+    "empire/character-move",
+    "empire/character-move-refused",
+    "empire/special-force-move-refused",
+    "empire/character-retire",
+    "empire/special-force-retire",
+    "empire/abort"
+  ],
+  "wasm_sha256": "2496bb9016f267062e73f17c5fabd947324837bb1ce16fc7f34031c1fef5e16c"
+}
