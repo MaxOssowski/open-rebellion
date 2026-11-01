@@ -1127,43 +1127,55 @@ mod tests {
     fn the_class_list_names_the_shown_class_gray_and_the_others_white() {
         // A0 manufacturing/24: "Construction Yard", the shown class, gray
         // (0x808080, the item's +0x60) in the list, "GenCore Level I"
-        // white; each name 2 pixels lower than the box's.
-        let (world, system) = galaxy(true);
-        let mut state = BuildSelectionState::default();
-        assert!(state.open(system, ProductionArea::TrainingFacility, true, kinds()));
-        state.dialog.as_mut().unwrap().list_open = true;
-        let layout = layout();
-        let ctx = egui::Context::default();
-        crate::theme::load_fonts(&ctx);
-        let mut cache = BmpCache::new();
-        let manufacturing = ManufacturingState::new();
-        let mut output = None;
-        for _ in 0..2 {
-            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
-                let _ = draw_build_selection(ctx, &world, &manufacturing, &mut state, layout, &mut cache);
-            }));
+        // white; each name 2 pixels lower than the box's; at any scale.
+        for scale in [1.0, 2.0] {
+            let (world, system) = galaxy(true);
+            let mut state = BuildSelectionState::default();
+            assert!(state.open(system, ProductionArea::TrainingFacility, true, kinds()));
+            state.dialog.as_mut().unwrap().list_open = true;
+            let layout = scaled(scale);
+            let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
+            let mut cache = BmpCache::new();
+            let manufacturing = ManufacturingState::new();
+            let mut output = None;
+            for _ in 0..2 {
+                output = Some(ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1400.0, 1040.0),
+                        )),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        let _ = draw_build_selection(ctx, &world, &manufacturing, &mut state, layout, &mut cache);
+                    },
+                ));
+            }
+            let origin = window_rect(layout).min;
+            let lines = crate::theme::test_lines(&output.unwrap().shapes);
+            let named = |name: &str| -> Vec<(f32, egui::Color32)> {
+                lines
+                    .iter()
+                    .filter(|line| line.text == name)
+                    .map(|line| ((line.pen.y - origin.y) / scale, line.color))
+                    .collect()
+            };
+            let first = named("Alliance Fleet Regiment");
+            let second = named("Alliance Army Regiment");
+            // The box's line, then the list's: gray and 2 lower than the
+            // box's relative to its item (box at 22, list item at 87).
+            assert_eq!(first.len(), 2, "{lines:?}");
+            assert_eq!(first[0].1, egui::Color32::WHITE);
+            assert_eq!(first[1].1, LIST_SHOWN_TEXT);
+            assert!((first[1].0 - 87.0 - (first[0].0 - 22.0 + 2.0)).abs() < 0.01, "{first:?}");
+            assert_eq!(second.len(), 1, "{lines:?}");
+            assert_eq!(second[0].1, egui::Color32::WHITE);
+            assert!((second[0].0 - first[1].0 - 70.0).abs() < 0.01, "{second:?} {first:?}");
         }
-        let origin = window_rect(layout).min;
-        let lines = crate::theme::test_lines(&output.unwrap().shapes);
-        let named = |name: &str| -> Vec<(f32, egui::Color32)> {
-            lines
-                .iter()
-                .filter(|line| line.text == name)
-                .map(|line| (line.pen.y - origin.y, line.color))
-                .collect()
-        };
-        let first = named("Alliance Fleet Regiment");
-        let second = named("Alliance Army Regiment");
-        // The box's line, then the list's: gray and 2 lower than the box's
-        // relative to its item (box at 22, list item at 87).
-        assert_eq!(first.len(), 2, "{lines:?}");
-        assert_eq!(first[0].1, egui::Color32::WHITE);
-        assert_eq!(first[1].1, LIST_SHOWN_TEXT);
-        assert_eq!(first[1].0 - 87.0, first[0].0 - 22.0 + 2.0);
-        assert_eq!(second.len(), 1, "{lines:?}");
-        assert_eq!(second[0].1, egui::Color32::WHITE);
-        assert_eq!(second[0].0 - first[1].0, 70.0);
     }
+
 
     #[test]
     fn the_class_list_opens_scrolls_on_its_bar_and_a_click_chooses_a_class() {
@@ -1209,6 +1221,11 @@ mod tests {
         assert!(!dialog.list_open());
         assert_eq!(dialog.kind(), regiments[1]);
         assert_eq!(CLASS_LIST.height(), 144.0);
+        // Reopened, the list scrolls toward the shown class (hyp), as far
+        // as the bar lets two items go.
+        click(&mut state, (111.0, 99.0));
+        assert!(state.dialog().unwrap().list_scroll > 0.0);
+        assert_eq!(CLASS_LIST.scroll_to(3), 210.0);
         assert_eq!(CLASS_LIST.list(), (8.0, 87.0, 191.0, 140.0));
     }
 
