@@ -84,3 +84,12 @@ error with the original `lfHeight` taken as egui's cell.
 Pixel-exact text would need GDI's hinted Arial glyphs, which may not be
 shipped. That remains the accepted text deviation, now within a few
 pixels a string.
+
+## The Game Menu Window's font (2026-11-01)
+
+The pop-up menus (`FUN_00442860`, rows drawn by `FUN_004aba60`) use the
+application default font 4 (`FUN_00603850`): A0 `status/11-troop-menu.png`
+draws "Confirmed Move" 90 pixels of ink and "Encyclopedia" 76, which only
+regular Arial at 13 ppem gives (advances 92 and 78; bold 13 gives 104).
+`game_menu.rs` now measures and paints its rows in that font
+(`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-text-a0`).

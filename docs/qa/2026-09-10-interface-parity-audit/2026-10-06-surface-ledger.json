@@ -7338,16 +7338,17 @@
         {
           "id": "OBJ-14-C004",
           "requirement": "fighter",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-squadron-confirmed-move-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-squadron-confirmed-move-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-text-a0/"
           ],
-          "note": "Fighter squadron menu ported; A0 20-fighter-menu.png exists but no browser case opens it and no comparison is recorded. 2026-11-01: Scrap is enabled on the player's squadron as in A0 20-fighter-menu.png (unit test; no browser case). 2026-11-01: A0 20-fighter-menu.png compared: Move, Confirmed Move, Encyclopedia, Status, Scrap all enabled; the port now enables Confirmed Move too; fleet-window.mjs squadron-confirmed-load opens the squadron's menu in the browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 status/20-fighter-menu.png on 2026-11-01: rows (Move, Confirmed Move, Encyclopedia, Status, Scrap), their order and enabled state, the frame and the shaded fill agree; the text is GDI font 4 (13 ppem) and lands within one pixel of A0 in place and width; the menu is about 103 pixels wide in both. fleet-window.mjs squadron-confirmed-load opens the menu and runs its orders on Linux Chromium. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: Fighter squadron menu ported; A0 20-fighter-menu.png exists but no browser case opens it and no comparison is recorded. 2026-11-01: Scrap is enabled on the player's squadron as in A0 20-fighter-menu.png (unit test; no browser case). 2026-11-01: A0 20-fighter-menu.png compared: Move, Confirmed Move, Encyclopedia, Status, Scrap all enabled; the port now enables Confirmed Move too; fleet-window.mjs squadron-confirmed-load opens the squadron's menu in the browser.",
+          "scope": "Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-14-C005",
@@ -7358,24 +7359,26 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-text-a0/"
           ],
-          "note": "The character menu's rows, frame, shaded fill and keyed Command arrow match A0 status/14-char-menu.png; personnel-orders.mjs passes on Linux. Deviations accepted 2026-10-30: text width (GDI hinting) and the fill's palette step.",
+          "note": "The character menu's rows, frame, shaded fill and keyed Command arrow match A0 status/14-char-menu.png; personnel-orders.mjs passes on Linux. Deviations accepted 2026-10-30: text width (GDI hinting) and the fill's palette step. 2026-11-01: the menu text is now GDI font 4 at 13 ppem, so the ~9% width deviation is gone (2026-11-01-object-menu-text-a0).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-14-C006",
           "requirement": "troop",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-regiment-confirmed-move-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-regiment-confirmed-move-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-text-a0/"
           ],
-          "note": "Regiment menu reaches Status in status-window.mjs (Arch Chromium); A0 11-troop-menu.png exists. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-window.mjs scrap case opens the regiment menu: Scrap at row 4 enabled as in A0 11-troop-menu.png, X keeps it, the checkmark scraps it (0x7050 confirmation). 2026-11-01: Confirmed Move now enabled on the player's regiment as in A0 11-troop-menu.png; fleet-window.mjs confirmed-load asks with the days, X keeps, checkmark boards.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 status/11-troop-menu.png on 2026-11-01: rows (Move, Confirmed Move, Encyclopedia, Status, Scrap), their order and enabled state, the frame and the shaded fill agree; the text is GDI font 4 (13 ppem) and lands within one pixel of A0 in place and width; the menu is about 103 pixels wide in both. fleet-window.mjs confirmed-load and scrap opens the menu and runs its orders on Linux Chromium. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: Regiment menu reaches Status in status-window.mjs (Arch Chromium); A0 11-troop-menu.png exists. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-window.mjs scrap case opens the regiment menu: Scrap at row 4 enabled as in A0 11-troop-menu.png, X keeps it, the checkmark scraps it (0x7050 confirmation). 2026-11-01: Confirmed Move now enabled on the player's regiment as in A0 11-troop-menu.png; fleet-window.mjs confirmed-load asks with the days, X keeps, checkmark boards.",
+          "scope": "Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-14-C007",
@@ -7497,9 +7500,10 @@
             "ghidra/notes/object-popup-menu.md",
             "tools/interface-parity/fleet-window.mjs",
             "tools/interface-parity/sector-quadrants.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-text-a0/"
           ],
-          "note": "Enabled rows are white on the shaded fill as in A0 status/14-char-menu.png; personnel-orders.mjs on Linux. Deviations accepted 2026-10-30: text width and the fill's palette step.",
+          "note": "Enabled rows are white on the shaded fill as in A0 status/14-char-menu.png; personnel-orders.mjs on Linux. Deviations accepted 2026-10-30: text width and the fill's palette step. 2026-11-01: the menu text is now GDI font 4 at 13 ppem, so the ~9% width deviation is gone (2026-11-01-object-menu-text-a0).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the two systematic deviations the owner accepted on 2026-10-30."
         },
         {

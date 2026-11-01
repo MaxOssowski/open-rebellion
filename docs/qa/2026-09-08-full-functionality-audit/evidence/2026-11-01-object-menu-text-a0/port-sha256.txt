@@ -1,0 +1,4 @@
+80f276f6ea8fdb283f85658687552c97a15f71686b096152db20c94ab337ca3f  fleet-window-2026-11-01T02-30-02-774Z-1486503/empire-confirmed-load/regiment-menu.png
+5eb49442b1e6e7eabce87c4d1cd90eb1f4e07afde40d04874568053549e70c42  fleet-window-2026-11-01T02-30-02-774Z-1486503/empire-squadron-confirmed-load/squadron-menu.png
+1968f91674180cd5a3d82e2fb127adc7a52e77466b2b1fe58be5a0822c61ca23  fleet-window-2026-11-01T03-06-46-419Z-1571221/empire-confirmed-load/regiment-menu.png
+7cca138a510f329c2c0450537ae3195b70408693ec76b5c028ba58537b06246a  fleet-window-2026-11-01T03-06-46-419Z-1571221/empire-squadron-confirmed-load/squadron-menu.png

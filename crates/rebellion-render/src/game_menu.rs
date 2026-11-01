@@ -18,9 +18,11 @@ use crate::cockpit::{
     STRATEGIC_LOGICAL_WIDTH, paint_gid_frame_border,
 };
 
-/// Menu text height. The Game Menu Window uses the application default font
-/// (`FUN_00603850`), whose table entry is not yet recovered.
-const MENU_FONT_HEIGHT: f32 = 14.0;
+/// The Game Menu Window's text font: the application default
+/// (`FUN_00603850`), font 4, regular Arial at 13 ppem. A0
+/// `status/11-troop-menu.png` draws "Confirmed Move" 90 pixels wide and
+/// "Encyclopedia" 76, as GDI's advances at 13 ppem give.
+const MENU_FONT: u16 = crate::DEFAULT_FONT;
 
 /// Icon column a submenu parent without an icon reserves (`FUN_004abf60`).
 const SUBMENU_ICON_WIDTH: f32 = 20.0;
@@ -315,17 +317,24 @@ fn measure(
     cache: &mut BmpCache,
     entries: &[GameMenuEntry<'_>],
     scale: f32,
-    font: &egui::FontId,
 ) -> (GameMenuGeometry, Vec<(f32, f32)>) {
+    // A row's text is one GDI line: its width and `tmHeight`.
+    let (ascent, descent) = crate::theme::original_font_metrics(MENU_FONT);
     let text_sizes: Vec<(f32, f32)> = entries
         .iter()
         .map(|entry| {
-            let size = ctx
-                .fonts(|fonts| {
-                    fonts.layout_no_wrap(entry.label.to_owned(), font.clone(), NORMAL_COLOR)
-                })
-                .size();
-            (size.x / scale, size.y / scale)
+            let width = crate::theme::gdi_pen_positions(MENU_FONT, entry.label).map_or_else(
+                || {
+                    let font = crate::theme::gdi_font(MENU_FONT, scale);
+                    ctx.fonts(|fonts| {
+                        fonts.layout_no_wrap(entry.label.to_owned(), font, NORMAL_COLOR)
+                    })
+                    .size()
+                    .x / scale
+                },
+                |(_, width)| width,
+            );
+            (width, ascent + descent)
         })
         .collect();
     let icon_sizes: Vec<(f32, f32)> = entries
@@ -372,7 +381,6 @@ fn menu_window(
 ) -> WindowFrame {
     let (geometry, text_sizes) = measured;
     let scale = layout.scale.max(0.5);
-    let font = egui::FontId::proportional(MENU_FONT_HEIGHT * scale);
     let pointer = ctx.input(|input| input.pointer.hover_pos());
     let origin = egui::pos2(
         layout.canvas.x + at.0 * layout.scale,
@@ -442,15 +450,20 @@ fn menu_window(
                         );
                     }
                 }
-                ui.painter().text(
-                    egui::pos2(
-                        row.min.x + (geometry.icon_column + 6.0) * scale,
-                        row.min.y + ((height - text.1) / 2.0) * scale,
+                crate::theme::paint_gdi_text(
+                    ui.painter(),
+                    egui::Rect::from_min_size(
+                        egui::pos2(
+                            row.min.x + (geometry.icon_column + 6.0) * scale,
+                            row.min.y + ((height - text.1) / 2.0) * scale,
+                        ),
+                        egui::vec2(text.0, text.1) * scale,
                     ),
-                    egui::Align2::LEFT_TOP,
+                    scale,
+                    MENU_FONT,
                     entry.label,
-                    font.clone(),
                     entry_text_color(entry, lit, faction),
+                    (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
                 );
                 if under {
                     hovered = Some(index);
@@ -492,10 +505,9 @@ pub fn draw_game_menu_with_submenu(
     input_enabled: bool,
 ) -> GameMenuResponse {
     let scale = layout.scale.max(0.5);
-    let font = egui::FontId::proportional(MENU_FONT_HEIGHT * scale);
     let now = ctx.input(|input| input.time);
     let shown_at = *state.shown_at.get_or_insert(now);
-    let measured = measure(ctx, cache, entries, scale, &font);
+    let measured = measure(ctx, cache, entries, scale);
     let (x, y) = placement.origin((measured.0.width, measured.0.height));
     let highlighted = state.highlighted.map(|(row, _)| row);
     let frame = menu_window(
@@ -533,7 +545,7 @@ pub fn draw_game_menu_with_submenu(
     }
     let mut child = None;
     if let (Some(sub), true) = (parent_lit, state.submenu_open) {
-        let child_measured = measure(ctx, cache, sub.entries, scale, &font);
+        let child_measured = measure(ctx, cache, sub.entries, scale);
         let (top, height) = measured.0.rows[sub.parent];
         let at = submenu_origin(
             (x, y, measured.0.width, measured.0.height),
@@ -713,7 +725,7 @@ mod tests {
     struct Run {
         response: GameMenuResponse,
         rect: egui::Rect,
-        texts: Vec<(String, egui::Pos2, egui::Vec2, egui::Color32)>,
+        texts: Vec<(String, egui::Pos2, f32, egui::Color32)>,
     }
 
     fn layout(scale: f32) -> CockpitLayout {
@@ -772,18 +784,11 @@ mod tests {
                     true,
                 );
             });
-            texts = output
-                .shapes
+            // Each row's line: its text, pen (left, baseline), width and
+            // colour.
+            texts = crate::theme::test_lines(&output.shapes)
                 .into_iter()
-                .filter_map(|clipped| match clipped.shape {
-                    egui::Shape::Text(text) => Some((
-                        text.galley.text().to_owned(),
-                        text.pos,
-                        text.galley.size(),
-                        text.fallback_color,
-                    )),
-                    _ => None,
-                })
+                .map(|line| (line.text, line.pen, line.width, line.color))
                 .collect();
         }
         Run {
@@ -899,8 +904,7 @@ mod tests {
                 "scale {scale}"
             );
         }
-        // Heights scale exactly; egui measures text widths at the scaled font
-        // size, which rounds differently from twice the 14-pixel width.
+        // Heights and GDI's text widths scale exactly.
         assert_eq!(large.rect.height(), small.rect.height() * 2.0);
         assert!(
             (large.rect.width() - small.rect.width() * 2.0).abs() <= 2.0,
@@ -941,7 +945,8 @@ mod tests {
     #[test]
     fn text_sits_six_pixels_in_and_centred_in_its_row() {
         // FUN_004aba60: text starts after the icon column plus 6 and is
-        // vertically centred in the row.
+        // vertically centred in the row: a 16-pixel line (font 4's 13 + 3)
+        // in a 20-pixel row, so its baseline is 2 + 13 below the row's top.
         for scale in [1.0, 2.0] {
             let entries = [labelled("Move", true), labelled("Mission", true)];
             let seen = run(
@@ -951,32 +956,51 @@ mod tests {
                 vec![vec![]],
             );
             for (index, label) in ["Move", "Mission"].into_iter().enumerate() {
-                let (_, pos, size, _) = seen
+                let (_, pen, ..) = seen
                     .texts
                     .iter()
                     .find(|(text, ..)| text == label)
                     .unwrap_or_else(|| panic!("{label} is painted"));
                 let (top, row) = row_span(seen.rect, scale, index, 2);
-                assert_eq!(pos.x, seen.rect.min.x + 6.0 * scale, "{label} at {scale}");
+                assert_eq!(row, 20.0 * scale, "{label} at {scale}");
+                assert_eq!(pen.x, seen.rect.min.x + 6.0 * scale, "{label} at {scale}");
                 assert!(
-                    (pos.y - (top + (row - size.y) / 2.0)).abs() < 0.01,
-                    "{label} at {scale}: top {} in row {top}+{row}, height {}",
-                    pos.y,
-                    size.y
+                    (pen.y - (top + 15.0 * scale)).abs() < 0.01,
+                    "{label} at {scale}: baseline {} in row {top}+{row}",
+                    pen.y
                 );
             }
-            // The widest row sets the width: icon column, 12 pixels, text.
-            let widest = seen
-                .texts
-                .iter()
-                .map(|(.., size, _)| size.x)
-                .fold(0.0, f32::max);
+            // The widest row sets the width: icon column, 12 pixels, and
+            // GDI's width of the text ("Mission" at 13 ppem).
+            let widest = crate::theme::gdi_pen_positions(MENU_FONT, "Mission")
+                .map(|(_, width)| width)
+                .unwrap_or_default();
+            assert!(widest > 0.0);
             assert!(
-                (seen.rect.width() - (widest + 12.0 * scale)).abs() < 0.01,
+                (seen.rect.width() - (widest + 12.0) * scale).abs() < 0.01,
                 "width {} for text {widest} at {scale}",
                 seen.rect.width()
             );
         }
+    }
+
+    #[test]
+    fn a_label_outside_cp1252_is_measured_in_the_gdi_font() {
+        // GDI's advances cover cp1252 only; another character falls back to
+        // egui's width in the same font, kept in logical pixels.
+        let entries = [labelled("Move \u{2713}", true)];
+        let text_width = |scale: f32| {
+            let seen = run(
+                scale,
+                &entries,
+                |rect| rect.max + egui::vec2(9.0, 9.0),
+                vec![vec![]],
+            );
+            seen.rect.width() / scale - 12.0
+        };
+        let (small, large) = (text_width(1.0), text_width(2.0));
+        assert!(small > 20.0, "{small}");
+        assert!((large - small).abs() <= 2.0, "{small} vs {large}");
     }
 
     #[test]
