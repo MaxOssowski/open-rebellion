@@ -56,7 +56,12 @@ pub enum TargetOrder {
     /// A regiment's Move (`0x201`). Released on a Fleet window it boards the
     /// fleet (`ghidra/notes/fleet-window.md`, "Loading a regiment onto a
     /// fleet").
-    TroopMove { troop: TroopKey },
+    TroopMove {
+        troop: TroopKey,
+        /// Confirmed Move (`0x202`): the confirmation window lists the
+        /// trip's days first (`FUN_00487cc0`).
+        confirmed: bool,
+    },
     /// A squadron's Move (`0x201`) of one squadron of `class` from `from`.
     /// Released on a Fleet window it boards the fleet; on its own system it
     /// lands on the planet ([`rebellion_core::squadrons`]).

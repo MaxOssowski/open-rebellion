@@ -1329,6 +1329,39 @@ const cases = [
     },
   },
   {
+    name: "confirmed-load",
+    code: FLEET_LOAD,
+    // Confirmed Move (0x202) on the player's regiment, enabled as A0
+    // status/11-troop-menu.png shows: FUN_00487cc0 asks with the trip's days
+    // before the regiment boards. The X keeps it on the planet; the
+    // checkmark resubmits the move (FUN_0041ce20).
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup);
+      await selectFleet(page, opened);
+      const menu = await openMenu(page, point(setup.troop_item), directory, "regiment");
+      assert.equal(menu.confirmed_move_row, 1, JSON.stringify(menu));
+      assert.equal(menu.confirmed_move_enabled, true, JSON.stringify(menu));
+      await choose(page, menu, menu.confirmed_move_row, "Confirmed Move");
+      await click(page, point(opened.fleet_entry));
+      const asked = await until(page, "the confirmation opens", (o) => o.confirmation_open);
+      assert.equal(asked.aboard, false, "the regiment boarded before the answer");
+      await shot(page, directory, "confirmation");
+      await click(page, confirmationCross(faction));
+      const kept = await until(page, "the X keeps the regiment on its planet", (o) => !o.confirmation_open);
+      assert.equal(kept.aboard, false, "the X loaded the regiment");
+      const again = await openMenu(page, point(setup.troop_item), directory, "regiment-again");
+      await choose(page, again, again.confirmed_move_row, "Confirmed Move");
+      await click(page, point(opened.fleet_entry));
+      await until(page, "the confirmation opens again", (o) => o.confirmation_open);
+      await click(page, confirmationCheckmark(faction));
+      const loaded = await until(page, "the checkmark boards the regiment",
+        (o) => !o.confirmation_open && o.aboard);
+      assert.equal(loaded.cargo, 1);
+      await shot(page, directory, "loaded");
+      return { opened, menu, asked, kept, loaded };
+    },
+  },
+  {
     name: "scrap",
     code: FLEET_LOAD,
     // Scrap (0x200, TEXTSTRA 12295) on the player's regiment: its +0x18 is

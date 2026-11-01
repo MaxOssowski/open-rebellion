@@ -570,6 +570,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Build => producer && gates.build,
                 ObjectMenuCommand::ConfirmedMove => {
                     (fleet && gates.fleet_move)
+                        || (troop && gates.troop_move)
                         || (character && gates.character_move)
                         || (special_force && gates.special_force_move)
                 }
@@ -1423,8 +1424,9 @@ mod tests {
     }
 
     #[test]
-    fn a_regiments_move_follows_its_gate_and_confirmed_move_stays_disabled() {
-        // port: only Move is ported for a regiment (loading onto a fleet).
+    fn a_regiments_move_and_confirmed_move_follow_its_gate() {
+        // A0 .artifacts/a0-vm/status/11-troop-menu.png: the player's
+        // regiment shows Move and Confirmed Move enabled (FUN_00504b30).
         let troop = Some(MenuObject::Troop(TroopKey::default()));
         let gates = OrderGates {
             troop_move: true,
@@ -1434,7 +1436,7 @@ mod tests {
         };
         assert_eq!(
             enabled(&object_menu_rows(troop, gates)),
-            ["Move", "Encyclopedia", "Status"]
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
         );
         assert_eq!(
             enabled(&object_menu_rows(troop, OrderGates::default())),

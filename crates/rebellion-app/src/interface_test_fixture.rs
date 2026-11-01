@@ -2036,6 +2036,7 @@ struct FixtureObjectMenu<'a> {
     mission_row: Option<usize>,
     move_row: Option<usize>,
     confirmed_move_row: Option<usize>,
+    confirmed_move_enabled: bool,
     create_fleet_row: Option<usize>,
     rename_row: Option<usize>,
     destination_row: Option<usize>,
@@ -2137,6 +2138,9 @@ fn object_menu_report<'a>(
         mission_row: menu.row_of(ObjectMenuCommand::Mission),
         move_row: menu.row_of(ObjectMenuCommand::Move),
         confirmed_move_row: menu.row_of(ObjectMenuCommand::ConfirmedMove),
+        confirmed_move_enabled: menu
+            .row_of(ObjectMenuCommand::ConfirmedMove)
+            .is_some_and(|row| menu.row_enabled(row)),
         create_fleet_row: menu.row_of(ObjectMenuCommand::CreateFleet),
         rename_row: menu.row_of(ObjectMenuCommand::Rename),
         destination_row: menu.row_of(ObjectMenuCommand::Destination),

@@ -292,6 +292,29 @@ impl TroopTransportState {
             .map(|_| ())
     }
 
+    /// The days [`Self::move_regiment`] would take the regiment to
+    /// `target`: none within its own system. The Confirmed Move's line
+    /// (`FUN_0053c2e0`).
+    ///
+    /// # Errors
+    /// Returns the refusal [`Self::move_regiment`] would give.
+    pub fn move_days(
+        &self,
+        world: &GameWorld,
+        movement: &MovementState,
+        blockaded: &HashSet<SystemKey>,
+        troop: TroopKey,
+        target: RegimentTarget,
+    ) -> Result<u32, TroopTransportError> {
+        let (_, origin, leg) = self.plan_move(world, movement, blockaded, troop, target)?;
+        let destination = leg_system(world, leg)?;
+        Ok(if destination == origin {
+            0
+        } else {
+            regiment_transit_ticks(world, origin, destination)
+        })
+    }
+
     fn plan_move(
         &self,
         world: &GameWorld,
@@ -522,16 +545,7 @@ impl TroopTransportState {
         leg: RegimentLeg,
         tick: u64,
     ) -> Result<RegimentMove, TroopTransportError> {
-        let destination = match leg {
-            RegimentLeg::Surface(system) => system,
-            RegimentLeg::Fleet(fleet) => {
-                world
-                    .fleets
-                    .get(fleet)
-                    .ok_or(TroopTransportError::MissingFleet)?
-                    .location
-            }
-        };
+        let destination = leg_system(world, leg)?;
         match place {
             RegimentPlace::Surface(system) => {
                 if let Some(value) = world.systems.get_mut(system) {
@@ -554,13 +568,7 @@ impl TroopTransportState {
             }
             return Ok(RegimentMove::Placed(leg));
         }
-        let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
-        let ticks = transit_ticks_between(
-            world,
-            position(origin),
-            position(destination),
-            default_speed(world),
-        );
+        let ticks = regiment_transit_ticks(world, origin, destination);
         let transit = RegimentTransit {
             troop,
             origin,
@@ -887,6 +895,29 @@ fn side(is_alliance: bool) -> Faction {
     } else {
         Faction::Empire
     }
+}
+
+/// The system a regiment's leg ends in.
+fn leg_system(world: &GameWorld, leg: RegimentLeg) -> Result<SystemKey, TroopTransportError> {
+    match leg {
+        RegimentLeg::Surface(system) => Ok(system),
+        RegimentLeg::Fleet(fleet) => world
+            .fleets
+            .get(fleet)
+            .map(|value| value.location)
+            .ok_or(TroopTransportError::MissingFleet),
+    }
+}
+
+/// A regiment travels between systems at the default speed.
+fn regiment_transit_ticks(world: &GameWorld, origin: SystemKey, destination: SystemKey) -> u32 {
+    let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
+    transit_ticks_between(
+        world,
+        position(origin),
+        position(destination),
+        default_speed(world),
+    )
 }
 
 fn insert_sorted(keys: &mut Vec<TroopKey>, troop: TroopKey) {
@@ -1515,6 +1546,51 @@ mod tests {
         assert_eq!(state.advance_transit(&mut world, 30).arrived, vec![transit]);
         assert!(world.systems[destination].ground_units.contains(&troops[0]));
         assert!(state.transits().is_empty());
+    }
+
+    // FUN_0053c2e0: the Confirmed Move's line gives the days the move
+    // itself would take. port: none within the regiment's own system, as
+    // the move places it at once.
+    #[test]
+    fn a_regiments_move_days_are_the_trips_and_nothing_moves() {
+        let (mut world, origin, destination, fleet, troops) = alliance_world(1);
+        let mut state = TroopTransportState::new();
+        let blockaded = HashSet::new();
+        let days = |state: &TroopTransportState, world: &GameWorld, target| {
+            state.move_days(world, &MovementState::new(), &blockaded, troops[0], target)
+        };
+
+        // alliance_world: 20 days to the destination.
+        assert_eq!(
+            days(&state, &world, RegimentTarget::System(destination)),
+            Ok(20)
+        );
+        assert_eq!(days(&state, &world, RegimentTarget::Fleet(fleet)), Ok(0));
+        assert_eq!(days(&state, &world, RegimentTarget::System(origin)), Ok(0));
+        assert!(state.transits().is_empty());
+        assert!(world.systems[origin].ground_units.contains(&troops[0]));
+
+        world.systems[destination].control = ControlKind::Controlled(Faction::Empire);
+        world.systems[destination].is_populated = true;
+        assert_eq!(
+            days(&state, &world, RegimentTarget::System(destination)),
+            Err(TroopTransportError::OtherSideDestination)
+        );
+        world.systems[destination].control = ControlKind::Controlled(Faction::Alliance);
+        let moved = move_to(
+            &mut state,
+            &mut world,
+            troops[0],
+            RegimentTarget::System(destination),
+        );
+        // move_to gives the order on day 10.
+        assert!(matches!(
+            moved,
+            Ok(RegimentMove::Departed(RegimentTransit {
+                arrival_tick: 30,
+                ..
+            }))
+        ));
     }
 
     // An autoscrapped regiment (FUN_004f8850) leaves its journey and its

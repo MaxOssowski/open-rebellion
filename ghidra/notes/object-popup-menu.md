@@ -283,6 +283,19 @@ with Ctrl held, for window types 1, 4 and 10; type 9 issues `0x214`.
   and open this menu on a right release, with their kind's orders
   (`sector-icon-menus.md`).
 
+## A regiment's Confirmed Move (2026-11-01)
+
+A0 `status/11-troop-menu.png` shows the player's regiment with Move and
+Confirmed Move both enabled (`FUN_00504b30`'s list). The port enables
+Confirmed Move by the same gate as Move. The order goes to targeting like
+Move; on release `FUN_00487cc0` asks with the regiment's line
+(`FUN_0053c2e0`: the class name and the trip's days; port: none within its own
+system) and the evacuation warning when it stands on a blockaded planet
+(`FUN_0049a350`). The checkmark resubmits the move (`FUN_0041ce20(order,
+1)`) to the fleet or system; the X destroys it. Gate:
+`fleet-window.mjs` case `confirmed-load`. port: a squadron's and a capital
+ship's Confirmed Move stay disabled.
+
 ## Supporting decompiles
 
 `FUN_006007b0`, `FUN_00609fc0`, `FUN_004ac5c0`, `FUN_004fcf20`,

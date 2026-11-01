@@ -6291,6 +6291,7 @@ async fn main() {
                                             special_forces,
                                             missions: Vec::new(),
                                             scrap: Vec::new(),
+                                            troops: Vec::new(),
                                             blockaded: false,
                                             destination: SystemKey::default(),
                                             join: None,
@@ -6331,6 +6332,7 @@ async fn main() {
                                         special_forces: Vec::new(),
                                         missions: Vec::new(),
                                         scrap: vec![target],
+                                        troops: Vec::new(),
                                         blockaded: false,
                                         destination: SystemKey::default(),
                                         join: None,
@@ -6368,6 +6370,7 @@ async fn main() {
                                     special_forces: Vec::new(),
                                     missions,
                                     scrap: Vec::new(),
+                                    troops: Vec::new(),
                                     blockaded: false,
                                     destination: SystemKey::default(),
                                     join: None,
@@ -6412,8 +6415,14 @@ async fn main() {
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
-                        Some((ObjectMenuCommand::Move, Some(MenuObject::Troop(troop)))) => {
-                            targeting = Some(Targeting::new(TargetOrder::TroopMove { troop }));
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::Troop(troop)),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::TroopMove {
+                                troop,
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
                         }
                         Some((
                             command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
@@ -6998,10 +7007,22 @@ async fn main() {
                         fleets,
                         characters,
                         special_forces,
+                        troops,
                         destination,
                         join,
                     }) = answer
                     {
+                        // FUN_0041ce20(order, 1): a regiment's 0x202 is its
+                        // Move again, to the fleet or the system.
+                        panel_actions.extend(troops.into_iter().map(|troop| {
+                            PanelAction::MoveRegiment {
+                                troop,
+                                target: join.map_or(
+                                    RegimentTarget::System(destination),
+                                    RegimentTarget::Fleet,
+                                ),
+                            }
+                        }));
                         panel_actions.extend(special_forces.into_iter().map(|unit| {
                             PanelAction::MoveSpecialForce {
                                 unit,
@@ -7219,19 +7240,37 @@ async fn main() {
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::TroopMove { troop },
-                                    target: ReleaseTarget::Fleet { fleet, .. },
-                                }) => panel_actions.push(PanelAction::MoveRegiment {
-                                    troop,
-                                    target: RegimentTarget::Fleet(fleet),
-                                }),
-                                Some(TargetingEnd::Target {
-                                    order: TargetOrder::TroopMove { troop },
-                                    target: ReleaseTarget::System(system),
-                                }) => panel_actions.push(PanelAction::MoveRegiment {
-                                    troop,
-                                    target: RegimentTarget::System(system),
-                                }),
+                                    order: TargetOrder::TroopMove { troop, confirmed },
+                                    target,
+                                }) => {
+                                    let (system, regiment_target) = match target {
+                                        ReleaseTarget::Fleet { fleet, system } => {
+                                            (system, RegimentTarget::Fleet(fleet))
+                                        }
+                                        ReleaseTarget::System(system) => {
+                                            (system, RegimentTarget::System(system))
+                                        }
+                                    };
+                                    if confirmed {
+                                        confirm_troop_move(
+                                            &world,
+                                            &movement_state,
+                                            &troop_transport_state,
+                                            blockade_state.blockaded_systems(),
+                                            player_faction,
+                                            troop,
+                                            (system, regiment_target),
+                                            clock.tick,
+                                            &mut msg_log,
+                                            &mut move_confirmation_state,
+                                        );
+                                    } else {
+                                        panel_actions.push(PanelAction::MoveRegiment {
+                                            troop,
+                                            target: regiment_target,
+                                        });
+                                    }
+                                }
                                 // A squadron's 0x201 against the release
                                 // window's +0x70: boarding or landing.
                                 Some(TargetingEnd::Target {
@@ -8537,6 +8576,7 @@ fn issue_fleet_move(
         special_forces: Vec::new(),
         missions: Vec::new(),
         scrap: Vec::new(),
+        troops: Vec::new(),
         blockaded: false,
         destination,
         join,
@@ -8593,10 +8633,71 @@ fn confirm_character_move(
         special_forces: Vec::new(),
         missions: Vec::new(),
         scrap: Vec::new(),
+        troops: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,
         lines: vec![(c.name.clone(), days)],
+    });
+}
+
+/// A regiment's Confirmed Move (`0x202`): the confirmation lists the
+/// regiment's days (`FUN_0053c2e0`) and warns of an evacuation when it
+/// stands on a blockaded planet (`FUN_0049a350`).
+#[allow(clippy::too_many_arguments)]
+fn confirm_troop_move(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    blockaded_systems: &std::collections::HashSet<rebellion_core::ids::SystemKey>,
+    faction: MissionFaction,
+    troop: rebellion_core::ids::TroopKey,
+    (system, target): (rebellion_core::ids::SystemKey, RegimentTarget),
+    tick: u64,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+) {
+    let days = transport.move_days(world, movement, blockaded_systems, troop, target);
+    let name =
+        rebellion_core::scrap::target_name(world, rebellion_core::scrap::ScrapTarget::Troop(troop));
+    let (Ok(days), Some(name)) = (days, name) else {
+        macroquad::logging::info!("[interface] troop_move confirm refused");
+        msg_log.push(GameMessage::new(
+            tick,
+            "Move refused".to_string(),
+            MessageCategory::Event,
+        ));
+        return;
+    };
+    let blockaded = world
+        .systems
+        .values()
+        .find(|value| value.ground_units.contains(&troop))
+        .is_some_and(|value| {
+            rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, value)
+        });
+    macroquad::logging::info!(
+        "[interface] troop_move confirm days={} blockaded={}",
+        days,
+        blockaded
+    );
+    let join = match target {
+        RegimentTarget::Fleet(fleet) => Some(fleet),
+        RegimentTarget::System(_) => None,
+    };
+    move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
+        faction,
+        fleets: Vec::new(),
+        characters: Vec::new(),
+        special_forces: Vec::new(),
+        troops: vec![troop],
+        missions: Vec::new(),
+        scrap: Vec::new(),
+        blockaded,
+        destination: system,
+        join,
+        lines: vec![(name, days)],
     });
 }
 
@@ -8862,6 +8963,7 @@ fn confirm_special_force_move(
         special_forces: vec![unit],
         missions: Vec::new(),
         scrap: Vec::new(),
+        troops: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,

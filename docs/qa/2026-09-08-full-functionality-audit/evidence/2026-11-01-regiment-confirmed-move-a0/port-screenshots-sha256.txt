@@ -1,0 +1,4 @@
+fbcd7d96a6dadd84a8b4abce33963aee323c7999180b6067db5c4f7ac42753c7  alliance-confirmed-load/confirmation.png
+48ff7a2d383670d49ee0761261f66b707d077f6ac221bb31d30e54a5c04d8b19  empire-confirmed-load/confirmation.png
+f3e98f1997ece192bacfde99cae4c3982d7f6e54bb42c7adc3a0f7c6be5a7e41  alliance-confirmed-load/loaded.png
+c8a36bfae94fd9786aecab7c3b70bf2e2c6630ce405eff067e967dc6a8342d6b  empire-confirmed-load/loaded.png
