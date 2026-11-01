@@ -65,7 +65,7 @@ const ICON_TEXT_X: f32 = 40.0;
 const ICON_ROW_INSET: f32 = 1.0;
 /// The list's scroll bar (`FUN_00443130`: `FUN_0060a490(.., list, 7,
 /// 0x299a, ..)`): STRATEGY RCDATA 10650.
-const BAR_ART: crate::list_scroll_bar::BarArt = crate::list_scroll_bar::BarArt {
+pub(crate) const BAR_ART: crate::list_scroll_bar::BarArt = crate::list_scroll_bar::BarArt {
     width: 12,
     track: 10_654,
     up: [10_658, 10_660],

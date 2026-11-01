@@ -41,6 +41,40 @@ The name sits white along the box's top in font 4 (`2026-11-01-menus2-a0`).
 The Missions window's row shows the kind's mini (`0x5c00` range), not
 this icon (`10`).
 
+## The drop-down
+
+A0 `23-hold-*`, `31-needa-*`, `32-veers-*`, `32-emperor-*` (hashes in
+`a0-sha256-lists.txt`): the list holds every kind, one 113-pixel item
+under the other; the shown kind's name is white and the others' gray
+(0x808080, the item's `+0x60`); its RCDATA 0x299a bar shows at the
+right and its held down arrow scrolls the list by pixels; the wheel does
+nothing; the window's background is STRATEGY 10598 tiled from its
+top-left inside a white one-pixel frame at (0, 0)..(198, 115). The port
+showed one item at a time, white, on black, scrolled by the wheel.
+
+Now `draw_mission_dialog` lays every kind 113 pixels apart from the
+list's first visible pixel, names the shown one white and the others
+gray, draws the bar with the Status window's 0x299a art (step 10; hyp:
+`FUN_0060a490`'s step not read), opens on the shown kind, chooses the
+item under a click (the bar only scrolls), and paints the tile and the
+frame. The bars' arrows (10658..10664, 10685..10688, 10750..10753) are
+strobe buttons and now keyed on their blue corner, as A0 shows the
+track there. Against `31-needa-00` the frame and the bar match but the
+thumb's length (the fixture lists more kinds than Needa) and two key
+pixels, now keyed.
+
+Tests: `the_kind_list_scrolls_by_pixels_on_its_bar_and_a_click_chooses_an_item`,
+`the_kind_list_opens_on_the_shown_kind_and_lays_its_items_113_apart`,
+`a_click_chooses_the_item_under_it_at_any_scale`,
+`the_kind_list_names_the_shown_kind_white_and_the_others_gray`.
+`mission-dialog.mjs mission` captures the open list on both sides (run
+`mission-dialog-2026-11-01T15-34-51-086Z-1170469`):
+
+```
+44700212ab9031f39923f8f7116731279c42fd9c9192eee3284eb8aced9fbb73  alliance-mission/kind-list-screen.png
+a93a1a78557bfcd3fbb9a3d62b3f1137ebd5a0be0e630ac04fc1a906d36c204d  empire-mission/kind-list-screen.png
+```
+
 ## Open
 
 The other kinds (Abduction, Assassination, Death Star Sabotage, Subdue

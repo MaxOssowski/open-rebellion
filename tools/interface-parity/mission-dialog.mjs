@@ -471,6 +471,29 @@ async function inspect(server, source, faction, scenario, executable) {
       comparisons.push(compare(switched, composeExpected(source, faction, "agents"), "agents", "agents-tab-clicked", directory));
     }
 
+    let kindList = null;
+    if (scenario.name === "mission") {
+      // The kind drop-down (FUN_0060cac0): its Missions button (101, 174)
+      // opens a 200 by 117 window under the box; the list's RCDATA 0x299a
+      // bar shows at its right when the kinds overflow, its down arrow
+      // scrolls by pixels and the list stays open (A0 kinds/23).
+      const press = async (x, y) => {
+        await page.mouse.move(origin.x + x, origin.y + y);
+        await frames(page);
+        await page.mouse.down();
+        await frames(page);
+        await page.mouse.up();
+        await frames(page);
+      };
+      // Back to the Mission page (tab 0x97 at (7, 20)) first.
+      await press(7 + 58, 20 + 16);
+      await press(101 + 32, 174 + 9);
+      await page.mouse.move(origin.x + 120, origin.y + 250);
+      await frames(page, 2);
+      const listShot = await page.screenshot({ animations: "disabled" });
+      fs.writeFileSync(path.join(directory, "kind-list-screen.png"), listShot);
+      kindList = { sha256: sha256(listShot) };
+    }
     let cancelled = null;
     if (targeting) {
       comparisons.push(targeting.cursorCheck);
@@ -499,6 +522,7 @@ async function inspect(server, source, faction, scenario, executable) {
       fixture_code: fixtureCode,
       ready,
       ...(targeting ? { object_menu: targeting.menu, target_pointer: targeting.pointer, cancelled } : {}),
+      ...(kindList ? { kind_list: kindList } : {}),
       comparisons,
       requests,
       errors,

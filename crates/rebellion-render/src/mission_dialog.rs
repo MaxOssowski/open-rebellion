@@ -67,6 +67,14 @@ const ITEM_TEXT_SELECTED: egui::Color32 = egui::Color32::WHITE;
 /// `FUN_0060c210` draws the shown item's name in. The item's own `+0x60`
 /// gray is not the one shown; A0 menus2/11-13 show the name white.
 const KIND_TEXT: egui::Color32 = egui::Color32::WHITE;
+/// The drop-down's other kinds keep the item's own `+0x60`, gray (A0
+/// kinds/31: "Espionage" under the shown "Diplomacy").
+const LIST_KIND_TEXT: egui::Color32 = egui::Color32::from_rgb(0x80, 0x80, 0x80);
+/// The drop-down's background tile (A0 kinds/31).
+const LIST_BACKGROUND: u32 = 10_598;
+/// The drop-down list's arrow step, as the Status window's list of the
+/// same bar takes it (hyp: `FUN_0060a490`'s step argument is not read).
+const LIST_STEP: f32 = 10.0;
 /// The title, "Target" and the target's name: `FUN_0046a9c0` sets font 5
 /// (`FUN_00601c60(5)`), bold Arial at 13 ppem, before each. A0
 /// menus2/11 draws the title 91 pixels wide, its capitals 10 tall.
@@ -94,6 +102,10 @@ pub struct MissionDialog {
     page: MissionDialogPage,
     /// The mission-kind drop-down is open (`CoolSelectionBoxClass +0xe8`).
     list_open: bool,
+    /// The drop-down list's first visible pixel: it scrolls by pixels on
+    /// its bar (A0 kinds/23).
+    list_scroll: f32,
+    list_hold: Option<crate::list_scroll_bar::Hold>,
     agents: Vec<MissionMember>,
     decoys: Vec<MissionMember>,
     selected: Vec<MissionMember>,
@@ -215,6 +227,8 @@ impl MissionDialogState {
             kind: 0,
             page: MissionDialogPage::Mission,
             list_open: false,
+            list_scroll: 0.0,
+            list_hold: None,
             agents: team,
             decoys: Vec::new(),
             selected: Vec::new(),
@@ -711,6 +725,7 @@ pub fn draw_mission_dialog(
                         dialog.faction,
                         at(x, y, w, h),
                         scale,
+                        KIND_TEXT,
                     );
                     // An object target shows its name; port: its portrait
                     // (FUN_0042c3b0(.., 1, 1)) is not drawn.
@@ -768,6 +783,9 @@ pub fn draw_mission_dialog(
                         scale,
                     ) {
                         dialog.list_open = !dialog.list_open;
+                        // hyp: the list opens with the shown kind at its top.
+                        dialog.list_scroll = dialog.kind as f32 * KIND_BOX.3;
+                        dialog.list_hold = None;
                     }
                 }
                 MissionDialogPage::Agents => {
@@ -899,31 +917,92 @@ pub fn draw_mission_dialog(
             }
 
             // The drop-down (FUN_0060cac0): a 200 by 117 window under the box
-            // holding a one-item list at (2, 2). port: its scroll bar
-            // (FUN_0060f640, base 0x299a) is not drawn; the wheel scrolls it.
+            // holding a CoolDragList at (2, 2), 196 by 113, of 113-pixel
+            // items (the 200 by 113 surfaces FUN_0046a9c0 builds), with the
+            // scroll bar FUN_0060f640 makes from RCDATA 0x299a at its right.
+            // A0 kinds/02, 23: it scrolls by pixels while the down arrow is
+            // held; the wheel does nothing; the shown kind's name is white
+            // and the others' gray (the item's +0x60).
             if dialog.list_open && dialog.page == MissionDialogPage::Mission {
                 let (x, y, w, h) = KIND_BOX;
                 let popup = at(x, y + h, w, h + 4.0);
-                let item = at(x + 2.0, y + h + 2.0, w - 4.0, h);
+                let list = (x + 2.0, y + h + 2.0, w - 4.0, h);
+                let list_rect = at(list.0, list.1, list.2, list.3);
+                // A0 kinds/31: the window's background is STRATEGY 10598
+                // (195 by 61) tiled from its top-left, inside a white
+                // one-pixel frame at (0, 0)..(198, 115).
                 painter.rect_filled(popup, 0.0, egui::Color32::BLACK);
-                let response = ui.interact(popup, ui.id().with("kind-list"), egui::Sense::click());
-                if response.hovered() {
-                    let wheel = ctx.input(|input| input.raw_scroll_delta.y);
-                    dialog.select_kind(scrolled(dialog.kind, dialog.kinds.len(), wheel));
+                let inside = painter.with_clip_rect(painter.clip_rect().intersect(at(x, y + h, 199.0, 116.0)));
+                for (tx, ty) in [(0.0, 0.0), (195.0, 0.0), (0.0, 61.0), (195.0, 61.0)] {
+                    paint(&inside, ctx, cache, LIST_BACKGROUND, at(x + tx, y + h + ty, 195.0, 61.0), scale);
                 }
-                paint_kind(
-                    &painter,
-                    ctx,
-                    cache,
-                    dialog.kind(),
-                    dialog.faction,
-                    item,
-                    scale,
+                inside.rect_stroke(
+                    at(x + 0.5, y + h + 0.5, 198.0, 115.0),
+                    0.0,
+                    egui::Stroke::new(scale, egui::Color32::WHITE),
+                    egui::StrokeKind::Middle,
                 );
-                // hyp: choosing an item closes the list, as a click outside
-                // does (command 0x3e9 -> FUN_0060cbf0).
+                let content = h * dialog.kinds.len() as f32;
+                let bar = crate::list_scroll_bar::ScrollBar::new(
+                    crate::status_window::BAR_ART,
+                    list.0,
+                    list.1,
+                    list.2,
+                    list.3,
+                    content,
+                    dialog.list_scroll,
+                );
+                let (bx, by, bw, bh) = bar.rect();
+                let bar_rect = at(bx, by, bw, bh);
+                let response = ui.interact(popup, ui.id().with("kind-list"), egui::Sense::click());
+                let items = painter.with_clip_rect(painter.clip_rect().intersect(list_rect));
+                for (index, &kind) in dialog.kinds.iter().enumerate() {
+                    let top = list.1 + h * index as f32 - dialog.list_scroll;
+                    if top + h <= list.1 || top >= list.1 + list.3 {
+                        continue;
+                    }
+                    let colour = if index == dialog.kind {
+                        KIND_TEXT
+                    } else {
+                        LIST_KIND_TEXT
+                    };
+                    paint_kind(
+                        &items,
+                        ctx,
+                        cache,
+                        kind,
+                        dialog.faction,
+                        at(list.0, top, w, h),
+                        scale,
+                        colour,
+                    );
+                }
+                if bar.visible() {
+                    dialog.list_scroll = crate::list_scroll_bar::ui_bar(
+                        ui,
+                        cache,
+                        frame,
+                        scale,
+                        crate::status_window::BAR_ART,
+                        list,
+                        content,
+                        dialog.list_scroll,
+                        &mut dialog.list_hold,
+                        LIST_STEP,
+                    );
+                }
+                // A click on an item chooses it (command 0xbba, FUN_0060c970)
+                // and closes the list; one on the bar only scrolls.
                 if exact_clicked(&response, popup) {
-                    dialog.list_open = false;
+                    let point = response.interact_pointer_pos();
+                    let on_bar = bar.visible() && point.is_some_and(|p| bar_rect.contains(p));
+                    if !on_bar {
+                        if let Some(point) = point.filter(|p| list_rect.contains(*p)) {
+                            let row = ((point.y - list_rect.min.y) / scale + dialog.list_scroll) / h;
+                            dialog.select_kind(row.floor() as usize);
+                        }
+                        dialog.list_open = false;
+                    }
                 }
             }
         });
@@ -953,6 +1032,7 @@ fn paint_kind(
     faction: MissionFaction,
     bounds: egui::Rect,
     scale: f32,
+    colour: egui::Color32,
 ) {
     let _ = paint_centered(
         painter,
@@ -969,7 +1049,7 @@ fn paint_kind(
         scale,
         crate::DEFAULT_FONT,
         kind_name(kind),
-        KIND_TEXT,
+        colour,
         (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
     );
 }
@@ -1395,11 +1475,22 @@ mod tests {
     fn drive(
         world: &GameWorld,
         state: &mut MissionDialogState,
-        (x, y): (f32, f32),
+        point: (f32, f32),
         frames: Vec<Vec<egui::Event>>,
     ) -> Option<MissionDialogAction> {
-        let layout = layout(1.0);
-        let pos = dialog_rect(layout).min + egui::vec2(x, y);
+        drive_at(world, state, point, frames, 1.0)
+    }
+
+    /// [`drive`] at a layout `scale`.
+    fn drive_at(
+        world: &GameWorld,
+        state: &mut MissionDialogState,
+        (x, y): (f32, f32),
+        frames: Vec<Vec<egui::Event>>,
+        scale: f32,
+    ) -> Option<MissionDialogAction> {
+        let layout = layout(scale);
+        let pos = dialog_rect(layout).min + egui::vec2(x, y) * scale;
         let ctx = egui::Context::default();
         crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
@@ -1413,7 +1504,7 @@ mod tests {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
-                    egui::vec2(700.0, 520.0),
+                    egui::vec2(700.0, 520.0) * scale,
                 )),
                 events,
                 ..Default::default()
@@ -1606,6 +1697,158 @@ mod tests {
         click(&world, &mut state, (135.0, 290.0));
 
         assert!(!state.dialog().unwrap().list_open());
+    }
+
+    #[test]
+    fn the_kind_list_scrolls_by_pixels_on_its_bar_and_a_click_chooses_an_item() {
+        // FUN_0060cac0: the list at (37, 177), 196 by 113, of 113-pixel
+        // items, its RCDATA 0x299a bar at the right (221..233). A0 kinds/23:
+        // the down arrow scrolls it by pixels, the wheel not at all.
+        let (world, _, mut state) = dialog_in_world(1);
+        click(&world, &mut state, (133.0, 183.0));
+        assert!(state.dialog().unwrap().list_open());
+
+        let wheel = egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: egui::vec2(0.0, -1.0),
+            modifiers: egui::Modifiers::default(),
+        };
+        drive(&world, &mut state, (100.0, 230.0), vec![vec![wheel]]);
+        let dialog = state.dialog().unwrap();
+        assert_eq!((dialog.kind(), dialog.list_scroll), (MissionKind::Diplomacy, 0.0));
+
+        // The down arrow's last 9 rows: one step of 10, the list stays.
+        click(&world, &mut state, (227.0, 286.0));
+        let dialog = state.dialog().unwrap();
+        assert!(dialog.list_open());
+        assert_eq!(dialog.list_scroll, LIST_STEP);
+
+        // A click 108 pixels down the list falls on the second item.
+        click(&world, &mut state, (100.0, 177.0 + 108.0));
+        let dialog = state.dialog().unwrap();
+        assert!(!dialog.list_open());
+        assert_eq!(dialog.kind(), MissionKind::Espionage);
+    }
+
+    #[test]
+    fn the_kind_list_opens_on_the_shown_kind_and_lays_its_items_113_apart() {
+        // FUN_0060cac0's list at (37, 177): item i's name along its top,
+        // centred in its 200-pixel surface at the list's left (A0 kinds/23
+        // shows the icon at the list's x + 2 + 35); items past the list's
+        // 113 rows are not drawn.
+        let world = GameWorld::default();
+        let mut state = MissionDialogState::default();
+        let team = vec![MissionMember::Character(Default::default())];
+        assert!(state.open(
+            MissionFaction::Empire,
+            SystemKey::default(),
+            team,
+            vec![MissionKind::Diplomacy, MissionKind::Espionage, MissionKind::Recruitment],
+        ));
+        state.dialog.as_mut().unwrap().select_kind(1);
+        click(&world, &mut state, (133.0, 183.0));
+        assert_eq!(state.dialog().unwrap().list_scroll, 113.0);
+        state.dialog.as_mut().unwrap().list_scroll = 60.0;
+
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let origin = dialog_rect(layout).min;
+        let lines: Vec<(f32, f32, f32, String)> = {
+            let mut rows: Vec<(f32, f32, f32, String)> = Vec::new();
+            let mut glyphs: Vec<(egui::Pos2, String)> = output
+                .unwrap()
+                .shapes
+                .into_iter()
+                .filter_map(|clipped| match clipped.shape {
+                    egui::Shape::Text(text) if text.pos.y > origin.y + 170.0 => {
+                        Some((text.pos, text.galley.text().to_owned()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            glyphs.sort_by(|a, b| (a.0.y, a.0.x).partial_cmp(&(b.0.y, b.0.x)).unwrap());
+            for (pos, ch) in glyphs {
+                match rows.last_mut() {
+                    Some(row) if (row.0 - pos.y).abs() < 1.0 => {
+                        row.2 = pos.x;
+                        row.3.push_str(&ch);
+                    }
+                    _ => rows.push((pos.y, pos.x, pos.x, ch)),
+                }
+            }
+            rows
+        };
+        // Item 1, Espionage: its top at 177 + 113 - 60 = 230; item 2's at
+        // 343 is past the list and not drawn.
+        let espionage = lines
+            .iter()
+            .find(|row| row.3 == "Espionage")
+            .unwrap_or_else(|| panic!("{lines:?}"));
+        assert!(espionage.0 > origin.y + 230.0 && espionage.0 < origin.y + 230.0 + 16.0, "{espionage:?}");
+        let centre = (espionage.1 + espionage.2) / 2.0;
+        assert!((centre - (origin.x + 37.0 + 100.0)).abs() < 8.0, "{espionage:?}");
+        assert!(!lines.iter().any(|row| row.3.contains("Recruitment")), "{lines:?}");
+    }
+
+    #[test]
+    fn a_click_chooses_the_item_under_it_at_any_scale() {
+        // The row under the pointer, in dialog pixels at twice the size.
+        let (world, _, mut state) = dialog_in_world(1);
+        drive_at(&world, &mut state, (133.0, 183.0), vec![vec![press(egui::Pos2::ZERO, true)], vec![press(egui::Pos2::ZERO, false)]], 2.0);
+        assert!(state.dialog().unwrap().list_open());
+        state.dialog.as_mut().unwrap().list_scroll = 10.0;
+        drive_at(&world, &mut state, (100.0, 177.0 + 108.0), vec![vec![press(egui::Pos2::ZERO, true)], vec![press(egui::Pos2::ZERO, false)]], 2.0);
+        assert_eq!(state.dialog().unwrap().kind(), MissionKind::Espionage);
+    }
+
+    #[test]
+    fn the_kind_list_names_the_shown_kind_white_and_the_others_gray() {
+        // A0 kinds/31: the shown "Diplomacy" white, "Espionage" gray
+        // (0x808080, the item's +0x60) under it.
+        let (world, _, mut state) = dialog_in_world(1);
+        click(&world, &mut state, (133.0, 183.0));
+        state.dialog.as_mut().unwrap().list_scroll = 60.0;
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let list = dialog_rect(layout).min + egui::vec2(37.0, 177.0);
+        let colours = |word: &str| -> Vec<egui::Color32> {
+            let mut glyphs: Vec<(egui::Pos2, String, egui::Color32)> = output
+                .as_ref()
+                .unwrap()
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Text(text) if text.pos.y >= list.y => Some((
+                        text.pos,
+                        text.galley.text().to_owned(),
+                        text.galley.job.sections[0].format.color,
+                    )),
+                    _ => None,
+                })
+                .collect();
+            glyphs.sort_by(|a, b| (a.0.y, a.0.x).partial_cmp(&(b.0.y, b.0.x)).unwrap());
+            let joined: String = glyphs.iter().map(|g| g.1.as_str()).collect();
+            let at = joined.find(word).unwrap_or_else(|| panic!("{word} in {joined:?}"));
+            glyphs[at..at + word.len()].iter().map(|g| g.2).collect()
+        };
+        assert!(colours("Espionage").iter().all(|c| *c == LIST_KIND_TEXT));
+        assert_eq!(LIST_KIND_TEXT, egui::Color32::from_rgb(0x80, 0x80, 0x80));
     }
 
     #[test]
