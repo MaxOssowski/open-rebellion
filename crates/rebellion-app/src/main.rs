@@ -9248,11 +9248,17 @@ fn order_gates(
         // port: the player names its own fleets and ships; FUN_004f6e60
         // refuses a destroyed object (FUN_0053a000). The order's own +0x18
         // rule is untraced.
+        // hyp: Rename's +0x18 also runs the object check FUN_004f9860,
+        // which refuses an object en route: A0 greys Rename on a fleet in
+        // hyperspace and on its ship (a0-vm/menus/22, 29 and 31).
         rename: match selection {
-            Some(MenuObject::Fleet(fleet)) => world
-                .fleets
-                .get(fleet)
-                .is_some_and(|value| value.is_alliance == is_alliance),
+            Some(MenuObject::Fleet(fleet)) => {
+                world
+                    .fleets
+                    .get(fleet)
+                    .is_some_and(|value| value.is_alliance == is_alliance)
+                    && !movement_state.is_in_transit(fleet)
+            }
             Some(MenuObject::Ship { fleet, index, .. }) => {
                 world.fleets.get(fleet).is_some_and(|value| {
                     value.is_alliance == is_alliance
@@ -9260,7 +9266,7 @@ fn order_gates(
                             .capital_ships
                             .get(index)
                             .is_some_and(|ship| ship.alive)
-                })
+                }) && !movement_state.is_in_transit(fleet)
             }
             _ => false,
         },
@@ -12520,6 +12526,55 @@ mod fleet_move_tests {
         };
         assert!(gate(origin));
         assert!(!gate(destination));
+    }
+
+    #[test]
+    fn a_fleet_in_hyperspace_takes_neither_rename_nor_scrap() {
+        // FUN_004f9860 refuses an object en route (status 4): A0 greys
+        // Rename and Scrap on a fleet in hyperspace and on its ship
+        // (a0-vm/menus/22-fleet4-menu.png, 29-own-ship-menu.png).
+        let (mut world, fleets, destination) = world_with_two_fleets();
+        let fleet = fleets[0];
+        let mut movement = MovementState::new();
+        let gates_for = |world: &GameWorld, movement: &MovementState, selection, player| {
+            order_gates(
+                Some(selection),
+                world,
+                &MissionState::new(),
+                movement,
+                &TroopTransportState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                player,
+            )
+        };
+        let gates = |world: &GameWorld, movement: &MovementState, selection| {
+            gates_for(world, movement, selection, MissionFaction::Alliance)
+        };
+        let ship = MenuObject::Ship {
+            fleet,
+            index: 0,
+            roster: 0,
+        };
+        for selection in [MenuObject::Fleet(fleet), ship] {
+            let home = gates(&world, &movement, selection);
+            assert!(home.rename && home.scrap, "{selection:?}");
+            // The other side's fleet takes neither (A0 status/02, 05).
+            let theirs = gates_for(&world, &movement, selection, MissionFaction::Empire);
+            assert!(!theirs.rename && !theirs.scrap, "{selection:?}");
+        }
+        rebellion_core::movement::begin_faction_fleet_transit(
+            &mut movement,
+            &mut world,
+            fleet,
+            destination,
+            true,
+        )
+        .unwrap();
+        for selection in [MenuObject::Fleet(fleet), ship] {
+            let away = gates(&world, &movement, selection);
+            assert!(!away.rename && !away.scrap, "{selection:?}");
+        }
     }
 
     #[test]

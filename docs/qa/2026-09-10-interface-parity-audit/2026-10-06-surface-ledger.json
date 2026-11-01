@@ -7334,9 +7334,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
-            "tools/interface-parity/fleet-window.mjs"
+            "tools/interface-parity/fleet-window.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-en-route-menu-a0/"
           ],
-          "note": "Capital ship menu (Move, Confirmed Move, Create Fleet, Rename, Encyclopedia, Status, Scrap) in fleet-window.mjs on Arch Chromium; A0 02-menu.png shows it. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
+          "note": "Capital ship menu (Move, Confirmed Move, Create Fleet, Rename, Encyclopedia, Status, Scrap) in fleet-window.mjs on Arch Chromium; A0 02-menu.png shows it. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: A0 greys Rename and Scrap on a fleet in hyperspace and on its ship (a0-vm/menus/22, 29-31); the port now does too (unit tests). Open: a fleet in transit is in no Fleet window in the port, while A0 lists Fleet 4 at its destination.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7522,9 +7523,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
             "ghidra/notes/object-popup-menu.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-disabled-menu-row-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-disabled-menu-row-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-en-route-menu-a0/"
           ],
-          "note": "Compared with A0 status/02-menu.png on 2026-11-01: disabled rows are (128, 128, 128), as FUN_004aba60's 0x2808080, and the port draws 0x808080; personnel-orders.mjs abort reads the disabled Abort row's pixels (none brighter than 128) on Linux Chromium for both sides. Deviation accepted 2026-10-30: anti-aliased glyphs. Earlier: Disabled (grey) items: A0 shows Status greyed for a planet and the port matches in code (FUN_0051d990); A0 02/05-menu.png show greyed items on enemy objects; no browser case checks a disabled item. 2026-11-01: the scrap gate shows a disabled item failing the case when the row is forced off; enemy objects keep Scrap greyed (A0 02-menu.png).",
+          "note": "Compared with A0 status/02-menu.png on 2026-11-01: disabled rows are (128, 128, 128), as FUN_004aba60's 0x2808080, and the port draws 0x808080; personnel-orders.mjs abort reads the disabled Abort row's pixels (none brighter than 128) on Linux Chromium for both sides. Deviation accepted 2026-10-30: anti-aliased glyphs. Earlier: Disabled (grey) items: A0 shows Status greyed for a planet and the port matches in code (FUN_0051d990); A0 02/05-menu.png show greyed items on enemy objects; no browser case checks a disabled item. 2026-11-01: the scrap gate shows a disabled item failing the case when the row is forced off; enemy objects keep Scrap greyed (A0 02-menu.png). 2026-11-01: A0 greys Rename and Scrap on a fleet in hyperspace and on its ship (a0-vm/menus/22, 29-31); the port now does too (unit tests). Open: a fleet in transit is in no Fleet window in the port, while A0 lists Fleet 4 at its destination.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7549,9 +7551,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/rename-order.md",
-            "tools/interface-parity/fleet-window.mjs"
+            "tools/interface-parity/fleet-window.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-en-route-menu-a0/"
           ],
-          "note": "Fleet Rename (0x203, FUN_00486fb0) passes fleet-window.mjs 'rename' on Arch Chromium; A0 05-fleet-menu.png shows Rename disabled on an enemy fleet, no own-fleet rename capture.",
+          "note": "Fleet Rename (0x203, FUN_00486fb0) passes fleet-window.mjs 'rename' on Arch Chromium; A0 05-fleet-menu.png shows Rename disabled on an enemy fleet, no own-fleet rename capture. 2026-11-01: A0 greys Rename and Scrap on a fleet in hyperspace and on its ship (a0-vm/menus/22, 29-31); the port now does too (unit tests). Open: a fleet in transit is in no Fleet window in the port, while A0 lists Fleet 4 at its destination.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7560,9 +7563,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/rename-order.md"
+            "ghidra/notes/rename-order.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-en-route-menu-a0/"
           ],
-          "note": "Capital ship Rename is ported (8fc9d983) but the 'rename' browser case renames a fleet only; A0 02-menu.png shows ship Rename disabled on an enemy ship.",
+          "note": "Capital ship Rename is ported (8fc9d983) but the 'rename' browser case renames a fleet only; A0 02-menu.png shows ship Rename disabled on an enemy ship. 2026-11-01: A0 greys Rename and Scrap on a fleet in hyperspace and on its ship (a0-vm/menus/22, 29-31); the port now does too (unit tests). Open: a fleet in transit is in no Fleet window in the port, while A0 lists Fleet 4 at its destination.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]

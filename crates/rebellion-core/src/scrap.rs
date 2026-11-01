@@ -213,9 +213,10 @@ pub fn check(world: &GameWorld, side: Faction, target: ScrapTarget) -> Result<()
 }
 
 /// [`check`] with the en-route refusal (status 4) `FUN_004f9860` gives a
-/// fleet in hyperspace: A0 greys an arriving fleet's Scrap
-/// (`.artifacts/a0-vm/menus/22-fleet4-menu.png`). port: every other
-/// target is never en route.
+/// fleet in hyperspace and each ship in it (`FUN_005575f0`): A0 greys an
+/// arriving fleet's Scrap and its ship's
+/// (`.artifacts/a0-vm/menus/22-fleet4-menu.png`, `29-own-ship-menu.png`).
+/// port: every other target is never en route.
 ///
 /// # Errors
 ///
@@ -228,7 +229,11 @@ pub fn check_with_movement(
 ) -> Result<(), ScrapRefusal> {
     check(world, side, target)?;
     match target {
-        ScrapTarget::Fleet(fleet) if movement.is_in_transit(fleet) => Err(ScrapRefusal::EnRoute),
+        ScrapTarget::Fleet(fleet) | ScrapTarget::Ship { fleet, .. }
+            if movement.is_in_transit(fleet) =>
+        {
+            Err(ScrapRefusal::EnRoute)
+        }
         _ => Ok(()),
     }
 }
@@ -925,10 +930,13 @@ mod tests {
         f.world.systems[f.system].fleets.push(fleet);
         let mut movement = crate::movement::MovementState::new();
         let target = ScrapTarget::Fleet(fleet);
-        assert_eq!(
-            check_with_movement(&f.world, &movement, Faction::Alliance, target),
-            Ok(())
-        );
+        let ship = ScrapTarget::Ship { fleet, index: 0 };
+        for target in [target, ship] {
+            assert_eq!(
+                check_with_movement(&f.world, &movement, Faction::Alliance, target),
+                Ok(())
+            );
+        }
         crate::movement::begin_faction_fleet_transit(
             &mut movement,
             &mut f.world,
@@ -938,10 +946,12 @@ mod tests {
         )
         .unwrap();
         assert!(movement.is_in_transit(fleet));
-        assert_eq!(
-            check_with_movement(&f.world, &movement, Faction::Alliance, target),
-            Err(ScrapRefusal::EnRoute)
-        );
+        for target in [target, ship] {
+            assert_eq!(
+                check_with_movement(&f.world, &movement, Faction::Alliance, target),
+                Err(ScrapRefusal::EnRoute)
+            );
+        }
         assert_eq!(ScrapRefusal::EnRoute.code(), 4);
         assert_eq!(
             check_with_movement(&f.world, &movement, Faction::Empire, target),

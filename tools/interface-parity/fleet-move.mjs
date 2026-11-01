@@ -309,6 +309,7 @@ const cases = [
     // asks nothing outside a blockade (FUN_00487cc0).
     async run(page, faction, setup, directory) {
       const menu = await openMenu(page, setup, directory);
+      assert.deepEqual([menu.rename_enabled, menu.scrap_enabled], [true, true], JSON.stringify(menu));
       await choose(page, menu, menu.move_row, "Move");
       await click(page, targetPoint(setup));
       const observed = await until(page, "the fleet departs for the target",
