@@ -1799,6 +1799,73 @@ mod tests {
     }
 
     #[test]
+    fn the_kind_list_tiles_its_background_inside_a_white_frame() {
+        // A0 kinds/31: STRATEGY 10598 (195 by 61) tiled from the window's
+        // top-left (35, 175), inside a white one-pixel frame whose outer
+        // edge spans (35, 175)..(234, 291); the window's own 200 by 117
+        // rect is black.
+        let (world, _, mut state) = dialog_in_world(1);
+        click(&world, &mut state, (133.0, 183.0));
+        let layout = layout(1.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut output = None;
+        for _ in 0..2 {
+            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+            output = Some(ctx.run(egui::RawInput::default(), |ctx| {
+                let _ = draw_mission_dialog(ctx, &world, &mut state, layout, &mut cache);
+            }));
+        }
+        let origin = dialog_rect(layout).min;
+        let tiles: Vec<egui::Pos2> = crate::fleet_window::tests::PAINTED.with(|painted| {
+            painted
+                .borrow()
+                .iter()
+                .filter(|(id, _)| *id == LIST_BACKGROUND)
+                .map(|(_, pos)| *pos - origin.to_vec2())
+                .collect()
+        });
+        assert_eq!(
+            tiles,
+            [
+                egui::pos2(35.0, 175.0),
+                egui::pos2(230.0, 175.0),
+                egui::pos2(35.0, 236.0),
+                egui::pos2(230.0, 236.0)
+            ]
+        );
+        let frames: Vec<egui::Rect> = output
+            .unwrap()
+            .shapes
+            .into_iter()
+            .filter_map(|clipped| match clipped.shape {
+                // White, faded in with its area (premultiplied).
+                egui::Shape::Rect(rect)
+                    if rect.stroke.width == 1.0
+                        && rect.stroke.color.a() > 0
+                        && [rect.stroke.color.r(), rect.stroke.color.g(), rect.stroke.color.b()]
+                            == [rect.stroke.color.a(); 3] =>
+                {
+                    Some((rect.rect, clipped.clip_rect))
+                }
+                _ => None,
+            })
+            .map(|(rect, clip)| {
+                assert_eq!(
+                    clip.translate(-origin.to_vec2()),
+                    egui::Rect::from_min_size(egui::pos2(35.0, 175.0), egui::vec2(199.0, 116.0))
+                );
+                rect.translate(-origin.to_vec2())
+            })
+            .collect();
+        assert_eq!(
+            frames,
+            [egui::Rect::from_min_size(egui::pos2(35.5, 175.5), egui::vec2(198.0, 115.0))]
+        );
+    }
+
+    #[test]
     fn a_click_chooses_the_item_under_it_at_any_scale() {
         // The row under the pointer, in dialog pixels at twice the size.
         let (world, _, mut state) = dialog_in_world(1);
