@@ -89,7 +89,8 @@ pub use defenses_window::{
 pub use encyclopedia::set_encyclopedia_asset_cache;
 pub use encyclopedia::{
     draw_encyclopedia, draw_encyclopedia_index_catalog, draw_encyclopedia_index_shell,
-    draw_encyclopedia_topic, open_original_encyclopedia_at, original_encyclopedia_object,
+    draw_encyclopedia_topic, open_original_encyclopedia_at, open_original_encyclopedia_unlisted,
+    original_encyclopedia_object,
     EncyclopediaState, EncyclopediaTab, OriginalEncyclopediaCatalog, OriginalEncyclopediaEntry,
     OriginalEncyclopediaTopic, ENCYCLOPEDIA_INDEX_HEIGHT, ENCYCLOPEDIA_INDEX_WIDTH, encyclopedia_origin,
 };

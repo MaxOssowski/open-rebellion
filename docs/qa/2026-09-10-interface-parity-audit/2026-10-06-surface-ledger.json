@@ -7422,9 +7422,10 @@
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Mission item (0x240) opens the targeting cursor and the dialog in Linux browser runs; missions icon offers Abort. No A0 capture of the menu.",
+          "note": "Mission item (0x240) opens the targeting cursor and the dialog in Linux browser runs; missions icon offers Abort. No A0 capture of the menu. 2026-11-01: A0 captures (menus2/06-15): the character's Mission row, the targeting cursor, Create Mission from a release on the team's own cell or planet, and the mission icon's menu Encyclopedia, Status (grey), Abort, which the port's rows match (each_sector_icons_menu_lists_its_kinds_orders). Open: the port's dialog and cursor not yet compared to these captures in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7436,9 +7437,10 @@
             "ghidra/notes/move-order.md",
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-move-gate-linux/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-move-gate-linux/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Move/Confirmed Move route in fleet-window.mjs and personnel-orders.mjs (Arch Chromium 155); A0 menus show Move disabled on enemy objects only. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison.",
+          "note": "Move/Confirmed Move route in fleet-window.mjs and personnel-orders.mjs (Arch Chromium 155); A0 menus show Move disabled on enemy objects only. A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-01: A0 captures menus2/16-18: the fleet icon's Move, the targeting cursor, and the release moving the fleet's icon to the target at once, as fleet-move.mjs move does in the port. Open: pixel comparison of the cursor.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7449,9 +7451,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-own-system-bombardment-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-own-system-bombardment-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Planetary Bombardment submenu (FUN_004ab3a0 child window) passes fleet-window.mjs 'bombardment' on Arch Chromium 153; A0 05-fleet-menu.png shows the item, uncompared. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: new A0 capture of the player's own fleet menu (a0-vm/menus/12) matches the port row for row except Scrap (fleet scrap not ported); bombardment over one's own system is enabled and carried out in A0 (menus/13, 15), and the port's port: rule refusing it is removed.",
+          "note": "Planetary Bombardment submenu (FUN_004ab3a0 child window) passes fleet-window.mjs 'bombardment' on Arch Chromium 153; A0 05-fleet-menu.png shows the item, uncompared. 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: new A0 capture of the player's own fleet menu (a0-vm/menus/12) matches the port row for row except Scrap (fleet scrap not ported); bombardment over one's own system is enabled and carried out in A0 (menus/13, 15), and the port's port: rule refusing it is removed. 2026-11-01: A0 menus2/02 shows the bombardment submenu over the player's own system on the parent's left, three pixels above the row, Destroy System grey, as submenu_origin (FUN_004ab3a0) places it. Open: the browser case's submenu frame against this capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7479,14 +7482,16 @@
         {
           "id": "OBJ-14-C014",
           "requirement": "encyclopedia",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-command/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-contextual-entry/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-contextual-entry/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/",
+            "tools/interface-parity/fleet-window.mjs"
           ],
-          "note": "Encyclopedia opens at the menu object's topic (a_menu_object_opens_the_encyclopedia_at_its_topic); GID catalog only on Arch Chromium, 'no menu-entry journey yet'; no A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus2/04, 20-25): an icon's Encyclopedia opens its system's topic, as the port's SystemIcon does; a fleet's opens the \"Fleet\" topic (ENCYTEXT 7427, EDATA.132/133), which the port now builds (fleet_topic_binding) and lists on All Databases for the window's life, so its arrows step to the list's names around it and back. fleet-window.mjs fleet-encyclopedia runs the journey from the fleet's menu on Linux Chromium for both sides. Earlier: Encyclopedia opens at the menu object's topic (a_menu_object_opens_the_encyclopedia_at_its_topic); GID catalog only on Arch Chromium, 'no menu-entry journey yet'; no A0 comparison.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the test site carries no EDATA, so the browser case checks the topic and its arrows, not the picture."
         },
         {
           "id": "OBJ-14-C015",
@@ -7541,9 +7546,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/",
             "ghidra/notes/object-popup-menu.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-game-menu-chrome-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-submenu-parent-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus2-a0/"
           ],
-          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting). 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp).",
+          "note": "Nested submenus (Bombardment, Command 0x160) open beside the parent (FUN_004ab3a0); bombardment case passes on Arch Chromium 153; A0 05-fleet-menu.png shows the submenu arrow, uncompared. Since 2026-10-30 the Game Menu Window's frame, shaded fill and keyed submenu arrows follow A0 status/14-char-menu.png and build-orders/12-speed.png; the rows match. Left: the fill's palette step and the text width (GDI hinting). 2026-11-01: A0 05-fleet-menu.png and a new own-fleet capture (a0-vm/menus/08) show Planetary Bombardment grey, never opening, when no target is enabled; the port now enables a submenu parent only with an enabled row (hyp). 2026-11-01: A0 menus2/02: the submenu opens left of its parent; the highlighted parent's text is red.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

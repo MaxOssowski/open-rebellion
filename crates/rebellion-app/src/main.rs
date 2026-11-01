@@ -6225,7 +6225,29 @@ async fn main() {
                         // FUN_0045d400 opens at the object's topic when the
                         // original window's source loaded.
                         Some((ObjectMenuCommand::Encyclopedia, selection)) => {
+                            // A fleet has no index record: the topic named
+                            // by its record's name, "Fleet" (A0
+                            // menus2/20-fleet-encyclopedia.png).
+                            let fleet_topic = matches!(selection, Some(MenuObject::Fleet(_)))
+                                .then(|| {
+                                    original_encyclopedia_topics[usize::from(
+                                        cockpit_state.faction == CockpitFaction::Empire,
+                                    )]
+                                    .as_ref()?
+                                    .get(
+                                        &rebellion_data::encyclopedia_topics::FLEET_TOPIC_OBJECT_ID,
+                                    )
+                                })
+                                .flatten();
                             match original_encyclopedia_catalog.as_ref() {
+                                Some(catalog) if fleet_topic.is_some() => {
+                                    rebellion_render::open_original_encyclopedia_unlisted(
+                                        &mut enc_state,
+                                        catalog,
+                                        rebellion_data::encyclopedia_topics::FLEET_TOPIC_OBJECT_ID,
+                                        &fleet_topic.expect("the guard saw the topic").title,
+                                    );
+                                }
                                 Some(catalog) => rebellion_render::open_original_encyclopedia_at(
                                     &mut enc_state,
                                     catalog,
@@ -6237,6 +6259,11 @@ async fn main() {
                                 ),
                                 None => enc_state.open = true,
                             }
+                            macroquad::logging::info!(
+                                "[interface] command=0x100 destination=encyclopedia status=opened topic_mode={} object={:?}",
+                                enc_state.original_topic_mode,
+                                enc_state.original_selected_object_id,
+                            );
                         }
                         // FUN_00486fb0 0x103 → FUN_0042a440: the Status
                         // window (type 0x1a) for the selection.

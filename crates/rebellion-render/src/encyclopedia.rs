@@ -120,6 +120,10 @@ pub struct EncyclopediaState {
     /// The original window shows the selected object's topic (command
     /// `0x67`) instead of the index (`0x68`, `FUN_0045f480`).
     pub original_topic_mode: bool,
+    /// An object no record names that the window was opened at (a
+    /// fleet's topic): All Databases lists it by its name for the window's
+    /// life (A0 menus2/24 and 25).
+    pub original_extra_entry: Option<OriginalEncyclopediaEntry>,
     /// EDATA keys explicitly approved by the faithful-HD manifest.
     approved_hd_assets: HashMap<String, ApprovedHdAsset>,
     /// Cached textures keyed by EDATA file number (1-based).
@@ -178,6 +182,7 @@ impl Default for EncyclopediaState {
             original_scroll: 0,
             original_scroll_hold: None,
             original_topic_mode: false,
+            original_extra_entry: None,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -915,7 +920,8 @@ pub fn draw_encyclopedia_index_catalog(
         return None;
     }
     reconcile_original_index_state(state, catalog, false);
-    let entries = catalog.entries_for(state.original_category_command);
+    let extra = state.original_extra_entry.clone();
+    let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
     let selected_name = entries
         .iter()
         .find(|entry| Some(entry.object_id) == state.original_selected_object_id)
@@ -1013,6 +1019,7 @@ pub fn open_original_encyclopedia_at(
 ) {
     state.open = true;
     state.original_topic_mode = false;
+    state.original_extra_entry = None;
     state.original_category_command = 0x6f;
     state.original_selected_object_id = None;
     state.original_scroll = 0;
@@ -1027,6 +1034,43 @@ pub fn open_original_encyclopedia_at(
         state.original_topic_mode = true;
         reconcile_original_index_state(state, catalog, true);
     }
+}
+
+/// Open the original window at an object no record names, such as a fleet
+/// (`FUN_0045d400` takes the live object's name when the catalog has
+/// none): `object` keys its topic and All Databases lists it by `name`
+/// while the window stays open, selected (A0 menus2/20, 24 and 25).
+pub fn open_original_encyclopedia_unlisted(
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+    object: u32,
+    name: &str,
+) {
+    open_original_encyclopedia_at(state, catalog, None);
+    state.original_extra_entry = Some(OriginalEncyclopediaEntry {
+        object_id: object,
+        name: name.to_owned(),
+    });
+    state.original_selected_object_id = Some(object);
+    state.original_topic_mode = true;
+    reconcile_original_index_state(state, catalog, true);
+}
+
+/// The window's list for `command`: the catalog's, with `extra` in its
+/// name's place on All Databases. A0 menus2/25 lists Fleet between Flax
+/// and Fwillsving. hyp: the other databases leave it out.
+fn window_entries<'a>(
+    catalog: &'a OriginalEncyclopediaCatalog,
+    extra: Option<&'a OriginalEncyclopediaEntry>,
+    command: u16,
+) -> Vec<&'a OriginalEncyclopediaEntry> {
+    let mut entries = catalog.entries_for(command);
+    if let Some(extra) = extra.filter(|_| command == 0x6f) {
+        let name = extra.name.to_lowercase();
+        let at = entries.partition_point(|entry| entry.name.to_lowercase() < name);
+        entries.insert(at, extra);
+    }
+    entries
 }
 
 /// One object's topic, from the source bindings
@@ -1060,7 +1104,11 @@ pub fn original_topic_neighbours(
     state: &EncyclopediaState,
     catalog: &OriginalEncyclopediaCatalog,
 ) -> (Option<u32>, Option<u32>) {
-    let entries = catalog.entries_for(state.original_category_command);
+    let entries = window_entries(
+        catalog,
+        state.original_extra_entry.as_ref(),
+        state.original_category_command,
+    );
     let Some(index) = entries
         .iter()
         .position(|entry| Some(entry.object_id) == state.original_selected_object_id)
@@ -1289,7 +1337,8 @@ fn reconcile_original_index_state(
     if !(0x6f..=0x75).contains(&state.original_category_command) {
         state.original_category_command = 0x6f;
     }
-    let entries = catalog.entries_for(state.original_category_command);
+    let extra = state.original_extra_entry.clone();
+    let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
     if state.original_selected_object_id.is_some_and(|selected| {
         !entries.iter().any(|entry| entry.object_id == selected)
     }) {
@@ -2361,6 +2410,51 @@ mod tests {
         assert_eq!(ids(&catalog, 0x70), [0x9000_0002]);
         assert_eq!(ids(&catalog, 0x6f), [0x9000_0002, 0x1400_0001]);
         assert_eq!(ids(&catalog, 0x71), [0x1400_0001]);
+    }
+
+    #[test]
+    fn an_unnamed_objects_topic_joins_the_window_list_by_its_name() {
+        // A0 menus2/20-25: a fleet's Encyclopedia shows "Fleet"; next opens
+        // Fwillsving, previous Flax, Flax's next Fleet again, and the index
+        // lists Fleet between them, selected. Here "Alliance Cruiser" sorts
+        // between Alliance Army Regiment and Alliance Dreadnaught.
+        let catalog = original_catalog_fixture();
+        let mut state = EncyclopediaState::default();
+        open_original_encyclopedia_unlisted(&mut state, &catalog, 0x0800_0000, "Alliance Cruiser");
+        assert!(state.open && state.original_topic_mode);
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+        assert_eq!(
+            original_topic_neighbours(&state, &catalog),
+            (Some(0x1000_0001), Some(0x1400_0001))
+        );
+        apply_original_topic_command(&mut state, &catalog, 0x84);
+        assert_eq!(state.original_selected_object_id, Some(0x1400_0001));
+        apply_original_topic_command(&mut state, &catalog, 0x83);
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+        apply_original_topic_command(&mut state, &catalog, 0x83);
+        assert_eq!(state.original_selected_object_id, Some(0x1000_0001));
+        apply_original_topic_command(&mut state, &catalog, 0x84);
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+
+        // The index keeps it listed and selected.
+        apply_original_topic_command(&mut state, &catalog, 0x68);
+        assert!(!state.original_topic_mode);
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+        let ids: Vec<u32> = window_entries(&catalog, state.original_extra_entry.as_ref(), 0x6f)
+            .iter()
+            .map(|entry| entry.object_id)
+            .collect();
+        assert_eq!(
+            ids,
+            [0x3000_0001, 0x1000_0001, 0x0800_0000, 0x1400_0001, 0x9000_0001]
+        );
+        assert!(!window_entries(&catalog, state.original_extra_entry.as_ref(), 0x71)
+            .iter()
+            .any(|entry| entry.object_id == 0x0800_0000));
+
+        // A new window lists only the catalog.
+        open_original_encyclopedia_at(&mut state, &catalog, None);
+        assert_eq!(state.original_extra_entry, None);
     }
 
     #[test]

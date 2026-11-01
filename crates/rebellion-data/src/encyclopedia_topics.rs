@@ -257,7 +257,13 @@ pub fn installed_encyclopedia_topics(
     let (catalog, manifest) = encyclopedia_source_bytes(gdata_path)?;
     let (source, _) = parse_encyclopedia_source_with_manifest(&catalog, &manifest)?;
     let index = crate::encyclopedia_catalog::load_encyclopedia_catalog(gdata_path)?;
-    load_encyclopedia_topics(gdata_path, &index, &source, audience)
+    let mut topics = load_encyclopedia_topics(gdata_path, &index, &source, audience)?;
+    if let Some(title) = crate::ui_strings(gdata_path).remove(&FLEET_NAME_RESOURCE_ID) {
+        topics
+            .entries
+            .push(fleet_topic_binding(&source, audience, title));
+    }
+    Ok(topics)
 }
 
 /// Load system picture identities and join every index object to source topic
@@ -305,47 +311,85 @@ pub fn bind_encyclopedia_topics(
     system_pictures: &HashMap<u32, u32>,
     audience: EncyclopediaAudience,
 ) -> EncyclopediaTopicCatalog {
-    let mut entries = Vec::with_capacity(index.entries.len());
-    for entry in &index.entries {
-        let topic_text_resource_id = ordinary_lookup_key(entry.text_resource_id);
-        let system_picture = system_pictures.get(&entry.object_id).copied();
-        let artwork_resource_id = if is_system(entry) {
-            system_picture.and_then(system_picture_lookup_key)
-        } else {
-            Some(object_artwork_lookup_key(entry, audience))
-        };
-        let body = source
-            .texts
-            .get(&topic_text_resource_id)
-            .map(|text| text.body.clone());
-        let artwork_filename =
-            artwork_resource_id.and_then(|resource_id| source.artwork.get(&resource_id).cloned());
-
-        let mut missing = Vec::new();
-        if body.is_none() {
-            missing.push(EncyclopediaMissingPart::Text);
-        }
-        if is_system(entry) && artwork_resource_id.is_none() {
-            missing.push(EncyclopediaMissingPart::SystemPicture);
-        } else if artwork_filename.is_none() {
-            missing.push(EncyclopediaMissingPart::ArtworkMapping);
-        }
-
-        entries.push(EncyclopediaTopicBinding {
-            object_id: entry.object_id,
-            title: entry.name.clone(),
-            topic_text_resource_id,
-            artwork_resource_id,
-            body,
-            artwork_filename,
-            missing,
-        });
-    }
+    let entries = index
+        .entries
+        .iter()
+        .map(|entry| bind_topic(entry, source, system_pictures, audience))
+        .collect();
     EncyclopediaTopicCatalog {
         language_id: source.language_id,
         audience,
         entries,
     }
+}
+
+fn bind_topic(
+    entry: &EncyclopediaCatalogEntry,
+    source: &EncyclopediaSourceCatalog,
+    system_pictures: &HashMap<u32, u32>,
+    audience: EncyclopediaAudience,
+) -> EncyclopediaTopicBinding {
+    let topic_text_resource_id = ordinary_lookup_key(entry.text_resource_id);
+    let system_picture = system_pictures.get(&entry.object_id).copied();
+    let artwork_resource_id = if is_system(entry) {
+        system_picture.and_then(system_picture_lookup_key)
+    } else {
+        Some(object_artwork_lookup_key(entry, audience))
+    };
+    let body = source
+        .texts
+        .get(&topic_text_resource_id)
+        .map(|text| text.body.clone());
+    let artwork_filename =
+        artwork_resource_id.and_then(|resource_id| source.artwork.get(&resource_id).cloned());
+
+    let mut missing = Vec::new();
+    if body.is_none() {
+        missing.push(EncyclopediaMissingPart::Text);
+    }
+    if is_system(entry) && artwork_resource_id.is_none() {
+        missing.push(EncyclopediaMissingPart::SystemPicture);
+    } else if artwork_filename.is_none() {
+        missing.push(EncyclopediaMissingPart::ArtworkMapping);
+    }
+
+    EncyclopediaTopicBinding {
+        object_id: entry.object_id,
+        title: entry.name.clone(),
+        topic_text_resource_id,
+        artwork_resource_id,
+        body,
+        artwork_filename,
+        missing,
+    }
+}
+
+/// TEXTSTRA 11523, "Fleet": the record name every fleet starts with
+/// (`FUN_004f9190`, `ghidra/notes/fleet-names.md`).
+pub const FLEET_NAME_RESOURCE_ID: u16 = 0x2d03;
+
+/// The fleet topic's key: family `0x08`, which takes the side's art.
+/// port: no record carries it; it keys the binding alone.
+pub const FLEET_TOPIC_OBJECT_ID: u32 = 0x0800_0000;
+
+/// The topic a fleet's Encyclopedia opens. No index record names a fleet,
+/// so `FUN_0045d400` takes the live object's name `+0x30`: its text is
+/// `(0x2d03 & 0xfff) + 0x1000` and its art follows the fleet family's
+/// (`0x08..0x0f`) side variant. A0 shows "Fleet" with `EDATA.132` for the
+/// Alliance (`a0-vm/menus2/20-fleet-encyclopedia.png`). `title` is
+/// TEXTSTRA 11523.
+#[must_use]
+pub fn fleet_topic_binding(
+    source: &EncyclopediaSourceCatalog,
+    audience: EncyclopediaAudience,
+    title: String,
+) -> EncyclopediaTopicBinding {
+    let entry = EncyclopediaCatalogEntry {
+        object_id: FLEET_TOPIC_OBJECT_ID,
+        text_resource_id: FLEET_NAME_RESOURCE_ID,
+        name: title,
+    };
+    bind_topic(&entry, source, &HashMap::new(), audience)
 }
 
 #[must_use]
@@ -402,16 +446,21 @@ mod tests {
 
     #[test]
     fn the_installed_source_binds_the_topics_when_present() {
-        // P66A: 356 index objects, 346 complete topics per side. The owned
-        // data is not in the repository; without it there is nothing to bind.
+        // P66A: 356 index objects, 346 complete topics per side, and the
+        // fleet topic outside the index (A0 menus2/20-fleet-encyclopedia).
+        // The owned data is not in the repository; without it there is
+        // nothing to bind.
         let gdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
         if !gdata.join("encyclopedia/source.json").exists() {
             return;
         }
         for audience in [EncyclopediaAudience::Alliance, EncyclopediaAudience::Empire] {
             let topics = installed_encyclopedia_topics(&gdata, audience).unwrap();
-            assert_eq!(topics.entries.len(), 356);
-            assert_eq!(topics.complete_count(), 346);
+            assert_eq!(topics.entries.len(), 357);
+            assert_eq!(topics.complete_count(), 347);
+            let fleet = topics.topic(FLEET_TOPIC_OBJECT_ID).unwrap();
+            assert_eq!(fleet.title, "Fleet");
+            assert!(fleet.is_complete(), "{fleet:?}");
         }
     }
 
@@ -552,6 +601,44 @@ mod tests {
             empire.entries[1].artwork_filename.as_deref(),
             Some("EDATA.115")
         );
+    }
+
+    #[test]
+    fn a_fleet_topic_takes_the_fleet_name_text_and_each_sides_art() {
+        // FUN_0045d400: text (0x2d03 & 0xfff) + 0x1000; the fleet family
+        // 0x08 takes the Empire's + 0x2000 art. A0 menus2/20 shows "Fleet"
+        // with EDATA.132 for the Alliance.
+        let mut source = fixture_source();
+        source.texts.insert(
+            0x1d03,
+            EncyclopediaSourceText {
+                body: "Fleets are groups".into(),
+                body_sha256: "0".repeat(64),
+            },
+        );
+        source.artwork.insert(0x1d03, "EDATA.132".into());
+        source.artwork.insert(0x2d03, "EDATA.133".into());
+        let alliance =
+            fleet_topic_binding(&source, EncyclopediaAudience::Alliance, "Fleet".into());
+        assert_eq!(
+            (
+                alliance.object_id,
+                alliance.title.as_str(),
+                alliance.topic_text_resource_id,
+                alliance.body.as_deref(),
+                alliance.artwork_filename.as_deref(),
+            ),
+            (
+                0x0800_0000,
+                "Fleet",
+                0x1d03,
+                Some("Fleets are groups"),
+                Some("EDATA.132")
+            )
+        );
+        assert!(alliance.is_complete());
+        let empire = fleet_topic_binding(&source, EncyclopediaAudience::Empire, "Fleet".into());
+        assert_eq!(empire.artwork_filename.as_deref(), Some("EDATA.133"));
     }
 
     #[test]
