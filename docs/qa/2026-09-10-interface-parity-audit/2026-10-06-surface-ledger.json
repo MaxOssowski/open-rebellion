@@ -7343,9 +7343,10 @@
           "evidence": [
             "ghidra/notes/object-popup-menu.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-squadron-confirmed-move-a0/"
           ],
-          "note": "Fighter squadron menu ported; A0 20-fighter-menu.png exists but no browser case opens it and no comparison is recorded. 2026-11-01: Scrap is enabled on the player's squadron as in A0 20-fighter-menu.png (unit test; no browser case).",
+          "note": "Fighter squadron menu ported; A0 20-fighter-menu.png exists but no browser case opens it and no comparison is recorded. 2026-11-01: Scrap is enabled on the player's squadron as in A0 20-fighter-menu.png (unit test; no browser case). 2026-11-01: A0 20-fighter-menu.png compared: Move, Confirmed Move, Encyclopedia, Status, Scrap all enabled; the port now enables Confirmed Move too; fleet-window.mjs squadron-confirmed-load opens the squadron's menu in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7383,9 +7384,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-squadron-confirmed-move-a0/"
           ],
-          "note": "Facility menus offer Scrap (disabled), Encyclopedia, Status (FUN_005399e0/FUN_0051d990); unit tests only, A0 22-battery-menu.png and 28-fac-menu.png exist uncompared. 2026-11-01: Scrap is now enabled on the player's battery and facility as in A0 22-battery-menu.png and 28-fac-menu.png (scrap::check; unit tests), replacing the disabled row.",
+          "note": "Facility menus offer Scrap (disabled), Encyclopedia, Status (FUN_005399e0/FUN_0051d990); unit tests only, A0 22-battery-menu.png and 28-fac-menu.png exist uncompared. 2026-11-01: Scrap is now enabled on the player's battery and facility as in A0 22-battery-menu.png and 28-fac-menu.png (scrap::check; unit tests), replacing the disabled row. 2026-11-01: A0 22-battery-menu.png rows (Encyclopedia, Status, Scrap) match the port's list.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

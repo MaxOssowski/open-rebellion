@@ -7,9 +7,12 @@
 //! Enter and Escape press them (`FUN_0044f640`).
 
 use egui_macroquad::egui;
-use rebellion_core::ids::{CharacterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey};
+use rebellion_core::ids::{
+    CharacterKey, FighterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey,
+};
 use rebellion_core::missions::MissionFaction;
 use rebellion_core::scrap::ScrapTarget;
+use rebellion_core::squadrons::SquadronPlace;
 
 use crate::bmp_cache::BmpCache;
 use crate::cockpit::CockpitLayout;
@@ -83,6 +86,9 @@ pub struct MoveConfirmation {
     /// A regiment's Confirmed Move (`0x202`, `FUN_00557ce0`'s list): its
     /// team.
     pub troops: Vec<TroopKey>,
+    /// A squadron's Confirmed Move (`0x202`, `FUN_00557ce0`'s list): one
+    /// squadron of each class from its place.
+    pub squadrons: Vec<(FighterKey, SquadronPlace)>,
     /// An Abort's missions.
     pub missions: Vec<u64>,
     /// A Scrap's units.
@@ -168,6 +174,7 @@ pub enum MoveConfirmationAction {
         characters: Vec<CharacterKey>,
         special_forces: Vec<SpecialForceKey>,
         troops: Vec<TroopKey>,
+        squadrons: Vec<(FighterKey, SquadronPlace)>,
         destination: SystemKey,
         join: Option<FleetKey>,
     },
@@ -235,6 +242,7 @@ impl MoveConfirmationState {
                 characters: window.characters,
                 special_forces: window.special_forces,
                 troops: window.troops,
+                squadrons: window.squadrons,
                 destination: window.destination,
                 join: window.join,
             }
@@ -350,6 +358,7 @@ mod tests {
             missions: Vec::new(),
             scrap: Vec::new(),
             troops: Vec::new(),
+            squadrons: Vec::new(),
             blockaded: false,
             destination: SystemKey::default(),
             join: None,
@@ -435,6 +444,7 @@ mod tests {
             fleets: Vec::new(),
             scrap: vec![target],
             troops: Vec::new(),
+            squadrons: Vec::new(),
             lines: vec![("Stormtrooper Regiment".into(), 0)],
             ..confirmation(MissionFaction::Empire)
         };
@@ -606,6 +616,7 @@ mod tests {
                 characters: Vec::new(),
                 special_forces: Vec::new(),
                 troops: Vec::new(),
+                squadrons: Vec::new(),
                 destination: SystemKey::default(),
                 join: None,
             })
@@ -650,6 +661,7 @@ mod tests {
         state.open(MoveConfirmation {
             fleets: Vec::new(),
             troops: vec![troop],
+            squadrons: Vec::new(),
             ..confirmation(MissionFaction::Empire)
         });
 
@@ -659,6 +671,30 @@ mod tests {
             action,
             Some(MoveConfirmationAction::Confirm { troops, fleets, .. })
                 if troops == [troop] && fleets.is_empty()
+        ));
+    }
+
+    #[test]
+    fn the_checkmark_carries_a_squadrons_confirmed_move() {
+        // FUN_0044f5e0 resubmits the same order, whose team is the
+        // squadron (FUN_00557ce0's list holds 0x202).
+        let squadron = (
+            FighterKey::default(),
+            SquadronPlace::Planet(SystemKey::default()),
+        );
+        let mut state = MoveConfirmationState::default();
+        state.open(MoveConfirmation {
+            fleets: Vec::new(),
+            squadrons: vec![squadron],
+            ..confirmation(MissionFaction::Alliance)
+        });
+
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+
+        assert!(matches!(
+            action,
+            Some(MoveConfirmationAction::Confirm { squadrons, fleets, .. })
+                if squadrons == [squadron] && fleets.is_empty()
         ));
     }
 

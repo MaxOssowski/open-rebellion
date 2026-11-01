@@ -469,11 +469,10 @@ impl ObjectMenuRow {
 ///   `FUN_0051de80` is taken as clear.
 /// - A fleet's Move and Confirmed Move are enabled when `gates.fleet_move`
 ///   says so (`movement::fleet_move_enabled`, each order's `+0x18`).
-/// - A regiment's Move is enabled when `gates.troop_move` says so. port:
-///   its Confirmed Move stays disabled; loading onto a fleet in the same
-///   system needs no transit confirmation.
-/// - A squadron's Move is enabled when `gates.squadron_move` says so.
-///   port: its Confirmed Move stays disabled, as a regiment's.
+/// - A regiment's Move and Confirmed Move are enabled when
+///   `gates.troop_move` says so (A0 `status/11-troop-menu.png`).
+/// - A squadron's Move and Confirmed Move are enabled when
+///   `gates.squadron_move` says so (A0 `status/20-fighter-menu.png`).
 /// - A capital ship's Move and Create Fleet are enabled when
 ///   `gates.ship_move` says so (its fleet is the player's and in orbit).
 ///   port: its Confirmed Move stays disabled.
@@ -571,6 +570,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::ConfirmedMove => {
                     (fleet && gates.fleet_move)
                         || (troop && gates.troop_move)
+                        || (squadron && gates.squadron_move)
                         || (character && gates.character_move)
                         || (special_force && gates.special_force_move)
                 }
@@ -1559,9 +1559,11 @@ mod tests {
                 ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
                 "{selection:?}"
             );
+            // A0 .artifacts/a0-vm/status/20-fighter-menu.png: the player's
+            // planet squadron shows Move and Confirmed Move enabled.
             assert_eq!(
                 enabled(&rows),
-                ["Move", "Encyclopedia", "Status"],
+                ["Move", "Confirmed Move", "Encyclopedia", "Status"],
                 "{selection:?}"
             );
             assert_eq!(

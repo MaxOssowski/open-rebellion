@@ -1,0 +1,15 @@
+}
+Prepared isolated fixture site at <repo>/.artifacts/interface-parity/site
+{
+  "run_dir": "<repo>/.artifacts/interface-parity/fleet-window-2026-11-01T01-55-08-149Z-1324907",
+  "status": "pass",
+  "cases": [
+    "alliance/squadron-load",
+    "alliance/squadron-confirmed-load",
+    "alliance/confirmed-load",
+    "empire/squadron-load",
+    "empire/squadron-confirmed-load",
+    "empire/confirmed-load"
+  ],
+  "wasm_sha256": "39abe380524b3f0c5be921bd8bbfc722e3df391e5b959731585cae5de9e9aa9c"
+}

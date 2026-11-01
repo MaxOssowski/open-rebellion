@@ -293,8 +293,16 @@ Move; on release `FUN_00487cc0` asks with the regiment's line
 system) and the evacuation warning when it stands on a blockaded planet
 (`FUN_0049a350`). The checkmark resubmits the move (`FUN_0041ce20(order,
 1)`) to the fleet or system; the X destroys it. Gate:
-`fleet-window.mjs` case `confirmed-load`. port: a squadron's and a capital
-ship's Confirmed Move stay disabled.
+`fleet-window.mjs` case `confirmed-load`.
+
+A0 `status/20-fighter-menu.png` shows the player's planet squadron with all
+five rows enabled: Move, Confirmed Move, Encyclopedia, Status, Scrap. A
+squadron's Confirmed Move now follows its Move gate the same way, with the
+class name and days at the class's speed (`FUN_00502f80`); the checkmark
+resubmits the move to the fleet or planet. Gate: `squadron-confirmed-load`.
+A0 `22-battery-menu.png` shows a battery's Encyclopedia, Status and Scrap,
+as the port lists them. port: a capital ship's Confirmed Move stays
+disabled (no A0 capture of its menu).
 
 ## Supporting decompiles
 

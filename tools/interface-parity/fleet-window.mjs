@@ -702,6 +702,40 @@ const cases = [
     },
   },
   {
+    name: "squadron-confirmed-load",
+    code: SQUADRON_LOAD,
+    // Confirmed Move (0x202) on the player's planet squadron, enabled as A0
+    // status/20-fighter-menu.png shows: FUN_00487cc0 asks with the trip's
+    // days before the squadron boards. The X keeps it on the planet; the
+    // checkmark resubmits the move (FUN_0041ce20).
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup);
+      assert.equal(opened.planet_squadrons, 2, "two squadrons stand on the planet");
+      await selectFleet(page, opened);
+      const menu = await openMenu(page, point(setup.troop_item), directory, "squadron");
+      assert.equal(menu.confirmed_move_row, 1, JSON.stringify(menu));
+      assert.equal(menu.confirmed_move_enabled, true, JSON.stringify(menu));
+      await choose(page, menu, menu.confirmed_move_row, "Confirmed Move");
+      await click(page, point(opened.fleet_entry));
+      const asked = await until(page, "the confirmation opens", (o) => o.confirmation_open);
+      assert.deepEqual([asked.planet_squadrons, asked.fleet_squadrons], [2, 0],
+        "the squadron boarded before the answer");
+      await shot(page, directory, "confirmation");
+      await click(page, confirmationCross(faction));
+      const kept = await until(page, "the X keeps the squadron on its planet", (o) => !o.confirmation_open);
+      assert.deepEqual([kept.planet_squadrons, kept.fleet_squadrons], [2, 0], "the X boarded the squadron");
+      const again = await openMenu(page, point(setup.troop_item), directory, "squadron-again");
+      await choose(page, again, again.confirmed_move_row, "Confirmed Move");
+      await click(page, point(opened.fleet_entry));
+      await until(page, "the confirmation opens again", (o) => o.confirmation_open);
+      await click(page, confirmationCheckmark(faction));
+      const boarded = await until(page, "the checkmark boards one squadron",
+        (o) => !o.confirmation_open && o.fleet_squadrons === 1 && o.planet_squadrons === 1);
+      await shot(page, directory, "boarded");
+      return { opened, menu, asked, kept, boarded };
+    },
+  },
+  {
     name: "squadron-unload",
     code: SQUADRON_LOAD,
     // A squadron dragged out of the Fighters tab onto the Defenses window

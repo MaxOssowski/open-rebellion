@@ -68,6 +68,9 @@ pub enum TargetOrder {
     SquadronMove {
         class: rebellion_core::ids::FighterKey,
         from: rebellion_core::squadrons::SquadronPlace,
+        /// Confirmed Move (`0x202`): the confirmation window lists the
+        /// trip's days first (`FUN_00487cc0`).
+        confirmed: bool,
     },
     /// A capital ship's Move (`0x201`). Released on a Fleet window it joins
     /// that fleet; on a system it forms a fleet of its own there

@@ -6292,6 +6292,7 @@ async fn main() {
                                             missions: Vec::new(),
                                             scrap: Vec::new(),
                                             troops: Vec::new(),
+                                            squadrons: Vec::new(),
                                             blockaded: false,
                                             destination: SystemKey::default(),
                                             join: None,
@@ -6333,6 +6334,7 @@ async fn main() {
                                         missions: Vec::new(),
                                         scrap: vec![target],
                                         troops: Vec::new(),
+                                        squadrons: Vec::new(),
                                         blockaded: false,
                                         destination: SystemKey::default(),
                                         join: None,
@@ -6371,6 +6373,7 @@ async fn main() {
                                     missions,
                                     scrap: Vec::new(),
                                     troops: Vec::new(),
+                                    squadrons: Vec::new(),
                                     blockaded: false,
                                     destination: SystemKey::default(),
                                     join: None,
@@ -6444,7 +6447,7 @@ async fn main() {
                             }));
                         }
                         Some((
-                            ObjectMenuCommand::Move,
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
                             Some(MenuObject::Fighter { fleet, index }),
                         )) => {
                             if let Some(entry) = world
@@ -6455,16 +6458,18 @@ async fn main() {
                                 targeting = Some(Targeting::new(TargetOrder::SquadronMove {
                                     class: entry.class,
                                     from: SquadronPlace::Fleet(fleet),
+                                    confirmed: command == ObjectMenuCommand::ConfirmedMove,
                                 }));
                             }
                         }
                         Some((
-                            ObjectMenuCommand::Move,
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
                             Some(MenuObject::PlanetFighter { system, class }),
                         )) => {
                             targeting = Some(Targeting::new(TargetOrder::SquadronMove {
                                 class,
                                 from: SquadronPlace::Planet(system),
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
                         Some((
@@ -7008,10 +7013,23 @@ async fn main() {
                         characters,
                         special_forces,
                         troops,
+                        squadrons,
                         destination,
                         join,
                     }) = answer
                     {
+                        // FUN_0041ce20(order, 1): a squadron's 0x202 is its
+                        // Move again, to the fleet or the planet.
+                        panel_actions.extend(squadrons.into_iter().map(|(class, from)| {
+                            PanelAction::MoveSquadron {
+                                class,
+                                from,
+                                to: join.map_or(
+                                    SquadronPlace::Planet(destination),
+                                    SquadronPlace::Fleet,
+                                ),
+                            }
+                        }));
                         // FUN_0041ce20(order, 1): a regiment's 0x202 is its
                         // Move again, to the fleet or the system.
                         panel_actions.extend(troops.into_iter().map(|troop| {
@@ -7274,13 +7292,33 @@ async fn main() {
                                 // A squadron's 0x201 against the release
                                 // window's +0x70: boarding or landing.
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::SquadronMove { class, from },
+                                    order:
+                                        TargetOrder::SquadronMove {
+                                            class,
+                                            from,
+                                            confirmed,
+                                        },
                                     target,
-                                }) => panel_actions.push(PanelAction::MoveSquadron {
-                                    class,
-                                    from,
-                                    to: target.squadron_place(),
-                                }),
+                                }) => {
+                                    if confirmed {
+                                        confirm_squadron_move(
+                                            &world,
+                                            &troop_transport_state.squadrons,
+                                            player_faction,
+                                            (class, from),
+                                            target,
+                                            clock.tick,
+                                            &mut msg_log,
+                                            &mut move_confirmation_state,
+                                        );
+                                    } else {
+                                        panel_actions.push(PanelAction::MoveSquadron {
+                                            class,
+                                            from,
+                                            to: target.squadron_place(),
+                                        });
+                                    }
+                                }
                                 // FUN_00512700 kind 4: the order's team is
                                 // every production area of the system, or
                                 // a band's own area.
@@ -8577,6 +8615,7 @@ fn issue_fleet_move(
         missions: Vec::new(),
         scrap: Vec::new(),
         troops: Vec::new(),
+        squadrons: Vec::new(),
         blockaded: false,
         destination,
         join,
@@ -8634,6 +8673,7 @@ fn confirm_character_move(
         missions: Vec::new(),
         scrap: Vec::new(),
         troops: Vec::new(),
+        squadrons: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,
@@ -8692,10 +8732,72 @@ fn confirm_troop_move(
         characters: Vec::new(),
         special_forces: Vec::new(),
         troops: vec![troop],
+        squadrons: Vec::new(),
         missions: Vec::new(),
         scrap: Vec::new(),
         blockaded,
         destination: system,
+        join,
+        lines: vec![(name, days)],
+    });
+}
+
+/// A squadron's Confirmed Move (`0x202`): the confirmation lists the
+/// squadron's days (`FUN_0053c2e0`) and warns of an evacuation when it
+/// stands on a blockaded planet (`FUN_0049a350`).
+#[allow(clippy::too_many_arguments)]
+fn confirm_squadron_move(
+    world: &GameWorld,
+    transits: &rebellion_core::squadrons::SquadronTransits,
+    faction: MissionFaction,
+    (class, from): (rebellion_core::ids::FighterKey, SquadronPlace),
+    target: ReleaseTarget,
+    tick: u64,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+) {
+    let alliance = faction == MissionFaction::Alliance;
+    let days = transits.move_days(world, alliance, class, 1, from, target.squadron_place());
+    let name = world
+        .fighter_classes
+        .get(class)
+        .map(|value| value.name.clone());
+    let (Ok(days), Some(name)) = (days, name) else {
+        macroquad::logging::info!("[interface] squadron_move confirm refused");
+        msg_log.push(GameMessage::new(
+            tick,
+            "Move refused".to_string(),
+            MessageCategory::Event,
+        ));
+        return;
+    };
+    let blockaded = match from {
+        SquadronPlace::Planet(system) => world.systems.get(system).is_some_and(|value| {
+            rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, value)
+        }),
+        SquadronPlace::Fleet(_) => false,
+    };
+    macroquad::logging::info!(
+        "[interface] squadron_move confirm days={} blockaded={}",
+        days,
+        blockaded
+    );
+    let join = match target {
+        ReleaseTarget::Fleet { fleet, .. } => Some(fleet),
+        ReleaseTarget::System(_) => None,
+    };
+    move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
+        faction,
+        fleets: Vec::new(),
+        characters: Vec::new(),
+        special_forces: Vec::new(),
+        troops: Vec::new(),
+        squadrons: vec![(class, from)],
+        missions: Vec::new(),
+        scrap: Vec::new(),
+        blockaded,
+        destination: target.system(),
         join,
         lines: vec![(name, days)],
     });
@@ -8964,6 +9066,7 @@ fn confirm_special_force_move(
         missions: Vec::new(),
         scrap: Vec::new(),
         troops: Vec::new(),
+        squadrons: Vec::new(),
         blockaded,
         destination: system,
         join: fleet,

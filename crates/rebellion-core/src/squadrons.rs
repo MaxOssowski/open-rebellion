@@ -458,6 +458,28 @@ impl SquadronTransits {
         Ok(systems)
     }
 
+    /// The days [`Self::move_squadrons`] would take the squadrons: none
+    /// within one system. The Confirmed Move's line (`FUN_0053c2e0`).
+    ///
+    /// # Errors
+    /// Returns [`Self::check`]'s refusal.
+    pub fn move_days(
+        &self,
+        world: &GameWorld,
+        alliance: bool,
+        class: FighterKey,
+        count: u32,
+        from: SquadronPlace,
+        to: SquadronPlace,
+    ) -> Result<u32, SquadronMoveError> {
+        let (origin, destination) = self.checked(world, alliance, class, count, from, to)?;
+        Ok(if origin == destination {
+            0
+        } else {
+            squadron_transit_ticks(world, class, origin, destination)
+        })
+    }
+
     /// Move `count` squadrons of `class` from `from` to `to` for the side
     /// `alliance` on day `now`: within one system at once, to another
     /// system at the class's speed (`FUN_00502f80`, `FUN_0055d8c0`). A
@@ -497,17 +519,7 @@ impl SquadronTransits {
             }
             SquadronMove::Placed
         } else {
-            let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
-            let speed = world.fighter_classes.get(class).map_or_else(
-                || crate::movement::default_speed(world),
-                |value| crate::movement::fighter_speed(world, value),
-            );
-            let ticks = crate::movement::transit_ticks_between(
-                world,
-                position(origin),
-                position(destination),
-                speed,
-            );
+            let ticks = squadron_transit_ticks(world, class, origin, destination);
             let arrival_tick = now + u64::from(ticks);
             self.transits.push(SquadronTransit {
                 class,
@@ -583,6 +595,22 @@ fn disband_if_empty(world: &mut GameWorld, fleet: FleetKey) {
             system.fleets.retain(|&key| key != fleet);
         }
     }
+}
+
+/// Squadrons of `class` travel between systems at the class's speed
+/// (`FUN_00502f80`, `FUN_0055d8c0`).
+fn squadron_transit_ticks(
+    world: &GameWorld,
+    class: FighterKey,
+    origin: SystemKey,
+    destination: SystemKey,
+) -> u32 {
+    let position = |key: SystemKey| world.systems.get(key).map_or((0, 0), |s| (s.x, s.y));
+    let speed = world.fighter_classes.get(class).map_or_else(
+        || crate::movement::default_speed(world),
+        |value| crate::movement::fighter_speed(world, value),
+    );
+    crate::movement::transit_ticks_between(world, position(origin), position(destination), speed)
 }
 
 /// Whether each side, Alliance then Empire, is present at `system`: an
@@ -1252,6 +1280,37 @@ mod tests {
         });
         assert!(scramble(&mut s.world, s.there).is_empty());
         assert!(scramble(&mut s.world, SystemKey::default()).is_empty());
+    }
+
+    #[test]
+    fn a_squadrons_move_days_are_the_trips_and_nothing_moves() {
+        // FUN_0053c2e0: the Confirmed Move's line gives the days the move
+        // itself would take at the class's speed (FUN_00502f80). port: none
+        // within one system, as the move places it at once.
+        let mut s = setup(1);
+        s.world.systems[s.there].x = 300;
+        add(&mut s.world.systems[s.here].fighters, s.x_wing, 2);
+        let transits = SquadronTransits::default();
+        let here = SquadronPlace::Planet(s.here);
+        let days = |count, to| transits.move_days(&s.world, true, s.x_wing, count, here, to);
+        let class = &s.world.fighter_classes[s.x_wing];
+        let ticks = crate::movement::transit_ticks_between(
+            &s.world,
+            (0, 0),
+            (300, 0),
+            crate::movement::fighter_speed(&s.world, class),
+        );
+        assert!(ticks > 1);
+
+        assert_eq!(days(1, SquadronPlace::Planet(s.there)), Ok(ticks));
+        assert_eq!(days(1, SquadronPlace::Fleet(s.fleet)), Ok(0));
+        for (count, to) in [(3, SquadronPlace::Planet(s.there)), (1, here)] {
+            let refusal = transits.check(&s.world, true, s.x_wing, count, here, to);
+            assert!(refusal.is_err());
+            assert_eq!(days(count, to), refusal.map(|()| 0));
+        }
+        assert_eq!(on_planet(&s.world, s.here, true), 2);
+        assert!(transits.transits().is_empty());
     }
 
     #[test]
