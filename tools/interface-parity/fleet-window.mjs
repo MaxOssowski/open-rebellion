@@ -38,11 +38,17 @@ const UPRISING_INCIDENT = 76;
 const BLOCKADE_ARRIVAL = 77;
 const SUPPORT_FLIP = 78;
 const FLEET_WINDOW_A0 = 80;
+const FLEET_WINDOW_VJUN = 81;
+const FLEET_WINDOW_UMGUL = 82;
 // `--a0-menus=DIR` (.artifacts/a0-vm/menus) compares the a0-kimanan case's
 // window with A0 23-fleet1-{ships,fighters,troops,personnel}.png.
 // It defaults to the local captures when they are present.
 const a0MenusDir = process.argv.find((arg) => arg.startsWith("--a0-menus="))?.slice(11)
   ?? [path.join(root, ".artifacts/a0-vm/menus")].find((dir) => fs.existsSync(path.join(dir, "23-fleet1-ships.png")));
+// `--a0-fleet2=DIR` (.artifacts/a0-vm/fleet2) does the same for a0-vjun
+// (vjun-fleet5-admiral-{tab}.png) and a0-umgul (umgul-*.png).
+const a0Fleet2Dir = process.argv.find((arg) => arg.startsWith("--a0-fleet2="))?.slice(12)
+  ?? [path.join(root, ".artifacts/a0-vm/fleet2")].find((dir) => fs.existsSync(path.join(dir, "vjun-fleet5-admiral-ships.png")));
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
 const windowSize = { width: 235, height: 304 };
 // Side art: the Alliance's resources, the Empire's 50 higher
@@ -420,6 +426,47 @@ async function shot(page, directory, label) {
   const bytes = await page.screenshot({ animations: "disabled" });
   fs.writeFileSync(path.join(directory, `${label}.png`), bytes);
   return { label, sha256: sha256(bytes), bytes };
+}
+
+// The Fleet window's place in A0's captures.
+const a0Origin = { x: 305, y: 86 };
+
+// Capture the Fleet window at A0's (305, 86) as `label` and, when `a0Png`
+// names A0's capture of the same state, count the window's pixels that
+// differ from it; the count must stay within `ceiling`.
+async function compareWindowWithA0(page, directory, label, a0Png, ceiling) {
+  const origin = a0Origin;
+  const port = await stableWindow(page, origin, directory, label);
+  fs.writeFileSync(path.join(directory, `${label}.png`), PNG.sync.write(port));
+  if (!a0Png) return null;
+  const a0 = PNG.sync.read(fs.readFileSync(a0Png));
+  const diff = new PNG({ width: windowSize.width, height: windowSize.height });
+  let differing = 0;
+  for (let y = 0; y < windowSize.height; y += 1) {
+    for (let x = 0; x < windowSize.width; x += 1) {
+      const p = (y * windowSize.width + x) * 4;
+      const q = ((origin.y + y) * a0.width + origin.x + x) * 4;
+      const same = [0, 1, 2].every((k) => port.data[p + k] === a0.data[q + k]);
+      if (!same) differing += 1;
+      diff.data.set(same ? [0, 0, 0, 255] : [255, 0, 255, 255], p);
+    }
+  }
+  fs.writeFileSync(path.join(directory, `${label}-diff.png`), PNG.sync.write(diff));
+  assert.ok(differing <= ceiling, `${label} differs from A0 in ${differing} pixels (> ${ceiling})`);
+  return { differing, total: windowSize.width * windowSize.height };
+}
+
+// Click each tab of the Fleet window and compare it with A0's capture of
+// that tab, `a0File(tab)`, within the tab's ceiling.
+async function compareTabsWithA0(page, directory, name, a0File, ceilings) {
+  const tabs = ["ships", "fighters", "troops", "personnel"];
+  const checks = {};
+  for (const [index, tab] of tabs.entries()) {
+    // TAB_STRIP (99, 96) + TAB_X, 31 by 28 (fleet_window.rs).
+    await click(page, { x: a0Origin.x + 99 + [1, 33, 65, 97][index] + 15, y: a0Origin.y + 96 + 14 });
+    checks[tab] = await compareWindowWithA0(page, directory, `${name}-${tab}`, a0File && a0File(tab), ceilings[tab]);
+  }
+  return checks;
 }
 
 async function stableWindow(page, origin, directory, label) {
@@ -1327,35 +1374,46 @@ const cases = [
     // A0's Alliance Fleet window over Kimanan (menus/23-fleet1-*.png,
     // day 318): Fleet 1 selected, each tab in turn. With --a0-menus the
     // window's 235 by 304 pixels are compared with A0's at (305, 86).
+    // What differs (2026-11-01): the GDI text's hinting (title, fleet
+    // names, counters, item names), A0's cursor over the clicked tab, and
+    // A0's 10424 overlay on Fleet 4's entry (19 pixels).
+    run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-kimanan",
+      a0MenusDir && ((tab) => path.join(a0MenusDir, `23-fleet1-${tab}.png`)),
+      { ships: 2200, fighters: 1200, troops: 2600, personnel: 1100 }),
+  },
+  {
+    name: "a0-vjun",
+    code: FLEET_WINDOW_VJUN,
+    factions: ["alliance"],
+    standalone: true,
+    // A0's Alliance Fleet window over Vjun (fleet2/vjun-fleet5-admiral-*,
+    // day 676): Fleet 5, Corellian Corvette 2, with Admiral Bel Iblis
+    // aboard (10406 under the fleet and the corvette, FUN_004a67a0).
+    // What differs (2026-11-01): the GDI text's hinting and A0's cursor
+    // over the clicked tab.
+    run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-vjun",
+      a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `vjun-fleet5-admiral-${tab}.png`)),
+      { ships: 1500, fighters: 1000, troops: 1000, personnel: 1400 }),
+  },
+  {
+    name: "a0-umgul",
+    code: FLEET_WINDOW_UMGUL,
+    factions: ["alliance"],
+    standalone: true,
+    // A0's Alliance Fleet window over Umgul after the battle there
+    // (fleet2/umgul-*, day 722): Fleet 1 damaged, Medium Transport 1's
+    // hyperdrive gone (10430 under it and under Fleet 1, FUN_004a67a0);
+    // then each of its ships selected in the left list (LEFT_LIST rows of
+    // 50 from y 29).
     async run(page, faction, setup, directory) {
-      const origin = { x: 305, y: 86 };
-      const tabs = ["ships", "fighters", "troops", "personnel"];
-      const checks = {};
-      for (const [index, tab] of tabs.entries()) {
-        // TAB_STRIP (99, 96) + TAB_X, 31 by 28 (fleet_window.rs).
-        await click(page, { x: origin.x + 99 + [1, 33, 65, 97][index] + 15, y: origin.y + 96 + 14 });
-        const port = await stableWindow(page, origin, directory, `a0-kimanan-${tab}`);
-        fs.writeFileSync(path.join(directory, `a0-kimanan-${tab}.png`), PNG.sync.write(port));
-        if (!a0MenusDir) continue;
-        const a0 = PNG.sync.read(fs.readFileSync(path.join(a0MenusDir, `23-fleet1-${tab}.png`)));
-        const diff = new PNG({ width: windowSize.width, height: windowSize.height });
-        let differing = 0;
-        for (let y = 0; y < windowSize.height; y += 1) {
-          for (let x = 0; x < windowSize.width; x += 1) {
-            const p = (y * windowSize.width + x) * 4;
-            const q = ((origin.y + y) * a0.width + origin.x + x) * 4;
-            const same = [0, 1, 2].every((k) => port.data[p + k] === a0.data[q + k]);
-            if (!same) differing += 1;
-            diff.data.set(same ? [0, 0, 0, 255] : [255, 0, 255, 255], p);
-          }
-        }
-        fs.writeFileSync(path.join(directory, `a0-kimanan-${tab}-diff.png`), PNG.sync.write(diff));
-        checks[tab] = { differing, total: windowSize.width * windowSize.height };
-        // What differs (2026-11-01): the GDI text's hinting (title, fleet
-        // names, counters, item names), A0's cursor over the clicked tab,
-        // and A0's 10424 overlay on Fleet 4's entry (19 pixels).
-        const ceiling = { ships: 2200, fighters: 1200, troops: 2600, personnel: 1100 }[tab];
-        assert.ok(differing <= ceiling, `the ${tab} tab differs from A0 in ${differing} pixels (> ${ceiling})`);
+      const file = (name) => a0Fleet2Dir && path.join(a0Fleet2Dir, `${name}.png`);
+      const checks = await compareTabsWithA0(page, directory, "a0-umgul",
+        a0Fleet2Dir && ((tab) => file(`umgul-fleet1-damaged-${tab}`)),
+        { ships: 2400, fighters: 1400, troops: 2800, personnel: 1300 });
+      for (const [row, ship] of [[1, "corvette1"], [2, "transport1"]]) {
+        await click(page, { x: a0Origin.x + 40, y: a0Origin.y + 29 + 50 * row + 26 });
+        checks[ship] = await compareWindowWithA0(page, directory, `a0-umgul-${ship}-selected`,
+          file(`umgul-${ship}-selected`), 1800);
       }
       return checks;
     },

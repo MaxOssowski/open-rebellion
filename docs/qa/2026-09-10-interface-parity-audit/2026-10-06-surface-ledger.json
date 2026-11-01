@@ -5278,7 +5278,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-window-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-title-fonts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
           ],
           "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
@@ -5307,7 +5308,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-window-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-title-fonts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
           ],
           "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). Capital ships tab: 2066 differing pixels, all text and cursor.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
@@ -5339,14 +5341,15 @@
         {
           "id": "OBJ-05-C007",
           "requirement": "personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-special-forces-aboard-fleets/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
           ],
-          "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). The Personnel tab of a fleet with no one aboard matches A0 (empty list, the disabled button taking the click); a fleet carrying characters is not compared in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "fleet-window.mjs alliance/a0-vjun copies A0 fleet2/vjun-fleet5-admiral (Vjun, Fleet 5 with Corellian Corvette 2 and Garm Bel Iblis aboard) and compares each tab's 71 440 pixels: only GDI text hinting differs (1337/884/884/1245). The personnel indicator 10406 marks the fleet's entry and the ship the character rides on (FUN_004a66a0 flag 4); the Personnel tab lists him. Special forces aboard mark the first ship (hyp).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C008",
@@ -5368,7 +5371,8 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-fleet-window-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-fleet-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
           ],
           "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). Fleet 4, en route, carries 10423 on its entry as in A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
@@ -5420,14 +5424,15 @@
         {
           "id": "OBJ-05-C014",
           "requirement": "commander",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-character-command-menu/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
           ],
-          "note": "Fleet Status shows the Admiral/General/Commander rows (FUN_004fd790) and A0 Fleet Status rows match; the Fleet window itself shows no commander comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 fleet2/02, 03: Command offers General on the planet and Admiral or General aboard; boarding drops the planet command (\"Garm Bel Iblis\"). fleet-window.mjs alliance/a0-vjun matches the Fleet window's Personnel tab listing \"Admiral Bel Iblis\" (FUN_004f17f0, TEXTSTRA name + 0x6c00) within text hinting; Fleet Status rows were matched before (2026-10-30-status-window-text).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C015",
@@ -5449,7 +5454,8 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-fleet-window-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
           ],
           "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). The en-route mark 10423 on Fleet 4's entry matches A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."

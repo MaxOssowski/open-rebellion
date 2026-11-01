@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 80;
+const SCENARIO_COUNT: u8 = 82;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -222,6 +222,18 @@ pub enum Scenario {
     /// Regiments, selected; Fleet 4, Corellian Corvette 2, in hyperspace to
     /// Kimanan; the window at A0's (305, 86).
     FleetWindowA0 = 79,
+    /// The Alliance's Fleet window over Vjun as A0 shows it
+    /// (`.artifacts/a0-vm/fleet2/vjun-fleet5-admiral-*.png`, day 676):
+    /// Fleet 5, Corellian Corvette 2, with Garm Bel Iblis aboard as its
+    /// Admiral, selected; the window at A0's (305, 86).
+    FleetWindowVjun = 80,
+    /// The Alliance's Fleet window over Umgul after A0's battle there
+    /// (`.artifacts/a0-vm/fleet2/umgul-*.png`, day 722): Fleet 1 with
+    /// Corellian Corvette 1 (hull 240 of 500) and Medium Transport 1 (317
+    /// of 360, its hyperdrive hit) and two Alliance Fleet Regiments,
+    /// selected and expanded; Fleet 3, Medium Transport 2 (damaged) with
+    /// two Alliance Army Regiments; the window at A0's (305, 86).
+    FleetWindowUmgul = 81,
 }
 
 impl Scenario {
@@ -307,6 +319,8 @@ impl Scenario {
             77 => Self::SupportFlip,
             78 => Self::StoryMovie,
             79 => Self::FleetWindowA0,
+            80 => Self::FleetWindowVjun,
+            81 => Self::FleetWindowUmgul,
             _ => return None,
         })
     }
@@ -660,6 +674,12 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowA0 {
         place_kimanan(request, world, cockpit, movement, troop_transport, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowVjun {
+        place_vjun(request, world, cockpit, movement, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowUmgul {
+        place_umgul(request, world, cockpit, movement, troop_transport, fleets);
     }
     if request.scenario == Scenario::ProductionDelivery {
         place_delivery(request, world, manufacturing, primary);
@@ -1032,6 +1052,175 @@ fn place_kimanan(
     let layout = cockpit.layout_for(640.0, 480.0);
     fleets.open(world, kimanan, (305, 86), request.faction, layout);
     fleets.select(kimanan, FleetWindowEntry::Fleet(first));
+}
+
+/// The `FleetWindowVjun` scenario: A0's Fleet 5 at Vjun with Garm Bel
+/// Iblis aboard as its Admiral, and its Fleet window open where A0's lay.
+fn place_vjun(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    fleets: &mut FleetWindowState,
+) {
+    let vjun = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Vjun")
+        .map(|(key, _)| key);
+    let corvette = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, value)| value.is_alliance && value.name == "Corellian Corvette")
+        .map(|(key, _)| key);
+    let garm = world
+        .characters
+        .iter()
+        .find(|(_, value)| value.name == "Garm Bel Iblis")
+        .map(|(key, _)| key);
+    let (Some(vjun), Some(corvette), Some(garm)) = (vjun, corvette, garm) else {
+        return;
+    };
+    let sector = world.systems[vjun].sector;
+    let Some(elsewhere) = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != vjun && value.sector == sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == vjun {
+            value.location = elsewhere;
+        }
+    }
+    let value = &mut world.systems[vjun];
+    value.control = ControlKind::Controlled(Faction::Alliance);
+    value.exploration_status = ExplorationStatus::Explored;
+    // At full hull: A0's corvette carries no damage mark.
+    let ship = ShipInstance::new(corvette, world.capital_ship_classes[corvette].hull as i32, true);
+    let fifth = world.insert_fleet(rebellion_core::world::Fleet {
+        location: vjun,
+        capital_ships: vec![ship],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(fifth, "Fleet 5");
+    world.rename_ship(fifth, 0, "Corellian Corvette 2");
+    world.number_ships();
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    rebellion_core::missions::board_fleet(world, rebellion_core::missions::MissionMember::Character(garm), fifth);
+    rebellion_core::missions::seat_characters(world, fifth);
+    world.characters[garm].set_command(rebellion_core::character_command::CommandKind::Admiral);
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, vjun, (305, 86), request.faction, layout);
+    fleets.select(vjun, FleetWindowEntry::Fleet(fifth));
+    // A0 opened it with a double click on the entry, which expands it.
+    fleets.expand(vjun, fifth);
+}
+
+/// The `FleetWindowUmgul` scenario: A0's Fleets 1 and 3 at Umgul after
+/// the battle there, and its Fleet window open where A0's lay.
+fn place_umgul(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleets: &mut FleetWindowState,
+) {
+    let umgul = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Umgul")
+        .map(|(key, _)| key);
+    let class = |world: &GameWorld, name: &str| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, value)| value.is_alliance && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(umgul), Some(corvette), Some(transport)) = (
+        umgul,
+        class(world, "Corellian Corvette"),
+        class(world, "Medium Transport"),
+    ) else {
+        return;
+    };
+    let sector = world.systems[umgul].sector;
+    let Some(elsewhere) = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != umgul && value.sector == sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == umgul {
+            value.location = elsewhere;
+        }
+    }
+    let value = &mut world.systems[umgul];
+    value.control = ControlKind::Controlled(Faction::Alliance);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.ground_units.clear();
+    value.special_forces.clear();
+    // A0's Capital Ship Status windows (fleet2/05, 06): hull 240:500 and
+    // 317:360; Medium Transport 1's Hyperdrive Rating 0:100, its primary
+    // hyperdrive hit (CAPSHPSD hyperdrive_if_damaged 0).
+    let ship = |world: &GameWorld, class, hull: Option<i32>| {
+        let mut ship = ShipInstance::new(class, world.capital_ship_classes[class].hull as i32, true);
+        if let Some(hull) = hull {
+            ship.hull_current = hull;
+        }
+        ship
+    };
+    let fleet = |capital_ships| rebellion_core::world::Fleet {
+        location: umgul,
+        capital_ships,
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    };
+    let mut hit = ship(world, transport, Some(317));
+    hit.set_hits(rebellion_core::world::Subsystem::PrimaryHyperdrive, 1);
+    let first = world.insert_fleet(fleet(vec![ship(world, corvette, Some(240)), hit]));
+    // A0 marks Fleet 3's entry damaged too (umgul-fleet1-damaged-ships);
+    // its hull was not read, and any damage shows the same mark.
+    let third_hull = world.capital_ship_classes[transport].hull as i32 - 1;
+    let third = world.insert_fleet(fleet(vec![ship(world, transport, Some(third_hull))]));
+    world.rename_fleet(first, "Fleet 1");
+    world.rename_fleet(third, "Fleet 3");
+    world.rename_ship(first, 0, "Corellian Corvette 1");
+    world.rename_ship(first, 1, "Medium Transport 1");
+    world.rename_ship(third, 0, "Medium Transport 2");
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    for (fleet, class) in [(first, 0x1000_0001), (third, 0x1000_0002)] {
+        let regiments: Vec<_> = (0..2)
+            .map(|_| {
+                world.troops.insert(TroopUnit {
+                    class_dat_id: rebellion_core::ids::DatId::new(class),
+                    is_alliance: true,
+                    regiment_strength: 100,
+                })
+            })
+            .collect();
+        world.systems[umgul].ground_units = regiments.clone();
+        let _ = troop_transport.embark(world, fleet, &regiments);
+    }
+    world.systems[umgul].ground_units.clear();
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, umgul, (305, 86), request.faction, layout);
+    fleets.select(umgul, FleetWindowEntry::Fleet(first));
+    fleets.expand(umgul, first);
 }
 
 /// Whether the scenario runs the clock Fast from the start.
@@ -5070,6 +5259,106 @@ mod tests {
         assert!(applied.fleets.is_open(kimanan));
         assert_eq!(
             applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), kimanan).map(|rect| rect.min),
+            Some(egui_macroquad::egui::pos2(305.0, 86.0))
+        );
+    }
+
+    #[test]
+    fn the_a0_vjun_scenario_seats_admiral_bel_iblis_aboard_fleet_5() {
+        // A0 fleet2/vjun-fleet5-admiral-personnel: the Admiral order renames
+        // him "Admiral Bel Iblis" (FUN_004f17f0, TEXTSTRA name + 0x6c00).
+        let request = request(Scenario::FleetWindowVjun, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Vjun".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    name: "Corellian Corvette".into(),
+                    is_alliance: true,
+                    hull: 100,
+                    hyperdrive: 80,
+                    ..Default::default()
+                });
+            world.characters.insert(rebellion_core::world::Character {
+                name: "Garm Bel Iblis".into(),
+                command_names: [
+                    String::new(),
+                    "Commander Bel Iblis".into(),
+                    "Admiral Bel Iblis".into(),
+                    "General Bel Iblis".into(),
+                ],
+                ..Default::default()
+            });
+        });
+        let world = &applied.world;
+        let vjun = world.systems.keys().next().unwrap();
+        let [fifth] = world.systems[vjun].fleets[..] else {
+            panic!("one fleet at Vjun: {:?}", world.systems[vjun].fleets);
+        };
+        assert_eq!(world.fleet_name(fifth), Some("Fleet 5"));
+        assert_eq!(world.ship_name(fifth, 0), Some("Corellian Corvette 2"));
+        let [garm] = world.fleets[fifth].characters[..] else {
+            panic!("one character aboard");
+        };
+        let garm = &world.characters[garm];
+        assert_eq!(garm.name, "Admiral Bel Iblis");
+        assert_eq!(garm.ship, Some(world.fleets[fifth].capital_ships[0].id));
+        assert_ne!(garm.ship, Some(0));
+        assert!(applied.fleets.is_open(vjun));
+        assert!(applied.fleets.is_expanded(vjun, fifth));
+        assert_eq!(
+            applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), vjun).map(|rect| rect.min),
+            Some(egui_macroquad::egui::pos2(305.0, 86.0))
+        );
+    }
+
+    #[test]
+    fn the_a0_umgul_scenario_lists_fleet_1_damaged_and_fleet_3_loaded() {
+        let request = request(Scenario::FleetWindowUmgul, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Umgul".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            for (name, hull) in [("Corellian Corvette", 500), ("Medium Transport", 360)] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_alliance: true,
+                        hull,
+                        hyperdrive: 100,
+                        troop_capacity: 2,
+                        ..Default::default()
+                    });
+            }
+        });
+        let world = &applied.world;
+        let umgul = world.systems.keys().next().unwrap();
+        let names: Vec<_> = world.systems[umgul]
+            .fleets
+            .iter()
+            .map(|&fleet| world.fleet_name(fleet).unwrap())
+            .collect();
+        assert_eq!(names, ["Fleet 1", "Fleet 3"]);
+        let (first, third) = (world.systems[umgul].fleets[0], world.systems[umgul].fleets[1]);
+        let hulls: Vec<_> = world.fleets[first].capital_ships.iter().map(|ship| ship.hull_current).collect();
+        assert_eq!(hulls, [240, 317]);
+        let transport = &world.fleets[first].capital_ships[1];
+        assert_eq!(
+            rebellion_core::ship_condition::hyperdrive(&world.capital_ship_classes[transport.class], transport),
+            0
+        );
+        assert_eq!(world.fleets[third].capital_ships[0].hull_current, 359);
+        assert_eq!(applied.transport.cargo(first).len(), 2);
+        assert_eq!(applied.transport.cargo(third).len(), 2);
+        assert!(world.systems[umgul].ground_units.is_empty());
+        assert!(applied.fleets.is_expanded(umgul, first));
+        assert_eq!(
+            applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), umgul).map(|rect| rect.min),
             Some(egui_macroquad::egui::pos2(305.0, 86.0))
         );
     }

@@ -17,7 +17,7 @@ use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SystemKey, TroopKey};
 use rebellion_core::missions::{MissionTarget, MissionTargetPick};
 use rebellion_core::movement::MovementState;
 use rebellion_core::troop_transport::TroopTransportState;
-use rebellion_core::world::{ControlKind, GameWorld};
+use rebellion_core::world::{CapitalShipClass, ControlKind, GameWorld, ShipInstance};
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
@@ -71,6 +71,30 @@ pub(crate) fn fleet_damaged(world: &GameWorld, fleet: FleetKey) -> bool {
     })
 }
 
+/// `FUN_004a66a0` flag `0x40` (10430 at x 9, `FUN_004a67a0`): the ship's
+/// speed, slot `+0x34(1)` (`FUN_00500820`), is 0. That is its hyperdrive
+/// less its hits, else its backup's, else the GNPRTB 1 default only while
+/// its DeploymentCount (`+0x41`) is 0; `FUN_004fb310` raises the count on
+/// each move to a new container. hyp: a ship in a fleet has moved, so it
+/// takes no default. A0 `fleet2/umgul-fleet1-damaged`: Medium Transport 1,
+/// Hyperdrive Rating 0:100 after the battle at Umgul, carries the mark.
+fn stranded(class: &CapitalShipClass, ship: &ShipInstance) -> bool {
+    rebellion_core::ship_condition::hyperdrive(class, ship) == 0
+}
+
+/// `Fleet_vt34` (`FUN_004fd900`) is 0 once one of its ships' speeds is, so
+/// the fleet's entry carries the mark too.
+fn fleet_stranded(world: &GameWorld, fleet: FleetKey) -> bool {
+    world.fleets.get(fleet).is_some_and(|value| {
+        value.capital_ships.iter().filter(|ship| ship.alive).any(|ship| {
+            world
+                .capital_ship_classes
+                .get(ship.class)
+                .is_some_and(|class| stranded(class, ship))
+        })
+    })
+}
+
 /// A fleet entry's layers bottom to top (`FUN_004a37c0`): the en route
 /// mark, the damage mark, then the entry's frame keyed over them.
 fn fleet_entry_layers(side: u8, en_route: bool, damaged: bool) -> Vec<u32> {
@@ -90,13 +114,14 @@ fn fleet_entry_layers(side: u8, en_route: bool, damaged: bool) -> Vec<u32> {
 /// `FUN_00536da0` over the object's contents).
 const CONTENT_SQUADRONS: u8 = 1;
 const CONTENT_REGIMENTS: u8 = 2;
+const CONTENT_PERSONNEL: u8 = 4;
 /// The indicators `FUN_004a67a0` blits for those flags: STRATEGY 10404,
 /// 10405 and 10406 (`0x28a4`..`0x28a6`, +50 for side 2) at x 25, 41 and
 /// 57, and y 33 in the left list or 23 in the right.
 const CONTENT_INDICATORS: [(u8, u32, f32); 3] = [
     (CONTENT_SQUADRONS, 10_404, 25.0),
     (CONTENT_REGIMENTS, 10_405, 41.0),
-    (4, 10_406, 57.0),
+    (CONTENT_PERSONNEL, 10_406, 57.0),
 ];
 
 /// Each capital ship's content flags, by index in `fleet`.
@@ -105,15 +130,19 @@ const CONTENT_INDICATORS: [(u8, u32, f32); 3] = [
 /// hyp: they fill its live ships' capacities (`+0x270`, `+0x26c`) in fleet
 /// order, so A0's Fleet 1 shows its two regiments under Medium Transport 1
 /// (capacity 2) and none under Corellian Corvette 1 (capacity 0)
-/// (`.artifacts/a0-vm/menus/23-fleet1-ships.png`). Personnel are not
-/// placed on a ship (flag 4 untraced).
+/// (`.artifacts/a0-vm/menus/23-fleet1-ships.png`). A character marks the
+/// ship it rides on (`Character::ship`), or, unseated, the first living
+/// numbered ship, where `missions::seat_characters` would seat it; hyp: a
+/// special force, which keeps no seat, marks that first ship too. A0
+/// `fleet2/vjun-fleet5-admiral-ships`: Garm Bel Iblis aboard Fleet 5 marks
+/// Corellian Corvette 2.
 fn ship_contents(world: &GameWorld, transport: &TroopTransportState, fleet: FleetKey) -> Vec<u8> {
     let Some(value) = world.fleets.get(fleet) else {
         return Vec::new();
     };
     let mut regiments = transport.carried_count(fleet);
     let mut squadrons: usize = value.fighters.iter().map(|entry| entry.count as usize).sum();
-    value
+    let mut contents = value
         .capital_ships
         .iter()
         .map(|ship| {
@@ -133,7 +162,29 @@ fn ship_contents(world: &GameWorld, transport: &TroopTransportState, fleet: Flee
             }
             flags
         })
-        .collect()
+        .collect::<Vec<u8>>();
+    let first = value
+        .capital_ships
+        .iter()
+        .position(|ship| ship.id != 0 && ship.alive);
+    let seats = value
+        .characters
+        .iter()
+        .map(|&key| {
+            world
+                .characters
+                .get(key)
+                .and_then(|c| c.ship)
+                .and_then(|id| value.capital_ships.iter().position(|ship| ship.id == id))
+                .or(first)
+        })
+        .chain(value.special_forces.iter().map(|_| first));
+    for index in seats.flatten() {
+        if let Some(flags) = contents.get_mut(index) {
+            *flags |= CONTENT_PERSONNEL;
+        }
+    }
+    contents
 }
 
 /// Paint `flags`' content indicators into `item` at height `y`.
@@ -557,6 +608,26 @@ impl FleetWindowState {
         window.selected = Some(entry);
         window.selected_item = None;
         true
+    }
+
+    /// Expand `fleet`'s entry in `system`'s open window, as a double click
+    /// on a collapsed entry does.
+    pub fn expand(&mut self, system: SystemKey, fleet: FleetKey) -> bool {
+        let Some(window) = self.window_mut(system) else {
+            return false;
+        };
+        if !window.expanded.contains(&fleet) {
+            window.expanded.push(fleet);
+        }
+        true
+    }
+
+    /// Whether `fleet`'s entry is expanded in `system`'s open window.
+    #[must_use]
+    pub fn is_expanded(&self, system: SystemKey, fleet: FleetKey) -> bool {
+        self.windows
+            .iter()
+            .any(|window| window.system == system && window.expanded.contains(&fleet))
     }
 
     /// Show `tab` in `system`'s open window, as a click on its button does.
@@ -1264,10 +1335,24 @@ fn tab_enabled(
     selected: Option<FleetWindowEntry>,
     tab: FleetWindowTab,
 ) -> bool {
-    let Some(FleetWindowEntry::Fleet(fleet)) = selected else {
-        // port: a ship's own contents are not modelled; the port's cargo,
-        // fighters and characters belong to the fleet.
-        return false;
+    let fleet = match selected {
+        Some(FleetWindowEntry::Fleet(fleet)) => fleet,
+        // A0 fleet2/umgul-transport1-selected: Medium Transport 1's
+        // regiments light its Troops tab, Corellian Corvette 1's stays
+        // dark; a ship's tabs follow its own content flags.
+        Some(FleetWindowEntry::Ship { fleet, index }) => {
+            let flags = ship_contents(world, transport, fleet)
+                .get(index)
+                .copied()
+                .unwrap_or(0);
+            return match tab {
+                FleetWindowTab::CapitalShips => false,
+                FleetWindowTab::Fighters => flags & CONTENT_SQUADRONS != 0,
+                FleetWindowTab::Troops => flags & CONTENT_REGIMENTS != 0,
+                FleetWindowTab::Personnel => flags & CONTENT_PERSONNEL != 0,
+            };
+        }
+        None => return false,
     };
     let Some(value) = world.fleets.get(fleet) else {
         return false;
@@ -1280,6 +1365,16 @@ fn tab_enabled(
             !value.characters.is_empty() || !value.special_forces.is_empty()
         }
     }
+}
+
+/// The tabs the strip shows: all four for a fleet; a ship's lacks Capital
+/// Ships (A0 fleet2/umgul-corvette1-selected shows three, from x 33). The
+/// strip has no disabled art for it: `b + 3` is Personnel's normal art.
+fn shown_tabs(selected: Option<FleetWindowEntry>) -> impl Iterator<Item = FleetWindowTab> {
+    let ship = matches!(selected, Some(FleetWindowEntry::Ship { .. }));
+    FleetWindowTab::ALL
+        .into_iter()
+        .filter(move |&tab| !(ship && tab == FleetWindowTab::CapitalShips))
 }
 
 /// One right-list item: its GOKRES mini, name and whether it lacks a
@@ -1398,7 +1493,7 @@ fn right_items(
                     .ship_name(fleet, index)
                     .unwrap_or(&class.name)
                     .to_owned(),
-                no_hyperdrive: class.hyperdrive == 0,
+                no_hyperdrive: stranded(class, ship),
                 contents: contents.get(index).copied().unwrap_or(0),
                 damaged: crate::status_rows::damaged(ship, class),
                 captive: false,
@@ -1928,6 +2023,12 @@ fn draw_fleet_window(
                 let expanded = window.expanded.contains(&entry.fleet());
                 match *entry {
                     FleetWindowEntry::Fleet(fleet) => {
+                        // The lines go first: A0 menus/23 draws the
+                        // selection frame over the branch at (7, 35).
+                        paint_line(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
+                        if expanded {
+                            paint_line(&list_painter, item, scale, (2.0, 6.0), (2.0, 50.0));
+                        }
                         if selected == Some(*entry) {
                             paint_native(
                                 &list_painter,
@@ -1965,9 +2066,18 @@ fn draw_fleet_window(
                             .into_iter()
                             .fold(0, |all, flags| all | flags);
                         paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
-                        paint_dotted(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
-                        if expanded {
-                            paint_dotted(&list_painter, item, scale, (2.0, 6.0), (2.0, 50.0));
+                        if fleet_stranded(world, fleet) {
+                            paint_native(
+                                &list_painter,
+                                ctx,
+                                cache,
+                                DllSource::Strategy,
+                                side_art(NO_HYPERDRIVE, side),
+                                item,
+                                scale,
+                                9.0,
+                                33.0,
+                            );
                         }
                         if let Some(label) = fleet_label(world, fleet) {
                             // port: FUN_004c7e10's item draws the name;
@@ -1992,18 +2102,32 @@ fn draw_fleet_window(
                             .get(row + 1)
                             .is_none_or(|next| next.fleet() != fleet);
                         if last {
-                            paint_dotted(&list_painter, item, scale, (2.0, 0.0), (2.0, 6.0));
-                            paint_dotted(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
+                            paint_line(&list_painter, item, scale, (2.0, 0.0), (2.0, 6.0));
+                            paint_line(&list_painter, item, scale, (2.0, 6.0), (5.0, 6.0));
                         } else {
-                            paint_dotted(&list_painter, item, scale, (2.0, 0.0), (2.0, 50.0));
+                            paint_line(&list_painter, item, scale, (2.0, 0.0), (2.0, 50.0));
                         }
                         let class = world
                             .fleets
                             .get(fleet)
                             .and_then(|value| value.capital_ships.get(index))
                             .and_then(|ship| world.capital_ship_classes.get(ship.class));
-                        // port: a selected ship's look (`FUN_004c7e10`) is
-                        // untraced, so its entry draws as unselected.
+                        // A0 fleet2/umgul-corvette1-selected: a selected
+                        // ship's entry takes the fleet's frame 10401 at its
+                        // origin, over the tree line.
+                        if selected == Some(*entry) {
+                            paint_native(
+                                &list_painter,
+                                ctx,
+                                cache,
+                                DllSource::Strategy,
+                                side_art(FLEET_SELECTED, side),
+                                item,
+                                scale,
+                                0.0,
+                                0.0,
+                            );
+                        }
                         if let Some(class) = class {
                             if let Some(mini) = capital_ship_mini_id(class.dat_id) {
                                 let damaged = world
@@ -2039,7 +2163,12 @@ fn draw_fleet_window(
                                 .copied()
                                 .unwrap_or(0);
                             paint_contents(&list_painter, ctx, cache, item, scale, side, flags, 33.0);
-                            if class.hyperdrive == 0 {
+                            let stranded = world
+                                .fleets
+                                .get(fleet)
+                                .and_then(|value| value.capital_ships.get(index))
+                                .is_some_and(|ship| stranded(class, ship));
+                            if stranded {
                                 paint_native(
                                     &list_painter,
                                     ctx,
@@ -2137,6 +2266,25 @@ fn draw_fleet_window(
                     }
                 }
                 if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
+                    // A0 fleet2/umgul-corvette1-selected: the label +0x190
+                    // names the ship as it does a fleet ("Corellian
+                    // Corvette 1", FUN_004f6270).
+                    let name = world.fleets.get(fleet).and_then(|value| {
+                        let ship = value.capital_ships.get(index)?;
+                        let class = world.capital_ship_classes.get(ship.class)?;
+                        Some(world.ship_name(fleet, index).unwrap_or(&class.name).to_owned())
+                    });
+                    if let Some(name) = name {
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            logical_rect(local, scale, 100.0, 29.0, 128.0, 25.0),
+                            scale,
+                            5,
+                            &name,
+                            label_color(viewer),
+                            (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
+                        );
+                    }
                     let ship = world
                         .fleets
                         .get(fleet)
@@ -2223,7 +2371,7 @@ fn draw_fleet_window(
                 // The strip: the player's base for its own side, the other
                 // base otherwise.
                 let base = side_art(TAB_BASE, if side == viewer { viewer } else { other });
-                for tab in FleetWindowTab::ALL {
+                for tab in shown_tabs(selected) {
                     let enabled = tab_enabled(world, transport, selected, tab);
                     let rect = tab_rect(local, scale, tab);
                     let id = tab_resource(base, tab, tab == window.tab, enabled);
@@ -2395,7 +2543,7 @@ fn draw_fleet_window(
                 .collect();
             controls.push(list);
             if selected_side.is_some() {
-                controls.extend(FleetWindowTab::ALL.map(|tab| tab_rect(local, scale, tab)));
+                controls.extend(shown_tabs(selected).map(|tab| tab_rect(local, scale, tab)));
                 controls.push(logical_rect(
                     local,
                     scale,
@@ -2565,26 +2713,24 @@ pub(crate) fn paint_native(
     );
 }
 
-/// The white dotted tree line (`CreatePen(PS_DOT, 1, 0x2ffffff)`): one pixel
-/// on, one off.
-fn paint_dotted(
+/// A white tree line (`CreatePen(PS_DOT, 1, 0x2ffffff)`, `MoveTo`/`LineTo`)
+/// from `from` up to but not including `to`, as GDI's `LineTo` leaves its
+/// end point. A0 shows it solid: `fleet2/vjun-fleet5-admiral-ships` runs
+/// x 6 from y 35 to 84 unbroken, and `menus/23-fleet1-ships` the branch at
+/// y 85 over x 6..8. A mesh, which egui does not feather, so a one-pixel
+/// line keeps its pixels at scale 1.
+fn paint_line(
     painter: &egui::Painter,
     parent: egui::Rect,
     scale: f32,
     from: (f32, f32),
     to: (f32, f32),
 ) {
-    let steps = (to.0 - from.0).abs().max((to.1 - from.1).abs()) as usize;
-    for step in (0..steps).step_by(2) {
-        let t = step as f32 / steps.max(1) as f32;
-        let x = from.0 + (to.0 - from.0) * t;
-        let y = from.1 + (to.1 - from.1) * t;
-        painter.rect_filled(
-            logical_rect(parent, scale, x, y, 1.0, 1.0),
-            0.0,
-            egui::Color32::WHITE,
-        );
-    }
+    let (x, y) = (from.0.min(to.0), from.1.min(to.1));
+    let (width, height) = ((to.0 - from.0).abs().max(1.0), (to.1 - from.1).abs().max(1.0));
+    let mut mesh = egui::Mesh::default();
+    mesh.add_colored_rect(logical_rect(parent, scale, x, y, width, height), egui::Color32::WHITE);
+    painter.add(mesh);
 }
 
 #[cfg(test)]
@@ -2602,7 +2748,7 @@ pub(crate) mod tests {
     use crate::cockpit::CockpitViewport;
     use rebellion_core::dat::SectorGroup;
     use rebellion_core::ids::{DatId, TroopKey};
-    use rebellion_core::world::{CapitalShipClass, Fleet, Sector, ShipInstance, System, TroopUnit};
+    use rebellion_core::world::{Fleet, Sector, System, TroopUnit};
 
     fn layout() -> CockpitLayout {
         let viewport = CockpitViewport {
@@ -3207,7 +3353,7 @@ pub(crate) mod tests {
     struct Run {
         actions: Vec<FleetWindowAction>,
         texts: Vec<Text>,
-        dots: Vec<egui::Pos2>,
+        lines: Vec<egui::Rect>,
         painted: Vec<(u32, egui::Pos2)>,
     }
 
@@ -3277,7 +3423,7 @@ pub(crate) mod tests {
             });
             result.painted = PAINTED.with(|painted| painted.take());
             result.texts.clear();
-            result.dots.clear();
+            result.lines.clear();
             for clipped in output.shapes {
                 match clipped.shape {
                     egui::Shape::Text(text) => {
@@ -3309,13 +3455,15 @@ pub(crate) mod tests {
                         }
                     }
                     // White, faded in with its area (premultiplied).
-                    egui::Shape::Rect(rect)
-                        if rect.fill.a() > 0
-                            && [rect.fill.r(), rect.fill.g(), rect.fill.b()]
-                                == [rect.fill.a(); 3]
-                            && rect.rect.size() == egui::vec2(2.0, 2.0) =>
+                    egui::Shape::Mesh(mesh)
+                        if mesh.texture_id == egui::TextureId::default()
+                            && mesh.vertices.len() == 4
+                            && mesh.vertices.iter().all(|vertex| {
+                                let fill = vertex.color;
+                                fill.a() > 0 && [fill.r(), fill.g(), fill.b()] == [fill.a(); 3]
+                            }) =>
                     {
-                        result.dots.push(rect.rect.min);
+                        result.lines.push(mesh.calc_bounds());
                     }
                     _ => {}
                 }
@@ -4236,6 +4384,43 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_character_marks_the_ship_it_rides_on_and_an_unseated_one_the_first() {
+        // A0 fleet2/vjun-fleet5-admiral-ships: Garm Bel Iblis aboard Fleet 5
+        // marks Corellian Corvette 2 with 10406 (FUN_004a66a0 flag 4,
+        // FUN_00536da0); seat_characters seats an unseated one on the first
+        // living ship (FUN_00552300).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let ship = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.extend([ship.clone(), ship]);
+        for (index, ship) in world.fleets[fleet].capital_ships.iter_mut().enumerate() {
+            ship.id = index as u64 + 1;
+        }
+        let transport = TroopTransportState::default();
+        let rider = world.characters.insert(rebellion_core::world::Character {
+            name: "Bel Iblis".into(),
+            ship: Some(3),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(rider);
+        assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, CONTENT_PERSONNEL]);
+        let unseated = world.characters.insert(rebellion_core::world::Character {
+            name: "Mothma".into(),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(unseated);
+        assert_eq!(
+            ship_contents(&world, &transport, fleet),
+            [CONTENT_PERSONNEL, 0, CONTENT_PERSONNEL]
+        );
+        world.fleets[fleet].capital_ships[0].alive = false;
+        assert_eq!(
+            ship_contents(&world, &transport, fleet),
+            [0, CONTENT_PERSONNEL, CONTENT_PERSONNEL]
+        );
+    }
+
+    #[test]
     fn the_title_buttons_minimize_the_window_and_open_its_sector() {
         // FUN_004a4b10: 0x280d minimizes to the rail (FUN_004a76e0); 0xca
         // restores the sector window.
@@ -4455,6 +4640,87 @@ pub(crate) mod tests {
                 )
             );
         }
+    }
+
+    #[test]
+    fn expanding_an_entry_marks_only_that_fleet_in_that_open_window() {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let other = add_fleet(&mut world, system, true, 0);
+        let mut state = opened(&world, system);
+        assert!(!state.is_expanded(system, fleet));
+        assert!(state.expand(system, fleet));
+        assert!(state.expand(system, fleet));
+        assert!(state.is_expanded(system, fleet));
+        assert!(!state.is_expanded(system, other));
+        assert_eq!(state.window_mut(system).unwrap().expanded, [fleet]);
+        // A system with no open window.
+        let copy = world.systems[system].clone();
+        let elsewhere = world.systems.insert(copy);
+        assert!(!state.expand(elsewhere, fleet));
+        assert!(!state.is_expanded(elsewhere, fleet));
+    }
+
+    #[test]
+    fn a_selected_ship_is_framed_named_and_shows_three_tabs_lit_by_its_own_cargo() {
+        // A0 fleet2/umgul-corvette1-selected and -transport1-selected: the
+        // ship's entry takes 10401, the label +0x190 its name, the strip
+        // drops Capital Ships, and only the transport's Troops tab is lit.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let mut class = world.capital_ship_classes[world.fleets[fleet].capital_ships[0].class].clone();
+        class.name = "Medium Transport".into();
+        class.troop_capacity = 2;
+        let carrier = world.capital_ship_classes.insert(class);
+        world.fleets[fleet].capital_ships.push(ShipInstance::new(carrier, 100, true));
+        let mut transport = TroopTransportState::default();
+        let troops: Vec<_> = (0..2).map(|_| add_troop(&mut world, system)).collect();
+        transport.embark(&mut world, fleet, &troops).unwrap();
+        let ship = |index| Some(FleetWindowEntry::Ship { fleet, index });
+        assert!(!tab_enabled(&world, &transport, ship(0), FleetWindowTab::Troops));
+        assert!(tab_enabled(&world, &transport, ship(1), FleetWindowTab::Troops));
+        assert!(!tab_enabled(&world, &transport, ship(1), FleetWindowTab::Personnel));
+        assert_eq!(
+            shown_tabs(ship(1)).collect::<Vec<_>>(),
+            [FleetWindowTab::Fighters, FleetWindowTab::Troops, FleetWindowTab::Personnel]
+        );
+        assert_eq!(shown_tabs(Some(FleetWindowEntry::Fleet(fleet))).count(), 4);
+        // Squadrons fill the fighter capacity of the ship that has it.
+        let squadron = world.fighter_classes.insert(Default::default());
+        world.fleets[fleet].fighters.push(rebellion_core::world::FighterEntry {
+            class: squadron,
+            count: 1,
+            carrier: None,
+        });
+        assert!(!tab_enabled(&world, &transport, ship(1), FleetWindowTab::Fighters));
+        world.capital_ship_classes[carrier].fighter_capacity = 1;
+        assert!(tab_enabled(&world, &transport, ship(1), FleetWindowTab::Fighters));
+        assert!(!tab_enabled(&world, &transport, ship(0), FleetWindowTab::Fighters));
+
+        let mut state = opened(&world, system);
+        state.select(system, ship(1).unwrap());
+        let output = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        );
+        // Rows of 50 from y 29: the fleet, its first ship, the transport.
+        assert!(output.painted.contains(&(FLEET_SELECTED, at(4.0, 129.0))));
+        assert!(!output.painted.contains(&(FLEET_SELECTED, at(4.0, 29.0))));
+        // No art where Capital Ships' tab stands (TAB_STRIP + TAB_X[0]).
+        assert!(!output.painted.iter().any(|&(_, point)| point == at(100.0, 96.0)));
+        assert!(output.painted.iter().any(|&(_, point)| point == at(132.0, 96.0)));
+        let font5 = crate::theme::gdi_font(5, 2.0).size;
+        assert!(
+            output.texts.iter().any(|text| text.text == "Medium Transport"
+                && text.set_in((100.0, 29.0, 128.0, 25.0), 5, crate::theme::GdiAlign::Left)
+                && text.size == font5
+                && text.color == label_color(1)),
+            "{:?}",
+            output.texts
+        );
     }
 
     #[test]
@@ -5072,9 +5338,11 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_tree_is_dotted_one_pixel_on_and_one_off() {
-        // CreatePen(PS_DOT, ...): an expanded fleet's line runs down past its
-        // ships; the last ship's stops at its branch.
+    fn the_tree_lines_are_solid_and_leave_out_their_end_points() {
+        // A0 fleet2/vjun-fleet5-admiral-ships: x 6 runs from y 35 to 84
+        // unbroken; the last ship's branch covers x 6..8 at y 85 (LineTo
+        // leaves its end point). An expanded fleet's line runs down past
+        // its ships; the last ship's stops at its branch.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
         let fleet = add_fleet(&mut world, system, true, 1);
         let class = world.fleets[fleet].capital_ships[0].class;
@@ -5085,23 +5353,28 @@ pub(crate) mod tests {
         let mut state = opened(&world, system);
         state.window_mut(system).unwrap().expanded.push(fleet);
 
-        let dots = run(
+        let lines = run(
             &world,
             &transport,
             &mut state,
             CockpitFaction::Alliance,
             hover(at(-50.0, 0.0)),
         )
-        .dots;
-        let dot = |x: f32, y: f32| dots.contains(&at(x, y));
+        .lines;
+        // A pixel is lit when the line covers it to its far corner.
+        let lit = |x: f32, y: f32| {
+            let point = at(x, y) + egui::vec2(1.5, 1.5);
+            lines.iter().any(|line| line.contains(point))
+        };
         // The fleet's branch and its line down (item 0 at y 29).
-        assert!(dot(6.0, 35.0) && dot(8.0, 35.0) && !dot(7.0, 35.0));
-        assert!(dot(6.0, 77.0) && !dot(6.0, 78.0));
+        assert!((6..=8).all(|x| lit(x as f32, 35.0)) && !lit(9.0, 35.0));
+        assert!((35..=78).all(|y| lit(6.0, y as f32)));
         // The first ship's line through its row (item 1 at y 79).
-        assert!(dot(6.0, 79.0) && dot(6.0, 127.0));
+        assert!((79..=128).all(|y| lit(6.0, y as f32)));
         // The last ship's line stops at its branch (item 2 at y 129).
-        assert!(dot(6.0, 129.0) && dot(6.0, 133.0) && !dot(6.0, 137.0));
-        assert!(dot(6.0, 135.0) && dot(8.0, 135.0));
+        assert!((129..=134).all(|y| lit(6.0, y as f32)) && !lit(6.0, 136.0));
+        assert!((6..=8).all(|x| lit(x as f32, 135.0)) && !lit(9.0, 135.0));
+        assert!(!lit(5.0, 60.0) && !lit(7.0, 60.0));
     }
 
     #[test]
@@ -5216,6 +5489,35 @@ pub(crate) mod tests {
         let class = world.fleets[fleet].capital_ships[0].class;
         world.capital_ship_classes[class].hyperdrive = 0;
         assert_eq!(flags(&world), [true]);
+    }
+
+    #[test]
+    fn a_ship_whose_hyperdrives_are_both_hit_carries_the_indicator_and_so_does_its_fleet() {
+        // A0 fleet2/umgul-fleet1-damaged: Medium Transport 1 (Hyperdrive
+        // Rating 0:100) and Fleet 1's entry carry 10430 (FUN_00500820,
+        // FUN_004fd900); Corellian Corvette 1, damaged too, does not.
+        use rebellion_core::world::Subsystem;
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 1);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[class].hyperdrive = 100;
+        world.capital_ship_classes[class].hyperdrive_if_damaged = 160;
+        let transport = TroopTransportState::default();
+        let selected = Some(FleetWindowEntry::Fleet(fleet));
+        let flags = |world: &GameWorld| {
+            right_items(world, &transport, selected, FleetWindowTab::CapitalShips)
+                .iter()
+                .map(|item| item.no_hyperdrive)
+                .collect::<Vec<_>>()
+        };
+        world.fleets[fleet].capital_ships[0].set_hits(Subsystem::PrimaryHyperdrive, 1);
+        assert_eq!(flags(&world), [false]);
+        assert!(!fleet_stranded(&world, fleet));
+        world.fleets[fleet].capital_ships[0].set_hits(Subsystem::BackupHyperdrive, 1);
+        assert_eq!(flags(&world), [true]);
+        assert!(fleet_stranded(&world, fleet));
+        world.fleets[fleet].capital_ships[0].alive = false;
+        assert!(!fleet_stranded(&world, fleet));
     }
 
     #[test]
