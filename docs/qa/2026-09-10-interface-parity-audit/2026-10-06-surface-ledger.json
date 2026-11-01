@@ -5730,60 +5730,65 @@
         {
           "id": "OBJ-07-C001",
           "requirement": "shipyards",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-manufacturing-pages-a0/"
           ],
-          "note": "The Ship Construction band matches A0 Vjun's overview; the shipyard page was not compared in A0 and build-selection.mjs has a known 6-pixel 'opened' failure.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (manufacturing/01, Coruscant: an empty Shipyards page under its label); the port's Shipyards page puts 9006 at (9, 79) pixel for pixel in build-selection.mjs on Linux for both sides, on A0's grid. Earlier: The Ship Construction band matches A0 Vjun's overview; the shipyard page was not compared in A0 and build-selection.mjs has a known 6-pixel 'opened' failure.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-07-C002",
           "requirement": "training facilities",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-manufacturing-pages-a0/"
           ],
-          "note": "A0 Build Troops opened Build Selection at (255, 87) as the port's agent-build.mjs does (Linux); A0 Manufacturing Status of a Training Facility matches by rows; the training-facility page itself was not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (manufacturing/02): 9014 at (9, 79) in both, every opaque pixel exact in the port's Training Facilities page (build-selection.mjs, Linux, both sides). Earlier: A0 Build Troops opened Build Selection at (255, 87) as the port's agent-build.mjs does (Linux); A0 Manufacturing Status of a Training Facility matches by rows; the training-facility page itself was not compared.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-07-C003",
           "requirement": "construction yards",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-manufacturing-pages-a0/"
           ],
-          "note": "A0 system-vjun-yards: picture 9022 at (9, 79), 0 of 223 pixels differ, label font 4; no Linux browser shot of the Construction Yards page is recorded.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (manufacturing/03): 9022 at (9, 79) in both, every opaque pixel exact in the port's Construction Yards page (build-selection.mjs, Linux, both sides). Earlier: A0 system-vjun-yards: picture 9022 at (9, 79), 0 of 223 pixels differ, label font 4; no Linux browser shot of the Construction Yards page is recorded.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-07-C004",
           "requirement": "mines",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-production-window-chrome/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-production-window-chrome/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-manufacturing-pages-a0/"
           ],
-          "note": "The mines page renders keyed (STRATEGY 9001..9033) in the browser (2026-10-13, Linux); no A0 mines page.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (manufacturing/05): five mines (9001) on A0's grid and the empty deposits (9005) at their cell's (0, -2), which the port now uses (DEPOSIT_OFFSET); unit tests check both positions. Earlier: The mines page renders keyed (STRATEGY 9001..9033) in the browser (2026-10-13, Linux); no A0 mines page.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-07-C005",
           "requirement": "refineries",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-production-window-chrome/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-production-window-chrome/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-manufacturing-pages-a0/"
           ],
-          "note": "The refineries page renders in the browser (2026-10-13, Linux); no A0 refineries page.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (manufacturing/04): two refineries (9030) at (9, 79) and (78, 79), the port's grid and picture. Earlier: The refineries page renders in the browser (2026-10-13, Linux); no A0 refineries page.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-07-C006",

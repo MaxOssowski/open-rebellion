@@ -475,6 +475,39 @@ async function inspect(server, source, faction, executable) {
     await page.mouse.move(2, 2);
     await frames(page);
     await page.waitForTimeout(400);
+    // Each yard page shows its first facility's 67 by 35 picture keyed at
+    // the window's (9, 79) (FUN_004568a0: the list at (8, 77), the
+    // picture centred in a 69 by 40 cell). A0 manufacturing/02 and 03
+    // (Coruscant) put 9014 and 9022 there pixel for pixel. The fixture's
+    // System window stands at (225, 76); the tabs are 32 apart.
+    const pages = [];
+    for (const [offset, picture, label] of [[-32, 9006, "shipyards"], [32, 9022, "construction-yards"], [0, 9014, "training"]]) {
+      await click(page, { x: tx + tw / 2 + offset, y: ty + th / 2 });
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await page.waitForTimeout(300);
+      await frames(page);
+      const bytes = await page.screenshot({ animations: "disabled" });
+      fs.writeFileSync(path.join(directory, `${label}-page.png`), bytes);
+      const shot = PNG.sync.read(bytes);
+      const bitmap = resource(source, picture, 67, 35);
+      let checked = 0;
+      let differing = 0;
+      for (let y = 0; y < 35; y += 1) {
+        for (let x = 0; x < 67; x += 1) {
+          const from = (y * 67 + x) * 4;
+          const colour = bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2];
+          if (colour === 0x0000ff) continue;
+          const at = ((76 + 79 + y) * shot.width + 225 + 9 + x) * 4;
+          checked += 1;
+          if (shot.data[at] !== bitmap.data[from] || shot.data[at + 1] !== bitmap.data[from + 1]
+            || shot.data[at + 2] !== bitmap.data[from + 2]) differing += 1;
+        }
+      }
+      pages.push({ label, picture, checked, differing });
+    }
+    assert.ok(pages.every(({ checked, differing }) => checked > 400 && differing === 0), JSON.stringify(pages));
+    fs.writeFileSync(path.join(directory, "training-page.png"), await page.screenshot({ animations: "disabled" }));
     const [cx, cy, cw, ch] = (await production(page)).first_cell;
     await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
     await click(page, { x: cx + cw / 2, y: cy + ch / 2 }, "right");
@@ -498,6 +531,7 @@ async function inspect(server, source, faction, executable) {
       build_menu: buildMenu,
       stop_menu: stopMenu,
       reserve_menu: reserveMenu,
+      pages,
       reserved_menu: reservedMenu,
       facility_menu: facilityMenu,
       built: { product: built.product, queued: built.queued },

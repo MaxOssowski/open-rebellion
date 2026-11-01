@@ -71,6 +71,12 @@ const COUNT_FONT: u16 = crate::DEFAULT_FONT;
 const PROGRESS_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
 /// A facility picture sits 1 by 2 into its 69 by 40 cell.
 const PICTURE_OFFSET: (f32, f32) = (1.0, 2.0);
+/// An empty deposit is its 67 by 35 bitmap with no 69 by 40 canvas
+/// (`FUN_004568a0`: `FUN_005fbd20(.., 0x232d, 10)` straight into the
+/// item). A0 manufacturing/05-tab (Coruscant's mines) draws it at the
+/// cell's (0, -2), pixel-exact. port: how the list places an item smaller
+/// than its cell is not traced; the offset is A0's.
+const DEPOSIT_OFFSET: (f32, f32) = (0.0, -2.0);
 
 /// The six tabs (`FUN_00455060`, command `0x70`, pages `0x67..0x6c`), in
 /// strip order.
@@ -1275,6 +1281,11 @@ fn draw_system_window(
                         if !rect.intersects(list) {
                             break;
                         }
+                        let (dx, dy) = if matches!(cell.item, FacilityItem::Deposit(_)) {
+                            DEPOSIT_OFFSET
+                        } else {
+                            PICTURE_OFFSET
+                        };
                         paint_native(
                             &list_painter,
                             ctx,
@@ -1283,8 +1294,8 @@ fn draw_system_window(
                             cell.picture,
                             rect,
                             scale,
-                            PICTURE_OFFSET.0,
-                            PICTURE_OFFSET.1,
+                            dx,
+                            dy,
                         );
                         if window.selected_item == Some(cell.item) {
                             paint_native(
@@ -2520,7 +2531,8 @@ mod tests {
             "{:?}",
             after.painted
         );
-        assert!(after.painted.contains(&(9_005, at(78.0, 79.0))));
+        // The deposit's bitmap at its cell's (0, -2): A0 manufacturing/05.
+        assert!(after.painted.contains(&(9_005, at(77.0, 75.0))), "{:?}", after.painted);
         assert!(after.painted.contains(&(10_262, at(9.0, 79.0))));
         assert!(after.painted.contains(&(10_320, at(190.0, 20.0))));
         let label = text(&after, "Mines");
