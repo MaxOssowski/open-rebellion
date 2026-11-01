@@ -1,0 +1,5 @@
+c7412ee4eae624f2d9a6c0d3f43e24c72250984fbeb587f10218c6593696abd4  11-fleet-window.png
+618aebc9d2305acc2d45401f80a07faacff687abfaeba08dcc2fa0ac4975ecd6  12-own-fleet-menu.png
+bb56a0004ab349ed4cf54919e690f2c66a42576d19a220660214168c46e4753e  13-own-bombard-sub.png
+121681cab145be134847efaf1eae1aed0fba5898c9505e6c061c7ea84061af01  14-before-click.png
+f2a463469df10ea05b6961f9667b52e0d01402bfab2c88916dffcf99dd369bb4  15-own-bombard-result.png

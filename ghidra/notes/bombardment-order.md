@@ -177,8 +177,13 @@ port:
 - The draws come from a `SplitMix64` stream seeded by one roll of the
   tick (the app: its generator), not the game's one generator.
 - The order's sub-orders are not ported; its validation is the enabled
-  check plus: the fleets in orbit at the system, out of hyperspace, the
-  system not the side's.
+  check plus: the fleets in orbit at the system, out of hyperspace. The
+  system's side is not checked (2026-11-01): A0 enables Target Military,
+  Target Civilian and General Bombardment over the player's own Kimanan
+  and carries the strike out, "Alliance ships have conducted an orbital
+  strike on the Alliance system of Kimanan"
+  (`.artifacts/a0-vm/menus/13-own-bombard-sub.png`,
+  `15-own-bombard-result.png`).
 - hyp: the system's list holds the manufacturing facilities before the
   production ones; a ship's `+0x24 & 0x30` is 0; the port's unset packed
   word (0) reads as a shield nibble of 0; a Death Star's destruction

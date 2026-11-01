@@ -12130,8 +12130,9 @@ mod tests {
     fn a_bombardment_needs_the_side_s_fleets_in_orbit_with_bombardment() {
         // The orders' enabled check: a team of one side (FUN_00553770), a
         // fleet with bombardment and, for 0x223, a Death Star in it
-        // (FUN_00582440); port: in orbit, out of hyperspace, at a system
-        // not the side's (the manual's "enemy or neutral system").
+        // (FUN_00582440); port: in orbit, out of hyperspace. The system's
+        // side is not read (A0 a0-vm/menus/15-own-bombard-result.png: an
+        // Alliance strike on the Alliance's own Kimanan).
         let (mut world, system, ours, empire, _) = squadron_world(2);
         let class = world.fleets[empire].capital_ships[0].class;
         world.capital_ship_classes[class].bombardment_modifier = 5;
@@ -12178,9 +12179,9 @@ mod tests {
             vec![empire],
             crate::bombardment::DESTROY_SYSTEM
         ));
-        // The side's own system, or no bombardment: refused.
+        // The side's own system is accepted; no bombardment is refused.
         world.systems[system].control = ControlKind::Controlled(crate::dat::Faction::Empire);
-        assert!(!ok(&world, &movement, vec![empire], general));
+        assert!(ok(&world, &movement, vec![empire], general));
         world.systems[system].control = ControlKind::Uncontrolled;
         assert!(ok(&world, &movement, vec![empire], general));
         world.capital_ship_classes[class].bombardment_modifier = 0;

@@ -734,9 +734,12 @@ pub fn fleet_bombardment(world: &GameWorld, fleet: FleetKey) -> i32 {
 /// fleet (`FUN_00582440`).
 ///
 /// port: the order's sub-orders are not ported; in their place each fleet
-/// must orbit `system`, out of hyperspace, and `system` must stand and not
-/// be the side's (the manual: "in orbit around an enemy or neutral
-/// system").
+/// must orbit `system`, out of hyperspace, and `system` must stand. The
+/// system's side is not checked: A0 enables the targets over the player's
+/// own Kimanan and carries the strike out ("Alliance ships have conducted
+/// an orbital strike on the Alliance system of Kimanan",
+/// `.artifacts/a0-vm/menus/13-own-bombard-sub.png`,
+/// `15-own-bombard-result.png`), as `FUN_00581e80` reads no side.
 #[must_use]
 pub fn order_enabled(
     world: &GameWorld,
@@ -770,11 +773,10 @@ pub fn order_enabled(
         && !fleets.is_empty()
         && fleets.iter().all(at)
         && fleets.iter().any(able)
-        && world.systems.get(system).is_some_and(|sys| {
-            !sys.is_destroyed
-                && GameWorld::facility_holder(sys.control)
-                    != Some(Faction::of_alliance(is_alliance))
-        })
+        && world
+            .systems
+            .get(system)
+            .is_some_and(|sys| !sys.is_destroyed)
 }
 
 /// Carry out `outcome` of `req`: the ships' hull damage (a ship at its

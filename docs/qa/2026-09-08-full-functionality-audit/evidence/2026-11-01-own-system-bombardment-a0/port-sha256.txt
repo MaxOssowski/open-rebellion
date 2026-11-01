@@ -1,0 +1,4 @@
+4c44374e264a5504d138b7fc3dc11dafbe49bacf207b739cae3524039de146dc  alliance-bombardment/fleet-menu.png
+22dbbcf9f1701aaa89dd367f2f81646d9d93b7f011fbe4bb6ed984b453baa38f  alliance-rename/fleet-menu.png
+66f144195c81474c67cb3035f9a2a3934b55a983117d6b27cfba9d8cb0220d4a  empire-bombardment/fleet-menu.png
+3393f36f3960fa8c44be4c5d0fe10ebf2d382608d6387a1b8f636be94c3b5779  empire-rename/fleet-menu.png
