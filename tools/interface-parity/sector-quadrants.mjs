@@ -725,6 +725,57 @@ const cases = [
     },
   },
   {
+    name: "defenses-icon-scrap",
+    // The defenses icon's Scrap (0x200) acts on the system's regiments,
+    // squadrons and defense facilities of the player's side (FUN_00512700
+    // kind 8, FUN_00553350): A0 menus3/11-12 enable it on Coruscant and ask
+    // with each regiment's name. The fixture's primary system holds one
+    // regiment and one battery; the checkmark scraps both.
+    async run(page, faction, setup, directory) {
+      const { dat, window } = await openDefenses(page, setup, "primary");
+      assert.deepEqual([window.counts[1], window.counts[4]], [1, 1], JSON.stringify(window));
+      // The window covers the icon: drag it by its title bar off to the
+      // right (window_move.rs, +0xb8 bit 4).
+      const [rowLeft, rowTop] = window.tabs[0][1];
+      const grab = { x: Math.round(rowLeft) + 60, y: Math.round(rowTop) - 12 };
+      await page.mouse.move(grab.x, grab.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.mouse.move(grab.x + 260, grab.y, { steps: 12 });
+      await frames(page, 2);
+      await page.mouse.up();
+      await frames(page, 2);
+      const [left, top] = quadrant(setup, "primary", "defenses");
+      await page.waitForTimeout(600);
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, { x: Math.round(left) + 4, y: Math.round(top) + 9 });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      await stableScreen(page, directory, "defenses-icon-menu");
+      assert.deepEqual(menu.row_states.map(([label]) => label),
+        ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"], JSON.stringify(menu));
+      assert.equal(menu.scrap_enabled, true, JSON.stringify(menu));
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.scrap_row + 0.5) });
+      await page.waitForTimeout(400);
+      await stableScreen(page, directory, "defenses-icon-scrap-confirmation");
+      const { galaxy } = faction.name === "alliance"
+        ? { galaxy: { x: 55, y: 40, width: 485, height: 350 } }
+        : { galaxy: { x: 120, y: 40, width: 480, height: 355 } };
+      await click(page, {
+        x: Math.round(galaxy.x + galaxy.width / 2 - 424 / 2 + 355 + 25.5),
+        y: Math.round(galaxy.y + galaxy.height / 2 - 331 / 2 + 244 + 17.5),
+      });
+      const after = defensesWindow(await until(page, "the checkmark scraps the regiment and the battery",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value
+          && w.counts[1] === 0 && w.counts[4] === 0), dat), dat);
+      await stableScreen(page, directory, "defenses-icon-scrapped");
+      return { menu, before: window.counts, after: after.counts };
+    },
+  },
+  {
     name: "defenses-other-side",
     // +0x148 is the system's side: the other side's system lists only its
     // objects, of which the fixture leaves none, so every tab shows that

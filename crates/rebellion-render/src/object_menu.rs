@@ -158,6 +158,23 @@ impl MenuObject {
         }
     }
 
+    /// The objects a Scrap on this selection acts on for `side`: the one
+    /// object, or for a sector window's icon its kind's objects of the
+    /// side (`rebellion_core::scrap::icon_targets`, `FUN_00512700`).
+    #[must_use]
+    pub fn scrap_team(
+        self,
+        world: &rebellion_core::world::GameWorld,
+        side: rebellion_core::dat::Faction,
+    ) -> Vec<ScrapTarget> {
+        match self {
+            Self::SystemIcon { system, quadrant } => {
+                rebellion_core::scrap::icon_targets(world, system, quadrant.kind(), side)
+            }
+            other => other.scrap_target().into_iter().collect(),
+        }
+    }
+
     /// The object's Status window (`FUN_0042a440`). A sector window's icon
     /// stands for its system, which has none.
     #[must_use]
@@ -592,9 +609,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         Some(MenuObject::Character(_) | MenuObject::SpecialForce(_))
                     ) && gates.retire
                 }
-                ObjectMenuCommand::Scrap => {
-                    selection.and_then(MenuObject::scrap_target).is_some() && gates.scrap
-                }
+                // The gate checks the order's whole team: the object, or an
+                // icon's kind's objects (MenuObject::scrap_team).
+                ObjectMenuCommand::Scrap => selection.is_some() && gates.scrap,
                 ObjectMenuCommand::Encyclopedia => selection.is_some(),
                 // FUN_0051d990: a single selection that is not a system.
                 ObjectMenuCommand::Status => {
@@ -1680,6 +1697,84 @@ mod tests {
         assert_eq!(
             MenuObject::Fleet(FleetKey::default()).scrap_target(),
             Some(ScrapTarget::Fleet(FleetKey::default()))
+        );
+        // A0 menus3/07, 10 and 11: an icon's Scrap is enabled too; its gate
+        // checks the icon's kind's objects (MenuObject::scrap_team).
+        for quadrant in [Quadrant::System, Quadrant::Defenses, Quadrant::Fleets] {
+            let icon = MenuObject::SystemIcon {
+                system: SystemKey::default(),
+                quadrant,
+            };
+            assert!(enabled(&object_menu_rows(Some(icon), gates)).contains(&"Scrap"));
+            assert!(!enabled(&object_menu_rows(Some(icon), OrderGates::default()))
+                .contains(&"Scrap"));
+        }
+    }
+
+    #[test]
+    fn an_icons_scrap_team_is_its_kinds_objects_and_another_selection_its_own() {
+        // FUN_00512700 by the item's kind (4, 8, 0x10, 0x40); A0 menus3/08,
+        // 12 and 13.
+        let mut world = rebellion_core::world::GameWorld::default();
+        let system = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Coruscant".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: Vec::new(),
+            ground_units: Vec::new(),
+            special_forces: Vec::new(),
+            defense_facilities: Vec::new(),
+            manufacturing_facilities: Vec::new(),
+            production_facilities: Vec::new(),
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        world.systems[system].ground_units.push(troop);
+        let yard = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                side: rebellion_core::dat::Faction::Alliance,
+                is_shipyard: false,
+            },
+        );
+        world.systems[system].manufacturing_facilities.push(yard);
+        let team = |quadrant| {
+            MenuObject::SystemIcon { system, quadrant }
+                .scrap_team(&world, rebellion_core::dat::Faction::Alliance)
+        };
+        assert_eq!(team(Quadrant::Defenses), [ScrapTarget::Troop(troop)]);
+        assert_eq!(
+            team(Quadrant::System),
+            [ScrapTarget::Facility(
+                rebellion_core::world::FacilityRef::Manufacturing(yard)
+            )]
+        );
+        assert!(team(Quadrant::Fleets).is_empty());
+        assert!(team(Quadrant::Missions).is_empty());
+        assert_eq!(
+            MenuObject::Troop(troop).scrap_team(&world, rebellion_core::dat::Faction::Alliance),
+            [ScrapTarget::Troop(troop)]
+        );
+        assert_eq!(
+            Quadrant::ALL.map(Quadrant::kind),
+            [4, 8, 0x10, 0x40]
         );
     }
 

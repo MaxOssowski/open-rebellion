@@ -7309,9 +7309,10 @@
             "ghidra/notes/sector-icon-menus.md",
             "tools/interface-parity/sector-quadrants.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-system-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-system-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus3-a0/"
           ],
-          "note": "Compared with A0 on 2026-11-01: a right click on a planet keeps the sector window's selection and lists its orders (new capture a0-vm/menus/10-planet-right.png after selecting a fleet icon); Encyclopedia is enabled for one selected object and an icon's Status is grey (status/07, 25-sys-menu.png). sector-quadrants.mjs system-menu checks both states on Linux Chromium for both sides, and the icon menus run in its other cases. Menu text and frame as in 2026-11-01-object-menu-text-a0. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: System menu opens from sector quadrant icons (sector-quadrants.mjs 12/12, Arch Chromium); A0 07/25-sys-menu.png shows it greys Status for a planet, as object_menu.rs does (FUN_0051d990). A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them.",
+          "note": "Compared with A0 on 2026-11-01: a right click on a planet keeps the sector window's selection and lists its orders (new capture a0-vm/menus/10-planet-right.png after selecting a fleet icon); Encyclopedia is enabled for one selected object and an icon's Status is grey (status/07, 25-sys-menu.png). sector-quadrants.mjs system-menu checks both states on Linux Chromium for both sides, and the icon menus run in its other cases. Menu text and frame as in 2026-11-01-object-menu-text-a0. Deviations accepted 2026-10-30: anti-aliased glyphs and the fill's palette step. Earlier: System menu opens from sector quadrant icons (sector-quadrants.mjs 12/12, Arch Chromium); A0 07/25-sys-menu.png shows it greys Status for a planet, as object_menu.rs does (FUN_0051d990). A0 menu captures exist (.artifacts/a0-vm/status/*-menu.png) but no README compares the port's menu to them. 2026-11-01: A0 menus3/06-13: an icon's Scrap is enabled when the icon's kind has objects of the side, and asks with each one's name; the port's icons now do (scrap::icon_targets), sector-quadrants.mjs defenses-icon-scrap scraps through the defenses icon.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7475,13 +7476,14 @@
         {
           "id": "OBJ-14-C013",
           "requirement": "Destroy System",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-destroy-system-browser/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-destroy-system-browser/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus3-a0/"
           ],
-          "note": "Destroy System passes fleet-window.mjs 'destroy-system' on Linux Chromium 153; no A0 capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-01 (menus3/01-05, the 2026-10-24 Death Star save): the Death Star fleet's icon offers Planetary Bombardment with Destroy System enabled; the order runs at once, movie 101 under \"The Death Star has destroyed the neutral system Averam.\", then the sector window shows the asteroid field keyed over its background with the name white. The port's fleet-window.mjs destroy-system does the same on Linux Chromium for both sides (death_star_destroyed_movie; 10240 now keyed, the name white). Earlier: Destroy System passes fleet-window.mjs 'destroy-system' on Linux Chromium 153; no A0 capture.",
+          "scope": "Passed against A0 (Windows 10 VM, editor-assisted Death Star save) and the Linux browser build (Arch Chromium 155)."
         },
         {
           "id": "OBJ-14-C014",
@@ -7535,9 +7537,10 @@
             "ghidra/notes/object-popup-menu.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-disabled-menu-row-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-en-route-menu-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-en-route-menu-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-menus3-a0/"
           ],
-          "note": "Compared with A0 status/02-menu.png on 2026-11-01: disabled rows are (128, 128, 128), as FUN_004aba60's 0x2808080, and the port draws 0x808080; personnel-orders.mjs abort reads the disabled Abort row's pixels (none brighter than 128) on Linux Chromium for both sides. Deviation accepted 2026-10-30: anti-aliased glyphs. Earlier: Disabled (grey) items: A0 shows Status greyed for a planet and the port matches in code (FUN_0051d990); A0 02/05-menu.png show greyed items on enemy objects; no browser case checks a disabled item. 2026-11-01: the scrap gate shows a disabled item failing the case when the row is forced off; enemy objects keep Scrap greyed (A0 02-menu.png). 2026-11-01: A0 greys Rename and Scrap on a fleet in hyperspace and on its ship (a0-vm/menus/22, 29-31); the port now does too (unit tests). 2026-11-01: fleet-move.mjs en-route-menu opens the destination's Fleet window, which lists the fleet en route as A0 lists Fleet 4 at Kimanan (18-fleet4.png), and its menu greys the same rows as A0 22-fleet4-menu.png on Linux Chromium for both sides.",
+          "note": "Compared with A0 status/02-menu.png on 2026-11-01: disabled rows are (128, 128, 128), as FUN_004aba60's 0x2808080, and the port draws 0x808080; personnel-orders.mjs abort reads the disabled Abort row's pixels (none brighter than 128) on Linux Chromium for both sides. Deviation accepted 2026-10-30: anti-aliased glyphs. Earlier: Disabled (grey) items: A0 shows Status greyed for a planet and the port matches in code (FUN_0051d990); A0 02/05-menu.png show greyed items on enemy objects; no browser case checks a disabled item. 2026-11-01: the scrap gate shows a disabled item failing the case when the row is forced off; enemy objects keep Scrap greyed (A0 02-menu.png). 2026-11-01: A0 greys Rename and Scrap on a fleet in hyperspace and on its ship (a0-vm/menus/22, 29-31); the port now does too (unit tests). 2026-11-01: fleet-move.mjs en-route-menu opens the destination's Fleet window, which lists the fleet en route as A0 lists Fleet 4 at Kimanan (18-fleet4.png), and its menu greys the same rows as A0 22-fleet4-menu.png on Linux Chromium for both sides. 2026-11-01: A0 menus3/06-13: an icon's Scrap is enabled when the icon's kind has objects of the side, and asks with each one's name; the port's icons now do (scrap::icon_targets), sector-quadrants.mjs defenses-icon-scrap scraps through the defenses icon.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

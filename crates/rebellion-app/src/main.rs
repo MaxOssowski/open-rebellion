@@ -6341,22 +6341,35 @@ async fn main() {
                         // +0x5c, scrap::check), then FUN_00487cc0 always
                         // asks for 0x200 (FUN_0049a350, case 0x200).
                         Some((ObjectMenuCommand::Scrap, Some(object))) => {
-                            if let Some(target) = object.scrap_target() {
-                                let side = Faction::of_alliance(
-                                    player_faction == MissionFaction::Alliance,
-                                );
-                                let allowed = rebellion_core::scrap::check_with_movement(
-                                    &world,
-                                    &movement_state,
-                                    side,
-                                    target,
-                                );
+                            let side = Faction::of_alliance(
+                                player_faction == MissionFaction::Alliance,
+                            );
+                            let team = object.scrap_team(&world, side);
+                            if !team.is_empty() {
+                                let allowed = team.iter().try_for_each(|&target| {
+                                    rebellion_core::scrap::check_with_movement(
+                                        &world,
+                                        &movement_state,
+                                        side,
+                                        target,
+                                    )
+                                });
                                 macroquad::logging::info!(
-                                    "[interface] command=0x200 target={target:?} result={allowed:?}"
+                                    "[interface] command=0x200 targets={team:?} result={allowed:?}"
                                 );
                                 if allowed.is_ok() {
-                                    let name = rebellion_core::scrap::target_name(&world, target)
-                                        .unwrap_or_default();
+                                    // FUN_0049a880 lists each member's name
+                                    // (A0 menus3/12: three regiments).
+                                    let lines = team
+                                        .iter()
+                                        .map(|&target| {
+                                            (
+                                                rebellion_core::scrap::target_name(&world, target)
+                                                    .unwrap_or_default(),
+                                                0,
+                                            )
+                                        })
+                                        .collect();
                                     move_confirmation_state.open(MoveConfirmation {
                                         order: ConfirmedOrder::Scrap,
                                         faction: player_faction,
@@ -6364,13 +6377,13 @@ async fn main() {
                                         characters: Vec::new(),
                                         special_forces: Vec::new(),
                                         missions: Vec::new(),
-                                        scrap: vec![target],
+                                        scrap: team,
                                         troops: Vec::new(),
                                         squadrons: Vec::new(),
                                         blockaded: false,
                                         destination: SystemKey::default(),
                                         join: None,
-                                        lines: vec![(name, 0)],
+                                        lines,
                                     });
                                 } else {
                                     msg_log.push(GameMessage::new(
@@ -9341,14 +9354,18 @@ fn order_gates(
             .and_then(MenuObject::mission_member)
             .and_then(|member| retire_check(world, mission_state, member, is_alliance))
             .is_some_and(|result| result.is_ok()),
-        // The Scrap command's +0x18 is the object's slot +0x5c
-        // (FUN_005796c0; scrap::check, a fleet en route refused).
-        scrap: selection
-            .and_then(MenuObject::scrap_target)
-            .is_some_and(|target| {
-                rebellion_core::scrap::check_with_movement(world, movement_state, side, target)
-                    .is_ok()
-            }),
+        // The Scrap command's +0x18 is each member's slot +0x5c
+        // (FUN_005796c0; scrap::check, a fleet en route refused); an
+        // icon's team is its kind's objects of the side (FUN_00512700),
+        // and an empty team refuses (FUN_0053c4b0). A0 menus3/06-13.
+        scrap: selection.is_some_and(|object| {
+            let team = object.scrap_team(world, side);
+            !team.is_empty()
+                && team.iter().all(|&target| {
+                    rebellion_core::scrap::check_with_movement(world, movement_state, side, target)
+                        .is_ok()
+                })
+        }),
     }
 }
 
@@ -12562,6 +12579,58 @@ mod fleet_move_tests {
         };
         assert!(gate(origin));
         assert!(!gate(destination));
+    }
+
+    #[test]
+    fn a_sector_icons_scrap_takes_its_kinds_objects_of_the_side() {
+        // FUN_00512700: the fleets icon's Scrap gives the system's fleets of
+        // the order's side; an empty team refuses (FUN_0053c4b0), and one
+        // member en route refuses them all (FUN_0053c1a0). A0 menus3/07,
+        // 08: the Empire's fleet icon over Averam enables Scrap and asks
+        // for Fleet 1.
+        let (mut world, fleets, destination) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        let mut movement = MovementState::new();
+        let gates = |world: &GameWorld, movement: &MovementState, system, player| {
+            order_gates(
+                Some(MenuObject::SystemIcon {
+                    system,
+                    quadrant: rebellion_render::quadrant_icons::Quadrant::Fleets,
+                }),
+                world,
+                &MissionState::new(),
+                movement,
+                &TroopTransportState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                player,
+            )
+            .scrap
+        };
+        assert!(gates(&world, &movement, origin, MissionFaction::Alliance));
+        assert!(!gates(&world, &movement, origin, MissionFaction::Empire));
+        assert!(!gates(&world, &movement, destination, MissionFaction::Alliance));
+        let icon = MenuObject::SystemIcon {
+            system: origin,
+            quadrant: rebellion_render::quadrant_icons::Quadrant::Fleets,
+        };
+        assert_eq!(
+            icon.scrap_team(&world, Faction::Alliance),
+            fleets
+                .iter()
+                .map(|&fleet| rebellion_core::scrap::ScrapTarget::Fleet(fleet))
+                .collect::<Vec<_>>()
+        );
+        rebellion_core::movement::begin_faction_fleet_transit(
+            &mut movement,
+            &mut world,
+            fleets[0],
+            destination,
+            true,
+        )
+        .unwrap();
+        // The en-route fleet left the orbit index; the other still may go.
+        assert!(gates(&world, &movement, origin, MissionFaction::Alliance));
     }
 
     #[test]

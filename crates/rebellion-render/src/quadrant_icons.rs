@@ -34,6 +34,18 @@ pub enum Quadrant {
 impl Quadrant {
     /// The order `FUN_00459e30` creates the items in.
     pub const ALL: [Self; 4] = [Self::System, Self::Defenses, Self::Fleets, Self::Missions];
+
+    /// The item's kind (`flag >> 16`), which `FUN_00512700` resolves an
+    /// order's team by.
+    #[must_use]
+    pub const fn kind(self) -> u8 {
+        match self {
+            Self::System => 4,
+            Self::Defenses => 8,
+            Self::Fleets => 0x10,
+            Self::Missions => 0x40,
+        }
+    }
 }
 
 /// `FUN_0045ca80(kind, state, 0/1)`: the item's two bitmaps for a side.

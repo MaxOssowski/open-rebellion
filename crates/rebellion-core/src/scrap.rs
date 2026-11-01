@@ -414,6 +414,69 @@ pub(crate) fn disband_if_empty(world: &mut GameWorld, fleet: crate::ids::FleetKe
     }
 }
 
+/// What a sector window icon's Scrap gives for `side` (`FUN_00512700` kind
+/// `& ~1`, each list filtered to the side by `FUN_00553350`;
+/// `ghidra/notes/sector-icon-menus.md`):
+/// - the facilities icon (kind 4) the system's manufacturing, then
+///   production facilities (`FUN_0053b6e0`);
+/// - the defenses icon (kind 8) its regiments, squadrons and defense
+///   facilities, one target a squadron;
+/// - the fleets icon (`0x10`) its fleets (`FUN_004ffe70`).
+///
+/// A0 menus3/08, 12 and 13 list Fleet 1; three Stormtrooper Regiments;
+/// Training Facility, Construction Yard and Mine.
+/// port: the order within each list follows the port's system lists.
+#[must_use]
+pub fn icon_targets(
+    world: &GameWorld,
+    system: SystemKey,
+    kind: u8,
+    side: Faction,
+) -> Vec<ScrapTarget> {
+    let Some(value) = world.systems.get(system) else {
+        return Vec::new();
+    };
+    let candidates: Vec<ScrapTarget> = match kind {
+        4 => value
+            .manufacturing_facilities
+            .iter()
+            .map(|&key| ScrapTarget::Facility(FacilityRef::Manufacturing(key)))
+            .chain(
+                value
+                    .production_facilities
+                    .iter()
+                    .map(|&key| ScrapTarget::Facility(FacilityRef::Production(key))),
+            )
+            .collect(),
+        8 => value
+            .ground_units
+            .iter()
+            .map(|&key| ScrapTarget::Troop(key))
+            .chain(value.fighters.iter().flat_map(|entry| {
+                std::iter::repeat_n(
+                    ScrapTarget::PlanetFighter {
+                        system,
+                        class: entry.class,
+                    },
+                    entry.count as usize,
+                )
+            }))
+            .chain(
+                value
+                    .defense_facilities
+                    .iter()
+                    .map(|&key| ScrapTarget::Facility(FacilityRef::Defense(key))),
+            )
+            .collect(),
+        0x10 => value.fleets.iter().map(|&key| ScrapTarget::Fleet(key)).collect(),
+        _ => Vec::new(),
+    };
+    candidates
+        .into_iter()
+        .filter(|&target| resolve(world, target).is_some_and(|(_, owner, _)| owner == side))
+        .collect()
+}
+
 /// A Scrap order's team: the validator (`FUN_0051ff30`) checks every
 /// member's command before the order executes them all (`FUN_005539f0`),
 /// so one refusal keeps every member.
@@ -535,6 +598,87 @@ mod tests {
         assert!(f.world.systems[f.system].production_facilities.is_empty());
         assert_eq!(production.stock(Faction::Alliance).unwrap().refined, 5);
         assert_eq!(production.stock(Faction::Empire).unwrap().refined, 0);
+    }
+
+    #[test]
+    fn an_icons_scrap_takes_its_kinds_objects_of_the_side() {
+        // FUN_00512700: kind 4 the manufacturing then production
+        // facilities, kind 8 regiments, squadrons and defense facilities,
+        // 0x10 the fleets; FUN_00553350 keeps the order's side. A0
+        // menus3/08, 12, 13.
+        let mut f = fixture();
+        let mine = mine(&mut f, Faction::Empire, 4);
+        let _theirs = self::mine(&mut f, Faction::Alliance, 4);
+        let yard = f
+            .world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: Faction::Empire,
+                is_shipyard: false,
+            });
+        f.world.systems[f.system].manufacturing_facilities.push(yard);
+        let gun = f.world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2000_0001),
+            side: Faction::Empire,
+        });
+        f.world.systems[f.system].defense_facilities.push(gun);
+        let troop = f.world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        let rebels = f.world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        f.world.systems[f.system].ground_units.extend([troop, rebels]);
+        let tie = f.world.fighter_classes.insert(crate::world::FighterClass {
+            is_alliance: false,
+            ..Default::default()
+        });
+        crate::squadrons::add(&mut f.world.systems[f.system].fighters, tie, 2);
+        let fleet = |f: &mut Fixture, is_alliance| {
+            let key = f.world.insert_fleet(crate::world::Fleet {
+                location: f.system,
+                capital_ships: vec![],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            });
+            f.world.systems[f.system].fleets.push(key);
+            key
+        };
+        let ours = fleet(&mut f, false);
+        let _rebel_fleet = fleet(&mut f, true);
+        let targets = |kind| icon_targets(&f.world, f.system, kind, Faction::Empire);
+
+        assert_eq!(
+            targets(4),
+            [
+                ScrapTarget::Facility(FacilityRef::Manufacturing(yard)),
+                ScrapTarget::Facility(mine),
+            ]
+        );
+        let squadron = ScrapTarget::PlanetFighter {
+            system: f.system,
+            class: tie,
+        };
+        assert_eq!(
+            targets(8),
+            [
+                ScrapTarget::Troop(troop),
+                squadron,
+                squadron,
+                ScrapTarget::Facility(FacilityRef::Defense(gun)),
+            ]
+        );
+        assert_eq!(targets(0x10), [ScrapTarget::Fleet(ours)]);
+        assert!(targets(0x40).is_empty());
+        assert!(icon_targets(&f.world, SystemKey::default(), 4, Faction::Empire).is_empty());
     }
 
     #[test]
