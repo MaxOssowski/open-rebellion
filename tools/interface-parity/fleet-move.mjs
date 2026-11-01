@@ -350,12 +350,32 @@ const cases = [
         null, { timeout: 10_000 });
       const away = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
       const opened = await shot(page, directory, "en-route-menu");
-      assert.deepEqual(
-        [away.rename_enabled, away.scrap_enabled, away.confirmed_move_enabled],
-        [false, false, false],
-        JSON.stringify(away),
-      );
-      return { menu, listed, away, opened };
+      assert.deepEqual(away.row_states, [
+        ["Move", false], ["Confirmed Move", false], ["Planetary Bombardment", false],
+        ["Planetary Assault", false], ["Rename", false], ["Encyclopedia", true],
+        ["Status", true], ["Scrap", false],
+      ], JSON.stringify(away));
+      // A left click selects the fleet and puts its ships on the right
+      // list; there A0 greys the ship's orders too (29-own-ship-menu.png,
+      // 30-own-ship-menu.png).
+      await page.keyboard.press("Escape");
+      await frames(page, 3);
+      await page.waitForTimeout(600);
+      await click(page, { x: Math.round(x), y: Math.round(y) });
+      const shown = await until(page, "the destination's window shows the fleet's ships",
+        () => (window.__openRebellionInterfaceFleetMoves || []).at(-1)?.destination_item);
+      const [ix, iy] = shown.destination_item;
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await click(page, { x: Math.round(ix), y: Math.round(iy) }, "right");
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const ship = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      const shipShot = await shot(page, directory, "en-route-ship-menu");
+      assert.deepEqual(ship.row_states, [
+        ["Move", false], ["Confirmed Move", false], ["Create Fleet", false],
+        ["Rename", false], ["Encyclopedia", true], ["Status", true], ["Scrap", false],
+      ], JSON.stringify(ship));
+      return { menu, listed, away, opened, ship, shipShot };
     },
   },
   {

@@ -48,13 +48,21 @@ and Scrap, leaving Encyclopedia and Status, row for row as
 `22-fleet4-menu.png`. The fixture reports the fleet's entry in the
 destination window (`destination_entry`, from `FleetWindowReport`).
 
-Run `fleet-move-2026-11-01T08-46-29-577Z-7638` (Arch Chromium
+The case then closes the menu, selects the fleet with a left click and
+right-clicks its ship on the right list: Move, Confirmed Move, Create
+Fleet, Rename and Scrap grey, Encyclopedia and Status white, as A0
+`29-own-ship-menu.png` and `30-own-ship-menu.png`. The gate checks each
+row's label and state (`row_states`, new in the object-menu report).
+
+Run `fleet-move-2026-11-01T08-50-57-726Z-10580` (Arch Chromium
 155.0.8059.84, not the pinned build), test WASM
-`6dee2dba830f5d4ccae135f33ffe763098c9549986b49347d642ff683e5777f3`:
+`b938f4673b5f9e39f0ec6ce97bc9ab9f1b25237a4a65ed1d7debfee81aeb2135`:
 
 ```
 03af061603da473fa1adc9dfdf52b226b421252699446abfc1c96b7181bc2381  alliance-en-route-menu/en-route-menu.png
 c89de6cb0d9bd580b2ab1bd115363bbb8239786851c86ea5744313a205780625  empire-en-route-menu/en-route-menu.png
+103a1114dd999513c5b1de306ffb5ca0f9fd181db1e3311c52f816315c0ed141  alliance-en-route-menu/en-route-ship-menu.png
+7b744b7056606c187ce833b75efb197b83fa567b7842bb2bccbdfd8483e59e60  empire-en-route-menu/en-route-ship-menu.png
 ```
 
 The earlier note that a fleet in transit is in no Fleet window was

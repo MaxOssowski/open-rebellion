@@ -766,6 +766,11 @@ impl ObjectMenuState {
         self.rows.get(row).is_some_and(|row| row.enabled)
     }
 
+    /// Each row's label and whether it is enabled, top to bottom.
+    pub fn row_states(&self) -> impl Iterator<Item = (&'static str, bool)> + '_ {
+        self.rows.iter().map(|row| (row.item.label, row.enabled))
+    }
+
     /// Whether the submenu's row at `row` is enabled.
     #[must_use]
     pub fn submenu_row_enabled(&self, row: usize) -> bool {

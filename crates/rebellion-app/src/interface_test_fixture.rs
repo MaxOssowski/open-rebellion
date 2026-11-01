@@ -2033,6 +2033,8 @@ struct FixtureObjectMenu<'a> {
     width: f32,
     height: f32,
     rows: usize,
+    /// Each row's label and whether it is enabled, top to bottom.
+    row_states: Vec<(&'static str, bool)>,
     mission_row: Option<usize>,
     move_row: Option<usize>,
     confirmed_move_row: Option<usize>,
@@ -2136,6 +2138,7 @@ fn object_menu_report<'a>(
         width: rect.width(),
         height: rect.height(),
         rows: menu.row_count(),
+        row_states: menu.row_states().collect(),
         mission_row: menu.row_of(ObjectMenuCommand::Mission),
         move_row: menu.row_of(ObjectMenuCommand::Move),
         confirmed_move_row: menu.row_of(ObjectMenuCommand::ConfirmedMove),
@@ -2769,6 +2772,9 @@ struct FleetMoveObservation {
     /// The fleet's entry in its destination's Fleet window, once that
     /// window is open and lists it.
     destination_entry: Option<[f32; 2]>,
+    /// The first right-list item of that window while the fleet is its
+    /// selection: the fleet's first ship on the Capital Ships tab.
+    destination_item: Option<[f32; 2]>,
 }
 
 fn fleet_move_observation(
@@ -2797,6 +2803,15 @@ fn fleet_move_observation(
             .center();
         Some([center.x, center.y])
     });
+    let destination_item = movement.get(fleet).and_then(|order| {
+        let (selected, tab) = fleets.selection(order.destination)?;
+        if selected != Some(FleetWindowEntry::Fleet(fleet)) || tab != FleetWindowTab::CapitalShips
+        {
+            return None;
+        }
+        let center = fleets.item_screen_rect(layout, order.destination, 0)?.center();
+        Some([center.x, center.y])
+    });
     Some(FleetMoveObservation {
         status: "fleet-move",
         code: request.code,
@@ -2808,6 +2823,7 @@ fn fleet_move_observation(
         selected_system_dat_id: map.selected_system.and_then(dat_id),
         last_message: messages.last().map(|message| message.text.clone()),
         destination_entry,
+        destination_item,
     })
 }
 
@@ -6260,9 +6276,18 @@ mod tests {
             request.faction,
             layout
         ));
-        let [x, y] = observe(&applied, &message).destination_entry.unwrap();
+        let opened = observe(&applied, &message);
+        let [x, y] = opened.destination_entry.unwrap();
         let window = applied.fleets.screen_rect(layout, target).unwrap();
         assert!(window.contains(egui_macroquad::egui::pos2(x, y)));
+        // Its ships are on the right list once the fleet is the selection.
+        assert_eq!(opened.destination_item, None);
+        assert!(applied
+            .fleets
+            .select(target, FleetWindowEntry::Fleet(fleet)));
+        let [x, y] = observe(&applied, &message).destination_item.unwrap();
+        let item = applied.fleets.item_screen_rect(layout, target, 0).unwrap();
+        assert_eq!(egui_macroquad::egui::pos2(x, y), item.center());
     }
 
     #[test]
@@ -6943,6 +6968,7 @@ mod tests {
             selected_system_dat_id: None,
             last_message: None,
             destination_entry: None,
+            destination_item: None,
         };
         let second = FleetMoveObservation {
             in_transit: true,
