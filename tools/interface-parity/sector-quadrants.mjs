@@ -599,6 +599,52 @@ const cases = [
           `the ${name} tab shows no tip`);
       }
 
+      // The Shields and Fighters pages' labels (TEXTSTRA "Planetary
+      // Shields", "Fighter Squadrons", font 5 centred at the page's top)
+      // against A0 status/17 and 19 (Coruscant's window at (196, 91)): each
+      // label's ink box, relative to the window, left and top within 2
+      // pixels, width within 15% (the accepted text deviation).
+      const pageLabels = {};
+      const labelBox = (png, [ox, oy]) => {
+        const white = (x, y) => {
+          const i = (y * png.width + x) * 4;
+          return Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 215;
+        };
+        const cols = [];
+        for (let x = ox + 30; x < ox + 210; x += 1) {
+          let n = 0;
+          for (let y = oy + 52; y < oy + 68; y += 1) if (white(x, y)) n += 1;
+          if (n >= 2) cols.push(x - ox);
+        }
+        const rows = [];
+        for (let y = oy + 50; y < oy + 70; y += 1) {
+          let n = 0;
+          for (let x = ox + 30; x < ox + 210; x += 1) if (white(x, y)) n += 1;
+          if (n >= 3) rows.push(y - oy);
+        }
+        return cols.length && rows.length ? [cols[0], rows[0], cols.at(-1), rows.at(-1)] : null;
+      };
+      for (const [name, file] of [["shields", "17-def-tab.png"], ["squadrons", "19-tab3.png"]]) {
+        const tab = window.tabs.find(([tabName]) => tabName === name)[1];
+        // The tip loop left a tip up; move off before the press.
+        await page.mouse.move(2, 2);
+        await page.waitForTimeout(300);
+        await click(page, { x: tab[0] + 18, y: tab[1] + 16 });
+        await until(page, `the ${name} tab opens its page`,
+          (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value[0] && w.page === value[1]),
+          [dat, name]);
+        const shot = await stableScreen(page, directory, `${name}-page`);
+        const a0File = path.join(root, ".artifacts/a0-vm/status", file);
+        if (fs.existsSync(a0File)) {
+          const a = labelBox(PNG.sync.read(fs.readFileSync(a0File)), [196, 91]);
+          const p = labelBox(shot, origin);
+          pageLabels[name] = { a0: a, port: p };
+          const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+          assert.ok(a && p && a[2] - a[0] < 150 && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+            && ratio > 0.85 && ratio < 1.15, `${name} page label ${JSON.stringify(pageLabels[name])}`);
+        }
+      }
+
       const regimentsTab = window.tabs.find(([name]) => name === "regiments")[1];
       await click(page, { x: regimentsTab[0] + 18, y: regimentsTab[1] + 16 });
       const regiments = defensesWindow(await until(page, "the regiment tab opens its page",
@@ -640,7 +686,7 @@ const cases = [
         (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat), dat);
       assert.deepEqual(restored.origin, window.origin);
-      return { at, window, opening, regiments, regimentChecks, selectedChecks, railChecks, restored };
+      return { at, window, opening, regiments, regimentChecks, selectedChecks, railChecks, restored, pageLabels };
     },
   },
   {
