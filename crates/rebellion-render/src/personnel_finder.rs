@@ -281,6 +281,11 @@ fn count_sf(world: &GameWorld, keys: &[SpecialForceKey], tab: PersonnelTab) -> [
         for (i, &class_raw) in classes.iter().enumerate() {
             if raw == class_raw {
                 counts[i].count += 1;
+                // FUN_00465540: +0x50 bit 0 clear. port: a unit moves as a
+                // Move mission, so on a mission covers en route too.
+                if sf.on_mission {
+                    counts[i].all_usable = false;
+                }
                 break;
             }
         }
@@ -594,10 +599,16 @@ fn at(frame: egui::Rect, scale: f32, (x, y, w, h): (f32, f32, f32, f32)) -> egui
 
 /// Cell colours for SpecForces counts (FUN_00465540): same as the troop
 /// finder. Alliance tab → white on red; Imperial tab → black on green.
-fn sf_cell_colours(tab: PersonnelTab) -> (egui::Color32, egui::Color32) {
-    match tab {
-        PersonnelTab::Alliance => (egui::Color32::from_rgb(255, 0, 0), egui::Color32::WHITE),
-        PersonnelTab::Imperial => (egui::Color32::from_rgb(0, 255, 0), egui::Color32::BLACK),
+fn sf_cell_colours(tab: PersonnelTab, all_usable: bool) -> (egui::Color32, egui::Color32) {
+    // FUN_00465540: a column holding a unit whose +0x50 bit 0 is clear
+    // (en route or on a mission) takes flag 4 and the side's dark brush,
+    // as the Troop Finder's (FUN_0046d8d0 brushes 3 and 4). A0
+    // specforces/01: Mon Calamari's, Tralus's and Yavin's boxes dark red.
+    match (tab, all_usable) {
+        (PersonnelTab::Alliance, true) => (egui::Color32::from_rgb(255, 0, 0), egui::Color32::WHITE),
+        (PersonnelTab::Alliance, false) => (egui::Color32::from_rgb(128, 0, 0), egui::Color32::WHITE),
+        (PersonnelTab::Imperial, true) => (egui::Color32::from_rgb(0, 255, 0), egui::Color32::BLACK),
+        (PersonnelTab::Imperial, false) => (egui::Color32::from_rgb(0, 128, 0), egui::Color32::BLACK),
     }
 }
 
@@ -989,8 +1000,8 @@ pub fn draw_personnel_finder(
                             ),
                         );
                         // Four columns at x = 222 + 28*i (FUN_00465540).
-                        let (box_colour, text_on_box) = sf_cell_colours(window.tab);
                         for (i, cell) in counts.iter().enumerate() {
+                            let (box_colour, text_on_box) = sf_cell_colours(window.tab, cell.all_usable);
                             let cell_x = 222.0 + 28.0 * i as f32;
                             if cell.count == 0 {
                                 let cell_pos = at(
@@ -1779,11 +1790,11 @@ mod tests {
         assert_eq!(PersonnelTab::Alliance.label(), "Alliance Personnel");
         assert_eq!(PersonnelTab::Imperial.label(), "Imperial Personnel");
         assert_eq!(
-            sf_cell_colours(PersonnelTab::Alliance),
+            sf_cell_colours(PersonnelTab::Alliance, true),
             (egui::Color32::from_rgb(255, 0, 0), egui::Color32::WHITE)
         );
         assert_eq!(
-            sf_cell_colours(PersonnelTab::Imperial),
+            sf_cell_colours(PersonnelTab::Imperial, true),
             (egui::Color32::from_rgb(0, 255, 0), egui::Color32::BLACK)
         );
     }
@@ -2028,6 +2039,32 @@ mod tests {
         assert_eq!(counts[1].count, 0);
         assert_eq!(counts[3].count, 1);
         assert!(counts[0].all_usable);
+    }
+
+    #[test]
+    fn a_column_with_a_unit_away_is_drawn_in_the_sides_dark_brush() {
+        // FUN_00465540 flag 4 (+0x50 bit 0 clear); A0 specforces/01 draws
+        // the boxes of units en route or on a mission dark red.
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Tralus");
+        let away = add_sf(&mut world, system, 0x3c00_0003, true);
+        let here = add_sf(&mut world, system, 0x3c00_0004, true);
+        world.special_forces[away].on_mission = true;
+        let counts = count_sf(&world, &[away, here], PersonnelTab::Alliance);
+        assert!(!counts[3].all_usable);
+        assert!(counts[0].all_usable);
+        assert_eq!(
+            sf_cell_colours(PersonnelTab::Alliance, false).0,
+            egui::Color32::from_rgb(128, 0, 0)
+        );
+        assert_eq!(
+            sf_cell_colours(PersonnelTab::Imperial, false).0,
+            egui::Color32::from_rgb(0, 128, 0)
+        );
+        assert_eq!(
+            sf_cell_colours(PersonnelTab::Alliance, true).0,
+            egui::Color32::from_rgb(255, 0, 0)
+        );
     }
 
     #[test]

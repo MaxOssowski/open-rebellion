@@ -24,3 +24,13 @@ The A0 run used the Windows 10 VM and the Alliance's "DS_flip_allian" save, days
 - **Not compared: dark red boxes.** No unit in the port's run was moving or on a mission, so the dark red state of en-route and on-mission units was not compared.
 
 Run `encyclopedia-placement-2026-11-02T12-38-36-124Z` (Arch Chromium, release WASM `e1ad53f8…`): pass.
+
+## The dark boxes (ported the same day)
+
+`FUN_00465540` counts each column's units. A unit whose `+0x50` bit 0 is clear (en route or on a mission) sets the column's flag 4. Such a column is painted with the side's dark brush: (128, 0, 0) for the Alliance, (0, 128, 0) for the Empire. These are the brushes 3 and 4 of the Troop Finder's `FUN_0046d8d0`, which has the same test.
+
+The port's `count_sf` now clears `all_usable` for a unit on a mission. A unit moves as a Move mission in the port, so en route is covered too. `sf_cell_colours` picks the dark brush for that column. Before this change, every box was bright.
+
+Test: `a_column_with_a_unit_away_is_drawn_in_the_sides_dark_brush` (`personnel_finder.rs`).
+
+The Troop Finder keeps its bright boxes. A0's Troop Finder (DS_flip_allian, day 164) shows Xyquine's three regiments dark, but why their bit 0 is clear is not known.

@@ -4961,7 +4961,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-finder-scroll-bars/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "Compared with A0 on 2026-11-02 (specforces/01: the Alliance's SpecForces view, one row per system, four type columns, counts in red boxes or '-'): encyclopedia-placement.mjs --window=finders opens the view on Linux; its column header strip of type icons equals A0's, 0 of 3,192 pixels, and the rows, boxes and dashes stand where A0's do. Open: A0 draws en-route/on-mission units' boxes dark red, not compared.",
+          "note": "Compared with A0 on 2026-11-02 (specforces/01: the Alliance's SpecForces view, one row per system, four type columns, counts in red boxes or '-'): encyclopedia-placement.mjs --window=finders opens the view on Linux; its column header strip of type icons equals A0's, 0 of 3,192 pixels, and the rows, boxes and dashes stand where A0's do. A0's dark boxes for units en route or on a mission (FUN_00465540 flag 4) are now ported (unit test); no browser run had such a unit.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
