@@ -353,6 +353,10 @@ const cases = [
     name: "regiment",
     // A0 status/11-troop-menu: 104 by 102.
     a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
+    // A0 troopstatus/03 (the Alliance's Army Regiment at Mon Calamari):
+    // "Trooper Regiment Status" over Attached, Status, Maintenance Cost,
+    // Attack Strength, Defense Strength, Bombardment Value, Detection Value.
+    a0: { file: "../troopstatus/03-status.png", x: 108, y: 79, labels: 7, side: "alliance" },
     code: FLEET_LOAD,
     family: "Troop",
     target: async (page) => point((await fleetLoadSetup(page)).troop_item),

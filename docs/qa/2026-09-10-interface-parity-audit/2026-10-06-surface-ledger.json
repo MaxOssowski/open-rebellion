@@ -6444,15 +6444,16 @@
         {
           "id": "OBJ-10-C001",
           "requirement": "troop types",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-alliance-regiment-status-a0/"
           ],
-          "note": "Troop Finder text and Trooper Regiment Status rows match A0 (troop-finder-empire-day167-f4, 12-troop) and pass in the Linux browser, but only the Stormtrooper Regiment is compared; the regiment type catalogue is not compared state by state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 for both sides: the Empire's Stormtrooper Regiment (status/12-troop, Troop Finder day 167) and on 2026-11-02 the Alliance's Army Regiment (troopstatus/03: 'Trooper Regiment Status', seven rows); status-window.mjs 'regiment' (Linux) finds the Alliance's title and seven labels within 1 pixel of A0's.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-10-C002",
