@@ -182,3 +182,24 @@ Run `status-window-2026-11-02T16-44-11-689Z-558153`: pass on both sides.
 For the Empire, the `capital-ship` case holds the list's down arrow (the window's (214..224, 242..250), RCDATA 10650's bar) until the list stops. It then compares the label column's ink rows with A0 `04-ship-page5`, the corvette's list at its end: the Starboard and Port Weapons Arc blocks, each with Turbo Laser, " Ion Cannon" and Laser Cannon.
 
 The 15 bands match, each within 1 pixel: A0 47..242, the port 47..242. Run `status-window-2026-11-02T16-46-56-259Z-562600`: pass.
+
+## 2026-11-02: the picture list's font is 4
+
+**The original.** `FUN_00443130` creates the Status window's list (`FUN_00607ea0`, a `CoolDragList`) and then calls its `vt+0x18(4)`. That slot is `FUN_00600290`, which sets `+0x7c` to `FUN_0060eea0(4)`: font 4, the regular 16 (tmAscent 13, tmHeight 16). The rows of the other families are drawn by the fillers in font 10. The list's own items, the Objectives and the Galaxy Overview, draw in font 4.
+
+**A0.** `agent-menu/empire-objectives-day137` and `empire-galaxy-overview-day141-scroll6` draw that text larger than the port did. For example, the overview's "013  0000" spans 55 by 10 pixels in A0 and spans 46 by 7 in the port, which used font 10.
+
+**The port.** `status_window.rs` now paints the picture list's rows in `ICON_LIST_FONT` (4). The Objectives text is centred on the 35-pixel row: (35 − 16) / 2 = 9 down, then the ascent 13. The overview text hangs from the cell's top, its baseline 13 below.
+
+**Tests.** The two tests that encoded font 10 now encode font 4, after the source:
+
+- `the_objectives_rows_stack_35_apart_with_centred_icons_and_text_at_40`;
+- `the_overview_rows_put_the_mini_at_the_cells_corner_and_centre_the_text`.
+
+**Gate.** `agent-objectives.mjs` (Empire) measures "Destroy Rebel HQ" against A0 `empire-objectives-day137`: left, top and bottom within 2 pixels, width within 15%.
+
+## 2026-11-02: the Galaxy Overview held at its end (CMD-06 C004)
+
+`agent-objectives.mjs` (Empire) holds the overview list's down arrow until the list stops. It then compares the bar's bottom, the window's (213..225, 230..251), with A0 `empire-galaxy-overview-day141-scroll6`: the thumb lies against the down arrow in both. The pixels are equal, except A0's pointer over the arrow, which is left out.
+
+The rows differ by game. The port's world has more special-force classes than A0's game had, so its list is longer. The categories come in the same family order. Run `agent-objectives-2026-11-02T17-31-03-474Z`: pass.

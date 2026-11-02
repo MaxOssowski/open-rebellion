@@ -215,6 +215,30 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(300);
     await shot("objectives-from-menu");
+    // The picture list's font 4 (FUN_00600290): the Empire's first row,
+    // "Destroy Rebel HQ", against A0 agent-menu/empire-objectives-day137
+    // (both windows at (169, 81)): the text's ink box, left, top and bottom
+    // within 2 pixels, width within 15%.
+    let objectivesText = null;
+    if (faction.name === "empire") {
+      const ink = (png) => {
+        let box = null;
+        for (let y = 81 + 47; y < 81 + 82; y += 1) {
+          for (let x = 169 + 50; x < 169 + 205; x += 1) {
+            const i = (y * png.width + x) * 4;
+            if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+            box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+          }
+        }
+        return box;
+      };
+      const a = ink(PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/agent-menu/empire-objectives-day137.png"))));
+      const p = ink(PNG.sync.read(await fs.readFile(path.join(directory, "objectives-from-menu.png"))));
+      objectivesText = { a0: a, port: p };
+      const ratio = (p[2] - p[0] + 1) / (a[2] - a[0] + 1);
+      assert.ok([0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 2) && ratio > 0.85 && ratio < 1.15,
+        `objectives row ${JSON.stringify(objectivesText)}`);
+    }
     await page.keyboard.press("Escape");
     await waitFor(page, log, "Escape closes it", () => closed().length === 1, 5_000);
 
@@ -242,6 +266,36 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(300);
     await shot("galaxy-overview-from-menu");
+    // The overview's list held at its end (the down arrow at the window's
+    // (219, 246); the Empire's window at (170, 81)) against A0
+    // agent-menu/empire-galaxy-overview-day141-scroll6: the icon column's
+    // ink rows (the categories' icons, in a fixed order), within 1 pixel.
+    let overviewEnd = null;
+    if (faction.name === "empire") {
+      await page.mouse.move(170 + 219, 81 + 246);
+      await page.mouse.down();
+      await page.waitForTimeout(5000);
+      await page.mouse.up();
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await shot("galaxy-overview-end");
+      const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/agent-menu/empire-galaxy-overview-day141-scroll6.png")).catch(() => null) ?? Buffer.alloc(0));
+      const port = PNG.sync.read(await fs.readFile(path.join(directory, "galaxy-overview-end.png")));
+      // The bar's bottom at the end: the thumb against the down arrow, the
+      // window's (213..225, 230..251), equal to A0's but for A0's pointer
+      // over the arrow (x 221 and on, y 246 and on).
+      let barDiffering = 0;
+      for (let y = 230; y < 252; y += 1) {
+        for (let x = 213; x < 226; x += 1) {
+          if (x >= 221 && y >= 246) continue;
+          const i = ((81 + y) * port.width + 170 + x) * 4;
+          if (port.data[i] !== a0.data[i] || port.data[i + 1] !== a0.data[i + 1] || port.data[i + 2] !== a0.data[i + 2]) barDiffering += 1;
+        }
+      }
+      overviewEnd = { bar_differing: barDiffering };
+      assert.equal(barDiffering, 0, `overview bar at its end differs in ${barDiffering} pixels`);
+    }
     await page.keyboard.press("Escape");
     await waitFor(page, log, "Escape closes it", () => closed().length === 3, 5_000);
     await page.keyboard.down("Alt");
@@ -407,7 +461,7 @@ async function run(browser, base, faction) {
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
     return { faction: faction.name, status: "pass", agent: log.filter((line) => line.startsWith("[agent]")), shots,
-      fast_day_median_seconds: median, slow_day_median_seconds: slowMedian, very_slow_days: verySlow, hover, day };
+      fast_day_median_seconds: median, slow_day_median_seconds: slowMedian, very_slow_days: verySlow, hover, day, overviewEnd, objectivesText };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error),

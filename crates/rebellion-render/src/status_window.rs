@@ -50,6 +50,11 @@ const COLUMN: f32 = 103.0;
 /// rows 14 apart, caps 3 below a row's top; A0 status/06-fleet: "Not
 /// Assigned" 63 by 10 and "Hyperdrive Rating:" 87 by 10, Arial at 11 ppem.
 const LIST_FONT: u16 = 10;
+/// The picture list's font (`FUN_00443130`: the list's `vt+0x18`,
+/// `FUN_00600290`, sets `+0x7c` to `FUN_0060eea0(4)`): the Objectives' and
+/// the Galaxy Overview's rows. A0 agent-menu/empire-objectives-day137 and
+/// empire-galaxy-overview-day141-scroll6 draw them larger than the rows.
+const ICON_LIST_FONT: u16 = 4;
 /// The picture is centred on (307, 64) (`FUN_00443130`).
 const PICTURE_CENTRE: (i32, i32) = (307, 64);
 /// The Objectives' list: one column of cells 35 high (`FUN_006073d0(0x67,
@@ -569,7 +574,7 @@ pub fn draw_status_window(
                     &list_painter,
                     at(rect),
                     scale,
-                    LIST_FONT,
+                    ICON_LIST_FONT,
                     &row.text,
                     egui::Color32::WHITE,
                     format,
@@ -1738,12 +1743,12 @@ mod tests {
         assert!(painted.contains(&(11_032, at(25.0, 225.0))), "{painted:?}");
         for (index, text) in ["Control Coruscant", "Capture Palpatine"].iter().enumerate() {
             let (_, pos, _, font) = find(&texts, text);
-            // DT_VCENTER on the 35-pixel row: (35 - 14) / 2 = 10 down, then
-            // tmAscent 11.
+            // The picture list's font 4 (FUN_00600290): DT_VCENTER on the
+            // 35-pixel row, (35 - 16) / 2 = 9 down, then tmAscent 13.
             #[expect(clippy::cast_precision_loss, reason = "Two rows.")]
-            let pen = at(59.0, 44.0 + 10.0 + 11.0 + 35.0 * index as f32);
+            let pen = at(59.0, 44.0 + 9.0 + 13.0 + 35.0 * index as f32);
             assert!(near(*pos, pen), "{pos:?}");
-            assert_eq!(*font, crate::theme::gdi_font(10, 2.0).size);
+            assert_eq!(*font, crate::theme::gdi_font(4, 2.0).size);
         }
         // FUN_00443020: no Encyclopedia for the empty id; the name from the
         // box's top, its baseline tmAscent 13 below.
@@ -1782,11 +1787,12 @@ mod tests {
         let frame = window_rect(scaled()).min;
         let at = |x: f32, y: f32| frame + egui::vec2(x, y) * 2.0;
         assert!(painted.contains(&(17_473, at(19.0, 47.0))), "{painted:?}");
-        // DT_CENTER in the 205-wide cell, from its top (tmAscent 11).
+        // DT_CENTER in the 205-wide cell, from its top, in the picture
+        // list's font 4 (tmAscent 13).
         let (_, pos, ..) = find(&texts, "001  0001");
-        let (_, width) = crate::theme::gdi_pen_positions(10, "001  0001").unwrap();
+        let (_, width) = crate::theme::gdi_pen_positions(4, "001  0001").unwrap();
         assert!(
-            near(*pos, at(19.0 + ((205.0 - width) / 2.0).floor(), 47.0 + 11.0)),
+            near(*pos, at(19.0 + ((205.0 - width) / 2.0).floor(), 47.0 + 13.0)),
             "{pos:?}"
         );
         let (_, pos, ..) = find(&texts, "Galaxy Overview");
