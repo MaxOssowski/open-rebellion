@@ -65,8 +65,8 @@ function menuCorner(png) {
   }
   return null;
 }
-async function hoverAgainstA0(portFile) {
-  const a0File = path.join(ROOT, ".artifacts/a0-vm/speed2/02-hover-slow.png");
+async function hoverAgainstA0(portFile, a0Name = "02-hover-slow.png") {
+  const a0File = path.join(ROOT, ".artifacts/a0-vm/speed2", a0Name);
   let a0Bytes;
   try { a0Bytes = await fs.readFile(a0File); } catch { return null; }
   const red = (png) => {
@@ -301,6 +301,19 @@ async function run(browser, base, faction) {
       await page.waitForTimeout(300);
       await shot("speed-menu-hover");
       hover = await hoverAgainstA0(path.join(directory, "speed-menu-hover.png"));
+      // A0 speed2/03: a held press on Slow looks as the hover does.
+      await page.mouse.down();
+      await page.waitForTimeout(300);
+      await shot("speed-menu-pressed");
+      hover.pressed = await hoverAgainstA0(path.join(directory, "speed-menu-pressed.png"), "03-pressed-slow.png");
+      // Dragged off and released beside it (A0 speed2/04), the menu stays.
+      await page.mouse.move(300, 300, { steps: 4 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      await shot("speed-menu-released-outside");
+      hover.stays = (await fs.readFile(path.join(directory, "speed-menu-released-outside.png"))).length > 0
+        && menuCorner(PNG.sync.read(await fs.readFile(path.join(directory, "speed-menu-released-outside.png")))) !== null;
+      assert.ok(hover.stays, "a release beside the menu after a drag keeps it open");
     }
     await click(page, faction.fastRow);
     const quip = () => log.some((line) => line.includes(`[advisor] clip voice ${faction.quipVoice}`));
