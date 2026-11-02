@@ -112,3 +112,15 @@ as A0 shows (`object_menu.rs`, `FUN_0051d990`).
   - `a_scrolled_list_draws_its_rows_higher`: the 2-pixel drop.
 - `cargo mutants --in-place --in-diff` on `status_window.rs`: 32 mutants,
   28 caught, 4 unviable.
+
+## 2026-11-02: a training facility's Status against A0
+
+`status-window.mjs` has a new case, `manufacturing-facility`, for each side. It opens the Training Facilities page of the Build Selection fixture's system (code 55), then the first cell's Status. The window's chrome is compared as in the other cases.
+
+For the Empire, `facilityStatusText` measures the rows against A0 `status/29-manufacturing` (the Training Facility at Coruscant, window at (170, 81)): the title, Location, Status and its value "Active", Maintenance Cost, the processing rate's two lines, and Bombardment Value.
+
+Run `status-window-2026-11-02T11-37-11-853Z-4173079` (Linux Chromium 155, test WASM `19679add…`):
+
+- Every label's box is 1 pixel right of and below A0's, with the same bottom.
+- "Active" is at (121, 64..150) in A0 and (121, 65..150) in the port.
+- The Location value is not compared: A0's facility stands at Coruscant, the fixture's at its own system.

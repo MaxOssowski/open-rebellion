@@ -292,6 +292,39 @@ function fleetStatusText(port, rect) {
   return checks;
 }
 
+// The facility's rows against A0 (labels at x 16, values at x 119, rows
+// 14 apart from y 47; the processing rate's label wraps to two lines):
+// each ink box within 1 pixel, right edges within 3 (the accepted text
+// deviation). The A0 capture's Training Facility stands at Coruscant, the
+// fixture's at its own primary system, so the Location value is skipped.
+function facilityStatusText(port, rect, ref) {
+  const file = path.join(root, ".artifacts/a0-vm/status", ref.file);
+  if (!fs.existsSync(file)) return null;
+  const a0 = PNG.sync.read(fs.readFileSync(file));
+  const ink = (png, ox, oy, [x0, y0, x1, y1]) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = ((oy + y) * png.width + ox + x) * 4;
+        if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const checks = {};
+  for (const [name, region] of [["title", [15, 18, 226, 36]], ["location", [16, 47, 118, 61]],
+    ["status", [16, 61, 118, 75]], ["status-value", [119, 61, 226, 75]], ["maintenance", [16, 75, 118, 89]],
+    ["processing", [16, 89, 118, 103]], ["rate", [16, 103, 118, 117]], ["bombardment", [16, 117, 118, 131]]]) {
+    const a = ink(a0, ref.x, ref.y, region);
+    const p = ink(port, rect.x, rect.y, region);
+    checks[name] = { a0: a, port: p };
+    assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 1) && Math.abs(a[2] - p[2]) <= 3,
+      `${name}: ${JSON.stringify(checks[name])}`);
+  }
+  return checks;
+}
+
 const cases = [
   {
     name: "character",
@@ -320,6 +353,26 @@ const cases = [
       const opened = await openFleetWindow(page);
       await click(page, point(opened.fleet_entry));
       return point((await fleetLoad(page, (o) => o.selected === "fleet" && o.first_item)).first_item);
+    },
+  },
+  // A training facility's Status (FUN_005399e0's Status on a page cell):
+  // A0 status/29 (Coruscant's Training Facility at (170, 81)): Location,
+  // Status "Active", Maintenance Cost, Standard Processing Rate (two
+  // lines), Bombardment Value.
+  {
+    name: "manufacturing-facility",
+    code: BUILD_SELECTION,
+    family: "ManufacturingFacility",
+    a0: { file: "29-manufacturing.png", x: 170, y: 81 },
+    target: async (page) => {
+      await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.training_tab, null, { timeout: 10_000 });
+      const [tx, ty, tw, th] = (await page.evaluate(() => window.__openRebellionInterfaceProduction)).training_tab;
+      await click(page, { x: tx + tw / 2, y: ty + th / 2 });
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await page.waitForTimeout(300);
+      const [cx, cy, cw, ch] = (await page.evaluate(() => window.__openRebellionInterfaceProduction)).first_cell;
+      return { x: cx + cw / 2, y: cy + ch / 2 };
     },
   },
   {
@@ -394,7 +447,8 @@ async function inspect(server, source, faction, testCase, executable) {
     for (const name of Object.keys(masks)) assert.ok(comparison.changed_in_masks[name] > 0, `${name} shows nothing`);
     assert.equal(comparison.picture_blue_pixels, 0, "the picture's blue matte is not keyed");
     const textChecks = a0Dir && faction.name === "alliance" && testCase.name === "fleet"
-      ? fleetStatusText(PNG.sync.read(second), rect) : null;
+      ? fleetStatusText(PNG.sync.read(second), rect)
+      : testCase.a0 && faction.name === "empire" ? facilityStatusText(PNG.sync.read(second), rect, testCase.a0) : null;
 
     // FUN_00443020's tips (A0 a0-vm/tooltip/122-st-ency.png,
     // 123-st-close.png): a (255, 251, 240) tip with a (128, 128, 128)
