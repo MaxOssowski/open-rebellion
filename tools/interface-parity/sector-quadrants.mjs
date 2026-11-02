@@ -535,6 +535,25 @@ const cases = [
           });
         }
       }
+      // A right press selects too (FUN_0045b1b0 on the press, then the
+      // menu on the release): A0 quadrant-select/02, 03 show the mission
+      // icon's selected art after the menu's Escape, the earlier selection
+      // back to normal.
+      const [firstName] = shown[0];
+      const [fl, ft] = quadrant(setup, "primary", firstName);
+      await rightClick(page, { x: Math.round(fl) + 4, y: Math.round(ft) + 9 });
+      await page.waitForTimeout(300);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      const afterRight = await stableScreen(page, directory, `right-selected-${firstName}`);
+      for (const [name, side] of shown) {
+        const id = art[name][side] + (name === firstName ? 1 : 0);
+        compares.push({
+          id,
+          ...compareIcon(afterRight, quadrant(setup, "primary", name), resource(source, id),
+            `right-selected-${firstName}-${name}`, directory),
+        });
+      }
       assertExact(compares);
       return { compares };
     },

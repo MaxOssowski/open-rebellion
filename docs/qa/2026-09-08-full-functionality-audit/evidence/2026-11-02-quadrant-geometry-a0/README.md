@@ -29,3 +29,17 @@ Test: `quadrant_items_stand_where_a0_shows_them_around_their_planet`.
 **The port.** `sector-windows.mjs` now clicks Lelmra in Churba's window (step `04-left`). Before the click, the planets and names there already matched A0. The gate then compares the planet's 37 by 41 cell and its name's box with the frame before the click. Both are unchanged: 0 pixels differ.
 
 Run `sector-windows-2026-11-02T19-16-52-127Z`: pass.
+
+## An item selected by a left or a right press (CMD-03 C017)
+
+**A0.** The captures are `.artifacts/a0-vm/quadrant-select/` (the Alliance, DS_flip_allian, day 179; hashes in `a0-sha256-select.txt`). Each item was located by its bitmap, every non-key pixel exact:
+
+| Capture | State |
+|---|---|
+| `00-before` | Coruscant's System item, right-pressed earlier, shows its selected art 10780. |
+| `01-left-press` | A left press on Uvena's System item shows 10772, the pair's second bitmap. Coruscant's is back at 10779. |
+| `02-right-press-menu`, `03-after-escape` | A right press on a Missions item opens its menu. After Escape, that item shows 10778, selected, and Uvena's is back at 10771. |
+
+Only one item of the window is selected.
+
+**The port.** The `selected` case of `sector-quadrants.mjs` already left-pressed each item and compared every item's art. It now also right-presses the first item, presses Escape, and finds that item's selected art and the others' normal art, 0 pixels differing. Run `sector-quadrants-2026-11-02T19-19-08-641Z-818139`: pass on both sides.
