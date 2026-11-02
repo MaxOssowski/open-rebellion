@@ -6639,25 +6639,27 @@
         {
           "id": "OBJ-11-C003",
           "requirement": "Abduction",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-abduction-planner/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-abduction-planner/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-character-kinds-a0/"
           ],
-          "note": "Abduction is a dialog kind (mission_dialog.rs kind_name). Core and AI planner tested; no browser journey picks it. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (kinds2/50..55: Veers' Mission on Leia lists Assassination above Abduction; Abduction's GOKRES 7191 matches at the window's (70, 86)). mission-dialog.mjs 'enemy-character' (fixture 90, Linux): the Empire lists Assassination, Abduction and the Alliance Abduction alone (MISSNSD 0x81 is the Empire's), icons 7297 / 3095 at (70, 86), 0 pixels differing.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C004",
           "requirement": "Assassination",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-character-kinds-a0/"
           ],
-          "note": "Assassination is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (kinds2/50, 51: Assassination shown first for the Empire's Veers on Leia; GOKRES 7297 at (70, 86), 0 of 8,320 pixels). mission-dialog.mjs 'enemy-character' (fixture 90, Linux): the Empire's box shows Assassination with 7297 exact; the box now lists kinds last record first (box_order), as three A0 cases show.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C005",

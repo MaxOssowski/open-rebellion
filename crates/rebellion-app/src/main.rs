@@ -7274,7 +7274,12 @@ async fn main() {
                                         &[],
                                         target,
                                     );
-                                    mission_dialog_state.open(player_faction, target, team, kinds);
+                                    mission_dialog_state.open(
+                                        player_faction,
+                                        target,
+                                        team,
+                                        rebellion_render::mission_dialog::box_order(kinds),
+                                    );
                                 }
                             }
                             let destination = release_destination(

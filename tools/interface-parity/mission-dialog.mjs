@@ -39,6 +39,14 @@ const scenarios = [
   // enemy shipyard in its system's window offers Sabotage alone (A0
   // kinds2/44, 45: Veers on Yavin's refinery).
   { name: "sabotage", code: 59, page: "mission", kinds: ["Sabotage"], icon: { alliance: 3090, empire: 7186 } },
+  // Scenario::EnemyCharacterTargeting (89): released on the other side's
+  // free character, the box lists Assassination above Abduction and shows
+  // it (A0 kinds2/50..55: Veers on Leia; GOKRES 7297 at (70, 86) exact).
+  // MISSNSD gives Assassination (0x81) to the Empire alone (is_alliance 0),
+  // so the Alliance lists Abduction only (GOKRES 3095).
+  { name: "enemy-character", code: 90, page: "mission",
+    kinds: { alliance: ["Abduction"], empire: ["Assassination", "Abduction"] },
+    icon: { alliance: 3095, empire: 7297 } },
 ];
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
@@ -271,7 +279,8 @@ async function target(page, faction, directory) {
 // Empire's Sabotage 7186 there pixel for pixel.
 async function kindIconCheck(page, scenario, faction, origin, opened, directory) {
   const flow = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
-  assert.deepEqual(flow.kinds, scenario.kinds, JSON.stringify(flow));
+  const kinds = Array.isArray(scenario.kinds) ? scenario.kinds : scenario.kinds[faction.name];
+  assert.deepEqual(flow.kinds, kinds, JSON.stringify(flow));
   const dir = [process.env.REBELLION_GOKRES_BMP_DIR, path.join(root, "data/base/ui/gokres-dll/BMP")]
     .filter(Boolean).find((candidate) => fs.existsSync(candidate));
   const id = scenario.icon[faction.name];
@@ -487,7 +496,7 @@ async function inspect(server, source, faction, scenario, executable) {
     const { origin } = faction;
     const comparisons = [];
     let targeting = null;
-    if (scenario.name === "targeting" || scenario.name === "sabotage") targeting = await target(page, faction, directory);
+    if (["targeting", "sabotage", "enemy-character"].includes(scenario.name)) targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
     comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {

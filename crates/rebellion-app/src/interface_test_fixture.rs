@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 89;
+const SCENARIO_COUNT: u8 = 90;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -271,6 +271,10 @@ pub enum Scenario {
     /// band's Destination can be released on its planet (A0
     /// build-selection2/21: the ships band's Destination on Chandrila).
     BuildSelectionDestination = 88,
+    /// As `RescueTargeting` with the character at the secondary system the
+    /// other side's, free: a Mission released on it offers Assassination
+    /// and Abduction (A0 kinds2/50..55: Veers on Leia at Yavin).
+    EnemyCharacterTargeting = 89,
 }
 
 impl Scenario {
@@ -365,6 +369,7 @@ impl Scenario {
             86 => Self::FleetWindowBlockade,
             87 => Self::BuildSelectionOverMaintenance,
             88 => Self::BuildSelectionDestination,
+            89 => Self::EnemyCharacterTargeting,
             _ => return None,
         })
     }
@@ -427,6 +432,7 @@ impl Scenario {
         matches!(
             self,
             Self::RescueTargeting
+                | Self::EnemyCharacterTargeting
                 | Self::SabotageTargeting
                 | Self::DeathStarTargeting
                 | Self::ShipTargeting
@@ -794,7 +800,10 @@ pub fn apply(
         map.selected_system = Some(primary);
         sectors.open_for_system(world, primary, request.faction);
     }
-    if request.scenario == Scenario::RescueTargeting {
+    if matches!(
+        request.scenario,
+        Scenario::RescueTargeting | Scenario::EnemyCharacterTargeting
+    ) {
         place_prisoner(request, world, defenses, cockpit, primary, secondary);
     }
     if matches!(
@@ -922,13 +931,15 @@ fn place_prisoner(
     for fleet in world.fleets.values_mut() {
         fleet.characters.retain(|&key| key != prisoner);
     }
+    // EnemyCharacterTargeting: the other side's character, free.
+    let enemy = request.scenario == Scenario::EnemyCharacterTargeting;
     let character = &mut world.characters[prisoner];
     character.current_system = Some(secondary);
     character.current_fleet = None;
-    character.is_alliance = player_is_alliance;
-    character.is_empire = !player_is_alliance;
-    character.is_captive = true;
-    character.captured_by = Some(if player_is_alliance {
+    character.is_alliance = player_is_alliance != enemy;
+    character.is_empire = player_is_alliance == enemy;
+    character.is_captive = !enemy;
+    character.captured_by = (!enemy).then_some(if player_is_alliance {
         Faction::Empire
     } else {
         Faction::Alliance
@@ -2779,7 +2790,9 @@ fn object_menu_report<'a>(
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
     // The Rescue scenario targets the prisoner in the prison's first cell.
     let prison_cell = match request.scenario {
-        Scenario::RescueTargeting => defenses.cell_screen_rect(layout, key, 0),
+        Scenario::RescueTargeting | Scenario::EnemyCharacterTargeting => {
+            defenses.cell_screen_rect(layout, key, 0)
+        }
         Scenario::SabotageTargeting => systems.cell_screen_rect(layout, key, 0),
         Scenario::DeathStarTargeting | Scenario::ShipTargeting => {
             fleets.item_screen_rect(layout, key, 0)
@@ -4980,7 +4993,12 @@ pub fn open_mission_dialog(
     };
     let team = vec![MissionMember::Character(character)];
     let kinds = available_kinds(world, uprisings, research, faction, &team, &[], target);
-    if !dialog.open(faction, target, team, kinds) {
+    if !dialog.open(
+        faction,
+        target,
+        team,
+        rebellion_render::mission_dialog::box_order(kinds),
+    ) {
         return false;
     }
     if let Some(open) = dialog.dialog_mut() {
@@ -5166,6 +5184,47 @@ mod tests {
             &ResearchState::default(),
             &mut dialog,
         ));
+    }
+
+    #[test]
+    fn the_enemy_character_scenario_frees_the_target_on_the_other_side_in_its_system() {
+        // A0 kinds2/50: Veers' Mission released on Leia, free at Yavin.
+        let mut world = diplomacy_world(Faction::Alliance);
+        let here = world.systems.keys().next().unwrap();
+        let mut second = world.systems[here].clone();
+        second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+        let there = world.systems.insert(second);
+        world.characters.insert(rebellion_core::world::Character {
+            name: "Leia".into(),
+            current_system: Some(there),
+            ..Default::default()
+        });
+        let request = request(Scenario::EnemyCharacterTargeting, CockpitFaction::Alliance);
+        let mut defenses = DefensesWindowState::default();
+        apply(
+            request,
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Alliance,
+            &mut CockpitState::new(CockpitFaction::Alliance),
+            &mut GalaxyMapState::default(),
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut MissionState::default(),
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut SystemWindowState::default(),
+            &mut FleetWindowState::default(),
+            &mut defenses,
+            &mut TroopTransportState::default(),
+            &mut rebellion_core::uprising::UprisingState::new(),
+        );
+        let target = &world.characters[world.characters.keys().nth(1).unwrap()];
+        assert!(!target.is_captive && target.is_empire && !target.is_alliance);
+        assert_eq!(target.captured_by, None);
+        assert_eq!(target.current_system, Some(there));
+        assert!(defenses.is_open(here) && defenses.is_open(there));
     }
 
     #[test]
@@ -7888,6 +7947,7 @@ mod tests {
                 Scenario::FleetWindowYavin,
                 Scenario::BuildSelectionOverMaintenance,
                 Scenario::BuildSelectionDestination,
+                Scenario::EnemyCharacterTargeting,
             ]
         );
     }

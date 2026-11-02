@@ -195,6 +195,18 @@ impl MissionDialog {
     }
 }
 
+/// The box's order for the kinds `available_kinds` gives in MISSNSD order:
+/// last record first, and the box shows the first of them. A0: Incite
+/// Uprising before Espionage (kinds/20, 23), Recruitment before Espionage
+/// (kinds/01, 03), Assassination before Abduction (kinds2/50..55). hyp: the
+/// box's fill from `FUN_005422f0`'s list (keys rising, `FUN_005f5440`)
+/// inserts each item at its head; that fill is not traced.
+#[must_use]
+pub fn box_order(mut kinds: Vec<MissionKind>) -> Vec<MissionKind> {
+    kinds.reverse();
+    kinds
+}
+
 /// Whether a mission dialog is open.
 #[derive(Debug, Clone, Default)]
 pub struct MissionDialogState {
@@ -206,6 +218,7 @@ impl MissionDialogState {
     /// team may undertake. With no kind the order is dropped and nothing
     /// opens (`FUN_0042a320` -> `FUN_0041ce20(order, 0)`). The team starts as
     /// the agents and the decoys empty, as a fresh order `0x240` leaves them.
+    /// The box lists `kinds` in the order given ([`box_order`]).
     pub fn open(
         &mut self,
         faction: MissionFaction,
@@ -1120,6 +1133,25 @@ mod tests {
             vec![MissionKind::Diplomacy, MissionKind::Espionage],
         ));
         state
+    }
+
+    #[test]
+    fn the_box_lists_the_kinds_last_record_first_and_shows_the_last() {
+        // A0 kinds2/50..55: Veers on Leia lists Assassination (MISSNSD 0x81)
+        // above Abduction (0x17) and shows Assassination.
+        let mut state = MissionDialogState::default();
+        assert!(state.open(
+            MissionFaction::Empire,
+            SystemKey::default(),
+            members(1),
+            box_order(vec![MissionKind::Abduction, MissionKind::Assassination]),
+        ));
+        let dialog = state.dialog().unwrap();
+        assert_eq!(
+            dialog.kinds(),
+            [MissionKind::Assassination, MissionKind::Abduction]
+        );
+        assert_eq!(dialog.kind(), MissionKind::Assassination);
     }
 
     #[test]
