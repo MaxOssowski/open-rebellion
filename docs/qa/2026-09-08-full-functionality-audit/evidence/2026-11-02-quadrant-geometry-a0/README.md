@@ -21,3 +21,11 @@ Vjun's planet picture (SYSTEMSD picture 8, STRATEGY 10219, 37 by 37) is best pla
 Test: `quadrant_items_stand_where_a0_shows_them_around_their_planet`.
 
 `sector-quadrants.mjs` (Linux) already compares each item's art at these rectangles, 0 pixels differing.
+
+## A selected planet (CMD-03 C011)
+
+**A0.** `2026-10-28-nav/adega-selected` shows Adega after a click. There is no frame, and its name is still white: the selection does not change how the planet is drawn.
+
+**The port.** `sector-windows.mjs` now clicks Lelmra in Churba's window (step `04-left`). Before the click, the planets and names there already matched A0. The gate then compares the planet's 37 by 41 cell and its name's box with the frame before the click. Both are unchanged: 0 pixels differ.
+
+Run `sector-windows-2026-11-02T19-16-52-127Z`: pass.

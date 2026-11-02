@@ -215,6 +215,25 @@ try {
         entry.width_ratio = Number(((p[2] - p[0] + 1) / (a[2] - a[0] + 1)).toFixed(3));
         assert.ok(entry.width_ratio >= 0.93 && entry.width_ratio <= 1.07, `${name}: width ratio ${entry.width_ratio}`);
       }
+      // A click selects Lelmra and leaves its picture and name as they
+      // were: A0 2026-10-28-nav/adega-selected shows a selected planet
+      // with no frame and its name still white (FUN_004593e0).
+      const [lx, ly] = CHURBA_PLANETS.Lelmra;
+      await page.mouse.move(lx + 18, ly + 18, { steps: 4 });
+      await page.waitForTimeout(150);
+      await page.mouse.down();
+      await page.waitForTimeout(120);
+      await page.mouse.up();
+      await page.waitForTimeout(500);
+      await page.mouse.move(2, 470, { steps: 4 });
+      await page.waitForTimeout(400);
+      const selected = PNG.sync.read(await page.screenshot({ path: path.join(OUT, "04-left-lelmra-selected.png") }));
+      const [nl, nt, nr, nb] = CHURBA_NAMES.Lelmra;
+      step.selection = {
+        planet: differing(selected, port, [lx, ly, 37, 41], 0),
+        name: differing(selected, port, [nl - 4, nt - 2, nr - nl + 9, nb - nt + 5], 0),
+      };
+      assert.deepEqual(step.selection, { planet: 0, name: 0 }, `a selected planet changes: ${JSON.stringify(step.selection)}`);
     }
     for (const [half, { expected, differing: counts, ink }] of Object.entries(step.halves)) {
       if (!expected) {
