@@ -55,3 +55,11 @@ A0 `speed2/05` (day 166) has the red digits at (125..141, 21..28), centred on x 
 `agent-objectives.mjs` (Alliance) now chooses Slow from the Game Speed menu and times three days by the `[ai] day=N speed=Slow` log lines. The median is 15.001 s.
 
 That is A0's timing of about 15 s a day (`2026-10-31-speed-timing-a0`): 60 sub-ticks of 0.25 s (`FUN_00415e20`). Run `agent-objectives-2026-11-02T14-11-28-874Z`: pass.
+
+## Very Slow's day (CMD-05 C002)
+
+**A0.** The A0 run used the Windows 10 VM and DS_flip_allian, days 175..178. Very Slow was chosen from the menu (`10-veryslow-start`). The day readout was then sampled every 2 s and hashed over its digits. The days 176, 177 and 178 came 150.6 s and 150.6 s apart (`veryslow/change1..3`). That is 600 sub-ticks of 0.25 s, and the sampling adds up to 2 s.
+
+**The port.** `agent-objectives.mjs --faction=alliance --very-slow` chooses Very Slow and times two days: 150.02 s and 150.011 s. Run `agent-objectives-2026-11-02T14-24-22-145Z`: pass.
+
+The routine runs leave `--very-slow` off, because it takes about 8 minutes.

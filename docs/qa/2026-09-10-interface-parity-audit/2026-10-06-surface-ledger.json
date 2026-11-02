@@ -2563,15 +2563,16 @@
         {
           "id": "CMD-05-C002",
           "requirement": "very slow",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-speed-recovery.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-speed-timing-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-speed-menu-hover-a0/"
           ],
-          "note": "Very Slow is index 1, value 600 (FUN_00487eb0); no browser run observed it, A0 build-orders/18-veryslow.png exists uncompared; the wall-clock unit is inferred. 2026-10-31: the sub-tick is 0.25 s (FUN_00415e20, float 0.25 at 0x6588f0; ghidra/notes/game-speed-timing.md), so Very Slow is 600 x 0.25 = 150 s a day; the port's unit is now 0.25 s (was an inferred 0.1). Very Slow itself was not timed in A0 or a browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (speed2/veryslow: days 176..178 150.6 s apart under 2 s sampling; 600 x 0.25 s): agent-objectives.mjs --very-slow (Linux) chooses Very Slow from the menu and times two days at 150.02 s and 150.011 s.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-05-C003",
