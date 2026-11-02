@@ -296,8 +296,16 @@ async function run(browser, base, faction) {
       overviewEnd = { bar_differing: barDiffering };
       assert.equal(barDiffering, 0, `overview bar at its end differs in ${barDiffering} pixels`);
     }
-    await page.keyboard.press("Escape");
-    await waitFor(page, log, "Escape closes it", () => closed().length === 3, 5_000);
+    if (faction.name === "alliance") {
+      // The close button 10370 at the window's (324, 218), 32 wide (the
+      // Alliance's window at (108, 79)): A0 overview2/02..04 closes the
+      // overview with it.
+      await click(page, [108 + 324 + 16, 79 + 218 + 15]);
+      await waitFor(page, log, "the close button closes it", () => closed().length === 3, 5_000);
+    } else {
+      await page.keyboard.press("Escape");
+      await waitFor(page, log, "Escape closes it", () => closed().length === 3, 5_000);
+    }
     await page.keyboard.down("Alt");
     await frames(page);
     await page.keyboard.down("KeyO");
