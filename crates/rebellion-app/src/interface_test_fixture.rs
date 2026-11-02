@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 90;
+const SCENARIO_COUNT: u8 = 91;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -275,6 +275,11 @@ pub enum Scenario {
     /// other side's, free: a Mission released on it offers Assassination
     /// and Abduction (A0 kinds2/50..55: Veers on Leia at Yavin).
     EnemyCharacterTargeting = 89,
+    /// As `MissionTargeting` with the target system the player's and in
+    /// uprising against it: the dialog lists Subdue Uprising first (A0
+    /// kinds2/61..63: Jerjerrod on Selonia lists Subdue Uprising above
+    /// Espionage).
+    UprisingTargeting = 90,
 }
 
 impl Scenario {
@@ -370,6 +375,7 @@ impl Scenario {
             87 => Self::BuildSelectionOverMaintenance,
             88 => Self::BuildSelectionDestination,
             89 => Self::EnemyCharacterTargeting,
+            90 => Self::UprisingTargeting,
             _ => return None,
         })
     }
@@ -419,6 +425,7 @@ impl Scenario {
             || self == Self::CharacterAboard
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
+            || self == Self::UprisingTargeting
             || self.targets_an_object()
             || self.opens_build_selection()
             || self == Self::Quadrants
@@ -613,6 +620,7 @@ pub fn apply(
             request.scenario,
             Scenario::MissionTargeting
                 | Scenario::ResearchTargeting
+                | Scenario::UprisingTargeting
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
                 | Scenario::CharacterBoard
@@ -845,6 +853,21 @@ pub fn apply(
             });
         world.systems[primary].special_forces = vec![unit];
     }
+    if request.scenario == Scenario::UprisingTargeting {
+        // The target revolts against the player's side (ControlKind::
+        // Uprising, an active uprising), which Subdue Uprising takes.
+        let side = player_control;
+        world.systems[secondary].control = ControlKind::Uprising(side);
+        uprisings.active_uprisings.insert(
+            secondary,
+            rebellion_core::uprising::ActiveUprising {
+                started_tick: 0,
+                next_incident_tick: None,
+                next_support_tick: None,
+                side: Some(side),
+            },
+        );
+    }
     if request.scenario == Scenario::ResearchTargeting {
         // FUN_0056c510: an own-side target with a working yard of the tree's
         // area, and a member with the tree's skill. Full support ends
@@ -881,6 +904,7 @@ pub fn apply(
         Scenario::MissionTargeting
             | Scenario::ReconTargeting
             | Scenario::ResearchTargeting
+            | Scenario::UprisingTargeting
             | Scenario::CharacterCommand
             | Scenario::CharacterMove
     ) {
@@ -1809,7 +1833,10 @@ pub fn emit_mission_flow(
     if !request.scenario.targets_an_object()
         && !matches!(
             request.scenario,
-            Scenario::MissionTargeting | Scenario::ReconTargeting | Scenario::ResearchTargeting
+            Scenario::MissionTargeting
+                | Scenario::ReconTargeting
+                | Scenario::ResearchTargeting
+                | Scenario::UprisingTargeting
         )
     {
         return;
@@ -5373,6 +5400,39 @@ mod tests {
     }
 
     #[test]
+    fn the_uprising_scenario_makes_the_target_the_players_and_in_uprising() {
+        // A0 kinds2/61: Subdue Uprising is offered on Selonia, the
+        // Empire's, in uprising against it.
+        let mut world = diplomacy_world(Faction::Empire);
+        let here = world.systems.keys().next().unwrap();
+        let mut second = world.systems[here].clone();
+        second.dat_id = rebellion_core::ids::DatId::new(0x9000_0002);
+        let target = world.systems.insert(second);
+        let mut uprisings = rebellion_core::uprising::UprisingState::new();
+        apply(
+            request(Scenario::UprisingTargeting, CockpitFaction::Empire),
+            &mut world,
+            &mut GameMode::MainMenu,
+            &mut MissionFaction::Empire,
+            &mut CockpitState::new(CockpitFaction::Empire),
+            &mut GalaxyMapState::default(),
+            &mut MovementState::default(),
+            &mut ManufacturingState::default(),
+            &mut EconomyState::default(),
+            &mut MissionState::default(),
+            &mut BlockadeState::default(),
+            &mut SectorWindowState::default(),
+            &mut SystemWindowState::default(),
+            &mut FleetWindowState::default(),
+            &mut DefensesWindowState::default(),
+            &mut TroopTransportState::default(),
+            &mut uprisings,
+        );
+        assert_eq!(world.systems[target].control, ControlKind::Uprising(Faction::Empire));
+        assert!(uprisings.is_uprising(target));
+    }
+
+    #[test]
     fn the_research_scenario_lists_ship_design_research_alone_of_the_trees() {
         // FUN_0056c510: an own-side target with a working yard of the tree's
         // area, and a member with the tree's skill (FUN_0056c820).
@@ -7948,6 +8008,7 @@ mod tests {
                 Scenario::BuildSelectionOverMaintenance,
                 Scenario::BuildSelectionDestination,
                 Scenario::EnemyCharacterTargeting,
+                Scenario::UprisingTargeting,
             ]
         );
     }

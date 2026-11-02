@@ -6717,13 +6717,14 @@
         {
           "id": "OBJ-11-C009",
           "requirement": "Subdue Uprising",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/mission-dialog.md"
+            "ghidra/notes/mission-dialog.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-subdue-kind-a0/"
           ],
-          "note": "Subdue Uprising is a dialog kind (mission_dialog.rs kind_name). Unit tests only. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (kinds2/61..63: Jerjerrod's Mission on Selonia, the Empire's and in uprising, lists Subdue Uprising above Espionage; GOKRES 7296 at the window's (70, 86), 0 of 8,320 pixels). mission-dialog.mjs 'uprising' (fixture 91, Linux, both sides): Subdue Uprising heads the box, icon 3200 / 7296 exact.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C010",

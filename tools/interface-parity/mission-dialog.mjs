@@ -47,6 +47,11 @@ const scenarios = [
   { name: "enemy-character", code: 90, page: "mission",
     kinds: { alliance: ["Abduction"], empire: ["Assassination", "Abduction"] },
     icon: { alliance: 3095, empire: 7297 } },
+  // Scenario::UprisingTargeting (90): the target system the player's, in
+  // uprising: Subdue Uprising heads the box (A0 kinds2/61..63: Jerjerrod on
+  // Selonia, Subdue Uprising above Espionage; GOKRES 7296 at (70, 86)).
+  { name: "uprising", code: 91, page: "mission", firstKind: "SubdueUprising",
+    icon: { alliance: 3200, empire: 7296 } },
 ];
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
@@ -279,8 +284,12 @@ async function target(page, faction, directory) {
 // Empire's Sabotage 7186 there pixel for pixel.
 async function kindIconCheck(page, scenario, faction, origin, opened, directory) {
   const flow = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
-  const kinds = Array.isArray(scenario.kinds) ? scenario.kinds : scenario.kinds[faction.name];
-  assert.deepEqual(flow.kinds, kinds, JSON.stringify(flow));
+  if (scenario.firstKind) {
+    assert.equal(flow.kinds[0], scenario.firstKind, JSON.stringify(flow));
+  } else {
+    const kinds = Array.isArray(scenario.kinds) ? scenario.kinds : scenario.kinds[faction.name];
+    assert.deepEqual(flow.kinds, kinds, JSON.stringify(flow));
+  }
   const dir = [process.env.REBELLION_GOKRES_BMP_DIR, path.join(root, "data/base/ui/gokres-dll/BMP")]
     .filter(Boolean).find((candidate) => fs.existsSync(candidate));
   const id = scenario.icon[faction.name];
@@ -496,7 +505,7 @@ async function inspect(server, source, faction, scenario, executable) {
     const { origin } = faction;
     const comparisons = [];
     let targeting = null;
-    if (["targeting", "sabotage", "enemy-character"].includes(scenario.name)) targeting = await target(page, faction, directory);
+    if (["targeting", "sabotage", "enemy-character", "uprising"].includes(scenario.name)) targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
     comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {
@@ -537,7 +546,7 @@ async function inspect(server, source, faction, scenario, executable) {
       kindList = { sha256: sha256(listShot) };
     }
     let kindIcon = null;
-    if (scenario.kinds) {
+    if (scenario.kinds || scenario.firstKind) {
       kindIcon = await kindIconCheck(page, scenario, faction, origin, opened, directory);
       comparisons.push(kindIcon);
     }
