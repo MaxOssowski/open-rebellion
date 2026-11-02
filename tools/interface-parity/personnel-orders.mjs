@@ -199,6 +199,11 @@ async function setSpeed(page, setup, row) {
   await page.waitForFunction(() => window.__openRebellionInterfaceSpeedMenu?.status === "speed-menu",
     null, { timeout: 10_000 });
   const menu = await page.evaluate(() => window.__openRebellionInterfaceSpeedMenu);
+  // A0 status/08-speed: Pause, Very Slow, Slow, Medium, Fast in a menu
+  // whose frame runs (538, 25)..(623, 126), 86 by 102 (screen pixels at
+  // 640 by 480).
+  assert.equal(menu.rows, 5, JSON.stringify(menu));
+  assert.ok(Math.abs(menu.width - 86) <= 1 && Math.abs(menu.height - 102) <= 1, `speed menu ${menu.width}x${menu.height}`);
   const height = (menu.height - 2) / menu.rows;
   await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (row + 0.5) });
   return menu;
