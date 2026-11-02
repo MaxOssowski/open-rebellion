@@ -2130,15 +2130,16 @@
         {
           "id": "CMD-03-C015",
           "requirement": "quadrant icon geometry",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/sector-quadrants.md",
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
-            "tools/interface-parity/sector-quadrants.mjs"
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-quadrant-geometry-a0/"
           ],
-          "note": "Quadrant rects follow sector-quadrants.md and sector-window-hit-test.md and the Linux gate; A0 sector-a.png shows Vjun's icons but they were not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (2026-10-28-nav/sector-a: Vjun's planet at (230, 133), its System, Defenses and Fleets items 10771, 10773, 10775 at (220, 132), (220, 152), (249, 132), exact): quadrant_rect gives the same corners (unit test); sector-quadrants.mjs (Linux) compares the items' art at those rectangles, 0 pixels differing.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-03-C016",

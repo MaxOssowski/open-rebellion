@@ -1102,6 +1102,10 @@ fn quadrant_window_action(
     }
 }
 
+/// A quadrant item's rectangle from its planet's (FUN_0045d140). A0
+/// 2026-10-28-nav/sector-a (Vjun at (230, 133)): the System, Defenses and
+/// Fleets items at (220, 132), (220, 152) and (249, 132), every non-key
+/// pixel exact.
 fn quadrant_rect(planet: egui::Rect, scale: f32, quadrant: Quadrant) -> egui::Rect {
     let (x, y) = match quadrant {
         Quadrant::System => (-10.0, -1.0),
@@ -2958,6 +2962,22 @@ mod tests {
     // plus 4; a destroyed system's item skips it. The staged marker here is
     // 2 by 1.
     #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn quadrant_items_stand_where_a0_shows_them_around_their_planet() {
+        // A0 sector-a: Vjun's planet at (230, 133); its System, Defenses and
+        // Fleets items at (220, 132), (220, 152), (249, 132), 28 by 19.
+        let planet = egui::Rect::from_min_size(egui::pos2(230.0, 133.0), egui::vec2(37.0, 37.0));
+        for (quadrant, corner) in [
+            (Quadrant::System, (220.0, 132.0)),
+            (Quadrant::Defenses, (220.0, 152.0)),
+            (Quadrant::Fleets, (249.0, 132.0)),
+        ] {
+            let rect = quadrant_rect(planet, 1.0, quadrant);
+            assert_eq!((rect.min.x, rect.min.y), corner, "{quadrant:?}");
+            assert_eq!((rect.width(), rect.height()), (28.0, 19.0));
+        }
+    }
+
     #[test]
     fn a_planet_shows_its_galaxy_marker_at_its_bitmaps_bottom_left() {
         let base = std::env::temp_dir().join(format!(
