@@ -5592,13 +5592,13 @@
         {
           "id": "OBJ-06-C006",
           "requirement": "shield",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
           ],
-          "note": "Fighter 'Maximum Shield Strength 0:0' matches A0 21-fighter, but the Fighter case is not in the gate and the capital ship's shield rows fall between the captured pages.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (status/21-fighter: 'Maximum Shield' / 'Strength:' '0:0'): status-window.mjs 'fighter' (Linux, both sides) opens a planet squadron's Status; for the Empire the shield rows' labels are within 1 pixel of A0's and the value reads '0:0' as A0's (same TIE Fighter class).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-06-C007",
@@ -5615,13 +5615,13 @@
         {
           "id": "OBJ-06-C008",
           "requirement": "weapons",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
           ],
-          "note": "Fighter weapons rows and capital weapon arcs match A0 labels in code; Weapon Recharge is between captured pages and the browser gate masks the rows.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (status/21-fighter: 'Weapons Rating:' over ' Laser Rating:' '60:60', ' Ion Cannon:', ' Torpedoes:'): the port now keeps the rows' leading space (theme::gdi_word_break), so ' Laser Rating:' starts one space in as in A0 (x 22 against 21); status-window.mjs 'fighter' (Linux) measures the heading and the first weapon row against A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-06-C009",

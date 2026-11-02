@@ -134,3 +134,13 @@ Run `status-window-2026-11-02T11-37-11-853Z-4173079` (Linux Chromium 155, test W
 - The values are not compared. The fixture's ship is another class (a damaged Victory Destroyer, hull 100:1800), while A0's corvette was undamaged ("Ship Damaged: No", 500:500).
 
 Run `status-window-2026-11-02T11-40-57-722Z-4179358` (Linux Chromium 155): pass.
+
+## 2026-11-02: a fighter squadron's Status against A0, and indented rows
+
+`status-window.mjs` has a new case, `fighter`. It uses the Squadron Load fixture (code 65): a squadron on the planet, opened from the Defenses window's squadron page. For the Empire it measures the title and the labels against A0 `status/21-fighter` (a TIE Fighter squadron at Coruscant).
+
+- **Skipped rows.** A0's pointer covers rows 9 and 10, so they are skipped.
+- **Indented rows.** A0 draws " Laser Rating:", " Ion Cannon:" and " Torpedoes:" one space in, under "Weapons Rating:". The port drew them flush. `theme::gdi_word_break` dropped every leading space, including a paragraph's own. It now keeps a paragraph's leading spaces and drops only the spaces that would start a broken line.
+- **Result.** The port's " Laser Rating:" now starts at x 22, against A0's 21.
+- **Test.** `word_break_keeps_a_paragraphs_leading_space_but_not_a_broken_lines` (`theme.rs`) fails without the change.
+- **Run.** `status-window-2026-11-02T11-47-44-115Z-4188930` (test WASM `6551a474…`): pass.

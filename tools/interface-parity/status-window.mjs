@@ -43,6 +43,7 @@ const factions = [
 const MISSION_TARGETING = 45;
 const FLEET_LOAD = 48;
 const BUILD_SELECTION = 55;
+const SQUADRON_LOAD = 65;
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -315,7 +316,8 @@ function facilityStatusText(port, rect, ref) {
   const checks = {};
   const regions = ref.labels
     ? [["title", [15, 18, 226, 36]],
-      ...Array.from({ length: ref.labels }, (_, k) => [`label-${k}`, [16, 47 + 14 * k, 118, 61 + 14 * k]]),
+      ...Array.from({ length: ref.labels }, (_, k) => [`label-${k}`, [16, 47 + 14 * k, 118, 61 + 14 * k]])
+        .filter((_, k) => !(ref.skip ?? []).includes(k)),
       ...Object.entries(ref.values ?? {}).map(([name, k]) => [name, [119, 47 + 14 * k, 210, 61 + 14 * k]])]
     : [["title", [15, 18, 226, 36]], ["location", [16, 47, 118, 61]],
       ["status", [16, 61, 118, 75]], ["status-value", [119, 61, 226, 75]], ["maintenance", [16, 75, 118, 89]],
@@ -366,6 +368,20 @@ const cases = [
       await click(page, point(opened.fleet_entry));
       return point((await fleetLoad(page, (o) => o.selected === "fleet" && o.first_item)).first_item);
     },
+  },
+  // A squadron on the planet (the Defenses window's squadron page, as
+  // fleet-window.mjs's squadron cases reach it): A0 status/21-fighter (a
+  // TIE Fighter squadron at Coruscant): Attached .. Bombardment Value, the
+  // Weapons Rating heading and its rows, "Maximum Shield Strength" and
+  // "Sub-Light Engine Rating" on two lines each.
+  {
+    name: "fighter",
+    code: SQUADRON_LOAD,
+    family: "PlanetFighter",
+    // A0's pointer covers rows 9 and 10 (Detection Rating, Bombardment
+    // Value); row 12 is " Laser Rating:", one space in.
+    a0: { file: "21-fighter.png", x: 170, y: 81, labels: 13, skip: [9, 10] },
+    target: async (page) => point((await fleetLoadSetup(page)).troop_item),
   },
   // A training facility's Status (FUN_005399e0's Status on a page cell):
   // A0 status/29 (Coruscant's Training Facility at (170, 81)): Location,
