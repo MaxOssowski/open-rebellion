@@ -323,6 +323,41 @@ function labelsAgainstA0(port, origin) {
   return checks;
 }
 
+// The idle overview against A0 build-selection2/11 (the Empire's
+// Coruscant, every band idle, the window at (203, 91); the fixture's at
+// (225, 76)): each band's status line (TEXTSTRA 6198..6200 at the band's
+// (5, 16), FUN_00458080) and the troops' and facilities' "1:1" counts
+// (FUN_00457690). Left, top and bottom within 2 pixels; the right edge
+// within 3, Liberation Sans's footed "1" against GDI Arial's (the
+// accepted text deviation). A0's Coruscant has no shipyard ("0:0"), so
+// the ships' count is not compared.
+function idleBandsAgainstA0(port) {
+  const file = path.join(root, ".artifacts/a0-vm/build-selection2/11-stopped.png");
+  if (!fs.existsSync(file)) return null;
+  const a0 = PNG.sync.read(fs.readFileSync(file));
+  const ink = (png, ox, oy, [x0, y0, x1, y1], threshold) => {
+    let box = null;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const k = ((oy + y) * png.width + ox + x) * 4;
+        if (Math.min(png.data[k], png.data[k + 1], png.data[k + 2]) <= threshold) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+    }
+    return box;
+  };
+  const checks = {};
+  for (const [name, region] of [["ships-status", [58, 72, 215, 85]], ["troops-status", [58, 153, 215, 166]],
+    ["facilities-status", [58, 234, 215, 247]], ["troops-count", [6, 200, 52, 216]], ["facilities-count", [6, 280, 52, 296]]]) {
+    const a = ink(a0, 203, 91, region, 200);
+    const p = ink(port, 225, 76, region, 120);
+    checks[name] = { a0: a, port: p };
+    assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 2) && Math.abs(a[2] - p[2]) <= 3,
+      `${name}: ${JSON.stringify(checks[name])}`);
+  }
+  return checks;
+}
+
 async function quantityAndCancelCase(page, origin, band, directory) {
   const read = async () => {
     await page.mouse.move(2, 2);
@@ -574,7 +609,9 @@ async function inspect(server, source, faction, executable) {
     const before = await production(page);
     const troops = before.bands.find(({ area }) => area === "troops");
     assert.equal(troops.queued, 0, "the training facility starts idle");
-    fs.writeFileSync(path.join(directory, "overview-screen.png"), await page.screenshot({ animations: "disabled" }));
+    const overviewBytes = await page.screenshot({ animations: "disabled" });
+    fs.writeFileSync(path.join(directory, "overview-screen.png"), overviewBytes);
+    const idleChecks = faction.name === "empire" ? idleBandsAgainstA0(PNG.sync.read(overviewBytes)) : null;
 
     // Build (0x212) opens Build Selection (FUN_0041d640).
     const buildMenu = await bandOrder(page, troops, "build_row", directory, "build");
@@ -779,6 +816,7 @@ async function inspect(server, source, faction, executable) {
       facility_menu: facilityMenu,
       over_maintenance: overMaintenance,
       stepping,
+      idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,
       built: { product: built.product, queued: built.queued },

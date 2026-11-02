@@ -50,3 +50,21 @@ The captures are in `.artifacts/a0-vm/build-selection2/`, with hashes in `a0-sha
 
 - `a_band_menu_closing_leaves_no_band_selected_in_that_window_only` (`system_window.rs`).
 - `the_menu_reports_each_rows_label_and_state_in_order` now also checks `ObjectMenuState::selection` (`object_menu.rs`).
+
+## The idle overview (OBJ-07 C006, C008)
+
+A0 `11-stopped` shows Coruscant with every band idle. `build-selection.mjs` compares the Empire's idle overview with it (`idleBandsAgainstA0`).
+
+Each band's status line (TEXTSTRA 6198..6200 at the band's (5, 16)) and the troops' and facilities' "1:1" counts (`FUN_00457690`) are compared by their ink boxes relative to the window. Run `build-selection-2026-11-02T08-35-16-181Z-3818211` (Linux Chromium 155, test WASM `354677a3…`):
+
+| Text | A0 | Port |
+|---|---|---|
+| "No Ships are being built" | 60, 73..204, 84 | 61, 72..204, 84 |
+| "No Troops in training" | 60, 157..157, 165 | 60, 157..158, 165 |
+| "No Facilities are being built" | 60, 238..185, 246 | 61, 238..186, 246 |
+| troops "1:1" | 21, 203..34, 212 | 21, 204..37, 212 |
+| facilities "1:1" | 21, 283..34, 292 | 21, 284..37, 292 |
+
+- The counts' 3 extra pixels are Liberation Sans's footed "1" against GDI Arial's plain one. This is the accepted text deviation.
+- The band titles are black in both: A0 draws them crisp, the port antialiased.
+- A0's Coruscant has no shipyard ("0:0"), so the ships' count is not compared.
