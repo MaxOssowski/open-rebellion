@@ -39,6 +39,33 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // scroll bar: its down arrow at window (380, 292), the list at (36, 137),
 // 338 by 160.
 const ORIGINS = { alliance: [62, 50], empire: [125, 52] };
+
+// The Personnel Finder's SpecForces view (FUN_004637a0's second view
+// button, 0x36 under the first at (423, 147)): its column header strip of
+// the four type icons against A0 specforces/01-alliance-grid-day165 (the
+// Alliance's finder at (62, 50)), window (256..370, 114..142).
+async function specForcesView(page, shot, directory) {
+  const [ox, oy] = ORIGINS.alliance;
+  await click(page, [ox + 423 + 16, oy + 147 + 54 + 15]);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(500);
+  await shot("personnel-finder-specforces");
+  const a0File = path.join(ROOT, ".artifacts/a0-vm/specforces/01-alliance-grid-day165.png");
+  let a0Bytes;
+  try { a0Bytes = await fs.readFile(a0File); } catch { return { a0: null }; }
+  const a0 = PNG.sync.read(a0Bytes);
+  const port = PNG.sync.read(await fs.readFile(path.join(directory, "personnel-finder-specforces.png")));
+  let differing = 0;
+  let checked = 0;
+  for (let y = 114; y < 142; y += 1) {
+    for (let x = 256; x < 370; x += 1) {
+      const i = ((oy + y) * port.width + ox + x) * 4;
+      checked += 1;
+      if (port.data[i] !== a0.data[i] || port.data[i + 1] !== a0.data[i + 1] || port.data[i + 2] !== a0.data[i + 2]) differing += 1;
+    }
+  }
+  return { checked, differing };
+}
 const FACTIONS = [
   { name: "alliance", menuIndex: 9, droid: [570, 400], objectives: [480, 307], overview: [480, 287] },
   { name: "empire", menuIndex: 8, droid: [46, 401], objectives: [100, 307], overview: [100, 287] },
@@ -206,6 +233,9 @@ async function run(browser, base, faction) {
         if (args.a0 && faction.name === "empire") {
           finderText[label] = await textAgainstA0(path.join(directory, `${label}.png`),
             FINDER_A0[label], FINDER_TEXT);
+        }
+        if (label === "personnel-finder" && faction.name === "alliance") {
+          finderText.specforces = await specForcesView(page, shot, directory);
         }
         await page.keyboard.press("Escape");
         await page.waitForTimeout(400);
