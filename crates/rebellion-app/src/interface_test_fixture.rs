@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 91;
+const SCENARIO_COUNT: u8 = 92;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -280,6 +280,10 @@ pub enum Scenario {
     /// kinds2/61..63: Jerjerrod on Selonia lists Subdue Uprising above
     /// Espionage).
     UprisingTargeting = 90,
+    /// The primary system's Defenses window at the galaxy view's right
+    /// edge, on its Planetary Batteries page, the player's KDY-150 first
+    /// (A0 status/22, 23: Coruscant's KDY-150 and its Status).
+    BatteryStatus = 91,
 }
 
 impl Scenario {
@@ -376,6 +380,7 @@ impl Scenario {
             88 => Self::BuildSelectionDestination,
             89 => Self::EnemyCharacterTargeting,
             90 => Self::UprisingTargeting,
+            91 => Self::BatteryStatus,
             _ => return None,
         })
     }
@@ -426,6 +431,7 @@ impl Scenario {
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
             || self == Self::UprisingTargeting
+            || self == Self::BatteryStatus
             || self.targets_an_object()
             || self.opens_build_selection()
             || self == Self::Quadrants
@@ -852,6 +858,27 @@ pub fn apply(
                 on_mission: false,
             });
         world.systems[primary].special_forces = vec![unit];
+    }
+    if request.scenario == Scenario::BatteryStatus {
+        let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
+        let battery = world.defense_facilities.insert(rebellion_core::world::DefenseFacilityInstance {
+            class_dat_id,
+            side: player_control,
+        });
+        world.systems[primary].defense_facilities.insert(0, battery);
+        let layout = cockpit.layout_for(640.0, 480.0);
+        let galaxy = layout.galaxy;
+        defenses.open(
+            world,
+            primary,
+            (
+                (galaxy.x + galaxy.width - DEFENSES_WINDOW_WIDTH) as i16 - 5,
+                galaxy.y as i16 + 5,
+            ),
+            request.faction,
+            layout,
+        );
+        defenses.show_page(primary, rebellion_render::defenses_window::DefensesPage::Batteries);
     }
     if request.scenario == Scenario::UprisingTargeting {
         // The target revolts against the player's side (ControlKind::
@@ -2841,6 +2868,7 @@ fn object_menu_report<'a>(
                 | Scenario::BuildSelectionOverMaintenance
                 | Scenario::Quadrants
                 | Scenario::FleetWindowYavin
+                | Scenario::BatteryStatus
         ) =>
         {
             egui_macroquad::egui::Pos2::ZERO
@@ -5402,6 +5430,24 @@ mod tests {
             Some((Some(2), false, None))
         );
         assert_eq!(report(Scenario::MissionTargeting, true), None);
+    }
+
+    #[test]
+    fn the_battery_scenario_opens_the_batteries_page_on_the_players_kdy_150() {
+        // A0 status/22: Coruscant's Planetary Batteries page lists the
+        // KDY-150 first, its menu Encyclopedia, Status, Scrap.
+        let request = request(Scenario::BatteryStatus, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |_| {});
+        let world = &applied.world;
+        let primary = world.systems.keys().next().unwrap();
+        let first = world.systems[primary].defense_facilities[0];
+        assert_eq!(
+            world.defense_facilities[first].class_dat_id,
+            rebellion_core::ids::DatId::new(0x2200_0001)
+        );
+        assert_eq!(world.defense_facilities[first].side, Faction::Empire);
+        let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+        assert!(applied.defenses.cell_screen_rect(layout, primary, 0).is_some());
     }
 
     #[test]
@@ -8014,6 +8060,7 @@ mod tests {
                 Scenario::BuildSelectionDestination,
                 Scenario::EnemyCharacterTargeting,
                 Scenario::UprisingTargeting,
+                Scenario::BatteryStatus,
             ]
         );
     }

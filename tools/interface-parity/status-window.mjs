@@ -44,6 +44,7 @@ const MISSION_TARGETING = 45;
 const FLEET_LOAD = 48;
 const BUILD_SELECTION = 55;
 const SQUADRON_LOAD = 65;
+const BATTERY_STATUS = 92;
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -382,6 +383,17 @@ const cases = [
     // Value); row 12 is " Laser Rating:", one space in.
     a0: { file: "21-fighter.png", x: 170, y: 81, labels: 13, skip: [9, 10] },
     target: async (page) => point((await fleetLoadSetup(page)).troop_item),
+  },
+  // A KDY-150's Status from the Defenses window's Planetary Batteries
+  // page (A0 status/22, 23 at Coruscant): Location, Status "Active",
+  // Maintenance Cost, Weapons Rating, Shield Strength, Bombardment Defense
+  // Strength (two lines).
+  {
+    name: "battery",
+    code: BATTERY_STATUS,
+    family: "DefenseFacility",
+    a0: { file: "23-battery.png", x: 170, y: 81, labels: 7, values: { "status-value": 1 }, leftSlack: 1 },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
   // A training facility's Status (FUN_005399e0's Status on a page cell):
   // A0 status/29 (Coruscant's Training Facility at (170, 81)): Location,

@@ -144,3 +144,13 @@ Run `status-window-2026-11-02T11-40-57-722Z-4179358` (Linux Chromium 155): pass.
 - **Result.** The port's " Laser Rating:" now starts at x 22, against A0's 21.
 - **Test.** `word_break_keeps_a_paragraphs_leading_space_but_not_a_broken_lines` (`theme.rs`) fails without the change.
 - **Run.** `status-window-2026-11-02T11-47-44-115Z-4188930` (test WASM `6551a474…`): pass.
+
+## 2026-11-02: a KDY-150's Status against A0
+
+Scenario `BatteryStatus` (91, code 92) opens the primary system's Defenses window at the galaxy view's right edge on its Planetary Batteries page. The player's KDY-150 (DEFFACSD `0x22000001`) is listed first.
+
+`status-window.mjs` `battery` opens its Status from that cell, as A0 `status/22`, `23` did at Coruscant. For the Empire it measures the title, the seven label lines and "Active" against A0 `23-battery`. Every box is within 1 pixel.
+
+Run `status-window-2026-11-02T12-28-35-103Z-194847` (test WASM `e5ea0f43…`): pass.
+
+Test: `the_battery_scenario_opens_the_batteries_page_on_the_players_kdy_150`.
