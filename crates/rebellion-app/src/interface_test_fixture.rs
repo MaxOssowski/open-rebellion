@@ -2968,6 +2968,8 @@ struct FixtureProduction {
     /// (refined material, maintenance, completion, deployment).
     build_selection_quantity: Option<u32>,
     build_selection_values: Option<[String; 4]>,
+    /// The shown class's name (`FUN_00437880`).
+    build_selection_class: Option<String>,
     /// The Training Facilities tab and its page's first cell, as
     /// `[left, top, width, height]`.
     training_tab: Option<[f32; 4]>,
@@ -3018,6 +3020,9 @@ fn production_report(
         bands,
         build_selection_open: build_selection.is_open(),
         build_selection_quantity: build_selection.dialog().map(|dialog| dialog.quantity()),
+        build_selection_class: build_selection
+            .dialog()
+            .map(|dialog| rebellion_render::manufacturing_window::product(world, dialog.kind()).0),
         build_selection_values: build_selection.dialog().map(|dialog| {
             use rebellion_render::build_selection::{cost_text, days_text};
             // The gate opens it on the primary system's band, for the player.

@@ -5976,13 +5976,14 @@
         {
           "id": "OBJ-07-C020",
           "requirement": "best time to completion is an absolute game day",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Build Selection shows the best completion day (FUN_00528b30/FUN_00528d30) as an absolute day; the gate masks the values and A0 15-t01 was not compared on them.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/01): the Empire's Imperial Army Regiment at Coruscant, one training facility, shows 6, 3, '24 Days', '0 Days'; build-selection.mjs (Linux) selects the same class and finds the same four values exactly. A0 shows the best completion as a length in days, not an absolute day; the port does the same (the requirement's wording is not A0's).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
@@ -6062,17 +6063,18 @@
         {
           "id": "OBJ-08-C003",
           "requirement": "troop",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/README.md",
             "ghidra/notes/manufacturing-build-selection.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "A0 (Windows 10 VM, build-orders 15-t01/20-t09) shows Build Selection on an Imperial Army Regiment, and agent-build.mjs (Arch Chromium) opens it at the same place (255, 87) and queues a regiment; build-selection.mjs Confirm queues 'Alliance Fleet Regiment'/'Stormtrooper Regiment'. Not pass: the A0 comparison is placement only and the chrome gate fails 6 pixels on 'opened'.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/01..07): the Empire's Imperial Army Regiment in Build Selection, 6 / 3 / '24 Days' / '0 Days', confirmed onto the band. build-selection.mjs (Linux) selects that troop class and finds the four values exactly; the Alliance's troop class builds in the same gate.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-08-C004",

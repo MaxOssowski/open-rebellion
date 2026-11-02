@@ -122,3 +122,13 @@ A0 `25`..`35` (the ships band of Coruscant):
   The port still accepts a Fleet window release (`ReleaseTarget::Fleet`).
 - **The Manufacturing window.** `build-selection.mjs` now also releases the troops band's Destination on the Manufacturing window itself. The destination returns to the window's system, as A0 `27` shows. Run `g-build-selection-b21`: pass on both sides.
 - `28-enemy-yavin-manufacturing` is the enemy Yavin's Manufacturing window, opened by double-clicking its facility icon. Its strip is red.
+
+## A0's class and values (OBJ-07 C020, OBJ-08 C003)
+
+The fixture report now also names the shown class (`build_selection_class`).
+
+For the Empire, `build-selection.mjs` steps the class list to the Imperial Army Regiment. The open list starts at the shown class, so the gate picks its second item each time. The values must be A0 `01`'s exactly: 6, 3, "24 Days", "0 Days". Coruscant and the fixture's system both have one training facility.
+
+Run `build-selection-2026-11-02T11-34-51-460Z-4170502` (Linux Chromium 155, test WASM `19679add…`): equal.
+
+A0 shows the best completion as a length in days ("24 Days"), not an absolute game day, and so does the port. The cell's wording, "an absolute game day", does not match A0.

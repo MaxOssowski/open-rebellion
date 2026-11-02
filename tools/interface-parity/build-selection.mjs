@@ -358,7 +358,7 @@ function idleBandsAgainstA0(port) {
   return checks;
 }
 
-async function quantityAndCancelCase(page, origin, band, directory) {
+async function quantityAndCancelCase(page, origin, band, directory, faction) {
   const read = async () => {
     await page.mouse.move(2, 2);
     await frames(page);
@@ -397,7 +397,28 @@ async function quantityAndCancelCase(page, origin, band, directory) {
     null, { timeout: 10_000 });
   const reopened = await read();
   assert.equal(reopened.build_selection_quantity, 1, "Build reopens the window at 1");
-  return { unit: one.build_selection_values, three: three.build_selection_values, two: two.build_selection_values };
+  // The Empire's Imperial Army Regiment against A0 build-selection2/01
+  // (Coruscant, one training facility): 6, 3, "24 Days", "0 Days"
+  // (FUN_00538220, FUN_00528d30). The class list (button at (79, 90))
+  // shows two 70-pixel items under the box at (6, 85).
+  let a0Class = null;
+  if (faction.name === "empire") {
+    // The open list starts at the shown class, so its second item is the
+    // next class; step until the regiment shows.
+    const seen = [];
+    for (let step = 0; step < 12 && (await read()).build_selection_class !== "Imperial Army Regiment"; step += 1) {
+      seen.push((await read()).build_selection_class);
+      await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+      await read();
+      await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+    }
+    const chosen = await read();
+    assert.equal(chosen.build_selection_class, "Imperial Army Regiment", JSON.stringify([seen, chosen]));
+    assert.deepEqual(chosen.build_selection_values, ["6", "3", "24 Days", "0 Days"], JSON.stringify(chosen));
+    a0Class = { class: chosen.build_selection_class, values: chosen.build_selection_values };
+  }
+  return { unit: one.build_selection_values, three: three.build_selection_values, two: two.build_selection_values,
+    a0_class: a0Class };
 }
 
 // A0 build-selection2/09 (Windows 10 VM, the Empire's Stop on Coruscant's
@@ -701,7 +722,7 @@ async function inspect(server, source, faction, executable) {
     // it back (2: 12, 6, "48 Days"); Cancel at (141, 224) closes the
     // window with the band unchanged, and Build reopens it at 1
     // (FUN_00438c30, FUN_00438c60, FUN_00438800).
-    const stepping = await quantityAndCancelCase(page, origin, troops, directory);
+    const stepping = await quantityAndCancelCase(page, origin, troops, directory, faction);
 
     // Confirm (0x65, FUN_00438980) builds one unit of the selected class.
     await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });
