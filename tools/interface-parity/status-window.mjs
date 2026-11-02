@@ -41,6 +41,8 @@ const factions = [
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs):
 // 45 MissionTargeting, 48 FleetLoad, 55 BuildSelection.
 const MISSION_TARGETING = 45;
+// 93 ForceStatus: MissionTargeting with a Force user for the agent.
+const FORCE_STATUS = 94;
 const FLEET_LOAD = 48;
 const BUILD_SELECTION = 55;
 const SQUADRON_LOAD = 65;
@@ -350,6 +352,15 @@ const cases = [
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
   {
+    name: "force-character",
+    code: FORCE_STATUS,
+    family: "Character",
+    // FUN_004486f0's Force Ranking by +0x8c: A0 personnel-states/19 (Luke,
+    // "Trainee") and status/33-emperor ("Jedi Master").
+    forceRanking: { alliance: "Trainee", empire: "Jedi Master" },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
+  {
     name: "regiment",
     // A0 status/11-troop-menu: 104 by 102.
     a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
@@ -515,6 +526,13 @@ async function inspect(server, source, faction, testCase, executable) {
     const [, x, y, width, height] = line.match(opened).map(Number);
     const rect = { x, y, width, height };
     assert.deepEqual([width, height], [dimensions.width, dimensions.height]);
+    let forceRanking = null;
+    if (testCase.forceRanking) {
+      await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+      const { rows } = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+      forceRanking = rows.find(([label]) => label === "Force Ranking:")?.[1] ?? null;
+      assert.equal(forceRanking, testCase.forceRanking[faction.name], JSON.stringify(rows));
+    }
     await page.mouse.move(2, 2);
     await page.waitForTimeout(200);
     await frames(page);
@@ -641,7 +659,7 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.deepEqual(closes, { close: "close" });
     }
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, forceRanking, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

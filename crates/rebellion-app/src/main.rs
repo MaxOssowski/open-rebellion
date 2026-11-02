@@ -7090,6 +7090,15 @@ async fn main() {
                         }
                     }
 
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request {
+                        interface_test_fixture::emit_status_rows(
+                            request,
+                            &world,
+                            &mission_state,
+                            &status_window_state,
+                        );
+                    }
                     // FUN_004443a0: 0x66 closes the Status window and opens
                     // the Encyclopedia; 0x65 closes it.
                     if let Some(action) = draw_status_window(

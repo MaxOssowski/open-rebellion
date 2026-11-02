@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 93;
+const SCENARIO_COUNT: u8 = 94;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -290,6 +290,10 @@ pub enum Scenario {
     /// ( On Mission )", "Adar Tallon - Mon Calamari ( Enroute )", "Huoba
     /// Neva - Pzob ( General )").
     PersonnelStates = 92,
+    /// As `MissionTargeting` with a Force user for its agent: a Trainee for
+    /// the Alliance, a Jedi Master for the Empire (A0 personnel-states/19:
+    /// Luke "Trainee"; status/33-emperor: "Jedi Master").
+    ForceStatus = 93,
 }
 
 impl Scenario {
@@ -388,6 +392,7 @@ impl Scenario {
             90 => Self::UprisingTargeting,
             91 => Self::BatteryStatus,
             92 => Self::PersonnelStates,
+            93 => Self::ForceStatus,
             _ => return None,
         })
     }
@@ -431,6 +436,7 @@ impl Scenario {
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
+            || self == Self::ForceStatus
             || self == Self::CharacterCommand
             || self == Self::CharacterMove
             || self == Self::CharacterBoard
@@ -633,6 +639,7 @@ pub fn apply(
         if matches!(
             request.scenario,
             Scenario::MissionTargeting
+                | Scenario::ForceStatus
                 | Scenario::ResearchTargeting
                 | Scenario::UprisingTargeting
                 | Scenario::CharacterCommand
@@ -645,6 +652,14 @@ pub fn apply(
             character.recruited = true;
             character.is_captive = false;
             character.on_mandatory_mission = false;
+        }
+        if request.scenario == Scenario::ForceStatus {
+            // FUN_004486f0's Force Ranking by +0x8c: 50 a Trainee, 120 a
+            // Jedi Master.
+            character.force_potential = true;
+            character.force_aware = true;
+            character.force_base = if player_is_alliance { 50 } else { 120 };
+            character.force_training = 0;
         }
 
         if matches!(
@@ -968,6 +983,7 @@ pub fn apply(
     if matches!(
         request.scenario,
         Scenario::MissionTargeting
+            | Scenario::ForceStatus
             | Scenario::ReconTargeting
             | Scenario::ResearchTargeting
             | Scenario::UprisingTargeting
@@ -1882,6 +1898,36 @@ pub fn emit_personnel_finder(
         rows,
     })
     .expect("serialize the personnel finder report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
+/// The open Character Status window's rows, in the ForceStatus scenario.
+pub fn emit_status_rows(
+    request: FixtureRequest,
+    world: &GameWorld,
+    missions: &MissionState,
+    status: &rebellion_render::status_window::StatusWindowState,
+) {
+    if request.scenario != Scenario::ForceStatus {
+        return;
+    }
+    let Some(rebellion_render::status_rows::StatusObject::Character(key)) = status.object() else {
+        return;
+    };
+    let Some(rows) = rebellion_render::status_window::character_rows(world, missions.en_route(), key)
+    else {
+        return;
+    };
+    #[derive(Serialize)]
+    struct Report {
+        status: &'static str,
+        rows: Vec<(String, String)>,
+    }
+    let bytes = serde_json::to_vec(&Report {
+        status: "status-rows",
+        rows: rows.into_iter().map(|row| (row.label, row.value)).collect(),
+    })
+    .expect("serialize the status rows report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
@@ -8134,6 +8180,7 @@ mod tests {
                 Scenario::UprisingTargeting,
                 Scenario::BatteryStatus,
                 Scenario::PersonnelStates,
+                Scenario::ForceStatus,
             ]
         );
     }

@@ -57,6 +57,8 @@ const fixturePlugin = `    <script>
                             (window.__openRebellionInterfaceSystemFinders ||= []).push(message);
                         } else if (message.status === "personnel-finder") {
                             window.__openRebellionInterfacePersonnelFinder = message;
+                        } else if (message.status === "status-rows") {
+                            window.__openRebellionInterfaceStatusRows = message;
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }

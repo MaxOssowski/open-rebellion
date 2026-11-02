@@ -10,6 +10,7 @@
 //! 3.46).
 
 use egui_macroquad::egui;
+use rebellion_core::character_command::CommandKind;
 use rebellion_core::ids::CharacterKey;
 use rebellion_core::missions::{MemberTransit, MissionMember};
 use rebellion_core::world::{GameWorld, Skill};
@@ -125,8 +126,11 @@ pub const fn force_ranking(value: u32) -> &'static str {
 /// The Character Status rows (`FUN_004486f0`). `en_route` is the mission
 /// transits (`MissionState::en_route`).
 ///
-/// port: Commanding (`+0xa8`) is always "None": the port keeps no command
-/// field. A character is en route while its
+/// Commanding (`+0xa8`) names the object the character commands: the
+/// Command order (`FUN_00561bb0`, `FUN_004ee740`) keys it to the fleet of the
+/// ship it is aboard, else to its system (`FUN_0055ed30`), and a move clears
+/// the command (`FUN_00560d50`). port: so the commanded object is where a
+/// character with a command now stands. A character is en route while its
 /// mission transit lasts; Attached then names the transit's destination,
 /// the container of an object in hyperspace (`FUN_00556390`).
 #[must_use]
@@ -174,8 +178,23 @@ pub fn character_rows(
     } else {
         "Awaiting Orders"
     };
+    // A0 personnel-states/11: General Neva at Pzob, "Commanding: Pzob".
+    let commanding = (character.command != CommandKind::None)
+        .then(|| {
+            character
+                .current_fleet
+                .and_then(|fleet| fleet_label(world, fleet))
+                .or_else(|| {
+                    character
+                        .current_system
+                        .and_then(|system| world.systems.get(system))
+                        .map(|system| system.name.clone())
+                })
+        })
+        .flatten()
+        .unwrap_or_else(|| "None".to_owned());
     let mut rows = vec![
-        row("Commanding:", "None"),
+        row("Commanding:", commanding),
         // FUN_0044a2e0: the literal, for the shipped TEXTSTRA 1.00.00
         // (FUN_00406850).
         row("Attached: ", attached),
@@ -282,6 +301,12 @@ impl StatusWindowState {
     #[must_use]
     pub fn is_open(&self) -> bool {
         self.window.is_some()
+    }
+
+    /// The object the open window shows.
+    #[must_use]
+    pub fn object(&self) -> Option<StatusObject> {
+        self.window.as_ref().map(|window| window.object)
     }
 
     /// Whether `point` falls on the open window, so the galaxy map under it
@@ -814,6 +839,44 @@ mod tests {
         rows.iter()
             .map(|row| (row.label.as_str(), row.value.as_str()))
             .collect()
+    }
+
+    #[test]
+    fn the_window_reports_the_object_it_shows() {
+        let (_, key, ..) = world_with_luke();
+        let mut state = StatusWindowState::default();
+        assert_eq!(state.object(), None);
+        state.open_character(key);
+        assert_eq!(state.object(), Some(StatusObject::Character(key)));
+    }
+
+    #[test]
+    fn a_commander_commands_its_system_or_the_fleet_it_is_aboard() {
+        // FUN_004486f0 names +0xa8, the object FUN_00561bb0 keys the order
+        // to (FUN_0055ed30): A0 personnel-states/11, General Neva at Pzob,
+        // "Commanding: Pzob".
+        let (mut world, key, yavin, _) = world_with_luke();
+        world.characters[key].command = CommandKind::General;
+        let commanding = |world: &GameWorld| {
+            pairs(&character_rows(world, &[], key).expect("rows"))[0].1.to_owned()
+        };
+        assert_eq!(commanding(&world), "Yavin");
+
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: yavin,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: vec![key],
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.characters[key].current_fleet = Some(fleet);
+        world.characters[key].command = CommandKind::Admiral;
+        assert_eq!(commanding(&world), world.fleet_name(fleet).unwrap());
+
+        world.characters[key].command = CommandKind::None;
+        assert_eq!(commanding(&world), "None");
     }
 
     #[test]
