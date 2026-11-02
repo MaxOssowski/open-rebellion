@@ -6216,14 +6216,29 @@ async fn main() {
                         Some(MenuObject::Producer { system, .. }) => Some(system),
                         _ => None,
                     });
+                    // A Finder's menu takes the input over its modal Finder,
+                    // and its Escape closes only the menu.
+                    let finder_open = fleet_finder_state.is_open()
+                        || troop_finder_state.is_open()
+                        || personnel_finder_state.is_open()
+                        || system_finder_state.is_open();
+                    let menu_was_open = object_menu.is_some();
                     let band_menu_result = draw_object_menu(
                         ctx,
                         &mut object_menu,
                         &mut bmp_cache,
                         cockpit_layout,
                         cockpit_state.faction,
-                        strategic_input_enabled,
+                        strategic_input_enabled || finder_open,
                     );
+                    if menu_was_open && escaped {
+                        ctx.input_mut(|input| {
+                            input.consume_key(
+                                egui_macroquad::egui::Modifiers::NONE,
+                                egui_macroquad::egui::Key::Escape,
+                            )
+                        });
+                    }
                     if let Some(system) = band_menu.filter(|_| object_menu.is_none()) {
                         let command = band_menu_result.as_ref().map(|(command, _)| *command);
                         if rebellion_render::system_window::band_menu_deselects(command, escaped) {
@@ -6940,6 +6955,15 @@ async fn main() {
                             })
                             .collect(),
                     );
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let Some(request) = interface_fixture_request {
+                        interface_test_fixture::emit_personnel_finder(
+                            request,
+                            &world,
+                            fog_state,
+                            &personnel_finder_state,
+                        );
+                    }
                     let personnel_choice = draw_personnel_finder(
                         ctx,
                         &world,
@@ -6985,6 +7009,17 @@ async fn main() {
                             Some((system, FinderTarget::Fleet(fleet)))
                         }
                     });
+                    // A right-button release on a Finder opens the object
+                    // menu with nothing selected (FUN_004ac5c0, FUN_00461740).
+                    if object_menu.is_none() {
+                        object_menu = ObjectMenuState::for_finder(ctx, cockpit_layout, |point| {
+                            fleet_finder_state.contains_screen_point(cockpit_layout, point)
+                                || troop_finder_state.contains_screen_point(cockpit_layout, point)
+                                || system_finder_state.contains_screen_point(cockpit_layout, point)
+                                || personnel_finder_state
+                                    .contains_screen_point(cockpit_layout, point)
+                        });
+                    }
                     if let Some((system, target)) = troop_choice.or(personnel_choice) {
                         sector_window_state.open_for_system(&world, system, cockpit_state.faction);
                         map_state.selected_system = Some(system);

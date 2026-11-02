@@ -281,6 +281,48 @@ async function run(browser, base, faction) {
           finderText.reopened = { rows: [0, 1, 2, 3].map(rowTop) };
           assert.ok(finderText.reopened.rows[0] > 230 && finderText.reopened.rows[2] < 200,
             `the reopened Finder chooses its first row: ${JSON.stringify(finderText.reopened)}`);
+          // The other side's tab (0x6f at the window's (88, 72)), with the
+          // name box empty, chooses its first row (FUN_0046ce40's
+          // FUN_0060d7e0(side, 1); A0 troop-finder-first-row/alliance-tab:
+          // Yavin, white).
+          await page.mouse.move(62 + 88 + 24, 50 + 72 + 20);
+          await frames(page);
+          await page.mouse.down();
+          await frames(page);
+          await page.mouse.up();
+          await frames(page);
+          await page.mouse.move(2, 2);
+          await page.waitForTimeout(400);
+          await shot("troop-finder-other-tab");
+          const other = PNG.sync.read(await fs.readFile(path.join(directory, "troop-finder-other-tab.png")));
+          const otherTop = (row) => {
+            let top = 0;
+            for (let y = 196 + 25 * row; y < 196 + 25 * row + 12; y += 1) {
+              for (let x = 102; x < 250; x += 1) {
+                const i = (y * other.width + x) * 4;
+                top = Math.max(top, Math.min(other.data[i], other.data[i + 1], other.data[i + 2]));
+              }
+            }
+            return top;
+          };
+          // The heading's band (the window's (40..140, 128..140)) changes
+          // with the tab: "Alliance Troops" to "Imperial Troops".
+          const heading = (png) => {
+            let sum = 0;
+            for (let y = 178; y < 190; y += 1) {
+              for (let x = 102; x < 202; x += 1) {
+                const i = (y * png.width + x) * 4;
+                sum += png.data[i] + png.data[i + 1] + png.data[i + 2];
+              }
+            }
+            return sum;
+          };
+          finderText.otherTab = { rows: [0, 1, 2, 3].map(otherTop),
+            heading: [heading(reopened), heading(other)] };
+          assert.notEqual(finderText.otherTab.heading[0], finderText.otherTab.heading[1],
+            "the tab did not change");
+          assert.ok(finderText.otherTab.rows[0] > 230 && finderText.otherTab.rows.slice(1).every((top) => top < 200),
+            `the other side's tab chooses its first row: ${JSON.stringify(finderText.otherTab)}`);
         }
         if (label === "personnel-finder" && faction.name === "alliance") {
           // The Alliance's Personnel Finder against A0

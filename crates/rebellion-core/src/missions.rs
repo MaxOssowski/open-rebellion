@@ -2052,9 +2052,10 @@ impl MissionState {
         self.escapees.push(transit);
     }
 
-    /// Put `transit` on the road, for other modules' tests.
-    #[cfg(test)]
-    pub(crate) fn push_transit(&mut self, transit: MemberTransit) {
+    /// Put `transit` on the road, for other modules' tests and the
+    /// interface fixtures.
+    #[doc(hidden)]
+    pub fn push_transit(&mut self, transit: MemberTransit) {
         self.en_route.push(transit);
     }
 

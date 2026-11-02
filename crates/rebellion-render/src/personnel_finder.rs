@@ -640,6 +640,25 @@ fn sf_cell_colours(tab: PersonnelTab, all_usable: bool) -> (egui::Color32, egui:
 }
 
 impl PersonnelFinderState {
+    /// The open window's Characters rows as shown, for the interface
+    /// fixtures; `None` when closed or on the SpecForces view.
+    #[must_use]
+    pub fn shown_character_rows(&self, world: &GameWorld, fog: &FogState) -> Option<Vec<String>> {
+        let window = self.window.as_ref()?;
+        (window.view == PersonnelView::Characters).then(|| {
+            character_rows_travelling(
+                world,
+                fog,
+                player_side(window.faction),
+                window.tab,
+                &self.destinations,
+            )
+            .iter()
+            .map(|row| row.display_name().to_owned())
+            .collect()
+        })
+    }
+
     /// The travelling characters' destinations (the missions' member
     /// transits), for the rows' location.
     pub fn set_destinations(
@@ -1522,6 +1541,28 @@ mod tests {
         let mut state = PersonnelFinderState::default();
         state.set_destinations(vec![(key, mon_calamari)]);
         assert_eq!(state.destinations, [(key, mon_calamari)]);
+    }
+
+    #[test]
+    fn the_open_characters_view_reports_its_rows_with_destinations() {
+        let mut world = GameWorld::default();
+        let mon_calamari = add_system(&mut world, "Mon Calamari");
+        let mut adar = default_character();
+        adar.name = "Adar Tallon".into();
+        adar.current_system = None;
+        let key = world.characters.insert(adar);
+        let fog = FogState::new(Faction::Alliance);
+        let mut state = PersonnelFinderState::default();
+        state.set_destinations(vec![(key, mon_calamari)]);
+        assert_eq!(state.shown_character_rows(&world, &fog), None, "closed");
+
+        state.open(CockpitFaction::Alliance);
+        assert_eq!(
+            state.shown_character_rows(&world, &fog),
+            Some(vec!["Adar Tallon - Mon Calamari ( Enroute ) ".to_owned()])
+        );
+        state.set_view(PersonnelView::SpecForces);
+        assert_eq!(state.shown_character_rows(&world, &fog), None, "SpecForces view");
     }
 
     #[test]

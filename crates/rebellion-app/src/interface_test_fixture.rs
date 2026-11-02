@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 92;
+const SCENARIO_COUNT: u8 = 93;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -284,6 +284,12 @@ pub enum Scenario {
     /// edge, on its Planetary Batteries page, the player's KDY-150 first
     /// (A0 status/22, 23: Coruscant's KDY-150 and its Status).
     BatteryStatus = 91,
+    /// Three of the player's characters for the Personnel Finder: the first
+    /// on a mission at the primary system, the second travelling to the
+    /// secondary, the third a General (A0 specforces/00: "Han Solo - Drall
+    /// ( On Mission )", "Adar Tallon - Mon Calamari ( Enroute )", "Huoba
+    /// Neva - Pzob ( General )").
+    PersonnelStates = 92,
 }
 
 impl Scenario {
@@ -381,6 +387,7 @@ impl Scenario {
             89 => Self::EnemyCharacterTargeting,
             90 => Self::UprisingTargeting,
             91 => Self::BatteryStatus,
+            92 => Self::PersonnelStates,
             _ => return None,
         })
     }
@@ -432,6 +439,7 @@ impl Scenario {
             || self == Self::ResearchTargeting
             || self == Self::UprisingTargeting
             || self == Self::BatteryStatus
+            || self == Self::PersonnelStates
             || self.targets_an_object()
             || self.opens_build_selection()
             || self == Self::Quadrants
@@ -858,6 +866,37 @@ pub fn apply(
                 on_mission: false,
             });
         world.systems[primary].special_forces = vec![unit];
+    }
+    if request.scenario == Scenario::PersonnelStates {
+        let own: Vec<_> = world
+            .characters
+            .iter()
+            .filter(|(_, character)| character.is_alliance == player_is_alliance && character.recruited)
+            .map(|(key, _)| key)
+            .take(3)
+            .collect();
+        if let [busy, travelling, commander] = own[..] {
+            let busy_character = &mut world.characters[busy];
+            busy_character.current_system = Some(primary);
+            busy_character.current_fleet = None;
+            busy_character.on_mission = true;
+            let walker = &mut world.characters[travelling];
+            walker.current_system = None;
+            walker.current_fleet = None;
+            walker.current_abode = None;
+            walker.on_mission = false;
+            walker.is_captive = false;
+            walker.injury = 0;
+            missions.push_transit(rebellion_core::missions::MemberTransit {
+                member: MissionMember::Character(travelling),
+                mission_id: 0,
+                to: secondary,
+                arrival: 99,
+                abode: None,
+            });
+            world.characters[commander].command =
+                rebellion_core::character_command::CommandKind::General;
+        }
     }
     if request.scenario == Scenario::BatteryStatus {
         let class_dat_id = rebellion_core::ids::DatId::new(0x2200_0001);
@@ -1817,6 +1856,33 @@ fn place_boarding_fleet(
     if aboard.is_some() {
         fleets.show_tab(secondary, FleetWindowTab::Personnel);
     }
+}
+
+/// The Personnel Finder's Characters rows while it is open, in the
+/// PersonnelStates scenario.
+pub fn emit_personnel_finder(
+    request: FixtureRequest,
+    world: &GameWorld,
+    fog: &FogState,
+    finder: &rebellion_render::personnel_finder::PersonnelFinderState,
+) {
+    if request.scenario != Scenario::PersonnelStates {
+        return;
+    }
+    let Some(rows) = finder.shown_character_rows(world, fog) else {
+        return;
+    };
+    #[derive(Serialize)]
+    struct Report {
+        status: &'static str,
+        rows: Vec<String>,
+    }
+    let bytes = serde_json::to_vec(&Report {
+        status: "personnel-finder",
+        rows,
+    })
+    .expect("serialize the personnel finder report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
 /// The Rescue scenario sees into the enemy prison
@@ -2869,6 +2935,7 @@ fn object_menu_report<'a>(
                 | Scenario::Quadrants
                 | Scenario::FleetWindowYavin
                 | Scenario::BatteryStatus
+                | Scenario::PersonnelStates
         ) =>
         {
             egui_macroquad::egui::Pos2::ZERO
@@ -4672,7 +4739,12 @@ fn fleet_finder_observation(
     world: &GameWorld,
     windows: &FinderWindows<'_>,
 ) -> Option<FleetFinderObservation> {
-    if request.scenario != Scenario::FleetFinder {
+    // PersonnelStates' galaxy shows no fleet of the other side, for the
+    // empty tab.
+    if !matches!(
+        request.scenario,
+        Scenario::FleetFinder | Scenario::PersonnelStates
+    ) {
         return None;
     }
     let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
@@ -8061,6 +8133,7 @@ mod tests {
                 Scenario::EnemyCharacterTargeting,
                 Scenario::UprisingTargeting,
                 Scenario::BatteryStatus,
+                Scenario::PersonnelStates,
             ]
         );
     }

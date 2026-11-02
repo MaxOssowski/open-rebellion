@@ -786,6 +786,34 @@ impl ObjectMenuState {
         }
     }
 
+    /// A right-button release on an open Finder (`on_finder`) opens the
+    /// menu there. The System, Fleet, Personnel and Troop Finders (vtables
+    /// `0x65a000`, `0x65a090`, `0x65a130`, `0x65a270`) take slot 7,
+    /// `FUN_004ac5c0`, for the release, and their selection slot `+0x58`,
+    /// `FUN_00461740`, gives nothing: Encyclopedia and Status, both
+    /// disabled (A0 personnel-states/03, 04).
+    #[must_use]
+    pub fn for_finder(
+        ctx: &egui::Context,
+        layout: CockpitLayout,
+        on_finder: impl Fn((f32, f32)) -> bool,
+    ) -> Option<Self> {
+        let point = ctx.input(|input| {
+            input
+                .pointer
+                .button_released(egui::PointerButton::Secondary)
+                .then(|| input.pointer.interact_pos())
+                .flatten()
+        })?;
+        on_finder((point.x, point.y)).then(|| {
+            Self::new(
+                None,
+                OrderGates::default(),
+                crate::system_window::canvas_point(layout, point),
+            )
+        })
+    }
+
     /// The object the menu was opened for.
     #[must_use]
     pub fn selection(&self) -> Option<MenuObject> {
@@ -1449,6 +1477,60 @@ mod tests {
         assert_eq!(
             enabled(&object_menu_rows(icon(Quadrant::Missions), gates)),
             ["Encyclopedia", "Abort"]
+        );
+    }
+
+    #[test]
+    fn a_right_release_on_a_finder_opens_encyclopedia_and_status_disabled() {
+        // A0 personnel-states/03, 04: the Personnel Finder's row menu,
+        // Encyclopedia and Status grey; slot +0x58 is FUN_00461740.
+        let layout =
+            crate::cockpit::CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
+        let release = |at: egui::Pos2, button| {
+            let ctx = egui::Context::default();
+            let mut opened = None;
+            for events in [
+                vec![egui::Event::PointerMoved(at)],
+                vec![egui::Event::PointerButton {
+                    pos: at,
+                    button,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                vec![egui::Event::PointerButton {
+                    pos: at,
+                    button,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            ] {
+                let input = egui::RawInput {
+                    events,
+                    ..Default::default()
+                };
+                let _ = ctx.run(input, |ctx| {
+                    opened = opened.take().or_else(|| {
+                        ObjectMenuState::for_finder(ctx, layout, |(x, _)| x < 300.0)
+                    });
+                });
+            }
+            opened
+        };
+        let menu = release(egui::pos2(200.0, 343.0), egui::PointerButton::Secondary)
+            .expect("the release on the Finder opens the menu");
+        assert_eq!(menu.selection(), None);
+        assert_eq!(labels(&menu.rows), ["Encyclopedia", "Status"]);
+        assert!(enabled(&menu.rows).is_empty());
+        assert_eq!(menu.point, (200.0, 343.0));
+        assert_eq!(
+            release(egui::pos2(400.0, 343.0), egui::PointerButton::Secondary),
+            None,
+            "off the Finder"
+        );
+        assert_eq!(
+            release(egui::pos2(200.0, 343.0), egui::PointerButton::Primary),
+            None,
+            "a left release"
         );
     }
 

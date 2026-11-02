@@ -562,6 +562,9 @@ const cases = [
       const expected = prefixChoice(typed.rows, text);
       assert.notEqual(expected, null, JSON.stringify(typed.rows));
       assert.equal(typed.chosen, expected);
+      // The name chooses a row and filters nothing (A0
+      // personnel-states/09: "Fleet 6" chosen, Fleets 4 and 7 still listed).
+      assert.equal(typed.rows.length, opened.rows.length, "typing filtered the list");
       assert.equal(typed.left_panel_open, false, "typed letters reach the name box, not the galaxy view's keys");
       const row = typed.rows[typed.chosen];
       await key(page, "Enter");
