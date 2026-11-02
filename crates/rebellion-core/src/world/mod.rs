@@ -1858,6 +1858,12 @@ pub struct FleetNames {
     mode: FleetNaming,
     /// Fleets the player renamed (order 0x203).
     renamed: slotmap::SecondaryMap<FleetKey, ()>,
+    /// Each fleet's place in creation order, given by `insert_fleet`
+    /// (save v111). port: it stands for the object key the original orders
+    /// a container's children by (an AVL tree, `FUN_005f5100`), which the
+    /// slotmap key does not keep once a freed slot is reused.
+    serials: slotmap::SecondaryMap<FleetKey, u64>,
+    last_serial: u64,
 }
 
 /// port: a save written before the difficulty was stored loads at column 2,
@@ -2045,8 +2051,17 @@ impl GameWorld {
 
     pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {
         let key = self.fleets.insert(fleet);
+        self.fleet_names.last_serial += 1;
+        self.fleet_names.serials.insert(key, self.fleet_names.last_serial);
         self.name_new_fleet(key);
         key
+    }
+
+    /// `fleet`'s place in creation order; 0 for a fleet inserted without
+    /// [`GameWorld::insert_fleet`], which sorts first by its key.
+    #[must_use]
+    pub fn fleet_serial(&self, fleet: FleetKey) -> u64 {
+        self.fleet_names.serials.get(fleet).copied().unwrap_or(0)
     }
 
     /// `FUN_00517760`: a fleet still bearing the record's name takes

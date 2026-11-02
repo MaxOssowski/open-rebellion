@@ -224,6 +224,18 @@ pub fn joins_on_arrival(
         .is_ok_and(|value| value.location == system)
 }
 
+/// Order a fleet's ships as the original keeps a container's children: in
+/// an AVL tree by object key (`FUN_005f5100` rebalances, `FUN_005f5060`
+/// starts at the leftmost node, `+0x10` is the next), so a joined ship
+/// takes its place by key. A0 fleet3/05, 10: Corellian Corvette 1, joined to
+/// the fleet of Medium Transport 1, is listed first. port: a ship's `id`
+/// stands for its key; while a ship is unnumbered the order is kept.
+fn order_ships(ships: &mut [crate::world::ShipInstance]) {
+    if ships.iter().all(|ship| ship.id != 0) {
+        ships.sort_by_key(|ship| ship.id);
+    }
+}
+
 /// Move `from`'s ships, fighters, characters and cargo into `to` and remove
 /// `from`: the fleet has given up its last ship (`FUN_004fe630`). The caller
 /// has ended `from`'s transit.
@@ -251,6 +263,7 @@ pub fn merge_fleet_into(
     }
     let target = &mut world.fleets[to];
     target.capital_ships.extend(source.capital_ships);
+    order_ships(&mut target.capital_ships);
     // The squadrons stay aboard their ships.
     for fighter in source.fighters {
         if let Some(entry) = target
@@ -327,6 +340,7 @@ fn move_ships_into(
     }
     world.fleets[to].characters.extend(riding);
     world.fleets[to].capital_ships.extend(moved);
+    order_ships(&mut world.fleets[to].capital_ships);
     world.fleets[to].fighters.extend(going);
     // A Death Star among the ships flies under its own flag; a flag with
     // no Death Star ship is the separate tactical object and stays.
@@ -987,6 +1001,43 @@ mod tests {
         };
         assert_eq!(carried(target), [(Some(ids[0]), 1)]);
         assert_eq!(carried(mover), [(Some(ids[1]), 2)]);
+    }
+
+    // FUN_005f5100 / FUN_005f5060: a container's children sit in an AVL
+    // tree by key; A0 fleet3/05, 10 list a joined older ship first.
+    #[test]
+    fn a_joined_ship_takes_its_place_by_number_in_the_fleet() {
+        let mut setup = setup();
+        let (here, mut transport) = (setup.here, TroopTransportState::default());
+        let older = fleet(&mut setup, here, &[10, 20], true);
+        let newer = fleet(&mut setup, here, &[30], true);
+        setup.world.number_ships();
+        let chosen = roster(&setup.world, older).unwrap();
+        let outcome = join_fleet(
+            &mut setup.world,
+            &mut MovementState::new(),
+            &mut transport,
+            &FleetMover::Ships {
+                fleet: older,
+                ships: vec![0],
+                roster: chosen,
+            },
+            newer,
+            true,
+        );
+        assert_eq!(outcome, Ok(FleetOrderOutcome::Joined(newer)));
+        assert_eq!(hulls(&setup.world, newer), [10, 30]);
+        // The rest of the older fleet merges in by number too.
+        let outcome = join_fleet(
+            &mut setup.world,
+            &mut MovementState::new(),
+            &mut transport,
+            &FleetMover::Fleet(older),
+            newer,
+            true,
+        );
+        assert_eq!(outcome, Ok(FleetOrderOutcome::Joined(newer)));
+        assert_eq!(hulls(&setup.world, newer), [10, 20, 30]);
     }
 
     // A character's container is its ship (FUN_00500b40), so the

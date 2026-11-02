@@ -1234,18 +1234,15 @@ fn visible_fleets(
     }
     let opposing_visible = opposing_contents_visible(world, fog, player, system);
     let player_is_alliance = player == Faction::Alliance;
-    let mut fleets: Vec<FleetKey> =
-        rebellion_core::movement::listed_fleets(movement, world, system)
-            .into_iter()
-            .filter(|&fleet| {
-                world.fleets.get(fleet).is_some_and(|value| {
-                    opposing_visible || value.is_alliance == player_is_alliance
-                })
+    // In listed_fleets' creation order (A0 fleet3/07: Fleet 7 after Fleet 6).
+    rebellion_core::movement::listed_fleets(movement, world, system)
+        .into_iter()
+        .filter(|&fleet| {
+            world.fleets.get(fleet).is_some_and(|value| {
+                opposing_visible || value.is_alliance == player_is_alliance
             })
-            .collect();
-    fleets.sort_unstable();
-    fleets.dedup();
-    fleets
+        })
+        .collect()
 }
 
 fn left_entries(

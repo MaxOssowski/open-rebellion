@@ -5408,14 +5408,15 @@
         {
           "id": "OBJ-05-C012",
           "requirement": "merge",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-split-join/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-split-join/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-list-order/"
           ],
-          "note": "A0 fleet3/07..10: a fleet's Move onto another merges it (the port does, alliance/a0-yavin). Open: A0 lists the joined ship before the fleet's own and a new fleet after the older; the port appends ships and sorts fleets by slotmap key, so steps 06..10 are captured but not asserted.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "fleet-window.mjs alliance/a0-yavin replays A0 fleet3/06..10: Fleet 7's Move onto Fleet 6 merges it, ships by age (FUN_005f5100's tree by key) and fleets by creation; within text hinting, the fleet's number and A0's stale frame (1816/986/1250 px).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C013",

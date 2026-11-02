@@ -745,6 +745,9 @@ pub fn listed_fleets(state: &MovementState, world: &GameWorld, system: SystemKey
     );
     fleets.sort_unstable();
     fleets.dedup();
+    // A system's children sit in an AVL tree by object key (FUN_005f5100):
+    // A0 fleet3/07 lists Fleet 7, just made, after Fleet 6.
+    fleets.sort_by_key(|&fleet| (world.fleet_serial(fleet), fleet));
     fleets
 }
 
@@ -1232,6 +1235,35 @@ mod tests {
         assert_eq!(applied.merged_fleets, 0);
         assert_eq!(world.fleets[fleet].location, destination);
         assert_eq!(world.systems[destination].fleets, vec![fleet]);
+    }
+
+    #[test]
+    fn a_fleet_made_later_is_listed_after_the_older_ones_even_in_a_reused_slot() {
+        // FUN_005f5100 keeps a container's children by object key; A0
+        // fleet3/07 lists Fleet 7, just made, after Fleet 6.
+        let (mut world, origin, _) = make_transit_world(0, 0, 30, 40);
+        let ship = |world: &mut GameWorld| {
+            let class = world.capital_ship_classes.insert(test_ship_class(80));
+            crate::world::Fleet {
+                location: origin,
+                capital_ships: vec![crate::world::ShipInstance::new(class, 100, true)],
+                fighters: Vec::new(),
+                characters: Vec::new(),
+                is_alliance: true,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            }
+        };
+        let first = ship(&mut world);
+        let first = world.insert_fleet(first);
+        let second = ship(&mut world);
+        let second = world.insert_fleet(second);
+        world.fleets.remove(first);
+        let third = ship(&mut world);
+        let third = world.insert_fleet(third);
+        assert!(third < second, "the freed slot sorts first by key");
+        world.systems[origin].fleets = vec![third, second];
+        assert_eq!(listed_fleets(&MovementState::new(), &world, origin), vec![second, third]);
     }
 
     #[test]

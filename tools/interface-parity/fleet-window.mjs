@@ -43,21 +43,18 @@ const FLEET_WINDOW_UMGUL = 82;
 const FLEET_WINDOW_SELONIA = 83;
 const FLEET_WINDOW_EMPTY = 84;
 const FLEET_WINDOW_YAVIN = 85;
-// The a0-yavin steps' ceilings: text hinting and, after Create Fleet, the
-// new fleet's number (A0 "Fleet 6", the port's next free one). After step
-// 05 the port's order differs (open: A0 lists a joined ship before the
-// fleet's own and a new fleet after the old; the port appends ships and
-// sorts fleets by key, reusing a disbanded fleet's slot), so steps 06..10
-// are captured and compared but not asserted.
 const A0_CONFIRM_DIALOG_CEILING = 1700;
 const A0_CONFIRM_JOINED_CEILING = 500;
+// The a0-yavin steps' ceilings: text hinting, the new fleet's number (A0
+// "Fleet 6", the port's next free one) and, in 06, A0's stale frame on
+// Medium Transport 1 (the list control's selection rules are untraced).
 const A0_YAVIN_CEILINGS = {
   "01-yavin-fleet1-before-split": 2700,
   "03-after-create-fleet": 1200,
   "05-after-transfer": 500,
-  "06-fleet6-expanded": Infinity,
-  "07-second-split": Infinity,
-  "10-after-merge": Infinity,
+  "06-fleet6-expanded": 2000,
+  "07-second-split": 1150,
+  "10-after-merge": 1400,
 };
 // `--a0-menus=DIR` (.artifacts/a0-vm/menus) compares the a0-kimanan case's
 // window with A0 23-fleet1-{ships,fighters,troops,personnel}.png.
