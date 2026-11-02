@@ -102,3 +102,23 @@ Run `build-selection-2026-11-02T10-…` (Linux Chromium 155, test WASM `07d33e9a
 
 - The batch's other gates and checks passed on the run before this scenario moved its window aside.
 - That first run's build-selection failed because the target planet lay under the window.
+
+## Destination released on windows (OBJ-07 C017..C019)
+
+A0 `25`..`35` (the ships band of Coruscant):
+
+| Release | Result |
+|---|---|
+| On Coruscant's Defenses window (`25`) | "Destination: Coruscant": accepted |
+| On Coruscant's own Manufacturing window, from Chandrila (`26`, `27`) | Coruscant: accepted |
+| On Yavin's planet, an enemy system (`33`) | "Destination: Yavin": accepted |
+| On the Fleet window of Imperial Fleet 1 at Yavin (`30`, `32`, twice) | unchanged |
+| On Selonia's Fleet window, an own system (`35`) | unchanged |
+
+- **Fleet windows: open.** A0 left the destination unchanged on every release on a Fleet window. Two explanations remain:
+  - the release is refused there;
+  - the click only activated that window.
+
+  The port still accepts a Fleet window release (`ReleaseTarget::Fleet`).
+- **The Manufacturing window.** `build-selection.mjs` now also releases the troops band's Destination on the Manufacturing window itself. The destination returns to the window's system, as A0 `27` shows. Run `g-build-selection-b21`: pass on both sides.
+- `28-enemy-yavin-manufacturing` is the enemy Yavin's Manufacturing window, opened by double-clicking its facility icon. Its strip is red.

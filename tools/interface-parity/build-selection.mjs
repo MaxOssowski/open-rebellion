@@ -487,7 +487,17 @@ async function destinationCase(page, faction, directory) {
   const after = await production(page);
   const shown = Object.fromEntries(after.bands.map(({ area, destination }) => [area, destination]));
   assert.deepEqual(shown, { ships: home[0], troops: menu.target_name, facilities: home[0] }, JSON.stringify(shown));
-  return { home: home[0], target: menu.target_name, shown };
+  // Released on the Manufacturing window itself (its yard column), the
+  // Destination is the window's system again (A0 build-selection2/27:
+  // Chandrila back to Coruscant).
+  const moved = after.bands.find(({ area }) => area === "troops");
+  await bandOrder(page, moved, "destination_row", directory, "destination-again");
+  await click(page, { x: 360 + 20, y: 76 + 150 });
+  await page.mouse.move(2, 2);
+  await page.waitForFunction((name) => window.__openRebellionInterfaceProduction?.bands
+    ?.find(({ area }) => area === "troops")?.destination === name, home[0], { timeout: 10_000 });
+  fs.writeFileSync(path.join(directory, "destination-window.png"), await page.screenshot({ animations: "disabled" }));
+  return { home: home[0], target: menu.target_name, shown, back_on_window: home[0] };
 }
 
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.
