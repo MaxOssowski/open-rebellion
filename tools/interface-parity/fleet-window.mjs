@@ -40,13 +40,16 @@ const SUPPORT_FLIP = 78;
 const FLEET_WINDOW_A0 = 80;
 const FLEET_WINDOW_VJUN = 81;
 const FLEET_WINDOW_UMGUL = 82;
+const FLEET_WINDOW_SELONIA = 83;
+const FLEET_WINDOW_EMPTY = 84;
 // `--a0-menus=DIR` (.artifacts/a0-vm/menus) compares the a0-kimanan case's
 // window with A0 23-fleet1-{ships,fighters,troops,personnel}.png.
 // It defaults to the local captures when they are present.
 const a0MenusDir = process.argv.find((arg) => arg.startsWith("--a0-menus="))?.slice(11)
   ?? [path.join(root, ".artifacts/a0-vm/menus")].find((dir) => fs.existsSync(path.join(dir, "23-fleet1-ships.png")));
 // `--a0-fleet2=DIR` (.artifacts/a0-vm/fleet2) does the same for a0-vjun
-// (vjun-fleet5-admiral-{tab}.png) and a0-umgul (umgul-*.png).
+// (vjun-fleet5-admiral-{tab}.png), a0-umgul (umgul-*.png), a0-selonia
+// (selonia-fleet4-{tab}.png) and a0-empty (umgul-empty.png).
 const a0Fleet2Dir = process.argv.find((arg) => arg.startsWith("--a0-fleet2="))?.slice(12)
   ?? [path.join(root, ".artifacts/a0-vm/fleet2")].find((dir) => fs.existsSync(path.join(dir, "vjun-fleet5-admiral-ships.png")));
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
@@ -1417,6 +1420,30 @@ const cases = [
       }
       return checks;
     },
+  },
+  {
+    name: "a0-selonia",
+    code: FLEET_WINDOW_SELONIA,
+    factions: ["alliance"],
+    standalone: true,
+    // A0's Alliance Fleet window over Selonia (fleet2/selonia-fleet4-*,
+    // day 775): Fleet 4, Alliance Escort Carrier 2 with an X-wing and a
+    // Y-wing squadron (2 of 6), selected; Fleet 1 expanded.
+    run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-selonia",
+      a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `selonia-fleet4-${tab}.png`)),
+      { ships: 1900, fighters: 1700, troops: 1300, personnel: 1200 }),
+  },
+  {
+    name: "a0-empty",
+    code: FLEET_WINDOW_EMPTY,
+    factions: ["alliance"],
+    standalone: true,
+    // A0's Alliance Fleet window over Umgul once its fleets withdrew
+    // (fleet2/umgul-empty, day 766): no entry, no pane, no tabs.
+    run: async (page, faction, setup, directory) => ({
+      empty: await compareWindowWithA0(page, directory, "a0-empty",
+        a0Fleet2Dir && path.join(a0Fleet2Dir, "umgul-empty.png"), 300),
+    }),
   },
   {
     name: "join-fleet",

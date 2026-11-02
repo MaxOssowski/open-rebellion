@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 82;
+const SCENARIO_COUNT: u8 = 84;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -234,6 +234,17 @@ pub enum Scenario {
     /// selected and expanded; Fleet 3, Medium Transport 2 (damaged) with
     /// two Alliance Army Regiments; the window at A0's (305, 86).
     FleetWindowUmgul = 81,
+    /// The Alliance's Fleet window over Selonia as A0 shows it
+    /// (`.artifacts/a0-vm/fleet2/selonia-fleet4-*.png`, day 775): Fleet 1,
+    /// Corellian Corvette 1 (damaged), in hyperspace to Selonia, expanded;
+    /// Fleet 4, Alliance Escort
+    /// Carrier 2 with an X-wing and a Y-wing squadron, selected; the window
+    /// at A0's (305, 86).
+    FleetWindowSelonia = 82,
+    /// The Alliance's Fleet window over Umgul with no fleet left there, as
+    /// A0 shows it after its fleets withdrew
+    /// (`.artifacts/a0-vm/fleet2/umgul-empty.png`, day 766).
+    FleetWindowEmpty = 83,
 }
 
 impl Scenario {
@@ -321,6 +332,8 @@ impl Scenario {
             79 => Self::FleetWindowA0,
             80 => Self::FleetWindowVjun,
             81 => Self::FleetWindowUmgul,
+            82 => Self::FleetWindowSelonia,
+            83 => Self::FleetWindowEmpty,
             _ => return None,
         })
     }
@@ -680,6 +693,15 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowUmgul {
         place_umgul(request, world, cockpit, movement, troop_transport, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowSelonia {
+        place_selonia(request, world, cockpit, movement, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowEmpty {
+        if let Some(umgul) = clear_for_a0(world, "Umgul") {
+            let layout = cockpit.layout_for(640.0, 480.0);
+            fleets.open(world, umgul, (305, 86), request.faction, layout);
+        }
     }
     if request.scenario == Scenario::ProductionDelivery {
         place_delivery(request, world, manufacturing, primary);
@@ -1221,6 +1243,123 @@ fn place_umgul(
     fleets.open(world, umgul, (305, 86), request.faction, layout);
     fleets.select(umgul, FleetWindowEntry::Fleet(first));
     fleets.expand(umgul, first);
+}
+
+/// The system named `name`, emptied for an A0 copy: its fleets moved to
+/// another system of its sector, held by the Alliance, explored, with no
+/// troops or special forces on it.
+fn clear_for_a0(world: &mut GameWorld, name: &str) -> Option<SystemKey> {
+    let here = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == name)
+        .map(|(key, _)| key)?;
+    let sector = world.systems[here].sector;
+    let elsewhere = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != here && value.sector == sector)
+        .map(|(key, _)| key)?;
+    for value in world.fleets.values_mut() {
+        if value.location == here {
+            value.location = elsewhere;
+        }
+    }
+    let fleets = std::mem::take(&mut world.systems[here].fleets);
+    world.systems[elsewhere].fleets.extend(fleets);
+    let value = &mut world.systems[here];
+    value.control = ControlKind::Controlled(Faction::Alliance);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.ground_units.clear();
+    value.special_forces.clear();
+    Some(here)
+}
+
+/// The `FleetWindowSelonia` scenario: A0's Fleets 1 and 4 at Selonia, and
+/// its Fleet window open where A0's lay.
+fn place_selonia(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    fleets: &mut FleetWindowState,
+) {
+    let class = |world: &GameWorld, name: &str| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, value)| value.is_alliance && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let fighter = |world: &GameWorld, name: &str| {
+        world
+            .fighter_classes
+            .iter()
+            .find(|(_, value)| value.is_alliance && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(corvette), Some(carrier), Some(xwing), Some(ywing)) = (
+        class(world, "Corellian Corvette"),
+        class(world, "Alliance Escort Carrier"),
+        fighter(world, "X-wing"),
+        fighter(world, "Y-wing"),
+    ) else {
+        return;
+    };
+    let Some(selonia) = clear_for_a0(world, "Selonia") else {
+        return;
+    };
+    // Fleet 1 withdrew from Umgul and is still in hyperspace to Selonia:
+    // A0 draws its engine glow, and its orders are grey (fleet2/08).
+    let sector = world.systems[selonia].sector;
+    let Some(origin) = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != selonia && value.sector == sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    let ship = |world: &GameWorld, class| {
+        ShipInstance::new(class, world.capital_ship_classes[class].hull as i32, true)
+    };
+    // A0 shows Corellian Corvette 1 damaged (its hull 240:500 on day 728).
+    let mut damaged = ship(world, corvette);
+    damaged.hull_current = 240;
+    let fleet = |capital_ships, fighters| rebellion_core::world::Fleet {
+        location: selonia,
+        capital_ships,
+        fighters,
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    };
+    let squadron = |class| rebellion_core::world::FighterEntry {
+        class,
+        count: 1,
+        carrier: None,
+    };
+    let mut withdrawing = fleet(vec![damaged], Vec::new());
+    withdrawing.location = origin;
+    let first = world.insert_fleet(withdrawing);
+    let fourth = world.insert_fleet(fleet(
+        vec![ship(world, carrier)],
+        vec![squadron(xwing), squadron(ywing)],
+    ));
+    world.rename_fleet(first, "Fleet 1");
+    world.rename_fleet(fourth, "Fleet 4");
+    world.rename_ship(first, 0, "Corellian Corvette 1");
+    world.rename_ship(fourth, 0, "Alliance Escort Carrier 2");
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let ticks = rebellion_core::movement::fleet_transit_ticks(&world.fleets[first], world, origin, selonia)
+        .unwrap_or(10);
+    movement.order(first, origin, selonia, ticks);
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, selonia, (305, 86), request.faction, layout);
+    fleets.select(selonia, FleetWindowEntry::Fleet(fourth));
+    fleets.expand(selonia, first);
 }
 
 /// Whether the scenario runs the clock Fast from the start.
@@ -5357,6 +5496,74 @@ mod tests {
         assert_eq!(applied.transport.cargo(third).len(), 2);
         assert!(world.systems[umgul].ground_units.is_empty());
         assert!(applied.fleets.is_expanded(umgul, first));
+        assert_eq!(
+            applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), umgul).map(|rect| rect.min),
+            Some(egui_macroquad::egui::pos2(305.0, 86.0))
+        );
+    }
+
+    #[test]
+    fn the_a0_selonia_scenario_selects_fleet_4_with_two_squadrons() {
+        let request = request(Scenario::FleetWindowSelonia, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Selonia".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            for (name, fighters) in [("Corellian Corvette", 0), ("Alliance Escort Carrier", 6)] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_alliance: true,
+                        hull: 500,
+                        hyperdrive: 100,
+                        fighter_capacity: fighters,
+                        ..Default::default()
+                    });
+            }
+            for name in ["X-wing", "Y-wing"] {
+                world.fighter_classes.insert(rebellion_core::world::FighterClass {
+                    name: name.into(),
+                    is_alliance: true,
+                    ..Default::default()
+                });
+            }
+        });
+        let world = &applied.world;
+        let selonia = world.systems.keys().next().unwrap();
+        let listed = rebellion_core::movement::listed_fleets(&applied.movement, world, selonia);
+        let names: Vec<_> = listed.iter().map(|&fleet| world.fleet_name(fleet).unwrap()).collect();
+        assert_eq!(names, ["Fleet 1", "Fleet 4"]);
+        let (first, fourth) = (listed[0], listed[1]);
+        assert!(applied.movement.is_in_transit(first));
+        assert_eq!(world.systems[selonia].fleets, [fourth]);
+        assert_eq!(world.fleets[first].capital_ships[0].hull_current, 240);
+        let squadrons: Vec<_> = world.fleets[fourth]
+            .fighters
+            .iter()
+            .map(|entry| (world.fighter_classes[entry.class].name.as_str(), entry.count))
+            .collect();
+        assert_eq!(squadrons, [("X-wing", 1), ("Y-wing", 1)]);
+        assert_eq!(world.ship_name(fourth, 0), Some("Alliance Escort Carrier 2"));
+        assert!(applied.fleets.is_expanded(selonia, first));
+        assert!(!applied.fleets.is_expanded(selonia, fourth));
+    }
+
+    #[test]
+    fn the_a0_empty_scenario_opens_umgul_with_no_fleet_there() {
+        let request = request(Scenario::FleetWindowEmpty, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Umgul".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+        });
+        let world = &applied.world;
+        let umgul = world.systems.keys().next().unwrap();
+        assert!(world.systems[umgul].fleets.is_empty());
+        assert!(world.fleets.values().all(|fleet| fleet.location != umgul));
+        assert!(applied.fleets.is_open(umgul));
         assert_eq!(
             applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), umgul).map(|rect| rect.min),
             Some(egui_macroquad::egui::pos2(305.0, 86.0))

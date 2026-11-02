@@ -5264,10 +5264,13 @@
         {
           "id": "OBJ-05-C001",
           "requirement": "empty",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No evidence of an empty Fleet window state in A0 or the browser gate."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-selonia-empty/"
+          ],
+          "note": "fleet-window.mjs alliance/a0-empty copies A0 fleet2/umgul-empty (Umgul after its fleets withdrew): background and title only, no entry, pane or tabs; 233 of 71 440 pixels differ, all in the title's text hinting.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C002",
@@ -5317,14 +5320,15 @@
         {
           "id": "OBJ-05-C005",
           "requirement": "fighters",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-selonia-empty/"
           ],
-          "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). The Fighters tab of a fleet with none aboard matches A0 (empty list, counters 0 and 0, the disabled button taking the click); a fleet carrying squadrons is still compared only in the Linux browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "fleet-window.mjs alliance/a0-selonia copies A0 fleet2/selonia-fleet4 (Fleet 4, Alliance Escort Carrier 2 with an X-wing and a Y-wing squadron, counters 2 and 6) and compares each tab: only text hinting differs (1732/1547/1161/1063). Open: which capital ship carries a unit (A0 Fleet 11 marks its third Star Destroyer's regiments; the port fills in fleet order, hyp).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C006",
@@ -5372,7 +5376,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-fleet-window-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-fleet-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-window-a0-kimanan/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-vjun-umgul/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-selonia-empty/"
           ],
           "note": "fleet-window.mjs alliance/a0-kimanan copies A0 menus/23 (Kimanan, Fleet 1 with Corellian Corvette 1, Medium Transport 1 and two regiments, Fleet 4 en route) and compares the window's 71 440 pixels per tab: only GDI text hinting, A0's cursor and 19 pixels of Fleet 4's 10424 overlay differ (accepted text deviation). Fleet 4, en route, carries 10423 on its entry as in A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
