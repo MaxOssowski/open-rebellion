@@ -680,6 +680,29 @@ const cases = [
       await click(page, { x: origin.x + 204 + 7, y: origin.y + 3 + 7 });
       const minimized = await until(page, "the minimize button hides the window", (o) => !o.window_open);
       const { rail } = faction;
+      // The rail entry's icon (FUN_004a76e0): 11536 for side 1, 11537 for
+      // side 2, keyed, at the slot's corner. A0 rail/05: the Alliance's
+      // Fleet window minimized shows 11536 at (544, 83), its second slot,
+      // every non-key pixel exact.
+      await page.waitForTimeout(300);
+      const railShot = PNG.sync.read((await shot(page, directory, "railed")).bytes);
+      const railIcon = resource(source, faction.byte === 1 ? 11536 : 11537);
+      const railKey = [railIcon.data[(railIcon.height - 1) * railIcon.width * 4],
+        railIcon.data[(railIcon.height - 1) * railIcon.width * 4 + 1], railIcon.data[(railIcon.height - 1) * railIcon.width * 4 + 2]];
+      let railDiffering = 0;
+      let railChecked = 0;
+      for (let y = 0; y < railIcon.height; y += 1) {
+        for (let x = 0; x < railIcon.width; x += 1) {
+          const from = (y * railIcon.width + x) * 4;
+          if (railIcon.data[from] === railKey[0] && railIcon.data[from + 1] === railKey[1] && railIcon.data[from + 2] === railKey[2]) continue;
+          const at = ((rail.y + y) * railShot.width + rail.x + x) * 4;
+          railChecked += 1;
+          if (railShot.data[at] !== railIcon.data[from] || railShot.data[at + 1] !== railIcon.data[from + 1]
+            || railShot.data[at + 2] !== railIcon.data[from + 2]) railDiffering += 1;
+        }
+      }
+      minimized.rail_icon = { checked: railChecked, differing: railDiffering };
+      assert.ok(railChecked > 30 && railDiffering === 0, `rail icon ${JSON.stringify(minimized.rail_icon)}`);
       // The rail slot restores on a double click (FUN_00422ce0 0x203).
       await doubleClick(page, { x: rail.x + rail.width / 2, y: rail.y + rail.height / 2 });
       const restored = await until(page, "the rail restores the window", (o) => o.window_open);
