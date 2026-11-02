@@ -234,6 +234,30 @@ async function run(browser, base, faction) {
           finderText[label] = await textAgainstA0(path.join(directory, `${label}.png`),
             FINDER_A0[label], FINDER_TEXT);
         }
+        if (label === "troop-finder" && faction.name === "alliance") {
+          // FUN_00609650 on each typed character: the first row whose name
+          // the typed text prefixes is chosen, white (A0 finder-search/02,
+          // 03: "P" then "Pz" choose Pzob).
+          // The port's fixture lists Bpfassh, Ghorman, Ithor and Yavin, rows
+          // 25 apart from y 191; "I" chooses Ithor, the third.
+          await page.keyboard.type("I", { delay: 80 });
+          await page.waitForTimeout(400);
+          await shot("troop-finder-typed");
+          const typed = PNG.sync.read(await fs.readFile(path.join(directory, "troop-finder-typed.png")));
+          const brightest = (row) => {
+            let top = 0;
+            for (let y = 196 + 25 * row; y < 196 + 25 * row + 12; y += 1) {
+              for (let x = 102; x < 250; x += 1) {
+                const i = (y * typed.width + x) * 4;
+                top = Math.max(top, Math.min(typed.data[i], typed.data[i + 1], typed.data[i + 2]));
+              }
+            }
+            return top;
+          };
+          finderText.typed = { rows: [0, 1, 2, 3].map(brightest) };
+          assert.ok(finderText.typed.rows[2] > 230 && finderText.typed.rows[0] < 200,
+            `"I" chooses Ithor: ${JSON.stringify(finderText.typed)}`);
+        }
         if (label === "personnel-finder" && faction.name === "alliance") {
           finderText.specforces = await specForcesView(page, shot, directory);
         }
