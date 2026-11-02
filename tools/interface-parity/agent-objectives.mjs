@@ -22,6 +22,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import { PNG } from "pngjs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +50,46 @@ const FACTIONS = [
     garrisonsVoice: "directory=emsprite-dll wave=1135", quipVoice: "directory=emsprite-dll wave=22005",
     dayReadout: [539, 25], fastRow: [575, 115] },
 ].filter(({ name }) => !args.faction || args.faction === name);
+// The hovered "Slow" row: its red ink's box, relative to the menu's
+// top-left corner (its (192, 192, 192) frame pixel), within 2 pixels of A0
+// speed2/02's. The menu opens at the release point; the port's gate
+// releases at (144, 27), A0's at (140, 22).
+function menuCorner(png) {
+  for (let y = 15; y < 40; y += 1) {
+    for (let x = 130; x < 160; x += 1) {
+      const i = (y * png.width + x) * 4;
+      const j = i + 4;
+      if (png.data[i] === 192 && png.data[i + 1] === 192 && png.data[i + 2] === 192
+        && png.data[j] === 255 && png.data[j + 1] === 255 && png.data[j + 2] === 255) return [x, y];
+    }
+  }
+  return null;
+}
+async function hoverAgainstA0(portFile) {
+  const a0File = path.join(ROOT, ".artifacts/a0-vm/speed2/02-hover-slow.png");
+  let a0Bytes;
+  try { a0Bytes = await fs.readFile(a0File); } catch { return null; }
+  const red = (png) => {
+    const [cx, cy] = menuCorner(png);
+    let box = null;
+    let count = 0;
+    for (let y = cy + 42; y < cy + 62; y += 1) {
+      for (let x = cx + 18; x < cx + 80; x += 1) {
+        const i = (y * png.width + x) * 4;
+        if (png.data[i] < 200 || png.data[i + 1] > 60 || png.data[i + 2] > 60) continue;
+        count += 1;
+        const [rx, ry] = [x - cx, y - cy];
+        box = box ? [Math.min(box[0], rx), Math.min(box[1], ry), Math.max(box[2], rx), Math.max(box[3], ry)] : [rx, ry, rx, ry];
+      }
+    }
+    return { box, count, corner: [cx, cy] };
+  };
+  const a = red(PNG.sync.read(a0Bytes));
+  const p = red(PNG.sync.read(await fs.readFile(portFile)));
+  assert.ok(a.box && p.box && a.box.every((v, k) => Math.abs(v - p.box[k]) <= 2), `hovered Slow: ${JSON.stringify({ a, p })}`);
+  return { a0: a, port: p };
+}
+
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
 
@@ -251,6 +292,16 @@ async function run(browser, base, faction) {
     await click(page, faction.dayReadout, "right");
     await page.waitForTimeout(300);
     await shot("speed-menu");
+    // The hovered row takes the side's colour (FUN_0042d190 passes it as
+    // the highlight): A0 speed2/02 (the Alliance's menu opened at
+    // (140, 22), the pointer on Slow) draws "Slow" red on the menu's fill.
+    let hover = null;
+    if (faction.name === "alliance") {
+      await page.mouse.move(190, 76, { steps: 4 });
+      await page.waitForTimeout(300);
+      await shot("speed-menu-hover");
+      hover = await hoverAgainstA0(path.join(directory, "speed-menu-hover.png"));
+    }
     await click(page, faction.fastRow);
     const quip = () => log.some((line) => line.includes(`[advisor] clip voice ${faction.quipVoice}`));
     const battles = () => log.filter((line) => line.includes("[audio] context=battle_window")).length;
@@ -285,7 +336,7 @@ async function run(browser, base, faction) {
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
     return { faction: faction.name, status: "pass", agent: log.filter((line) => line.startsWith("[agent]")), shots,
-      fast_day_median_seconds: median };
+      fast_day_median_seconds: median, hover };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error),
