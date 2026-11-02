@@ -2304,14 +2304,15 @@
         {
           "id": "CMD-04-C005",
           "requirement": "raised",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-window-raise-a0/"
           ],
-          "note": "A press brings a window to the front (fleet-window.mjs move case, Arch Chromium 155); not compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (raise/01, 02: a press on Yavin's title strip brings its window in front of Coruscant's, which it then covers): fleet-window.mjs's move case (Linux) checks that a press raises the window.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-04-C006",
