@@ -79,6 +79,9 @@ pub enum TargetOrder {
         fleet: FleetKey,
         ships: Vec<usize>,
         roster: u64,
+        /// Confirmed Move (`0x202`): the confirmation lists the ships'
+        /// days first (A0 fleet3/11 "Corellian Corvette 1:  0").
+        confirmed: bool,
     },
     /// Destination (`0x214`): the target system becomes where production
     /// delivers. A facility icon's team is every production area of the

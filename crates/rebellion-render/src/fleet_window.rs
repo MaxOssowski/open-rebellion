@@ -421,6 +421,9 @@ struct OpenFleetWindow {
     /// Where the window was when a press on its surface took it
     /// (`crate::window_move`).
     moving: MoveAnchor,
+    /// The selected fleet and its ship count when last drawn: a change of
+    /// that count drops the selection (see [`roster_changed`]).
+    roster: Option<(FleetKey, usize)>,
 }
 
 /// Whether a click at `now` completes a double click begun at `previous`:
@@ -590,6 +593,7 @@ impl FleetWindowState {
             rename: None,
             last_click: None,
             moving: None,
+            roster: None,
         });
         true
     }
@@ -607,6 +611,7 @@ impl FleetWindowState {
         }
         window.selected = Some(entry);
         window.selected_item = None;
+        window.tab = tab_for(Some(entry), window.tab);
         true
     }
 
@@ -1367,6 +1372,37 @@ fn tab_enabled(
     }
 }
 
+/// The tab a new selection shows: a ship has no Capital Ships tab, so it
+/// shows Fighters instead, and keeps it when a fleet is selected again
+/// (A0 fleet3/02, 06: Medium Transport 1 selected over Capital Ships shows
+/// Fighters with its counters 0 and 0, and Fleet 6 then too).
+fn tab_for(selected: Option<FleetWindowEntry>, tab: FleetWindowTab) -> FleetWindowTab {
+    match selected {
+        Some(FleetWindowEntry::Ship { .. }) if tab == FleetWindowTab::CapitalShips => {
+            FleetWindowTab::Fighters
+        }
+        _ => tab,
+    }
+}
+
+/// The selected fleet's key and live ship count.
+fn selected_roster(world: &GameWorld, selected: Option<FleetWindowEntry>) -> Option<(FleetKey, usize)> {
+    let fleet = selected?.fleet();
+    let value = world.fleets.get(fleet)?;
+    Some((fleet, value.capital_ships.iter().filter(|ship| ship.alive).count()))
+}
+
+/// Whether the selected fleet's ships changed since the window last drew:
+/// A0 fleet3/03, 05, 10 show no selection after Create Fleet, a ship's
+/// Move onto a fleet and a fleet's Move onto another. hyp: the list
+/// rebuilds when its fleet's contents change and loses its selection.
+fn roster_changed(world: &GameWorld, open: &OpenFleetWindow) -> bool {
+    match (open.roster, selected_roster(world, open.selected)) {
+        (Some((before, count)), Some((now, live))) => before == now && count != live,
+        _ => false,
+    }
+}
+
 /// The tabs the strip shows: all four for a fleet; a ship's lacks Capital
 /// Ships (A0 fleet2/umgul-corvette1-selected shows three, from x 33). The
 /// strip has no disabled art for it: `b + 3` is Personnel's normal art.
@@ -1803,7 +1839,13 @@ pub fn draw_fleet_windows(
             if let Some(selected) = result.select {
                 open.selected = selected;
                 open.selected_item = None;
+                open.tab = tab_for(selected, open.tab);
             }
+            if roster_changed(world, open) {
+                open.selected = None;
+                open.selected_item = None;
+            }
+            open.roster = selected_roster(world, open.selected);
             if let Some(click) = result.last_click {
                 open.last_click = click;
             }
@@ -2129,6 +2171,20 @@ fn draw_fleet_window(
                             );
                         }
                         if let Some(class) = class {
+                            // A0 fleet3/01: a ship's entry names it where a
+                            // fleet's does (cap height at the row's y 6,
+                            // from x 12), clipped by the list ("Medium
+                            // Transpor"); the name is FUN_004f6270's.
+                            let name = world.ship_name(fleet, index).unwrap_or(&class.name);
+                            crate::theme::paint_gdi_text(
+                                &list_painter,
+                                logical_rect(item, scale, 7.0, 3.0, 84.0, 14.0),
+                                scale,
+                                10,
+                                name,
+                                egui::Color32::WHITE,
+                                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
+                            );
                             if let Some(mini) = capital_ship_mini_id(class.dat_id) {
                                 let damaged = world
                                     .fleets
@@ -2210,6 +2266,9 @@ fn draw_fleet_window(
                     response.secondary_clicked(),
                     response.interact_pointer_pos(),
                 ) {
+                    // A0 fleet3/02, 08: the right click selects the entry
+                    // it opens the menu for (Medium Transport 1, Fleet 7).
+                    result.select = Some(Some(*entry));
                     result.object_menu = Some((object.menu_object(), point));
                 }
                 // A drag out of either list posts 0x29a (FUN_006083c0).
@@ -2857,6 +2916,7 @@ pub(crate) mod tests {
             rename: None,
             last_click: None,
             moving: None,
+            roster: None,
         }
     }
 
@@ -5335,6 +5395,91 @@ pub(crate) mod tests {
         let font = crate::theme::gdi_font(10, 2.0).size;
         assert_eq!(count("Fleet ", font), 6);
         assert_eq!(count("Alliance Fleet Regiment", font), 4);
+    }
+
+    #[test]
+    fn a_right_click_on_a_left_list_entry_selects_it_and_opens_its_menu() {
+        // A0 fleet3/02: Medium Transport 1 right-clicked is framed and named.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        state.select(system, FleetWindowEntry::Fleet(fleet));
+        state.expand(system, fleet);
+        // The second row: the ship.
+        let actions = right_click(&world, &transport, &mut state, at(40.0, 104.0));
+        assert_eq!(menus(&actions).len(), 1);
+        assert_eq!(
+            state.window_mut(system).unwrap().selected,
+            Some(FleetWindowEntry::Ship { fleet, index: 0 })
+        );
+    }
+
+    #[test]
+    fn a_ship_selected_over_capital_ships_shows_fighters_and_its_fleet_keeps_them() {
+        // A0 fleet3/02, 06.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let mut state = opened(&world, system);
+        assert!(state.select(system, FleetWindowEntry::Ship { fleet, index: 0 }));
+        assert_eq!(state.window_mut(system).unwrap().tab, FleetWindowTab::Fighters);
+        assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
+        assert_eq!(state.window_mut(system).unwrap().tab, FleetWindowTab::Fighters);
+        state.show_tab(system, FleetWindowTab::Personnel);
+        assert!(state.select(system, FleetWindowEntry::Ship { fleet, index: 0 }));
+        assert_eq!(state.window_mut(system).unwrap().tab, FleetWindowTab::Personnel);
+    }
+
+    #[test]
+    fn the_selection_drops_when_its_fleet_gains_or_loses_a_ship() {
+        // A0 fleet3/03, 05, 10: no selection after Create Fleet, a ship's
+        // Move onto a fleet, or a fleet's Move onto another.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        state.select(system, FleetWindowEntry::Fleet(fleet));
+        let frame = |world: &GameWorld, state: &mut FleetWindowState| {
+            run(world, &transport, state, CockpitFaction::Alliance, hover(at(-50.0, 0.0)));
+        };
+        frame(&world, &mut state);
+        frame(&world, &mut state);
+        assert_eq!(state.window_mut(system).unwrap().selected, Some(FleetWindowEntry::Fleet(fleet)));
+        let ship = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.push(ship);
+        frame(&world, &mut state);
+        assert_eq!(state.window_mut(system).unwrap().selected, None);
+        // A new selection is kept.
+        state.select(system, FleetWindowEntry::Fleet(fleet));
+        frame(&world, &mut state);
+        frame(&world, &mut state);
+        assert_eq!(state.window_mut(system).unwrap().selected, Some(FleetWindowEntry::Fleet(fleet)));
+    }
+
+    #[test]
+    fn an_expanded_fleet_s_ships_are_named_in_the_left_list_where_the_fleet_is() {
+        // A0 fleet3/01: "Corellian Corvette" and "Medium Transpor" in the
+        // left list, set like "Fleet 1" at the row's (7, 3), clipped by it.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        assert!(world.rename_ship(fleet, 0, "Medium Transport 1"));
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        state.expand(system, fleet);
+        let texts = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        )
+        .texts;
+        // The second row: the list's (4, 29) plus 50.
+        assert!(
+            texts.iter().any(|text| text.text == "Medium Transport 1"
+                && text.set_in((11.0, 82.0, 84.0, 14.0), 10, crate::theme::GdiAlign::Left)),
+            "{texts:?}"
+        );
     }
 
     #[test]

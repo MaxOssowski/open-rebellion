@@ -602,8 +602,11 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::Reserved => producer && gates.reserved,
                 ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::Build => producer && gates.build,
+                // A0 fleet3/02: a ship's Confirmed Move is white with its
+                // Move.
                 ObjectMenuCommand::ConfirmedMove => {
                     (fleet && gates.fleet_move)
+                        || (ship && gates.ship_move)
                         || (troop && gates.troop_move)
                         || (squadron && gates.squadron_move)
                         || (character && gates.character_move)
@@ -1501,8 +1504,9 @@ mod tests {
 
     #[test]
     fn a_capital_ships_move_and_create_fleet_follow_its_fleets_move_rule() {
-        // port: its fleet's side and orbit (FUN_004f9860); Confirmed Move
-        // stays disabled.
+        // port: its fleet's side and orbit (FUN_004f9860). A0 fleet3/02:
+        // Medium Transport 1's Confirmed Move is white with its Move (it was
+        // grey here before that capture).
         let ship = Some(MenuObject::Ship {
             fleet: FleetKey::default(),
             index: 1,
@@ -1514,7 +1518,7 @@ mod tests {
         };
         assert_eq!(
             enabled(&object_menu_rows(ship, gates)),
-            ["Move", "Create Fleet", "Encyclopedia", "Status"]
+            ["Move", "Confirmed Move", "Create Fleet", "Encyclopedia", "Status"]
         );
         assert_eq!(
             enabled(&object_menu_rows(ship, OrderGates::default())),

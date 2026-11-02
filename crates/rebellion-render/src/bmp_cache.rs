@@ -2139,6 +2139,10 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 10_664
                 | 10_685..=10_688
                 | 10_750..=10_753
+                // The move confirmation's checkmark and X (FUN_0044f180's
+                // controls 0x14, 0x15): A0 fleet3/11 shows the panel behind
+                // their blue corners.
+                | 10_926..=10_930
         )
 }
 
@@ -2698,6 +2702,16 @@ pub(crate) mod tests {
                 "{resource_id}"
             );
         }
+    }
+
+    #[test]
+    fn the_move_confirmations_buttons_are_keyed_on_their_first_pixel() {
+        // A0 fleet3/11: the panel shows through the checkmark's and the X's
+        // blue corners (FUN_0044f180, controls 0x14 and 0x15).
+        for id in 10_926..=10_930 {
+            assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+        }
+        assert!(!uses_first_pixel_key(DllSource::Strategy, 10_931));
     }
 
     #[test]

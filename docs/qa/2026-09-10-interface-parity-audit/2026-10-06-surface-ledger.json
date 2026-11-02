@@ -5396,13 +5396,14 @@
         {
           "id": "OBJ-05-C011",
           "requirement": "split",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-split-join/"
           ],
-          "note": "create-fleet case (0x270, FUN_005809c0) in the Linux browser; not compared in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "fleet-window.mjs alliance/a0-yavin replays A0 fleet3/01..03: Create Fleet on Medium Transport 1 makes a fleet of it, the source stays expanded and the selection drops; within text hinting and the new fleet's number (1061 px).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C012",
@@ -5410,21 +5411,23 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-fleet-window-double-click/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-split-join/"
           ],
-          "note": "join-fleet case (FUN_004ffc90, FUN_004fe630) in the Linux browser; not compared in A0.",
+          "note": "A0 fleet3/07..10: a fleet's Move onto another merges it (the port does, alliance/a0-yavin). Open: A0 lists the joined ship before the fleet's own and a new fleet after the older; the port appends ships and sorts fleets by slotmap key, so steps 06..10 are captured but not asserted.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-05-C013",
           "requirement": "transfer",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-fleet-window-a0-split-join/"
           ],
-          "note": "join-ship drag (0x201, FUN_004feca0) in the Linux browser; not compared in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "fleet-window.mjs alliance/a0-yavin replays A0 fleet3/04, 05: Corellian Corvette 1's Move released on the new fleet joins it, the emptied Fleet 1 disbands, nothing stays selected (365 px). alliance/a0-yavin-confirm replays the ship's Confirmed Move (fleet3/11, 12).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "OBJ-05-C014",

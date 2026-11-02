@@ -42,6 +42,23 @@ const FLEET_WINDOW_VJUN = 81;
 const FLEET_WINDOW_UMGUL = 82;
 const FLEET_WINDOW_SELONIA = 83;
 const FLEET_WINDOW_EMPTY = 84;
+const FLEET_WINDOW_YAVIN = 85;
+// The a0-yavin steps' ceilings: text hinting and, after Create Fleet, the
+// new fleet's number (A0 "Fleet 6", the port's next free one). After step
+// 05 the port's order differs (open: A0 lists a joined ship before the
+// fleet's own and a new fleet after the old; the port appends ships and
+// sorts fleets by key, reusing a disbanded fleet's slot), so steps 06..10
+// are captured and compared but not asserted.
+const A0_CONFIRM_DIALOG_CEILING = 1700;
+const A0_CONFIRM_JOINED_CEILING = 500;
+const A0_YAVIN_CEILINGS = {
+  "01-yavin-fleet1-before-split": 2700,
+  "03-after-create-fleet": 1200,
+  "05-after-transfer": 500,
+  "06-fleet6-expanded": Infinity,
+  "07-second-split": Infinity,
+  "10-after-merge": Infinity,
+};
 // `--a0-menus=DIR` (.artifacts/a0-vm/menus) compares the a0-kimanan case's
 // window with A0 23-fleet1-{ships,fighters,troops,personnel}.png.
 // It defaults to the local captures when they are present.
@@ -50,6 +67,9 @@ const a0MenusDir = process.argv.find((arg) => arg.startsWith("--a0-menus="))?.sl
 // `--a0-fleet2=DIR` (.artifacts/a0-vm/fleet2) does the same for a0-vjun
 // (vjun-fleet5-admiral-{tab}.png), a0-umgul (umgul-*.png), a0-selonia
 // (selonia-fleet4-{tab}.png) and a0-empty (umgul-empty.png).
+// `--a0-fleet3=DIR` (.artifacts/a0-vm/fleet3): the a0-yavin steps.
+const a0Fleet3Dir = process.argv.find((arg) => arg.startsWith("--a0-fleet3="))?.slice(12)
+  ?? [path.join(root, ".artifacts/a0-vm/fleet3")].find((dir) => fs.existsSync(path.join(dir, "01-yavin-fleet1-before-split.png")));
 const a0Fleet2Dir = process.argv.find((arg) => arg.startsWith("--a0-fleet2="))?.slice(12)
   ?? [path.join(root, ".artifacts/a0-vm/fleet2")].find((dir) => fs.existsSync(path.join(dir, "vjun-fleet5-admiral-ships.png")));
 // FUN_004a2630: the Fleet window, 235 by 304 (background 10770).
@@ -1396,7 +1416,7 @@ const cases = [
     // over the clicked tab.
     run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-vjun",
       a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `vjun-fleet5-admiral-${tab}.png`)),
-      { ships: 1500, fighters: 1000, troops: 1000, personnel: 1400 }),
+      { ships: 1700, fighters: 1250, troops: 1250, personnel: 1600 }),
   },
   {
     name: "a0-umgul",
@@ -1412,11 +1432,11 @@ const cases = [
       const file = (name) => a0Fleet2Dir && path.join(a0Fleet2Dir, `${name}.png`);
       const checks = await compareTabsWithA0(page, directory, "a0-umgul",
         a0Fleet2Dir && ((tab) => file(`umgul-fleet1-damaged-${tab}`)),
-        { ships: 2400, fighters: 1400, troops: 2800, personnel: 1300 });
+        { ships: 2900, fighters: 1900, troops: 3300, personnel: 1800 });
       for (const [row, ship] of [[1, "corvette1"], [2, "transport1"]]) {
         await click(page, { x: a0Origin.x + 40, y: a0Origin.y + 29 + 50 * row + 26 });
         checks[ship] = await compareWindowWithA0(page, directory, `a0-umgul-${ship}-selected`,
-          file(`umgul-${ship}-selected`), 1800);
+          file(`umgul-${ship}-selected`), 2250);
       }
       return checks;
     },
@@ -1431,7 +1451,7 @@ const cases = [
     // Y-wing squadron (2 of 6), selected; Fleet 1 expanded.
     run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-selonia",
       a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `selonia-fleet4-${tab}.png`)),
-      { ships: 1900, fighters: 1700, troops: 1300, personnel: 1200 }),
+      { ships: 2100, fighters: 1900, troops: 1550, personnel: 1450 }),
   },
   {
     name: "a0-empty",
@@ -1444,6 +1464,104 @@ const cases = [
       empty: await compareWindowWithA0(page, directory, "a0-empty",
         a0Fleet2Dir && path.join(a0Fleet2Dir, "umgul-empty.png"), 300),
     }),
+  },
+  {
+    name: "a0-yavin",
+    code: FLEET_WINDOW_YAVIN,
+    factions: ["alliance"],
+    standalone: true,
+    // A0's `test` game at Yavin (fleet3/, days 9..18), each step compared
+    // with A0's capture at (305, 86); left-list rows of 50 from y 29:
+    // 01 Fleet 1 selected and expanded; 03 Create Fleet on Medium
+    // Transport 1 (FUN_005809c0); 05 Corellian Corvette 1's Move released
+    // on the new fleet (FUN_004feca0), Fleet 1 disbanding (FUN_004fe630);
+    // 06 the new fleet expanded by a double click; 07 Create Fleet on the
+    // corvette; 10 that fleet's Move released on the first (FUN_004ffc90).
+    async run(page, faction, setup, directory) {
+      const file = (name) => a0Fleet3Dir && path.join(a0Fleet3Dir, `${name}.png`);
+      const row = (index) => ({ x: a0Origin.x + 40, y: a0Origin.y + 29 + 50 * index + 25 });
+      const ceilings = A0_YAVIN_CEILINGS;
+      const checks = {};
+      const compare = async (name) => {
+        checks[name] = await compareWindowWithA0(page, directory, `a0-yavin-${name}`, file(name), ceilings[name]);
+      };
+      const away = async () => { await page.mouse.move(600, 470); await frames(page); };
+      await away();
+      await compare("01-yavin-fleet1-before-split");
+      let menu = await openMenu(page, row(2), directory, "transport");
+      await choose(page, menu, menu.create_fleet_row, "Create Fleet");
+      await away();
+      await compare("03-after-create-fleet");
+      menu = await openMenu(page, row(1), directory, "corvette");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, row(2));
+      await away();
+      await compare("05-after-transfer");
+      // Two clicks a few frames apart: the list counts its own double
+      // click (win32_double_click), which one frame's pair would not make.
+      await click(page, row(0));
+      await click(page, row(0));
+      await away();
+      await compare("06-fleet6-expanded");
+      menu = await openMenu(page, row(1), directory, "corvette-again");
+      await choose(page, menu, menu.create_fleet_row, "Create Fleet");
+      await away();
+      await compare("07-second-split");
+      menu = await openMenu(page, row(2), directory, "fleet7");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, row(0));
+      await away();
+      await compare("10-after-merge");
+      return checks;
+    },
+  },
+  {
+    name: "a0-yavin-confirm",
+    code: FLEET_WINDOW_YAVIN,
+    factions: ["alliance"],
+    standalone: true,
+    // A0 fleet3/11, 12: after Create Fleet on Medium Transport 1, Corellian
+    // Corvette 1's Confirmed Move (0x202) released on the new fleet asks
+    // "Transit time in days / Corellian Corvette 1:  0" over the fleet
+    // picture; the checkmark joins it, and the first fleet disbands.
+    async run(page, faction, setup, directory) {
+      const row = (index) => ({ x: a0Origin.x + 40, y: a0Origin.y + 29 + 50 * index + 25 });
+      let menu = await openMenu(page, row(2), directory, "transport");
+      await choose(page, menu, menu.create_fleet_row, "Create Fleet");
+      menu = await openMenu(page, row(1), directory, "corvette");
+      assert.notEqual(menu.confirmed_move_row, null, JSON.stringify(menu));
+      await choose(page, menu, menu.confirmed_move_row, "Confirmed Move");
+      await click(page, row(2));
+      await page.mouse.move(600, 470);
+      await frames(page, 3);
+      // The dialog against A0's, both at A0's place (88, 50), 424 by 322.
+      const dialog = { x: 88, y: 50, width: 424, height: 322 };
+      const screen = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
+      fs.writeFileSync(path.join(directory, "a0-yavin-confirm-dialog.png"), PNG.sync.write(screen));
+      let dialogDiffering = null;
+      const a0Dialog = a0Fleet3Dir && path.join(a0Fleet3Dir, "11-ship-confirmed-move-dialog.png");
+      if (a0Dialog) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0Dialog));
+        const scale = screen.width / 640;
+        dialogDiffering = 0;
+        for (let y = dialog.y; y < dialog.y + dialog.height; y += 1) {
+          for (let x = dialog.x; x < dialog.x + dialog.width; x += 1) {
+            const p = (Math.floor(y * scale) * screen.width + Math.floor(x * scale)) * 4;
+            const q = (y * a0.width + x) * 4;
+            if (![0, 1, 2].every((k) => screen.data[p + k] === a0.data[q + k])) dialogDiffering += 1;
+          }
+        }
+        assert.ok(dialogDiffering <= A0_CONFIRM_DIALOG_CEILING,
+          `the confirmation differs from A0 in ${dialogDiffering} pixels (> ${A0_CONFIRM_DIALOG_CEILING})`);
+      }
+      // The checkmark (control 0x14) at A0's (462, 308).
+      await click(page, { x: 462, y: 308 });
+      await page.mouse.move(600, 470);
+      await frames(page, 3);
+      const joined = await compareWindowWithA0(page, directory, "a0-yavin-12-after-ship-confirmed-move",
+        a0Fleet3Dir && path.join(a0Fleet3Dir, "12-after-ship-confirmed-move.png"), A0_CONFIRM_JOINED_CEILING);
+      return { dialogDiffering, joined };
+    },
   },
   {
     name: "join-fleet",

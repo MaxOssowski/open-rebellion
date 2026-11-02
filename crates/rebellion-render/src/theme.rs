@@ -390,7 +390,12 @@ pub fn gdi_word_break(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> 
     let mut lines = Vec::new();
     for paragraph in text.split('\n') {
         let mut line = String::new();
-        for word in paragraph.split(' ').filter(|word| !word.is_empty()) {
+        // A run of spaces inside a line stays (A0 fleet3/11 "Corellian
+        // Corvette 1:  0"); one that would start a line is dropped.
+        for word in paragraph.split(' ') {
+            if line.is_empty() && word.is_empty() {
+                continue;
+            }
             let joined = if line.is_empty() {
                 word.to_owned()
             } else {
@@ -399,10 +404,11 @@ pub fn gdi_word_break(text: &str, width: f32, measure: impl Fn(&str) -> f32) -> 
             if line.is_empty() || measure(&joined) <= width {
                 line = joined;
             } else {
-                lines.push(std::mem::replace(&mut line, word.to_owned()));
+                let full = std::mem::replace(&mut line, word.to_owned());
+                lines.push(full.trim_end().to_owned());
             }
         }
-        lines.push(line);
+        lines.push(line.trim_end().to_owned());
     }
     lines
 }
@@ -826,6 +832,15 @@ mod tests {
         assert_eq!(centred[0].1.x, 10.0 + spare * 2.0);
         // DT_VCENTER: (16 - 14) / 2 = 1 down, then tmAscent.
         assert!((centred[0].2 - (20.0 + 12.0 * 2.0)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn word_break_keeps_a_run_of_spaces_inside_a_line_but_not_at_its_ends() {
+        // A0 fleet3/11: "Corellian Corvette 1:  0" keeps both spaces.
+        let width = |text: &str| text.len() as f32;
+        assert_eq!(gdi_word_break("a:  0", 100.0, width), ["a:  0"]);
+        assert_eq!(gdi_word_break("ab  cd", 3.0, width), ["ab", "cd"]);
+        assert_eq!(gdi_word_break("Attached: ", 100.0, width), ["Attached:"]);
     }
 
     #[test]

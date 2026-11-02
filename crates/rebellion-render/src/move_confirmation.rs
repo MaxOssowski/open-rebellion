@@ -89,6 +89,9 @@ pub struct MoveConfirmation {
     /// A squadron's Confirmed Move (`0x202`, `FUN_00557ce0`'s list): one
     /// squadron of each class from its place.
     pub squadrons: Vec<(FighterKey, SquadronPlace)>,
+    /// A capital ship's Confirmed Move (`0x202`, A0 fleet3/11): the ships
+    /// of one fleet, by index, and that fleet's roster when ordered.
+    pub ships: Option<ShipTeam>,
     /// An Abort's missions.
     pub missions: Vec<u64>,
     /// A Scrap's units.
@@ -102,6 +105,15 @@ pub struct MoveConfirmation {
     pub join: Option<FleetKey>,
     /// One `(name, days)` line per moving object (`FUN_0053c2e0`).
     pub lines: Vec<(String, u32)>,
+}
+
+/// Some of one fleet's capital ships, by index, with the fleet's roster
+/// when they were ordered (`fleet_join::roster`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShipTeam {
+    pub fleet: FleetKey,
+    pub ships: Vec<usize>,
+    pub roster: u64,
 }
 
 impl MoveConfirmation {
@@ -175,6 +187,7 @@ pub enum MoveConfirmationAction {
         special_forces: Vec<SpecialForceKey>,
         troops: Vec<TroopKey>,
         squadrons: Vec<(FighterKey, SquadronPlace)>,
+        ships: Option<ShipTeam>,
         destination: SystemKey,
         join: Option<FleetKey>,
     },
@@ -243,6 +256,7 @@ impl MoveConfirmationState {
                 special_forces: window.special_forces,
                 troops: window.troops,
                 squadrons: window.squadrons,
+                ships: window.ships,
                 destination: window.destination,
                 join: window.join,
             }
@@ -295,19 +309,20 @@ pub fn draw_move_confirmation(
             let picture_rect = egui::Rect::from_min_max(corner, frame.max);
             paint(&painter, ctx, cache, picture, picture_rect, scale);
 
-            // hyp: the field's font 4 (FUN_00420550) is not mapped; the
-            // mission dialog's text size stands in. Its colour +0xb4 is
-            // white (0x2ffffff). port: the field does not scroll.
+            // The field's font 4 (FUN_00420550), lines 16 apart (A0
+            // fleet3/11: "Transit time in days" over "Corellian Corvette
+            // 1:  0"); its colour +0xb4 is white (0x2ffffff). port: the
+            // field does not scroll.
             let text_box = at(TEXT_BOX);
-            let galley = painter.layout(
-                text,
-                egui::FontId::proportional((11.0 * scale).max(7.0)),
+            crate::theme::paint_gdi_text_block(
+                &painter.with_clip_rect(text_box),
+                text_box,
+                scale,
+                4,
+                &text,
                 egui::Color32::WHITE,
-                text_box.width(),
+                crate::theme::GdiAlign::Left,
             );
-            painter
-                .with_clip_rect(text_box)
-                .galley(text_box.min, galley, egui::Color32::WHITE);
 
             // FUN_0044f180: Yes (0x14) TEXTSTRA 0x1300, No (0x15) 0x1301.
             crate::win_tooltip::window_tool(ui, at(CONFIRM_RECT), "confirm", 0x1300, true);
@@ -359,6 +374,7 @@ mod tests {
             scrap: Vec::new(),
             troops: Vec::new(),
             squadrons: Vec::new(),
+            ships: None,
             blockaded: false,
             destination: SystemKey::default(),
             join: None,
@@ -445,6 +461,7 @@ mod tests {
             scrap: vec![target],
             troops: Vec::new(),
             squadrons: Vec::new(),
+            ships: None,
             lines: vec![("Stormtrooper Regiment".into(), 0)],
             ..confirmation(MissionFaction::Empire)
         };
@@ -617,6 +634,7 @@ mod tests {
                 special_forces: Vec::new(),
                 troops: Vec::new(),
                 squadrons: Vec::new(),
+            ships: None,
                 destination: SystemKey::default(),
                 join: None,
             })
@@ -662,6 +680,7 @@ mod tests {
             fleets: Vec::new(),
             troops: vec![troop],
             squadrons: Vec::new(),
+            ships: None,
             ..confirmation(MissionFaction::Empire)
         });
 
@@ -695,6 +714,33 @@ mod tests {
             action,
             Some(MoveConfirmationAction::Confirm { squadrons, fleets, .. })
                 if squadrons == [squadron] && fleets.is_empty()
+        ));
+    }
+
+    #[test]
+    fn the_checkmark_carries_a_ships_confirmed_move_and_the_fleet_it_joins() {
+        // A0 fleet3/11, 12: Corellian Corvette 1's Confirmed Move onto a
+        // fleet asks, and the checkmark joins it to that fleet.
+        let team = ShipTeam {
+            fleet: FleetKey::default(),
+            ships: vec![1],
+            roster: 7,
+        };
+        let target = FleetKey::default();
+        let mut state = MoveConfirmationState::default();
+        state.open(MoveConfirmation {
+            fleets: Vec::new(),
+            ships: Some(team.clone()),
+            join: Some(target),
+            ..confirmation(MissionFaction::Alliance)
+        });
+
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+
+        assert!(matches!(
+            action,
+            Some(MoveConfirmationAction::Confirm { ships: Some(ships), join: Some(join), fleets, .. })
+                if ships == team && join == target && fleets.is_empty()
         ));
     }
 

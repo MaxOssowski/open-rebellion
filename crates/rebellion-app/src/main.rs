@@ -95,7 +95,7 @@ use rebellion_render::mission_dialog::{
 };
 use rebellion_render::move_confirmation::{
     draw_move_confirmation, ConfirmedOrder, MoveConfirmation, MoveConfirmationAction,
-    MoveConfirmationState,
+    MoveConfirmationState, ShipTeam,
 };
 use rebellion_render::object_menu::{
     draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
@@ -6323,6 +6323,7 @@ async fn main() {
                                             scrap: Vec::new(),
                                             troops: Vec::new(),
                                             squadrons: Vec::new(),
+        ships: None,
                                             blockaded: false,
                                             destination: SystemKey::default(),
                                             join: None,
@@ -6383,6 +6384,7 @@ async fn main() {
                                         scrap: team,
                                         troops: Vec::new(),
                                         squadrons: Vec::new(),
+        ships: None,
                                         blockaded: false,
                                         destination: SystemKey::default(),
                                         join: None,
@@ -6422,6 +6424,7 @@ async fn main() {
                                     scrap: Vec::new(),
                                     troops: Vec::new(),
                                     squadrons: Vec::new(),
+        ships: None,
                                     blockaded: false,
                                     destination: SystemKey::default(),
                                     join: None,
@@ -6522,7 +6525,7 @@ async fn main() {
                             }));
                         }
                         Some((
-                            ObjectMenuCommand::Move,
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
                             Some(MenuObject::Ship {
                                 fleet,
                                 index,
@@ -6533,6 +6536,7 @@ async fn main() {
                                 fleet,
                                 ships: vec![index],
                                 roster,
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
                         // FUN_00580b00: Create Fleet runs at once, against the
@@ -7085,10 +7089,36 @@ async fn main() {
                         special_forces,
                         troops,
                         squadrons,
+                        ships,
                         destination,
                         join,
                     }) = answer
                     {
+                        // FUN_0041ce20(order, 1): a ship's 0x202 is its Move
+                        // again: onto the fleet, or out to the system.
+                        if let Some(ShipTeam {
+                            fleet,
+                            ships,
+                            roster,
+                        }) = ships
+                        {
+                            panel_actions.push(match join {
+                                Some(target) => PanelAction::JoinFleet {
+                                    mover: FleetMover::Ships {
+                                        fleet,
+                                        ships,
+                                        roster,
+                                    },
+                                    target,
+                                },
+                                None => PanelAction::MoveShips {
+                                    fleet,
+                                    ships,
+                                    roster,
+                                    system: destination,
+                                },
+                            });
+                        }
                         // FUN_0041ce20(order, 1): a squadron's 0x202 is its
                         // Move again, to the fleet or the planet.
                         panel_actions.extend(squadrons.into_iter().map(|(class, from)| {
@@ -7234,6 +7264,27 @@ async fn main() {
                                             fleet,
                                             ships,
                                             roster,
+                                            confirmed: true,
+                                        },
+                                    target,
+                                }) => confirm_ship_move(
+                                    &world,
+                                    player_faction,
+                                    ShipTeam {
+                                        fleet,
+                                        ships,
+                                        roster,
+                                    },
+                                    target,
+                                    &mut move_confirmation_state,
+                                ),
+                                Some(TargetingEnd::Target {
+                                    order:
+                                        TargetOrder::ShipMove {
+                                            fleet,
+                                            ships,
+                                            roster,
+                                            confirmed: false,
                                         },
                                     target: ReleaseTarget::Fleet { fleet: target, .. },
                                 }) => panel_actions.push(PanelAction::JoinFleet {
@@ -7250,6 +7301,7 @@ async fn main() {
                                             fleet,
                                             ships,
                                             roster,
+                                            confirmed: false,
                                         },
                                     target: ReleaseTarget::System(system),
                                 }) => panel_actions.push(PanelAction::MoveShips {
@@ -8696,6 +8748,7 @@ fn issue_fleet_move(
         scrap: Vec::new(),
         troops: Vec::new(),
         squadrons: Vec::new(),
+        ships: None,
         blockaded: false,
         destination,
         join,
@@ -8754,10 +8807,66 @@ fn confirm_character_move(
         scrap: Vec::new(),
         troops: Vec::new(),
         squadrons: Vec::new(),
+        ships: None,
         blockaded,
         destination: system,
         join: fleet,
         lines: vec![(c.name.clone(), days)],
+    });
+}
+
+/// A capital ship's Confirmed Move (`0x202`): the confirmation lists each
+/// ship by its name with its days (A0 fleet3/11: "Corellian Corvette 1:  0"
+/// onto a fleet at its own system) under the fleet picture; the checkmark
+/// moves them as Move does. port: the days are the trip's at the ships'
+/// fleet's speed, 0 within the system.
+fn confirm_ship_move(
+    world: &GameWorld,
+    faction: MissionFaction,
+    team: ShipTeam,
+    target: ReleaseTarget,
+    move_confirmation_state: &mut MoveConfirmationState,
+) {
+    let Some(value) = world.fleets.get(team.fleet) else {
+        return;
+    };
+    let destination = target.system();
+    let days = if value.location == destination {
+        0
+    } else {
+        rebellion_core::movement::fleet_transit_ticks(value, world, value.location, destination)
+            .map_or(0, |ticks| u32::try_from(ticks).unwrap_or(u32::MAX))
+    };
+    let lines = team
+        .ships
+        .iter()
+        .filter_map(|&index| {
+            let ship = value.capital_ships.get(index)?;
+            let class = world.capital_ship_classes.get(ship.class)?;
+            let name = world.ship_name(team.fleet, index).unwrap_or(&class.name);
+            Some((name.to_owned(), days))
+        })
+        .collect();
+    let join = match target {
+        ReleaseTarget::Fleet { fleet, .. } => Some(fleet),
+        ReleaseTarget::System(_) => None,
+    };
+    macroquad::logging::info!("[interface] ship_move confirm days={days}");
+    move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
+        faction,
+        fleets: Vec::new(),
+        characters: Vec::new(),
+        special_forces: Vec::new(),
+        troops: Vec::new(),
+        squadrons: Vec::new(),
+        ships: Some(team),
+        missions: Vec::new(),
+        scrap: Vec::new(),
+        blockaded: false,
+        destination,
+        join,
+        lines,
     });
 }
 
@@ -8813,6 +8922,7 @@ fn confirm_troop_move(
         special_forces: Vec::new(),
         troops: vec![troop],
         squadrons: Vec::new(),
+        ships: None,
         missions: Vec::new(),
         scrap: Vec::new(),
         blockaded,
@@ -8874,6 +8984,7 @@ fn confirm_squadron_move(
         special_forces: Vec::new(),
         troops: Vec::new(),
         squadrons: vec![(class, from)],
+        ships: None,
         missions: Vec::new(),
         scrap: Vec::new(),
         blockaded,
@@ -9147,6 +9258,7 @@ fn confirm_special_force_move(
         scrap: Vec::new(),
         troops: Vec::new(),
         squadrons: Vec::new(),
+        ships: None,
         blockaded,
         destination: system,
         join: fleet,

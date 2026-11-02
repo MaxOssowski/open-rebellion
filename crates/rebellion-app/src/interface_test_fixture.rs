@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 84;
+const SCENARIO_COUNT: u8 = 85;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -245,6 +245,12 @@ pub enum Scenario {
     /// A0 shows it after its fleets withdrew
     /// (`.artifacts/a0-vm/fleet2/umgul-empty.png`, day 766).
     FleetWindowEmpty = 83,
+    /// The Alliance's Fleet window over Yavin at the start of A0's `test`
+    /// game (`.artifacts/a0-vm/fleet3/01-yavin-fleet1-before-split.png`,
+    /// day 9): Fleet 1 with Corellian Corvette 1 and Medium Transport 1
+    /// carrying two Alliance Fleet Regiments, selected and expanded; the
+    /// window at A0's (305, 86). A0 then split, transferred and merged.
+    FleetWindowYavin = 84,
 }
 
 impl Scenario {
@@ -334,6 +340,7 @@ impl Scenario {
             81 => Self::FleetWindowUmgul,
             82 => Self::FleetWindowSelonia,
             83 => Self::FleetWindowEmpty,
+            84 => Self::FleetWindowYavin,
             _ => return None,
         })
     }
@@ -377,6 +384,7 @@ impl Scenario {
             || self == Self::Quadrants
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
+            || self == Self::FleetWindowYavin
     }
 
     /// The scenarios whose Mission targets an object in a window.
@@ -696,6 +704,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowSelonia {
         place_selonia(request, world, cockpit, movement, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowYavin {
+        place_yavin(request, world, cockpit, movement, troop_transport, fleets);
     }
     if request.scenario == Scenario::FleetWindowEmpty {
         if let Some(umgul) = clear_for_a0(world, "Umgul") {
@@ -1360,6 +1371,67 @@ fn place_selonia(
     fleets.open(world, selonia, (305, 86), request.faction, layout);
     fleets.select(selonia, FleetWindowEntry::Fleet(fourth));
     fleets.expand(selonia, first);
+}
+
+/// The `FleetWindowYavin` scenario: A0's Fleet 1 at Yavin on day 9, and
+/// its Fleet window open where A0's lay.
+fn place_yavin(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleets: &mut FleetWindowState,
+) {
+    let class = |world: &GameWorld, name: &str| {
+        world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, value)| value.is_alliance && value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(corvette), Some(transport)) = (
+        class(world, "Corellian Corvette"),
+        class(world, "Medium Transport"),
+    ) else {
+        return;
+    };
+    let Some(yavin) = clear_for_a0(world, "Yavin") else {
+        return;
+    };
+    let ship = |world: &GameWorld, class| {
+        ShipInstance::new(class, world.capital_ship_classes[class].hull as i32, true)
+    };
+    let first = world.insert_fleet(rebellion_core::world::Fleet {
+        location: yavin,
+        capital_ships: vec![ship(world, corvette), ship(world, transport)],
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: true,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(first, "Fleet 1");
+    world.rename_ship(first, 0, "Corellian Corvette 1");
+    world.rename_ship(first, 1, "Medium Transport 1");
+    world.number_ships();
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let regiments: Vec<_> = (0..2)
+        .map(|_| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0001),
+                is_alliance: true,
+                regiment_strength: 100,
+            })
+        })
+        .collect();
+    world.systems[yavin].ground_units = regiments.clone();
+    let _ = troop_transport.embark(world, first, &regiments);
+    world.systems[yavin].ground_units.clear();
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, yavin, (305, 86), request.faction, layout);
+    fleets.select(yavin, FleetWindowEntry::Fleet(first));
+    fleets.expand(yavin, first);
 }
 
 /// Whether the scenario runs the clock Fast from the start.
@@ -2553,11 +2625,11 @@ fn object_menu_report<'a>(
     };
     let planet = match prison_cell.or_else(|| sectors.planet_screen_rect(world, layout, key)) {
         Some(rect) => rect.center(),
-        // The Build Selection and mission-icon gates target nothing; their
-        // menus report anyway.
+        // The Build Selection, mission-icon and A0 Yavin gates target
+        // nothing; their menus report anyway.
         None if matches!(
             request.scenario,
-            Scenario::BuildSelection | Scenario::Quadrants
+            Scenario::BuildSelection | Scenario::Quadrants | Scenario::FleetWindowYavin
         ) =>
         {
             egui_macroquad::egui::Pos2::ZERO
@@ -5551,6 +5623,39 @@ mod tests {
     }
 
     #[test]
+    fn the_a0_yavin_scenario_selects_fleet_1_with_two_ships_and_two_regiments() {
+        let request = request(Scenario::FleetWindowYavin, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Yavin".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            for name in ["Corellian Corvette", "Medium Transport"] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_alliance: true,
+                        hull: 100,
+                        hyperdrive: 100,
+                        troop_capacity: 2,
+                        ..Default::default()
+                    });
+            }
+        });
+        let world = &applied.world;
+        let yavin = world.systems.keys().next().unwrap();
+        let [first] = world.systems[yavin].fleets[..] else {
+            panic!("one fleet at Yavin: {:?}", world.systems[yavin].fleets);
+        };
+        assert_eq!(world.fleet_name(first), Some("Fleet 1"));
+        assert_eq!(world.ship_name(first, 1), Some("Medium Transport 1"));
+        assert_eq!(applied.transport.cargo(first).len(), 2);
+        assert!(world.systems[yavin].ground_units.is_empty());
+        assert!(applied.fleets.is_expanded(yavin, first));
+    }
+
+    #[test]
     fn the_a0_empty_scenario_opens_umgul_with_no_fleet_there() {
         let request = request(Scenario::FleetWindowEmpty, CockpitFaction::Alliance);
         let applied = apply_to_loading_world_with(request, |world| {
@@ -7430,7 +7535,8 @@ mod tests {
                 Scenario::ProductionDelivery,
                 Scenario::UprisingIncident,
                 Scenario::BlockadeArrival,
-                Scenario::SupportFlip
+                Scenario::SupportFlip,
+                Scenario::FleetWindowYavin
             ]
         );
     }
