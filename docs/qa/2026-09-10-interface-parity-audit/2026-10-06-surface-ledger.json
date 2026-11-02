@@ -5836,9 +5836,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
           ],
-          "note": "Confirm queues units in build-selection.mjs and agent-build.mjs (Linux); no A0 band with a queue compared.",
+          "note": "Confirm queues units in build-selection.mjs and agent-build.mjs (Linux); no A0 band with a queue compared. 2026-11-02: A0 build-selection2/07, 13 show a populated band (name, mini, 'Training: 1' / '3'; the maintenance monitor charged at the order); not yet compared with the port's confirmed-screen.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5903,13 +5904,14 @@
         {
           "id": "OBJ-07-C014",
           "requirement": "cancel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
           ],
-          "note": "A band's Stop (0x213) empties it in build-selection.mjs (Linux); not compared in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A band's Stop asks first (FUN_0049a350 case 0x213: 0x7053, 0x7055 lines, picture 1038/1039), as A0 build-selection2/09..15 shows; the checkmark empties the band, the X keeps it. build-selection.mjs (Linux, both sides): picture exact, the Empire's template lines against A0 within the accepted text-width deviation, the band empties.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-07-C015",
@@ -6116,14 +6118,15 @@
         {
           "id": "OBJ-08-C008",
           "requirement": "unavailable",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-over-maintenance/"
           ],
-          "note": "FUN_00439160 disables Confirm and times show 'n/a' (0x3816) when unbuildable; port keeps the disabled Confirm in its rest art (port note). Unit tests only; No A0 capture of this state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (manufacturing/11, the Empire at -402): FUN_0052e970 refuses an order whose maintenance exceeds the side's unallocated maintenance; FUN_00439160 shows 'n/a' in all four values and Confirm draws its disabled art 11620 (FUN_00438620). build-selection.mjs (fixture 88, both sides, Linux): Confirm 0 pixels from A0, the four 'n/a' within 2 pixels, a click builds nothing. The Alliance's refusal at Vjun (manufacturing/22) is another, untraced check.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-08-C009",
@@ -6133,9 +6136,10 @@
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
           ],
-          "note": "Quantity 1..255 with up/down (10610..10613, FUN_00438c30/c60) and keypad +/- is ported; no browser case changes the quantity and no A0 capture shows it.",
+          "note": "Quantity 1..255 with up/down (10610..10613, FUN_00438c30/c60) and keypad +/- is ported; no browser case changes the quantity and no A0 capture shows it. 2026-11-02: A0 build-selection2/02..04 show the arrows stepping the number (3: 18, 9, '72 Days'; 2: 12, 6, '48 Days'); no browser case presses them yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6160,9 +6164,10 @@
           "evidence": [
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
           ],
-          "note": "Confirm (10594, cmd 101, FUN_00438980) queues the order in both Linux gates; A0 shows the agent's order confirmed only by placement. The chrome gate passes (0 pixels) since 2026-10-30, with keyed buttons and the original fonts matched to A0.",
+          "note": "Confirm (10594, cmd 101, FUN_00438980) queues the order in both Linux gates; A0 shows the agent's order confirmed only by placement. The chrome gate passes (0 pixels) since 2026-10-30, with keyed buttons and the original fonts matched to A0. 2026-11-02: A0 build-selection2/07 shows Confirm queuing the order on the band.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6173,22 +6178,24 @@
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
           ],
-          "note": "Cancel/Close (10596, cmd 102) and Escape discard the selection (FUN_00438800/FUN_00438b60); unit-tested, not driven by a browser case nor captured in A0 (build-orders 17-cancel.png is the agent cursor's cancel, not this dialog).",
+          "note": "Cancel/Close (10596, cmd 102) and Escape discard the selection (FUN_00438800/FUN_00438b60); unit-tested, not driven by a browser case nor captured in A0 (build-orders 17-cancel.png is the agent cursor's cancel, not this dialog). 2026-11-02: A0 build-selection2/05 shows Cancel closing the window with the band unchanged and 06 the number back at 1; no browser case presses Cancel yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-08-C013",
           "requirement": "insufficient resources",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-over-maintenance/"
           ],
-          "note": "Cost fields (FUN_00538220, cap 9999) are shown, but the port shows maintenance without charging it and does not draw down refined material (port notes), so the insufficient-resources state is not reproduced. No A0 capture of this state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The insufficient-resources state at Build Selection is the side's maintenance (FUN_0052e970; refined material is drawn while building, not checked here). Compared with A0 manufacturing/11 in build-selection.mjs (fixture 88, Linux): 'n/a' and the grey Confirm 11620 as A0.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },

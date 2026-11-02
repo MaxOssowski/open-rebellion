@@ -1,0 +1,4 @@
+95b287445d9a79741762447fd85cea17a6c6434b80681b23ba563f0999429856  manufacturing/11-build-selection.png
+2305fa87dbbeab143bc89b32ca8cda50c304560d1ae28a2eb249c0be92b8e1b6  manufacturing/12-build-selection-facilities.png
+762f265400836eff3a9702de3af4a0575dd04ac8cb6217e2b194c197346f9183  manufacturing/20-alliance-overview.png
+a9c49a917349ad5c29fe2f20459135c9594bf03be74af8f831de9e8020a8e65d  manufacturing/22-alliance-build-selection.png
