@@ -313,13 +313,19 @@ function facilityStatusText(port, rect, ref) {
     return box;
   };
   const checks = {};
-  for (const [name, region] of [["title", [15, 18, 226, 36]], ["location", [16, 47, 118, 61]],
-    ["status", [16, 61, 118, 75]], ["status-value", [119, 61, 226, 75]], ["maintenance", [16, 75, 118, 89]],
-    ["processing", [16, 89, 118, 103]], ["rate", [16, 103, 118, 117]], ["bombardment", [16, 117, 118, 131]]]) {
+  const regions = ref.labels
+    ? [["title", [15, 18, 226, 36]],
+      ...Array.from({ length: ref.labels }, (_, k) => [`label-${k}`, [16, 47 + 14 * k, 118, 61 + 14 * k]]),
+      ...Object.entries(ref.values ?? {}).map(([name, k]) => [name, [119, 47 + 14 * k, 210, 61 + 14 * k]])]
+    : [["title", [15, 18, 226, 36]], ["location", [16, 47, 118, 61]],
+      ["status", [16, 61, 118, 75]], ["status-value", [119, 61, 226, 75]], ["maintenance", [16, 75, 118, 89]],
+      ["processing", [16, 89, 118, 103]], ["rate", [16, 103, 118, 117]], ["bombardment", [16, 117, 118, 131]]];
+  for (const [name, region] of regions) {
     const a = ink(a0, ref.x, ref.y, region);
     const p = ink(port, rect.x, rect.y, region);
     checks[name] = { a0: a, port: p };
-    assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 1) && Math.abs(a[2] - p[2]) <= 3,
+    assert.ok(a && p && Math.abs(a[0] - p[0]) <= (ref.leftSlack ?? 1) && [1, 3].every((k) => Math.abs(a[k] - p[k]) <= 1)
+      && Math.abs(a[2] - p[2]) <= 3,
       `${name}: ${JSON.stringify(checks[name])}`);
   }
   return checks;
@@ -349,6 +355,12 @@ const cases = [
     name: "capital-ship",
     code: FLEET_LOAD,
     family: "Ship",
+    // A0 status/03-ship (Corellian Corvette 1, undamaged): the first page's
+    // fourteen labels, Class to Hull Value, and Ship Damaged's "No".
+    // The fixture's ship is another class, damaged, so only the labels are
+    // compared; Liberation Sans's "T" stands up to 3 pixels right of GDI
+    // Arial's (the accepted text deviation).
+    a0: { file: "03-ship.png", x: 170, y: 81, labels: 14, leftSlack: 3 },
     target: async (page) => {
       const opened = await openFleetWindow(page);
       await click(page, point(opened.fleet_entry));

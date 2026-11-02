@@ -5547,7 +5547,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
           ],
-          "note": "Capital Ship Status (FUN_00446fd0) row 1, title and name match A0 03-ship in placement and the Ship case passes in the Linux browser; the A0 ship's condition is not recorded, so the healthy state is not confirmed.",
+          "note": "Capital Ship Status (FUN_00446fd0) row 1, title and name match A0 03-ship in placement and the Ship case passes in the Linux browser; the A0 ship's condition is not recorded, so the healthy state is not confirmed. 2026-11-02: A0 status/03-ship's corvette is undamaged ('Ship Damaged: No', hull 500:500); the browser case's ship is damaged, so the healthy values are not compared yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5581,13 +5581,13 @@
         {
           "id": "OBJ-06-C005",
           "requirement": "hull",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
           ],
-          "note": "The rows up to Hull Value match A0 03-ship by label and format (code-level comparison); the browser gate masks the list, so the hull row is not checked there.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (status/03-ship: Class .. Hull Value '500:500'): status-window.mjs 'capital-ship' (Linux, Empire) measures the title and the fourteen labels through Hull Value against A0, each within 1 pixel (left edges within 3: Liberation Sans's 'T'); the port's damaged ship shows its hull as 'N:M' as A0 does.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-06-C006",

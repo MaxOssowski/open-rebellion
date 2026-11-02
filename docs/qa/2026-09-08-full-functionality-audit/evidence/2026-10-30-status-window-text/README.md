@@ -124,3 +124,13 @@ Run `status-window-2026-11-02T11-37-11-853Z-4173079` (Linux Chromium 155, test W
 - Every label's box is 1 pixel right of and below A0's, with the same bottom.
 - "Active" is at (121, 64..150) in A0 and (121, 65..150) in the port.
 - The Location value is not compared: A0's facility stands at Coruscant, the fixture's at its own system.
+
+## 2026-11-02: a capital ship's first page against A0
+
+`status-window.mjs` `capital-ship` (Empire) now measures the first page's title and fourteen labels, Class to Hull Value, against A0 `status/03-ship` (Corellian Corvette 1, window at (170, 81)).
+
+- Every label is within 1 pixel of A0's top and bottom and within 3 of its right edge.
+- Every left edge is within 3 pixels. The rows starting with "T" (Trooper Regiments) stand 3 pixels right of GDI's, Liberation Sans's side bearing: the accepted text deviation.
+- The values are not compared. The fixture's ship is another class (a damaged Victory Destroyer, hull 100:1800), while A0's corvette was undamaged ("Ship Damaged: No", 500:500).
+
+Run `status-window-2026-11-02T11-40-57-722Z-4179358` (Linux Chromium 155): pass.
