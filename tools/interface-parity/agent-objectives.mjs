@@ -345,11 +345,33 @@ async function run(browser, base, faction) {
     const median = spacing[Math.floor(spacing.length / 2)];
     assert.ok(spacing.length >= 4 && median > 0.85 && median < 1.15,
       `Fast days ${JSON.stringify(spacing)} s apart, median ${median}, not 1 s`);
+    // The day readout at rest (FUN_00601b30, font entry 10, right-aligned
+    // in its rectangle): A0 speed2/05 (the Alliance's day 166) has its red
+    // digits at (125..141, 21..28). The port's day number differs.
+    let day = null;
+    if (faction.name === "alliance") {
+      await shot("day-readout");
+      const png = PNG.sync.read(await fs.readFile(path.join(directory, "day-readout.png")));
+      let box = null;
+      for (let y = 10; y < 32; y += 1) {
+        for (let x = 100; x < 162; x += 1) {
+          const i = (y * png.width + x) * 4;
+          if (png.data[i] > 150 && png.data[i + 1] < 80 && png.data[i + 2] < 80) {
+            box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+          }
+        }
+      }
+      day = { a0: [125, 21, 141, 28], port: box };
+      // The text is centred (DT_CENTER), so the ink's centre is compared:
+      // A0's 133 for "166".
+      assert.ok(box && Math.abs((box[0] + box[2]) / 2 - 133) <= 1.5 && Math.abs(box[1] - 21) <= 1
+        && Math.abs(box[3] - 28) <= 1, `day readout ${JSON.stringify(day)}`);
+    }
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
     return { faction: faction.name, status: "pass", agent: log.filter((line) => line.startsWith("[agent]")), shots,
-      fast_day_median_seconds: median, hover };
+      fast_day_median_seconds: median, hover, day };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error),

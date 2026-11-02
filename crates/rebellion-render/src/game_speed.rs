@@ -26,14 +26,10 @@ use crate::game_menu::{
     draw_game_menu, faction_text_color, GameMenuEntry, GameMenuPlacement, GameMenuResponse,
 };
 
-/// Game-font entry 10 (`FUN_0060eed0`): 14-pixel Arial, normal weight.
-///
-/// Arial is not redistributable in the browser build, so text uses egui's
-/// proportional face at the recovered height.
-const DAY_FONT_HEIGHT: f32 = 12.0;
-/// Horizontal offset, in canvas pixels, of the second pass that thickens the
-/// day digits. The original readout is bold; egui's default font is not.
-const DAY_BOLD_OFFSET: f32 = 0.6;
+/// The day readout's font (`FUN_00601c60(10)` in `FUN_00422ce0`).
+const DAY_FONT: u16 = 10;
+/// The text object's width, `0x3c` (`FUN_00422ce0`: `param_1[0x38]`).
+const DAY_TEXT_WIDTH: f32 = 60.0;
 
 /// One record of the original speed menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -373,21 +369,28 @@ pub fn draw_day_readout(
     if day == 0 {
         return;
     }
-    let field = day_field_rect(faction);
-    let centre = egui::pos2(
-        layout.canvas.x + (field.x + field.width / 2.0) * layout.scale,
-        layout.canvas.y + (field.y + field.height / 2.0) * layout.scale,
+    // FUN_00422ce0: the text object's corner (FUN_00601b30), its width
+    // 0x3c (+0xe0), format 1 (DT_CENTER, +0x10) and font 10 (FUN_00601c60):
+    // DrawTextA centres the number in 60 pixels from the corner's top.
+    // A0 speed2/05: "166" at (125..141, 21..28), centred on x 134.
+    let (x, y) = day_text_origin(faction);
+    let (ascent, descent) = crate::theme::original_font_metrics(DAY_FONT);
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(
+            layout.canvas.x + x * layout.scale,
+            layout.canvas.y + y * layout.scale,
+        ),
+        egui::vec2(DAY_TEXT_WIDTH * layout.scale, (ascent + descent) * layout.scale),
     );
-    let painter = ctx.layer_painter(egui::LayerId::background());
-    for offset in [0.0, DAY_BOLD_OFFSET * layout.scale] {
-        painter.text(
-            centre + egui::vec2(offset, 0.0),
-            egui::Align2::CENTER_CENTER,
-            day.to_string(),
-            egui::FontId::proportional(DAY_FONT_HEIGHT * layout.scale),
-            faction_text_color(faction),
-        );
-    }
+    crate::theme::paint_gdi_text(
+        &ctx.layer_painter(egui::LayerId::background()),
+        rect,
+        layout.scale,
+        DAY_FONT,
+        &day.to_string(),
+        faction_text_color(faction),
+        (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
+    );
 }
 
 /// The time bar's speed index (`FUN_0042d230`'s `+0x114`): 0 paused, then
@@ -1153,40 +1156,35 @@ mod tests {
     }
 
     #[test]
-    fn the_day_readout_is_bold_and_centred_in_its_field() {
-        // Pravus frame 0157 shows the original day digit centred in the wide
-        // left box of the readout; see `day_field_rect`.
-        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
-            let layout = crate::cockpit::CockpitState::new(faction).layout_for(1280.0, 960.0);
+    fn the_day_readout_is_font_10_centred_in_its_60_pixel_text_object() {
+        // FUN_00422ce0: the corner (0x68, 0x12) or (500, 0x12), width 0x3c,
+        // DT_CENTER, font 10; A0 speed2/05 centres "166" on x 134. This
+        // replaces a test taken from a Pravus frame (a bold double pass in
+        // a box measured from the shell art), which A0 contradicts.
+        for (faction, corner) in [
+            (CockpitFaction::Alliance, (104.0, 18.0)),
+            (CockpitFaction::Empire, (500.0, 18.0)),
+        ] {
+            // Twice the size in a wider viewport: the canvas sits right of 0.
+            let layout = crate::cockpit::CockpitState::new(faction).layout_for(1500.0, 960.0);
+            assert!(layout.canvas.x > 0.0 && (layout.scale - 2.0).abs() < 0.01);
             let ctx = egui::Context::default();
+            crate::theme::load_fonts(&ctx);
             let shapes = frame(&ctx, egui::Pos2::ZERO, vec![], |ctx| {
-                draw_day_readout(ctx, layout, faction, 42);
+                draw_day_readout(ctx, layout, faction, 166);
             });
-            let texts: Vec<_> = shapes
-                .into_iter()
-                .filter_map(|clipped| match clipped.shape {
-                    egui::Shape::Text(text) => Some(text),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(texts.len(), 2, "two passes make the digits bold");
-            let field = day_field_rect(faction);
-            let centre = screen(
-                layout,
-                (field.x + field.width / 2.0, field.y + field.height / 2.0),
-            );
-            let text = &texts[0];
-            assert_eq!(text.galley.text(), "42");
-            assert!((text.pos.x + text.galley.size().x / 2.0 - centre.x).abs() < 0.01);
-            assert!((text.pos.y + text.galley.size().y / 2.0 - centre.y).abs() < 0.01);
-            assert!(texts[1].pos.x > text.pos.x);
-            assert_eq!(text.fallback_color, faction_text_color(faction));
-            // The digits fit inside the field.
-            let glyph_height = text.galley.size().y;
-            assert!(
-                glyph_height <= (field.height + 6.0) * layout.scale,
-                "{faction:?}"
-            );
+            let lines = crate::theme::test_lines(&shapes);
+            assert_eq!(lines.len(), 1, "{faction:?}: one pass");
+            let line = &lines[0];
+            assert_eq!(line.text, "166");
+            let left = screen(layout, corner).x;
+            let right = screen(layout, (corner.0 + 60.0, corner.1)).x;
+            let centre = (line.pen.x + line.width / 2.0 - (left + right) / 2.0).abs();
+            assert!(centre <= 2.0, "{faction:?}: {line:?}");
+            // DT_TOP: the baseline one ascent below the corner.
+            let (ascent, _) = crate::theme::original_font_metrics(10);
+            let top = screen(layout, corner).y;
+            assert!((line.pen.y - (top + ascent * layout.scale)).abs() <= 2.0, "{faction:?}: {line:?}");
         }
     }
 }

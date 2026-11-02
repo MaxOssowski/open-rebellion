@@ -28,3 +28,24 @@ Run `agent-objectives-2026-11-02T13-20-31-909Z` (Arch Chromium): pass.
 `agent-objectives.mjs` holds the press on Slow and finds the same red ink as for the hover: (23, 46)..(50, 55). It then drags off and releases at (300, 300), and the menu is still drawn. The port dismisses the menu only on a new press outside it (`game_menu.rs`), as A0 does.
 
 Run `agent-objectives-2026-11-02T13-23-02-900Z`: pass.
+
+## The day readout at rest (CMD-05 C007)
+
+`FUN_00422ce0` makes the day readout a text object:
+
+- its corner at (0x68, 0x12), the Alliance's, or at (500, 0x12), the Empire's;
+- its width 0x3c (`param_1[0x38]`);
+- format 1, `DT_CENTER`;
+- font 10 (`FUN_00601c60(10)`).
+
+A0 `speed2/05` (day 166) has the red digits at (125..141, 21..28), centred on x 133.
+
+**Before this change.** The port drew the number in egui's face, twice and 0.6 pixels apart for boldness. It centred the number in a box measured from the shell art after a Pravus frame.
+
+**The port now.** `game_speed::draw_day_readout` paints `DrawTextA`'s way (`theme::paint_gdi_text`): font 10, centred in the 60-pixel object from the corner's top.
+
+**Gate.** `agent-objectives.mjs` (Alliance) measures the port's digits: centre within 1.5 pixels of x 133, top and bottom within 1 pixel. Run `agent-objectives-2026-11-02T14-07-20-025Z`: pass on both sides.
+
+**Test.** `the_day_readout_is_font_10_centred_in_its_60_pixel_text_object` replaces the Pravus-based test, which A0 contradicts.
+
+**Mutants.** The 4 survivors change only the rectangle's height. A single `DT_TOP` line does not depend on it, so they are equivalent.
