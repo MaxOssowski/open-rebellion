@@ -5833,14 +5833,15 @@
         {
           "id": "OBJ-07-C007",
           "requirement": "queue populated",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Confirm queues units in build-selection.mjs and agent-build.mjs (Linux); no A0 band with a queue compared. 2026-11-02: A0 build-selection2/07, 13 show a populated band (name, mini, 'Training: 1' / '3'; the maintenance monitor charged at the order); not yet compared with the port's confirmed-screen.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/07, 13): the populated band shows the product's name, its mini at the band's (40, 15) (A0's GOKRES 1154 at the window's (95, 153), as the port places it) and 'Training: N'; after its menu no band stays selected (A0 16..18), now ported. build-selection.mjs (Linux): the band queues and, for the Empire, its strip matches A0 07 pixel for pixel.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-07-C008",
@@ -6131,16 +6132,17 @@
         {
           "id": "OBJ-08-C009",
           "requirement": "quantity",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Quantity 1..255 with up/down (10610..10613, FUN_00438c30/c60) and keypad +/- is ported; no browser case changes the quantity and no A0 capture shows it. 2026-11-02: A0 build-selection2/02..04 show the arrows stepping the number (3: 18, 9, '72 Days'; 2: 12, 6, '48 Days'); no browser case presses them yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/01..04: the arrows step the number; costs and the single yard's completion scale, deployment not). build-selection.mjs (Linux, both sides) presses up twice and down once: number 3 then 2, values 3x and 2x the unit's, deployment unchanged.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-08-C010",
@@ -6159,30 +6161,32 @@
         {
           "id": "OBJ-08-C011",
           "requirement": "accept",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Confirm (10594, cmd 101, FUN_00438980) queues the order in both Linux gates; A0 shows the agent's order confirmed only by placement. The chrome gate passes (0 pixels) since 2026-10-30, with keyed buttons and the original fonts matched to A0. 2026-11-02: A0 build-selection2/07 shows Confirm queuing the order on the band.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/07: Confirm queues the order, the band names it with 'Training: 1'). build-selection.mjs (Linux, both sides) confirms and the band queues; the chrome passes at 0 pixels.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-08-C012",
           "requirement": "cancel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Cancel/Close (10596, cmd 102) and Escape discard the selection (FUN_00438800/FUN_00438b60); unit-tested, not driven by a browser case nor captured in A0 (build-orders 17-cancel.png is the agent cursor's cancel, not this dialog). 2026-11-02: A0 build-selection2/05 shows Cancel closing the window with the band unchanged and 06 the number back at 1; no browser case presses Cancel yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/05, 06: Cancel closes the window, the band is unchanged, Build reopens at 1). build-selection.mjs (Linux, both sides) presses Cancel and reopens.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-08-C013",
