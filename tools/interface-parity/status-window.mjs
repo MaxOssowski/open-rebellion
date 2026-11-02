@@ -45,6 +45,7 @@ const FLEET_LOAD = 48;
 const BUILD_SELECTION = 55;
 const SQUADRON_LOAD = 65;
 const BATTERY_STATUS = 92;
+const RECON_TARGETING = 63;
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -397,6 +398,23 @@ const cases = [
     a0: { file: "21-fighter.png", x: 170, y: 81, labels: 13, skip: [9, 10] },
     target: async (page) => point((await fleetLoadSetup(page)).troop_item),
   },
+  // A special force's Status (FUN_00445780) from the Defenses window's
+  // personnel page, where the Recon fixture puts its recon team first:
+  // A0 sfstatus/03 (the Alliance's Infiltrators at Yavin, en route):
+  // "Spec Forces Status" over Attached, Status, ETA Destination,
+  // Maintenance Cost and the four ratings. The fixture's team is not en
+  // route, so the title and the first two labels are compared.
+  {
+    name: "special-force",
+    code: RECON_TARGETING,
+    family: "SpecialForce",
+    a0: { file: "../sfstatus/03-sf-status.png", x: 108, y: 79, labels: 2, side: "alliance" },
+    // A0 sfstatus/02: 104 by 122, Move, Confirmed Move, Mission,
+    // Encyclopedia, Status, Retire (grey there: the unit is en route).
+    a0Menu: { width: 104, height: 122,
+      rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
   // A KDY-150's Status from the Defenses window's Planetary Batteries
   // page (A0 status/22, 23 at Coruscant): Location, Status "Active",
   // Maintenance Cost, Weapons Rating, Shield Strength, Bombardment Defense
@@ -551,7 +569,7 @@ async function inspect(server, source, faction, testCase, executable) {
     }
     const textChecks = a0Dir && faction.name === "alliance" && testCase.name === "fleet"
       ? fleetStatusText(PNG.sync.read(second), rect)
-      : testCase.a0 && faction.name === "empire" ? facilityStatusText(PNG.sync.read(second), rect, testCase.a0) : null;
+      : testCase.a0 && faction.name === (testCase.a0.side ?? "empire") ? facilityStatusText(PNG.sync.read(second), rect, testCase.a0) : null;
 
     // FUN_00443020's tips (A0 a0-vm/tooltip/122-st-ency.png,
     // 123-st-close.png): a (255, 251, 240) tip with a (128, 128, 128)

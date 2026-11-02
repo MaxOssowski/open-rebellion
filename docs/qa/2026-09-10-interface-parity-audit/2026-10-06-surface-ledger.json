@@ -6457,15 +6457,16 @@
         {
           "id": "OBJ-10-C002",
           "requirement": "special-force types",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-special-force-move/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-special-force-status-a0/"
           ],
-          "note": "Personnel Finder SpecForces view (FUN_004637a0 value 2, panels 10538/10539) and Special Force Status are ported; GID catalog on Arch Chromium only. STT notes no A0 capture of Spec Forces Status.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (sfstatus/02, 03: the Infiltrators' 104 by 122 menu and 'Spec Forces Status' with Attached, Status, ETA Destination, Maintenance Cost and four ratings): status-window.mjs 'special-force' (Linux, both sides) opens a recon team's menu and Status; menu size and rows equal A0's, the title and first labels within 1 pixel; the Personnel Finder's SpecForces view matched A0 the same day.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-10-C003",
