@@ -6183,8 +6183,9 @@ async fn main() {
                     // The menu commits on the release that starts targeting;
                     // only a later release may end the order.
                     let targeting_held = targeting.is_some();
-                    // A band's menu leaves no band selected once it closes
-                    // (A0 build-selection2/18).
+                    // How a band's menu closes decides whether its band
+                    // stays selected (A0 build-selection2/18, 21, 23).
+                    let escaped = ctx.input(|input| input.key_pressed(egui_macroquad::egui::Key::Escape));
                     let band_menu = object_menu.as_ref().and_then(|menu| match menu.selection() {
                         Some(MenuObject::Producer { system, .. }) => Some(system),
                         _ => None,
@@ -6198,7 +6199,10 @@ async fn main() {
                         strategic_input_enabled,
                     );
                     if let Some(system) = band_menu.filter(|_| object_menu.is_none()) {
-                        system_window_state.deselect_band(system);
+                        let command = band_menu_result.as_ref().map(|(command, _)| *command);
+                        if rebellion_render::system_window::band_menu_deselects(command, escaped) {
+                            system_window_state.deselect_band(system);
+                        }
                     }
                     match band_menu_result {
                         // FUN_00486fb0 0x234: Planetary Assault of the

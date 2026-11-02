@@ -68,3 +68,26 @@ Each band's status line (TEXTSTRA 6198..6200 at the band's (5, 16)) and the troo
 - The counts' 3 extra pixels are Liberation Sans's footed "1" against GDI Arial's plain one. This is the accepted text deviation.
 - The band titles are black in both: A0 draws them crisp, the port antialiased.
 - A0's Coruscant has no shipyard ("0:0"), so the ships' count is not compared.
+
+## How a band's menu closes (corrected the same day)
+
+`20`..`24` refine the rule above. They sample the strip colour at x 380:
+
+| Capture | Ships | Troops | Facilities |
+|---|---|---|---|
+| `21`, after the ships band's Destination released on Chandrila | lit | | |
+| `22`, the facilities band's menu | | | lit |
+| `23`, that menu dismissed by a click beside it | | | lit |
+
+Only the ships band changes its destination ("Destination: Chandrila"). The others keep Coruscant, which shows Destination stored per producer.
+
+So the selection ends on:
+
+- Escape (`18`);
+- Build and Stop, whose windows open over it (`05`, `07`, `11`, `15`).
+
+It stays after Destination and after a click beside the menu.
+
+- `system_window::band_menu_deselects(command, escaped)` holds this rule. `main.rs` applies it when a band's menu closes.
+- hyp: the windows' activation clears the selection. The other rows are not captured and keep it.
+- Test: `escape_build_and_stop_end_a_bands_selection_but_destination_and_a_click_beside_keep_it`.

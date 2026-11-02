@@ -30,7 +30,7 @@ use crate::manufacturing_window::{
     BAND_STATUS, BAND_TITLE, BAND_UNITS, CELL, COLUMNS, COUNT_ORIGINS, LIST, PROGRESS_RECTS,
     YARD_COLUMN,
 };
-use crate::object_menu::MenuObject;
+use crate::object_menu::{MenuObject, ObjectMenuCommand};
 use crate::window_move::{self, MoveAnchor};
 
 pub const SYSTEM_WINDOW_CLIENT_WIDTH: f32 = 226.0;
@@ -437,11 +437,7 @@ impl SystemWindowState {
             .map(|window| (window.tab, window.selected_band))
     }
 
-    /// A band's menu has closed: no band stays selected, whichever row was
-    /// chosen or none (A0 build-selection2/16..18: a left press keeps the
-    /// troops band's strip lit, the facilities band's menu lights its own,
-    /// and after Escape neither is). hyp: the right press selects the band
-    /// only for its menu (FUN_004ac5c0's end is untraced).
+    /// No band of `system`'s window stays selected ([`band_menu_deselects`]).
     pub fn deselect_band(&mut self, system: SystemKey) {
         if let Some(window) = self.window_mut(system) {
             window.selected_band = None;
@@ -668,6 +664,20 @@ impl SystemWindowState {
             window.selected_band = Some(area);
         }
         self.focus(system);
+    }
+}
+
+/// Whether a band's menu, closing with `command` chosen (or none) and
+/// Escape pressed or not, leaves no band selected. A0 build-selection2:
+/// Escape clears the selection (`18`), and so do Build and Stop, whose
+/// windows open over it (`05`, `07`, `11`, `15`); a click beside the menu
+/// (`23`) and Destination (`21`) keep it. hyp: the windows' activation
+/// clears it; the rest of the menu's rows are not captured and keep it.
+#[must_use]
+pub fn band_menu_deselects(command: Option<ObjectMenuCommand>, escaped: bool) -> bool {
+    match command {
+        None => escaped,
+        Some(command) => matches!(command, ObjectMenuCommand::Build | ObjectMenuCommand::Stop),
     }
 }
 
@@ -2403,6 +2413,18 @@ mod tests {
             "{:?}",
             run.fills
         );
+    }
+
+    #[test]
+    fn escape_build_and_stop_end_a_bands_selection_but_destination_and_a_click_beside_keep_it() {
+        // A0 build-selection2/18 (Escape), 07 and 11 (Build, Stop), 21
+        // (Destination), 23 (a click beside the menu).
+        assert!(band_menu_deselects(None, true));
+        assert!(!band_menu_deselects(None, false));
+        assert!(band_menu_deselects(Some(ObjectMenuCommand::Build), false));
+        assert!(band_menu_deselects(Some(ObjectMenuCommand::Stop), false));
+        assert!(!band_menu_deselects(Some(ObjectMenuCommand::Destination), false));
+        assert!(!band_menu_deselects(Some(ObjectMenuCommand::Reserved), false));
     }
 
     #[test]
