@@ -26,6 +26,12 @@ const MENU_FONT: u16 = crate::DEFAULT_FONT;
 
 /// Icon column a submenu parent without an icon reserves (`FUN_004abf60`).
 const SUBMENU_ICON_WIDTH: f32 = 20.0;
+/// The column a checked item without its own icon reserves: `FUN_004abf60`
+/// measures the item's `+0x20` bitmap, not the 20-wide mark it draws from
+/// `+0x1c`. hyp: `+0x20` is the 17-wide submenu arrow (STRATEGY 10117,
+/// 17 by 20); A0 menus3/33 sets Reserved's text 17 pixels in and the
+/// checked band menu 107 wide.
+const CHECKED_ICON_WIDTH: f32 = 17.0;
 
 /// Normal item color `0x2ffffff`.
 const NORMAL_COLOR: egui::Color32 = egui::Color32::WHITE;
@@ -92,8 +98,13 @@ pub fn entry_text_color(
 /// entry's icon of `size`: a check mark widens the column only.
 #[must_use]
 pub fn entry_icon_size(entry: &GameMenuEntry<'_>, size: Option<(f32, f32)>) -> (f32, f32) {
+    let width = if entry.check {
+        CHECKED_ICON_WIDTH
+    } else {
+        entry_icon_width(entry, size.map(|size| size.0))
+    };
     (
-        entry_icon_width(entry, size.map(|size| size.0)),
+        width,
         size.filter(|_| !entry.check).map_or(0.0, |size| size.1),
     )
 }
@@ -1108,7 +1119,9 @@ mod tests {
             check: true,
             ..entry(true, false)
         };
-        assert_eq!(entry_icon_size(&check, Some((20.0, 20.0))), (20.0, 0.0));
+        // A0 menus3/33: Reserved's text 17 pixels in, the menu 107 wide
+        // (it measured 20 here before that capture).
+        assert_eq!(entry_icon_size(&check, Some((20.0, 20.0))), (17.0, 0.0));
         assert_eq!(entry_icon_size(&entry(true, false), None), (0.0, 0.0));
         assert_eq!(entry_icon_width(&entry(true, false), None), 0.0);
         assert_eq!(entry_icon_width(&entry(true, true), Some(16.0)), 16.0);

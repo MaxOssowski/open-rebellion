@@ -7462,9 +7462,10 @@
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "tools/interface-parity/fleet-window.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-band-menus-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-band-menus-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-checked-menu-width/"
           ],
-          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved.",
+          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

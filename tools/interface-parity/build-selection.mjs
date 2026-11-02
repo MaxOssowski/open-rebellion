@@ -470,9 +470,12 @@ async function inspect(server, source, faction, executable) {
     const reservedMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
     fs.writeFileSync(path.join(directory, "reserved-menu.png"), await page.screenshot({ animations: "disabled" }));
     assert.equal(reservedMenu.reserved_checked, true, JSON.stringify(reservedMenu));
-    // The check mark widens the menu by its icon column but leaves the rows
-    // their height (FUN_004abbf0): A0 menus3/32, 33 are 122 tall both.
-    assert.ok(reservedMenu.width > reserveMenu.width, JSON.stringify([reserveMenu.width, reservedMenu.width]));
+    // The check mark widens the menu by its 17-pixel column but leaves the
+    // rows their height (FUN_004abf60, FUN_004abbf0): A0 menus3/32, 33 are
+    // 90 and 107 wide, 122 tall both. The fixture reports screen pixels.
+    const scale = reserveMenu.height / 122;
+    assert.equal(Math.round((reservedMenu.width - reserveMenu.width) / scale), 17,
+      JSON.stringify([reserveMenu.width, reservedMenu.width, scale]));
     assert.equal(reservedMenu.height, reserveMenu.height, JSON.stringify([reserveMenu.height, reservedMenu.height]));
     await page.keyboard.press("Escape");
     await page.mouse.move(2, 2);
