@@ -507,6 +507,48 @@ async function inspect(server, source, faction, testCase, executable) {
     assert.equal(comparison.different_pixels, 0, JSON.stringify(comparison));
     for (const name of Object.keys(masks)) assert.ok(comparison.changed_in_masks[name] > 0, `${name} shows nothing`);
     assert.equal(comparison.picture_blue_pixels, 0, "the picture's blue matte is not keyed");
+    // A capital ship's list held at its end (the down arrow at the
+    // window's (214..224, 242..250), RCDATA 10650's bar) against A0
+    // status/04-ship-page5: the label column's ink rows, the four Weapons
+    // Arc blocks' tail, each band within 1 pixel (the labels are every
+    // capital ship's).
+    let scrolledEnd = null;
+    if (testCase.name === "capital-ship" && faction.name === "empire") {
+      const a0File = path.join(root, ".artifacts/a0-vm/status/04-ship-page5.png");
+      if (fs.existsSync(a0File)) {
+        await page.mouse.move(rect.x + 219, rect.y + 246);
+        await page.mouse.down();
+        await page.waitForTimeout(4000);
+        await page.mouse.up();
+        await page.mouse.move(2, 2);
+        await page.waitForTimeout(300);
+        const end = PNG.sync.read(await page.screenshot({ animations: "disabled" }));
+        fs.writeFileSync(path.join(directory, "scrolled-end.png"), PNG.sync.write(end));
+        const a0 = PNG.sync.read(fs.readFileSync(a0File));
+        const bands = (png, ox, oy) => {
+          const rows = [];
+          for (let y = 47; y < 251; y += 1) {
+            let ink = false;
+            for (let x = 16; x < 118 && !ink; x += 1) {
+              const i = ((oy + y) * png.width + ox + x) * 4;
+              ink = Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 200;
+            }
+            rows.push(ink);
+          }
+          const out = [];
+          rows.forEach((on, k) => {
+            if (on && (k === 0 || !rows[k - 1])) out.push([47 + k, 47 + k]);
+            if (on) out[out.length - 1][1] = 47 + k;
+          });
+          return out;
+        };
+        const a = bands(a0, 170, 81);
+        const p = bands(end, rect.x, rect.y);
+        scrolledEnd = { a0: a, port: p };
+        assert.equal(p.length, a.length, JSON.stringify(scrolledEnd));
+        assert.ok(a.every(([t, b], k) => Math.abs(t - p[k][0]) <= 1 && Math.abs(b - p[k][1]) <= 1), JSON.stringify(scrolledEnd));
+      }
+    }
     const textChecks = a0Dir && faction.name === "alliance" && testCase.name === "fleet"
       ? fleetStatusText(PNG.sync.read(second), rect)
       : testCase.a0 && faction.name === "empire" ? facilityStatusText(PNG.sync.read(second), rect, testCase.a0) : null;
@@ -577,7 +619,7 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.deepEqual(closes, { close: "close" });
     }
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, tips, textChecks, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

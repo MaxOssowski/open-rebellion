@@ -176,3 +176,9 @@ Command's state follows the character. Veers can take command (white, with the s
 | training facility | `28-fac-menu` | 90 by 62 | Encyclopedia, Status, Scrap |
 
 Run `status-window-2026-11-02T16-44-11-689Z-558153`: pass on both sides.
+
+## 2026-11-02: a capital ship's list scrolled to its end
+
+For the Empire, the `capital-ship` case holds the list's down arrow (the window's (214..224, 242..250), RCDATA 10650's bar) until the list stops. It then compares the label column's ink rows with A0 `04-ship-page5`, the corvette's list at its end: the Starboard and Port Weapons Arc blocks, each with Turbo Laser, " Ion Cannon" and Laser Cannon.
+
+The 15 bands match, each within 1 pixel: A0 47..242, the port 47..242. Run `status-window-2026-11-02T16-46-56-259Z-562600`: pass.

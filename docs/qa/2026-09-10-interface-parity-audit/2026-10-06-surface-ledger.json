@@ -5636,13 +5636,13 @@
         {
           "id": "OBJ-06-C009",
           "requirement": "arcs",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
           ],
-          "note": "The four Weapons Arc headings over Turbo Laser, Ion Cannon and Laser Cannon match A0 04-ship pages by label; the browser gate does not scroll to them.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (status/04-ship-page5: the list at its end, the Starboard and Port Weapons Arc blocks over Turbo Laser, ' Ion Cannon', Laser Cannon): status-window.mjs 'capital-ship' (Linux, Empire) holds the down arrow to the end and finds the label column's 15 ink rows within 1 pixel of A0's.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-06-C010",
