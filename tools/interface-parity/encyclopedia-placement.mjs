@@ -257,6 +257,30 @@ async function run(browser, base, faction) {
           finderText.typed = { rows: [0, 1, 2, 3].map(brightest) };
           assert.ok(finderText.typed.rows[2] > 230 && finderText.typed.rows[0] < 200,
             `"I" chooses Ithor: ${JSON.stringify(finderText.typed)}`);
+          // Closed and opened again, the Finder forgets the choice and
+          // chooses its first row (A0 f4-reopened-day171, FUN_00609650 on
+          // the empty name).
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(400);
+          await page.keyboard.down("F4");
+          await frames(page);
+          await page.keyboard.up("F4");
+          await page.waitForTimeout(800);
+          await shot("troop-finder-reopened");
+          const reopened = PNG.sync.read(await fs.readFile(path.join(directory, "troop-finder-reopened.png")));
+          const rowTop = (row) => {
+            let top = 0;
+            for (let y = 196 + 25 * row; y < 196 + 25 * row + 12; y += 1) {
+              for (let x = 102; x < 250; x += 1) {
+                const i = (y * reopened.width + x) * 4;
+                top = Math.max(top, Math.min(reopened.data[i], reopened.data[i + 1], reopened.data[i + 2]));
+              }
+            }
+            return top;
+          };
+          finderText.reopened = { rows: [0, 1, 2, 3].map(rowTop) };
+          assert.ok(finderText.reopened.rows[0] > 230 && finderText.reopened.rows[2] < 200,
+            `the reopened Finder chooses its first row: ${JSON.stringify(finderText.reopened)}`);
         }
         if (label === "personnel-finder" && faction.name === "alliance") {
           finderText.specforces = await specForcesView(page, shot, directory);

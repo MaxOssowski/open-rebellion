@@ -17,3 +17,9 @@ The A0 run used the Windows 10 VM and the Alliance's DS_flip_allian save, day 17
 The gate measures each row's brightest name pixel: 119, 119, 254, 119. Only Ithor is white. The prefix match is `list_prefix`, with unit tests.
 
 Run `encyclopedia-placement-2026-11-02T19-24-27-439Z` (Arch Chromium): pass.
+
+## Reopened, the Finder forgets the choice (OBJ-04 C015)
+
+**A0.** `f4-reopened-day171` (2026-10-29) shows a Troop Finder opened again after a row was chosen. The choice is gone, and the first row is chosen.
+
+**The port.** The same gate presses Escape after "I" and opens the Finder again with F4. The rows' brightest pixels are 252, 119, 120, 119: the first row is chosen, and Ithor is grey again. Run `encyclopedia-placement-2026-11-02T19-26-09-697Z`: pass.

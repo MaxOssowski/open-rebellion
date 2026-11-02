@@ -5203,13 +5203,14 @@
         {
           "id": "OBJ-04-C015",
           "requirement": "Finder navigation preserves selected object",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-finder-search-a0/"
           ],
-          "note": "A0 f4-reopened shows a reopened Troop Finder forgets its choice, as the port does; preserving a selection across Finder navigation is not otherwise compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 (f4-reopened-day171: a reopened Troop Finder forgets its choice and chooses the first row): encyclopedia-placement.mjs --window=finders (Linux, 2026-11-02) chooses Ithor by typing, closes and reopens the Finder, and finds the first row chosen and Ithor grey. The original preserves no selection across Finder openings, and neither does the port.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
