@@ -4757,14 +4757,15 @@
         {
           "id": "OBJ-03-C001",
           "requirement": "Alliance finder",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The Alliance side's Personnel Finder (FUN_004637a0) runs in the Linux browser gates for both sides; no A0 capture of the Alliance tab or an Alliance game.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (specforces/00: the Alliance's Personnel Finder at (62, 50), day 161): encyclopedia-placement.mjs --window=finders (Linux) matches the port's Alliance Finder to it pixel for pixel but the list, bar, name box and three texts (GDI hinting): 2 pixels differ.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C002",
@@ -4793,15 +4794,16 @@
         {
           "id": "OBJ-03-C004",
           "requirement": "special forces",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-special-forces-aboard-fleets/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-finder-scroll-bars/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-finder-scroll-bars/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "Special forces list in the SpecForces view (FUN_00464e10 view 2) and as fleet rows, in unit tests and Linux browser screenshots; no A0 capture of special forces.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (specforces/01: the Alliance's special forces by system, four type columns, counts in red boxes, dark for units away): the SpecForces view's header is exact in encyclopedia-placement.mjs (Linux), its rows and boxes where A0's are, and the dark brush for units away is ported (FUN_00465540).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C005",
@@ -4957,13 +4959,14 @@
         {
           "id": "OBJ-03-C017",
           "requirement": "distinct SpecForces Finder view",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The SpecForces view (value 2, panel 10538/10539, label 0x1898) renders in the Linux browser; no A0 capture of it.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (specforces/01: the second view button opens the SpecForces view, panel 10538, the four type icons): encyclopedia-placement.mjs --window=finders (Linux) opens it and finds the header strip equal to A0's, 0 of 3,192 pixels.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C018",

@@ -283,6 +283,29 @@ async function run(browser, base, faction) {
             `the reopened Finder chooses its first row: ${JSON.stringify(finderText.reopened)}`);
         }
         if (label === "personnel-finder" && faction.name === "alliance") {
+          // The Alliance's Personnel Finder against A0
+          // specforces/00-personnel-finder-alliance-day161 (both at
+          // (62, 50)): every pixel of the window but the list, its bar, the
+          // name box and the three texts (GDI hinting, the accepted text
+          // deviation), at most 4 differing.
+          try {
+            const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+              ".artifacts/a0-vm/specforces/00-personnel-finder-alliance-day161.png")));
+            const port = PNG.sync.read(await fs.readFile(path.join(directory, "personnel-finder.png")));
+            const skip = [[200, 95, 452, 117], [98, 185, 460, 360], [200, 64, 340, 82], [95, 98, 165, 113], [100, 166, 240, 184]];
+            let differing = 0;
+            for (let y = 50; y < 380; y += 1) {
+              for (let x = 62; x < 505; x += 1) {
+                if (skip.some(([l, t, r, b]) => x >= l && x <= r && y >= t && y <= b)) continue;
+                const i = (y * port.width + x) * 4;
+                if (port.data[i] !== a0.data[i] || port.data[i + 1] !== a0.data[i + 1] || port.data[i + 2] !== a0.data[i + 2]) differing += 1;
+              }
+            }
+            finderText.allianceChrome = { differing };
+            assert.ok(differing <= 4, `the Alliance's Personnel Finder differs from A0 in ${differing} pixels`);
+          } catch (error) {
+            if (error.code !== "ENOENT") throw error;
+          }
           finderText.specforces = await specForcesView(page, shot, directory);
         }
         await page.keyboard.press("Escape");

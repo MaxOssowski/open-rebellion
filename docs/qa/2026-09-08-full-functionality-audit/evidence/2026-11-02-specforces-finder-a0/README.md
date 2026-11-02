@@ -34,3 +34,9 @@ The port's `count_sf` now clears `all_usable` for a unit on a mission. A unit mo
 Test: `a_column_with_a_unit_away_is_drawn_in_the_sides_dark_brush` (`personnel_finder.rs`).
 
 The Troop Finder keeps its bright boxes. A0's Troop Finder (DS_flip_allian, day 164) shows Xyquine's three regiments dark, but why their bit 0 is clear is not known.
+
+## The Alliance's Personnel Finder (OBJ-03 C001)
+
+**A0.** `00-personnel-finder-alliance-day161` (DS_flip_allian, day 161): F5 opens the Alliance's Personnel Finder at (62, 50) on the Characters view. Its rows read "Name - System", with the state in parentheses when there is one, for example "( Enroute )", "( On Mission )" or "( General )".
+
+**The port.** `encyclopedia-placement.mjs --window=finders` (Alliance) compares the port's Finder with this capture pixel for pixel. The list, its bar, the name box and the three texts are left out: "Personnel Finder", "Name" and "Alliance Personnel" differ only by GDI hinting. Every other pixel of the window matches but 2. Run `encyclopedia-placement-2026-11-02T19-54-39-200Z`: pass.
