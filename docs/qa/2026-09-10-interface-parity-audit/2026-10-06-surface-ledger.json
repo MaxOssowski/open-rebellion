@@ -4839,9 +4839,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The 'in transit' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it.",
+          "note": "The 'in transit' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it. 2026-11-02: A0 specforces/00 shows a travelling character as 'Name - Destination ( Enroute )'; the port named 'Location Unknown' and now names the transit's destination (unit test); no browser case has a travelling character yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4852,9 +4853,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The 'on mission' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it.",
+          "note": "The 'on mission' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it. 2026-11-02: A0 specforces/00 shows 'Han Solo - Drall ( On Mission )', the port's format (unit test); no browser case yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

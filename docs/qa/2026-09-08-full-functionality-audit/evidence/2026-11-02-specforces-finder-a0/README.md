@@ -40,3 +40,18 @@ The Troop Finder keeps its bright boxes. A0's Troop Finder (DS_flip_allian, day 
 **A0.** `00-personnel-finder-alliance-day161` (DS_flip_allian, day 161): F5 opens the Alliance's Personnel Finder at (62, 50) on the Characters view. Its rows read "Name - System", with the state in parentheses when there is one, for example "( Enroute )", "( On Mission )" or "( General )".
 
 **The port.** `encyclopedia-placement.mjs --window=finders` (Alliance) compares the port's Finder with this capture pixel for pixel. The list, its bar, the name box and the three texts are left out: "Personnel Finder", "Name" and "Alliance Personnel" differ only by GDI hinting. Every other pixel of the window matches but 2. Run `encyclopedia-placement-2026-11-02T19-54-39-200Z`: pass.
+
+## A travelling character names its destination (OBJ-03 C007)
+
+**A0.** In `00-personnel-finder-alliance-day161`, the characters on their way read like "Adar Tallon - Mon Calamari ( Enroute )" and "Garm Bel Iblis - Mon Calamari ( Enroute )". Each names its destination, which in the original is already the character's container.
+
+**Before this change.** The port keeps a travelling character outside any system, with the destination in the missions' member transits. Its row read "Adar Tallon - Location Unknown ( Enroute )".
+
+**The port now.**
+
+- `PersonnelFinderState::set_destinations` takes each travelling character's destination, the transit's `to`. `main.rs` sets it every frame from `MissionState::en_route`.
+- The row names that system: `character_rows_travelling`, `character_text`.
+- Test: `a_travelling_character_names_its_destination_and_enroute`. The function is new, so the test does not build without the change, and the old path's "Location Unknown" is asserted beside it.
+- No browser case has a travelling character yet.
+
+Batch `b28` passed every gate: workspace 3333, fixtures 116. The mutant that empties `set_destinations` is caught by the test's state check.

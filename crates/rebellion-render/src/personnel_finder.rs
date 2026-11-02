@@ -361,7 +361,11 @@ pub fn character_target(character: &rebellion_core::world::Character) -> Charact
 ///   (`DAT_006a8790`, `DAT_006a878c`).
 ///
 /// port: a character aboard names its fleet, not its ship.
-fn character_text(world: &GameWorld, character: &rebellion_core::world::Character) -> String {
+fn character_text(
+    world: &GameWorld,
+    character: &rebellion_core::world::Character,
+    destination: Option<rebellion_core::ids::SystemKey>,
+) -> String {
     if character.is_killed {
         let word = if character.is_retired {
             "Retired"
@@ -382,6 +386,10 @@ fn character_text(world: &GameWorld, character: &rebellion_core::world::Characte
         .or_else(|| {
             character
                 .current_system
+                // A travelling character's container is already its
+                // destination (A0 specforces/00: "Adar Tallon - Mon
+                // Calamari ( Enroute )"). port: the trip keeps it apart.
+                .or(destination)
                 .and_then(|system| world.systems.get(system))
                 .map(|system| system.name.clone())
         })
@@ -401,9 +409,21 @@ fn character_text(world: &GameWorld, character: &rebellion_core::world::Characte
 #[must_use]
 pub fn character_rows(
     world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
+    tab: PersonnelTab,
+) -> Vec<PersonnelFinderRow> {
+    character_rows_travelling(world, fog, player, tab, &[])
+}
+
+/// [`character_rows`], naming each travelling character's destination.
+#[must_use]
+pub fn character_rows_travelling(
+    world: &GameWorld,
     _fog: &FogState,
     _player: Faction,
     tab: PersonnelTab,
+    destinations: &[(rebellion_core::ids::CharacterKey, rebellion_core::ids::SystemKey)],
 ) -> Vec<PersonnelFinderRow> {
     let mut rows = Vec::new();
     for (key, character) in &world.characters {
@@ -419,7 +439,11 @@ pub fn character_rows(
             .and_then(|sys| world.systems.get(sys))
             .map_or_else(String::new, |sys| sys.name.clone());
         let state = character_state(character).unwrap_or_default().to_owned();
-        let display = character_text(world, character);
+        let destination = destinations
+            .iter()
+            .find(|(traveller, _)| *traveller == key)
+            .map(|&(_, system)| system);
+        let display = character_text(world, character, destination);
         rows.push(PersonnelFinderRow::Character {
             key,
             name: display,
@@ -539,6 +563,9 @@ struct OpenFinder {
 #[derive(Debug, Clone, Default)]
 pub struct PersonnelFinderState {
     window: Option<OpenFinder>,
+    /// Each travelling character's destination, which names it in its row
+    /// ([`PersonnelFinderState::set_destinations`]).
+    destinations: Vec<(rebellion_core::ids::CharacterKey, rebellion_core::ids::SystemKey)>,
 }
 
 /// The list's height and rows in pixels, its bar's width (RCDATA 10653,
@@ -613,6 +640,15 @@ fn sf_cell_colours(tab: PersonnelTab, all_usable: bool) -> (egui::Color32, egui:
 }
 
 impl PersonnelFinderState {
+    /// The travelling characters' destinations (the missions' member
+    /// transits), for the rows' location.
+    pub fn set_destinations(
+        &mut self,
+        destinations: Vec<(rebellion_core::ids::CharacterKey, rebellion_core::ids::SystemKey)>,
+    ) {
+        self.destinations = destinations;
+    }
+
     /// Open the Finder on the player's side tab and the Characters view
     /// (`FUN_004637a0`: `FUN_0060d7e0(side, 1)`, `FUN_0060d7e0(3, 1)`). An
     /// open Finder stays as it is.
@@ -693,13 +729,18 @@ pub fn draw_personnel_finder(
     let controls = &CONTROLS[side_idx];
     let scale = layout.scale;
     let rect = window_rect(layout);
-    let list = rows(
-        world,
-        fog,
-        player_side(window.faction),
-        window.tab,
-        window.view,
-    );
+    let list = match window.view {
+        PersonnelView::Characters => character_rows_travelling(
+            world,
+            fog,
+            player_side(window.faction),
+            window.tab,
+            &state.destinations,
+        ),
+        PersonnelView::SpecForces => {
+            specforces_rows(world, fog, player_side(window.faction), window.tab)
+        }
+    };
 
     let mut close = false;
     let mut open_action: Option<PersonnelFinderAction> = None;
@@ -1453,6 +1494,34 @@ mod tests {
         let fog = FogState::new(Faction::Alliance);
         let listed = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
         assert!(listed[0].display_name().contains("On Mission"));
+    }
+
+    #[test]
+    fn a_travelling_character_names_its_destination_and_enroute() {
+        // A0 specforces/00: "Adar Tallon - Mon Calamari ( Enroute )", the
+        // trip's destination as its container (FUN_00465bb0).
+        let mut world = GameWorld::default();
+        let mon_calamari = add_system(&mut world, "Mon Calamari");
+        let mut adar = default_character();
+        adar.name = "Adar Tallon".into();
+        adar.current_system = None;
+        let key = world.characters.insert(adar);
+
+        let fog = FogState::new(Faction::Alliance);
+        let listed = character_rows_travelling(
+            &world,
+            &fog,
+            Faction::Alliance,
+            PersonnelTab::Alliance,
+            &[(key, mon_calamari)],
+        );
+        assert_eq!(listed[0].display_name(), "Adar Tallon - Mon Calamari ( Enroute ) ");
+        let unknown = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Alliance);
+        assert_eq!(unknown[0].display_name(), "Adar Tallon - Location Unknown ( Enroute ) ");
+        // The window keeps the destinations main sets each frame.
+        let mut state = PersonnelFinderState::default();
+        state.set_destinations(vec![(key, mon_calamari)]);
+        assert_eq!(state.destinations, [(key, mon_calamari)]);
     }
 
     #[test]

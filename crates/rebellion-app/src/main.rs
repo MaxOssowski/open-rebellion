@@ -6930,6 +6930,16 @@ async fn main() {
                             world.systems.get(system).map_or("", |value| value.name.as_str())
                         );
                     }
+                    personnel_finder_state.set_destinations(
+                        mission_state
+                            .en_route()
+                            .iter()
+                            .filter_map(|transit| match transit.member {
+                                MissionMember::Character(key) => Some((key, transit.to)),
+                                MissionMember::SpecialForce(_) => None,
+                            })
+                            .collect(),
+                    );
                     let personnel_choice = draw_personnel_finder(
                         ctx,
                         &world,
