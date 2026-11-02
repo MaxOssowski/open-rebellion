@@ -43,6 +43,8 @@ const FLEET_WINDOW_UMGUL = 82;
 const FLEET_WINDOW_SELONIA = 83;
 const FLEET_WINDOW_EMPTY = 84;
 const FLEET_WINDOW_YAVIN = 85;
+const FLEET_WINDOW_DESTINATION = 86;
+const A0_DESTINATION_CEILINGS = { ships: 2150, fighters: 1150, troops: 2550, personnel: 1050 };
 const A0_CONFIRM_DIALOG_CEILING = 1700;
 const A0_CONFIRM_JOINED_CEILING = 500;
 // The a0-yavin steps' ceilings: text hinting, the new fleet's number (A0
@@ -64,6 +66,9 @@ const a0MenusDir = process.argv.find((arg) => arg.startsWith("--a0-menus="))?.sl
 // `--a0-fleet2=DIR` (.artifacts/a0-vm/fleet2) does the same for a0-vjun
 // (vjun-fleet5-admiral-{tab}.png), a0-umgul (umgul-*.png), a0-selonia
 // (selonia-fleet4-{tab}.png) and a0-empty (umgul-empty.png).
+// `--a0-fleet4=DIR` (.artifacts/a0-vm/fleet4): the a0-destination tabs.
+const a0Fleet4Dir = process.argv.find((arg) => arg.startsWith("--a0-fleet4="))?.slice(12)
+  ?? [path.join(root, ".artifacts/a0-vm/fleet4")].find((dir) => fs.existsSync(path.join(dir, "qat-fleet8-ships.png")));
 // `--a0-fleet3=DIR` (.artifacts/a0-vm/fleet3): the a0-yavin steps.
 const a0Fleet3Dir = process.argv.find((arg) => arg.startsWith("--a0-fleet3="))?.slice(12)
   ?? [path.join(root, ".artifacts/a0-vm/fleet3")].find((dir) => fs.existsSync(path.join(dir, "01-yavin-fleet1-before-split.png")));
@@ -1559,6 +1564,18 @@ const cases = [
         a0Fleet3Dir && path.join(a0Fleet3Dir, "12-after-ship-confirmed-move.png"), A0_CONFIRM_JOINED_CEILING);
       return { dialogDiffering, joined };
     },
+  },
+  {
+    name: "a0-destination",
+    code: FLEET_WINDOW_DESTINATION,
+    factions: ["alliance"],
+    standalone: true,
+    // A0 fleet4/qat-fleet8-{tab} (day 25): Fleet 8, ordered from Yavin,
+    // listed at its destination Qat Chrystac in hyperspace (engine glow on
+    // its entry, picture and ships), selected.
+    run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-destination",
+      a0Fleet4Dir && ((tab) => path.join(a0Fleet4Dir, `qat-fleet8-${tab}.png`)),
+      A0_DESTINATION_CEILINGS),
   },
   {
     name: "join-fleet",

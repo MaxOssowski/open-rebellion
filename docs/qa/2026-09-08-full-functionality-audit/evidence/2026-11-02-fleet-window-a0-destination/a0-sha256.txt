@@ -1,0 +1,8 @@
+2c6fd2900032cdadd3e77a8325dbfdc9f93be3776a5d2378bf988730d368a485  fleet4/01-fleet6-ordered-to-qat.png
+ce88b5a5a6707d9346d17f789b1972ad33e46522d13fd10e2efedb9123b2a026  fleet4/02-qat-fleet6-en-route-unselected.png
+4b6349e6e38286cb1c66a23c95b4c5e7795460914d31f47ec4911ca9e36b7e2b  fleet4/03-qat-fleet6-en-route-selected.png
+2cbf33bef0536f6e9786c212eef988fd1290f62805edc38fd1c9676252762724  fleet4/04-fleet8-status-eta.png
+6887cafb2b1ae9dcc373b6969a90a1614bbf2805727c230d9c8f8c7a116141ab  fleet4/qat-fleet8-fighters.png
+e253c5ce69fe5b0fb78a685f378b3a8144085be4b4e86ade93888eb1e94f4b88  fleet4/qat-fleet8-personnel.png
+063905db14954efd9fa3dd9b4b34d0108dfd6355a87bda8c9094212d51b61500  fleet4/qat-fleet8-ships.png
+01210e78993329a8b612f5c089d9cc01b08db23e45b601b850b8530909cf12dc  fleet4/qat-fleet8-troops.png

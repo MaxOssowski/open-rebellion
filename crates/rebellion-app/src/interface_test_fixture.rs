@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 85;
+const SCENARIO_COUNT: u8 = 86;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -251,6 +251,11 @@ pub enum Scenario {
     /// carrying two Alliance Fleet Regiments, selected and expanded; the
     /// window at A0's (305, 86). A0 then split, transferred and merged.
     FleetWindowYavin = 84,
+    /// The Alliance's Fleet window over Qat Chrystac, the destination, as
+    /// A0 shows it (`.artifacts/a0-vm/fleet4/03-*.png`, day 25): Fleet 8,
+    /// Corellian Corvette 1 and Medium Transport 1 with two Alliance Fleet
+    /// Regiments, in hyperspace from Yavin, selected; at A0's (305, 86).
+    FleetWindowDestination = 85,
 }
 
 impl Scenario {
@@ -341,6 +346,7 @@ impl Scenario {
             82 => Self::FleetWindowSelonia,
             83 => Self::FleetWindowEmpty,
             84 => Self::FleetWindowYavin,
+            85 => Self::FleetWindowDestination,
             _ => return None,
         })
     }
@@ -707,6 +713,10 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowYavin {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowDestination {
+        place_yavin(request, world, cockpit, movement, troop_transport, fleets);
+        send_to_qat(request, world, cockpit, movement, fleets);
     }
     if request.scenario == Scenario::FleetWindowEmpty {
         if let Some(umgul) = clear_for_a0(world, "Umgul") {
@@ -1432,6 +1442,50 @@ fn place_yavin(
     fleets.open(world, yavin, (305, 86), request.faction, layout);
     fleets.select(yavin, FleetWindowEntry::Fleet(first));
     fleets.expand(yavin, first);
+}
+
+/// The `FleetWindowDestination` scenario: `place_yavin`'s fleet, renamed
+/// as A0's "Fleet 8", ordered from Yavin to Qat Chrystac; Yavin's window
+/// closed and the destination's opened where A0's lay, the fleet selected.
+fn send_to_qat(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    fleets: &mut FleetWindowState,
+) {
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(yavin), Some(qat)) = (system(world, "Yavin"), system(world, "Qat Chrystac")) else {
+        return;
+    };
+    let Some(&fleet) = world.systems[yavin].fleets.first() else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == qat {
+            value.location = yavin;
+        }
+    }
+    let moved = std::mem::take(&mut world.systems[qat].fleets);
+    world.systems[yavin].fleets.extend(moved);
+    world.systems[qat].control = ControlKind::Controlled(Faction::Alliance);
+    world.systems[qat].exploration_status = ExplorationStatus::Explored;
+    world.rename_fleet(fleet, "Fleet 8");
+    let ticks = rebellion_core::movement::fleet_transit_ticks(&world.fleets[fleet], world, yavin, qat)
+        .unwrap_or(10);
+    movement.order(fleet, yavin, qat, ticks);
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+
+    fleets.clear();
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, qat, (305, 86), request.faction, layout);
+    fleets.select(qat, FleetWindowEntry::Fleet(fleet));
 }
 
 /// Whether the scenario runs the clock Fast from the start.
@@ -5653,6 +5707,41 @@ mod tests {
         assert_eq!(applied.transport.cargo(first).len(), 2);
         assert!(world.systems[yavin].ground_units.is_empty());
         assert!(applied.fleets.is_expanded(yavin, first));
+    }
+
+    #[test]
+    fn the_a0_destination_scenario_lists_fleet_8_en_route_at_qat_chrystac() {
+        let request = request(Scenario::FleetWindowDestination, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, there) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Yavin".into();
+            world.systems[there].name = "Qat Chrystac".into();
+            world.systems[there].sector = world.systems[here].sector;
+            for name in ["Corellian Corvette", "Medium Transport"] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_alliance: true,
+                        hull: 100,
+                        hyperdrive: 100,
+                        troop_capacity: 2,
+                        ..Default::default()
+                    });
+            }
+        });
+        let world = &applied.world;
+        let mut keys = world.systems.keys();
+        let (yavin, qat) = (keys.next().unwrap(), keys.next().unwrap());
+        let listed = rebellion_core::movement::listed_fleets(&applied.movement, world, qat);
+        assert_eq!(listed.len(), 1);
+        let fleet = listed[0];
+        assert_eq!(world.fleet_name(fleet), Some("Fleet 8"));
+        assert!(applied.movement.is_in_transit(fleet));
+        assert_eq!(applied.transport.cargo(fleet).len(), 2);
+        assert!(applied.fleets.is_open(qat));
+        assert!(!applied.fleets.is_open(yavin));
     }
 
     #[test]
