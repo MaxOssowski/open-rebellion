@@ -1002,7 +1002,9 @@ pub fn original_encyclopedia_object(
         }
         MenuObject::ProductionFacility(key) => world.production_facilities.get(key)?.class_dat_id,
         MenuObject::SystemIcon { system, .. } => world.systems.get(system)?.dat_id,
-        MenuObject::Fleet(_) | MenuObject::Producer { .. } => return None,
+        // port: a mission opens its kind's MISSNSD record; the caller,
+        // which holds the missions, resolves it.
+        MenuObject::Fleet(_) | MenuObject::Producer { .. } | MenuObject::Mission(_) => return None,
     };
     Some(dat_id.raw())
 }

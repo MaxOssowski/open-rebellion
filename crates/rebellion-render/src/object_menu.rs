@@ -108,6 +108,10 @@ pub enum MenuObject {
     ManufacturingFacility(ManufacturingFacilityKey),
     /// A System window mine or refinery (`0x2c..0x2d`).
     ProductionFacility(ProductionFacilityKey),
+    /// A Missions window's mission, by its id (`0x50..0x7f`): the window's
+    /// slot 22 (`FUN_004a0400`) gives the left list's selected missions to
+    /// the menu (A0 missionstatus/02: Encyclopedia, Status, Abort).
+    Mission(u64),
 }
 
 impl MenuObject {
@@ -126,7 +130,8 @@ impl MenuObject {
             | Self::PlanetFighter { .. }
             | Self::DefenseFacility(_)
             | Self::ManufacturingFacility(_)
-            | Self::ProductionFacility(_) => None,
+            | Self::ProductionFacility(_)
+            | Self::Mission(_) => None,
         }
     }
 
@@ -154,7 +159,8 @@ impl MenuObject {
             | Self::SpecialForce(_)
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
-            | Self::Fighter { .. } => None,
+            | Self::Fighter { .. }
+            | Self::Mission(_) => None,
         }
     }
 
@@ -198,6 +204,7 @@ impl MenuObject {
             Self::DefenseFacility(key) => Some(StatusObject::DefenseFacility(key)),
             Self::ManufacturingFacility(key) => Some(StatusObject::ManufacturingFacility(key)),
             Self::ProductionFacility(key) => Some(StatusObject::ProductionFacility(key)),
+            Self::Mission(id) => Some(StatusObject::Mission(id)),
             Self::SystemIcon { .. } => None,
         }
     }
@@ -554,6 +561,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             Quadrant::Fleets => &[MOVE, CONFIRMED_MOVE, SCRAP, BOMBARDMENT, ASSAULT],
             Quadrant::Missions => &[ABORT],
         },
+        Some(MenuObject::Mission(_)) => &[ABORT],
         Some(MenuObject::Producer { area, .. }) => match area {
             ProductionArea::Shipyard => {
                 &[BUILD_SHIPS, STOP, DESTINATION, PRODUCER_RENAME, RESERVED]
@@ -963,6 +971,25 @@ mod tests {
             .filter(|row| row.enabled)
             .map(|row| row.item.label)
             .collect()
+    }
+
+    #[test]
+    fn a_missions_window_mission_offers_encyclopedia_status_and_abort() {
+        // A0 missionstatus/02: Encyclopedia and Status white, Abort grey
+        // until the mission may be aborted; Status opens Mission Status.
+        let mission = Some(MenuObject::Mission(7));
+        let rows = object_menu_rows(mission, OrderGates::default());
+        assert_eq!(labels(&rows), ["Encyclopedia", "Status", "Abort"]);
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        let abortable = OrderGates {
+            abort: true,
+            ..OrderGates::default()
+        };
+        assert!(enabled(&object_menu_rows(mission, abortable)).contains(&"Abort"));
+        assert_eq!(
+            MenuObject::Mission(7).status_object(),
+            Some(StatusObject::Mission(7))
+        );
     }
 
     #[test]

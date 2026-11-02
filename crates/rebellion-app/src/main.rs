@@ -6177,6 +6177,32 @@ async fn main() {
                                 logical_position,
                             } => system_window_state
                                 .minimize_missions_window(system, logical_position),
+                            // FUN_004ac5c0 with the window's slot 22
+                            // (FUN_004a0400): the selected mission's menu,
+                            // Encyclopedia, Status, Abort (A0
+                            // missionstatus/02).
+                            MissionsWindowAction::OpenObjectMenu { mission, point, .. } => {
+                                let selection = Some(MenuObject::Mission(mission));
+                                let mut gates = order_gates(
+                                    selection,
+                                    &world,
+                                    &mission_state,
+                                    &movement_state,
+                                    &troop_transport_state,
+                                    &mfg_state,
+                                    &research_state,
+                                    player_faction,
+                                );
+                                gates.abort = !abort_missions(
+                                    &world,
+                                    fog_state,
+                                    &mission_state,
+                                    selection,
+                                    player_faction,
+                                )
+                                .is_empty();
+                                object_menu = Some(ObjectMenuState::new(selection, gates, point));
+                            }
                         }
                     }
 
@@ -6268,10 +6294,18 @@ async fn main() {
                                 Some(catalog) => rebellion_render::open_original_encyclopedia_at(
                                     &mut enc_state,
                                     catalog,
-                                    selection.and_then(|object| {
-                                        rebellion_render::original_encyclopedia_object(
-                                            &world, object,
-                                        )
+                                    selection.and_then(|object| match object {
+                                        // A mission opens its kind's MISSNSD
+                                        // record.
+                                        MenuObject::Mission(id) => mission_state
+                                            .missions()
+                                            .iter()
+                                            .find(|mission| mission.id == id)
+                                            .and_then(|mission| mission.kind.record_id())
+                                            .map(rebellion_core::ids::DatId::raw),
+                                        other => rebellion_render::original_encyclopedia_object(
+                                            &world, other,
+                                        ),
                                     }),
                                 ),
                                 None => enc_state.open = true,
@@ -9240,6 +9274,14 @@ fn abort_missions(
     selection: Option<MenuObject>,
     faction: MissionFaction,
 ) -> Vec<u64> {
+    // A Missions window's mission: that one alone (FUN_004a0400).
+    if let Some(MenuObject::Mission(id)) = selection {
+        return if missions.abort_allowed(id, faction) {
+            vec![id]
+        } else {
+            Vec::new()
+        };
+    }
     let Some(MenuObject::SystemIcon {
         system,
         quadrant: Quadrant::Missions,

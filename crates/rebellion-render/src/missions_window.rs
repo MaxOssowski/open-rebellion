@@ -482,6 +482,14 @@ pub enum MissionsWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
+    /// A right release on a mission row opens the object pop-up menu
+    /// (`FUN_004ac5c0`) for it (the window's slot 22, `FUN_004a0400`, gives
+    /// the selected missions; A0 missionstatus/02).
+    OpenObjectMenu {
+        system: SystemKey,
+        mission: u64,
+        point: (i16, i16),
+    },
 }
 
 /// A minimized Missions window's rail icon (`FUN_004a21c0`): 11539 for side
@@ -898,6 +906,9 @@ struct WindowDrawResult {
     tab: Option<MissionsTab>,
     /// The pointer's travel since a press on the window's surface.
     travel: Option<egui::Vec2>,
+    /// A right release on a mission row: the row's mission, selected first,
+    /// and the 640 by 480 canvas point.
+    object_menu: Option<(u64, (i16, i16))>,
 }
 
 /// Draw every open Missions window.
@@ -994,6 +1005,13 @@ pub fn draw_missions_windows(
         if result.focus {
             state.focus(system);
             actions.push(MissionsWindowAction::SelectSystem(system));
+        }
+        if let Some((mission, point)) = result.object_menu {
+            actions.push(MissionsWindowAction::OpenObjectMenu {
+                system,
+                mission,
+                point,
+            });
         }
     }
     actions
@@ -1237,6 +1255,19 @@ fn draw_missions_window(
                 if exact_clicked(&response, cell) {
                     result.select = Some(row.mission);
                     result.focus = true;
+                }
+                if response.secondary_clicked() {
+                    if let Some(point) = response
+                        .interact_pointer_pos()
+                        .filter(|point| rect_contains(cell.intersect(list), *point))
+                    {
+                        result.select = Some(row.mission);
+                        result.focus = true;
+                        result.object_menu = Some((
+                            row.mission,
+                            crate::system_window::canvas_point(layout, point),
+                        ));
+                    }
                 }
             }
 
@@ -2249,6 +2280,36 @@ mod tests {
         let name = text(&run, "Sluis Van");
         assert_eq!(name.pos.x, centred("Sluis Van", 5, 109.0, 113.0));
         assert_eq!(name.pos.y, at(0.0, 91.0 + 13.0).y);
+    }
+
+    #[test]
+    fn a_right_click_on_a_mission_selects_it_and_opens_its_menu() {
+        // The window's slot 22 (FUN_004a0400) gives the selected mission to
+        // FUN_004ac5c0; A0 missionstatus/02 shows its Encyclopedia, Status,
+        // Abort.
+        let (world, system, missions, _) = busy();
+        let mut state = opened(&world, &missions, system);
+        let point = at(40.0, 90.0);
+        let mut frames = hover(point);
+        let right = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Secondary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        frames.extend([vec![right(true)], vec![right(false)], vec![]]);
+        let run = run(&world, &missions, &mut state, frames);
+        let espionage = missions.missions()[1].id;
+        assert_eq!(state.windows[0].selected, Some(espionage));
+        assert!(
+            run.actions.iter().any(|action| matches!(
+                action,
+                MissionsWindowAction::OpenObjectMenu { system: s, mission, .. }
+                    if *s == system && *mission == espionage
+            )),
+            "{:?}",
+            run.actions
+        );
     }
 
     #[test]

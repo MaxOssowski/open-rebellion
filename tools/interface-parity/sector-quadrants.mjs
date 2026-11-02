@@ -878,7 +878,57 @@ const cases = [
           && !o.rail.some(([system, kind]) => system === value && kind === "missions"), dat), dat);
       assert.deepEqual(restored.origin, window.origin);
       assert.equal(restored.selected, 0);
-      return { at, window, opening, reselected, reselectedChecks, decoyChecks, railChecks, restored };
+
+      // The first mission's menu (Encyclopedia, Status, Abort) and its
+      // Status (FUN_00445c60): A0 missionstatus/02, 03 (the Alliance's
+      // Espionage at Selonia, Status at (108, 79)): "Mission Status" over
+      // Target, ETA Destination (en route only), Team Size and Decoys. The
+      // fixture's Diplomacy is not en route, so its rows are Target, Team
+      // Size and Decoys; the labels' left edge and the title's box are
+      // compared with A0's.
+      const first = restored.row_rects[0];
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, { x: first[0] + 40, y: first[1] + 20 });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const missionMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      assert.deepEqual(missionMenu.row_states.map(([label]) => label), ["Encyclopedia", "Status", "Abort"],
+        JSON.stringify(missionMenu));
+      const rowHeight = (missionMenu.height - 2) / missionMenu.rows;
+      await click(page, { x: missionMenu.left + missionMenu.width / 2,
+        y: missionMenu.top + 2 + rowHeight * (missionMenu.status_window_row + 0.5) });
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      screenshot = await stableScreen(page, directory, "mission-status");
+      let missionStatus = null;
+      const a0File = path.join(root, ".artifacts/a0-vm/missionstatus/03-mission-status.png");
+      if (faction.side === 1 && fs.existsSync(a0File)) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0File));
+        const port = screenshot;
+        const ink = (png, [x0, y0, x1, y1]) => {
+          let box = null;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = (y * png.width + x) * 4;
+              if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+              box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+            }
+          }
+          return box;
+        };
+        const title = [108 + 15, 79 + 18, 108 + 226, 79 + 36];
+        const target = [108 + 16, 79 + 47, 108 + 118, 79 + 61];
+        missionStatus = { title: { a0: ink(a0, title), port: ink(port, title) },
+          target: { a0: ink(a0, target), port: ink(port, target) } };
+        for (const [name, { a0: a, port: p }] of Object.entries(missionStatus)) {
+          // A leading "T" stands up to 3 pixels right in Liberation Sans
+          // (the accepted text deviation, as the ship's Trooper row).
+          assert.ok(a && p && Math.abs(a[0] - p[0]) <= 3 && [1, 3].every((k) => Math.abs(a[k] - p[k]) <= 2)
+            && Math.abs(a[2] - p[2]) <= 4,
+            `mission status ${name}: ${JSON.stringify(missionStatus)}`);
+        }
+      }
+      return { at, window, opening, reselected, reselectedChecks, decoyChecks, railChecks, restored, missionMenu, missionStatus };
     },
   },
 ];
