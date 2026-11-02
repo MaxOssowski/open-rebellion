@@ -1,3 +1,5 @@
 45ee273e718683efb04b4ecccb139963b082ed1b8cd55ddd75d4ba3407bd1368  01-restored.png
 c6124fef36c6d7a2d0fd3f21b937f25b636f6674dd416b8dfd6ed03e666d8518  02-mission-menu.png
 efc13fe35b2fbedd27c4d809d65e42dfcad65c19a2ea387b056b1a6142a31187  03-mission-status.png
+b6862c8b460d211d37a1131296ab8983a5ef1555fc4d0d71085b181371298af0  personnel-states/12-mission-at-duros.png
+a63706586afc09cbaeaefb0bd5ef5dc37a5e060e80a8d2d27f441682e012fe55  personnel-states/13-mission-menu-abort-enabled.png

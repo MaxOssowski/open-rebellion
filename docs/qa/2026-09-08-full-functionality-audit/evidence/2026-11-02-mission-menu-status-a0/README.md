@@ -44,3 +44,19 @@ Before this change, the Missions window had no menu on a right click.
 - `a_missions_window_mission_offers_encyclopedia_status_and_abort` (`object_menu.rs`).
 
 Run `sector-quadrants-2026-11-02T18-22-28-155Z-764477` (Arch Chromium): pass. Title (184..272, 100..109) in A0 against (184..273, 100..109). "Target:" at 126 in A0 against 129, the leading T's bearing (accepted text deviation). Batch `b27`: every other gate passed, workspace 3331, fixtures 116.
+
+## Abort while the team travels and once it works (OBJ-12 C016, 2026-11-03)
+
+**A0.**
+
+- **`missionstatus/02-mission-menu`** (day 179). The Bothan Spies' Espionage at Selonia is still en route, so its menu greys Abort.
+- **`personnel-states/12-mission-at-duros`, `13-mission-menu-abort-enabled`** (day 183). Leia Organa's Diplomacy at Duros is under way at its target. Its menu has Encyclopedia, Status and Abort, all white.
+
+**The port.** `MissionState::abort_allowed` takes only a running mission: phase 8 (`FUN_00521600`, codes `0x40` and `0x41`). The `abort` case of `personnel-orders.mjs` (Linux, both sides) checks both states:
+
+- an ordered mission's Abort is disabled and drawn in 0x808080;
+- after a day runs the mission, its Abort is enabled and the checkmark ends the mission.
+
+Run `personnel-orders-2026-11-02T22-48-26-834Z-1242152` (batch `b31`): pass.
+
+**Open.** Choosing Abort in A0's Missions window showed no visible confirmation, and the mission went on (day 184). A dimmed frame flickered. The port asks with 0x7052. The cause is not traced.

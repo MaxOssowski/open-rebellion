@@ -7204,12 +7204,14 @@
         {
           "id": "OBJ-12-C016",
           "requirement": "mission orders disabled while in hyperspace",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/object-popup-menu.md"
+            "ghidra/notes/object-popup-menu.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-mission-menu-status-a0/"
           ],
-          "note": "The ledger lists order disabling while in hyperspace as open; object_menu.rs has no hyperspace gate. No A0 capture of this state."
+          "note": "Compared with A0 (missionstatus/02: an en-route mission's Abort grey; personnel-states/13, 2026-11-03: a mission under way at Duros, Abort white): abort_allowed takes only phase 8 (FUN_00521600), and personnel-orders.mjs 'abort' (Linux, both sides) finds an ordered mission's Abort drawn grey (0x808080) and a running one's enabled. Open: A0's Missions-window Abort showed no visible confirmation.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
