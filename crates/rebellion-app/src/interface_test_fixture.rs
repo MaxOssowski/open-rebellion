@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 86;
+const SCENARIO_COUNT: u8 = 87;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -256,6 +256,12 @@ pub enum Scenario {
     /// Corellian Corvette 1 and Medium Transport 1 with two Alliance Fleet
     /// Regiments, in hyperspace from Yavin, selected; at A0's (305, 86).
     FleetWindowDestination = 85,
+    /// The Alliance's Fleet window over Imperial Bortras, blockaded by
+    /// Fleet 8 after A0's battle there
+    /// (`.artifacts/a0-vm/fleet4/bortras-blockade-*.png`, day 119): Corellian
+    /// Corvette 1 damaged, Medium Transport 1 with two Alliance Fleet
+    /// Regiments, selected; at A0's (305, 86).
+    FleetWindowBlockade = 86,
 }
 
 impl Scenario {
@@ -347,6 +353,7 @@ impl Scenario {
             83 => Self::FleetWindowEmpty,
             84 => Self::FleetWindowYavin,
             85 => Self::FleetWindowDestination,
+            86 => Self::FleetWindowBlockade,
             _ => return None,
         })
     }
@@ -713,6 +720,10 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowYavin {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
+    }
+    if request.scenario == Scenario::FleetWindowBlockade {
+        place_yavin(request, world, cockpit, movement, troop_transport, fleets);
+        blockade_bortras(request, world, cockpit, movement, fleets);
     }
     if request.scenario == Scenario::FleetWindowDestination {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
@@ -1486,6 +1497,55 @@ fn send_to_qat(
     let layout = cockpit.layout_for(640.0, 480.0);
     fleets.open(world, qat, (305, 86), request.faction, layout);
     fleets.select(qat, FleetWindowEntry::Fleet(fleet));
+}
+
+/// The `FleetWindowBlockade` scenario: `place_yavin`'s fleet, as A0's
+/// "Fleet 8", moved to Imperial Bortras with its corvette damaged (A0
+/// shows its flames; its hull was not read), the Bortras window opened
+/// where A0's lay with the fleet selected.
+fn blockade_bortras(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    fleets: &mut FleetWindowState,
+) {
+    let system = |world: &GameWorld, name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, value)| value.name == name)
+            .map(|(key, _)| key)
+    };
+    let (Some(yavin), Some(bortras)) = (system(world, "Yavin"), system(world, "Bortras")) else {
+        return;
+    };
+    let Some(&fleet) = world.systems[yavin].fleets.first() else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == bortras {
+            value.location = yavin;
+        }
+    }
+    let others = std::mem::take(&mut world.systems[bortras].fleets);
+    world.systems[yavin].fleets.extend(others);
+    world.systems[yavin].fleets.retain(|&key| key != fleet);
+    world.systems[bortras].fleets.push(fleet);
+    world.fleets[fleet].location = bortras;
+    let value = &mut world.systems[bortras];
+    value.control = ControlKind::Controlled(Faction::Empire);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.ground_units.clear();
+    value.special_forces.clear();
+    world.rename_fleet(fleet, "Fleet 8");
+    let ship = &mut world.fleets[fleet].capital_ships[0];
+    ship.hull_current -= ship.hull_current / 2;
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    fleets.clear();
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, bortras, (305, 86), request.faction, layout);
+    fleets.select(bortras, FleetWindowEntry::Fleet(fleet));
 }
 
 /// Whether the scenario runs the clock Fast from the start.
@@ -5742,6 +5802,42 @@ mod tests {
         assert_eq!(applied.transport.cargo(fleet).len(), 2);
         assert!(applied.fleets.is_open(qat));
         assert!(!applied.fleets.is_open(yavin));
+    }
+
+    #[test]
+    fn the_a0_blockade_scenario_puts_fleet_8_damaged_over_imperial_bortras() {
+        let request = request(Scenario::FleetWindowBlockade, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, there) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Yavin".into();
+            world.systems[there].name = "Bortras".into();
+            world.systems[there].sector = world.systems[here].sector;
+            for name in ["Corellian Corvette", "Medium Transport"] {
+                world
+                    .capital_ship_classes
+                    .insert(rebellion_core::world::CapitalShipClass {
+                        name: name.into(),
+                        is_alliance: true,
+                        hull: 100,
+                        hyperdrive: 100,
+                        troop_capacity: 2,
+                        ..Default::default()
+                    });
+            }
+        });
+        let world = &applied.world;
+        let mut keys = world.systems.keys();
+        let (_, bortras) = (keys.next().unwrap(), keys.next().unwrap());
+        let [fleet] = world.systems[bortras].fleets[..] else {
+            panic!("one fleet at Bortras");
+        };
+        assert_eq!(world.fleet_name(fleet), Some("Fleet 8"));
+        assert_eq!(world.systems[bortras].control, ControlKind::Controlled(Faction::Empire));
+        assert_eq!(world.fleets[fleet].capital_ships[0].hull_current, 50);
+        assert!(!applied.movement.is_in_transit(fleet));
+        assert_eq!(applied.transport.cargo(fleet).len(), 2);
+        assert!(applied.fleets.is_open(bortras));
     }
 
     #[test]

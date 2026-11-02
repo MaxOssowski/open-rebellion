@@ -44,6 +44,8 @@ const FLEET_WINDOW_SELONIA = 83;
 const FLEET_WINDOW_EMPTY = 84;
 const FLEET_WINDOW_YAVIN = 85;
 const FLEET_WINDOW_DESTINATION = 86;
+const FLEET_WINDOW_BLOCKADE = 87;
+const A0_BLOCKADE_CEILINGS = { ships: 1950, fighters: 950, troops: 2350, personnel: 850 };
 const A0_DESTINATION_CEILINGS = { ships: 2150, fighters: 1150, troops: 2550, personnel: 1050 };
 const A0_CONFIRM_DIALOG_CEILING = 1700;
 const A0_CONFIRM_JOINED_CEILING = 500;
@@ -1576,6 +1578,19 @@ const cases = [
     run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-destination",
       a0Fleet4Dir && ((tab) => path.join(a0Fleet4Dir, `qat-fleet8-${tab}.png`)),
       A0_DESTINATION_CEILINGS),
+  },
+  {
+    name: "a0-blockade",
+    code: FLEET_WINDOW_BLOCKADE,
+    factions: ["alliance"],
+    standalone: true,
+    // A0 fleet4/bortras-blockade-{tab} (day 119): Fleet 8 over Imperial
+    // Bortras after winning the battle there ("Bortras is now under
+    // blockade by Alliance forces", fleet4/05); the window marks the
+    // blockade nowhere, the corvette carries its damage flames.
+    run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-blockade",
+      a0Fleet4Dir && ((tab) => path.join(a0Fleet4Dir, `bortras-blockade-${tab}.png`)),
+      A0_BLOCKADE_CEILINGS),
   },
   {
     name: "join-fleet",
