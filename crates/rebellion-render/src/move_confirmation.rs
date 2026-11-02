@@ -10,6 +10,7 @@ use egui_macroquad::egui;
 use rebellion_core::ids::{
     CharacterKey, FighterKey, FleetKey, SpecialForceKey, SystemKey, TroopKey,
 };
+use rebellion_core::manufacturing::ProductionArea;
 use rebellion_core::missions::MissionFaction;
 use rebellion_core::scrap::ScrapTarget;
 use rebellion_core::squadrons::SquadronPlace;
@@ -52,6 +53,11 @@ const SCRAP_PICTURE: [u32; 2] = [1032, 1033];
 const ABORT: &str = "Are you sure you want to abort this mission?";
 /// The Abort order's picture `+0x2e`: `0x40c` for side 1, `0x40d` otherwise.
 const ABORT_PICTURE: [u32; 2] = [1036, 1037];
+/// TEXTSTRA `RT_RCDATA` 0x7053, the Stop order's template (`FUN_0049a350`).
+const STOP: &str = "Are you sure you want to stop construction of the following?";
+/// The Stop order's picture `+0x2e`: `0x40e` for side 1, `0x40f`
+/// otherwise (`FUN_0049a350`).
+const STOP_PICTURE: [u32; 2] = [1038, 1039];
 /// TEXTSTRA `RT_RCDATA` 0x7056 (`ghidra/notes/move-order.md`).
 const EVACUATION: &str = "Units evacuating from worlds under blockade risk being destroyed by blockading vessels.  Are you sure you want to proceed with the evacuation?\nTransit time in days";
 
@@ -69,6 +75,9 @@ pub enum ConfirmedOrder {
     /// A Scrap (`0x200`): the units are destroyed for half their refined
     /// cost.
     Scrap,
+    /// A Stop (`0x213`) of the confirmation's `destination` system's
+    /// `area` manager: what it builds is dropped.
+    Stop { area: ProductionArea },
 }
 
 /// An order waiting for the player's answer: a fleet move, a character's
@@ -126,10 +135,20 @@ impl MoveConfirmation {
     /// is a blockaded system, so a fleet's move always shows 0x7057.
     /// A Retire's template is 0x7051 and a Scrap's 0x7050, then 0x7054
     /// ("\n{1:1}") with each object's name (`FUN_0049a880` for a Scrap).
+    /// A Stop's is 0x7053, then 0x7055 ("\n{1:6}  {1:5}") for each
+    /// manager: the units it builds and their name (A0 build-selection2/09
+    /// "1  Imperial Army Regiment"); its lines are `(name, count)`.
     #[must_use]
     pub fn text(&self) -> String {
         if self.order == ConfirmedOrder::Abort {
             return ABORT.to_string();
+        }
+        if matches!(self.order, ConfirmedOrder::Stop { .. }) {
+            let mut text = STOP.to_string();
+            for (name, count) in &self.lines {
+                text.push_str(&format!("\n{count}  {name}"));
+            }
+            return text;
         }
         if matches!(self.order, ConfirmedOrder::Retire | ConfirmedOrder::Scrap) {
             let mut text = if self.order == ConfirmedOrder::Scrap {
@@ -168,6 +187,9 @@ impl MoveConfirmation {
         if self.order == ConfirmedOrder::Scrap {
             return SCRAP_PICTURE[side(self.faction)];
         }
+        if matches!(self.order, ConfirmedOrder::Stop { .. }) {
+            return STOP_PICTURE[side(self.faction)];
+        }
         if self.blockaded {
             BLOCKADE_PICTURE[side(self.faction)]
         } else {
@@ -200,6 +222,11 @@ pub enum MoveConfirmationAction {
     Abort { missions: Vec<u64> },
     /// The checkmark on a Scrap: the units are scrapped.
     Scrap { targets: Vec<ScrapTarget> },
+    /// The checkmark on a Stop: the system's area drops what it builds.
+    Stop {
+        system: SystemKey,
+        area: ProductionArea,
+    },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
 }
@@ -239,6 +266,11 @@ impl MoveConfirmationState {
         Some(if confirm && window.order == ConfirmedOrder::Abort {
             MoveConfirmationAction::Abort {
                 missions: window.missions,
+            }
+        } else if let (true, ConfirmedOrder::Stop { area }) = (confirm, window.order) {
+            MoveConfirmationAction::Stop {
+                system: window.destination,
+                area,
             }
         } else if confirm && window.order == ConfirmedOrder::Scrap {
             MoveConfirmationAction::Scrap {
@@ -485,6 +517,40 @@ mod tests {
                 targets: vec![target]
             })
         );
+        state.open(window);
+        let action = click(&mut state, (355.0 + 25.0, 281.0 + 17.0));
+        assert_eq!(action, Some(MoveConfirmationAction::Cancel));
+    }
+
+    #[test]
+    fn a_stop_asks_with_its_own_text_and_picture_and_stops_on_the_checkmark() {
+        // FUN_0049a350 case 0x213: template 0x7053, then 0x7055
+        // ("\n{1:6}  {1:5}") per manager; picture 0x40e (side 1) / 0x40f.
+        // A0 build-selection2/09, 14: the Empire's "1  Imperial Army
+        // Regiment" and "3  Imperial Army Regiment".
+        let system = SystemKey::default();
+        let area = ProductionArea::TrainingFacility;
+        let window = MoveConfirmation {
+            order: ConfirmedOrder::Stop { area },
+            destination: system,
+            lines: vec![("Imperial Army Regiment".into(), 3)],
+            ..confirmation(MissionFaction::Empire)
+        };
+        assert_eq!(
+            window.text(),
+            "Are you sure you want to stop construction of the following?\n3  Imperial Army Regiment"
+        );
+        assert_eq!(window.picture(), 1039);
+        let alliance = MoveConfirmation {
+            faction: MissionFaction::Alliance,
+            ..window.clone()
+        };
+        assert_eq!(alliance.picture(), 1038);
+
+        let mut state = MoveConfirmationState::default();
+        state.open(window.clone());
+        let action = click(&mut state, (355.0 + 25.0, 244.0 + 17.0));
+        assert_eq!(action, Some(MoveConfirmationAction::Stop { system, area }));
         state.open(window);
         let action = click(&mut state, (355.0 + 25.0, 281.0 + 17.0));
         assert_eq!(action, Some(MoveConfirmationAction::Cancel));

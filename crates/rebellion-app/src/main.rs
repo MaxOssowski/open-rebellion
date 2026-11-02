@@ -6597,12 +6597,37 @@ async fn main() {
                                 );
                             }
                         }
-                        // Stop (0x213) runs at once: the band's area drops
-                        // what it was building (manual p. 84).
+                        // Stop (0x213): FUN_00487cc0 asks first
+                        // (FUN_0049a350 case 0x213, A0 build-selection2/09):
+                        // the band's units and their name.
                         Some((
                             ObjectMenuCommand::Stop,
                             Some(MenuObject::Producer { system, area }),
-                        )) => panel_actions.push(PanelAction::StopProduction { system, area }),
+                        )) => {
+                            let building = mfg_state
+                                .queue(system, area)
+                                .and_then(|queue| Some((queue.active()?.kind, queue.len())));
+                            if let Some((kind, count)) = building {
+                                let name =
+                                    rebellion_render::manufacturing_window::product(&world, kind).0;
+                                move_confirmation_state.open(MoveConfirmation {
+                                    order: ConfirmedOrder::Stop { area },
+                                    faction: player_faction,
+                                    fleets: Vec::new(),
+                                    characters: Vec::new(),
+                                    special_forces: Vec::new(),
+                                    missions: Vec::new(),
+                                    scrap: Vec::new(),
+                                    troops: Vec::new(),
+                                    squadrons: Vec::new(),
+                                    ships: None,
+                                    blockaded: false,
+                                    destination: system,
+                                    join: None,
+                                    lines: vec![(name, u32::try_from(count).unwrap_or(u32::MAX))],
+                                });
+                            }
+                        }
                         // ManuMgr_vt1fc (0x216) sets the manager's Reserved
                         // to the order's value: the row's mark flips (A0
                         // menus3/32, 33).
@@ -7018,6 +7043,11 @@ async fn main() {
                     );
                     // FUN_0041ce20(order, 1): each mission validates again
                     // and event 0x261 ends it (FUN_005233a0 -> +0x1dc(2)).
+                    // FUN_0041ce20(order, 1): the Stop drops what the band
+                    // builds (manual p. 84).
+                    if let Some(MoveConfirmationAction::Stop { system, area }) = answer {
+                        panel_actions.push(PanelAction::StopProduction { system, area });
+                    }
                     if let Some(MoveConfirmationAction::Abort { missions }) = &answer {
                         for &id in missions {
                             let aborted = mission_state.abort_allowed(id, player_faction)

@@ -30,8 +30,8 @@ const dimensions = { width: 210, height: 261 };
 const scenarioCode = 55;
 // FUN_00438500: the side's title strip, 10801 for side 1, 10802 otherwise.
 const factions = [
-  { name: "alliance", byte: 1, title: 10801 },
-  { name: "empire", byte: 2, title: 10802 },
+  { name: "alliance", byte: 1, title: 10801, galaxy: { x: 55, y: 40, width: 485, height: 350 }, stopPicture: 1038 },
+  { name: "empire", byte: 2, title: 10802, galaxy: { x: 120, y: 40, width: 480, height: 355 }, stopPicture: 1039 },
 ];
 // FUN_00438620 controls: (x, y, width, height, normal bitmap, native size).
 const controls = [
@@ -323,6 +323,148 @@ function labelsAgainstA0(port, origin) {
   return checks;
 }
 
+// A0 build-selection2/09 (Windows 10 VM, the Empire's Stop on Coruscant's
+// troops band, day 144): the confirmation at (148, 52).
+const A0_STOP = { file: "09-stopped.png", x: 148, y: 52 };
+
+async function stopConfirmationCase(page, source, faction, directory) {
+  const { galaxy } = faction;
+  // FUN_00606980 centres truncating (mission-dialog.mjs).
+  const origin = {
+    x: Math.floor(galaxy.x + (galaxy.width - 424) / 2),
+    y: Math.floor(galaxy.y + (galaxy.height - 331) / 2),
+  };
+  await page.waitForTimeout(300);
+  await frames(page);
+  const bytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "stop-confirmation-screen.png"), bytes);
+  const shot = PNG.sync.read(bytes);
+  const result = { origin, picture: faction.stopPicture };
+  // The picture, 400 by 200, every pixel.
+  const bitmap = resource(source, faction.stopPicture, 400, 200);
+  let differing = 0;
+  for (let y = 0; y < 200; y += 1) {
+    for (let x = 0; x < 400; x += 1) {
+      const from = (y * 400 + x) * 4;
+      const at = ((origin.y + 30 + y) * shot.width + origin.x + 12 + x) * 4;
+      if (shot.data[at] !== bitmap.data[from] || shot.data[at + 1] !== bitmap.data[from + 1]
+        || shot.data[at + 2] !== bitmap.data[from + 2]) differing += 1;
+    }
+  }
+  result.picture_differing = differing;
+  assert.equal(differing, 0, `stop picture ${faction.stopPicture} differs in ${differing} pixels`);
+  // The template's two lines (0x7053, font 4, 16 apart): each ink box's
+  // left, top and bottom within 2 pixels of A0's, relative to the window,
+  // and its width within 15% (the accepted text-width deviation: GDI's
+  // hinted Arial against Liberation Sans; A0 ends "of the" at 307, the
+  // port at 334).
+  const a0File = path.join(root, ".artifacts/a0-vm/build-selection2", A0_STOP.file);
+  if (faction.name === "empire" && fs.existsSync(a0File)) {
+    const a0 = PNG.sync.read(fs.readFileSync(a0File));
+    const ink = (png, ox, oy, [x0, y0, x1, y1], threshold) => {
+      let box = null;
+      for (let y = y0; y < y1; y += 1) {
+        for (let x = x0; x < x1; x += 1) {
+          const k = ((oy + y) * png.width + ox + x) * 4;
+          if (Math.min(png.data[k], png.data[k + 1], png.data[k + 2]) <= threshold) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+      }
+      return box;
+    };
+    result.lines = {};
+    for (const [name, region] of [["first", [20, 242, 346, 258]], ["second", [20, 258, 346, 274]]]) {
+      const a = ink(a0, A0_STOP.x, A0_STOP.y, region, 200);
+      const p = ink(shot, origin.x, origin.y, region, 120);
+      result.lines[name] = { a0: a, port: p };
+      const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+      assert.ok(a && p && [0, 1, 3].every((k) => Math.abs(a[k] - p[k]) <= 2) && ratio > 0.85 && ratio < 1.15,
+        `stop ${name} line: ${JSON.stringify(result.lines[name])}`);
+    }
+  }
+  await click(page, { x: origin.x + 355 + 25, y: origin.y + 244 + 17 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  return result;
+}
+
+// Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.
+const overMaintenanceCode = 88;
+const A0_OVER_MAINTENANCE = { file: "11-build-selection.png", x: 255, y: 87 };
+// `--a0-manufacturing=DIR`, default .artifacts/a0-vm/manufacturing.
+function a0ManufacturingDir() {
+  const dir = process.argv.find((arg) => arg.startsWith("--a0-manufacturing="))?.slice(19)
+    ?? path.join(root, ".artifacts/a0-vm/manufacturing");
+  return fs.existsSync(path.join(dir, A0_OVER_MAINTENANCE.file)) ? dir : null;
+}
+
+async function overMaintenanceCase(page, faction, directory) {
+  const fixtureCode = overMaintenanceCode | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const troops = (await production(page)).bands.find(({ area }) => area === "troops");
+  await bandOrder(page, troops, "build_row", directory, "over-maintenance-build");
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+    null, { timeout: 10_000 });
+  const opened = await production(page);
+  const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
+  await stableWindow(page, origin, directory, "over-maintenance");
+  const port = PNG.sync.read(fs.readFileSync(path.join(directory, "over-maintenance-screen.png")));
+  const result = { origin };
+  const a0Manufacturing = a0ManufacturingDir();
+  result.a0 = a0Manufacturing;
+  if (a0Manufacturing) {
+    const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Manufacturing, A0_OVER_MAINTENANCE.file)));
+    // Confirm, 66 by 33 at (73, 224): every pixel, the keyed corner
+    // showing the window's background in both.
+    let differing = 0;
+    for (let y = 0; y < 33; y += 1) {
+      for (let x = 0; x < 66; x += 1) {
+        const i = ((origin.y + 224 + y) * port.width + origin.x + 73 + x) * 4;
+        const j = ((A0_OVER_MAINTENANCE.y + 224 + y) * a0.width + A0_OVER_MAINTENANCE.x + 73 + x) * 4;
+        if (port.data[i] !== a0.data[j] || port.data[i + 1] !== a0.data[j + 1] || port.data[i + 2] !== a0.data[j + 2]) {
+          differing += 1;
+        }
+      }
+    }
+    result.confirm_differing = differing;
+    assert.equal(differing, 0, `disabled Confirm differs from A0 in ${differing} pixels`);
+    // The four "n/a" (14358): each ink box within 2 pixels of A0's,
+    // relative to the window (GDI hinting is the accepted deviation).
+    const ink = (png, ox, oy, [x0, y0, w, h], threshold) => {
+      let box = null;
+      for (let y = y0; y < y0 + h; y += 1) {
+        for (let x = x0; x < x0 + w; x += 1) {
+          const k = ((oy + y) * png.width + ox + x) * 4;
+          if (Math.min(png.data[k], png.data[k + 1], png.data[k + 2]) <= threshold) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+      }
+      return box;
+    };
+    result.values = {};
+    for (const [name, field] of [["refined", [36, 110, 64, 23]], ["maintenance", [138, 110, 64, 23]],
+      ["completion", [140, 145, 60, 15]], ["deployment", [140, 165, 60, 15]]]) {
+      const a = ink(a0, A0_OVER_MAINTENANCE.x, A0_OVER_MAINTENANCE.y, field, 200);
+      const p = ink(port, origin.x, origin.y, field, 120);
+      result.values[name] = { a0: a, port: p };
+      assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 2), `${name}: ${JSON.stringify(result.values[name])}`);
+    }
+  }
+  // A click on the disabled Confirm builds nothing and keeps the window.
+  await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  await page.waitForTimeout(300);
+  const after = await production(page);
+  assert.equal(after.build_selection_open, true, "the disabled Confirm closes nothing");
+  assert.equal(after.bands.find(({ area }) => area === "troops").queued, 0, "the disabled Confirm builds nothing");
+  return result;
+}
+
 async function stableWindow(page, origin, directory, label) {
   await page.waitForTimeout(150);
   await frames(page);
@@ -450,8 +592,11 @@ async function inspect(server, source, faction, executable) {
     assert.ok(built.product.length > 0, "the band names its product");
     fs.writeFileSync(path.join(directory, "confirmed-screen.png"), await page.screenshot({ animations: "disabled" }));
 
-    // Stop (0x213) clears the band (manual p. 84).
+    // Stop (0x213) asks first (FUN_00487cc0, FUN_0049a350 case 0x213):
+    // the 424 by 331 confirmation centred in the galaxy view, its picture
+    // 0x40e/0x40f at (12, 30); the checkmark clears the band (manual p. 84).
     const stopMenu = await bandOrder(page, built, "stop_row", directory, "stop");
+    const stopConfirmation = await stopConfirmationCase(page, source, faction, directory);
     await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands
       ?.find(({ area }) => area === "troops")?.queued === 0, null, { timeout: 10_000 });
     fs.writeFileSync(path.join(directory, "stopped-screen.png"), await page.screenshot({ animations: "disabled" }));
@@ -538,6 +683,14 @@ async function inspect(server, source, faction, executable) {
     assert.deepEqual(requests.map(({ url }) => url).sort(), [...expectedRequests].sort());
     assert.ok(requests.every(({ status }) => status === 200), "startup has non-200 requests");
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
+
+    // The side over its maintenance (fixture 88: no mine or refinery):
+    // FUN_0052e970 refuses the order, so FUN_00439160 writes "n/a" in all
+    // four values and Confirm shows its disabled art 11620 (FUN_00438620)
+    // and does nothing. A0 manufacturing/11 (the Empire at -402, window at
+    // (255, 87)) is the reference.
+    const overMaintenance = await overMaintenanceCase(page, faction, directory);
+    assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
       faction: faction.name,
@@ -549,6 +702,8 @@ async function inspect(server, source, faction, executable) {
       pages,
       reserved_menu: reservedMenu,
       facility_menu: facilityMenu,
+      over_maintenance: overMaintenance,
+      stop_confirmation: stopConfirmation,
       built: { product: built.product, queued: built.queued },
       comparisons,
       textChecks,
