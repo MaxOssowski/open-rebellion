@@ -4808,33 +4808,35 @@
         {
           "id": "OBJ-03-C005",
           "requirement": "available",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The 'available' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 specforces/00 and personnel-states/00, 02 (DS_flip_allian, days 161 and 180): an available character reads 'Chewbacca - Yavin', no state. personnel-states.mjs (Linux, both sides) opens the PersonnelStates fixture's Personnel Finder with F5 and reads its Characters rows. The Alliance's other characters read 'Name - System' with no parentheses.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C006",
           "requirement": "assigned",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The 'assigned' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 specforces/00 and personnel-states/00, 02: a commanding character reads 'Huoba Neva - Pzob ( General )', 'Sarin Virgilio - Mon Calamari ( General )'. personnel-states.mjs (Linux, both sides) opens the PersonnelStates fixture's Personnel Finder with F5 and reads its Characters rows. The fixture's General reads 'Name - System ( General ) ' (FUN_00465bb0, +0x96).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C007",
           "requirement": "in transit",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
@@ -4842,13 +4844,13 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The 'in transit' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it. 2026-11-02: A0 specforces/00 shows a travelling character as 'Name - Destination ( Enroute )'; the port named 'Location Unknown' and now names the transit's destination (unit test); no browser case has a travelling character yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 specforces/00 and personnel-states/00: a travelling character names its destination, 'Adar Tallon - Mon Calamari ( Enroute )'. personnel-states.mjs (Linux, both sides) opens the PersonnelStates fixture's Personnel Finder with F5 and reads its Characters rows. The fixture's traveller (a member transit to the secondary system) reads 'Leia Organa - F'tral ( Enroute ) ' (Alliance), 'Emperor Palpatine - F'tral ( Enroute ) ' (Empire), not 'Location Unknown'.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C008",
           "requirement": "on mission",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
@@ -4856,8 +4858,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The 'on mission' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it. 2026-11-02: A0 specforces/00 shows 'Han Solo - Drall ( On Mission )', the port's format (unit test); no browser case yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 specforces/00 and personnel-states/00, 02: 'Han Solo - Drall ( On Mission )', 'Drayson - Corellia ( On Mission )'. personnel-states.mjs (Linux, both sides) opens the PersonnelStates fixture's Personnel Finder with F5 and reads its Characters rows. The fixture's character on a mission reads 'Mon Mothma - Akrit'tar ( On Mission ) ' on both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C009",
@@ -4941,9 +4943,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "Compared with A0 on 2026-11-02 (status/14-char-menu: a 124 by 142 menu, Move, Confirmed Move, Mission, Command, Encyclopedia, Status, Retire): status-window.mjs 'character' (Linux, both sides) asserts the same size and rows; personnel-orders.mjs drives Move, Retire and Abort from it (12/12). Command's state follows the character.",
+          "note": "Compared with A0 on 2026-11-02 (status/14-char-menu: a 124 by 142 menu, Move, Confirmed Move, Mission, Command, Encyclopedia, Status, Retire): status-window.mjs 'character' (Linux, both sides) asserts the same size and rows; personnel-orders.mjs drives Move, Retire and Abort from it (12/12). Command's state follows the character. 2026-11-02: a right click on any Finder opens the object menu with nothing selected, Encyclopedia and Status grey (A0 personnel-states/03..06; vtables 0x65a000/0x65a090/0x65a130/0x65a270 slot 7 FUN_004ac5c0, +0x58 FUN_00461740); the port opens it (ObjectMenuState::for_finder) and personnel-states.mjs checks it, with Escape closing only the menu.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -5086,22 +5089,26 @@
         {
           "id": "OBJ-04-C004",
           "requirement": "filters",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-finder-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "Faction tabs and name-box filtering are unit-tested (FUN_00462770, FUN_0046df90); only the opening state is compared in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 personnel-states/08, 09 (DS_flip_allian, day 182): the Alliance tab chooses its first fleet; typing 'Fleet 6' chooses Fleet 6 and filters nothing (Fleets 4 and 7 stay). fleet-finder.mjs 'tabs' and 'type-and-enter' (Linux, both sides) check the tab's and the typed choice (FUN_00609650) and now that typing keeps every row.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-04-C005",
           "requirement": "empty",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No evidence of an empty Finder list in A0 or the browser."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
+          ],
+          "note": "A0 personnel-states/07: the Imperial tab of a galaxy with no known Imperial fleet lists nothing and shows no bar. personnel-states.mjs (Linux, both sides) opens the Fleet Finder in a galaxy with no fleet of the other side and finds that side's tab empty.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-04-C006",
@@ -5166,13 +5173,14 @@
         {
           "id": "OBJ-04-C011",
           "requirement": "Troop Finder faction tabs",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "A0 alliance-tab.png shows the Alliance tab choosing Yavin; the port's tab switch is unit-tested (the_opening_and_a_new_tab_choose...), but no browser case presses the tab.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 troop-finder-first-row/alliance-tab: the other side's tab chooses its first row, Yavin, white. encyclopedia-placement.mjs --window=finders (Linux, Alliance) presses the Troop Finder's other tab with the name box empty and finds its first row white and the others grey (FUN_0046ce40, FUN_0060d7e0(side, 1)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-04-C012",
@@ -6551,15 +6559,17 @@
         {
           "id": "OBJ-10-C009",
           "requirement": "status",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-special-force-status-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-alliance-regiment-status-a0/"
           ],
-          "note": "Trooper Regiment Status matches A0 and passes on Arch Chromium; Special Forces Status has no A0 capture (STT 'Not captured').",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Trooper Regiment Status matches A0 for both sides (status/12-troop, troopstatus/03) and Special Forces Status matches A0 sfstatus/03 (title and first labels within 1 pixel); status-window.mjs 'regiment' and 'special-force' pass on both sides (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-10-C010",

@@ -55,3 +55,74 @@ The Troop Finder keeps its bright boxes. A0's Troop Finder (DS_flip_allian, day 
 - No browser case has a travelling character yet.
 
 Batch `b28` passed every gate: workspace 3333, fixtures 116. The mutant that empties `set_destinations` is caught by the test's state check.
+
+## The Characters rows' states in the browser (OBJ-03 C005..C008)
+
+**A0.** `personnel-states/00` and `02` (`.artifacts/a0-vm/personnel-states/`, DS_flip_allian, day 180) show the Alliance's list from top to bottom. The states are:
+
+- available, no state: "Chewbacca - Yavin", "Crix Madine - Drall";
+- "( Enroute )": "Adar Tallon - Mon Calamari ( Enroute )";
+- "( On Mission )": "Drayson - Corellia ( On Mission )", "Han Solo - Drall ( On Mission )";
+- "( General )": "Huoba Neva - Pzob ( General )", "Sarin Virgilio - Mon Calamari ( General )".
+
+No character in the save is captured, injured or dead.
+
+**The fixture.** `PersonnelStates` (code 93) takes three of the player's characters:
+
+- the first is on a mission at the primary system;
+- the second travels to the secondary system with a member transit (`MissionState::push_transit`, now public for the fixtures);
+- the third is a General.
+
+**The gate.** `personnel-states.mjs` presses F5 for each side and reads the Characters rows the fixture reports (`emit_personnel_finder`, `PersonnelFinderState::shown_character_rows`). It asserts one row of each state, that the traveller is not "Location Unknown", and, for the Alliance, rows with no state.
+
+## The Finders' right-click menu
+
+**A0.** A right click on a Personnel Finder row opens a pop-up menu with Encyclopedia and Status. Both are grey, and hovering or clicking Status does nothing (`personnel-states/03`, `04`). The Fleet Finder opens the same menu over an empty part of its list (`05`). Escape closes the menu and leaves the Finder open (`06`). The menu is 2 rows high, about 42 pixels, as A0's 7-row character menu is 142.
+
+**The source.** The System, Fleet, Personnel and Troop Finders' vtables (`0x65a000`, `0x65a090`, `0x65a130`, `0x65a270`, read from REBEXE.EXE) put `FUN_004ac5c0` in slot 7, the shared object pop-up menu, and `FUN_00461740` in the selection slot `+0x58`. `FUN_00461740` returns nothing, so `FUN_0051d990` lists only Encyclopedia and Status, both disabled for an empty selection.
+
+**Before this change.** A right click on a Finder did nothing in the port.
+
+**The port now.**
+
+- `ObjectMenuState::for_finder` opens the menu with no selection on a right-button release over an open Finder.
+- `main.rs` calls it for the four Finders. While a Finder is open, the menu takes the input, and its Escape closes only the menu.
+- Test: `a_right_release_on_a_finder_opens_encyclopedia_and_status_disabled`. The function is new, so the test does not build without the change.
+- `personnel-states.mjs` right-clicks the list and asserts the two grey rows and the 42-pixel height. It then presses Escape and checks that the menu closes while the Finder stays open.
+
+## The Fleet Finder's tabs, name box and empty list (OBJ-04 C004, C005)
+
+**A0** (DS_flip_allian, day 182, `.artifacts/a0-vm/personnel-states/`):
+
+- **`08`.** The Alliance tab, with the name box empty, lists Fleets 4, 6 and 7 and chooses the first.
+- **`09`.** Typing "Fleet 6" chooses Fleet 6 and leaves Fleets 4 and 7 listed. The name box chooses a row; it filters nothing.
+- **`07`.** The Imperial tab lists nothing, because no Imperial fleet is known, and shows no scroll bar.
+
+**The port's gates.**
+
+- `fleet-finder.mjs` "tabs" checks the tab's choice (FUN_00609650 on the box's text).
+- `fleet-finder.mjs` "type-and-enter" checks the typed choice. It now also asserts that typing keeps every row.
+- `personnel-states.mjs` opens the Fleet Finder in a galaxy that shows no fleet of the other side. It clicks that side's tab and asserts an empty list.
+
+## The Troop Finder's other tab (OBJ-04 C011)
+
+`encyclopedia-placement.mjs --window=finders` (Alliance) reopens the Troop Finder with the name box empty and presses the Imperial tab at the window's (88, 72). It checks that:
+
+- the heading changes;
+- the first row, Corfai, is white and the others are grey.
+
+A0 `troop-finder-first-row/alliance-tab` shows the same for the Empire's player pressing the Alliance tab: Yavin is chosen. Run `encyclopedia-placement-2026-11-02T22-13-36-521Z` (Alliance): pass.
+
+## Runs
+
+Every gate passed in batch `b29`, except `personnel-states`. That gate was edited after its WASM was built and expected the General before the fixture had one.
+
+Batch `b30` ran with the test WASM that has the General and the Finder menu:
+
+- workspace 3335, fixtures 116, provenance clean;
+- mutants: 6 caught, 1 unviable;
+- `fleet-finder`, `system-finder`, `personnel-orders`, `status-window`, `encyclopedia-placement --window=finders` and `agent-objectives`: pass.
+
+In `b30`, `personnel-states` failed for the Empire on a race in the gate: it cleared the menu report before the Escape's frame. The failure screenshot shows the menu closed and the Finder open. Now the gate clears the report after that frame. The rerun `personnel-states-2026-11-02T22-02-26-773Z` passed on both sides (test WASM `480e1913…`).
+
+The placement step's first version moved the mouse away within the release's frame, so egui saw no click. The step now waits a frame and checks the heading. Rerun: `encyclopedia-placement-2026-11-02T22-13-36-521Z`.
