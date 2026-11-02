@@ -126,3 +126,35 @@ Batch `b30` ran with the test WASM that has the General and the Finder menu:
 In `b30`, `personnel-states` failed for the Empire on a race in the gate: it cleared the menu report before the Escape's frame. The failure screenshot shows the menu closed and the Finder open. Now the gate clears the report after that frame. The rerun `personnel-states-2026-11-02T22-02-26-773Z` passed on both sides (test WASM `480e1913…`).
 
 The placement step's first version moved the mouse away within the release's frame, so egui saw no click. The step now waits a frame and checks the heading. Rerun: `encyclopedia-placement-2026-11-02T22-13-36-521Z`.
+
+## Character Status: Commanding names the commanded object
+
+**A0** (day 182, `.artifacts/a0-vm/personnel-states/`):
+
+- **`10-general-neva-menu`.** General Neva at Pzob, the Alliance's General, opened from the Personnel Finder: her menu has Retire grey, because she holds a command.
+- **`11-general-neva-status`.** Her Character Status reads "Commanding: Pzob" and "Attached: Pzob".
+
+**The source.** `FUN_004486f0` names `+0xa8`. The Command order (`FUN_00561bb0`) keys `+0xa8` (`FUN_004ee740`) to the place `FUN_0055ed30` finds for the character: the fleet of the capital ship it is aboard, otherwise its system. A move clears the command (`FUN_00560d50`).
+
+**Before this change.** The port always wrote "None".
+
+**The port now.** `character_rows` names the character's fleet, or else its system, while it holds a command; otherwise "None". The port already greys Retire for a commander (`character_retire::order_allowed`, `FUN_004ed460` 1).
+
+Test: `a_commander_commands_its_system_or_the_fleet_it_is_aboard`. With the old "None" put back, it fails.
+
+## Force Ranking in Character Status (OBJ-03 C012, C013)
+
+**A0.**
+
+- **`personnel-states/19-luke-status-trainee`** (Alliance, day 185). Luke Skywalker at Xyquine, Force-aware but not a Jedi, reads "Force Ranking: Trainee". His other rows are Diplomacy 75, Espionage 75, Combat 135 and Leadership 70, the rows of `a_character_at_a_system_lists_the_rows_of_figure_3_46`.
+- **`status/33-emperor`** (Empire). Emperor Palpatine reads "Force Ranking: Jedi Master".
+
+**The fixture.** `ForceStatus` (code 94) is `MissionTargeting` with a Force user as its agent. The Alliance's agent has a Force value of 50, a Trainee. The Empire's has 120, a Jedi Master (`FUN_004486f0`'s steps 10, 20, 80, 100, 120). While the Character Status window is open, `emit_status_rows` reports its rows.
+
+**The gate.** The new `force-character` case of `status-window.mjs` opens the agent's Status from its menu, as the `character` case does. It runs that case's chrome checks and asserts the Force Ranking row: "Trainee" for the Alliance and "Jedi Master" for the Empire.
+
+**Run.** `status-window-2026-11-02T23-23-34-648Z-1314139` (batch `b32`, both sides): pass. It read "Trainee" for the Alliance and "Jedi Master" for the Empire.
+
+Batch `b31` ran every gate with the Commanding change and passed: workspace 3336, fixtures 116.
+
+Batch `b32` added the ForceStatus fixture and the `force-character` and `ship-scrap` cases. It passed `status-window`, `personnel-states`, `fleet-window`, `sector-quadrants` and `agent-objectives`. The mutant that empties `StatusWindowState::object` survived the unit tests, so the test `the_window_reports_the_object_it_shows` was added; it catches the mutant.

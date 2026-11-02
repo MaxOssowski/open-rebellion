@@ -4578,28 +4578,30 @@
         {
           "id": "OBJ-02-C005",
           "requirement": "personnel tab",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-defenses-pages-a0/"
           ],
-          "note": "The Defenses window (FUN_004a8790) Personnel page and tab art are compared to STRATEGY resources by sector-quadrants.mjs in the Linux browser; A0 captures 17-def-tab/18-tab5/19-tab3 exist (.artifacts/a0-vm/status) but no comparison is recorded.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (personnel-states/16: Pzob's Personnel page, label at the window's (89..144, 51..63), as Coruscant's in status/13): sector-quadrants.mjs 'defenses' (Linux, both sides) finds the port's label at the same box; the page's background and tab art were already exact.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-02-C006",
           "requirement": "troop tab",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-defenses-pages-a0/"
           ],
-          "note": "sector-quadrants.mjs opens the Regiments page and checks its tab art in the Linux browser; no A0 comparison recorded.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (personnel-states/15: Mon Calamari's Trooper Regiments page, label at (63..170, 51..65)): sector-quadrants.mjs 'defenses' (Linux, both sides) finds the port's at (65..170, 50..65); tab art and regiment mini were already exact. Open: A0's Alliance windows show no 'Garrison Requirement' line under the label, which the port draws after FUN_004a90d0 (A0's Empire Coruscant shows it); see the evidence README.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-02-C007",
@@ -4903,26 +4905,28 @@
         {
           "id": "OBJ-03-C012",
           "requirement": "Force-aware",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-jedi-fleets-panels-removed/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "The Force Ranking row is the only Force display (status_rows.rs); A0 Character Status rows were compared for Veers and the Emperor, but no Force-aware (non-Jedi) character was captured or opened in the browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/19: Luke Skywalker, Force-aware, 'Force Ranking: Trainee', 75/75/135/70 as the unit test of manual Fig. 3.46): status-window.mjs 'force-character' (Linux, Alliance) opens the ForceStatus fixture agent's Character Status (Force 50) and reads 'Trainee' from the window's rows.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C013",
           "requirement": "Jedi",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
           ],
-          "note": "A0 Emperor Character Status (33/34-emperor) shows Force Ranking 'Jedi Master' and the port's rows match its labels; the browser status-window case is a non-Jedi character.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 (status/33-emperor: 'Force Ranking: Jedi Master'): status-window.mjs 'force-character' (Linux, Empire) opens the ForceStatus fixture agent's Character Status (Force 120) and reads 'Jedi Master'; the window's chrome checks pass as for the 'character' case.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-03-C014",
@@ -5704,13 +5708,15 @@
         {
           "id": "OBJ-06-C013",
           "requirement": "decommission",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-scrap-order/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-object-menu-scrap-a0/"
           ],
-          "note": "Scrap (0x200, FUN_00534c00) runs for the AI, but the player's menu item is drawn disabled (object_menu.rs SCRAP enabled=false)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/21: the player's ship Swift at Mon Calamari, Move, Confirmed Move, Create Fleet, Rename, Encyclopedia, Status and Scrap all white): fleet-window.mjs 'ship-scrap' (Linux, both sides) asserts the same seven enabled rows, then Scrap's confirmation and the checkmark scrap the ship (command 0x200, FUN_00534c00). The earlier note that Scrap is always disabled was stale (2026-11-01 object-menu-scrap).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-06-C014",

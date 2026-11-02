@@ -44,3 +44,11 @@ With the row forced off the same gate fails with `scrap_enabled:false`
 
 No pixel comparison of the menus against the A0 captures; the browser case
 covers only the regiment. The OBJ-14 cells stay partial.
+
+## A ship's Scrap (2026-11-02, OBJ-06 C013)
+
+**A0.** `.artifacts/a0-vm/personnel-states/21-own-ship-menu-scrap` (Alliance, DS_flip_allian, day 185) shows the menu of the player's ship Swift, in Fleet 4 at Mon Calamari. Its rows are Move, Confirmed Move, Create Fleet, Rename, Encyclopedia, Status and Scrap, and every row is white.
+
+**The browser.** The new `ship-scrap` case of `fleet-window.mjs` uses the fleet-join fixture. It right-clicks the player's first ship in orbit and asserts the same seven rows, all enabled. Then it chooses Scrap, sees the confirmation and presses the checkmark. It waits for the log line `command=0x200 destination=scrap targets=[Ship … result=Ok`.
+
+Run `fleet-window-2026-11-02T22-54-31-639Z-1256992` (Arch Chromium, both sides, test WASM `283d1246…`): pass.

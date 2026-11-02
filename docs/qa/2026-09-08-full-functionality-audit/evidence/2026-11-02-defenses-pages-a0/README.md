@@ -21,3 +21,28 @@ The `defenses` case of `sector-quadrants.mjs` now clicks the Shields and Squadro
 - **Tolerance.** Left and top within 2 pixels, width within 15%. The Shields label is 6 pixels narrower: GDI's hinting, the accepted text deviation. A0's 66 is the descender of q and g.
 - **Earlier checks.** The tabs' art (normal, selected, empty) was already compared by the same gate.
 - **Run.** `sector-quadrants-2026-11-02T18-32-44-125Z-784713` (Arch Chromium, both sides): pass.
+
+## The Personnel and Regiments pages (OBJ-02 C005, C006), day 184
+
+**A0** (Alliance, DS_flip_allian, `.artifacts/a0-vm/personnel-states/`):
+
+- **`16-pzob-personnel`.** Pzob's Defenses window at (118, 86), on its Personnel page. The label "Personnel" is at the window's (89..144, 51..63). Coruscant's window in `status/13` puts it at the same place.
+- **`15-mon-calamari-regiments`.** Mon Calamari's window at (305, 86), opened from the Troop Finder on its Trooper Regiments page. The label is at (63..170, 51..65).
+
+**The port.** The `defenses` case of `sector-quadrants.mjs` now measures both labels as it does the Shields and Squadrons labels: left and top within 2 pixels, width within 15%.
+
+| Page | A0 | Port |
+|---|---|---|
+| Personnel | 89..144, 51..63 | 89..144, 51..63 |
+| Regiments | 63..170, 51..65 | 65..170, 50..65 |
+
+Run `sector-quadrants-2026-11-02T22-31-18-193Z-1201960` (Arch Chromium, both sides): pass.
+
+**Open: the garrison line.** On the Regiments page the port draws "Garrison Requirement: N" under the label. It follows `FUN_004a90d0`: page 2, and the system's holder (`+0x24 >> 6 & 3`) equal to the player's side (`FUN_0041cdb0` → `FUN_00435fc0`).
+
+- A0's Empire window of Coruscant shows the line (`status/11`).
+- A0's Alliance windows of Mon Calamari and Pzob do not (`15`, `17-pzob-regiments`, day 184). Both systems are the Alliance's and the player is the Alliance.
+
+- **`18-umgul-imperial-garrison`.** In the same Alliance game, Umgul's window shows the line: "Garrison Requirement: 0". Umgul is the Empire's, opened from the Troop Finder's Imperial tab.
+
+So in both games A0 shows the line on the Empire's systems, and in the Alliance game not on the Alliance's. That does not fit the reading above. `FUN_0041cdb0` returns `DAT_006b14e4 +0xc +0x24`, the side `FUN_00435bc0` gives the player object (`FUN_004861b0(side)`). Why the line follows the Empire is not traced. The port keeps the reading. The gate compares only the first line, rows 50..65.

@@ -12,3 +12,5 @@ fb6e6b00b1db25493773f38934ff9f5dedf42127ba369cb5785a5d676050fdbb  personnel-stat
 b68290f0ef521b273bfd54b7ac3a8070fa7367db15017e881315eae07d134181  personnel-states/07-fleet-finder-imperial-empty.png
 bd1cc9dbb4da8e359647e7c276ee9b5de6ac762cbe29148f127922e556046ac3  personnel-states/08-fleet-finder-alliance-tab.png
 05acfc213c10a7389a037e895ac55ebab67beedd1ac4dd0509c3cf4e983d83be  personnel-states/09-fleet-finder-typed-fleet6.png
+2c0529883115a6fe3cf870688dcbc4c8b9623337febec6e0bf001d702f6aa604  personnel-states/19-luke-status-trainee.png
+9f1b5a4b9846da9003f76f412337f8f6320af6e1a496d0b977ec4fbf7fca6575  personnel-states/20-luke-menu.png
