@@ -6775,15 +6775,16 @@
         {
           "id": "OBJ-11-C014",
           "requirement": "Sabotage",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ship-and-fleet-targets/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-sabotage-kind-a0/"
           ],
-          "note": "Sabotage is a dialog kind (mission_dialog.rs kind_name). Object targeting runs on Arch Chromium 153. No A0 capture of the dialog for this kind.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (kinds2/43..45: Veers' Mission released on enemy Yavin's refinery offers Sabotage alone; GOKRES 7186 at the window's (70, 86), 0 of 8,320 pixels). mission-dialog.mjs 'sabotage' (fixture 59, Linux, both sides): the dialog offers Sabotage alone and its icon (3090 / 7186) is at (70, 86), 0 pixels differing.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-11-C015",

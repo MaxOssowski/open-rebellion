@@ -35,6 +35,10 @@ const scenarios = [
   { name: "mission", code: 43, page: "mission" },
   { name: "agents", code: 44, page: "agents" },
   { name: "targeting", code: 45, page: "mission" },
+  // Scenario::SabotageTargeting (58): the agent's Mission released on an
+  // enemy shipyard in its system's window offers Sabotage alone (A0
+  // kinds2/44, 45: Veers on Yavin's refinery).
+  { name: "sabotage", code: 59, page: "mission", kinds: ["Sabotage"], icon: { alliance: 3090, empire: 7186 } },
 ];
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
@@ -262,6 +266,35 @@ async function target(page, faction, directory) {
   return { cursorCheck, menu, pointer };
 }
 
+// The kinds offered and the shown kind's 130 by 65 GOKRES icon in the box,
+// rows 0..63 (the 65th is the blue key, drawn keyed): A0 kinds2/44 has the
+// Empire's Sabotage 7186 there pixel for pixel.
+async function kindIconCheck(page, scenario, faction, origin, opened, directory) {
+  const flow = await page.evaluate(() => window.__openRebellionInterfaceMissionFlow);
+  assert.deepEqual(flow.kinds, scenario.kinds, JSON.stringify(flow));
+  const dir = [process.env.REBELLION_GOKRES_BMP_DIR, path.join(root, "data/base/ui/gokres-dll/BMP")]
+    .filter(Boolean).find((candidate) => fs.existsSync(candidate));
+  const id = scenario.icon[faction.name];
+  const icon = decodeIndexedBmp(fs.readFileSync(path.join(dir, `${id}.bmp`)), 130, 65);
+  // The dialog crop `opened` is the window; find the icon in the box's band.
+  let best = null;
+  for (let oy = 40; oy < 120; oy += 1) {
+    for (let ox = 20; ox < 110; ox += 1) {
+      let differing = 0;
+      for (let y = 0; y < 64 && (!best || differing < best.differing); y += 1) {
+        for (let x = 0; x < 130; x += 1) {
+          const from = (y * 130 + x) * 4;
+          const at = ((oy + y) * opened.width + ox + x) * 4;
+          if (opened.data[at] !== icon.data[from] || opened.data[at + 1] !== icon.data[from + 1]
+            || opened.data[at + 2] !== icon.data[from + 2]) differing += 1;
+        }
+      }
+      if (!best || differing < best.differing) best = { differing, x: ox, y: oy };
+    }
+  }
+  return { label: `kind-icon-${id}`, kinds: flow.kinds, at: { x: best.x, y: best.y }, different_pixels: best.differing };
+}
+
 function resource(source, id, width, height) {
   return decodeIndexedBmp(fs.readFileSync(path.join(source, `${id}.bmp`)), width, height);
 }
@@ -454,7 +487,7 @@ async function inspect(server, source, faction, scenario, executable) {
     const { origin } = faction;
     const comparisons = [];
     let targeting = null;
-    if (scenario.name === "targeting") targeting = await target(page, faction, directory);
+    if (scenario.name === "targeting" || scenario.name === "sabotage") targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
     comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {
@@ -494,6 +527,11 @@ async function inspect(server, source, faction, scenario, executable) {
       fs.writeFileSync(path.join(directory, "kind-list-screen.png"), listShot);
       kindList = { sha256: sha256(listShot) };
     }
+    let kindIcon = null;
+    if (scenario.kinds) {
+      kindIcon = await kindIconCheck(page, scenario, faction, origin, opened, directory);
+      comparisons.push(kindIcon);
+    }
     let cancelled = null;
     if (targeting) {
       comparisons.push(targeting.cursorCheck);
@@ -522,6 +560,7 @@ async function inspect(server, source, faction, scenario, executable) {
       fixture_code: fixtureCode,
       ready,
       ...(targeting ? { object_menu: targeting.menu, target_pointer: targeting.pointer, cancelled } : {}),
+      ...(kindIcon ? { kind_icon: kindIcon } : {}),
       ...(kindList ? { kind_list: kindList } : {}),
       comparisons,
       requests,
