@@ -6183,14 +6183,24 @@ async fn main() {
                     // The menu commits on the release that starts targeting;
                     // only a later release may end the order.
                     let targeting_held = targeting.is_some();
-                    match draw_object_menu(
+                    // A band's menu leaves no band selected once it closes
+                    // (A0 build-selection2/18).
+                    let band_menu = object_menu.as_ref().and_then(|menu| match menu.selection() {
+                        Some(MenuObject::Producer { system, .. }) => Some(system),
+                        _ => None,
+                    });
+                    let band_menu_result = draw_object_menu(
                         ctx,
                         &mut object_menu,
                         &mut bmp_cache,
                         cockpit_layout,
                         cockpit_state.faction,
                         strategic_input_enabled,
-                    ) {
+                    );
+                    if let Some(system) = band_menu.filter(|_| object_menu.is_none()) {
+                        system_window_state.deselect_band(system);
+                    }
+                    match band_menu_result {
                         // FUN_00486fb0 0x234: Planetary Assault of the
                         // selection's system by its fleets.
                         Some((ObjectMenuCommand::Assault, selection)) => {

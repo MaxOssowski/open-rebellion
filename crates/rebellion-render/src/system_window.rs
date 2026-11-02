@@ -437,6 +437,17 @@ impl SystemWindowState {
             .map(|window| (window.tab, window.selected_band))
     }
 
+    /// A band's menu has closed: no band stays selected, whichever row was
+    /// chosen or none (A0 build-selection2/16..18: a left press keeps the
+    /// troops band's strip lit, the facilities band's menu lights its own,
+    /// and after Escape neither is). hyp: the right press selects the band
+    /// only for its menu (FUN_004ac5c0's end is untraced).
+    pub fn deselect_band(&mut self, system: SystemKey) {
+        if let Some(window) = self.window_mut(system) {
+            window.selected_band = None;
+        }
+    }
+
     /// What a Mission released over the window egui draws as `layer`
     /// targets (`+0x68`, `FUN_00458b80`): on a facility page, the facility
     /// in the list cell under `point` (list `+0x174` at (8, 77)); on the
@@ -2391,6 +2402,32 @@ mod tests {
                 && rect.width() < bar.width()),
             "{:?}",
             run.fills
+        );
+    }
+
+    #[test]
+    fn a_band_menu_closing_leaves_no_band_selected_in_that_window_only() {
+        // A0 build-selection2/17, 18: the facilities band lit for its menu,
+        // then neither band after Escape.
+        let (world, systems) = fixture_world(2);
+        let mut state = opened(&world, systems[0]);
+        state.open(
+            &world,
+            systems[1],
+            (300, 76),
+            CockpitFaction::Alliance,
+            layout(CockpitFaction::Alliance, 1.0),
+        );
+        state.select_band(systems[0], ProductionArea::ConstructionYard);
+        state.select_band(systems[1], ProductionArea::Shipyard);
+        state.deselect_band(systems[0]);
+        assert_eq!(
+            state.selection(systems[0]),
+            Some((SystemWindowTab::Overview, None))
+        );
+        assert_eq!(
+            state.selection(systems[1]),
+            Some((SystemWindowTab::Overview, Some(ProductionArea::Shipyard)))
         );
     }
 

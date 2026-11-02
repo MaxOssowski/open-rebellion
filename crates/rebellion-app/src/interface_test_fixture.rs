@@ -2900,6 +2900,10 @@ struct FixtureProduction {
     build_selection_open: bool,
     build_selection_left: f32,
     build_selection_top: f32,
+    /// The open window's number to build and its four values as drawn
+    /// (refined material, maintenance, completion, deployment).
+    build_selection_quantity: Option<u32>,
+    build_selection_values: Option<[String; 4]>,
     /// The Training Facilities tab and its page's first cell, as
     /// `[left, top, width, height]`.
     training_tab: Option<[f32; 4]>,
@@ -2945,6 +2949,37 @@ fn production_report(
         code: request.code,
         bands,
         build_selection_open: build_selection.is_open(),
+        build_selection_quantity: build_selection.dialog().map(|dialog| dialog.quantity()),
+        build_selection_values: build_selection.dialog().map(|dialog| {
+            use rebellion_render::build_selection::{cost_text, days_text};
+            // The gate opens it on the primary system's band, for the player.
+            let is_alliance = request.faction == CockpitFaction::Alliance;
+            let side = rebellion_core::dat::Faction::of_alliance(is_alliance);
+            let unallocated = rebellion_core::side_resources::maintenance_totals(
+                world,
+                manufacturing,
+                side,
+                |_| false,
+            )
+            .unallocated();
+            let estimate = rebellion_core::build_selection::estimate(
+                world,
+                manufacturing,
+                primary,
+                dialog.area(),
+                dialog.kind(),
+                dialog.quantity(),
+                is_alliance,
+                unallocated,
+            );
+            let valid = estimate.completion.is_some();
+            [
+                cost_text(estimate.refined_material, valid),
+                cost_text(estimate.maintenance, valid),
+                days_text(estimate.completion.unwrap_or(0), valid),
+                days_text(estimate.deployment, valid),
+            ]
+        }),
         build_selection_left: window.min.x,
         build_selection_top: window.min.y,
         training_tab: systems

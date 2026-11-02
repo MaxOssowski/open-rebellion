@@ -323,6 +323,48 @@ function labelsAgainstA0(port, origin) {
   return checks;
 }
 
+async function quantityAndCancelCase(page, origin, band, directory) {
+  const read = async () => {
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(150);
+    await frames(page);
+    return production(page);
+  };
+  const numbers = (report) => report.build_selection_values.map((text) => Number.parseInt(text, 10));
+  const one = await read();
+  assert.equal(one.build_selection_quantity, 1, JSON.stringify(one));
+  const unit = numbers(one);
+  assert.ok(unit.every(Number.isFinite), JSON.stringify(one.build_selection_values));
+  const up = { x: origin.x + 189 + 6, y: origin.y + 196 + 4 };
+  const down = { x: origin.x + 189 + 6, y: origin.y + 205 + 4 };
+  await click(page, up);
+  await read();
+  await click(page, up);
+  const three = await read();
+  fs.writeFileSync(path.join(directory, "quantity-three.png"), await page.screenshot({ animations: "disabled" }));
+  assert.equal(three.build_selection_quantity, 3, JSON.stringify(three));
+  const tripled = numbers(three);
+  // Costs and the single yard's completion scale with the number; the
+  // deployment does not (A0 03: 18, 9, "72 Days", "0 Days").
+  assert.deepEqual(tripled, [unit[0] * 3, unit[1] * 3, unit[2] * 3, unit[3]], JSON.stringify([unit, tripled]));
+  await click(page, down);
+  const two = await read();
+  assert.equal(two.build_selection_quantity, 2, JSON.stringify(two));
+  assert.deepEqual(numbers(two), [unit[0] * 2, unit[1] * 2, unit[2] * 2, unit[3]]);
+  await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
+  const cancelled = await read();
+  fs.writeFileSync(path.join(directory, "cancelled-screen.png"), await page.screenshot({ animations: "disabled" }));
+  assert.equal(cancelled.build_selection_open, false, "Cancel closes Build Selection");
+  assert.equal(cancelled.bands.find(({ area }) => area === "troops").queued, 0, "Cancel builds nothing");
+  await bandOrder(page, band, "build_row", directory, "rebuild");
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+    null, { timeout: 10_000 });
+  const reopened = await read();
+  assert.equal(reopened.build_selection_quantity, 1, "Build reopens the window at 1");
+  return { unit: one.build_selection_values, three: three.build_selection_values, two: two.build_selection_values };
+}
+
 // A0 build-selection2/09 (Windows 10 VM, the Empire's Stop on Coruscant's
 // troops band, day 144): the confirmation at (148, 52).
 const A0_STOP = { file: "09-stopped.png", x: 148, y: 52 };
@@ -580,6 +622,15 @@ async function inspect(server, source, faction, executable) {
       assert.ok(ratio > 0.85 && ratio < 1.15, `${name} tip width ratio ${ratio.toFixed(3)}`);
     }
 
+    // The number's arrows and Cancel, as A0 build-selection2/01..06 (the
+    // Empire on Coruscant, one training facility): the up arrow at
+    // (189, 196) steps the number and the values follow it (1: 6, 3,
+    // "24 Days"; 3: 18, 9, "72 Days"), the down arrow at (189, 205) steps
+    // it back (2: 12, 6, "48 Days"); Cancel at (141, 224) closes the
+    // window with the band unchanged, and Build reopens it at 1
+    // (FUN_00438c30, FUN_00438c60, FUN_00438800).
+    const stepping = await quantityAndCancelCase(page, origin, troops, directory);
+
     // Confirm (0x65, FUN_00438980) builds one unit of the selected class.
     await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });
     await page.mouse.move(2, 2);
@@ -590,7 +641,31 @@ async function inspect(server, source, faction, executable) {
     }, null, { timeout: 10_000 });
     const built = (await production(page)).bands.find(({ area }) => area === "troops");
     assert.ok(built.product.length > 0, "the band names its product");
-    fs.writeFileSync(path.join(directory, "confirmed-screen.png"), await page.screenshot({ animations: "disabled" }));
+    await page.waitForTimeout(200);
+    await frames(page);
+    const confirmedBytes = await page.screenshot({ animations: "disabled" });
+    fs.writeFileSync(path.join(directory, "confirmed-screen.png"), confirmedBytes);
+    // Its menu closed, the band is no longer selected: its title strip's
+    // text-free right end (window (195..215, 141..150)) is the unselected
+    // strip's, as A0 build-selection2/07 shows it for the Empire (the window
+    // at (203, 91)).
+    const stripA0 = path.join(root, ".artifacts/a0-vm/build-selection2/07-confirmed.png");
+    let stripDiffering = null;
+    if (faction.name === "empire" && fs.existsSync(stripA0)) {
+      const a0 = PNG.sync.read(fs.readFileSync(stripA0));
+      const port = PNG.sync.read(confirmedBytes);
+      stripDiffering = 0;
+      for (let y = 141; y < 151; y += 1) {
+        for (let x = 195; x < 216; x += 1) {
+          const i = ((76 + y) * port.width + 225 + x) * 4;
+          const j = ((91 + y) * a0.width + 203 + x) * 4;
+          if (port.data[i] !== a0.data[j] || port.data[i + 1] !== a0.data[j + 1] || port.data[i + 2] !== a0.data[j + 2]) {
+            stripDiffering += 1;
+          }
+        }
+      }
+      assert.equal(stripDiffering, 0, `the confirmed band's strip differs from A0 07 in ${stripDiffering} pixels`);
+    }
 
     // Stop (0x213) asks first (FUN_00487cc0, FUN_0049a350 case 0x213):
     // the 424 by 331 confirmation centred in the galaxy view, its picture
@@ -703,6 +778,8 @@ async function inspect(server, source, faction, executable) {
       reserved_menu: reservedMenu,
       facility_menu: facilityMenu,
       over_maintenance: overMaintenance,
+      stepping,
+      strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,
       built: { product: built.product, queued: built.queued },
       comparisons,

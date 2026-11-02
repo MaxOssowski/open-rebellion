@@ -778,6 +778,12 @@ impl ObjectMenuState {
         }
     }
 
+    /// The object the menu was opened for.
+    #[must_use]
+    pub fn selection(&self) -> Option<MenuObject> {
+        self.selection
+    }
+
     /// The submenu row that issues `command`, counted from its top.
     #[must_use]
     pub fn submenu_row_of(&self, command: ObjectMenuCommand) -> Option<usize> {
@@ -964,6 +970,7 @@ mod tests {
         let selection = Some(MenuObject::Character(CharacterKey::default()));
         let rows = object_menu_rows(selection, MISSION_GATE);
         let menu = ObjectMenuState::new(selection, MISSION_GATE, (0, 0));
+        assert_eq!(menu.selection(), selection);
         assert!(!menu.row_checked(ObjectMenuCommand::Move));
         let states: Vec<_> = menu.row_states().collect();
         assert_eq!(
