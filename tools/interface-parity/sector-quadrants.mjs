@@ -624,7 +624,7 @@ const cases = [
       // label's ink box, relative to the window, left and top within 2
       // pixels, width within 15% (the accepted text deviation).
       const pageLabels = {};
-      const labelBox = (png, [ox, oy]) => {
+      const labelBox = (png, [ox, oy], bottom = 70) => {
         const white = (x, y) => {
           const i = (y * png.width + x) * 4;
           return Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > 215;
@@ -632,17 +632,31 @@ const cases = [
         const cols = [];
         for (let x = ox + 30; x < ox + 210; x += 1) {
           let n = 0;
-          for (let y = oy + 52; y < oy + 68; y += 1) if (white(x, y)) n += 1;
+          for (let y = oy + 52; y < oy + Math.min(68, bottom); y += 1) if (white(x, y)) n += 1;
           if (n >= 2) cols.push(x - ox);
         }
         const rows = [];
-        for (let y = oy + 50; y < oy + 70; y += 1) {
+        for (let y = oy + 50; y < oy + bottom; y += 1) {
           let n = 0;
           for (let x = ox + 30; x < ox + 210; x += 1) if (white(x, y)) n += 1;
           if (n >= 3) rows.push(y - oy);
         }
         return cols.length && rows.length ? [cols[0], rows[0], cols.at(-1), rows.at(-1)] : null;
       };
+      // A page's label against an A0 window whose corner is `a0Origin`.
+      const checkLabel = (name, shot, a0File, a0Origin, bottom = 70) => {
+        if (!fs.existsSync(a0File)) return;
+        const a = labelBox(PNG.sync.read(fs.readFileSync(a0File)), a0Origin, bottom);
+        const p = labelBox(shot, origin, bottom);
+        pageLabels[name] = { a0: a, port: p };
+        const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+        assert.ok(a && p && a[2] - a[0] < 150 && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2
+          && ratio > 0.85 && ratio < 1.15, `${name} page label ${JSON.stringify(pageLabels[name])}`);
+      };
+      // "Personnel" against A0 personnel-states/16 (Pzob's window at
+      // (118, 86)).
+      checkLabel("personnel", screenshot,
+        path.join(root, ".artifacts/a0-vm/personnel-states/16-pzob-personnel.png"), [118, 86]);
       for (const [name, file] of [["shields", "17-def-tab.png"], ["squadrons", "19-tab3.png"]]) {
         const tab = window.tabs.find(([tabName]) => tabName === name)[1];
         // The tip loop left a tip up; move off before the press.
@@ -671,6 +685,14 @@ const cases = [
       assert.equal(regiments.rows.length, 1, JSON.stringify(regiments));
       assert.match(regiments.garrison, /^Garrison Requirement: \d+$/);
       screenshot = await stableScreen(page, directory, "regiments");
+      // "Trooper Regiments" against A0 personnel-states/15 (Mon Calamari's
+      // window at (305, 86)), its first line only: the port draws "Garrison
+      // Requirement" under it (FUN_004a90d0 for the holder's player), which
+      // A0's Alliance windows (Mon Calamari, Pzob) do not show.
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      checkLabel("regiments", await stableScreen(page, directory, "regiments-label"),
+        path.join(root, ".artifacts/a0-vm/personnel-states/15-mon-calamari-regiments.png"), [305, 86], 66);
       const mini = REGIMENT_MINI[faction.side];
       const regimentChecks = [
         ...compareTabs(screenshot, source, regiments, directory, "regiments"),

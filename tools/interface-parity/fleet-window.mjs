@@ -1762,6 +1762,28 @@ const cases = [
     },
   },
   {
+    name: "ship-scrap",
+    code: FLEET_JOIN,
+    // The player's ship in orbit: A0 personnel-states/21 (Swift at Mon
+    // Calamari) shows Move, Confirmed Move, Create Fleet, Rename,
+    // Encyclopedia, Status and Scrap, every row white. Scrap (0x200) asks
+    // with RCDATA 0x7050 and the checkmark scraps the ship (FUN_00534c00).
+    async run(page, faction, setup, directory, source, log) {
+      const selected = await openJoining(page, setup);
+      const menu = await openMenu(page, point(selected.first_item), directory, "ship");
+      assert.deepEqual(menu.row_states, [["Move", true], ["Confirmed Move", true], ["Create Fleet", true],
+        ["Rename", true], ["Encyclopedia", true], ["Status", true], ["Scrap", true]], JSON.stringify(menu));
+      await choose(page, menu, menu.scrap_row, "Scrap");
+      await until(page, "the Scrap confirmation opens", (o) => o.confirmation_open);
+      await shot(page, directory, "ship-scrap-confirmation");
+      await click(page, confirmationCheckmark(faction));
+      const done = await log.logged("the checkmark scraps the ship",
+        /command=0x200 destination=scrap targets=\[Ship.*result=Ok/);
+      await shot(page, directory, "ship-scrapped");
+      return { menu, done };
+    },
+  },
+  {
     name: "rename",
     code: FLEET_LOAD,
     // Rename (0x203, FUN_00486fb0 -> FUN_0041d600 -> FUN_00429350) puts an
