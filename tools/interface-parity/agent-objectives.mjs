@@ -160,12 +160,14 @@ async function run(browser, base, faction) {
   const log = [];
   // The wall-clock times of the [ai] day lines at Fast.
   const fastDays = [];
+  const slowDays = [];
   const errors = [];
   const network = [];
   const shots = [];
   page.on("console", (message) => {
     log.push(message.text());
     if (/\[ai\] day=\d+ speed=Fast/.test(message.text())) fastDays.push(Date.now());
+    if (/\[ai\] day=\d+ speed=Slow/.test(message.text())) slowDays.push(Date.now());
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
@@ -367,11 +369,28 @@ async function run(browser, base, faction) {
       assert.ok(box && Math.abs((box[0] + box[2]) / 2 - 133) <= 1.5 && Math.abs(box[1] - 21) <= 1
         && Math.abs(box[3] - 28) <= 1, `day readout ${JSON.stringify(day)}`);
     }
+    // Slow is 60 sub-ticks of 0.25 s, 15 s a day (FUN_00415e20; A0 timed
+    // about 15 s, evidence 2026-10-31-speed-timing-a0): the Alliance's menu
+    // row two above Fast, three day intervals, their median.
+    let slowMedian = null;
+    if (faction.name === "alliance") {
+      await click(page, faction.dayReadout, "right");
+      await page.waitForTimeout(300);
+      await click(page, [faction.fastRow[0], faction.fastRow[1] - 40]);
+      const slowDeadline = Date.now() + 120_000;
+      while (slowDays.length < 4) {
+        if (Date.now() > slowDeadline) throw new Error(`four Slow days: ${JSON.stringify(slowDays)}`);
+        await page.waitForTimeout(250);
+      }
+      const slowSpacing = slowDays.slice(1).map((at, index) => (at - slowDays[index]) / 1000).sort((a, b) => a - b);
+      slowMedian = slowSpacing[Math.floor(slowSpacing.length / 2)];
+      assert.ok(slowMedian > 14 && slowMedian < 16, `Slow days ${JSON.stringify(slowSpacing)} s apart, not 15 s`);
+    }
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
     return { faction: faction.name, status: "pass", agent: log.filter((line) => line.startsWith("[agent]")), shots,
-      fast_day_median_seconds: median, hover, day };
+      fast_day_median_seconds: median, slow_day_median_seconds: slowMedian, hover, day };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error),

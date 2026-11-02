@@ -49,3 +49,9 @@ A0 `speed2/05` (day 166) has the red digits at (125..141, 21..28), centred on x 
 **Test.** `the_day_readout_is_font_10_centred_in_its_60_pixel_text_object` replaces the Pravus-based test, which A0 contradicts.
 
 **Mutants.** The 4 survivors change only the rectangle's height. A single `DT_TOP` line does not depend on it, so they are equivalent.
+
+## Slow's day in the Linux browser (CMD-05 C003)
+
+`agent-objectives.mjs` (Alliance) now chooses Slow from the Game Speed menu and times three days by the `[ai] day=N speed=Slow` log lines. The median is 15.001 s.
+
+That is A0's timing of about 15 s a day (`2026-10-31-speed-timing-a0`): 60 sub-ticks of 0.25 s (`FUN_00415e20`). Run `agent-objectives-2026-11-02T14-11-28-874Z`: pass.
