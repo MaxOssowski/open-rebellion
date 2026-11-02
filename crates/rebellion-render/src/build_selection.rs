@@ -29,6 +29,9 @@ const TITLE_EMPIRE: u32 = 10802;
 const CLOSE: (u32, u32) = (10108, 10109);
 const LIST: (u32, u32) = (10606, 10607);
 const CONFIRM: (u32, u32) = (10594, 10595);
+/// Confirm's disabled art (`FUN_00438620`: `FUN_00603150(2, 0x2d64)` and
+/// `FUN_00603150(4, 0x2d64)`).
+const CONFIRM_DISABLED: u32 = 11620;
 const CANCEL: (u32, u32) = (10596, 10597);
 const ENCYCLOPEDIA: (u32, u32) = (10592, 10593);
 const MORE: (u32, u32) = (10610, 10611);
@@ -314,6 +317,7 @@ pub fn draw_build_selection(
     state: &mut BuildSelectionState,
     layout: CockpitLayout,
     cache: &mut BmpCache,
+    unallocated_maintenance: i32,
 ) -> Option<BuildSelectionAction> {
     let dialog = state.dialog.as_mut()?;
     let scale = layout.scale;
@@ -326,6 +330,7 @@ pub fn draw_build_selection(
         dialog.kind(),
         dialog.quantity,
         dialog.is_alliance,
+        unallocated_maintenance,
     );
     let valid = estimate.completion.is_some();
     let mut action = None;
@@ -551,14 +556,15 @@ pub fn draw_build_selection(
                 action = Some(BuildSelectionAction::Encyclopedia);
             }
             // FUN_00439160 disables Confirm for an order that cannot be
-            // built. port: a disabled button keeps its rest art.
+            // built; FUN_00438620 gave its states 2 and 4 STRATEGY 11620,
+            // the grey checkmark A0 manufacturing/11 shows.
             let confirm_rect = at(73.0, 224.0, 66.0, 33.0);
             if valid {
                 if button(ui, cache, confirm_rect, "confirm", CONFIRM, false, scale) {
                     confirm = true;
                 }
             } else {
-                paint(&painter, ctx, cache, CONFIRM.0, confirm_rect, scale);
+                paint(&painter, ctx, cache, CONFIRM_DISABLED, confirm_rect, scale);
             }
             if button(
                 ui,
@@ -686,6 +692,9 @@ mod tests {
     use rebellion_core::world::{
         BuildableClass, ControlKind, ManufacturingFacilityInstance, System,
     };
+
+    /// More unallocated maintenance than any order here costs.
+    const ROOMY: i32 = 1_000;
 
     fn layout() -> CockpitLayout {
         scaled(1.0)
@@ -816,8 +825,20 @@ mod tests {
         world: &GameWorld,
         state: &mut BuildSelectionState,
         scale: f32,
+        point: (f32, f32),
+        frames: Vec<Vec<egui::Event>>,
+    ) -> (Option<BuildSelectionAction>, Vec<Text>) {
+        drive_with(world, state, scale, point, frames, ROOMY)
+    }
+
+    /// `drive_at` for a side with `unallocated` maintenance.
+    fn drive_with(
+        world: &GameWorld,
+        state: &mut BuildSelectionState,
+        scale: f32,
         (x, y): (f32, f32),
         frames: Vec<Vec<egui::Event>>,
+        unallocated: i32,
     ) -> (Option<BuildSelectionAction>, Vec<Text>) {
         let layout = scaled(scale);
         let pos = window_rect(layout).min + egui::vec2(x, y) * scale;
@@ -843,7 +864,7 @@ mod tests {
             };
             let output = ctx.run(input, |ctx| {
                 if let Some(action) =
-                    draw_build_selection(ctx, world, &manufacturing, state, layout, &mut cache)
+                    draw_build_selection(ctx, world, &manufacturing, state, layout, &mut cache, unallocated)
                 {
                     emitted = Some(action);
                 }
@@ -872,11 +893,12 @@ mod tests {
 
     // FUN_00437df0: background 10800 at (0, 0); FUN_00438500: the side's
     // strip at (2, 2), 10801 for side 1 and 10802 for the other;
-    // FUN_00438620: Confirm 10594 at (73, 224).
+    // FUN_00438620: Confirm 10594 at (73, 224), or 11620 while disabled
+    // (the galaxy's one yard is the Alliance's; A0 manufacturing/11).
     #[test]
     fn the_window_paints_its_background_side_strip_and_controls() {
         let (world, system) = galaxy(true);
-        for (is_alliance, strip) in [(true, 10_801), (false, 10_802)] {
+        for (is_alliance, strip, confirm) in [(true, 10_801, 10_594), (false, 10_802, 11_620)] {
             PAINTED.with(|painted| painted.borrow_mut().clear());
             let mut state = opened(system, is_alliance);
             drive(&world, &mut state, (0.0, 0.0), vec![]);
@@ -887,7 +909,7 @@ mod tests {
                 (strip, 2.0, 2.0),
                 (10_606, 79.0, 90.0),
                 (10_592, 5.0, 224.0),
-                (10_594, 73.0, 224.0),
+                (confirm, 73.0, 224.0),
                 (10_596, 141.0, 224.0),
                 (10_610, 189.0, 196.0),
                 (10_612, 189.0, 205.0),
@@ -966,6 +988,46 @@ mod tests {
             None
         );
         assert!(state.is_open());
+    }
+
+    // FUN_0052e970 refuses an order whose maintenance exceeds the side's
+    // unallocated maintenance; FUN_00439160 then writes 14358 "n/a" in all
+    // four values and disables Confirm (A0 manufacturing/11, the Empire at
+    // -402).
+    #[test]
+    fn an_order_over_the_sides_maintenance_shows_na_and_greys_confirm() {
+        let (world, system) = galaxy(true);
+        let mut state = opened(system, true);
+        let release = egui::Pos2::ZERO;
+        PAINTED.with(|painted| painted.borrow_mut().clear());
+        let (action, texts) = drive_with(
+            &world,
+            &mut state,
+            1.0,
+            (100.0, 240.0),
+            vec![vec![press(release, true)], vec![press(release, false)]],
+            5,
+        );
+        assert_eq!(action, None);
+        assert!(state.is_open());
+        let na = texts.iter().filter(|(text, ..)| text == "n/a").count();
+        assert_eq!(na, 4, "{texts:?}");
+        // FUN_00438620: the disabled Confirm draws 11620.
+        let confirm = window_rect(layout()).min + egui::vec2(73.0, 224.0);
+        let painted = PAINTED.with(|painted| painted.borrow().clone());
+        assert!(painted.contains(&(11_620, confirm)), "{painted:?}");
+        assert!(!painted.contains(&(10_594, confirm)));
+
+        // The regiment's 6 fit in 6.
+        let (action, _) = drive_with(
+            &world,
+            &mut state,
+            1.0,
+            (100.0, 240.0),
+            vec![vec![press(release, true)], vec![press(release, false)]],
+            6,
+        );
+        assert!(matches!(action, Some(BuildSelectionAction::Confirm { .. })));
     }
 
     // FUN_00438b60: Enter confirms, Escape closes, keypad + steps the
@@ -1149,7 +1211,7 @@ mod tests {
                         ..Default::default()
                     },
                     |ctx| {
-                        let _ = draw_build_selection(ctx, &world, &manufacturing, &mut state, layout, &mut cache);
+                        let _ = draw_build_selection(ctx, &world, &manufacturing, &mut state, layout, &mut cache, ROOMY);
                     },
                 ));
             }

@@ -2143,6 +2143,9 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // controls 0x14, 0x15): A0 fleet3/11 shows the panel behind
                 // their blue corners.
                 | 10_926..=10_930
+                // Build Selection's disabled Confirm (FUN_00438620): A0
+                // manufacturing/11 shows the window under its magenta corner.
+                | 11_620
         )
 }
 
@@ -2712,6 +2715,13 @@ pub(crate) mod tests {
             assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
         }
         assert!(!uses_first_pixel_key(DllSource::Strategy, 10_931));
+    }
+
+    #[test]
+    fn build_selections_disabled_confirm_is_keyed_on_its_first_pixel() {
+        // A0 manufacturing/11: the window shows through 11620's magenta
+        // corner (index 174, its first pixel).
+        assert!(uses_first_pixel_key(DllSource::Strategy, 11_620));
     }
 
     #[test]

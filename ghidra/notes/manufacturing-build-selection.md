@@ -306,6 +306,26 @@ order). Times come from the manager:
   fields and disables Confirm; times read "N" + 14357 " Days", capped at
   9999.
 
+**The order's validation** (2026-11-02). `FUN_00538220` runs the order's
+`vt+0x1c` before the times. The build orders 0x210, 0x211 and 0x212
+(`FUN_0051f4b0` registers `FUN_00538cc0`, `FUN_00538d90`, `FUN_00538e60`;
+vtables `0x00661148`, `0x006611a0`) share `vt+0x1c` = `FUN_0051ff30`, which
+calls `vt+0x50` = `FUN_005385f0`. After the producer's side
+(`FUN_00553b80`) and the per-manager checks, it takes the side object
+(`FUN_00506ea0`: `DAT_006b2bb0 +0xc4` side 1, `+0xc8` side 2) and calls
+`FUN_0052e970(side, order +0x44 class, order +0x48 quantity)`:
+
+- cost = the class's `vt+0x24` (`FUN_0053b870`, maintenance) x quantity;
+- unallocated = side `+0x58` - `+0x5c` (capacity less its allocated half);
+- when cost != 0 and unallocated < cost, status `{0xf3, 1}`.
+
+So an order whose maintenance exceeds what the side has not yet allocated
+is not valid. This explains A0 `manufacturing/11`, `12` (the Empire at
+-402). The Alliance's refusal at Vjun (`20`..`26`: monitor 239,
+Construction Yard maintenance 10) is not explained by it; the later
+checks (`FUN_005513a0`, `FUN_00552210`, `FUN_00551a20`, which try the new
+object at the system) remain untraced. hyp: Vjun has no free energy slot.
+
 **List** (`FUN_0052e580`): the classes of the manager's production family
 (`0x28` ships, `0x29` regiments and special forces, `0x2a` facilities) that
 its side builds and has researched, the side's level at `+0x9c`, `+0xa0`,

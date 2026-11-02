@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 87;
+const SCENARIO_COUNT: u8 = 88;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -262,6 +262,11 @@ pub enum Scenario {
     /// Corvette 1 damaged, Medium Transport 1 with two Alliance Fleet
     /// Regiments, selected; at A0's (305, 86).
     FleetWindowBlockade = 86,
+    /// `BuildSelection` with the player's side over its maintenance, as A0
+    /// shows the Empire at -402 (`.artifacts/a0-vm/manufacturing/11`): the
+    /// side has no mine or refinery left, so no order with a maintenance
+    /// cost fits (`FUN_0052e970`).
+    BuildSelectionOverMaintenance = 87,
 }
 
 impl Scenario {
@@ -354,6 +359,7 @@ impl Scenario {
             84 => Self::FleetWindowYavin,
             85 => Self::FleetWindowDestination,
             86 => Self::FleetWindowBlockade,
+            87 => Self::BuildSelectionOverMaintenance,
             _ => return None,
         })
     }
@@ -383,6 +389,12 @@ impl Scenario {
         )
     }
 
+    /// The scenarios whose gate opens Build Selection from the primary
+    /// system's Manufacturing window.
+    fn opens_build_selection(self) -> bool {
+        matches!(self, Self::BuildSelection | Self::BuildSelectionOverMaintenance)
+    }
+
     /// The scenarios whose gate opens the object pop-up menu.
     fn reports_object_menu(self) -> bool {
         self == Self::MissionTargeting
@@ -393,7 +405,7 @@ impl Scenario {
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
             || self.targets_an_object()
-            || self == Self::BuildSelection
+            || self.opens_build_selection()
             || self == Self::Quadrants
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
@@ -654,7 +666,7 @@ pub fn apply(
     // The Build Selection gate: a shipyard, a training facility and a
     // construction yard of the player's at the primary system, whose
     // Manufacturing window opens on its overview.
-    if request.scenario == Scenario::BuildSelection {
+    if request.scenario.opens_build_selection() {
         for class in [0x2800_0001, 0x2900_0002, 0x2a00_0003] {
             let yard = world.manufacturing_facilities.insert(
                 rebellion_core::world::ManufacturingFacilityInstance {
@@ -666,9 +678,12 @@ pub fn apply(
             world.systems[primary].manufacturing_facilities.push(yard);
         }
     }
+    if request.scenario == Scenario::BuildSelectionOverMaintenance {
+        remove_production_facilities(world, rebellion_core::dat::Faction::of_alliance(player_is_alliance));
+    }
     if matches!(
         request.scenario,
-        Scenario::System | Scenario::BuildSelection
+        Scenario::System | Scenario::BuildSelection | Scenario::BuildSelectionOverMaintenance
     ) {
         systems.open(
             world,
@@ -1497,6 +1512,23 @@ fn send_to_qat(
     let layout = cockpit.layout_for(640.0, 480.0);
     fleets.open(world, qat, (305, 86), request.faction, layout);
     fleets.select(qat, FleetWindowEntry::Fleet(fleet));
+}
+
+/// Remove `side`'s mines and refineries, leaving it no maintenance
+/// capacity.
+fn remove_production_facilities(world: &mut GameWorld, side: rebellion_core::dat::Faction) {
+    let removed: Vec<_> = world
+        .production_facilities
+        .iter()
+        .filter(|(_, facility)| facility.side == side)
+        .map(|(key, _)| key)
+        .collect();
+    for key in &removed {
+        world.production_facilities.remove(*key);
+    }
+    for system in world.systems.values_mut() {
+        system.production_facilities.retain(|key| !removed.contains(key));
+    }
 }
 
 /// The `FleetWindowBlockade` scenario: `place_yavin`'s fleet, as A0's
@@ -2743,7 +2775,10 @@ fn object_menu_report<'a>(
         // nothing; their menus report anyway.
         None if matches!(
             request.scenario,
-            Scenario::BuildSelection | Scenario::Quadrants | Scenario::FleetWindowYavin
+            Scenario::BuildSelection
+                | Scenario::BuildSelectionOverMaintenance
+                | Scenario::Quadrants
+                | Scenario::FleetWindowYavin
         ) =>
         {
             egui_macroquad::egui::Pos2::ZERO
@@ -2930,7 +2965,7 @@ pub fn emit_production(
     systems: &SystemWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) {
-    if request.scenario != Scenario::BuildSelection {
+    if !request.scenario.opens_build_selection() {
         return;
     }
     let Some(report) = production_report(request, world, manufacturing, systems, build_selection)
@@ -5860,6 +5895,52 @@ mod tests {
         );
     }
 
+    // A0 manufacturing/11: the Empire at -402 sees "n/a" and a grey
+    // Confirm; FUN_0052e970 refuses what the side's unallocated
+    // maintenance cannot take.
+    #[test]
+    fn the_over_maintenance_scenario_leaves_the_side_no_capacity_and_its_yards() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let side = rebellion_core::dat::Faction::of_alliance(faction == CockpitFaction::Alliance);
+            let request = request(Scenario::BuildSelectionOverMaintenance, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                let here = world.systems.keys().next().unwrap();
+                let other = rebellion_core::dat::Faction::of_alliance(faction != CockpitFaction::Alliance);
+                for (is_mine, holder) in [(true, side), (false, side), (true, other)] {
+                    let key = world.production_facilities.insert(
+                        rebellion_core::world::ProductionFacilityInstance {
+                            class_dat_id: rebellion_core::ids::DatId::new(0x2c00_0001),
+                            side: holder,
+                            is_mine,
+                        },
+                    );
+                    world.systems[here].production_facilities.push(key);
+                }
+            });
+            let world = &applied.world;
+            assert!(world.production_facilities.values().all(|facility| facility.side != side));
+            assert_eq!(world.production_facilities.len(), 1);
+            assert!(world
+                .systems
+                .values()
+                .flat_map(|system| &system.production_facilities)
+                .all(|key| world.production_facilities.contains_key(*key)));
+            let totals = rebellion_core::side_resources::maintenance_totals(
+                world,
+                &ManufacturingState::new(),
+                side,
+                |_| false,
+            );
+            assert_eq!(totals.unallocated(), 0);
+            let yards = world
+                .manufacturing_facilities
+                .values()
+                .filter(|yard| yard.side == side)
+                .count();
+            assert!(yards >= 3);
+        }
+    }
+
     // FUN_00509710: the other side's squadrons make it present beside the
     // player's fleet, so a battle is due.
     #[test]
@@ -7721,7 +7802,8 @@ mod tests {
                 Scenario::UprisingIncident,
                 Scenario::BlockadeArrival,
                 Scenario::SupportFlip,
-                Scenario::FleetWindowYavin
+                Scenario::FleetWindowYavin,
+                Scenario::BuildSelectionOverMaintenance,
             ]
         );
     }

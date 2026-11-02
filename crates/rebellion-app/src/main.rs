@@ -6729,6 +6729,13 @@ async fn main() {
                         &mut build_selection_state,
                         cockpit_layout,
                         &mut bmp_cache,
+                        rebellion_render::resource_monitors::maintenance_unallocated(
+                            &world,
+                            &mfg_state,
+                            &blockade_state,
+                            &uprising_state,
+                            cockpit_state.faction,
+                        ),
                     ) {
                         Some(BuildSelectionAction::Confirm {
                             system,

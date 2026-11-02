@@ -219,15 +219,28 @@ pub struct BuildEstimate {
     pub refined_material: u32,
     /// Maintenance, the class's times the quantity.
     pub maintenance: u32,
-    /// Best time to completion, in days; `None` when the manager has no
-    /// yard to build with, which disables Confirm (`FUN_00439160`).
+    /// Best time to completion, in days; `None` when the order is not
+    /// valid, which shows "n/a" in all four values and disables Confirm
+    /// (`FUN_00439160`): the manager has no yard to build with, or the
+    /// order's maintenance exceeds its side's ([`exceeds_maintenance`]).
     pub completion: Option<u32>,
     /// Best time to deployment: the days from the manager's system to its
     /// destination.
     pub deployment: u32,
 }
 
-/// Price `count` units of `kind` at `system`'s `area` for a side.
+/// `FUN_0052e970`, from the build order's check (`FUN_005385f0`): an order
+/// whose maintenance, the class's times the quantity, is above the side's
+/// unallocated maintenance (side `+0x58` less `+0x5c`) sets the status
+/// `{0xf3, 1}`. An order that costs no maintenance always passes.
+#[must_use]
+pub fn exceeds_maintenance(maintenance: u32, unallocated: i32) -> bool {
+    maintenance != 0 && i64::from(maintenance) > i64::from(unallocated)
+}
+
+/// Price `count` units of `kind` at `system`'s `area` for a side whose
+/// unallocated maintenance is `unallocated`
+/// ([`crate::side_resources::MaintenanceTotals::unallocated`]).
 #[must_use]
 pub fn estimate(
     world: &GameWorld,
@@ -237,16 +250,19 @@ pub fn estimate(
     kind: BuildableKind,
     count: u32,
     is_alliance: bool,
+    unallocated: i32,
 ) -> BuildEstimate {
     let (refined, maintenance) = unit_costs(world, kind).unwrap_or_default();
     let destination = manufacturing.destination(system, area).unwrap_or(system);
+    let maintenance = maintenance.saturating_mul(count);
     BuildEstimate {
         refined_material: refined.saturating_mul(count),
-        maintenance: maintenance.saturating_mul(count),
+        maintenance,
         completion: completion_day(
             &yard_periods(world, system, area, is_alliance),
             refined.saturating_mul(count),
-        ),
+        )
+        .filter(|_| !exceeds_maintenance(maintenance, unallocated)),
         deployment: transit_days(world, kind, system, destination),
     }
 }
@@ -340,6 +356,9 @@ mod tests {
     /// MANFACSD: construction yard 4 days, advanced construction yard 2
     /// (research order 2); TROOPSD regiment 1 Alliance, 6 Empire; SPECFCSD
     /// unit 1 Alliance; DEFFACSD 4 (Death Star shield) Empire only.
+    /// More unallocated maintenance than any order here costs.
+    const ROOMY: i32 = 1_000;
+
     fn catalog() -> GameWorld {
         let mut world = GameWorld::default();
         class(&mut world, 0x2a00_0003, (true, true), (10, 10), 0, 4);
@@ -488,6 +507,7 @@ mod tests {
             regiment,
             3,
             true,
+            ROOMY,
         );
         assert_eq!(
             at_home,
@@ -508,6 +528,7 @@ mod tests {
             regiment,
             1,
             true,
+            ROOMY,
         );
         assert_eq!(sent.completion, Some(32));
         assert!(sent.deployment > 0);
@@ -521,8 +542,43 @@ mod tests {
             regiment,
             1,
             true,
+            ROOMY,
         );
         assert_eq!(empire.completion, None);
+    }
+
+    // FUN_0052e970: the order's maintenance against side +0x58 less +0x5c;
+    // status {0xf3, 1} makes FUN_00439160 show "n/a" and grey Confirm.
+    #[test]
+    fn an_order_whose_maintenance_exceeds_the_sides_unallocated_is_not_valid() {
+        let mut world = catalog();
+        let home = system(&mut world, 0);
+        yard(&mut world, home, 0x2900_0002, true);
+        let regiment = BuildableKind::Troop(DatId::new(0x1000_0001));
+        let manufacturing = ManufacturingState::new();
+        let priced = |count, unallocated| {
+            estimate(
+                &world,
+                &manufacturing,
+                home,
+                ProductionArea::TrainingFacility,
+                regiment,
+                count,
+                true,
+                unallocated,
+            )
+        };
+
+        // Six maintenance a regiment: three take 18.
+        assert_eq!(priced(3, 18).completion, Some(96));
+        let refused = priced(3, 17);
+        assert_eq!(refused.completion, None);
+        assert_eq!((refused.refined_material, refused.maintenance), (24, 18));
+        assert_eq!(priced(1, -402).completion, None);
+
+        assert!(!exceeds_maintenance(0, -402));
+        assert!(!exceeds_maintenance(10, 10));
+        assert!(exceeds_maintenance(11, 10));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use rebellion_core::blockade::BlockadeState;
 use rebellion_core::dat::Faction;
 use rebellion_core::manufacturing::ManufacturingState;
 use rebellion_core::production_cycle::ProductionState;
-use rebellion_core::side_resources::{maintenance_totals, MONITOR_MAX};
+use rebellion_core::side_resources::{maintenance_totals, MaintenanceTotals, MONITOR_MAX};
 use rebellion_core::uprising::UprisingState;
 use rebellion_core::world::GameWorld;
 
@@ -55,8 +55,25 @@ pub const fn monitor_rect(faction: CockpitFaction, monitor: ResourceMonitor) -> 
     }
 }
 
-/// The value the cockpit's side reads on its Maintenance monitor. A system
-/// in uprising or under blockade is blocked (`FUN_0050bbb0`).
+/// The cockpit's side's maintenance totals. A system in uprising or under
+/// blockade is blocked (`FUN_0050bbb0`).
+fn side_totals(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    blockade: &BlockadeState,
+    uprising: &UprisingState,
+    faction: CockpitFaction,
+) -> MaintenanceTotals {
+    let side = match faction {
+        CockpitFaction::Alliance => Faction::Alliance,
+        CockpitFaction::Empire => Faction::Empire,
+    };
+    maintenance_totals(world, manufacturing, side, |system| {
+        blockade.is_blockaded(system) || uprising.is_uprising(system)
+    })
+}
+
+/// The value the cockpit's side reads on its Maintenance monitor.
 #[must_use]
 pub fn maintenance_available(
     world: &GameWorld,
@@ -65,14 +82,20 @@ pub fn maintenance_available(
     uprising: &UprisingState,
     faction: CockpitFaction,
 ) -> i32 {
-    let side = match faction {
-        CockpitFaction::Alliance => Faction::Alliance,
-        CockpitFaction::Empire => Faction::Empire,
-    };
-    maintenance_totals(world, manufacturing, side, |system| {
-        blockade.is_blockaded(system) || uprising.is_uprising(system)
-    })
-    .available()
+    side_totals(world, manufacturing, blockade, uprising, faction).available()
+}
+
+/// The maintenance the cockpit's side's new orders may still take, which
+/// Build Selection checks (`FUN_0052e970`).
+#[must_use]
+pub fn maintenance_unallocated(
+    world: &GameWorld,
+    manufacturing: &ManufacturingState,
+    blockade: &BlockadeState,
+    uprising: &UprisingState,
+    faction: CockpitFaction,
+) -> i32 {
+    side_totals(world, manufacturing, blockade, uprising, faction).unallocated()
 }
 
 /// The Maintenance monitor's text (`FUN_00429200`, command `0x14e`): the
@@ -338,6 +361,13 @@ mod tests {
         );
         assert_eq!(read(&uprising, CockpitFaction::Alliance), 50);
         assert_eq!(read(&uprising, CockpitFaction::Empire), 50);
+        // FUN_0052e970 reads the same capacity, less its allocated half;
+        // nothing here charges upkeep.
+        let free = |faction| {
+            maintenance_unallocated(&world, &manufacturing, &blockade, &uprising, faction)
+        };
+        assert_eq!(free(CockpitFaction::Alliance), 50);
+        assert_eq!(free(CockpitFaction::Empire), 50);
     }
 
     #[test]

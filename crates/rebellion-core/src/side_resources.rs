@@ -41,6 +41,23 @@ impl MaintenanceTotals {
         self.capacity() - self.upkeep
     }
 
+    /// Side `+0x5c`, the allocated half of the capacity pair: the smaller
+    /// of the mines' and refineries' allocated sums (`FUN_005323c0`).
+    /// `FUN_0052f6b0` and `FUN_0052f8f0` move those sums toward the upkeep
+    /// (`+0x70`, `+0x74`), bounded by the capacity. hyp: the rebalance has
+    /// settled, so the allocation is the upkeep up to the capacity.
+    #[must_use]
+    pub fn allocated(self) -> i32 {
+        self.upkeep.min(self.capacity())
+    }
+
+    /// Side `+0x58` less `+0x5c`: the maintenance a new order may still
+    /// take (`FUN_0052e970`).
+    #[must_use]
+    pub fn unallocated(self) -> i32 {
+        self.capacity() - self.allocated()
+    }
+
     /// `FUN_0052f670`: the side is over its limit when upkeep exceeds
     /// capacity.
     #[must_use]
@@ -480,5 +497,26 @@ mod tests {
         };
         assert_eq!(over.available(), -1);
         assert!(over.is_over_limit());
+    }
+
+    #[test]
+    fn orders_may_take_what_the_allocation_leaves_and_nothing_once_it_is_full() {
+        // FUN_0052e970 reads side +0x58 less +0x5c; FUN_0052f6b0 and
+        // FUN_0052f8f0 allocate the upkeep, bounded by the capacity.
+        let totals = MaintenanceTotals {
+            mine_capacity: 300,
+            refinery_capacity: 250,
+            upkeep: 11,
+        };
+        assert_eq!(totals.allocated(), 11);
+        assert_eq!(totals.unallocated(), 239);
+
+        let over = MaintenanceTotals {
+            upkeep: 652,
+            ..totals
+        };
+        assert_eq!(over.allocated(), 250);
+        assert_eq!(over.unallocated(), 0);
+        assert_eq!(over.available(), -402);
     }
 }
