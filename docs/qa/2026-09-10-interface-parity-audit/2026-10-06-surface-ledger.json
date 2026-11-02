@@ -5693,13 +5693,14 @@
         {
           "id": "OBJ-06-C014",
           "requirement": "context actions",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
           ],
-          "note": "The ship menu's Move, Confirmed Move, Create Fleet order (FUN_00502bd0) is asserted by fleet-window.mjs (Linux); A0 02-menu.png is captured but not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (status/02-menu: a ship's menu, 104 by 142, Move, Confirmed Move, Create Fleet, Rename, Encyclopedia, Status, Scrap): status-window.mjs 'capital-ship' (Linux, both sides) asserts the same size and rows; fleet-window.mjs drives Move, Confirmed Move and Create Fleet (FUN_00502bd0).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },

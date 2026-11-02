@@ -350,6 +350,8 @@ const cases = [
   },
   {
     name: "regiment",
+    // A0 status/11-troop-menu: 104 by 102.
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
     code: FLEET_LOAD,
     family: "Troop",
     target: async (page) => point((await fleetLoadSetup(page)).troop_item),
@@ -362,6 +364,9 @@ const cases = [
   },
   {
     name: "capital-ship",
+    // A0 status/02-menu (an enemy ship's menu, the same rows): 104 by 142.
+    a0Menu: { width: 104, height: 142,
+      rows: ["Move", "Confirmed Move", "Create Fleet", "Rename", "Encyclopedia", "Status", "Scrap"] },
     code: FLEET_LOAD,
     family: "Ship",
     // A0 status/03-ship (Corellian Corvette 1, undamaged): the first page's
@@ -383,6 +388,8 @@ const cases = [
   // "Sub-Light Engine Rating" on two lines each.
   {
     name: "fighter",
+    // A0 status/20-fighter-menu: 104 by 102.
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
     code: SQUADRON_LOAD,
     family: "PlanetFighter",
     // A0's pointer covers rows 9 and 10 (Detection Rating, Bombardment
@@ -396,6 +403,8 @@ const cases = [
   // Strength (two lines).
   {
     name: "battery",
+    // A0 status/22-battery-menu: 90 by 62.
+    a0Menu: { width: 90, height: 62, rows: ["Encyclopedia", "Status", "Scrap"] },
     code: BATTERY_STATUS,
     family: "DefenseFacility",
     a0: { file: "23-battery.png", x: 170, y: 81, labels: 7, values: { "status-value": 1 }, leftSlack: 1 },
@@ -407,6 +416,8 @@ const cases = [
   // lines), Bombardment Value.
   {
     name: "manufacturing-facility",
+    // A0 status/28-fac-menu: 90 by 62.
+    a0Menu: { width: 90, height: 62, rows: ["Encyclopedia", "Status", "Scrap"] },
     code: BUILD_SELECTION,
     family: "ManufacturingFacility",
     a0: { file: "29-manufacturing.png", x: 170, y: 81 },

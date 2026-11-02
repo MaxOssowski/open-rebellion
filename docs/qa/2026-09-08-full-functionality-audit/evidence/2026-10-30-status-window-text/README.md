@@ -162,3 +162,17 @@ A0 `status/14-char-menu` (Veers at Coruscant) shows a 124 by 142 menu: Move, Con
 The `character` case of `status-window.mjs` now asserts the same size and the same rows in the same order on both sides. Run `status-window-2026-11-02T12-32-02-384Z-199904`: pass.
 
 Command's state follows the character. Veers can take command (white, with the submenu arrow). The fixture's agent cannot.
+
+## 2026-11-02: every case's item menu against A0
+
+`status-window.mjs` now asserts each case's menu size and rows as A0 shows them. Every one equals A0:
+
+| Case | A0 capture | Size | Rows |
+|---|---|---|---|
+| regiment | `11-troop-menu` | 104 by 102 | Move, Confirmed Move, Encyclopedia, Status, Scrap |
+| fighter | `20-fighter-menu` | 104 by 102 | the same |
+| capital ship | `02-menu` (an enemy ship; same rows) | 104 by 142 | Move, Confirmed Move, Create Fleet, Rename, Encyclopedia, Status, Scrap |
+| battery | `22-battery-menu` | 90 by 62 | Encyclopedia, Status, Scrap |
+| training facility | `28-fac-menu` | 90 by 62 | Encyclopedia, Status, Scrap |
+
+Run `status-window-2026-11-02T16-44-11-689Z-558153`: pass on both sides.
