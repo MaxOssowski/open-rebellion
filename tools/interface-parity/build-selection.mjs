@@ -465,6 +465,31 @@ async function stopConfirmationCase(page, source, faction, directory) {
   return result;
 }
 
+// Fixture code 89 is Scenario::BuildSelectionDestination (88) plus one.
+async function destinationCase(page, faction, directory) {
+  const fixtureCode = 89 | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const before = await production(page);
+  const home = before.bands.map(({ destination }) => destination);
+  assert.ok(home.every((name) => name === home[0] && name.length > 0), JSON.stringify(home));
+  const troops = before.bands.find(({ area }) => area === "troops");
+  const menu = await bandOrder(page, troops, "destination_row", directory, "destination");
+  assert.ok(menu.target_screen_x > 0 && menu.target_name && menu.target_name !== home[0], JSON.stringify(menu));
+  await click(page, { x: menu.target_screen_x, y: menu.target_screen_y });
+  await page.mouse.move(2, 2);
+  await page.waitForFunction((name) => window.__openRebellionInterfaceProduction?.bands
+    ?.find(({ area }) => area === "troops")?.destination === name, menu.target_name, { timeout: 10_000 });
+  fs.writeFileSync(path.join(directory, "destination-set.png"), await page.screenshot({ animations: "disabled" }));
+  const after = await production(page);
+  const shown = Object.fromEntries(after.bands.map(({ area, destination }) => [area, destination]));
+  assert.deepEqual(shown, { ships: home[0], troops: menu.target_name, facilities: home[0] }, JSON.stringify(shown));
+  return { home: home[0], target: menu.target_name, shown };
+}
+
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.
 const overMaintenanceCode = 88;
 const A0_OVER_MAINTENANCE = { file: "11-build-selection.png", x: 255, y: 87 };
@@ -802,6 +827,10 @@ async function inspect(server, source, faction, executable) {
     // and does nothing. A0 manufacturing/11 (the Empire at -402, window at
     // (255, 87)) is the reference.
     const overMaintenance = await overMaintenanceCase(page, faction, directory);
+    // A band's Destination (0x214) released on another system's planet
+    // sets that band's area alone (A0 build-selection2/21: the ships band's
+    // Destination on Chandrila; the others keep Coruscant).
+    const destination = await destinationCase(page, faction, directory);
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
@@ -816,6 +845,7 @@ async function inspect(server, source, faction, executable) {
       facility_menu: facilityMenu,
       over_maintenance: overMaintenance,
       stepping,
+      destination,
       idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,

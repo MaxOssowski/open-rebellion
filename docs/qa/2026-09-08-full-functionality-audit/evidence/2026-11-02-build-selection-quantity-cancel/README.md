@@ -91,3 +91,14 @@ It stays after Destination and after a click beside the menu.
 - `system_window::band_menu_deselects(command, escaped)` holds this rule. `main.rs` applies it when a band's menu closes.
 - hyp: the windows' activation clears the selection. The other rows are not captured and keep it.
 - Test: `escape_build_and_stop_end_a_bands_selection_but_destination_and_a_click_beside_keep_it`.
+
+## A band's Destination in the browser (OBJ-07 C015, C016)
+
+Scenario `BuildSelectionDestination` (88, code 89) opens the secondary system's sector with the Manufacturing window beside it at (360, 76). It reports each band's Destination system.
+
+`build-selection.mjs` releases the troops band's Destination on the secondary's planet. On both sides the troops band then names it ("F'tral") and the ships and facilities bands keep their own system ("Akrit'tar"). This is A0 `21`'s per-band rule.
+
+Run `build-selection-2026-11-02T10-…` (Linux Chromium 155, test WASM `07d33e9a…`).
+
+- The batch's other gates and checks passed on the run before this scenario moved its window aside.
+- That first run's build-selection failed because the target planet lay under the window.

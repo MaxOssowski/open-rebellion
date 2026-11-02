@@ -5919,26 +5919,26 @@
         {
           "id": "OBJ-07-C015",
           "requirement": "destination stored per producer",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Each area keeps and saves its own Destination (0x214) in unit tests; the band-level Destination browser check ran on macOS (2026-10-06) only; no A0. 2026-11-02: A0 build-selection2/21 shows the ships band's Destination released on Chandrila changing only that band ('Destination: Chandrila'; the others keep Coruscant); no Linux browser case releases a band's Destination yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/21: the ships band's Destination on Chandrila changes that band alone). build-selection.mjs (fixture 89, Linux, both sides) releases the troops band's Destination on another system's planet: the troops band names it, the ships and facilities bands keep their own system.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-07-C016",
           "requirement": "destination targeting accepts galaxy system",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "fleet-window.mjs 'destination' case: the facility icon's Destination released on a planet (FUN_00512700 kind 4) passes in the Linux browser; no A0. 2026-11-02: A0 build-selection2/21 shows the ships band's Destination released on Chandrila changing only that band ('Destination: Chandrila'; the others keep Coruscant); no Linux browser case releases a band's Destination yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/20, 21: a band's Destination released on a galaxy system's planet in a sector window). build-selection.mjs (fixture 89, Linux, both sides) does the same and the band takes that system.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-07-C017",

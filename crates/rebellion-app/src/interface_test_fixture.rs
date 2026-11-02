@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 88;
+const SCENARIO_COUNT: u8 = 89;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -267,6 +267,10 @@ pub enum Scenario {
     /// side has no mine or refinery left, so no order with a maintenance
     /// cost fits (`FUN_0052e970`).
     BuildSelectionOverMaintenance = 87,
+    /// `BuildSelection` with the secondary system's sector open, so a
+    /// band's Destination can be released on its planet (A0
+    /// build-selection2/21: the ships band's Destination on Chandrila).
+    BuildSelectionDestination = 88,
 }
 
 impl Scenario {
@@ -360,6 +364,7 @@ impl Scenario {
             85 => Self::FleetWindowDestination,
             86 => Self::FleetWindowBlockade,
             87 => Self::BuildSelectionOverMaintenance,
+            88 => Self::BuildSelectionDestination,
             _ => return None,
         })
     }
@@ -392,7 +397,12 @@ impl Scenario {
     /// The scenarios whose gate opens Build Selection from the primary
     /// system's Manufacturing window.
     fn opens_build_selection(self) -> bool {
-        matches!(self, Self::BuildSelection | Self::BuildSelectionOverMaintenance)
+        matches!(
+            self,
+            Self::BuildSelection
+                | Self::BuildSelectionOverMaintenance
+                | Self::BuildSelectionDestination
+        )
     }
 
     /// The scenarios whose gate opens the object pop-up menu.
@@ -678,17 +688,29 @@ pub fn apply(
             world.systems[primary].manufacturing_facilities.push(yard);
         }
     }
+    if request.scenario == Scenario::BuildSelectionDestination {
+        sectors.open_for_system(world, secondary, request.faction);
+    }
     if request.scenario == Scenario::BuildSelectionOverMaintenance {
         remove_production_facilities(world, rebellion_core::dat::Faction::of_alliance(player_is_alliance));
     }
     if matches!(
         request.scenario,
-        Scenario::System | Scenario::BuildSelection | Scenario::BuildSelectionOverMaintenance
+        Scenario::System
+            | Scenario::BuildSelection
+            | Scenario::BuildSelectionOverMaintenance
+            | Scenario::BuildSelectionDestination
     ) {
         systems.open(
             world,
             primary,
-            (225, 76),
+            // Beside the sector window, whose planets the Destination
+            // gate releases on.
+            if request.scenario == Scenario::BuildSelectionDestination {
+                (360, 76)
+            } else {
+                (225, 76)
+            },
             request.faction,
             cockpit.layout_for(640.0, 480.0),
         );
@@ -2889,6 +2911,8 @@ struct FixtureBand {
     height: f32,
     queued: usize,
     product: String,
+    /// The name of the area's Destination system (0x214).
+    destination: String,
 }
 
 /// The primary system's bands and the Build Selection window, each frame.
@@ -2939,6 +2963,10 @@ fn production_report(
                     .and_then(rebellion_core::manufacturing::ProductionQueue::active)
                     .map(|item| rebellion_render::manufacturing_window::product(world, item.kind).0)
                     .unwrap_or_default(),
+                destination: world
+                    .systems
+                    .get(manufacturing.destination(primary, area).unwrap_or(primary))
+                    .map_or_else(String::new, |value| value.name.clone()),
             })
         })
         .collect();
@@ -5976,6 +6004,26 @@ mod tests {
         }
     }
 
+    // A0 build-selection2/21: a band's Destination is released on a planet
+    // in a sector window; the gate needs the secondary's planet on screen.
+    #[test]
+    fn the_destination_scenario_shows_the_secondary_planet_beside_the_open_window() {
+        let request = request(Scenario::BuildSelectionDestination, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |_| {});
+        let world = &applied.world;
+        let mut keys = world.systems.keys();
+        let (primary, secondary) = (keys.next().unwrap(), keys.next().unwrap());
+        let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+        let planet = applied.sectors.planet_screen_rect(world, layout, secondary).unwrap();
+        let band = applied
+            .systems
+            .band_screen_rect(layout, primary, rebellion_core::manufacturing::ProductionArea::Shipyard)
+            .unwrap();
+        // The planet is not under the window.
+        assert!(planet.center().x < band.min.x - 55.0, "{planet:?} {band:?}");
+        assert!(applied.systems.band_screen_rect(layout, primary, rebellion_core::manufacturing::ProductionArea::TrainingFacility).is_some());
+    }
+
     // FUN_00509710: the other side's squadrons make it present beside the
     // player's fleet, so a battle is due.
     #[test]
@@ -7839,6 +7887,7 @@ mod tests {
                 Scenario::SupportFlip,
                 Scenario::FleetWindowYavin,
                 Scenario::BuildSelectionOverMaintenance,
+                Scenario::BuildSelectionDestination,
             ]
         );
     }
