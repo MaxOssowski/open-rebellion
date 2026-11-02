@@ -340,6 +340,12 @@ const cases = [
     code: MISSION_TARGETING,
     family: "Character",
     closes: true,
+    // A0 status/14-char-menu (Veers at Coruscant): a 124 by 142 menu,
+    // Move, Confirmed Move, Mission, Command, Encyclopedia, Status, Retire.
+    // Command's state follows the character (Veers can command; the
+    // fixture's agent cannot).
+    a0Menu: { width: 124, height: 142,
+      rows: ["Move", "Confirmed Move", "Mission", "Command", "Encyclopedia", "Status", "Retire"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
   {
@@ -468,6 +474,10 @@ async function inspect(server, source, faction, testCase, executable) {
     const closed = /destination=status_window status=closed action=(\w+)/;
 
     const menu = await openStatus();
+    if (testCase.a0Menu) {
+      assert.deepEqual([menu.width, menu.height], [testCase.a0Menu.width, testCase.a0Menu.height], JSON.stringify(menu));
+      assert.deepEqual(menu.row_states.map(([label]) => label), testCase.a0Menu.rows, JSON.stringify(menu));
+    }
     const line = await logged("Status opens the window", opened);
     const [, x, y, width, height] = line.match(opened).map(Number);
     const rect = { x, y, width, height };

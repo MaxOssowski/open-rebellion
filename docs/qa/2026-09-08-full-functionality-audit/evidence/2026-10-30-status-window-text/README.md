@@ -154,3 +154,11 @@ Scenario `BatteryStatus` (91, code 92) opens the primary system's Defenses windo
 Run `status-window-2026-11-02T12-28-35-103Z-194847` (test WASM `e5ea0f43…`): pass.
 
 Test: `the_battery_scenario_opens_the_batteries_page_on_the_players_kdy_150`.
+
+## 2026-11-02: a character's item menu against A0
+
+A0 `status/14-char-menu` (Veers at Coruscant) shows a 124 by 142 menu: Move, Confirmed Move, Mission, Command, Encyclopedia, Status, Retire.
+
+The `character` case of `status-window.mjs` now asserts the same size and the same rows in the same order on both sides. Run `status-window-2026-11-02T12-32-02-384Z-199904`: pass.
+
+Command's state follows the character. Veers can take command (white, with the submenu arrow). The fixture's agent cannot.
