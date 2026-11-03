@@ -4687,25 +4687,27 @@
         {
           "id": "OBJ-02-C012",
           "requirement": "friendly",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-defenses-own-hostile-a0/"
           ],
-          "note": "Own-side windows are what the gates open in the Linux browser and A0 shows Vjun's window, but the A0 system's side relative to the viewer is not recorded.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/15: the Alliance player's own Mon Calamari, red title strip): sector-quadrants.mjs 'defenses' (Linux) opens the player's own system; its title strip right of the name and its buttons match A0 but for each button's bottom-left pixel (index 250, green in the port, black in A0) and the name's first column; tab art exact.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-02-C013",
           "requirement": "hostile",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-defenses-own-hostile-a0/"
           ],
-          "note": "sector-quadrants.mjs case defenses-other-side opens the other side's Defenses window in the Linux browser (all tabs empty); no A0 hostile window compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/18: Umgul, the Empire's, seen by the Alliance player, green title strip): sector-quadrants.mjs 'defenses-other-side' (Linux) opens the other side's window; its strip, buttons and frame match A0 but for each button's bottom-left pixel and the name's first column; tab art exact. Open: A0 shows the garrison line on Umgul's regiment page; the port draws it only for the player's side (FUN_004a90d0 reading).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
