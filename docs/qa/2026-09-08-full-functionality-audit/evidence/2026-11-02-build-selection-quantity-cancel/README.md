@@ -147,3 +147,28 @@ The build-selection gate's `defensesDestination` step does the following on both
 - waits for the band to read the window's system.
 
 Run `build-selection-2026-11-03T04-16-07-647Z-2127650` (Linux): the Alliance's Destination goes from Akrit'tar to F'tral. Screenshot: `defenses-destination.png`.
+
+## Destination released on a fleet is refused (OBJ-07 C019, 2026-11-03)
+
+**A0.** In `build-selection2/30`, `32` and `35`, a band's Destination was released on Fleet windows: Yavin's Fleet 1, then Selonia's fleet. Each time the band kept its Destination.
+
+**The source.** `FUN_00422ce0` asks the Fleet window's `+0x70` (`FUN_004a3130`) for the target. That is a fleet, a ship, or nothing.
+
+The 0x214 order's checks, `FUN_00537180`, treat a production manager (family 0xa0..0xa2) in two steps:
+
+1. They call `FUN_00553410` on the destination.
+2. They require a system (0x90..0x97). Anything else fails with `1/0x25`.
+
+So a fleet is refused.
+
+**The port before.** The port took the fleet's system as the Destination.
+
+**The port now.** A fleet target is refused: the band keeps its Destination, and the log reads `status=refused reason=0x25`.
+
+**The gate.** Fixture 96, `BuildSelectionFleetDestination`, moves a player's fleet to the secondary system and opens that system's Fleet window beside the Manufacturing window. The build-selection gate's `fleetDestination` step:
+
+- chooses Destination from the ships band;
+- clicks the fleet;
+- asserts the refusal and the unchanged band.
+
+Before the fix, the step failed (no refusal logged, Alliance). After it, it passed on both sides: run `build-selection-2026-11-03T05-33-09-575Z-2234554`.

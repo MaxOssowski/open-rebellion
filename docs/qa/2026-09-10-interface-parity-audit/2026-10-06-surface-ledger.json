@@ -6016,13 +6016,13 @@
         {
           "id": "OBJ-07-C019",
           "requirement": "destination targeting accepts Fleet window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Destination released on the Fleet window is unit-tested (8fc9d983); the browser check ran on macOS only (rerun on Linux) and no A0 comparison exists. 2026-11-02: A0 build-selection2/30, 32, 35 left the band's Destination unchanged on three releases on Fleet windows (Yavin's Fleet 1, Selonia's): refused, or the click only activated the window; the port accepts it. Open.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 (build-selection2/30, 32, 35: Destination released on Fleet windows leaves the band's unchanged). FUN_00537180 requires a production manager's Destination to be a system (else 1/0x25); the port now refuses a fleet target (it took the fleet's system before), and build-selection.mjs 'fleetDestination' (Linux, both sides, fixture 96) releases on a Fleet window's fleet and finds the band unchanged (the step failed before the fix).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-07-C020",
