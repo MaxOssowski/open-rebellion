@@ -1,0 +1,4 @@
+1ebabc614f9b42eee98f8df620675aa5c0c536df38272307094120eff8e7b37a  25-mw-c-two-defenses.png
+43a60fda2de75e9538f1f6a028b37c26ab86649a901d0d94550bdd99027f04ad  25-mw-d-two-defenses.png
+aa4a1d665f2b94a0d1c84a153a3a7f253b08ef949dc27de4d360ddbc4f19d3ed  26-mm1-fleet-and-defenses.png
+f61650b1ea1e55d4a029c33e4990da9976d4589d3f9a66bf14e505da813b5e50  26-mm2-fleet-and-defenses.png

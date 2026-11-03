@@ -2106,14 +2106,15 @@
         {
           "id": "CMD-03-C013",
           "requirement": "multiple modeless windows",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-two-defenses-windows-a0/"
           ],
-          "note": "Modeless Fleet, System, Defenses and Missions windows coexist and move by their surface (FUN_00606ee0), checked in fleet-window.mjs on Arch Chromium 155; no A0 multiwindow capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/26: Mon Calamari's Fleet window moved by its title strip beside its open Defenses window; 25: two Defenses windows): fleet-window.mjs 'load' (Defenses and Fleet windows open together, a regiment dragged between them) and 'move', and sector-quadrants.mjs 'two-defenses' (Linux, both sides).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-03-C014",
@@ -2334,14 +2335,15 @@
         {
           "id": "CMD-04-C007",
           "requirement": "multiple system windows",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-two-defenses-windows-a0/"
           ],
-          "note": "Several System windows open and minimize independently (UIP-B01 on macOS; window-move on Linux); no A0 multiwindow capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/25: Pzob's and Mon Calamari's Defenses windows open together; Pzob minimized to the rail, Mon Calamari still open): sector-quadrants.mjs 'two-defenses' (Linux, both sides) opens two systems' Defenses windows, minimizes one, and finds only it on the rail and the other open.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-04-C008",
