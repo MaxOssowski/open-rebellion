@@ -6468,8 +6468,12 @@ async fn main() {
                                 }
                             }
                         }
-                        // FUN_00487740: the Abort validates (FUN_00521600),
-                        // then FUN_00487cc0 asks (FUN_0049a350, case 0x250).
+                        // FUN_00487740: the Abort validates (FUN_0051ff30:
+                        // every mission through FUN_00521600, refused with
+                        // 0x40 in phase 4 and 0x41 in any phase but 8); a
+                        // refusal asks nothing (FUN_00487c90, the advisor's
+                        // reaction), else FUN_00487cc0 asks (FUN_0049a350,
+                        // case 0x250).
                         Some((ObjectMenuCommand::Abort, selection @ Some(_))) => {
                             let missions = abort_missions(
                                 &world,
@@ -6478,11 +6482,22 @@ async fn main() {
                                 selection,
                                 player_faction,
                             );
-                            macroquad::logging::info!(
-                                "[interface] command=0x250 missions={:?}",
-                                missions
-                            );
-                            if !missions.is_empty() {
+                            let allowed = !missions.is_empty()
+                                && missions
+                                    .iter()
+                                    .all(|&id| mission_state.abort_allowed(id, player_faction));
+                            if allowed {
+                                macroquad::logging::info!(
+                                    "[interface] command=0x250 missions={:?}",
+                                    missions
+                                );
+                            } else {
+                                macroquad::logging::info!(
+                                    "[interface] command=0x250 missions={:?} status=refused reason=0x41",
+                                    missions
+                                );
+                            }
+                            if allowed {
                                 move_confirmation_state.open(MoveConfirmation {
                                     order: ConfirmedOrder::Abort,
                                     faction: player_faction,
@@ -9352,9 +9367,15 @@ fn apply_briefing_action(
     }
 }
 
-/// The missions a mission icon's Abort (`0x250`) acts on, when every one
-/// passes `FUN_00521600` (`MissionState::abort_allowed`); empty otherwise
-/// or for any other selection.
+/// The team of a mission icon's Abort (`0x250`): the side's missions it
+/// names; empty for any other selection. The menu offers Abort when the
+/// team is not empty (the order's `+0x18`, `FUN_0051fe20`: `FUN_00553770`
+/// refuses an empty team with `0x16`), whatever the missions' phases. The
+/// phase is checked only when the order is given (`+0x1c`, `FUN_0051ff30`
+/// -> `FUN_00553960` -> event `0x261` `+0x1c` -> the mission's `+0x1c4` ->
+/// `FUN_00521600`). A0 personnel-states/37: Mon Calamari's research
+/// missions offer Abort, which then asks nothing; Sullust's empty team
+/// greys it.
 fn abort_missions(
     world: &GameWorld,
     fog: &rebellion_core::fog::FogState,
@@ -9364,7 +9385,11 @@ fn abort_missions(
 ) -> Vec<u64> {
     // A Missions window's mission: that one alone (FUN_004a0400).
     if let Some(MenuObject::Mission(id)) = selection {
-        return if missions.abort_allowed(id, faction) {
+        return if missions
+            .missions()
+            .iter()
+            .any(|mission| mission.id == id && mission.faction == faction)
+        {
             vec![id]
         } else {
             Vec::new()
@@ -9384,11 +9409,7 @@ fn abort_missions(
         Faction::from(faction),
         system,
     );
-    if ids.iter().all(|&id| missions.abort_allowed(id, faction)) {
-        ids
-    } else {
-        Vec::new()
-    }
+    ids
 }
 
 /// A special force's Confirmed Move (`0x202`), as a character's: the Move's
