@@ -671,6 +671,19 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     const capture = await page.screenshot({ path: path.join(folder, "system-hover.png"), animations: "disabled" });
     probes.push({ type: "system-hover", dat_id: hovered.system_dat_id,
       name: hovered.system_name, screenshot_sha256: sha256(capture) });
+    // FUN_00422ce0 opens the sector on WM_LBUTTONUP: a held press shows
+    // only the hover label, the release opens the window (A0
+    // gid-selection/01, 02: "Moddell Sector" while held, Moddell's window
+    // on release).
+    const hoverFrame = await stableInteractionFrame(page, folder, "system-before-press");
+    await page.mouse.down();
+    const held = await stableInteractionFrame(page, folder, "system-held");
+    assert.equal(sha256(held), sha256(hoverFrame), "the press alone changed the galaxy view");
+    await page.mouse.up();
+    const released = await stableInteractionFrame(page, folder, "system-released");
+    assert.notEqual(sha256(released), sha256(held), "the release opened nothing");
+    probes.push({ type: "system-press-release", held_sha256: sha256(held),
+      released_sha256: sha256(released) });
   }
 
   if (["pan", "zoom"].includes(scenario.slug)) {
