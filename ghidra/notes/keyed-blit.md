@@ -34,8 +34,10 @@ them:
   button 10378 at (426, 143) shows its (0, 0, 196) and (28, 28, 210) pixels.
 
 The port now keys exactly (0, 0, 255). Every surveyed key in this set is that
-colour except 10873 and 10951, whose first pixel is (35, 36, 35); they keep
-the blue rule pending an A0 capture of the pressed posting toggle.
+colour except 10873 and 10951, whose first pixel is (35, 36, 35). A0
+`personnel-states/30` (2026-11-03, the Alliance's silent posting toggle)
+shows 10951's interior exactly and the rail through its (35, 36, 35)
+border, so both now key on their first pixel.
 
 ## Buttons the port drew opaque
 

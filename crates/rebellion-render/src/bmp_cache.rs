@@ -1935,8 +1935,9 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10339..=10344
                 | 10380..=10381
                 | 11615..=11618
-                | 10872..=10875
-                | 10951..=10953
+                | 10872
+                | 10874..=10875
+                | 10952..=10953
                 // and the disabled Display and Compose Chat (0x2acf,
                 // 0x2ad0, 0x2a7e, 0x2a81).
                 | 10959..=10962
@@ -2146,6 +2147,12 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // Build Selection's disabled Confirm (FUN_00438620): A0
                 // manufacturing/11 shows the window under its magenta corner.
                 | 11_620
+                // The Alliance posting toggle's silent art 10951 and its
+                // alerted pressed art 10873, whose first DIB pixel is
+                // (35, 36, 35), not blue (keyed-blit.md): A0
+                // personnel-states/30 shows the rail through 10951's border.
+                | 10_873
+                | 10_951
         )
 }
 
@@ -2718,6 +2725,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_alliance_posting_toggles_silent_art_is_keyed_on_its_first_pixel() {
+        // A0 personnel-states/30: after the toggle, 10951's interior shows
+        // exactly and its (35, 36, 35) border, its first DIB pixel, lets the
+        // rail through; 10873 shares that key (keyed-blit.md).
+        for id in [10_873, 10_951] {
+            assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+        }
+        assert!(!uses_first_pixel_key(DllSource::Strategy, 10_872));
+    }
+
+    #[test]
     fn build_selections_disabled_confirm_is_keyed_on_its_first_pixel() {
         // A0 manufacturing/11: the window shows through 11620's magenta
         // corner (index 174, its first pixel).
@@ -3130,7 +3148,7 @@ pub(crate) mod tests {
                 .a()
         };
         for keyed in [
-            10378, 10379, 10872, 10875, 10951, 10953, 10959, 10962, 10878, 10881, 10870, 11552,
+            10378, 10379, 10872, 10875, 10953, 10959, 10962, 10878, 10881, 10870, 11552,
         ] {
             assert_eq!(alpha(keyed), 0, "{keyed}");
         }
