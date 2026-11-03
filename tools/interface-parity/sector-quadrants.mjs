@@ -883,6 +883,42 @@ const cases = [
     },
   },
   {
+    name: "two-defenses",
+    // Two systems' Defenses windows stay open together, and minimizing one
+    // sends only it to the rail (A0 personnel-states/25: Pzob and Mon
+    // Calamari open; Pzob minimized to the rail, Mon Calamari still open).
+    async run(page, faction, setup, directory) {
+      const first = await openDefenses(page, setup, "primary");
+      // It opens over the sector window; its title strip moves it right
+      // (FUN_00606ee0), clear of the second system's icon.
+      const [fx, fy] = corner(first.window);
+      await page.mouse.move(fx + 120, fy + 9);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.move(fx + 120 + 260, fy + 9, { steps: 10 });
+      await frames(page);
+      await page.mouse.up();
+      await frames(page, 3);
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      const second = await openDefenses(page, setup, "second");
+      const both = await until(page, "both Defenses windows are open",
+        (o, value) => value.every((dat) => o.defenses_windows.some((w) => w.system_dat_id === dat)),
+        [first.dat, second.dat]);
+      await stableScreen(page, directory, "two-open");
+      const origin = corner(defensesWindow(both, second.dat));
+      await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
+      const railed = await until(page, "only the second window goes to the rail",
+        (o, value) => !o.defenses_windows.some((w) => w.system_dat_id === value[1])
+          && o.defenses_windows.some((w) => w.system_dat_id === value[0])
+          && o.rail.some(([system, kind]) => system === value[1] && kind === "defenses")
+          && !o.rail.some(([system]) => system === value[0]), [first.dat, second.dat]);
+      await stableScreen(page, directory, "one-railed");
+      return { open: both.defenses_windows.length, rail: railed.rail };
+    },
+  },
+  {
     name: "defenses-other-side",
     // +0x148 is the system's side: the other side's system lists only its
     // objects, of which the fixture leaves none, so every tab shows that
