@@ -961,7 +961,46 @@ const cases = [
         (o, value) => value.every((dat) => o.defenses_windows.some((w) => w.system_dat_id === dat)),
         [first.dat, second.dat]);
       await stableScreen(page, directory, "two-open");
-      const origin = corner(defensesWindow(both, second.dat));
+      // A window over another takes the click on its covered control:
+      // A0 personnel-states/36 (Pzob's Fleet window over Xyquine's tabs)
+      // leaves Xyquine on its page. The second window's title strip is
+      // dragged onto one of the first's other tabs, which is then clicked.
+      const firstWindow = defensesWindow(both, first.dat);
+      const [, tab] = firstWindow.tabs.find(([name]) => name !== firstWindow.page);
+      const covered = { x: Math.round(tab[0] + tab[2] / 2), y: Math.round(tab[1] + tab[3] / 2) };
+      const [sx, sy] = corner(defensesWindow(both, second.dat));
+      await page.mouse.move(sx + 120, sy + 9);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.move(covered.x, covered.y, { steps: 10 });
+      await frames(page);
+      await page.mouse.up();
+      await frames(page, 3);
+      const moved = await until(page, "the second window covers the first's tab",
+        (o, value) => {
+          const w = o.defenses_windows.find((d) => d.system_dat_id === value.dat);
+          if (!w) return false;
+          const [x, y] = [w.tabs.find(([name]) => name === "personnel")[1][0] - 28, w.tabs.find(([name]) => name === "personnel")[1][1] - 20];
+          return value.at.x >= x && value.at.x < x + 235 && value.at.y >= y && value.at.y < y + 300;
+        }, { dat: second.dat, at: covered });
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      await click(page, covered);
+      await page.mouse.move(2, 2);
+      await frames(page, 3);
+      await page.waitForTimeout(300);
+      const after = await until(page, "both windows stay open",
+        (o, value) => value.every((dat) => o.defenses_windows.some((w) => w.system_dat_id === dat)),
+        [first.dat, second.dat]);
+      assert.equal(defensesWindow(after, first.dat).page, firstWindow.page,
+        `a covered tab took the click: ${JSON.stringify({ covered, first: defensesWindow(after, first.dat) })}`);
+      await stableScreen(page, directory, "covered-click");
+      const top = defensesWindow(after, second.dat);
+      // The click lands on the window above: its own tab there takes it.
+      assert.notEqual(top.page, defensesWindow(both, second.dat).page,
+        `the top window took no click: ${JSON.stringify({ covered, top })}`);
+      const origin = corner(defensesWindow(after, second.dat));
       await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
       const railed = await until(page, "only the second window goes to the rail",
         (o, value) => !o.defenses_windows.some((w) => w.system_dat_id === value[1])
@@ -969,7 +1008,7 @@ const cases = [
           && o.rail.some(([system, kind]) => system === value[1] && kind === "defenses")
           && !o.rail.some(([system]) => system === value[0]), [first.dat, second.dat]);
       await stableScreen(page, directory, "one-railed");
-      return { open: both.defenses_windows.length, rail: railed.rail };
+      return { open: both.defenses_windows.length, covered, moved: corner(defensesWindow(moved, second.dat)), topPage: top.page, rail: railed.rail };
     },
   },
   {
