@@ -59,6 +59,10 @@ const fixturePlugin = `    <script>
                             window.__openRebellionInterfacePersonnelFinder = message;
                         } else if (message.status === "status-rows") {
                             window.__openRebellionInterfaceStatusRows = message;
+                        } else if (message.status === "encyclopedia") {
+                            window.__openRebellionInterfaceEncyclopedia = message;
+                        } else if (message.status === "encyclopedia-topic") {
+                            window.__openRebellionInterfaceEncyclopediaTopic = message;
                         } else {
                             window.__openRebellionInterfaceReady = message;
                         }

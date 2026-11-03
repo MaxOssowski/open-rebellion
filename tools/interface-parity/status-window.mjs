@@ -659,7 +659,24 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.deepEqual(closes, { close: "close" });
     }
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, forceRanking, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+
+    // The menu's Encyclopedia opens straight at the object's topic
+    // (FUN_0045d400; A0 encyclopedia/ctx3-luke: Luke Skywalker's).
+    let menuTopic = null;
+    if (testCase.forceRanking) {
+      // The Close above left the galaxy view with no window open.
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await click(page, target, "right");
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu", null, { timeout: 10_000 });
+      const again = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      const encyclopediaRow = again.row_states.findIndex(([label]) => label === "Encyclopedia");
+      const step = (again.height - 2) / again.rows;
+      await click(page, { x: again.left + again.width / 2, y: again.top + 2 + step * (encyclopediaRow + 0.5) });
+      await page.waitForFunction(() => window.__openRebellionInterfaceEncyclopediaTopic?.topic, null, { timeout: 10_000 });
+      menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
+      assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
+    }
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, forceRanking, menuTopic, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

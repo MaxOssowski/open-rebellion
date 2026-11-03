@@ -33,9 +33,30 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // Fixture codes are the Scenario index plus one: 92 PersonnelStates.
 const PERSONNEL_STATES = 93;
 const FACTIONS = [
-  { name: "alliance", byte: 1 },
-  { name: "empire", byte: 2 },
+  { name: "alliance", byte: 1, encyclopedia: [62, 52] },
+  { name: "empire", byte: 2, encyclopedia: [125, 52] },
 ].filter(({ name }) => !args.faction || args.faction === name);
+// A0 encyclopedia/category-0..6-alliance-day185: each category's label,
+// first eight rows and chosen row (All Databases chooses nothing, a
+// category its first row).
+const ENCYCLOPEDIA_A0 = [
+  ["All Databases", null, ["A-wing", "Abduction", "Ackbar", "Adar Tallon", "Adega",
+    "Advanced Construction Yard", "Advanced Shipyard", "Advanced Training Facility"]],
+  ["System Database", 0, ["Adega", "Agrilat", "Akrit'tar", "Algarian", "Alk'lellish III",
+    "Allyuen", "Anchoron", "Annaj"]],
+  ["Ship Database", 0, ["A-wing", "Alliance Dreadnaught", "Alliance Escort Carrier", "Assault Frigate",
+    "Assault Transport", "B-wing", "Bulk Cruiser", "Bulk Transport"]],
+  ["Facilities Database", 0, ["Advanced Construction Yard", "Advanced Shipyard",
+    "Advanced Training Facility", "Construction Yard", "Death Star Shield", "GenCore Level I",
+    "GenCore Level II", "KDY-150"]],
+  ["Missions Database", 0, ["Abduction", "Assassination", "Death Star Sabotage", "Diplomacy",
+    "Espionage", "Facility Design Research", "Incite Uprising", "Jedi Training"]],
+  ["Troop Database", 0, ["Alliance Army Regiment", "Alliance Fleet Regiment", "Dark Trooper Regiment",
+    "Imperial Army Regiment", "Imperial Fleet Regiment", "Mon Calamari Regiment",
+    "Stormtrooper Regiment", "Sullustan Regiment"]],
+  ["Personnel Database", 0, ["Ackbar", "Adar Tallon", "Afyon", "Bane Nothos", "Bevel Lemelisk",
+    "Bin Essada", "Borsk Fey'lya", "Bothan Spies"]],
+];
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".orpk": "application/octet-stream" };
 
@@ -196,10 +217,93 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await frames(page, 3);
     await shot("fleet-finder-other-side");
+
+    // F7: the Encyclopedia index, each category icon (0x6f..0x75 at the
+    // window's (36 + 52 i, 78)) against A0's label, rows and choice.
+    await page.keyboard.press("Escape");
+    await frames(page, 4);
+    await page.keyboard.press("F7");
+    const encyclopedia = [];
+    for (const [index, [label, chosen, rows]] of ENCYCLOPEDIA_A0.entries()) {
+      const [ox, oy] = faction.encyclopedia;
+      await page.mouse.move(ox + 36 + 52 * index + 24, oy + 78 + 20);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.up();
+      await frames(page);
+      await page.mouse.move(2, 2);
+      const deadline = Date.now() + 10_000;
+      let shownIndex;
+      for (;;) {
+        shownIndex = await page.evaluate(() => window.__openRebellionInterfaceEncyclopedia ?? null);
+        if (shownIndex && shownIndex.command === 0x6f + index) break;
+        if (Date.now() > deadline) throw new Error(`category ${index}: ${JSON.stringify(shownIndex)}`);
+        await page.waitForTimeout(100);
+      }
+      encyclopedia.push(shownIndex);
+      await shot(`encyclopedia-${index}`);
+    }
+    const encyclopediaDiffs = ENCYCLOPEDIA_A0.map(([label, chosen, rows], index) => {
+      const shownIndex = encyclopedia[index];
+      return shownIndex.label === label && shownIndex.chosen === chosen
+        && JSON.stringify(shownIndex.rows) === JSON.stringify(rows) ? null
+        : { index, a0: { label, chosen, rows }, port: shownIndex };
+    }).filter(Boolean);
+    assert.deepEqual(encyclopediaDiffs, [], JSON.stringify(encyclopediaDiffs));
+
+    // A topic's Previous and Next (0x83 at (28, 14), 0x84 at (380, 14);
+    // FUN_0045fd20) step through All Databases: A0 encyclopedia/topic-step-2..6
+    // reads Abduction, Ackbar, Abduction, A-wing, then A-wing with Previous
+    // grey.
+    const [ex, ey] = faction.encyclopedia;
+    const clickAt = async (x, y) => {
+      await page.mouse.move(x, y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.up();
+      await frames(page);
+    };
+    await clickAt(ex + 36 + 24, ey + 78 + 20);
+    await page.evaluate(() => { window.__openRebellionInterfaceEncyclopediaTopic = null; });
+    // Two clicks a frame apart, inside egui's double-click time.
+    await page.mouse.move(ex + 100, ey + 165);
+    await frames(page);
+    for (let i = 0; i < 2; i += 1) {
+      await page.mouse.down();
+      await frames(page, 1);
+      await page.mouse.up();
+      await frames(page, 1);
+    }
+    const topicSteps = [];
+    const topicUntil = async (description, name) => {
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const value = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic ?? null);
+        if (value && value.topic === name) return value;
+        if (Date.now() > deadline) throw new Error(`${description}: ${JSON.stringify(value)}`);
+        await page.waitForTimeout(100);
+      }
+    };
+    topicSteps.push(await topicUntil("a double click opens Abduction's topic", "Abduction"));
+    for (const [x, name] of [[380, "Ackbar"], [28, "Abduction"], [28, "A-wing"]]) {
+      await clickAt(ex + x + 10, ey + 14 + 8);
+      topicSteps.push(await topicUntil(`the arrow steps to ${name}`, name));
+    }
+    assert.deepEqual(topicSteps.map(({ topic, previous, next }) => [topic, previous, next]),
+      [["Abduction", true, true], ["Ackbar", true, true], ["Abduction", true, true], ["A-wing", false, true]]);
+    await clickAt(ex + 28 + 10, ey + 14 + 8);
+    await frames(page, 4);
+    const stayed = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
+    assert.equal(stayed.topic, "A-wing", "a grey Previous does nothing");
+    await shot("encyclopedia-topic-first");
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", busy: busy[0], travelling: travelling[0],
       commanding: commanding[0], available, rows: shown.rows,
       menu: { left: menu.left, top: menu.top, width: menu.width, height: menu.height, rows: menu.row_states },
+      topicSteps: topicSteps.map(({ topic, previous, next }) => [topic, previous, next]),
+      encyclopedia: encyclopedia.map(({ label, chosen }) => ({ label, chosen })),
       fleet_finder_other_tab: { tab: other.tab, rows: other.rows.length, own: fleets.rows.length }, shots };
   } catch (error) {
     await shot("failure").catch(() => {});

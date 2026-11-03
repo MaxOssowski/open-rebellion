@@ -503,6 +503,7 @@ mod tests {
                     name: "Abregado-rae".into(),
                 },
             ],
+            hidden_missions: Vec::new(),
         }
     }
 

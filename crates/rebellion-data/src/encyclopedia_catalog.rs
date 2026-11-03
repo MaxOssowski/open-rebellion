@@ -71,9 +71,21 @@ pub struct EncyclopediaCatalog {
     /// Global alphabetical order used by the native list control. Filtering a
     /// category preserves this order.
     pub entries: Vec<EncyclopediaCatalogEntry>,
+    /// The mission classes whose record `+0x5c` (the hidden flag,
+    /// `FUN_00520b70`) is set: `FUN_00422620` leaves them out of the
+    /// window's list (A0 encyclopedia/category-4 has no Adrift, Autorouting,
+    /// Bounty or Dagobah). The source audit still counts them.
+    pub hidden_missions: Vec<u32>,
 }
 
 impl EncyclopediaCatalog {
+    /// The entries the window lists: all but the hidden missions.
+    pub fn listed_entries(&self) -> impl Iterator<Item = &EncyclopediaCatalogEntry> {
+        self.entries
+            .iter()
+            .filter(|entry| !self.hidden_missions.contains(&entry.object_id))
+    }
+
     #[must_use]
     pub fn category(&self, command_id: u16) -> Option<&EncyclopediaCategory> {
         self.categories
@@ -186,7 +198,13 @@ pub fn load_encyclopedia_catalog(gdata_path: &Path) -> Result<EncyclopediaCatalo
     }
 
     let missions: MissionsFile = read_dat_file(&gdata_path.join("MISSNSD.DAT"))?;
+    let mut hidden_missions = Vec::new();
     for record in missions.missions {
+        if record.hidden != 0 {
+            let family = u8::try_from(record.family_id)
+                .with_context(|| format!("object family {:#x} does not fit one byte", record.family_id))?;
+            hidden_missions.push(compound_object_id(record.id, family));
+        }
         push_entry(
             &mut entries,
             record.id,
@@ -251,6 +269,7 @@ pub fn load_encyclopedia_catalog(gdata_path: &Path) -> Result<EncyclopediaCatalo
         topic_label: required(0x1843)?,
         categories,
         entries,
+        hidden_missions,
     })
 }
 
@@ -345,7 +364,25 @@ mod tests {
                     name: "Allyuen".into(),
                 },
             ],
+            hidden_missions: Vec::new(),
         }
+    }
+
+    #[test]
+    fn the_window_lists_every_entry_but_the_hidden_missions() {
+        // FUN_00422620: a mission class with record +0x5c set stays out
+        // (A0 encyclopedia/category-4: no Adrift in Missions Database).
+        let mut catalog = fixture_catalog();
+        catalog.entries.push(EncyclopediaCatalogEntry {
+            object_id: 0x5000_0001,
+            text_resource_id: 4,
+            name: "Adrift".into(),
+        });
+        assert_eq!(catalog.listed_entries().count(), 4);
+        catalog.hidden_missions.push(0x5000_0001);
+        let names: Vec<_> = catalog.listed_entries().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(names, ["Alliance Army Regiment", "Alliance Dreadnaught", "Allyuen"]);
+        assert_eq!(catalog.entries.len(), 4, "the audit still counts it");
     }
 
     #[test]

@@ -124,6 +124,12 @@ pub struct EncyclopediaState {
     /// fleet's topic): All Databases lists it by its name for the window's
     /// life (A0 menus2/24 and 25).
     pub original_extra_entry: Option<OriginalEncyclopediaEntry>,
+    /// The Topic box's text when a category's first row was chosen for it:
+    /// the box keeps what it held (A0 encyclopedia/category-1, ex 3: System
+    /// Database chooses Adega under an empty box or "Adar Tallon").
+    pub original_topic_text: Option<String>,
+    /// The last row click and its time, for the list's double click.
+    pub original_last_click: Option<(u32, f64)>,
     /// EDATA keys explicitly approved by the faithful-HD manifest.
     approved_hd_assets: HashMap<String, ApprovedHdAsset>,
     /// Cached textures keyed by EDATA file number (1-based).
@@ -183,6 +189,8 @@ impl Default for EncyclopediaState {
             original_scroll_hold: None,
             original_topic_mode: false,
             original_extra_entry: None,
+            original_topic_text: None,
+            original_last_click: None,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -655,9 +663,11 @@ impl OriginalEncyclopediaCatalog {
         }
     }
 
-    /// Limit the System entries to the game's systems, by their object id.
+    /// Limit the System entries to the game's systems, by their record id:
+    /// a world system's `DatId` is the SYSTEMSD record id alone, an entry's
+    /// the compound id with the family in its high byte.
     pub fn set_galaxy_systems(&mut self, systems: impl IntoIterator<Item = u32>) {
-        self.systems = Some(systems.into_iter().collect());
+        self.systems = Some(systems.into_iter().map(|id| id & RECORD_ID_MASK).collect());
     }
 
     #[must_use]
@@ -679,9 +689,29 @@ impl OriginalEncyclopediaCatalog {
                     || self
                         .systems
                         .as_ref()
-                        .is_none_or(|systems| systems.contains(&entry.object_id))
+                        .is_none_or(|systems| systems.contains(&(entry.object_id & RECORD_ID_MASK)))
             })
             .collect()
+    }
+
+    /// The listed entry `object` names: its own id, or for a bare record id
+    /// (a world character's or system's DatId carries no family byte) the
+    /// one entry of a character or system family with that record id.
+    #[must_use]
+    pub fn resolve_object(&self, object: u32) -> Option<u32> {
+        let entries = self.entries_for(0x6f);
+        if entries.iter().any(|entry| entry.object_id == object) {
+            return Some(object);
+        }
+        if object & !RECORD_ID_MASK != 0 {
+            return None;
+        }
+        let mut matches = entries.iter().filter(|entry| {
+            matches!(entry.family(), 0x30..0x40 | 0x90..0x98)
+                && entry.object_id & RECORD_ID_MASK == object
+        });
+        let found = matches.next()?.object_id;
+        matches.next().is_none().then_some(found)
     }
 
     #[must_use]
@@ -694,6 +724,9 @@ impl OriginalEncyclopediaCatalog {
         self.entries.is_empty()
     }
 }
+
+/// The record id below a compound object id's family byte.
+const RECORD_ID_MASK: u32 = 0x00ff_ffff;
 
 const fn original_category_contains(command_id: u16, family: u8) -> bool {
     match command_id {
@@ -922,11 +955,12 @@ pub fn draw_encyclopedia_index_catalog(
     reconcile_original_index_state(state, catalog, false);
     let extra = state.original_extra_entry.clone();
     let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
-    let selected_name = entries
-        .iter()
-        .find(|entry| Some(entry.object_id) == state.original_selected_object_id)
-        .map(|entry| entry.name.as_str())
-        .unwrap_or("");
+    let selected_name = state.original_topic_text.as_deref().unwrap_or_else(|| {
+        entries
+            .iter()
+            .find(|entry| Some(entry.object_id) == state.original_selected_object_id)
+            .map_or("", |entry| entry.name.as_str())
+    });
     let category_label = catalog
         .category_label(state.original_category_command)
         .unwrap_or("");
@@ -939,6 +973,7 @@ pub fn draw_encyclopedia_index_catalog(
         selected_object_id: state.original_selected_object_id,
         scroll: state.original_scroll,
         scroll_hold: state.original_scroll_hold,
+        last_click: state.original_last_click,
     };
     let outcome = draw_encyclopedia_index_layers(
         ctx,
@@ -954,6 +989,7 @@ pub fn draw_encyclopedia_index_catalog(
             // FUN_0045f100 rebuilds the list from its top.
             state.original_category_command = command;
             state.original_scroll = 0;
+            choose_category_row(state, catalog);
             reconcile_original_index_state(state, catalog, true);
         }
         // FUN_0045f480: the rail's topic command shows the selected object.
@@ -966,9 +1002,17 @@ pub fn draw_encyclopedia_index_catalog(
         state.original_scroll = scroll;
         reconcile_original_index_state(state, catalog, false);
     }
+    if outcome.selected_object_id.is_some() {
+        state.original_last_click = outcome.click;
+    }
     if let Some(object_id) = outcome.selected_object_id {
         state.original_selected_object_id = Some(object_id);
+        state.original_topic_text = None;
         reconcile_original_index_state(state, catalog, true);
+        // A double click's 0x67 shows the row just chosen.
+        if outcome.activated_command == Some(0x67) {
+            state.original_topic_mode = true;
+        }
     }
     outcome.activated_command
 }
@@ -1022,15 +1066,11 @@ pub fn open_original_encyclopedia_at(
     state.open = true;
     state.original_topic_mode = false;
     state.original_extra_entry = None;
+    state.original_topic_text = None;
     state.original_category_command = 0x6f;
     state.original_selected_object_id = None;
     state.original_scroll = 0;
-    if let Some(object) = object.filter(|object| {
-        catalog
-            .entries_for(0x6f)
-            .iter()
-            .any(|entry| entry.object_id == *object)
-    }) {
+    if let Some(object) = object.and_then(|object| catalog.resolve_object(object)) {
         state.original_category_command = 0x6f;
         state.original_selected_object_id = Some(object);
         state.original_topic_mode = true;
@@ -1138,11 +1178,13 @@ pub fn apply_original_topic_command(
         0x83 => {
             if let Some(object) = previous {
                 state.original_selected_object_id = Some(object);
+                state.original_topic_text = None;
             }
         }
         0x84 => {
             if let Some(object) = next {
                 state.original_selected_object_id = Some(object);
+                state.original_topic_text = None;
             }
         }
         0x68 => state.original_topic_mode = false,
@@ -1331,6 +1373,35 @@ pub fn draw_encyclopedia_topic(
     activated
 }
 
+/// A category's list keeps the chosen object when it holds it, else
+/// chooses its first row; All Databases with nothing chosen stays so. The
+/// Topic box keeps its text (A0 encyclopedia/category-1..6 under an empty
+/// box; ex 2, 3: Adar Tallon stays chosen in Personnel Database, System
+/// Database chooses Adega).
+fn choose_category_row(state: &mut EncyclopediaState, catalog: &OriginalEncyclopediaCatalog) {
+    let extra = state.original_extra_entry.clone();
+    let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
+    let held = state
+        .original_selected_object_id
+        .is_some_and(|selected| entries.iter().any(|entry| entry.object_id == selected));
+    if held || (state.original_selected_object_id.is_none() && state.original_category_command == 0x6f) {
+        return;
+    }
+    if state.original_topic_text.is_none() {
+        let topic = state
+            .original_selected_object_id
+            .and_then(|selected| {
+                window_entries(catalog, extra.as_ref(), 0x6f)
+                    .into_iter()
+                    .find(|entry| entry.object_id == selected)
+                    .map(|entry| entry.name.clone())
+            })
+            .unwrap_or_default();
+        state.original_topic_text = Some(topic);
+    }
+    state.original_selected_object_id = entries.first().map(|entry| entry.object_id);
+}
+
 fn reconcile_original_index_state(
     state: &mut EncyclopediaState,
     catalog: &OriginalEncyclopediaCatalog,
@@ -1386,6 +1457,8 @@ fn original_index_max_scroll(rows: usize) -> usize {
 struct OriginalIndexOutcome {
     activated_command: Option<u16>,
     selected_object_id: Option<u32>,
+    /// A row's first click and its time, for the double click.
+    click: Option<(u32, f64)>,
     scroll: Option<usize>,
     scroll_hold: Option<crate::list_scroll_bar::Hold>,
 }
@@ -1399,6 +1472,7 @@ struct OriginalIndexContent<'a> {
     selected_object_id: Option<u32>,
     scroll: usize,
     scroll_hold: Option<crate::list_scroll_bar::Hold>,
+    last_click: Option<(u32, f64)>,
 }
 
 fn draw_encyclopedia_index_layers(
@@ -1661,6 +1735,20 @@ fn draw_original_index_content(
         );
         if response.clicked() {
             outcome.selected_object_id = Some(entry.object_id);
+            // FUN_0045da70 0x65: a second click on the row within the
+            // double-click time (0x309) presses the Topic control (0x67).
+            let (now, delay) = (
+                ui.input(|input| input.time),
+                ui.ctx().options(|options| options.input_options.max_double_click_delay),
+            );
+            if content
+                .last_click
+                .is_some_and(|(object, at)| object == entry.object_id && now - at <= delay)
+            {
+                outcome.activated_command = Some(0x67);
+            } else {
+                outcome.click = Some((entry.object_id, now));
+            }
         }
     }
 
@@ -2360,12 +2448,53 @@ mod tests {
         reconcile_original_index_state(&mut state, &catalog, true);
         assert_eq!(state.original_selected_object_id, Some(0x1400_0001));
 
-        // FUN_0045f100 rebuilds the list with nothing selected: a category
-        // without the object selects none (A0 2026-10-29).
+        // Reconciling alone drops an object the list does not hold; the
+        // category command then chooses the first row
+        // (`a_category_keeps_its_object_or_chooses_its_first_row`).
         state.original_category_command = 0x70;
         reconcile_original_index_state(&mut state, &catalog, true);
         assert_eq!(state.original_selected_object_id, None);
         assert_eq!(state.original_scroll, 0);
+    }
+
+    #[test]
+    fn a_category_keeps_its_object_or_chooses_its_first_row() {
+        // A0 encyclopedia/category-1: System Database chooses its first row
+        // under an empty Topic box; ex 2, 3: with Adar Tallon chosen,
+        // Personnel Database keeps him and System Database chooses Adega,
+        // the box still "Adar Tallon".
+        let catalog = original_catalog_fixture();
+        let entries = |command| -> Vec<u32> {
+            catalog.entries_for(command).iter().map(|entry| entry.object_id).collect()
+        };
+        let mut state = EncyclopediaState::default();
+        choose_category_row(&mut state, &catalog);
+        assert_eq!(state.original_selected_object_id, None, "All Databases chooses nothing");
+
+        state.original_category_command = 0x70;
+        choose_category_row(&mut state, &catalog);
+        assert_eq!(state.original_selected_object_id, entries(0x70).first().copied());
+        assert_eq!(state.original_topic_text.as_deref(), Some(""));
+
+        let ship = entries(0x71)[0];
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(ship),
+            original_category_command: 0x71,
+            ..EncyclopediaState::default()
+        };
+        choose_category_row(&mut state, &catalog);
+        assert_eq!(state.original_selected_object_id, Some(ship), "the category holds it");
+        assert_eq!(state.original_topic_text, None);
+
+        state.original_category_command = 0x70;
+        choose_category_row(&mut state, &catalog);
+        assert_eq!(state.original_selected_object_id, entries(0x70).first().copied());
+        let name = catalog
+            .entries_for(0x6f)
+            .into_iter()
+            .find(|entry| entry.object_id == ship)
+            .map(|entry| entry.name.clone());
+        assert_eq!(state.original_topic_text, name);
     }
 
     #[test]
@@ -2410,6 +2539,11 @@ mod tests {
         assert_eq!(ids(&catalog, 0x70), [0x9000_0001, 0x9000_0002]);
         catalog.set_galaxy_systems([0x9000_0002]);
         assert_eq!(ids(&catalog, 0x70), [0x9000_0002]);
+        // A world system's DatId is the bare SYSTEMSD record id (the
+        // fixture galaxy's systems read 120 and up).
+        catalog.set_galaxy_systems([0x0000_0001]);
+        assert_eq!(ids(&catalog, 0x70), [0x9000_0001]);
+        catalog.set_galaxy_systems([0x9000_0002]);
         assert_eq!(ids(&catalog, 0x6f), [0x9000_0002, 0x1400_0001]);
         assert_eq!(ids(&catalog, 0x71), [0x1400_0001]);
     }
@@ -2716,6 +2850,71 @@ mod tests {
         let mut state = EncyclopediaState::default();
         let _ = run_index(&mut state, &catalog, (200.0, 20.0), vec![vec![wheel]]);
         assert_eq!(state.original_scroll, 0);
+    }
+
+    #[test]
+    fn a_bare_character_or_system_id_finds_its_entry() {
+        // A world character's DatId is its MJCHARSD id alone (0x240 for
+        // 0x3000_0240): the menu's Encyclopedia opens its topic (A0
+        // encyclopedia/ctx3-luke).
+        let entry = |object_id, name: &str| OriginalEncyclopediaEntry {
+            object_id,
+            name: name.into(),
+        };
+        let catalog = OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            vec![
+                entry(0x3000_0240, "Luke Skywalker"),
+                entry(0x1400_0240, "Star Destroyer"),
+                entry(0x9000_0007, "Yavin"),
+                entry(0x3100_0007, "Bothan Spies"),
+            ],
+        );
+        assert_eq!(catalog.resolve_object(0x3000_0240), Some(0x3000_0240));
+        assert_eq!(catalog.resolve_object(0x240), Some(0x3000_0240));
+        assert_eq!(catalog.resolve_object(0x7), None, "two families share it");
+        assert_eq!(catalog.resolve_object(0x1400_0999), None);
+        let mut state = EncyclopediaState::default();
+        open_original_encyclopedia_at(&mut state, &catalog, Some(0x240));
+        assert_eq!(state.original_selected_object_id, Some(0x3000_0240));
+        assert!(state.original_topic_mode);
+    }
+
+    #[test]
+    fn a_double_click_on_a_row_shows_its_topic() {
+        // FUN_0045da70 0x65: 0x309 presses 0x67 (A0 encyclopedia/topic-step-2:
+        // a double click on Abduction shows its topic); one click chooses.
+        let catalog = twelve_entry_catalog();
+        let row = (100.0, 137.0 + 20.0 + 10.0);
+        let click = vec![vec![button(row, true)], vec![button(row, false)]];
+        let mut state = EncyclopediaState::default();
+        let _ = run_index(&mut state, &catalog, row, click.clone());
+        let chosen = state.original_selected_object_id;
+        assert!(chosen.is_some());
+        assert!(!state.original_topic_mode);
+
+        let mut state = EncyclopediaState::default();
+        let mut twice = click.clone();
+        twice.extend(click.clone());
+        let _ = run_index(&mut state, &catalog, row, twice);
+        assert_eq!(state.original_selected_object_id, chosen);
+        assert!(state.original_topic_mode);
+
+        // A second click on another row, or after the double-click time,
+        // only chooses.
+        let object = chosen.unwrap();
+        for last in [(object ^ 1, 0.0), (object, -10.0)] {
+            let mut state = EncyclopediaState {
+                original_last_click: Some(last),
+                ..EncyclopediaState::default()
+            };
+            let _ = run_index(&mut state, &catalog, row, click.clone());
+            assert_eq!(state.original_selected_object_id, chosen);
+            assert!(!state.original_topic_mode, "{last:?}");
+            assert_eq!(state.original_last_click.map(|(id, _)| id), Some(object));
+        }
     }
 
     #[test]
