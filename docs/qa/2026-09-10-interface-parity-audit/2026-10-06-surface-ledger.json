@@ -1841,14 +1841,15 @@
         {
           "id": "CMD-02-C026",
           "requirement": "hover",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-12-gid-hover-and-occlusion.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-gid-press-wheel-right-drag-a0/"
           ],
-          "note": "The map tracks the item under the pointer as FUN_00422ce0 does (+0x25c); the Linux GID gate checks the hovered system; no A0 hover comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (gid-selection/01: hovering Moddell's cluster shows 'Moddell' over 'Sector' in (255, 255, 0), ink (135, 91)..(183, 116)). The port drew no hover label; it now draws FUN_00441520's sector item text (name + TEXTSTRA 5947, font 5, 0x200f0f0) for the item FUN_00422ce0 hovers, and run.mjs 'hover' (Linux, Alliance 640x480) finds its ink at (135, 92)..(181, 115).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-02-C027",

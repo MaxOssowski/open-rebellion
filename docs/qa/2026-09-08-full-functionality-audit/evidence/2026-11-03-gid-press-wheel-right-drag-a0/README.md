@@ -17,6 +17,36 @@ This matches `FUN_00422ce0`: it has no wheel case and no right-button drag, and 
 `run.mjs` (Linux, both sides, 640 by 480 and 1280 by 800 letterboxed):
 
 - **`pan`, `zoom`.** A right drag and a wheel notch leave the frame byte-identical. This was already gated.
-- **`hover`.** New: after the hover label, a left press held over the probe system leaves the frame byte-identical to the hover frame, and the release opens the sector, so the frame changes.
+- **`hover`.** New: a left press held over the probe system leaves the frame byte-identical to the hover frame, and the release opens the sector, so the frame changes.
 
 Run `2026-11-03T09-58-25-989Z-2519713` (`--scenario=hover`, four views): pass. `system-released.png` shows the Sluis sector opened.
+
+## The hover label (CMD-02 C026)
+
+**A0.** `01-held`: with the pointer on the Moddell cluster, "Moddell" over "Sector" shows in (255, 255, 0). Its ink spans (135, 91)..(183, 116).
+
+**The source.**
+
+- `FUN_00422620` builds the galaxy view's items. `FUN_00441520` adds a sector item:
+  - at the sector's map point: `0x15`/`0x19` added for side 1, `0x54`/`0x1b` otherwise, the GID content origin;
+  - with a hit rectangle reaching 8 past its farthest system's point;
+  - with the text name plus TEXTSTRA 5947 "\nSector", font 5, colour `0x200f0f0`.
+- `FUN_00422ce0`'s `WM_MOUSEMOVE` stores the first item whose rectangle holds the pointer (`PtInRect`) at `+0x25c`.
+- Its `WM_PAINT` draws that item's text at the item's place.
+
+**The port before.** The port tracked the hovered system for input but drew no label.
+
+**The port now.**
+
+- `sector_item_rect` and `hovered_sector` compute the rectangle and the hovered item.
+- `draw_sector_hover_label` draws the name and "Sector" in font 5, in the palette's yellow, from the item's place.
+
+**Tests.**
+
+- `a_sector_item_spans_its_point_to_its_farthest_system_and_holds_the_pointer`: the rectangle at scale 1 and 2, the `PtInRect` edges, the first item found.
+- `run.mjs` `hover` (Alliance, 640 by 480) points at (155, 123) and measures the label's yellow ink: (135, 92)..(181, 115), against A0's (135, 91)..(183, 116). The check is left and top within 2, bottom within 2, width within 15%: the accepted text deviation. Run `2026-11-03T10-06-39-820Z-2527805`: pass.
+
+**Mutants.** 25 caught, 3 unviable, 2 missed:
+
+- emptying `draw_sector_hover_label` survives the unit tests, but the `hover` gate catches it, because no label is drawn;
+- the text box's width at other scales (`200 * scale`) does not change a one-word name's layout.
