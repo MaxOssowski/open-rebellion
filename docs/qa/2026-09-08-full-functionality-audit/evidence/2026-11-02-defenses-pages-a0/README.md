@@ -46,3 +46,21 @@ Run `sector-quadrants-2026-11-02T22-31-18-193Z-1201960` (Arch Chromium, both sid
 - **`18-umgul-imperial-garrison`.** In the same Alliance game, Umgul's window shows the line: "Garrison Requirement: 0". Umgul is the Empire's, opened from the Troop Finder's Imperial tab.
 
 So in both games A0 shows the line on the Empire's systems, and in the Alliance game not on the Alliance's. That does not fit the reading above. `FUN_0041cdb0` returns `DAT_006b14e4 +0xc +0x24`, the side `FUN_00435bc0` gives the player object (`FUN_004861b0(side)`). Why the line follows the Empire is not traced. The port keeps the reading. The gate compares only the first line, rows 50..65.
+
+**Further trace (2026-11-03).** `FUN_00435bc0(param_2, param_3)` builds `DAT_006b14e4`:
+
+- with `param_3 == 1`, `+0xc` (and `+0x10`) is `FUN_004861b0(1)`, the side-1 player object, and `+0x14` is side 2;
+- otherwise `+0xc` (and `+0x14`) is side 2 and `+0x10` is side 1.
+
+So `FUN_0041cdb0` returns the local player's side, as read. That predicts the line on the Alliance's systems in an Alliance game. A0 shows the opposite, five times:
+
+- Coruscant, Empire game: shown;
+- Mon Calamari and Pzob, Alliance game: none;
+- Umgul, Alliance game: shown (`18-umgul-imperial-garrison`).
+
+Two explanations remain open:
+
+- the regiment page's `param_2` is not 2 here;
+- `FUN_004a90d0`'s `iVar2` is not the window's system at that point.
+
+The port keeps the code's reading until one of them is checked in the asm.
