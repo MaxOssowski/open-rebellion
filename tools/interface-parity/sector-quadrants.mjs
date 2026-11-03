@@ -25,8 +25,8 @@ const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-
 // Fixture codes are the Scenario index plus one (interface_test_fixture.rs).
 const QUADRANTS = 50;
 const factions = [
-  { name: "alliance", byte: 1, side: 1, other: 2 },
-  { name: "empire", byte: 2, side: 2, other: 1 },
+  { name: "alliance", byte: 1, side: 1, other: 2, galaxyRight: 540 },
+  { name: "empire", byte: 2, side: 2, other: 1, galaxyRight: 600 },
 ];
 // FUN_0045ca80(kind, side, 0): the first bitmap of each kind for sides
 // 0 (and 3), 1 and 2; the fleet and mission kinds have none for side 0.
@@ -620,6 +620,11 @@ const cases = [
       const { at, dat, window } = await openDefenses(page, setup, "primary");
       assert.equal(window.side, faction.side, JSON.stringify(window));
       assert.equal(window.page, "personnel");
+      // A double click opens the window at the pointer (FUN_004593e0 passes
+      // its point to FUN_0045aac0), not at the icon's corner, clamped into
+      // the galaxy view: A0 personnel-states/29, Mission at Pzob at x 172
+      // from a double click at (172, 286), its icon starting at x 148.
+      assert.equal(window.origin[0], Math.min(at.x, faction.galaxyRight - 235), JSON.stringify({ at, window }));
       assert.deepEqual(window.counts, [0, 1, 0, 0, 1]);
       assert.deepEqual([window.rows, window.selected, window.garrison], [[], null, null]);
       const origin = corner(window);
