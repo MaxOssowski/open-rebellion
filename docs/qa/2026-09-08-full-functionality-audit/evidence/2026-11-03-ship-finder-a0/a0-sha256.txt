@@ -1,0 +1,2 @@
+c4bc929a96e26d136772a47a2f52cce6bba3a0eb3bacaeee8650dc09fd1e413f  27-ship-finder-all.png
+7de085e77c6872ce7ce2f35a01b90df60b9dea35bd4237515c9933328dcaff85  28-ship-finder-alliance.png
