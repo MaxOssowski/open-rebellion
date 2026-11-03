@@ -1,0 +1,4 @@
+c9449772d520e1211ce6839e0edd7a475060018c209d596d713165710364643d  37-after-abort-no-question.png
+3d8ba67af27ace0203bf540ba9d60fadfe671964a35b30f0553277953d01a1ff  37-mon-calamari-mission-menu-abort-highlighted.png
+1c14b2475f7e5426172cf832742a156d333a7b7b16a5c9f54e7aff23e69cde77  37-mon-calamari-missions-window.png
+83a4def527f0cbd522b2b3f3069abcf7190066a1713349d450ff3e91b0ee1ec4  37-sullust-mission-menu-abort-grey.png

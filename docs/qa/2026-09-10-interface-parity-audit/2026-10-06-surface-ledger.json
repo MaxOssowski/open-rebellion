@@ -7154,7 +7154,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-mission-abort-panels-removed/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/"
           ],
-          "note": "Abort (0x250) from the missions icon with confirmation 0x7052 passes personnel-orders.mjs on Arch Chromium 155; no A0 capture.",
+          "note": "Abort (0x250) from the missions icon with confirmation 0x7052 passes personnel-orders.mjs on Arch Chromium 155; no A0 capture. 2026-11-03 A0 (personnel-states/37, ignored captures, unresolved): Sullust's mission icon menu shows Abort grey; Mon Calamari's (two Facility Design Research missions, Adar Tallon) shows it enabled, but choosing it asked nothing and both missions stayed. FUN_00487cc0 asks for 0x250 only after the order's own check (+0x1c) passes, so A0 likely refused the order silently; the port disables Abort unless every mission passes FUN_00521600, which may differ from what A0 enables. Not yet traced (evidence/2026-11-03-mission-abort-a0/).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
