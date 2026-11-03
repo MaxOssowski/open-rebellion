@@ -73,10 +73,12 @@ const PROGRESS_COLOR: egui::Color32 = crate::theme::PALETTE_YELLOW;
 const PICTURE_OFFSET: (f32, f32) = (1.0, 2.0);
 /// An empty deposit is its 67 by 35 bitmap with no 69 by 40 canvas
 /// (`FUN_004568a0`: `FUN_005fbd20(.., 0x232d, 10)` straight into the
-/// item). A0 manufacturing/05-tab (Coruscant's mines) draws it at the
-/// cell's (0, -2), pixel-exact. port: how the list places an item smaller
-/// than its cell is not traced; the offset is A0's.
-const DEPOSIT_OFFSET: (f32, f32) = (0.0, -2.0);
+/// item), at the cell's corner: A0 manufacturing/05-tab (Coruscant, window
+/// at (203, 91)) and personnel-states/34 (Mon Calamari, at (314, 86)) put
+/// every deposit there pixel for pixel, 1 by 2 above and left of a mine.
+/// port: how the list places an item smaller than its cell is not traced;
+/// the offset is A0's.
+const DEPOSIT_OFFSET: (f32, f32) = (0.0, 0.0);
 
 /// The six tabs (`FUN_00455060`, command `0x70`, pages `0x67..0x6c`), in
 /// strip order.
@@ -2656,8 +2658,9 @@ mod tests {
             "{:?}",
             after.painted
         );
-        // The deposit's bitmap at its cell's (0, -2): A0 manufacturing/05.
-        assert!(after.painted.contains(&(9_005, at(77.0, 75.0))), "{:?}", after.painted);
+        // The deposit's bitmap at its cell's corner: A0 manufacturing/05,
+        // personnel-states/34.
+        assert!(after.painted.contains(&(9_005, at(77.0, 77.0))), "{:?}", after.painted);
         assert!(after.painted.contains(&(10_262, at(9.0, 79.0))));
         assert!(after.painted.contains(&(10_320, at(190.0, 20.0))));
         let label = text(&after, "Mines");
