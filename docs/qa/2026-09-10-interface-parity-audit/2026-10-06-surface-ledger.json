@@ -5994,13 +5994,13 @@
         {
           "id": "OBJ-07-C017",
           "requirement": "destination targeting accepts Defense window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
           ],
-          "note": "Destination released on the Defenses window is unit-tested (8fc9d983); the browser check ran on macOS only (rerun on Linux) and no A0 comparison exists. 2026-11-02: A0 build-selection2/25 accepts the ships band's Destination released on Coruscant's Defenses window (Coruscant); no Linux browser case yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 (build-selection2/25: the ships band's Destination released on Coruscant's Defenses window becomes Coruscant): build-selection.mjs 'defensesDestination' (Linux, both sides, fixture 95) releases the ships band's Destination on the secondary system's Defenses window and the band reads that system (Akrit'tar to F'tral).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-07-C018",

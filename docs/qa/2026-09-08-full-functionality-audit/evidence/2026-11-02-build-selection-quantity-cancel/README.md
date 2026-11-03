@@ -132,3 +132,18 @@ For the Empire, `build-selection.mjs` steps the class list to the Imperial Army 
 Run `build-selection-2026-11-02T11-34-51-460Z-4170502` (Linux Chromium 155, test WASM `19679add…`): equal.
 
 A0 shows the best completion as a length in days ("24 Days"), not an absolute game day, and so does the port. The cell's wording, "an absolute game day", does not match A0.
+
+## Destination released on a Defenses window, in the browser (OBJ-07 C017, 2026-11-03)
+
+**A0.** `build-selection2/25`: the ships band's Destination, released on Coruscant's Defenses window, makes that system the Destination.
+
+**The port.** The new fixture `BuildSelectionDefensesDestination` (code 95) opens the Manufacturing window at (360, 76) and the secondary system's Defenses window at the galaxy view's left.
+
+The build-selection gate's `defensesDestination` step does the following on both sides:
+
+- right-clicks the ships band;
+- chooses Destination;
+- clicks inside the Defenses window;
+- waits for the band to read the window's system.
+
+Run `build-selection-2026-11-03T04-16-07-647Z-2127650` (Linux): the Alliance's Destination goes from Akrit'tar to F'tral. Screenshot: `defenses-destination.png`.
