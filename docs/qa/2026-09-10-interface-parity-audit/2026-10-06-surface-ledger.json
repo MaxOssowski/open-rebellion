@@ -3397,9 +3397,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "The facility page draws mine building as STRATEGY 9002/9003 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
+          "note": "The facility page draws a mine under construction as STRATEGY 9002/9003 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no mine under construction yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3434,9 +3435,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "The facility page draws refinery building as STRATEGY 9031/9032 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
+          "note": "The facility page draws a refinery under construction as STRATEGY 9031/9032 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no refinery under construction yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3470,9 +3472,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "The facility page draws shipyard building as STRATEGY 9007/9008 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
+          "note": "The facility page draws a shipyard under construction as STRATEGY 9007/9008 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no shipyard under construction yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3495,22 +3498,24 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "Advanced bases 9010/9018/9026 follow FUN_00458fe0; only the construction yard 9022 matched A0 system-vjun-yards.png (0 of 223 pixels), with no browser check.",
+          "note": "Advanced bases 9010/9018/9026 follow FUN_00458fe0. A0: the construction yard 9022 (system-vjun-yards.png, manufacturing/03, personnel-states/34) and Xyquine's Advanced Training Facility under construction, 9020 (personnel-states/35, 0 of 2189 off); build-selection.mjs finds 9020/9019 under construction exact on Linux for both sides. The advanced bases as built have no A0 or browser check.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-09-C011",
           "requirement": "faction variants",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "Under-construction art differs by side (+2 for side 1, +1 otherwise, FUN_00458fe0), unit-tested; no A0 or browser comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Under-construction art differs by side (FUN_00458fe0: + 2 when +0x24's side bits are 0x40, side 1; + 1 otherwise). A0 personnel-states/35 (the Alliance) shows 9020 = 9018 + 2; build-selection.mjs finds the + 2 pictures for the Alliance and the + 1 pictures for the Empire (shipyard, Advanced Training Facility, mine, refinery) exact on Linux. A0 shows side 1 only; the Empire's + 1 rests on the decompile and the browser.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },

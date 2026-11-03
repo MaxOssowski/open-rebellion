@@ -800,6 +800,28 @@ pub fn apply(
                 });
             world.systems[primary].production_facilities.push(key);
         }
+        // One of each page's kinds under construction for the primary,
+        // queued at the secondary so the primary's bands stay empty
+        // (FUN_00458fe0: base + 2 for side 1, + 1 otherwise; A0
+        // personnel-states/35, Xyquine's Advanced Training Facility 9020).
+        use rebellion_core::manufacturing::{BuildableKind, FacilityBuild, QueueItem};
+        for (raw, manufacturing_kind) in [
+            (0x2800_0001, true),
+            (0x2900_0005, true),
+            (0x2c00_0001, false),
+            (0x2d00_0002, false),
+        ] {
+            let build = FacilityBuild {
+                class: rebellion_core::ids::DatId::new(raw),
+                is_alliance: player_is_alliance,
+            };
+            let kind = if manufacturing_kind {
+                BuildableKind::ManufacturingFacility(build)
+            } else {
+                BuildableKind::ProductionFacility(build)
+            };
+            manufacturing.enqueue(secondary, QueueItem::new(kind, 10).delivered_to(primary));
+        }
     }
     if matches!(
         request.scenario,

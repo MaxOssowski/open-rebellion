@@ -1,6 +1,6 @@
 # Facility pictures and empty deposits against A0 (2026-11-03)
 
-Surface ledger cells: CMD-09 C001 (mine active), C004 (refinery active) and C009 (shipyard en route). This also corrects OBJ-07 C004 (mines): the empty deposit's offset.
+Surface ledger cells: CMD-09 C001 (mine active), C004 (refinery active), C002, C005 and C008 (under construction), C009 (shipyard en route), C010 (advanced variants) and C011 (faction variants). This also corrects OBJ-07 C004 (mines): the empty deposit's offset.
 
 ## A0
 
@@ -44,7 +44,22 @@ b3d3dec1f0e1894b7d71bd2d38125c8769648a89983de76a136132f9af3fdeaf  empire/mines-p
 38b763fb239714a4ef9dc8a7d906e72b0b2dc7cd5eaa30d5ef82e1bf22c71911  empire/refineries-page.png
 ```
 
+## Under construction
+
+**A0.** Mon Calamari is building an Advanced Training Facility for Xyquine ("Building: 1, Destination: Xyquine"). Xyquine's Training Facilities page (`35-xyquine-training-building`, window at (98, 62)) shows it at (9, 79) as 9020, on the red grid: the advanced base 9018 + 2 for side 1 (`FUN_00458fe0`: `+0x50` bit 4 clear, `+0x24` side bits 0x40). It matches over 2189 opaque pixels with 0 off.
+
+**The port.** The fixture also queues a shipyard, an Advanced Training Facility, a mine and a refinery for the build-selection system. They are queued at the secondary system, so the primary's bands stay empty.
+
+Each page now shows the queued unit in its second cell. The gate compares it at (78, 79), every opaque pixel exact, for both sides:
+- the Alliance: 9008, 9020, 9003, 9032;
+- the Empire: 9007, 9019, 9002, 9031.
+
+The first empty deposit moves to the third cell's corner, (146, 77), and is exact as well.
+
+Run `build-selection-2026-11-03T20-47-34-693Z-3578804`: pass.
+
 ## Open
 
-- The shipyard en route (9009) has A0 evidence but no browser case.
-- The pictures for facilities under construction have neither A0 nor browser evidence.
+- The shipyard en route (9009) has A0 evidence but no browser case. The fixture has no way to place a delivery yet.
+- A0 shows only the Alliance's (side 1) under-construction art. The Empire's + 1 rests on `FUN_00458fe0` and the browser.
+- The advanced bases as built (9010, 9018, 9026) have no A0 capture.

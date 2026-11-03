@@ -863,10 +863,19 @@ async function inspect(server, source, faction, executable) {
     // System window stands at (225, 76); the tabs are 32 apart.
     const pages = [];
     // The fixture adds a mine and a refinery: 9030 and 9001 at the same
-    // place (A0 personnel-states/34, Mon Calamari), and the Mines page's
-    // first empty deposit, 9005, at the second cell's corner (8 + 69, 77).
-    for (const [offset, picture, label, cell] of [[-32, 9006, "shipyards"], [32, 9022, "construction-yards"],
-      [64, 9030, "refineries"], [96, 9001, "mines"], [96, 9005, "deposit", [77, 77]], [0, 9014, "training"]]) {
+    // place (A0 personnel-states/34, Mon Calamari). It also queues a
+    // shipyard, Advanced Training Facility, mine and refinery for the
+    // system, each in its page's second cell (78, 79) under construction:
+    // base + 2 for side 1, + 1 otherwise (FUN_00458fe0; A0
+    // personnel-states/35, Xyquine's 9020). The Mines page's first empty
+    // deposit, 9005, follows at the third cell's corner (8 + 138, 77).
+    const building = faction.byte === 1 ? 2 : 1;
+    const second = [78, 79];
+    for (const [offset, picture, label, cell] of [[-32, 9006, "shipyards"], [-32, 9006 + building, "shipyard-building", second],
+      [32, 9022, "construction-yards"],
+      [64, 9030, "refineries"], [64, 9030 + building, "refinery-building", second],
+      [96, 9001, "mines"], [96, 9001 + building, "mine-building", second], [96, 9005, "deposit", [146, 77]],
+      [0, 9014, "training"], [0, 9018 + building, "advanced-training-building", second]]) {
       await click(page, { x: tx + tw / 2 + offset, y: ty + th / 2 });
       await page.mouse.move(2, 2);
       await frames(page);
