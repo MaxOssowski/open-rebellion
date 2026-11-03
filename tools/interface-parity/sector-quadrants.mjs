@@ -801,7 +801,24 @@ const cases = [
         (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat), dat);
       assert.deepEqual(restored.origin, window.origin);
-      return { at, window, opening, regiments, regimentChecks, selectedChecks, railChecks, restored, pageLabels };
+      // A minimized window is hidden, not destroyed: it comes back on its
+      // page, and its icon's double click takes it off the rail too (A0
+      // personnel-states/38, Mon Calamari's Trooper Regiments).
+      assert.equal(restored.page, "regiments", JSON.stringify(restored));
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
+      await until(page, "minimize sends the window to the rail again",
+        (o, value) => !o.defenses_windows.some((w) => w.system_dat_id === value)
+          && o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat);
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      await doubleClick(page, at);
+      const fromIcon = defensesWindow(await until(page, "the icon takes the window off the rail",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value)
+          && !o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat), dat);
+      assert.deepEqual([fromIcon.page, fromIcon.origin], ["regiments", window.origin], JSON.stringify(fromIcon));
+      return { at, window, opening, regiments, regimentChecks, selectedChecks, railChecks, restored, fromIcon, pageLabels };
     },
   },
   {

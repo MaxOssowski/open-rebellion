@@ -2203,14 +2203,15 @@
         {
           "id": "CMD-03-C020",
           "requirement": "quadrant icon destination window and selected object",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-icon-windows-a0/",
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/sector-quadrants.mjs"
           ],
-          "note": "The System, Defenses (FUN_004a7790) and Missions (FUN_0049f130) windows open from their icons in the Linux gate; not every object and state, and no A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The System, Defenses (FUN_004a7790) and Missions (FUN_0049f130) windows open from their icons in the Linux gate (sector-quadrants.mjs open-system, defenses, missions, both sides). Compared with A0 on 2026-11-03 (personnel-states/35, 37, 38): the factory icon opens the System window on its bands, the defenses icon the Defenses window on Personnel, the missions icon the Missions window with its first mission selected, each at the pointer clamped into the galaxy view; an icon whose window is railed brings it back on its page with its slot emptied, which the port now does for the Defenses window too (it had reopened on Personnel and left the rail entry; sector-quadrants.mjs 'defenses' checks it).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
