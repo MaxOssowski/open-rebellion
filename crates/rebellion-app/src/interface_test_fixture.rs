@@ -4200,8 +4200,7 @@ impl QuadrantWatch {
             rail: windows
                 .systems
                 .rail_entries()
-                .enumerate()
-                .filter_map(|(index, (system, kind))| {
+                .filter_map(|(index, system, kind)| {
                     let rect = windows.systems.rail_slot_screen_rect(layout, index)?;
                     Some((
                         world.systems.get(system)?.dat_id.raw(),

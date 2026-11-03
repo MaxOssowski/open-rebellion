@@ -267,13 +267,23 @@ impl RailEntry {
     }
 }
 
-/// Mutable modeless-window and rail state. The last visible window is focused;
-/// the first rail entry occupies slot one and is the oldest minimized window.
+/// Mutable modeless-window and rail state. The last visible window is focused.
+///
+/// The rail is twelve fixed slots (`FUN_00428b40`, the slot ids at the
+/// cockpit's `+0x2f0`): a minimized window takes the first empty slot, a
+/// restored one empties its slot (`FUN_00429020`), and with every slot
+/// taken the oldest minimized window, by the age list at `+0x428`, is
+/// destroyed and the new one takes its slot. A0 personnel-states/32 and
+/// 33: a restored window leaves a gap, and the thirteenth replaces the
+/// oldest in place.
 #[derive(Debug)]
 pub struct SystemWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenSystemWindow>,
-    rail: Vec<RailEntry>,
+    rail: [Option<RailEntry>; REFERENCE_RAIL_SLOTS],
+    /// The occupied slots, oldest minimized first (`+0x428`, count
+    /// `+0x458`).
+    rail_age: Vec<usize>,
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
     created: bool,
@@ -287,7 +297,8 @@ impl Default for SystemWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
-            rail: Vec::new(),
+            rail: std::array::from_fn(|_| None),
+            rail_age: Vec::new(),
             created: false,
             rail_press: None,
         }
@@ -523,32 +534,48 @@ impl SystemWindowState {
 
     #[must_use]
     pub fn rail_count(&self) -> usize {
-        self.rail.len()
+        self.rail.iter().flatten().count()
     }
 
-    /// Each rail entry, oldest first: its system and its window, "system",
-    /// "fleet", "defenses" or "missions".
-    pub fn rail_entries(&self) -> impl Iterator<Item = (SystemKey, &'static str)> + '_ {
-        self.rail.iter().map(|entry| {
+    /// Each occupied rail slot, in slot order: its index, its system and its
+    /// window, "system", "fleet", "defenses" or "missions".
+    pub fn rail_entries(&self) -> impl Iterator<Item = (usize, SystemKey, &'static str)> + '_ {
+        self.rail.iter().enumerate().filter_map(|(index, entry)| {
+            let entry = entry.as_ref()?;
             let kind = match entry {
                 RailEntry::System(_) => "system",
                 RailEntry::Fleet { .. } => "fleet",
                 RailEntry::Defenses { .. } => "defenses",
                 RailEntry::Missions { .. } => "missions",
             };
-            (entry.system(), kind)
+            Some((index, entry.system(), kind))
         })
     }
 
     /// The screen rect of the `index`th rail slot while it holds an entry.
     #[must_use]
     pub fn rail_slot_screen_rect(&self, layout: CockpitLayout, index: usize) -> Option<egui::Rect> {
-        (index < self.rail.len()).then(|| cockpit_rect(layout, rail_slot_rect(self.faction, index)))
+        self.rail
+            .get(index)?
+            .as_ref()
+            .map(|_| cockpit_rect(layout, rail_slot_rect(self.faction, index)))
     }
 
     pub fn clear(&mut self) {
         self.windows.clear();
-        self.rail.clear();
+        self.rail = std::array::from_fn(|_| None);
+        self.rail_age.clear();
+    }
+
+    /// Empty the slot holding `entry`'s window (`FUN_00429020`): it leaves
+    /// the age list and its slot stays free for the next window.
+    fn take_rail(&mut self, entry: &RailEntry) -> Option<RailEntry> {
+        let index = self
+            .rail
+            .iter()
+            .position(|held| held.as_ref().is_some_and(|held| held.same_window(entry)))?;
+        self.rail_age.retain(|&slot| slot != index);
+        self.rail[index].take()
     }
 
     fn prepare_faction(&mut self, faction: CockpitFaction) {
@@ -613,22 +640,36 @@ impl SystemWindowState {
     }
 
     fn push_rail(&mut self, entry: RailEntry) {
-        self.rail.retain(|held| !held.same_window(&entry));
-        if self.rail.len() == REFERENCE_RAIL_SLOTS {
-            self.rail.remove(0);
+        // FUN_00428b40: a slot already holding the window keeps it; else the
+        // first empty slot; else the oldest's slot, its window destroyed.
+        if let Some(held) = self
+            .rail
+            .iter_mut()
+            .flatten()
+            .find(|held| held.same_window(&entry))
+        {
+            *held = entry;
+            return;
         }
-        self.rail.push(entry);
+        let index = match self.rail.iter().position(Option::is_none) {
+            Some(index) => index,
+            None => self.rail_age.remove(0),
+        };
+        self.rail[index] = Some(entry);
+        self.rail_age.push(index);
     }
 
     fn restore(&mut self, system: SystemKey) -> bool {
-        let Some(index) = self
+        let Some(entry) = self
             .rail
             .iter()
-            .position(|entry| entry.is_system_window() && entry.system() == system)
+            .flatten()
+            .find(|entry| entry.is_system_window() && entry.system() == system)
+            .cloned()
         else {
             return false;
         };
-        if let RailEntry::System(window) = self.rail.remove(index) {
+        if let Some(RailEntry::System(window)) = self.take_rail(&entry) {
             self.windows.push(window);
         }
         true
@@ -850,7 +891,11 @@ fn draw_reference_rail(
     let entries = state.rail.clone();
     let mut restored = None;
     let mut slots = Vec::new();
-    for (index, entry) in entries.iter().enumerate() {
+    for (index, entry) in entries
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| Some((index, entry.as_ref()?)))
+    {
         let Some(system) = world.systems.get(entry.system()) else {
             continue;
         };
@@ -963,7 +1008,7 @@ fn draw_reference_rail(
             system,
             logical_position,
         } => {
-            state.rail.retain(|held| !held.same_window(&entry));
+            state.take_rail(&entry);
             Some(SystemWindowAction::RestoreFleetWindow {
                 system,
                 logical_position,
@@ -973,7 +1018,7 @@ fn draw_reference_rail(
             system,
             logical_position,
         } => {
-            state.rail.retain(|held| !held.same_window(&entry));
+            state.take_rail(&entry);
             Some(SystemWindowAction::RestoreDefensesWindow {
                 system,
                 logical_position,
@@ -983,7 +1028,7 @@ fn draw_reference_rail(
             system,
             logical_position,
         } => {
-            state.rail.retain(|held| !held.same_window(&entry));
+            state.take_rail(&entry);
             Some(SystemWindowAction::RestoreMissionsWindow {
                 system,
                 logical_position,
@@ -2078,17 +2123,39 @@ mod tests {
     }
 
     #[test]
-    fn minimize_caps_at_twelve_and_evicts_oldest() {
-        let (world, systems) = fixture_world(13);
+    fn a_full_rail_puts_the_thirteenth_in_the_oldest_slot_and_a_restore_leaves_a_gap() {
+        // FUN_00428b40, FUN_00429020; A0 personnel-states/32: a restored
+        // window empties its slot and its next minimize fills that gap;
+        // 33: the thirteenth (Xyquine) takes the oldest's slot (Uvena's,
+        // the second), not the end.
+        let (world, systems) = fixture_world(14);
         let mut state = SystemWindowState::default();
         let layout = layout(CockpitFaction::Alliance, 1.0);
-        for system in &systems {
+        let slot = |state: &SystemWindowState, index: usize| state.rail[index].as_ref().map(RailEntry::system);
+        for system in &systems[..12] {
             state.open(&world, *system, (100, 50), CockpitFaction::Alliance, layout);
             assert!(state.minimize(*system));
         }
         assert_eq!(state.rail_count(), REFERENCE_RAIL_SLOTS);
-        assert_eq!(state.rail[0].system(), systems[1]);
-        assert_eq!(state.rail[11].system(), systems[12]);
+        // Restoring the first leaves its slot empty; the others keep theirs.
+        assert!(state.restore(systems[0]));
+        assert_eq!(slot(&state, 0), None);
+        assert_eq!(slot(&state, 1), Some(systems[1]));
+        assert_eq!(state.rail_slot_screen_rect(layout, 0), None);
+        // Minimized again it fills the gap and becomes the newest.
+        assert!(state.minimize(systems[0]));
+        assert_eq!(slot(&state, 0), Some(systems[0]));
+        // The thirteenth replaces the oldest, systems[1], in its slot.
+        state.open(&world, systems[12], (100, 50), CockpitFaction::Alliance, layout);
+        assert!(state.minimize(systems[12]));
+        assert_eq!(slot(&state, 1), Some(systems[12]));
+        assert_eq!(slot(&state, 0), Some(systems[0]));
+        assert_eq!(slot(&state, 11), Some(systems[11]));
+        // And the next replaces systems[2].
+        state.open(&world, systems[13], (100, 50), CockpitFaction::Alliance, layout);
+        assert!(state.minimize(systems[13]));
+        assert_eq!(slot(&state, 2), Some(systems[13]));
+        assert_eq!(state.rail_count(), REFERENCE_RAIL_SLOTS);
     }
 
     #[test]
@@ -2743,7 +2810,8 @@ mod tests {
     #[test]
     fn a_minimized_defenses_window_keeps_its_own_rail_slot_and_restores_from_it() {
         // FUN_004aa4a0: a Defenses window minimizes (0x466) to its own rail
-        // entry beside the same system's Fleet window, one per window.
+        // entry beside the same system's Fleet window, one per window; a
+        // window already on the rail keeps its slot (FUN_00429020).
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
@@ -2753,11 +2821,11 @@ mod tests {
         assert_eq!(state.rail_count(), 2);
         assert_eq!(
             state.rail_entries().collect::<Vec<_>>(),
-            [(systems[0], "fleet"), (systems[0], "defenses")]
+            [(0, systems[0], "defenses"), (1, systems[0], "fleet")]
         );
 
-        let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
-        assert_eq!(state.rail_slot_screen_rect(layout, 1), Some(slot));
+        let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0));
+        assert_eq!(state.rail_slot_screen_rect(layout, 0), Some(slot));
         assert_eq!(state.rail_slot_screen_rect(layout, 2), None);
         let point = slot.center();
         let press = |pressed| egui::Event::PointerButton {
@@ -2795,7 +2863,7 @@ mod tests {
             })
         );
         assert_eq!(state.rail_count(), 1);
-        assert!(matches!(state.rail[0], RailEntry::Fleet { .. }));
+        assert!(matches!(state.rail[1], Some(RailEntry::Fleet { .. })));
     }
 
     #[test]
@@ -3030,7 +3098,7 @@ mod tests {
         state.minimize_missions_window(systems[0], (60, 40));
         assert_eq!(
             state.rail_entries().collect::<Vec<_>>(),
-            [(systems[0], "defenses"), (systems[0], "missions")]
+            [(0, systems[0], "defenses"), (1, systems[0], "missions")]
         );
 
         let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 1));
@@ -3064,7 +3132,7 @@ mod tests {
             })
         );
         assert_eq!(state.rail_count(), 1);
-        assert!(matches!(state.rail[0], RailEntry::Defenses { .. }));
+        assert!(matches!(state.rail[0], Some(RailEntry::Defenses { .. })));
     }
 
     #[test]
@@ -3090,7 +3158,7 @@ mod tests {
         assert_eq!(
             state
                 .rail_entries()
-                .map(|(_, kind)| kind)
+                .map(|(_, _, kind)| kind)
                 .collect::<Vec<_>>(),
             ["fleet", "system", "fleet"]
         );
@@ -3153,10 +3221,12 @@ mod tests {
             system: systems[0],
             logical_position: (100, 80),
         }));
+        // The restored window's slot stays empty (A0 personnel-states/32).
         assert_eq!(state.rail_count(), 2);
-        assert!(state.rail[0].is_system_window());
-        assert_eq!(state.rail[0].system(), systems[0]);
-        assert_eq!(state.rail[1].system(), systems[1]);
+        assert!(state.rail[0].is_none());
+        assert!(state.rail[1].as_ref().unwrap().is_system_window());
+        assert_eq!(state.rail[1].as_ref().unwrap().system(), systems[0]);
+        assert_eq!(state.rail[2].as_ref().unwrap().system(), systems[1]);
     }
     // FUN_00458cf0: a System window's rail icon by its system's side bits.
     #[test]
