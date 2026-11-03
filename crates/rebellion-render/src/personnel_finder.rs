@@ -536,9 +536,15 @@ pub enum PersonnelFinderAction {
         character: CharacterKey,
         system: Option<SystemKey>,
     },
-    /// SpecForces system row: open the Sector and System windows
-    /// (FUN_00429440 family 0x90).
-    OpenSystem { system: SystemKey },
+    /// SpecForces system row: its system's windows for the tab's first
+    /// special force there. A0 specforces/02, 03: Display on Mon Calamari
+    /// opens its Defenses window, on Tralus the window of the team's running
+    /// mission, as `FUN_00429440` routes a special force (family `0x3c`).
+    /// hyp: the row's unit is the first of the system's list.
+    OpenSystem {
+        system: SystemKey,
+        unit: Option<SpecialForceKey>,
+    },
     /// SpecForces fleet row: open the Fleet window.
     OpenFleet { system: SystemKey, fleet: FleetKey },
 }
@@ -947,7 +953,7 @@ pub fn draw_personnel_finder(
             ) {
                 if let Some(chosen) = window.chosen {
                     if let Some(row) = list.get(chosen) {
-                        open_action = Some(action_for_row(row));
+                        open_action = Some(action_for_row(row, world, window.tab));
                     }
                 }
             }
@@ -1115,7 +1121,7 @@ pub fn draw_personnel_finder(
                         .last_clicked
                         .is_some_and(|(last, at_time)| last == offset && now - at_time <= delay)
                     {
-                        open_action = Some(action_for_row(row));
+                        open_action = Some(action_for_row(row, world, window.tab));
                     } else {
                         clicked_row = Some((offset, now));
                     }
@@ -1149,7 +1155,7 @@ pub fn draw_personnel_finder(
     if enter {
         if let Some(chosen) = open_window.chosen {
             if let Some(row) = list.get(chosen) {
-                open_action = Some(action_for_row(row));
+                open_action = Some(action_for_row(row, world, open_window.tab));
             }
         }
     }
@@ -1177,7 +1183,11 @@ pub fn draw_personnel_finder(
     None
 }
 
-fn action_for_row(row: &PersonnelFinderRow) -> PersonnelFinderAction {
+fn action_for_row(
+    row: &PersonnelFinderRow,
+    world: &GameWorld,
+    tab: PersonnelTab,
+) -> PersonnelFinderAction {
     match row {
         PersonnelFinderRow::Character { key, system, .. } => PersonnelFinderAction::OpenCharacter {
             character: *key,
@@ -1190,7 +1200,18 @@ fn action_for_row(row: &PersonnelFinderRow) -> PersonnelFinderAction {
                     fleet: *fleet,
                 }
             } else {
-                PersonnelFinderAction::OpenSystem { system: *system }
+                let unit = world.systems.get(*system).and_then(|value| {
+                    value.special_forces.iter().copied().find(|&key| {
+                        world
+                            .special_forces
+                            .get(key)
+                            .is_some_and(|sf| tab.lists(sf.is_alliance))
+                    })
+                });
+                PersonnelFinderAction::OpenSystem {
+                    system: *system,
+                    unit,
+                }
             }
         }
     }
@@ -1735,9 +1756,11 @@ mod tests {
     }
 
     #[test]
-    fn the_action_for_a_character_row_opens_character_and_sf_row_opens_system() {
-        // FUN_00429440: character → family 0x30, system → family 0x90.
-        let system = SystemKey::default();
+    fn the_action_for_a_character_row_opens_character_and_sf_row_its_first_unit() {
+        // FUN_00429440: a character by family 0x30; a SpecForces row by its
+        // system's first special force of the tab (A0 specforces/02, 03).
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Yavin");
         let character = CharacterKey::default();
 
         let char_row = PersonnelFinderRow::Character {
@@ -1748,13 +1771,16 @@ mod tests {
             system: Some(system),
         };
         assert_eq!(
-            action_for_row(&char_row),
+            action_for_row(&char_row, &world, PersonnelTab::Alliance),
             PersonnelFinderAction::OpenCharacter {
                 character,
                 system: Some(system),
             }
         );
 
+        let imperial = add_sf(&mut world, system, 0x3c00_0001, false);
+        let first = add_sf(&mut world, system, 0x3c00_0002, true);
+        add_sf(&mut world, system, 0x3c00_0003, true);
         let sf_row = PersonnelFinderRow::SpecForces {
             name: "Yavin".into(),
             system,
@@ -1762,8 +1788,18 @@ mod tests {
             counts: [SfCount::default(); 4],
         };
         assert_eq!(
-            action_for_row(&sf_row),
-            PersonnelFinderAction::OpenSystem { system }
+            action_for_row(&sf_row, &world, PersonnelTab::Alliance),
+            PersonnelFinderAction::OpenSystem {
+                system,
+                unit: Some(first),
+            }
+        );
+        assert_eq!(
+            action_for_row(&sf_row, &world, PersonnelTab::Imperial),
+            PersonnelFinderAction::OpenSystem {
+                system,
+                unit: Some(imperial),
+            }
         );
     }
 

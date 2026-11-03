@@ -1107,15 +1107,14 @@ async fn main() {
                         .entries_for(source.categories[index].command_id)
                         .len()
                 });
-                let category_labels = source.categories.map(|category| category.label);
                 let entries = source
-                    .entries
-                    .into_iter()
+                    .listed_entries()
                     .map(|entry| OriginalEncyclopediaEntry {
                         object_id: entry.object_id,
-                        name: entry.name,
+                        name: entry.name.clone(),
                     })
                     .collect();
+                let category_labels = source.categories.map(|category| category.label);
                 let catalog = OriginalEncyclopediaCatalog::new(
                     source.title,
                     source.topic_label,
@@ -5375,6 +5374,12 @@ async fn main() {
                             world.systems.values().map(|system| system.dat_id.raw()),
                         );
                     }
+                    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+                    if let (Some(request), Some(catalog)) =
+                        (interface_fixture_request, original_encyclopedia_catalog.as_ref())
+                    {
+                        interface_test_fixture::emit_encyclopedia(request, &enc_state, catalog);
+                    }
                     if let (true, Some(catalog), Some(topics)) = (
                         enc_state.open,
                         original_encyclopedia_catalog.as_ref(),
@@ -6921,7 +6926,7 @@ async fn main() {
                     )
                     .map(|action| match action {
                         TroopFinderAction::OpenDefenses { system } => {
-                            (system, FinderTarget::Defenses)
+                            (system, FinderTarget::Regiments)
                         }
                         TroopFinderAction::OpenFleet { system, fleet } => {
                             (system, FinderTarget::Fleet(fleet))
@@ -7002,8 +7007,21 @@ async fn main() {
                                 }
                             }
                         }
-                        PersonnelFinderAction::OpenSystem { system } => {
-                            Some((system, FinderTarget::Sector))
+                        // FUN_00429440 for a special force at its system:
+                        // its running mission's window, else the Defenses
+                        // window. port: special forces have no hidden
+                        // mission flag.
+                        PersonnelFinderAction::OpenSystem { system, unit } => {
+                            match unit.and_then(|key| world.special_forces.get(key).map(|sf| (key, sf))) {
+                                Some((key, sf)) if sf.on_mission => Some((
+                                    system,
+                                    FinderTarget::Missions(
+                                        rebellion_core::missions::MissionMember::SpecialForce(key),
+                                    ),
+                                )),
+                                Some(_) => Some((system, FinderTarget::Defenses)),
+                                None => Some((system, FinderTarget::Sector)),
+                            }
                         }
                         PersonnelFinderAction::OpenFleet { system, fleet } => {
                             Some((system, FinderTarget::Fleet(fleet)))
@@ -7025,7 +7043,7 @@ async fn main() {
                         map_state.selected_system = Some(system);
                         match target {
                             FinderTarget::Sector => {}
-                            FinderTarget::Defenses => {
+                            FinderTarget::Defenses | FinderTarget::Regiments => {
                                 if let Some(point) = sector_window_state.quadrant_window_point(
                                     &world,
                                     cockpit_layout,
@@ -7039,6 +7057,12 @@ async fn main() {
                                         cockpit_state.faction,
                                         cockpit_layout,
                                     );
+                                    if matches!(target, FinderTarget::Regiments) {
+                                        defenses_window_state.show_page(
+                                            system,
+                                            rebellion_render::defenses_window::DefensesPage::Regiments,
+                                        );
+                                    }
                                 }
                             }
                             // FUN_00429440 kind 11, then slot 27
@@ -9743,6 +9767,10 @@ enum FinderTarget {
     Sector,
     /// The System Defenses window (kind 10).
     Defenses,
+    /// The System Defenses window on its regiment page: the Troop Finder's
+    /// Display (A0 personnel-states/15, 17, 18: Mon Calamari, Pzob and
+    /// Umgul open on "Trooper Regiments").
+    Regiments,
     /// The Fleet window (kind 4) with the fleet selected.
     Fleet(rebellion_core::ids::FleetKey),
     /// The Missions window (kind 11) showing the member's mission.

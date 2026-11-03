@@ -589,6 +589,26 @@ const cases = [
     },
   },
   {
+    name: "troop-finder-display",
+    // The Troop Finder's Enter, Display or double click (FUN_0046df90,
+    // FUN_00429440) opens the row system's Defenses window on its regiment
+    // page: A0 personnel-states/15, 17, 18 (Mon Calamari, Pzob, Umgul).
+    // F4 opens it with its first row chosen and the name box focused.
+    async run(page, faction, setup, directory) {
+      await page.mouse.move(2, 2);
+      await page.keyboard.press("F4");
+      await page.waitForTimeout(800);
+      await page.keyboard.press("Enter");
+      const shown = await until(page, "the Troop Finder's Enter opens a Defenses window",
+        (o) => o.defenses_windows.length > 0);
+      const window = shown.defenses_windows[0];
+      assert.equal(window.page, "regiments", JSON.stringify(window));
+      assert.ok(window.rows.length > 0, JSON.stringify(window));
+      await stableScreen(page, directory, "troop-finder-display");
+      return { window };
+    },
+  },
+  {
     name: "defenses",
     // FUN_0045aac0 maps kind 8 to type 10 (FUN_004a7790), which opens on
     // the personnel page (FUN_0060d7e0(strip, 1)). The player's own system:

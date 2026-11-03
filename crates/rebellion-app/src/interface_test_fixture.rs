@@ -1931,6 +1931,70 @@ pub fn emit_status_rows(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
+/// The Encyclopedia while it shows, in the PersonnelStates and ForceStatus
+/// scenarios: the index's category label, first eight rows and chosen row,
+/// or the topic's name and arrows.
+pub fn emit_encyclopedia(
+    request: FixtureRequest,
+    state: &rebellion_render::EncyclopediaState,
+    catalog: &rebellion_render::encyclopedia::OriginalEncyclopediaCatalog,
+) {
+    if !matches!(
+        request.scenario,
+        Scenario::PersonnelStates | Scenario::ForceStatus
+    ) || !state.open
+    {
+        return;
+    }
+    if state.original_topic_mode {
+        // The topic: its name and whether Previous and Next are enabled
+        // (FUN_0045fd20).
+        #[derive(Serialize)]
+        struct Topic {
+            status: &'static str,
+            topic: String,
+            previous: bool,
+            next: bool,
+        }
+        let (previous, next) = rebellion_render::encyclopedia::original_topic_neighbours(state, catalog);
+        let topic = state
+            .original_selected_object_id
+            .and_then(|id| catalog.entries_for(0x6f).into_iter().find(|entry| entry.object_id == id))
+            .map(|entry| entry.name.clone())
+            .unwrap_or_default();
+        let bytes = serde_json::to_vec(&Topic {
+            status: "encyclopedia-topic",
+            topic,
+            previous: previous.is_some(),
+            next: next.is_some(),
+        })
+        .expect("serialize the encyclopedia topic report");
+        unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+        return;
+    }
+    let command = state.original_category_command;
+    let entries = catalog.entries_for(command);
+    #[derive(Serialize)]
+    struct Report {
+        status: &'static str,
+        command: u16,
+        label: String,
+        rows: Vec<String>,
+        chosen: Option<usize>,
+    }
+    let bytes = serde_json::to_vec(&Report {
+        status: "encyclopedia",
+        command,
+        label: catalog.category_label(command).unwrap_or_default().to_owned(),
+        rows: entries.iter().take(8).map(|entry| entry.name.clone()).collect(),
+        chosen: state
+            .original_selected_object_id
+            .and_then(|id| entries.iter().position(|entry| entry.object_id == id)),
+    })
+    .expect("serialize the encyclopedia report");
+    unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+}
+
 /// The Rescue scenario sees into the enemy prison
 /// (`opposing_contents_visible`).
 pub fn reveal(
