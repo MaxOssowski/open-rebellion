@@ -521,6 +521,31 @@ async function destinationCase(page, faction, directory) {
   return { home: home[0], target: menu.target_name, shown, back_on_window: home[0] };
 }
 
+// Fixture code 95 is Scenario::BuildSelectionDefensesDestination (94) plus
+// one: the secondary system's Defenses window at the galaxy view's left.
+// A band's Destination released on it is that system (A0
+// build-selection2/25: Coruscant's Defenses window).
+async function defensesDestinationCase(page, faction, directory) {
+  const fixtureCode = 95 | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const before = await production(page);
+  const home = before.bands.find(({ area }) => area === "ships").destination;
+  const ships = before.bands.find(({ area }) => area === "ships");
+  const menu = await bandOrder(page, ships, "destination_row", directory, "defenses-destination");
+  assert.ok(menu.target_name && menu.target_name !== home, JSON.stringify(menu));
+  // The Defenses window's personnel list, at its (100, 150).
+  await click(page, { x: faction.galaxy.x + 5 + 100, y: faction.galaxy.y + 5 + 150 });
+  await page.mouse.move(2, 2);
+  await page.waitForFunction((name) => window.__openRebellionInterfaceProduction?.bands
+    ?.find(({ area }) => area === "ships")?.destination === name, menu.target_name, { timeout: 10_000 });
+  fs.writeFileSync(path.join(directory, "defenses-destination.png"), await page.screenshot({ animations: "disabled" }));
+  return { home, target: menu.target_name };
+}
+
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.
 const overMaintenanceCode = 88;
 const A0_OVER_MAINTENANCE = { file: "11-build-selection.png", x: 255, y: 87 };
@@ -862,6 +887,7 @@ async function inspect(server, source, faction, executable) {
     // sets that band's area alone (A0 build-selection2/21: the ships band's
     // Destination on Chandrila; the others keep Coruscant).
     const destination = await destinationCase(page, faction, directory);
+    const defensesDestination = await defensesDestinationCase(page, faction, directory);
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
@@ -877,6 +903,7 @@ async function inspect(server, source, faction, executable) {
       over_maintenance: overMaintenance,
       stepping,
       destination,
+      defensesDestination,
       idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 94;
+const SCENARIO_COUNT: u8 = 95;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -294,6 +294,11 @@ pub enum Scenario {
     /// the Alliance, a Jedi Master for the Empire (A0 personnel-states/19:
     /// Luke "Trainee"; status/33-emperor: "Jedi Master").
     ForceStatus = 93,
+    /// As `BuildSelectionDestination` with the secondary system's Defenses
+    /// window at the galaxy view's left in place of its sector window: a
+    /// band's Destination released on it (A0 build-selection2/25:
+    /// Coruscant's Defenses window takes the ships band's Destination).
+    BuildSelectionDefensesDestination = 94,
 }
 
 impl Scenario {
@@ -393,6 +398,7 @@ impl Scenario {
             91 => Self::BatteryStatus,
             92 => Self::PersonnelStates,
             93 => Self::ForceStatus,
+            94 => Self::BuildSelectionDefensesDestination,
             _ => return None,
         })
     }
@@ -430,6 +436,7 @@ impl Scenario {
             Self::BuildSelection
                 | Self::BuildSelectionOverMaintenance
                 | Self::BuildSelectionDestination
+                | Self::BuildSelectionDefensesDestination
         )
     }
 
@@ -734,6 +741,17 @@ pub fn apply(
     if request.scenario == Scenario::BuildSelectionDestination {
         sectors.open_for_system(world, secondary, request.faction);
     }
+    if request.scenario == Scenario::BuildSelectionDefensesDestination {
+        let layout = cockpit.layout_for(640.0, 480.0);
+        let galaxy = layout.galaxy;
+        defenses.open(
+            world,
+            secondary,
+            (galaxy.x as i16 + 5, galaxy.y as i16 + 5),
+            request.faction,
+            layout,
+        );
+    }
     if request.scenario == Scenario::BuildSelectionOverMaintenance {
         remove_production_facilities(world, rebellion_core::dat::Faction::of_alliance(player_is_alliance));
     }
@@ -743,6 +761,7 @@ pub fn apply(
             | Scenario::BuildSelection
             | Scenario::BuildSelectionOverMaintenance
             | Scenario::BuildSelectionDestination
+            | Scenario::BuildSelectionDefensesDestination
             | Scenario::ProductionDelivery
     ) {
         systems.open(
@@ -750,7 +769,10 @@ pub fn apply(
             primary,
             // Beside the sector window, whose planets the Destination
             // gate releases on.
-            if request.scenario == Scenario::BuildSelectionDestination {
+            if matches!(
+                request.scenario,
+                Scenario::BuildSelectionDestination | Scenario::BuildSelectionDefensesDestination
+            ) {
                 (360, 76)
             } else {
                 (225, 76)
@@ -3047,6 +3069,7 @@ fn object_menu_report<'a>(
                 | Scenario::FleetWindowYavin
                 | Scenario::BatteryStatus
                 | Scenario::PersonnelStates
+                | Scenario::BuildSelectionDefensesDestination
         ) =>
         {
             egui_macroquad::egui::Pos2::ZERO
@@ -8247,6 +8270,7 @@ mod tests {
                 Scenario::BatteryStatus,
                 Scenario::PersonnelStates,
                 Scenario::ForceStatus,
+                Scenario::BuildSelectionDefensesDestination,
             ]
         );
     }
