@@ -5320,6 +5320,77 @@ mod tests {
     use super::*;
     use rebellion_render::object_menu::{MenuObject, OrderGates};
 
+    // A0 status/03-ship: Corellian Corvette 1 in Fleet 1, undamaged. Its
+    // first page reads Awaiting Orders, Maintenance Cost 23, no capacity,
+    // nothing embarked, Ship Damaged No, Hyperdrive 80:80, Hull 500:500
+    // (FUN_00446fd0's rows over CAPSHPSD's Corellian Corvette).
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn an_undamaged_corellian_corvettes_status_reads_as_a0() {
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let mut world = rebellion_data::load_game_data(&data).expect("load original game data");
+        let (class, hull) = world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, class)| class.name == "Corellian Corvette")
+            .map(|(key, class)| (key, class.hull))
+            .expect("CAPSHPSD lists the Corellian Corvette");
+        let here = world.systems.keys().next().unwrap();
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: here,
+            capital_ships: vec![ShipInstance::new(class, hull as i32, true)],
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.rename_fleet(fleet, "Fleet 1");
+        let missions = MissionState::default();
+        let movement = MovementState::default();
+        let transport = TroopTransportState::default();
+        let manufacturing = ManufacturingState::default();
+        let sources = rebellion_render::status_rows::StatusSources {
+            world: &world,
+            missions: &missions,
+            movement: &movement,
+            transport: &transport,
+            manufacturing: &manufacturing,
+            today: 180,
+            objectives: rebellion_render::status_rows::ObjectiveSource {
+                alliance: true,
+                conditions_word: 0,
+                standard: true,
+            },
+        };
+        let rows: Vec<(String, String)> = rebellion_render::status_rows::ship_rows(sources, fleet, 0)
+            .expect("rows")
+            .into_iter()
+            .map(|row| (row.label, row.value))
+            .take(14)
+            .collect();
+        let a0: Vec<(String, String)> = [
+            ("Class:", "Corellian Corvette"),
+            ("Fleet:", "Fleet 1"),
+            ("Status:", "Awaiting Orders"),
+            ("Maintenance Cost:", "23"),
+            ("Capacity:", ""),
+            ("Fighter Squadrons:", "0"),
+            ("Trooper Regiments:", "0"),
+            ("Embarked:", ""),
+            ("Fighter Squadrons:", "0"),
+            ("Trooper Regiments:", "0"),
+            ("Personnel:", "0"),
+            ("Ship Damaged:", "No"),
+            ("Hyperdrive Rating:", "80:80"),
+            ("Hull Value:", "500:500"),
+        ]
+        .into_iter()
+        .map(|(label, value)| (label.to_owned(), value.to_owned()))
+        .collect();
+        assert_eq!(rows, a0);
+    }
+
     #[test]
     fn scenario_table_is_stable_and_complete() {
         for value in 0..SCENARIO_COUNT {

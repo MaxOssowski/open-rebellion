@@ -5597,14 +5597,15 @@
         {
           "id": "OBJ-06-C001",
           "requirement": "healthy",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
+            "crates/rebellion-app/src/interface_test_fixture.rs"
           ],
-          "note": "Capital Ship Status (FUN_00446fd0) row 1, title and name match A0 03-ship in placement and the Ship case passes in the Linux browser; the A0 ship's condition is not recorded, so the healthy state is not confirmed. 2026-11-02: A0 status/03-ship's corvette is undamaged ('Ship Damaged: No', hull 500:500); the browser case's ship is damaged, so the healthy values are not compared yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 (status/03-ship: Corellian Corvette 1, undamaged): an_undamaged_corellian_corvettes_status_reads_as_a0 (rebellion-app, run with --ignored on the original data/base) builds the corvette from CAPSHPSD at full hull and finds FUN_00446fd0's first fourteen rows equal to A0's (Awaiting Orders, Maintenance Cost 23, no capacity, nothing embarked, Ship Damaged No, Hyperdrive 80:80, Hull 500:500); status-window.mjs 'capital-ship' (Linux) places those labels within 1 pixel of A0's (left 3).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-06-C002",
