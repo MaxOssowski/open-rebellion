@@ -743,6 +743,7 @@ pub fn apply(
             | Scenario::BuildSelection
             | Scenario::BuildSelectionOverMaintenance
             | Scenario::BuildSelectionDestination
+            | Scenario::ProductionDelivery
     ) {
         systems.open(
             world,
@@ -3278,7 +3279,8 @@ pub fn emit_production(
     systems: &SystemWindowState,
     build_selection: &rebellion_render::build_selection::BuildSelectionState,
 ) {
-    if !request.scenario.opens_build_selection() {
+    // ProductionDelivery's shipyard band shows its product one point short.
+    if !request.scenario.opens_build_selection() && request.scenario != Scenario::ProductionDelivery {
         return;
     }
     let Some(report) = production_report(request, world, manufacturing, systems, build_selection)

@@ -973,6 +973,25 @@ const cases = [
     async run(page, faction, setup, directory) {
       const before = await until(page, "the ship waits one point short",
         (o) => o.target_ships === 0 && o.last_departure_message === null);
+      // The shipyard band's progress bar (FUN_004acec0, 160 by 4) shows the
+      // points done in the palette's yellow, as A0 personnel-states/24
+      // draws a building band's bar (255, 255, 0): one point short of a
+      // two-point ship, half of it.
+      await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+        null, { timeout: 10_000 });
+      const ships = (await page.evaluate(() => window.__openRebellionInterfaceProduction)).bands
+        .find(({ area }) => area === "ships");
+      const bandShot = PNG.sync.read(await page.screenshot());
+      let longest = 0;
+      for (let y = Math.floor(ships.top); y < ships.top + ships.height; y += 1) {
+        let run = 0;
+        for (let x = Math.floor(ships.left); x < ships.left + ships.width; x += 1) {
+          const i = (y * bandShot.width + x) * 4;
+          run = bandShot.data[i] === 255 && bandShot.data[i + 1] === 255 && bandShot.data[i + 2] === 0 ? run + 1 : 0;
+          longest = Math.max(longest, run);
+        }
+      }
+      assert.ok(longest >= 70 && longest < 160, `the shipyard band's yellow bar runs ${longest} pixels`);
       // The product is Deployed on completion (FUN_0052bee0), already bound
       // to its destination: Units Deployed (FUN_00497940, TEXTSTRA 0x7086
       // "{1:3} Deployed at {2:1}") names the destination.
@@ -993,7 +1012,7 @@ const cases = [
         destination, 120_000);
       await frames(page, 3);
       await shot(page, directory, "delivery-arrived");
-      return { before, departed, idle, arrived };
+      return { before, bar: longest, departed, idle, arrived };
     },
   },
   {
