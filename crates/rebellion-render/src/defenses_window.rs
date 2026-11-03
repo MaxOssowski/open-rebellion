@@ -665,7 +665,31 @@ fn page_rows(
         // (`+0x78` bit 8).
         DefensesPage::Personnel => {
             let keys = mission_keys(missions);
-            system_members(world, system)
+            // A member on its way is already in its destination's container:
+            // the Move mission is a hidden one (MISSNSD +0x5c). A0
+            // specforces/03: Mon Calamari lists Garm Bel Iblis, Adar Tallon
+            // and the Longprobe team while they travel there.
+            let travelling = missions
+                .en_route()
+                .iter()
+                .filter(|transit| transit.to == system && transit.abode.is_none())
+                .filter_map(|transit| {
+                    let side = match transit.member {
+                        MissionMember::Character(key) => {
+                            match rebellion_core::missions::character_side(world.characters.get(key)?) {
+                                Some(rebellion_core::dat::Faction::Alliance) => 1,
+                                Some(rebellion_core::dat::Faction::Empire) => 2,
+                                _ => 0,
+                            }
+                        }
+                        MissionMember::SpecialForce(key) => {
+                            fleet_side(world.special_forces.get(key)?.is_alliance)
+                        }
+                    };
+                    Some((transit.member, side, true))
+                });
+            let mut rows = system_members(world, system)
+                .chain(travelling)
                 .filter(|(member, member_side, hidden)| {
                     *member_side == side && (*hidden || !keys.contains_key(member))
                 })
@@ -688,7 +712,10 @@ fn page_rows(
                         })
                     }
                 })
-                .collect()
+                .collect::<Vec<_>>();
+            // The characters, then the special forces (A0 specforces/03).
+            rows.sort_by_key(|row| matches!(row.item, DefensesItem::SpecialForce(_)));
+            rows
         }
         // FUN_00504cc0.
         DefensesPage::Regiments => value
@@ -1455,6 +1482,58 @@ mod tests {
             page(DefensesPage::Personnel),
             ["Idle", "Hidden", "Guerrillas"]
         );
+    }
+
+    #[test]
+    fn members_on_their_way_are_listed_at_their_destination_characters_first() {
+        // A travelling member's container is its destination; its Move is a
+        // hidden mission (MISSNSD +0x5c). A0 specforces/03: Mon Calamari's
+        // page lists the travelling Garm Bel Iblis and Adar Tallon among its
+        // characters and the travelling Longprobe team after them.
+        let (mut world, system, mut missions) = stocked();
+        let walker = add_character(&mut world, system, "Walker", true);
+        world.characters[walker].current_system = None;
+        let force = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0003),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        let elsewhere = add_character(&mut world, system, "Elsewhere", true);
+        world.characters[elsewhere].current_system = None;
+        let other = world.systems.insert(world.systems[system].clone());
+        for (member, to) in [
+            (MissionMember::Character(walker), system),
+            (MissionMember::SpecialForce(force), system),
+            (MissionMember::Character(elsewhere), other),
+        ] {
+            missions.push_transit(rebellion_core::missions::MemberTransit {
+                member,
+                mission_id: 0,
+                to,
+                arrival: 9,
+                abode: None,
+            });
+        }
+        let fog = seen(system);
+        assert_eq!(
+            labels(&world, &fog, &missions, system, DefensesPage::Personnel),
+            ["Idle", "Hidden", "Walker", "Guerrillas", "Longprobe Y-wing Recon Team"]
+        );
+        // An Empire system lists its own traveller (side 2).
+        let (mut imperial, held) = self::world(ControlKind::Controlled(Faction::Empire));
+        let trooper = add_character(&mut imperial, held, "Piett", false);
+        imperial.characters[trooper].current_system = None;
+        let mut imperial_missions = MissionState::new();
+        imperial_missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(trooper),
+            mission_id: 0,
+            to: held,
+            arrival: 9,
+            abode: None,
+        });
+        let rows = page_rows(&imperial, &seen(held), &imperial_missions, Faction::Empire, held, DefensesPage::Personnel);
+        assert_eq!(rows.into_iter().map(|row| row.label).collect::<Vec<_>>(), ["Piett"]);
     }
 
     #[test]
