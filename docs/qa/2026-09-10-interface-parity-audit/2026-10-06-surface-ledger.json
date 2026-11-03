@@ -1853,38 +1853,41 @@
         {
           "id": "CMD-02-C027",
           "requirement": "selection",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-map-opens-on-release/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-gid-press-wheel-right-drag-a0/"
           ],
-          "note": "A system opens on the release (FUN_00422ce0 WM_LBUTTONUP, FUN_00429ce0) and the selection fixture runs in the Linux GID gate; not compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (gid-selection/01, 02: a held press on Moddell shows only its hover label; the release opens its sector): run.mjs 'hover' (Linux, both sides, two views) asserts the held press leaves the frame unchanged and the release opens the sector.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-02-C028",
           "requirement": "fixed-map right-drag no-op",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-gid-press-wheel-right-drag-a0/"
           ],
-          "note": "FUN_00422ce0 has no right-drag case; the Linux GID gate proves a right-drag leaves the frame byte-identical; the no-op was not exercised in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (gid-selection/05, 06: a right drag across the galaxy changes 0 pixels): run.mjs 'pan' (Linux) asserts the right drag leaves the frame byte-identical (FUN_00422ce0 has no right-drag case).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-02-C029",
           "requirement": "fixed-map wheel no-op",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-gid-press-wheel-right-drag-a0/"
           ],
-          "note": "FUN_00422ce0 has no wheel case; the Linux GID gate proves the wheel leaves the frame byte-identical; the no-op was not exercised in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (gid-selection/03, 04: eight wheel notches change 0 pixels): run.mjs 'zoom' (Linux) asserts the wheel leaves the frame byte-identical (FUN_00422ce0 has no wheel case).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
