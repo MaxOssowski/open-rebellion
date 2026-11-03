@@ -236,10 +236,12 @@ enum RailEntry {
         logical_position: (i16, i16),
     },
     /// A System Defenses window (type 10); its icon comes from
-    /// `FUN_004aa4a0`.
+    /// `FUN_004aa4a0`. Minimized, the window is hidden, not destroyed, so
+    /// it comes back on its page (A0 personnel-states/38).
     Defenses {
         system: SystemKey,
         logical_position: (i16, i16),
+        page: crate::defenses_window::DefensesPage,
     },
     /// A Missions window (type 11); its icon comes from `FUN_004a21c0`.
     Missions {
@@ -625,12 +627,40 @@ impl SystemWindowState {
         });
     }
 
-    /// Put a minimized Defenses window on the rail (`0x466`).
-    pub fn minimize_defenses_window(&mut self, system: SystemKey, logical_position: (i16, i16)) {
+    /// Put a minimized Defenses window on the rail (`0x466`), on its page.
+    pub fn minimize_defenses_window(
+        &mut self,
+        system: SystemKey,
+        logical_position: (i16, i16),
+        page: crate::defenses_window::DefensesPage,
+    ) {
         self.push_rail(RailEntry::Defenses {
             system,
             logical_position,
+            page,
         });
+    }
+
+    /// Take `system`'s minimized Defenses window off the rail, with where it
+    /// stood and its page: its sector icon's double click brings it back
+    /// rather than opening another (A0 personnel-states/38, Mon Calamari's
+    /// Trooper Regiments page back and its slot emptied).
+    pub fn take_railed_defenses(
+        &mut self,
+        system: SystemKey,
+    ) -> Option<((i16, i16), crate::defenses_window::DefensesPage)> {
+        let entry = *self.rail.iter().flatten().find(
+            |entry| matches!(entry, RailEntry::Defenses { system: held, .. } if *held == system),
+        )?;
+        self.take_rail(&entry);
+        match entry {
+            RailEntry::Defenses {
+                logical_position,
+                page,
+                ..
+            } => Some((logical_position, page)),
+            _ => None,
+        }
     }
 
     /// Put a minimized Missions window on the rail (`0x466`).
@@ -744,6 +774,7 @@ pub enum SystemWindowAction {
     RestoreDefensesWindow {
         system: SystemKey,
         logical_position: (i16, i16),
+        page: crate::defenses_window::DefensesPage,
     },
     /// A click on a minimized Missions window's rail slot restores it.
     RestoreMissionsWindow {
@@ -1019,11 +1050,13 @@ fn draw_reference_rail(
         entry @ RailEntry::Defenses {
             system,
             logical_position,
+            page,
         } => {
             state.take_rail(&entry);
             Some(SystemWindowAction::RestoreDefensesWindow {
                 system,
                 logical_position,
+                page,
             })
         }
         entry @ RailEntry::Missions {
@@ -2818,9 +2851,9 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         state.minimize_fleet_window(systems[0], (100, 80));
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         assert_eq!(state.rail_count(), 2);
         assert_eq!(
             state.rail_entries().collect::<Vec<_>>(),
@@ -2863,10 +2896,35 @@ mod tests {
             actions.contains(&SystemWindowAction::RestoreDefensesWindow {
                 system: systems[0],
                 logical_position: (90, 70),
+                page: crate::defenses_window::DefensesPage::Personnel,
             })
         );
         assert_eq!(state.rail_count(), 1);
         assert!(matches!(state.rail[1], Some(RailEntry::Fleet { .. })));
+    }
+
+    #[test]
+    fn a_railed_defenses_window_keeps_its_page_and_its_icon_takes_it_back() {
+        // A0 personnel-states/38: Mon Calamari's Defenses window, minimized
+        // on Trooper Regiments, comes back on that page from its sector
+        // icon's double click, and its rail slot empties.
+        use crate::defenses_window::DefensesPage;
+        let (_, systems) = fixture_world(2);
+        let mut state = SystemWindowState::default();
+        state.minimize_defenses_window(systems[0], (90, 70), DefensesPage::Regiments);
+        state.minimize_defenses_window(systems[1], (40, 50), DefensesPage::Shields);
+        assert_eq!(state.take_railed_defenses(systems[1]), Some(((40, 50), DefensesPage::Shields)));
+        assert_eq!(state.rail_count(), 1);
+        assert!(state.rail[1].is_none());
+        assert_eq!(state.take_railed_defenses(systems[1]), None);
+        assert_eq!(
+            state.rail[0],
+            Some(RailEntry::Defenses {
+                system: systems[0],
+                logical_position: (90, 70),
+                page: DefensesPage::Regiments,
+            })
+        );
     }
 
     #[test]
@@ -2885,7 +2943,7 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
         let off = egui::pos2(point.x - 300.0, point.y + 200.0);
         let press = |pos, pressed| egui::Event::PointerButton {
@@ -2917,7 +2975,7 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
         let press = |pressed| egui::Event::PointerButton {
             pos: point,
@@ -2939,6 +2997,7 @@ mod tests {
             [SystemWindowAction::RestoreDefensesWindow {
                 system: systems[0],
                 logical_position: (90, 70),
+                page: crate::defenses_window::DefensesPage::Personnel,
             }]
         );
         assert_eq!(state.rail_count(), 0);
@@ -2952,7 +3011,7 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
         let (actions, _) = run_rail(&world, &mut state, frames(point));
         (actions, state.rail_count())
@@ -2974,7 +3033,7 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         let slot = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0));
         let point = slot.center();
         let ctx = egui::Context::default();
@@ -3066,7 +3125,7 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         let point = cockpit_rect(layout, rail_slot_rect(CockpitFaction::Alliance, 0)).center();
         let press = |pressed| egui::Event::PointerButton {
             pos: point,
@@ -3096,7 +3155,7 @@ mod tests {
         let (world, systems) = fixture_world(1);
         let layout = layout(CockpitFaction::Alliance, 2.0);
         let mut state = SystemWindowState::default();
-        state.minimize_defenses_window(systems[0], (90, 70));
+        state.minimize_defenses_window(systems[0], (90, 70), crate::defenses_window::DefensesPage::Personnel);
         state.minimize_missions_window(systems[0], (60, 40));
         state.minimize_missions_window(systems[0], (60, 40));
         assert_eq!(

@@ -5611,13 +5611,19 @@ async fn main() {
                                 logical_position,
                             } => {
                                 map_state.selected_system = Some(system);
+                                // A railed window comes back where it stood,
+                                // on its page (A0 personnel-states/38).
+                                let railed = system_window_state.take_railed_defenses(system);
                                 defenses_window_state.open(
                                     &world,
                                     system,
-                                    logical_position,
+                                    railed.map_or(logical_position, |(at, _)| at),
                                     cockpit_state.faction,
                                     cockpit_layout,
                                 );
+                                if let Some((_, page)) = railed {
+                                    defenses_window_state.show_page(system, page);
+                                }
                             }
                             SectorWindowAction::OpenMissionsWindow {
                                 system,
@@ -5752,6 +5758,7 @@ async fn main() {
                             SystemWindowAction::RestoreDefensesWindow {
                                 system,
                                 logical_position,
+                                page,
                             } => {
                                 defenses_window_state.open(
                                     &world,
@@ -5760,6 +5767,7 @@ async fn main() {
                                     cockpit_state.faction,
                                     cockpit_layout,
                                 );
+                                defenses_window_state.show_page(system, page);
                             }
                             SystemWindowAction::RestoreMissionsWindow {
                                 system,
@@ -6104,8 +6112,9 @@ async fn main() {
                             DefensesWindowAction::Minimize {
                                 system,
                                 logical_position,
+                                page,
                             } => system_window_state
-                                .minimize_defenses_window(system, logical_position),
+                                .minimize_defenses_window(system, logical_position, page),
                             DefensesWindowAction::OpenObjectMenu {
                                 selection, point, ..
                             } => {

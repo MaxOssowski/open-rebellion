@@ -572,6 +572,7 @@ pub enum DefensesWindowAction {
     Minimize {
         system: SystemKey,
         logical_position: (i16, i16),
+        page: DefensesPage,
     },
     /// A right release on the list opens the object pop-up menu
     /// (`FUN_004ac5c0`) for the selection, at a 640 by 480 canvas point.
@@ -920,6 +921,7 @@ pub fn draw_defenses_windows(
                 actions.push(DefensesWindowAction::Minimize {
                     system,
                     logical_position: closed.logical_position,
+                    page: closed.page,
                 });
             }
             continue;
@@ -2261,7 +2263,8 @@ mod tests {
             minimized.actions,
             [DefensesWindowAction::Minimize {
                 system,
-                logical_position: ORIGIN
+                logical_position: ORIGIN,
+                page: DefensesPage::Personnel,
             }]
         );
         assert_eq!(state.window_count(), 0);

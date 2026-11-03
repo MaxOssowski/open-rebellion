@@ -8260,7 +8260,11 @@ mod tests {
         );
         assert_eq!(window.tabs.len(), 5);
 
-        applied.systems.minimize_defenses_window(primary, (200, 60));
+        applied.systems.minimize_defenses_window(
+            primary,
+            (200, 60),
+            rebellion_render::defenses_window::DefensesPage::Personnel,
+        );
         let railed = next!(watch).unwrap();
         let slot = applied.systems.rail_slot_screen_rect(layout, 0).unwrap();
         assert_eq!(railed.rail, [(dat, "defenses", super::rect_array(slot))]);
