@@ -158,3 +158,28 @@ Test: `a_commander_commands_its_system_or_the_fleet_it_is_aboard`. With the old 
 Batch `b31` ran every gate with the Commanding change and passed: workspace 3336, fixtures 116.
 
 Batch `b32` added the ForceStatus fixture and the `force-character` and `ship-scrap` cases. It passed `status-window`, `personnel-states`, `fleet-window`, `sector-quadrants` and `agent-objectives`. The mutant that empties `StatusWindowState::object` survived the unit tests, so the test `the_window_reports_the_object_it_shows` was added; it catches the mutant.
+
+## Travelling members in their destination's Defenses window (2026-11-03)
+
+**A0.** `specforces/03-mon-calamari-personnel` lists these on Mon Calamari's Personnel page:
+
+- among the characters, Garm Bel Iblis and Adar Tallon, which the Personnel Finder shows as "( Enroute )" to Mon Calamari (`00`);
+- last, after the characters, the Longprobe Y-wing Recon Team, which is en route.
+
+The team's cell is its plain GOKRES mini 17730: 0 of its 558 non-key pixels differ at (283, 307), and the en-route variant 21826 differs in 46. So the Defenses window draws no en-route mark.
+
+**The source.** A travelling member's container is its destination. Its Move is a hidden mission (MISSNSD `+0x5c`, one of the ten hidden kinds), which page 1 keeps (`FUN_00536e20`, `+0x78` bit 8).
+
+**The port before.** A traveller has no `current_system` while its member transit lasts, so its destination's page left it out.
+
+**The port now.**
+
+- `page_rows` adds each member transit bound for the system (not for an abode), as a hidden-mission member of its side.
+- The page lists characters before special forces, as A0 does.
+
+**Test.** `members_on_their_way_are_listed_at_their_destination_characters_first`:
+
+- an Alliance traveller and a travelling Longprobe team are listed, and one bound elsewhere is not;
+- an Empire system lists its own traveller.
+
+Without the change it fails. Mutants: 5 caught, 1 unviable.
