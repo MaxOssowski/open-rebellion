@@ -5320,6 +5320,28 @@ mod tests {
     use super::*;
     use rebellion_render::object_menu::{MenuObject, OrderGates};
 
+    // A0 personnel-states/15, 17, 18 (Alliance, the Troop Finder's
+    // Display): Pzob's Defenses window at (118, 86), Mon Calamari's and
+    // Umgul's at (305, 86). FUN_0045c8e0 opens at the icon's top left,
+    // clamped into the galaxy view.
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_finders_defenses_window_opens_where_a0_puts_it() {
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let world = rebellion_data::load_game_data(&data).expect("load original game data");
+        let layout = CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
+        for (name, a0) in [("Pzob", (118.0, 86.0)), ("Mon Calamari", (305.0, 86.0)), ("Umgul", (305.0, 86.0))] {
+            let key = world.systems.iter().find(|(_, s)| s.name == name).map(|(k, _)| k).unwrap();
+            let mut sectors = SectorWindowState::default();
+            sectors.open_for_system(&world, key, CockpitFaction::Alliance);
+            let point = sectors.quadrant_window_point(&world, layout, key, Quadrant::Defenses).unwrap();
+            let mut defenses = DefensesWindowState::default();
+            defenses.open(&world, key, point, CockpitFaction::Alliance, layout);
+            let origin = defenses.screen_rect(layout, key).unwrap().min;
+            assert_eq!((origin.x, origin.y), a0, "{name}");
+        }
+    }
+
     // A0 status/03-ship: Corellian Corvette 1 in Fleet 1, undamaged. Its
     // first page reads Awaiting Orders, Maintenance Cost 23, no capacity,
     // nothing embarked, Ship Damaged No, Hyperdrive 80:80, Hull 500:500

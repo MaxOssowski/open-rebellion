@@ -302,9 +302,8 @@ impl SectorWindowState {
     }
 
     /// The logical point `system`'s Fleet window opens at from its open
-    /// sector window: the fleet icon's (`FUN_0045c8e0` →
-    /// `FUN_0045aac0(.., item +0x40, +0x44)`). port: the icon's center, as
-    /// an icon opened without a double-click point.
+    /// sector window: the fleet icon's top left (`FUN_0045c8e0` →
+    /// `FUN_0045aac0(.., item +0x40, +0x44)`).
     #[must_use]
     pub fn fleet_window_point(
         &self,
@@ -316,8 +315,11 @@ impl SectorWindowState {
     }
 
     /// The logical point the window behind one of `system`'s quadrant icons
-    /// opens at, as [`fleet_window_point`](Self::fleet_window_point) does
-    /// for the Fleet window: the icon's center.
+    /// opens at when a Finder or the rail opens it (`FUN_0045c8e0` passes the
+    /// item's `+0x40`, `+0x44`, its rect's top left, to `FUN_0045aac0`):
+    /// A0 personnel-states/17, Pzob's Defenses window from the Troop Finder
+    /// at x 118, its icon's left edge. A double click opens at the pointer
+    /// instead (`FUN_004593e0`).
     #[must_use]
     pub fn quadrant_window_point(
         &self,
@@ -327,7 +329,7 @@ impl SectorWindowState {
         quadrant: Quadrant,
     ) -> Option<(i16, i16)> {
         let icon = self.quadrant_screen_rect(world, layout, system, quadrant)?;
-        Some(screen_to_logical(layout, icon.center()))
+        Some(screen_to_logical(layout, icon.min))
     }
 
     /// Where one of `system`'s four quadrant overlays lies, in screen
@@ -2587,7 +2589,8 @@ mod tests {
     #[test]
     fn the_fleet_window_opens_from_the_fleet_icons_point() {
         // FUN_0045c8e0 opens the Fleet window at the sector item's stored
-        // point; port: the center of the icon at (93, 76) to (121, 95).
+        // point, its rect's top left: the icon at (93, 76) to (121, 95)
+        // (A0 personnel-states/17: Pzob's window at its icon's left edge).
         let (world, system, _) = fixture_world();
         let mut state = SectorWindowState::default();
         assert_eq!(state.fleet_window_point(&world, layout(1.0), system), None);
@@ -2595,11 +2598,11 @@ mod tests {
 
         assert_eq!(
             state.fleet_window_point(&world, layout(1.0), system),
-            Some((107, 86))
+            Some((93, 76))
         );
         assert_eq!(
             state.fleet_window_point(&world, layout(2.0), system),
-            Some((107, 86))
+            Some((93, 76))
         );
     }
 
