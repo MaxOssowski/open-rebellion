@@ -4134,15 +4134,16 @@
         {
           "id": "CMD-11-C021",
           "requirement": "Missions window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-defenses-missions/",
             "crates/rebellion-render/src/missions_window.rs",
-            "tools/interface-parity/sector-quadrants.mjs"
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-missions-window-tips-a0/"
           ],
-          "note": "FUN_0049f540's Agents (0x8500) and Decoys (0x8501) tips show at the shared tip's A0 placement in sector-quadrants.mjs on both sides (Linux); no A0 capture of the Missions window's tips (the VM save had no mission at Coruscant, tooltip/158).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/22, 23: Mission at Duros, the 'Agents' and 'Decoys' tips with their grey border at the pointer plus (0, 21), 19 high): sector-quadrants.mjs 'missions' (Linux, both sides) asserts the same placement for FUN_0049f540's 0x8500 and 0x8501.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-11-C022",
