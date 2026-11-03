@@ -612,6 +612,15 @@ const cases = [
       let back = await restore("the double click restores the System window");
       const gap = back.rail.find(([system, kind]) => system === dat && kind === "defenses");
       assert.deepEqual(gap?.[2], defensesSlot, JSON.stringify(back.rail));
+      // FUN_00428d70 draws nothing in an empty slot, so the shell shows
+      // (STRATEGY 900 / 901): A0 personnel-states/32's empty fifth slot is
+      // 900's (544, 149, 62, 18), 0 of 1116 pixels off.
+      await page.mouse.move(2, 470);
+      await page.waitForTimeout(500);
+      const gapScreen = await stableScreen(page, directory, "rail-gap");
+      const shell = faction.side === 1 ? 900 : 901;
+      const gapChecks = [{ id: shell, ...compareRegion(gapScreen, [0, 0], resource(source, shell), slot, "rail-empty-slot", directory) }];
+      assertExact(gapChecks);
       let [, again] = back.system_windows.find(([system]) => system === dat);
       await click(page, { x: again[0] + 195 + 7, y: again[1] + 3 + 7 });
       const refilled = await until(page, "a second minimize fills the gap",
@@ -625,7 +634,7 @@ const cases = [
         (o, value) => !o.system_windows.some(([system]) => system === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "system"), dat);
       await stableScreen(page, directory, "system-closed");
-      return { at, opened, railChecks, textChecks, slots: { system: slot, defenses: defensesSlot }, closed: closed.system_windows.length };
+      return { at, opened, railChecks, textChecks, slots: { system: slot, defenses: defensesSlot }, gapChecks, closed: closed.system_windows.length };
     },
   },
   {

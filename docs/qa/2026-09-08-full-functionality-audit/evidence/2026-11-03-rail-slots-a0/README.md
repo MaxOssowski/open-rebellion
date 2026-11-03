@@ -39,3 +39,14 @@ In the browser, the `sector-quadrants.mjs` `open-system` case now runs on Linux 
 Run `sector-quadrants-2026-11-03T19-35-03-519Z-3458131`: pass.
 
 The browser case does not fill all twelve slots. The thirteenth's replacement is covered by A0 33 and the unit test.
+
+## The empty slot (CMD-04 C002)
+
+`FUN_00428d70` draws only occupied slots, so an empty slot shows the cockpit shell beneath it.
+
+- **A0.** In `32-rail-restored-slot-gap`, the empty fifth slot at (544, 149, 62, 18) matches STRATEGY 900 at the same place: 0 of 1116 pixels differ.
+- **The port.** `open-system` now takes a screenshot at the gap and compares the empty slot with the shell (900 for the Alliance, 901 for the Empire) at the slot's rectangle. It passes for both sides.
+
+Run `sector-quadrants-2026-11-03T19-38-54-198Z-3466068`: pass.
+
+A0 shows only the Alliance's empty slot; the Empire's empty slot is checked against shell 901 alone.
