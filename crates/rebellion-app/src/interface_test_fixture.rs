@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 95;
+const SCENARIO_COUNT: u8 = 96;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -299,6 +299,11 @@ pub enum Scenario {
     /// band's Destination released on it (A0 build-selection2/25:
     /// Coruscant's Defenses window takes the ships band's Destination).
     BuildSelectionDefensesDestination = 94,
+    /// As `BuildSelectionDefensesDestination` with a player's fleet moved to
+    /// the secondary system and its Fleet window in place of the Defenses
+    /// window: a band's Destination released on the fleet is refused (A0
+    /// build-selection2/30, 32, 35).
+    BuildSelectionFleetDestination = 95,
 }
 
 impl Scenario {
@@ -399,6 +404,7 @@ impl Scenario {
             92 => Self::PersonnelStates,
             93 => Self::ForceStatus,
             94 => Self::BuildSelectionDefensesDestination,
+            95 => Self::BuildSelectionFleetDestination,
             _ => return None,
         })
     }
@@ -437,6 +443,7 @@ impl Scenario {
                 | Self::BuildSelectionOverMaintenance
                 | Self::BuildSelectionDestination
                 | Self::BuildSelectionDefensesDestination
+                | Self::BuildSelectionFleetDestination
         )
     }
 
@@ -741,6 +748,30 @@ pub fn apply(
     if request.scenario == Scenario::BuildSelectionDestination {
         sectors.open_for_system(world, secondary, request.faction);
     }
+    if request.scenario == Scenario::BuildSelectionFleetDestination {
+        let own = world
+            .fleets
+            .iter()
+            .find(|(_, fleet)| fleet.is_alliance == player_is_alliance)
+            .map(|(key, _)| key);
+        if let Some(fleet) = own {
+            let from = world.fleets[fleet].location;
+            if let Some(system) = world.systems.get_mut(from) {
+                system.fleets.retain(|&key| key != fleet);
+            }
+            world.fleets[fleet].location = secondary;
+            world.systems[secondary].fleets.push(fleet);
+            let layout = cockpit.layout_for(640.0, 480.0);
+            let galaxy = layout.galaxy;
+            fleets.open(
+                world,
+                secondary,
+                (galaxy.x as i16 + 5, galaxy.y as i16 + 5),
+                request.faction,
+                layout,
+            );
+        }
+    }
     if request.scenario == Scenario::BuildSelectionDefensesDestination {
         let layout = cockpit.layout_for(640.0, 480.0);
         let galaxy = layout.galaxy;
@@ -762,6 +793,7 @@ pub fn apply(
             | Scenario::BuildSelectionOverMaintenance
             | Scenario::BuildSelectionDestination
             | Scenario::BuildSelectionDefensesDestination
+            | Scenario::BuildSelectionFleetDestination
             | Scenario::ProductionDelivery
     ) {
         systems.open(
@@ -771,7 +803,9 @@ pub fn apply(
             // gate releases on.
             if matches!(
                 request.scenario,
-                Scenario::BuildSelectionDestination | Scenario::BuildSelectionDefensesDestination
+                Scenario::BuildSelectionDestination
+                    | Scenario::BuildSelectionDefensesDestination
+                    | Scenario::BuildSelectionFleetDestination
             ) {
                 (360, 76)
             } else {
@@ -3070,6 +3104,7 @@ fn object_menu_report<'a>(
                 | Scenario::BatteryStatus
                 | Scenario::PersonnelStates
                 | Scenario::BuildSelectionDefensesDestination
+                | Scenario::BuildSelectionFleetDestination
         ) =>
         {
             egui_macroquad::egui::Pos2::ZERO
@@ -8271,6 +8306,7 @@ mod tests {
                 Scenario::PersonnelStates,
                 Scenario::ForceStatus,
                 Scenario::BuildSelectionDefensesDestination,
+                Scenario::BuildSelectionFleetDestination,
             ]
         );
     }

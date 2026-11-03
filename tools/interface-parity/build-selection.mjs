@@ -546,6 +546,34 @@ async function defensesDestinationCase(page, faction, directory) {
   return { home, target: menu.target_name };
 }
 
+// Fixture code 96 is Scenario::BuildSelectionFleetDestination (95) plus
+// one: the player's fleet at the secondary system, its Fleet window at the
+// galaxy view's left. A band's Destination released on the fleet is
+// refused: a production manager's must be a system (FUN_00537180, 1/0x25),
+// as A0 build-selection2/30, 32, 35 kept the band's.
+async function fleetDestinationCase(page, faction, directory, log) {
+  const fixtureCode = 96 | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const before = await production(page);
+  const ships = before.bands.find(({ area }) => area === "ships");
+  const home = ships.destination;
+  await bandOrder(page, ships, "destination_row", directory, "fleet-destination");
+  // The Fleet window's first entry, in its left list at (4..95, 29..).
+  await click(page, { x: faction.galaxy.x + 5 + 40, y: faction.galaxy.y + 5 + 42 });
+  await page.mouse.move(2, 2);
+  await log("the fleet release is refused",
+    /command=0x214 destination=production_destination status=refused reason=0x25$/);
+  await frames(page, 4);
+  const after = (await production(page)).bands.find(({ area }) => area === "ships").destination;
+  fs.writeFileSync(path.join(directory, "fleet-destination.png"), await page.screenshot({ animations: "disabled" }));
+  assert.equal(after, home, "the refused release changed the band's Destination");
+  return { home, after };
+}
+
 // Fixture code 88 is Scenario::BuildSelectionOverMaintenance (87) plus one.
 const overMaintenanceCode = 88;
 const A0_OVER_MAINTENANCE = { file: "11-build-selection.png", x: 255, y: 87 };
@@ -888,6 +916,16 @@ async function inspect(server, source, faction, executable) {
     // Destination on Chandrila; the others keep Coruscant).
     const destination = await destinationCase(page, faction, directory);
     const defensesDestination = await defensesDestinationCase(page, faction, directory);
+    const logged = async (description, pattern) => {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const line = consoleLines.find(({ text }) => pattern.test(text));
+        if (line) return line.text;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      throw new Error(`${description}: ${pattern} not logged`);
+    };
+    const fleetDestination = await fleetDestinationCase(page, faction, directory, logged);
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
@@ -904,6 +942,7 @@ async function inspect(server, source, faction, executable) {
       stepping,
       destination,
       defensesDestination,
+      fleetDestination,
       idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,

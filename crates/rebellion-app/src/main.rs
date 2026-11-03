@@ -7615,17 +7615,26 @@ async fn main() {
                                 // a band's own area.
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::Destination { system, area },
-                                    target:
-                                        ReleaseTarget::System(destination)
-                                        | ReleaseTarget::Fleet {
-                                            system: destination,
-                                            ..
-                                        },
+                                    target: ReleaseTarget::System(destination),
                                 }) => panel_actions.push(PanelAction::SetDestination {
                                     system,
                                     area,
                                     destination,
                                 }),
+                                // FUN_00537180: a production manager's
+                                // (0xa0..0xa2) Destination must be a system
+                                // (0x90..0x97), else 1/0x25; a fleet is
+                                // refused and the band keeps its own (A0
+                                // build-selection2/30, 32, 35).
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::Destination { .. },
+                                    target: ReleaseTarget::Fleet { .. },
+                                }) => {
+                                    macroquad::logging::info!(
+                                        "[interface] command=0x214 destination=production_destination status=refused reason={:#x}",
+                                        0x25
+                                    );
+                                }
                                 // FUN_0049e380 takes the destination;
                                 // the agent then finds the producer,
                                 // points it there and opens Build
