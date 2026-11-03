@@ -1305,7 +1305,7 @@ fn shows_alliance_headquarters(
 /// The sector window's title colour, `0x200f0f0` (`FUN_00459e30`); the A0
 /// captures show Moddell and Sesswenna titled yellow whatever their systems'
 /// sides.
-const SECTOR_TITLE_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
+const SECTOR_TITLE_COLOR: egui::Color32 = crate::theme::PALETTE_YELLOW;
 
 fn paint_resource(
     painter: &egui::Painter,
@@ -2897,7 +2897,9 @@ mod tests {
                 .map(|(_, colour, _)| *colour)
         };
         let sector = &world.sectors[world.systems[system].sector].name;
-        assert_eq!(colour(sector), Some(SECTOR_TITLE_COLOR), "{texts:?}");
+        // 0x200f0f0 in the 8-bit palette: A0 draws "Corellian" in
+        // (255, 255, 0) (personnel-states/24).
+        assert_eq!(colour(sector), Some(egui::Color32::from_rgb(255, 255, 0)), "{texts:?}");
         // DT_VCENTER in the title's 20 rows from y 2 with font 4 (tmHeight
         // 16, tmAscent 13): the baseline 2 + 2 + 13 down (A0
         // sector-windows/04-left's title matches at that line).

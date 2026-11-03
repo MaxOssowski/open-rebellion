@@ -68,7 +68,7 @@ const COUNT_WIDTH: f32 = 46.0;
 /// ([`crate::DEFAULT_FONT`]).
 const COUNT_FONT: u16 = crate::DEFAULT_FONT;
 /// A band's progress bar, `0x200f0f0` (`FUN_004acec0`).
-const PROGRESS_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
+const PROGRESS_COLOR: egui::Color32 = crate::theme::PALETTE_YELLOW;
 /// A facility picture sits 1 by 2 into its 69 by 40 cell.
 const PICTURE_OFFSET: (f32, f32) = (1.0, 2.0);
 /// An empty deposit is its 67 by 35 bitmap with no 69 by 40 canvas
@@ -195,7 +195,7 @@ pub const fn tab_resource(tab: SystemWindowTab, side: u8, pressed: bool, empty: 
 const RAIL_ICONS: [u32; 3] = [11530, 11531, 11532];
 
 /// The rail's name color, `0x200f0f0` (`FUN_00428d70`).
-const RAIL_NAME_COLOR: egui::Color32 = egui::Color32::from_rgb(0xf0, 0xf0, 0x00);
+const RAIL_NAME_COLOR: egui::Color32 = crate::theme::PALETTE_YELLOW;
 
 fn rail_icon(world: &GameWorld, system: SystemKey) -> u32 {
     match world
@@ -1215,9 +1215,8 @@ fn draw_system_window(
                         line(&shown.destination, BAND_DESTINATION, white);
 
                         // FUN_004acec0: the progress bar, 0x200f0f0 over
-                        // black. In COLORREF order that is red 0xf0, green
-                        // 0xf0, blue 0: yellow, as the rail's name in the
-                        // same colour shows in A0.
+                        // black: the palette's yellow, as A0 draws it
+                        // (personnel-states/24).
                         let (px, py, width, height) = PROGRESS_RECTS[index];
                         let bar = logical_rect(local, scale, px, py, width, height);
                         painter.rect_filled(bar, 0.0, egui::Color32::BLACK);

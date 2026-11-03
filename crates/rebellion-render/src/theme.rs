@@ -13,6 +13,13 @@ use egui_macroquad::egui::{self, Color32, FontData, FontDefinitions, FontFamily,
 // ── Color palette ────────────────────────────────────────────────────────────
 
 /// Deep space background — nearly black with a hint of blue.
+/// The original's `0x200f0f0`: a PALETTERGB (flag `0x02`) of (240, 240, 0),
+/// which the game's 8-bit palette draws as its nearest entry, (255, 255, 0).
+/// A0 shows that yellow for the sector title (`FUN_00459e30`), the rail's
+/// names (`FUN_00428d70`) and a band's progress bar (`FUN_004acec0`):
+/// a0-vm/rail/01..05, personnel-states/24.
+pub const PALETTE_YELLOW: Color32 = Color32::from_rgb(255, 255, 0);
+
 pub const BG_SPACE: Color32 = Color32::from_rgb(5, 5, 16);
 /// Slightly lighter panel background.
 pub const BG_PANEL: Color32 = Color32::from_rgb(12, 14, 24);
