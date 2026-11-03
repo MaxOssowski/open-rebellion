@@ -5230,13 +5230,14 @@
         {
           "id": "OBJ-04-C014",
           "requirement": "Fleet Finder Display opens Fleet window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-window-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-fleet-window-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-finder-display-pages/"
           ],
-          "note": "Display opens the Fleet window in both A0 and the Linux browser, but the placement differs (A0 x 365; the port's shot about x 240) and the README leaves the comparison unsettled.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03: Finder Display opens Mon Calamari's Fleet window and Defenses windows at A0's points (personnel-states/26-mm1 (305, 86); 15, 17, 18: (305, 86) and Pzob (118, 86)). FUN_0045c8e0 opens at the icon item's top left; the port used its centre (Pzob at 132) and now uses the top left; a_finders_defenses_window_opens_where_a0_puts_it checks the three origins on the original data, and encyclopedia-placement.mjs --window=finders opens the Fleet window from Display in the Linux browser.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-04-C015",

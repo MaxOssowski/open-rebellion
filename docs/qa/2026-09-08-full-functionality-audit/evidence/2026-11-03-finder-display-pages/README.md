@@ -43,3 +43,21 @@ port: special forces carry no hidden-mission flag.
   - Against the new one it passed: run `sector-quadrants-2026-11-02T23-49-25-430Z-1357942`.
 - `the_action_for_a_character_row_opens_character_and_sf_row_its_first_unit` (`personnel_finder.rs`) checks that the row picks the tab's first unit, for each tab.
 - Mutants on the change: 1 caught, 2 unviable.
+
+## Where the Finder's window opens (OBJ-04 C014, 2026-11-03)
+
+**A0** (Alliance, the Troop Finder's Display): Pzob's Defenses window at (118, 86); Mon Calamari's and Umgul's at (305, 86) (`personnel-states/15`, `17`, `18`). The Fleet Finder's Display opened Mon Calamari's Fleet window at (305, 86) too (`26-mm1`).
+
+**The source.**
+
+- `FUN_00429440` opens the window through `FUN_0045c8e0`, which passes the sector item's `+0x40`, `+0x44` to `FUN_0045aac0`. Those are the item's rect top left.
+- A double click on the icon passes the pointer instead (`FUN_004593e0` case `0x203`).
+- The window is then clamped into the galaxy view, so its y lands at 390 − 304 = 86.
+
+**The port before.** `quadrant_window_point` used the icon's centre, which put Pzob's window at x 132, 14 pixels right of A0's. The two right-hand windows were clamped to 305 either way, so they already matched.
+
+**The port now.** The point is the icon's top left.
+
+- `the_fleet_window_opens_from_the_fleet_icons_point` now expects (93, 76), the icon's corner. Its old (107, 86) was the centre.
+- `a_finders_defenses_window_opens_where_a0_puts_it` (rebellion-app, `--ignored`, the original data) opens the three systems' windows as the Finder does and asserts A0's three origins.
+- Mutants: 10 caught.
