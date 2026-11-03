@@ -28,3 +28,12 @@ In window coordinates, the facilities band's bar row is the same in A0 and in th
 The port's bar is `PROGRESS_RECTS[2]` = (56, 289, 160, 4).
 
 No browser case shows a band with progress above zero yet, so OBJ-09 C002 stays partial.
+
+## Update: the bar in the browser (OBJ-09 C002 passes)
+
+The ProductionDelivery fixture now opens the System window on its shipyard, whose ship is one point short of its two. The `delivery` case of `fleet-window.mjs` finds the band's bar drawn in (255, 255, 0) and part full, on both sides:
+
+- Alliance: a 144-pixel run (its Mon Calamari ship);
+- Empire: a 79-pixel run.
+
+Both are below the bar's 160 pixels. Run `fleet-window-2026-11-03T03-31-05-120Z-2041020`: pass. Batch `b37` passed every gate, `sector-windows` and `advisor-events` included.

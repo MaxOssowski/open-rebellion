@@ -6320,15 +6320,15 @@
         {
           "id": "OBJ-09-C002",
           "requirement": "building",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-palette-yellow/"
           ],
-          "note": "A building band shows its product, units and the yellow progress bar (0x200f0f0); build-selection.mjs (Arch Chromium) sees the band take the product. A0 shows only an idle band (Vjun 'Ship Construction' 0:0). 2026-11-03: A0 personnel-states/24 shows a building band (Mon Calamari, Orbital Shipyard for Drall) with its bar in (255, 255, 0) at the rows the port draws (289..292); the port's 0x200f0f0 is now the palette's (255, 255, 0). No browser case shows progress above zero yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/24: Mon Calamari's facilities band building an Orbital Shipyard, its product, 'Building: 1', destination and its bar in (255, 255, 0) at rows 289..292): the port's band lines match the confirmed band of build-selection2/07, and fleet-window.mjs 'delivery' (Linux, both sides) finds the shipyard band's bar part full in the same yellow (0x200f0f0 now drawn as the palette's yellow).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-09-C003",
