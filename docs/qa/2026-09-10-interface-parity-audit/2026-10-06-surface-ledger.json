@@ -2326,16 +2326,17 @@
         {
           "id": "CMD-04-C006",
           "requirement": "closed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-window-navigation.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
             "tools/interface-parity/sector-windows.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-rail-double-click-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-rail-double-click-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-system-window-close-a0/"
           ],
-          "note": "Close works in the browser gates; not compared with A0, and the UIP-B01 run was on macOS only. 2026-10-31: a sector window's close box closes it in A0 and in the port alike (sector-windows/05, sector-windows.mjs on Linux). A0 system-windows/11: the Fleet window's close box closes it; the System window's close box was not captured.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0: the sector window (sector-windows/05), the Fleet window (system-windows/11) and on 2026-11-03 the System window (personnel-states/31: Mon Calamari's Manufacturing closed by its close box, no rail slot) close by their close boxes; sector-windows.mjs and sector-quadrants.mjs 'open-system' (Linux, both sides: close box at (209, 3), the window neither open nor railed) do the same.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-04-C007",

@@ -1,0 +1,2 @@
+102e0c110fee8a272421b8283562fe0c41f0bd5b37d4bbfc7d1c129f30e09559  31-mon-calamari-system-closed.png
+de0232afb49bfc9f16d566004386651a16d4502b115c13e339a5c5d923df892a  31-mon-calamari-system-open.png

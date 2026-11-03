@@ -585,7 +585,21 @@ const cases = [
       const icon = faction.side === 1 ? 11530 : 11531;
       const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "system-rail-icon", directory) }];
       assertExact(railChecks);
-      return { at, opened, railChecks, textChecks };
+      // The icon's double click brings the window back; its close box at
+      // (209, 3) closes it, off the rail too (A0 personnel-states/31:
+      // Mon Calamari's System window gone after its close box).
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      await doubleClick(page, at);
+      const back = await until(page, "the double click restores the System window",
+        (o, value) => o.system_windows.some(([system]) => system === value), dat);
+      const [, again] = back.system_windows.find(([system]) => system === dat);
+      await click(page, { x: again[0] + 209 + 7, y: again[1] + 3 + 7 });
+      const closed = await until(page, "the close box closes the System window",
+        (o, value) => !o.system_windows.some(([system]) => system === value)
+          && !o.rail.some(([system, kind]) => system === value && kind === "system"), dat);
+      await stableScreen(page, directory, "system-closed");
+      return { at, opened, railChecks, textChecks, closed: closed.system_windows.length };
     },
   },
   {
