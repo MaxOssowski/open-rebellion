@@ -786,6 +786,21 @@ pub fn apply(
     if request.scenario == Scenario::BuildSelectionOverMaintenance {
         remove_production_facilities(world, rebellion_core::dat::Faction::of_alliance(player_is_alliance));
     }
+    if request.scenario == Scenario::BuildSelection {
+        // A built mine and refinery for the Mines and Refineries pages'
+        // pictures (FUN_00458fe0: 9001, 9030).
+        let side = rebellion_core::dat::Faction::of_alliance(player_is_alliance);
+        for (raw, is_mine) in [(0x2c00_0001, true), (0x2d00_0002, false)] {
+            let key = world
+                .production_facilities
+                .insert(rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(raw),
+                    side,
+                    is_mine,
+                });
+            world.systems[primary].production_facilities.push(key);
+        }
+    }
     if matches!(
         request.scenario,
         Scenario::System

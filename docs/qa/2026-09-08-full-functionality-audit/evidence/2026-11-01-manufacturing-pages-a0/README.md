@@ -104,3 +104,7 @@ classes). Run `build-selection-2026-11-01T16-38-56-685Z-1457249` (Linux Chromium
 4a295995f6cd48f73a2583e321f49e4d7caafb95cc47e11970483f240f3d82d5  alliance/class-list.png
 942f0078b607fea39c0d9d6d806afa02d713dc7c9abd9cb16d8918c051fcd74d  empire/class-list.png
 ```
+
+## Correction (2026-11-03)
+
+The deposit positions in the table above were measured from the title bar at (205, 93), not from the window at (203, 91). From the window, the deposits are at (146, 117), (8, 157), (77, 157), (146, 157) and (8, 197). That is the cell's corner, (0, 0); see `evidence/2026-11-03-facility-pictures-a0/`.

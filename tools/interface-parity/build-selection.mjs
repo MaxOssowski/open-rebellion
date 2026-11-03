@@ -862,7 +862,11 @@ async function inspect(server, source, faction, executable) {
     // (Coruscant) put 9014 and 9022 there pixel for pixel. The fixture's
     // System window stands at (225, 76); the tabs are 32 apart.
     const pages = [];
-    for (const [offset, picture, label] of [[-32, 9006, "shipyards"], [32, 9022, "construction-yards"], [0, 9014, "training"]]) {
+    // The fixture adds a mine and a refinery: 9030 and 9001 at the same
+    // place (A0 personnel-states/34, Mon Calamari), and the Mines page's
+    // first empty deposit, 9005, at the second cell's corner (8 + 69, 77).
+    for (const [offset, picture, label, cell] of [[-32, 9006, "shipyards"], [32, 9022, "construction-yards"],
+      [64, 9030, "refineries"], [96, 9001, "mines"], [96, 9005, "deposit", [77, 77]], [0, 9014, "training"]]) {
       await click(page, { x: tx + tw / 2 + offset, y: ty + th / 2 });
       await page.mouse.move(2, 2);
       await frames(page);
@@ -879,7 +883,8 @@ async function inspect(server, source, faction, executable) {
           const from = (y * 67 + x) * 4;
           const colour = bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2];
           if (colour === 0x0000ff) continue;
-          const at = ((76 + 79 + y) * shot.width + 225 + 9 + x) * 4;
+          const [cx, cy] = cell ?? [9, 79];
+          const at = ((76 + cy + y) * shot.width + 225 + cx + x) * 4;
           checked += 1;
           if (shot.data[at] !== bitmap.data[from] || shot.data[at + 1] !== bitmap.data[from + 1]
             || shot.data[at + 2] !== bitmap.data[from + 2]) differing += 1;

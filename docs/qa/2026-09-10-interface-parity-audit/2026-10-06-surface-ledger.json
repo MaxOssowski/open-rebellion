@@ -3380,14 +3380,15 @@
         {
           "id": "CMD-09-C001",
           "requirement": "mine active",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "The facility page draws mine active as STRATEGY 9001 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The facility page draws mine active as STRATEGY 9001 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route). Compared with A0: manufacturing/05 (Coruscant, five mines) and personnel-states/34 (Mon Calamari, two) at the cell's (1, 2), 0 opaque pixels off; build-selection.mjs's Mines page finds 9001 at (9, 79) exact on Linux for both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-09-C002",
@@ -3416,14 +3417,15 @@
         {
           "id": "CMD-09-C004",
           "requirement": "refinery active",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "The facility page draws refinery active as STRATEGY 9030 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The facility page draws refinery active as STRATEGY 9030 (FUN_00458fe0). Compared with A0: manufacturing/04 (Coruscant, two) and personnel-states/34 (Mon Calamari, five) at the cell's (1, 2), 0 opaque pixels off; build-selection.mjs's Refineries page finds 9030 at (9, 79) exact on Linux for both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-09-C005",
@@ -3480,9 +3482,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
           ],
-          "note": "The facility page draws shipyard en route as STRATEGY 9009 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
+          "note": "The facility page draws shipyard en route as STRATEGY 9009 (FUN_00458fe0: +0x50 bits 4 and 0x10). A0 personnel-states/34 (Mon Calamari, day 303) shows 9009 at (9, 79), 1 of 2345 pixels off; no browser case of an en-route shipyard yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5870,7 +5873,7 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-13-production-window-chrome/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-manufacturing-pages-a0/"
           ],
-          "note": "Compared with A0 on 2026-11-01 (manufacturing/05): five mines (9001) on A0's grid and the empty deposits (9005) at their cell's (0, -2), which the port now uses (DEPOSIT_OFFSET); unit tests check both positions. Earlier: The mines page renders keyed (STRATEGY 9001..9033) in the browser (2026-10-13, Linux); no A0 mines page.",
+          "note": "Compared with A0 on 2026-11-01 (manufacturing/05) and 2026-11-03 (personnel-states/34, Mon Calamari): mines (9001) on A0's grid and the empty deposits (9005) at their cell's corner (0, 0); the 2026-11-01 reading of (0, -2) measured the deposits from the title bar and was corrected (DEPOSIT_OFFSET). build-selection.mjs checks a mine at (9, 79) and a deposit at (77, 77) on Linux for both sides. Earlier: The mines page renders keyed (STRATEGY 9001..9033) in the browser (2026-10-13, Linux); no A0 mines page.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155)."
         },
         {
