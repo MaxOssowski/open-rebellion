@@ -4337,74 +4337,80 @@
         {
           "id": "OBJ-01-C002",
           "requirement": "systems",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The systems filter is one of the seven TEXTSTRA family filters (P65) checked in the 22 two-faction browser states on the macOS Chrome for Testing build; no A0 capture of this category. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/category-1..6, Alliance day 185): personnel-states.mjs (Linux, both sides) clicks the 'System Database' icon and finds A0's label, first eight rows and first-row choice. Fixed on the way: galaxy systems matched by record id (the index had no systems), a new category chooses its first row unless it holds the chosen object (Topic box keeps its text), hidden MISSNSD classes (+0x5c) left out.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C003",
           "requirement": "ships",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The ships filter is one of the seven TEXTSTRA family filters (P65) checked in the 22 two-faction browser states on the macOS Chrome for Testing build; no A0 capture of this category. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/category-1..6, Alliance day 185): personnel-states.mjs (Linux, both sides) clicks the 'Ship Database' icon and finds A0's label, first eight rows and first-row choice. Fixed on the way: galaxy systems matched by record id (the index had no systems), a new category chooses its first row unless it holds the chosen object (Topic box keeps its text), hidden MISSNSD classes (+0x5c) left out.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C004",
           "requirement": "facilities",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The facilities filter is one of the seven TEXTSTRA family filters (P65) checked in the 22 two-faction browser states on the macOS Chrome for Testing build; no A0 capture of this category. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/category-1..6, Alliance day 185): personnel-states.mjs (Linux, both sides) clicks the 'Facilities Database' icon and finds A0's label, first eight rows and first-row choice. Fixed on the way: galaxy systems matched by record id (the index had no systems), a new category chooses its first row unless it holds the chosen object (Topic box keeps its text), hidden MISSNSD classes (+0x5c) left out.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C005",
           "requirement": "missions",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The missions filter is one of the seven TEXTSTRA family filters (P65) checked in the 22 two-faction browser states on the macOS Chrome for Testing build; no A0 capture of this category. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/category-1..6, Alliance day 185): personnel-states.mjs (Linux, both sides) clicks the 'Missions Database' icon and finds A0's label, first eight rows and first-row choice. Fixed on the way: galaxy systems matched by record id (the index had no systems), a new category chooses its first row unless it holds the chosen object (Topic box keeps its text), hidden MISSNSD classes (+0x5c) left out.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C006",
           "requirement": "troops",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The troops filter is one of the seven TEXTSTRA family filters (P65) checked in the 22 two-faction browser states on the macOS Chrome for Testing build; no A0 capture of this category. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/category-1..6, Alliance day 185): personnel-states.mjs (Linux, both sides) clicks the 'Troop Database' icon and finds A0's label, first eight rows and first-row choice. Fixed on the way: galaxy systems matched by record id (the index had no systems), a new category chooses its first row unless it holds the chosen object (Topic box keeps its text), hidden MISSNSD classes (+0x5c) left out.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C007",
           "requirement": "personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-catalog.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-30-encyclopedia-index-shell.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The personnel filter is one of the seven TEXTSTRA family filters (P65) checked in the 22 two-faction browser states on the macOS Chrome for Testing build; no A0 capture of this category. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/category-1..6, Alliance day 185): personnel-states.mjs (Linux, both sides) clicks the 'Personnel Database' icon and finds A0's label, first eight rows and first-row choice. Fixed on the way: galaxy systems matched by record id (the index had no systems), a new category chooses its first row unless it holds the chosen object (Topic box keeps its text), hidden MISSNSD classes (+0x5c) left out.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C008",
@@ -4431,35 +4437,38 @@
         {
           "id": "OBJ-01-C010",
           "requirement": "previous",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-topic-view/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-topic-view/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "Previous 0x83 steps within the category (FUN_0045fd20, FUN_0045fe60), covered by unit tests; no A0 or browser run presses it.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/topic-step-2..6: Abduction, Previous to A-wing, then Previous grey): personnel-states.mjs (Linux, both sides) double-clicks Abduction (the double click was not handled before: FUN_0045da70 0x309 -> 0x67) and steps Previous to A-wing with Previous disabled and inert (FUN_0045fd20).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C011",
           "requirement": "next",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-topic-view/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-topic-view/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "Next 0x84 steps within the category (FUN_0045fd20, FUN_0045fe60), covered by unit tests; no A0 or browser run presses it.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/topic-step-3: Next from Abduction shows Ackbar): personnel-states.mjs (Linux, both sides) presses Next and reads Ackbar with both arrows enabled.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C012",
           "requirement": "context open",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-contextual-entry/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-contextual-entry/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-encyclopedia-categories-a0/"
           ],
-          "note": "The object menu's Encyclopedia opens at the object's topic (FUN_0045d400), unit-tested only; the browser GID catalog has no menu-entry journey and A0 was not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Compared with A0 on 2026-11-03 (encyclopedia/ctx2, ctx3: Luke's menu Encyclopedia shows his topic): the port opened the index because a world character's DatId has no family byte; resolve_object maps it, and status-window.mjs 'force-character' (Linux, both sides) chooses Encyclopedia from the agent's menu and reads its topic.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-01-C013",
@@ -5189,11 +5198,13 @@
         {
           "id": "OBJ-04-C012",
           "requirement": "Troop Finder Display opens System window",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Display routing to the System window is unit-tested; neither A0 nor a Linux browser case records it (the 2026-10-06 batch ran on macOS only).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-finder-display-pages/"
+          ],
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/15, 17, 18: a Troop Finder row's double click opens the system's Defenses window on its Trooper Regiments page): the port opened the Personnel page; FinderTarget::Regiments now shows the regiment page, and sector-quadrants.mjs 'troop-finder-display' (Linux, both sides) asserts it (failed before the fix).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-04-C013",
