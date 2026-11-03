@@ -288,10 +288,13 @@ const cases = [
   {
     name: "abort",
     code: QUADRANTS,
-    // FUN_00521600: Abort takes only running missions (phase 8). The
-    // fixture's missions are ordered on day 0, so the icon's Abort is
-    // disabled until a day runs them to their timers; then the
-    // checkmark ends the player's mission with code 2 (FUN_005233a0).
+    // FUN_00521600: Abort takes only running missions (phase 8), but the
+    // menu offers it for any of the side's missions (FUN_0051fe20 checks
+    // no phase; A0 personnel-states/37, Mon Calamari's research missions).
+    // The fixture's missions are ordered on day 0, so the icon's Abort is
+    // offered and refused without a question (FUN_0051ff30, FUN_00487c90)
+    // until a day runs them to their timers; then the checkmark ends the
+    // player's mission with code 2 (FUN_005233a0).
     async run(page, faction, directory, log, setup) {
       const icon = setup.quadrants.find((entry) => entry.system_dat_id === setup.primary_dat_id
         && entry.quadrant === "missions");
@@ -300,7 +303,7 @@ const cases = [
       const at = { x: Math.round(left) + 24, y: Math.round(top) + 9 };
       const before = await openMenu(page, at, directory, "ordered");
       assert.notEqual(before.abort_row, null, JSON.stringify(before));
-      assert.equal(before.abort_enabled, false, `an ordered mission is not yet abortable: ${JSON.stringify(before)}`);
+      assert.equal(before.abort_enabled, true, `the menu offers Abort for an ordered mission: ${JSON.stringify(before)}`);
       // A disabled row is drawn in 0x808080 (FUN_004aba60), as A0
       // status/02-menu.png greys an enemy ship's Move and Scrap with
       // (128, 128, 128); an enabled row stays white.
@@ -322,13 +325,19 @@ const cases = [
         return counts;
       };
       const abortInk = rowInk(before.abort_row);
-      // The glyphs are anti-aliased, so only their cores reach 128.
-      assert.ok(abortInk.grey >= 10 && abortInk.brightest === 128,
-        `Abort is drawn grey: ${JSON.stringify(abortInk)}`);
+      // The short word's glyph cores: white, none of the grey's 128.
+      assert.ok(abortInk.white >= 10 && abortInk.grey === 0 && abortInk.brightest === 255,
+        `Abort is drawn white: ${JSON.stringify(abortInk)}`);
       const encyclopediaInk = rowInk(0);
       assert.ok(encyclopediaInk.white > 20, `Encyclopedia is drawn white: ${JSON.stringify(encyclopediaInk)}`);
-      await page.keyboard.press("Escape");
-      await frames(page, 2);
+      // Chosen, the order is refused (0x41, not yet phase 8) and nothing
+      // asks: A0 personnel-states/37's menu closes with no question.
+      await choose(page, before, before.abort_row, "Abort");
+      const refused = await log.logged("the ordered mission's Abort is refused",
+        /command=0x250 missions=\[\d+\] status=refused reason=0x41$/);
+      await frames(page, 4);
+      await shot(page, directory, "refused");
+      assert.equal(log.times(/command=0x250 destination=abort/).length, 0, "a refused Abort aborted a mission");
       await setSpeed(page, setup, SPEED_ROWS.medium);
       // Medium is 3 s a day (12 quarter-second sub-ticks, FUN_00415e20;
       // A0 3.22 s, ghidra/notes/game-speed-timing.md); two days start the
@@ -394,7 +403,7 @@ const cases = [
       await click(page, confirmationCheckmark(faction));
       const aborted = await log.logged("the checkmark aborts the mission",
         /command=0x250 destination=abort mission=\d+ result=true$/);
-      return { before, running, asked, aborted, alert, medium_day_seconds: spacing };
+      return { before, refused, running, asked, aborted, alert, medium_day_seconds: spacing };
     },
   },
 ];

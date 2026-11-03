@@ -119,7 +119,13 @@ into sub-orders").
 - The missions icon's Abort (`0x250`, order `FUN_00580580`, vtable
   `0x669b70`) is enabled when the player has a visible mission in the
   system (`quadrant_icons::own_visible_missions`, the team of
-  `FUN_00512700` kind `0x40` filtered to the side). It asks with TEXTSTRA
+  `FUN_00512700` kind `0x40` filtered to the side): its `+0x18`
+  (`FUN_0051fe20` -> `FUN_00553770`) refuses only an empty team (`0x16`) or
+  mixed sides (`0x14`) and checks no phase. Its validator `+0x1c`
+  (`FUN_0051ff30`) adds `FUN_00553960`: each event `0x261`'s `+0x1c`
+  (`FUN_0054e240`) -> the mission's `+0x1c4` (`FUN_00521700`) -> `+0x1c0`
+  (`FUN_00521600`). A refused Abort goes to `FUN_00487c90` and asks
+  nothing (A0 personnel-states/37, 2026-11-03). A passing one asks with TEXTSTRA
   `0x7052` and picture `0x40c`/`0x40d` (`FUN_0049a350` case `0x250`); the
   answer builds event `0x261` (`FUN_0054e090`, vtable `0x661f20`), which
   checks each mission again through slot `+0x1c0` (`FUN_00521600`: the
