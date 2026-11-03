@@ -585,21 +585,47 @@ const cases = [
       const icon = faction.side === 1 ? 11530 : 11531;
       const railChecks = [{ id: icon, ...compareIcon(screenshot, slot, resource(source, icon), "system-rail-icon", directory) }];
       assertExact(railChecks);
+      // The rail's slots are fixed (FUN_00428b40, FUN_00429020): the
+      // Defenses window minimized next takes the second slot; restoring the
+      // System window leaves its slot empty, the Defenses window where it
+      // was, and a second minimize fills the gap (A0 personnel-states/32).
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      const defenses = await openDefenses(page, setup, "primary");
+      const defensesOrigin = corner(defenses.window);
+      await click(page, { x: defensesOrigin[0] + 210, y: defensesOrigin[1] + 9 });
+      const both = await until(page, "the Defenses window takes the next slot",
+        (o, value) => o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat);
+      const defensesSlot = both.rail.find(([system, kind]) => system === dat && kind === "defenses")[2];
+      assert.notDeepEqual(defensesSlot, slot, JSON.stringify(both.rail));
       // The icon's double click brings the window back; its close box at
       // (209, 3) closes it, off the rail too (A0 personnel-states/31:
       // Mon Calamari's System window gone after its close box).
-      await page.mouse.move(2, 2);
-      await page.waitForTimeout(500);
-      await doubleClick(page, at);
-      const back = await until(page, "the double click restores the System window",
-        (o, value) => o.system_windows.some(([system]) => system === value), dat);
-      const [, again] = back.system_windows.find(([system]) => system === dat);
+      const restore = async (label) => {
+        await page.mouse.move(2, 2);
+        await page.waitForTimeout(500);
+        await doubleClick(page, at);
+        return until(page, label,
+          (o, value) => o.system_windows.some(([system]) => system === value)
+            && !o.rail.some(([system, kind]) => system === value && kind === "system"), dat);
+      };
+      let back = await restore("the double click restores the System window");
+      const gap = back.rail.find(([system, kind]) => system === dat && kind === "defenses");
+      assert.deepEqual(gap?.[2], defensesSlot, JSON.stringify(back.rail));
+      let [, again] = back.system_windows.find(([system]) => system === dat);
+      await click(page, { x: again[0] + 195 + 7, y: again[1] + 3 + 7 });
+      const refilled = await until(page, "a second minimize fills the gap",
+        (o, value) => o.rail.some(([system, kind]) => system === value && kind === "system"), dat);
+      const refilledSlot = refilled.rail.find(([system, kind]) => system === dat && kind === "system")[2];
+      assert.deepEqual(refilledSlot, slot, JSON.stringify(refilled.rail));
+      back = await restore("the double click restores the System window again");
+      [, again] = back.system_windows.find(([system]) => system === dat);
       await click(page, { x: again[0] + 209 + 7, y: again[1] + 3 + 7 });
       const closed = await until(page, "the close box closes the System window",
         (o, value) => !o.system_windows.some(([system]) => system === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "system"), dat);
       await stableScreen(page, directory, "system-closed");
-      return { at, opened, railChecks, textChecks, closed: closed.system_windows.length };
+      return { at, opened, railChecks, textChecks, slots: { system: slot, defenses: defensesSlot }, closed: closed.system_windows.length };
     },
   },
   {

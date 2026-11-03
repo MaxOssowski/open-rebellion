@@ -2421,14 +2421,15 @@
         {
           "id": "CMD-04-C013",
           "requirement": "twelve-slot reference-rail capacity",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-reference-rail/",
-            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md"
+            "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-rail-slots-a0/"
           ],
-          "note": "Twelve slot rects from SetRect at 0x421f3b/0x42207e (REFERENCE_RAIL_SLOTS); the port drops the oldest when full, which is untraced; no A0 of a full rail.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Twelve slot rects from SetRect at 0x421f3b/0x42207e (REFERENCE_RAIL_SLOTS). Compared with A0 on 2026-11-03 (personnel-states/32, 33): a restored window leaves its slot empty and a minimize fills the first empty slot; the thirteenth window replaces the oldest minimized in its own slot (FUN_00428b40, FUN_00429020). The port's rail is now twelve fixed slots (system_window.rs, unit test); sector-quadrants.mjs 'open-system' checks the gap and its refill on Linux for both sides; the full-rail replacement is unit-tested, not run in the browser.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-04-C014",
