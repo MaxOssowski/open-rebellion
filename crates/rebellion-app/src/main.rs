@@ -5046,6 +5046,7 @@ async fn main() {
                         }
                     }
 
+                    rebellion_render::draw_sector_hover_label(ctx, &world, galaxy_camera, &map_state);
                     draw_gid_caption(
                         ctx,
                         galaxy_camera,

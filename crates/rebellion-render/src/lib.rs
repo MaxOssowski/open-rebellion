@@ -288,6 +288,9 @@ pub fn galaxy_camera(
 pub struct GalaxyMapState {
     pub selected_system: Option<SystemKey>,
     pub hovered_system: Option<SystemKey>,
+    /// The sector item under the pointer (`FUN_00422ce0` `+0x25c`), whose
+    /// label the galaxy view draws (`draw_sector_hover_label`).
+    pub hovered_sector: Option<rebellion_core::ids::SectorKey>,
     /// System activated by a primary release in the current frame.
     /// Consumers clear this by drawing the next map frame.
     pub activated_system: Option<SystemKey>,
@@ -340,6 +343,7 @@ impl Default for GalaxyMapState {
         Self {
             selected_system: None,
             hovered_system: None,
+            hovered_sector: None,
             activated_system: None,
             press_on_map: false,
             pointer_blocked: false,
@@ -470,6 +474,9 @@ pub fn draw_galaxy_map(
 
     // ── Find hovered system (reset each frame) ────────────────────────────────
     state.hovered_system = None;
+    state.hovered_sector = in_viewport
+        .then(|| hovered_sector(world, cam, (mx, my)))
+        .flatten();
     let hover_radius = cam.scale_pixels(8.5);
 
     // ── Draw systems ──────────────────────────────────────────────────────────
@@ -523,6 +530,76 @@ pub fn draw_galaxy_map(
     }
 
     cam
+}
+
+/// A sector item's place and hit rectangle on screen (`FUN_00441520`): its
+/// top left is the sector's map point, and it reaches 8 past the farthest
+/// of its systems' points, right and down. Each point is a map item's
+/// cell corner, as the GID marks hang from it.
+#[must_use]
+pub fn sector_item_rect(
+    world: &GameWorld,
+    cam: CameraView,
+    sector: &rebellion_core::world::Sector,
+) -> egui::Rect {
+    let corner = |x: u16, y: u16| {
+        let (sx, sy) = cam.to_screen(f32::from(x), f32::from(y));
+        let offset = GALAXY_MAP_OFFSET.0 * cam.display_scale;
+        (sx - offset, sy - offset)
+    };
+    let (left, top) = corner(sector.x, sector.y);
+    let (mut right, mut bottom) = (left, top);
+    for system in sector.systems.iter().filter_map(|&key| world.systems.get(key)) {
+        let (x, y) = corner(system.x, system.y);
+        right = right.max(x);
+        bottom = bottom.max(y);
+    }
+    let pad = 8.0 * cam.display_scale;
+    egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right + pad, bottom + pad))
+}
+
+/// The first sector item whose rectangle holds `point` (`FUN_00422ce0`'s
+/// `WM_MOUSEMOVE` walks the items with `PtInRect`).
+#[must_use]
+pub fn hovered_sector(
+    world: &GameWorld,
+    cam: CameraView,
+    point: (f32, f32),
+) -> Option<rebellion_core::ids::SectorKey> {
+    let point = egui::pos2(point.0, point.1);
+    world.sectors.iter().find_map(|(key, sector)| {
+        let rect = sector_item_rect(world, cam, sector);
+        // PtInRect: the right and bottom edges are outside.
+        (point.x >= rect.min.x && point.y >= rect.min.y && point.x < rect.max.x && point.y < rect.max.y)
+            .then_some(key)
+    })
+}
+
+/// The hovered sector's label (`FUN_00422ce0` `WM_PAINT`: the item at
+/// `+0x25c` draws its text at its place): the sector's name and TEXTSTRA
+/// 5947 "\nSector", font 5, format 0 (left, top), in `0x200f0f0`
+/// (`FUN_00441520`). A0 gid-selection/01: "Moddell" over "Sector" in
+/// yellow at the Moddell item.
+pub fn draw_sector_hover_label(
+    ctx: &egui::Context,
+    world: &GameWorld,
+    cam: CameraView,
+    state: &GalaxyMapState,
+) {
+    let Some(sector) = state.hovered_sector.and_then(|key| world.sectors.get(key)) else {
+        return;
+    };
+    let rect = sector_item_rect(world, cam, sector);
+    let painter = ctx.layer_painter(egui::LayerId::background());
+    theme::paint_gdi_text(
+        &painter,
+        egui::Rect::from_min_size(rect.min, egui::vec2(200.0, 40.0) * cam.display_scale),
+        cam.display_scale,
+        5,
+        &format!("{}\nSector", sector.name),
+        theme::PALETTE_YELLOW,
+        (theme::GdiAlign::Left, theme::GdiVAlign::Top),
+    );
 }
 
 /// Paint the active GID filter's caption across the top of the map
@@ -1896,6 +1973,72 @@ pub fn draw_system_info_panel(ctx: &egui::Context, world: &GameWorld, state: &Ga
 #[cfg(test)]
 mod interaction_tests {
     use super::*;
+
+    #[test]
+    fn a_sector_item_spans_its_point_to_its_farthest_system_and_holds_the_pointer() {
+        // FUN_00441520: the item's top left is the sector's point and its
+        // rectangle reaches 8 past the farthest system's; FUN_00422ce0 hovers
+        // the first item holding the pointer (PtInRect: right and bottom
+        // outside). A0 gid-selection/01: "Moddell Sector" over its cluster.
+        let mut world = GameWorld::default();
+        let sector = world.sectors.insert(rebellion_core::world::Sector {
+            dat_id: rebellion_core::ids::DatId::new(36),
+            name: "Moddell".into(),
+            group: rebellion_core::dat::SectorGroup::Core,
+            x: 200,
+            y: 200,
+            systems: Vec::new(),
+        });
+        let mut add = |x, y| {
+            let key = world.systems.insert(System {
+                last_arrival: None,
+                dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+                name: "Vjun".into(),
+                sector,
+                x,
+                y,
+                exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+                popularity_alliance: 0.5,
+                popularity_empire: 0.5,
+                is_populated: true,
+                total_energy: 0,
+                raw_materials: 0,
+                espionage_rating: 0.0,
+                fleets: vec![],
+                ground_units: vec![],
+                special_forces: vec![],
+                defense_facilities: vec![],
+                manufacturing_facilities: vec![],
+                production_facilities: vec![],
+                fighters: Vec::new(),
+                is_headquarters: false,
+                is_destroyed: false,
+                control: ControlKind::Uncontrolled,
+            });
+            world.sectors[sector].systems.push(key);
+        };
+        add(260, 230);
+        add(240, 300);
+        // The aperture as the viewport: the canvas origin is the screen's.
+        let cam = galaxy_camera(cockpit::galaxy_aperture(CockpitFaction::Alliance), 1.0, CockpitFaction::Alliance);
+        let rect = sector_item_rect(&world, cam, &world.sectors[sector]);
+        // (0x15, 0x19) plus floor(x * 607 / 1024), floor(y * 437 / 1024):
+        // the sector's (118, 85); the farthest systems' x 154 (260) and
+        // y 128 (300), plus 8.
+        assert_eq!(rect.min, egui::pos2(21.0 + 118.0, 25.0 + 85.0));
+        assert_eq!(rect.max, egui::pos2(21.0 + 154.0 + 8.0, 25.0 + 128.0 + 8.0));
+        assert_eq!(hovered_sector(&world, cam, (140.0, 111.0)), Some(sector));
+        assert_eq!(hovered_sector(&world, cam, (rect.max.x, 120.0)), None);
+        assert_eq!(hovered_sector(&world, cam, (138.0, 120.0)), None);
+        assert_eq!(hovered_sector(&world, cam, (150.0, rect.max.y)), None, "the bottom edge");
+        assert_eq!(hovered_sector(&world, cam, (150.0, rect.max.y - 1.0)), Some(sector));
+        // At twice the size every length doubles from the canvas origin.
+        let (ax, ay, aw, ah) = cockpit::galaxy_aperture(CockpitFaction::Alliance);
+        let cam2 = galaxy_camera((ax * 2.0, ay * 2.0, aw * 2.0, ah * 2.0), 2.0, CockpitFaction::Alliance);
+        let rect2 = sector_item_rect(&world, cam2, &world.sectors[sector]);
+        assert_eq!(rect2.min, egui::pos2(rect.min.x * 2.0, rect.min.y * 2.0));
+        assert_eq!(rect2.max, egui::pos2(rect.max.x * 2.0, rect.max.y * 2.0));
+    }
 
     #[test]
     #[expect(

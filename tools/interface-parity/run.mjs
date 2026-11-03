@@ -671,6 +671,32 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
     const capture = await page.screenshot({ path: path.join(folder, "system-hover.png"), animations: "disabled" });
     probes.push({ type: "system-hover", dat_id: hovered.system_dat_id,
       name: hovered.system_name, screenshot_sha256: sha256(capture) });
+    // The hovered sector item's label (FUN_00441520, FUN_00422ce0 WM_PAINT):
+    // "Moddell" over "Sector", font 5, in the palette's yellow, from the
+    // item's place. A0 gid-selection/01 (Alliance, pointer at (155, 123)):
+    // its (255, 255, 0) ink spans (135, 91)..(183, 116).
+    if (viewport.width === 640 && viewport.height === 480 && faction === "alliance") {
+      const at = point(155, 123);
+      await page.mouse.move(at.x, at.y);
+      const labelled = PNG.sync.read(await stableInteractionFrame(page, folder, "sector-hover-label"));
+      let box = null;
+      for (let y = 70; y < 118; y += 1) {
+        for (let x = 90; x < 260; x += 1) {
+          const i = (y * labelled.width + x) * 4;
+          if (labelled.data[i] === 255 && labelled.data[i + 1] === 255 && labelled.data[i + 2] === 0) {
+            box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+              : [x, y, x, y];
+          }
+        }
+      }
+      const a0 = [135, 91, 183, 116];
+      assert.ok(box && Math.abs(box[0] - a0[0]) <= 2 && Math.abs(box[1] - a0[1]) <= 2
+        && Math.abs(box[3] - a0[3]) <= 2
+        && Math.abs((box[2] - box[0]) / (a0[2] - a0[0]) - 1) < 0.15,
+        `the Moddell label's ink ${JSON.stringify(box)} against A0 ${JSON.stringify(a0)}`);
+      probes.push({ type: "sector-hover-label", port: box, a0 });
+      await page.mouse.move(system.x, system.y);
+    }
     // FUN_00422ce0 opens the sector on WM_LBUTTONUP: a held press shows
     // only the hover label, the release opens the window (A0
     // gid-selection/01, 02: "Moddell Sector" while held, Moddell's window
