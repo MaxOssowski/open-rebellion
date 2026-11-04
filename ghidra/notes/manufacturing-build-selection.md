@@ -132,7 +132,12 @@ code passes the empty id as the normal bitmap. Counts are of the shown side.
     6195 "Facilities Under Construction";
   - at (5, 16): the product's name, or 6198 "No Ships are being built",
     6199 "No Troops in training", 6200 "No Facilities are being built";
-  - with a product: its GOKRES mini (class `+0x30 & 0xfff`) at (40, 15) and
+  - with a product: its GOKRES picture, class `+0x30 & 0xfff` (`FUN_00457c90`
+    loads it through `FUN_005fbd20(gokres, id, 10)`), at (40, 15). That is
+    the class's 122 by 50 portrait, not its mini (`(class & 0xfff) +
+    0x4000`, `FUN_0042c3b0`): A0 build-selection2/07 shows the Imperial
+    Army Regiment's portrait 1154 there, 0 of 580 pixels off between its
+    lines (2026-11-04). With it come
     6209 "Building: " (ships, facilities) or 6208 "Training: " with the
     units left (`+0x58`) at (5, 47);
   - at (5, 57): 6201 "Destination: " and the destination system's name.
@@ -182,9 +187,12 @@ manual's Build Selection figure. The class vtable is `PTR_FUN_00658db8`.
 `FUN_0052d720`, and filters it for the selected production manager through
 `FUN_00537ff0`. For each buildable class it:
 
-1. reads the class miniature resource from `class + 0x30 & 0xfff`;
+1. reads the class picture from `class + 0x30 & 0xfff`, its portrait (A0
+   build-selection/10: the Construction Yard's 258; pending-facility/32:
+   the Mine's 1, 0 sampled pixels off, 2026-11-04);
 2. centers the miniature in a 195 by 63 buffer;
-3. attaches the class name; and
+3. attaches the class name, which A0 inks in the window's rows 75..84 for
+   both portraits (hyp: a fixed place in the item); and
 4. appends it to the drop-down list.
 
 `FUN_00537ff0` scans production-manager families `0xa0..0xaf`, observes their

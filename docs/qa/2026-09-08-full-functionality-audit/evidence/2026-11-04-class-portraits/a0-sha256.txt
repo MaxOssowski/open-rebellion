@@ -1,0 +1,4 @@
+a7fe19489ea0786c7fa36a4fdaf80e5e43ba9bb1b84f8be50beb1afbbc81e5ad  build-selection/10-build.png
+2f7d11ceb874202e386df5fc265da36e085a5252e7f75c31dce89959c097b4d8  build-selection2/07-confirmed.png
+a1b42d333c209a5c5b88a1b0ceb40aeb21e95eb45050dc87371be93222c8dc4a  pending-facility/30-pzob-bands.png
+824f69ee9d199b630115f15ddeb1e5b09e59fc0bb8bf2601a5edf18a9a92b71c  pending-facility/32-mine-build-selection.png

@@ -6347,15 +6347,17 @@
         {
           "id": "OBJ-09-C001",
           "requirement": "queued",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
             "ghidra/notes/manufacturing-build-selection.md",
-            "tools/interface-parity/build-selection.mjs"
+            "tools/interface-parity/build-selection.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-class-portraits/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/"
           ],
-          "note": "Confirm puts the units on the band (FUN_00458080 band lines, unit counts). The band text is compared with A0 system-vjun.png only for an idle band; no queued-band A0 capture, and the browser chrome gate fails 6 pixels.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Confirm puts the units on the band (FUN_00458080, FUN_00457c90): the product's name at (5, 16), its portrait (GOKRES class +0x30 & 0xfff, the mini less 0x4000) at (40, 15), \"Training: N\" or \"Building: N\" at (5, 47) and the destination at (5, 57). Against A0 build-selection2/07 (the Empire's queued Imperial Army Regiment, window at (203, 91)) build-selection.mjs finds the unselected strip and the portrait between the lines exact (0 of 580), on Linux for both sides against the bitmap; the lines ink within the accepted text deviation (about a pixel). A0 pending-facility/30 shows Pzob's queued A-wing and refinery bands the same way (2026-11-04).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-09-C002",
@@ -6552,9 +6554,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-idle/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-class-portraits/"
           ],
-          "note": "Training through a training facility: A0 opened Build Selection on Coruscant's training facility and agent-build.mjs (Arch Chromium) queues a regiment; the training band/progress itself has no A0 capture and the Build Selection chrome gate fails 6 pixels. 2026-11-04: a regiment in training stands in its destination's Defenses window, over its backdrop 11513 and the mark 11570/11572. Its Status reads 34673 \"Training\" (FUN_00445280, 0x8771). build-selection.mjs checks the cell, the menu and the Status on Linux for both sides. No A0 of a regiment in training.",
+          "note": "Training through a training facility: A0 opened Build Selection on Coruscant's training facility and agent-build.mjs (Arch Chromium) queues a regiment; the training band/progress itself has no A0 capture and the Build Selection chrome gate fails 6 pixels. 2026-11-04: a regiment in training stands in its destination's Defenses window, over its backdrop 11513 and the mark 11570/11572. Its Status reads 34673 \"Training\" (FUN_00445280, 0x8771). build-selection.mjs checks the cell, the menu and the Status on Linux for both sides. No A0 of a regiment in training. 2026-11-04: the training band's portrait matches A0 build-selection2/07 exactly (build-selection.mjs bandPortrait); its progress bar is not compared with A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
