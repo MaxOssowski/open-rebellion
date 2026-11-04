@@ -551,12 +551,13 @@ pub mod resources {
         /// The GID fleet displays' mark when both sides have fleets there
         /// (`FUN_0042b330`, `0x27b0`).
         pub const GID_BOTH_SIDES: u32 = 10160;
-        /// Additional native GID selection/special marker, not yet assigned.
-        pub const GID_SPECIAL: u32 = 10166;
+        /// The burst under a headquarters system's GID mark (`FUN_00426ee0`
+        /// loads `0x27b6` at the view's `+0x2c8`; `FUN_0042cde0` draws it
+        /// for item flag 8).
+        pub const GID_HEADQUARTERS: u32 = 10166;
         /// Compact strategic-map legend control.
         pub const GID_COMPACT_LEGEND: u32 = 10168;
         pub const GID_MULTI_FACTION_FLEET: u32 = 10160;
-        pub const GID_SELECTION: u32 = 10166;
         pub const GID_HOVER: u32 = 10167;
         pub const GID_SPECIAL_ALLIANCE: u32 = 10169;
         pub const GID_SPECIAL_EMPIRE: u32 = 10170;

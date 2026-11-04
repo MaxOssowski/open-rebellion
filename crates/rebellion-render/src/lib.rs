@@ -511,6 +511,10 @@ pub fn draw_galaxy_map(
             if !cam.contains_with_margin(sx, sy, cam.scale_pixels(20.0)) {
                 continue;
             }
+            if let Some(burst) = gid_headquarters_burst(system, resource_id) {
+                draw_gid_marker(cache, burst, cam, sx, sy);
+                state.drawn_gid_markers.push((burst, [sx, sy]));
+            }
             draw_gid_marker(cache, resource_id, cam, sx, sy);
             state.drawn_gid_markers.push((resource_id, [sx, sy]));
         }
@@ -807,6 +811,18 @@ fn gid_counts_unexplored(mode: GidMode) -> bool {
 /// 0x80 and hands `FUN_0060bd20` bitmap 0 (`LAB_0042b4f5` to
 /// `LAB_0042c1c3`); `FUN_0042cde0` draws that mark from the flag, so the
 /// sector window shows none (A0 sector-windows/04-left, Churba).
+/// The burst under a headquarters system's mark (`FUN_0042b330` sets item
+/// flag 8 when `FUN_00526cf0(system, 3)` finds a child of families
+/// `0x20..0x21`; `FUN_0042cde0` then blits `+0x2c8`, STRATEGY 10166, keyed
+/// at the cell's top left before the mark). An item showing the unexplored
+/// mark (flag `0x80`) draws only that. The walk has no side filter, so it
+/// asks nothing of what the viewer knows (A0 gid/hq-burst-alliance-day390:
+/// 10166 under 10146, 0 of 89 pixels off).
+fn gid_headquarters_burst(system: &System, marker: u32) -> Option<u32> {
+    (system.is_headquarters && marker != bmp_cache::resources::strategy::GID_UNEXPLORED)
+        .then_some(bmp_cache::resources::strategy::GID_HEADQUARTERS)
+}
+
 fn gid_item_bitmap(mode: GidMode, system: &System, marker: u32) -> Option<u32> {
     (!gid_shows_unexplored(mode, system)).then_some(marker)
 }
@@ -2831,6 +2847,46 @@ mod interaction_tests {
             gid_item_bitmap(GidMode::PopularSupport, &system, 10200),
             Some(10200)
         );
+    }
+
+    #[test]
+    fn a_headquarters_system_draws_the_burst_under_its_mark_unless_it_shows_unexplored() {
+        // FUN_0042b330 item flag 8 (FUN_00526cf0, families 0x20..0x21) and
+        // FUN_0042cde0: 10166 under the mark, none with flag 0x80 (A0
+        // gid/hq-burst-alliance-day390).
+        use bmp_cache::resources::strategy as art;
+        let mut system = System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(0x9000_0001),
+            name: "Yavin".into(),
+            sector: Default::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: true,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+        };
+        assert_eq!(
+            gid_headquarters_burst(&system, art::GID_ALLIANCE_LARGEST),
+            Some(10_166)
+        );
+        assert_eq!(gid_headquarters_burst(&system, art::GID_UNEXPLORED), None);
+        system.is_headquarters = false;
+        assert_eq!(gid_headquarters_burst(&system, art::GID_ALLIANCE_LARGEST), None);
     }
 
     #[test]

@@ -689,12 +689,15 @@ fn draw_sector_window(
                 ui.painter()
                     .image(texture.id(), window_rect, uv, egui::Color32::WHITE);
             }
-            // The view's markers under the window, centred where the view drew
-            // them, shaded with the rest of the copy.
+            // The view's markers under the window, hung from their cell's top
+            // left as the view drew them (`FUN_0042cde0`), shaded with the
+            // rest of the copy.
             for &(marker, [x, y]) in drawn_gid_markers {
                 if let Some(texture) = cache.get_shaded(ctx, DllSource::Strategy, marker) {
                     let size = texture.size_vec2() * layout.scale;
-                    let rect = egui::Rect::from_center_size(egui::pos2(x, y), size);
+                    let corner = egui::vec2(crate::GALAXY_MAP_OFFSET.0, crate::GALAXY_MAP_OFFSET.1)
+                        * layout.scale;
+                    let rect = egui::Rect::from_min_size(egui::pos2(x, y) - corner, size);
                     if rect.intersects(window_rect) {
                         ui.painter().image(
                             texture.id(),
@@ -3095,11 +3098,15 @@ mod tests {
                 .collect();
         }
         std::fs::remove_dir_all(base).unwrap();
-        // The 2 by 1 marker, doubled, centred where the view drew it; the
-        // one outside the window is not drawn.
+        // The 2 by 1 marker, doubled, hung from its 17 by 17 cell's top left
+        // as the view drew it (FUN_0042cde0); the one outside the window is
+        // not drawn.
         assert_eq!(
             rects,
-            [egui::Rect::from_center_size(inside, egui::vec2(4.0, 2.0))]
+            [egui::Rect::from_min_size(
+                inside - egui::vec2(17.0, 17.0),
+                egui::vec2(4.0, 2.0)
+            )]
         );
     }
 
