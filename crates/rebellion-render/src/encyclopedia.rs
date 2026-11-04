@@ -1039,13 +1039,15 @@ pub fn original_encyclopedia_object(
             let entry = world.fleets.get(fleet)?.fighters.get(index)?;
             world.fighter_classes.get(entry.class)?.dat_id
         }
-        MenuObject::PlanetFighter { class, .. } => world.fighter_classes.get(class)?.dat_id,
+        MenuObject::PlanetFighter { class, .. } | MenuObject::PendingFighter { class, .. } => {
+            world.fighter_classes.get(class)?.dat_id
+        }
         MenuObject::DefenseFacility(key) => world.defense_facilities.get(key)?.class_dat_id,
         MenuObject::ManufacturingFacility(key) | MenuObject::Headquarters(key) => {
             world.manufacturing_facilities.get(key)?.class_dat_id
         }
         MenuObject::ProductionFacility(key) => world.production_facilities.get(key)?.class_dat_id,
-        MenuObject::PendingFacility { class, .. } => class,
+        MenuObject::PendingFacility { class, .. } | MenuObject::PendingTroop { class, .. } => class,
         MenuObject::SystemIcon { system, .. } => world.systems.get(system)?.dat_id,
         // port: a mission opens its kind's MISSNSD record; the caller,
         // which holds the missions, resolves it.

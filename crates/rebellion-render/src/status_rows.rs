@@ -12,7 +12,7 @@ use rebellion_core::ids::{
     CharacterKey, DatId, DefenseFacilityKey, FighterKey, FleetKey, ManufacturingFacilityKey,
     ProductionFacilityKey, SpecialForceKey, SystemKey, TroopKey,
 };
-use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
+use rebellion_core::manufacturing::{BuildableKind, ManufacturingState, ProductionArea};
 use rebellion_core::missions::{MissionFaction, MissionMember, MissionState, MissionTarget};
 use rebellion_core::movement::MovementState;
 use rebellion_core::troop_transport::{RegimentLeg, TroopTransportState};
@@ -81,13 +81,23 @@ pub enum StatusObject {
     ManufacturingFacility(ManufacturingFacilityKey),
     /// `0x2c..0x2d`, `FUN_00446c50`.
     ProductionFacility(ProductionFacilityKey),
-    /// `0x28..0x2d`, `FUN_00446c50`: a facility page's unfinished unit for
-    /// `system`, being built or travelling until `arrival`.
+    /// `0x20..0x2d`, `FUN_00444e20` or `FUN_00446c50`: a facility page's or
+    /// the Defenses window's unfinished unit for `system`, being built or
+    /// travelling until `arrival`.
     PendingFacility {
         system: SystemKey,
         class: DatId,
         owner: u8,
         arrival: Option<u64>,
+    },
+    /// `0x10..0x13`, `FUN_00445280`: a regiment of `class` in training for
+    /// `system`.
+    PendingTroop { system: SystemKey, class: DatId },
+    /// `0x1c..0x1f`, `FUN_004444c0`: a squadron of `class` being built for
+    /// `system`'s planet.
+    PendingFighter {
+        system: SystemKey,
+        class: FighterKey,
     },
     /// `0x50..0x7f`, `FUN_00445c60`: an active mission by its id.
     Mission(u64),
@@ -898,26 +908,39 @@ fn regiment_place(sources: StatusSources<'_>, key: TroopKey) -> (String, Option<
 }
 
 /// The Trooper Regiment Status rows (`FUN_00445280`).
-///
-/// port: a regiment exists only once trained, so "Training" never shows.
 #[must_use]
 pub fn troop_rows(sources: StatusSources<'_>, key: TroopKey) -> Option<Vec<StatusRow>> {
-    let world = sources.world;
-    let troop = world.troops.get(key)?;
-    let class = world.troop_classes.get(&troop.class_dat_id);
+    let troop = sources.world.troops.get(key)?;
+    let (attached, arrival) = regiment_place(sources, key);
+    Some(regiment_rows(
+        sources.world,
+        troop.class_dat_id,
+        attached,
+        moving_status(arrival.is_some()),
+        arrival,
+    ))
+}
+
+/// `FUN_00445280`'s rows for a regiment of `class`: its place, its Status
+/// word (`+0x50` bit 4 34628 "Enroute", else bit 2 34632 "Awaiting
+/// Orders", else 34673 "Training") and, en route, its ETA.
+fn regiment_rows(
+    world: &GameWorld,
+    class_id: DatId,
+    attached: String,
+    status: &str,
+    arrival: Option<u64>,
+) -> Vec<StatusRow> {
+    let class = world.troop_classes.get(&class_id);
     let stats = world
         .buildable_classes
-        .get(&troop.class_dat_id)
+        .get(&class_id)
         .map(|value| value.stats)
         .unwrap_or_default();
-    let (attached, arrival) = regiment_place(sources, key);
-    let mut rows = vec![
-        row("Attached: ", attached),
-        row("Status:", moving_status(arrival.is_some())),
-    ];
+    let mut rows = vec![row("Attached: ", attached), row("Status:", status)];
     eta(&mut rows, arrival);
     rows.extend([
-        row("Maintenance Cost:", maintenance(world, troop.class_dat_id)),
+        row("Maintenance Cost:", maintenance(world, class_id)),
         row(
             "Attack Strength:",
             class.map_or(0, |value| value.attack_strength).to_string(),
@@ -932,7 +955,7 @@ pub fn troop_rows(sources: StatusSources<'_>, key: TroopKey) -> Option<Vec<Statu
             class.map_or(0, |value| value.detection).to_string(),
         ),
     ]);
-    Some(rows)
+    rows
 }
 
 /// The Spec Forces Status rows (`FUN_00445780`). The ratings are slots
@@ -1023,14 +1046,14 @@ pub fn defense_facility_rows(
     Some(defense_rows(world, system, facility.class_dat_id, None))
 }
 
-/// `FUN_00444e20`'s rows for a facility of class `class` at `system`. An
-/// object en route (`arrival`) leads with its ETA (`FUN_004fd2b0`) and its
-/// Status reads 34628 "Enroute" (`FUN_0044a470`, `+0x50` bit 4).
+/// `FUN_00444e20`'s rows for a facility of class `class` at `system`: built,
+/// or unfinished (`unfinished`, see [`unfinished_status`]). An object en
+/// route leads with its ETA (`FUN_004fd2b0`).
 fn defense_rows(
     world: &GameWorld,
     system: SystemKey,
     class: DatId,
-    arrival: Option<u64>,
+    unfinished: Option<Option<u64>>,
 ) -> Vec<StatusRow> {
     let stats = world
         .buildable_classes
@@ -1038,13 +1061,10 @@ fn defense_rows(
         .map(|value| value.stats)
         .unwrap_or_default();
     let mut rows = Vec::new();
-    eta(&mut rows, arrival);
+    eta(&mut rows, unfinished.flatten());
     rows.extend([
         row("Location:", system_name(world, system)),
-        row(
-            "Status:",
-            if arrival.is_some() { "Enroute" } else { ACTIVE },
-        ),
+        row("Status:", unfinished.map_or(ACTIVE, unfinished_status)),
         row("Maintenance Cost:", maintenance(world, class)),
     ]);
     if (0x22..=0x27).contains(&class.family()) {
@@ -1061,14 +1081,20 @@ fn defense_rows(
 }
 
 /// A pending unit's facility class.
-fn pending_class_id(kind: rebellion_core::manufacturing::BuildableKind) -> Option<DatId> {
-    use rebellion_core::manufacturing::BuildableKind;
+fn pending_class_id(kind: BuildableKind) -> Option<DatId> {
     match kind {
-        BuildableKind::ManufacturingFacility(build) | BuildableKind::ProductionFacility(build) => {
-            Some(build.class)
-        }
+        BuildableKind::DefenseFacility(build)
+        | BuildableKind::ManufacturingFacility(build)
+        | BuildableKind::ProductionFacility(build) => Some(build.class),
         _ => None,
     }
+}
+
+/// The mark `FUN_0042c3b0(.., 1, 1)` lays under an unfinished object's
+/// portrait (`+0x50` bit 2 clear): STRATEGY `0x2d32 + 1` (11571) for side 1,
+/// else `0x2d34 + 1` (11573).
+const fn unfinished_mark(side_one: bool) -> (DllSource, u32) {
+    (DllSource::Strategy, if side_one { 11_571 } else { 11_573 })
 }
 
 /// `FUN_0044a470`'s Status word for an unfinished object: 34628 "Enroute"
@@ -1445,7 +1471,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             let (title, rows) = if (0x20..=0x27).contains(&class.family()) {
                 (
                     "Defense Facility Status",
-                    defense_rows(world, system, class, arrival),
+                    defense_rows(world, system, class, arrival.map(Some)),
                 )
             } else {
                 (
@@ -1498,22 +1524,79 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             if !still_there {
                 return None;
             }
-            let mini = manufacturing_facility_mini(class)
-                .or_else(|| production_facility_mini(class))
-                .map(|(mini, _)| mini);
+            // FUN_00443130 fills families 0x20..0x27 with FUN_00444e20.
+            let defense = (0x20..=0x27).contains(&class.family());
+            let (title, mini, rows) = if defense {
+                (
+                    "Defense Facility Status",
+                    defense_facility_mini(class),
+                    defense_rows(world, system, class, Some(arrival)),
+                )
+            } else {
+                (
+                    "Manufacturing Status",
+                    manufacturing_facility_mini(class).or_else(|| production_facility_mini(class)),
+                    manufacturing_rows(world, system, class, Some(arrival)),
+                )
+            };
             let marks = match arrival {
+                Some(_) if (0x22..=0x27).contains(&class.family()) => {
+                    vec![(DllSource::Strategy, 11_510)]
+                }
                 Some(_) => vec![(DllSource::Strategy, 11_506)],
-                None if owner == 1 => vec![(DllSource::Strategy, 11_571)],
-                None => vec![(DllSource::Strategy, 11_573)],
+                None => vec![unfinished_mark(owner == 1)],
             };
             StatusView {
                 marks,
                 ..view(
-                    "Manufacturing Status",
+                    title,
                     usize::from(owner != 1),
-                    picture(mini),
+                    picture(mini.map(|(mini, _)| mini)),
                     class_name(world, class),
-                    manufacturing_rows(world, system, class, Some(arrival)),
+                    rows,
+                )
+            }
+        }
+        // FUN_00445280 on a regiment not yet completed: 34673 "Training",
+        // its backdrop and 11571 / 11573 (FUN_0042c3b0).
+        StatusObject::PendingTroop { system, class } => {
+            let queued = crate::manufacturing_window::pending_units(sources.manufacturing, system)
+                .any(|kind| kind == BuildableKind::Troop(class));
+            if !queued {
+                return None;
+            }
+            let alliance = world.buildable_classes.get(&class)?.is_alliance;
+            let portrait = picture(troop_mini(class).map(|(mini, _)| mini));
+            let mut marks = regiment_marks(portrait, class, false);
+            marks.push(unfinished_mark(alliance));
+            StatusView {
+                marks,
+                ..view(
+                    "Trooper Regiment Status",
+                    side_index(alliance),
+                    portrait,
+                    class_name(world, class),
+                    regiment_rows(world, class, system_name(world, system), "Training", None),
+                )
+            }
+        }
+        // FUN_004444c0 on a squadron not yet completed: the planet
+        // squadron's rows (A0 pending-facility/25) over 11571 / 11573.
+        StatusObject::PendingFighter { system, class } => {
+            let queued = crate::manufacturing_window::pending_units(sources.manufacturing, system)
+                .any(|kind| kind == BuildableKind::Fighter(class));
+            if !queued {
+                return None;
+            }
+            let fighter = world.fighter_classes.get(class)?;
+            StatusView {
+                marks: vec![unfinished_mark(fighter.is_alliance)],
+                ..view(
+                    "Fighter Squadron Status",
+                    side_index(fighter.is_alliance),
+                    picture(fighter_mini_id(fighter.dat_id)),
+                    fighter.name.clone(),
+                    planet_fighter_rows(sources, system, class)?,
                 )
             }
         }
@@ -2626,6 +2709,182 @@ mod tests {
         assert!(status_view(states.sources(&world), pending(Some(6))).is_none());
         states.manufacturing = ManufacturingState::new();
         assert!(status_view(states.sources(&world), pending(None)).is_none());
+    }
+
+    #[test]
+    fn an_unfinished_battery_reads_under_construction_and_en_route_with_its_marks() {
+        // FUN_00443130 fills 0x20..0x27 with FUN_00444e20: the ETA before
+        // Location, then FUN_0044a470's 34647 "Under Construction" (bit 2
+        // clear) or 34628 "Enroute" (bit 4). FUN_0042c3b0(.., 1, 1) lays
+        // 11571 (side 1) / 11573 under it unfinished, and 11510 (0x2cf5 + 1,
+        // families 0x22..0x27) en route.
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Pzob",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let class = DatId::new(0x2200_0001);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                name: "KDY v-150 Planet Defender".into(),
+                stats: rebellion_core::world::ClassStats {
+                    attack_strength: 3,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
+        let mut states = States::new();
+        let battery =
+            BuildableKind::DefenseFacility(rebellion_core::manufacturing::FacilityBuild {
+                class,
+                is_alliance: true,
+            });
+        states
+            .manufacturing
+            .enqueue(here, QueueItem::new(battery, 5));
+        let pending = |owner, arrival| StatusObject::PendingFacility {
+            system: here,
+            class,
+            owner,
+            arrival,
+        };
+
+        let building = status_view(states.sources(&world), pending(1, None)).unwrap();
+        assert_eq!(building.title, "Defense Facility Status");
+        assert_eq!(building.marks, [(DllSource::Strategy, 11_571)]);
+        assert_eq!(
+            building.picture,
+            picture(defense_facility_mini(class).map(|(mini, _)| mini))
+        );
+        assert_eq!(
+            rows(&building.rows)[..3],
+            [
+                ("Location:", "Pzob"),
+                ("Status:", "Under Construction"),
+                ("Maintenance Cost:", "0"),
+            ]
+        );
+        let imperial = status_view(states.sources(&world), pending(2, None)).unwrap();
+        assert_eq!(imperial.marks, [(DllSource::Strategy, 11_573)]);
+        let travelling = status_view(states.sources(&world), pending(1, Some(12))).unwrap();
+        assert_eq!(travelling.marks, [(DllSource::Strategy, 11_510)]);
+        assert_eq!(
+            rows(&travelling.rows)[..3],
+            [
+                ("ETA Destination:", "Day 12"),
+                ("Location:", "Pzob"),
+                ("Status:", "Enroute"),
+            ]
+        );
+        states.manufacturing = ManufacturingState::new();
+        assert!(status_view(states.sources(&world), pending(1, None)).is_none());
+    }
+
+    #[test]
+    fn a_regiment_in_training_reads_training_over_its_backdrop_and_mark() {
+        // FUN_00445280: +0x50 bit 4 clear and bit 2 clear write 0x8771,
+        // TEXTSTRA 34673 "Training". FUN_0042c3b0(.., 1, 1) lays the
+        // regiment's backdrop 11514 (0x2cf9 + 1), then 11571 (side 1).
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Pzob",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let class = DatId::new(0x1000_0002);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                name: "Alliance Army Regiment".into(),
+                is_alliance: true,
+                ..Default::default()
+            },
+        );
+        let mut states = States::new();
+        states
+            .manufacturing
+            .enqueue(here, QueueItem::new(BuildableKind::Troop(class), 5));
+        let pending = StatusObject::PendingTroop {
+            system: here,
+            class,
+        };
+
+        let training = status_view(states.sources(&world), pending).unwrap();
+        assert_eq!(training.title, "Trooper Regiment Status");
+        assert_eq!(
+            training.marks,
+            [(DllSource::Strategy, 11_514), (DllSource::Strategy, 11_571)]
+        );
+        assert_eq!(
+            rows(&training.rows)[..3],
+            [
+                ("Attached: ", "Pzob"),
+                ("Status:", "Training"),
+                ("Maintenance Cost:", "0"),
+            ]
+        );
+        states.manufacturing = ManufacturingState::new();
+        assert!(status_view(states.sources(&world), pending).is_none());
+    }
+
+    #[test]
+    fn an_unfinished_squadron_shows_the_planet_squadrons_status_over_its_mark() {
+        // FUN_004444c0 on a squadron not yet completed: A0
+        // pending-facility/25 reads "Fighter Squadron Status", Attached:
+        // Pzob and the class rows over the red grid, 11571 for side 1
+        // (FUN_0042c3b0); 11573 for side 2.
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Pzob",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let mut class = |raw, name: &str, alliance| {
+            world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    dat_id: DatId::new(raw),
+                    name: name.into(),
+                    is_alliance: alliance,
+                    is_empire: !alliance,
+                    ..Default::default()
+                })
+        };
+        let awing = class(0x1c00_0001, "A-wing", true);
+        let tie = class(0x1c00_0005, "TIE Fighter", false);
+        let mut states = States::new();
+        for fighter in [awing, tie] {
+            states
+                .manufacturing
+                .enqueue(here, QueueItem::new(BuildableKind::Fighter(fighter), 5));
+        }
+        let pending = |class| StatusObject::PendingFighter {
+            system: here,
+            class,
+        };
+
+        let building = status_view(states.sources(&world), pending(awing)).unwrap();
+        assert_eq!(building.title, "Fighter Squadron Status");
+        assert_eq!(building.name, "A-wing");
+        assert_eq!(building.marks, [(DllSource::Strategy, 11_571)]);
+        assert_eq!(
+            building.rows,
+            planet_fighter_rows(states.sources(&world), here, awing).unwrap()
+        );
+        assert_eq!(rows(&building.rows)[0], ("Attached: ", "Pzob"));
+        let imperial = status_view(states.sources(&world), pending(tie)).unwrap();
+        assert_eq!(imperial.marks, [(DllSource::Strategy, 11_573)]);
+        assert_eq!((building.side, imperial.side), (0, 1));
+        // Another class's squadron in the queue keeps no A-wing's open.
+        states.manufacturing = ManufacturingState::new();
+        states
+            .manufacturing
+            .enqueue(here, QueueItem::new(BuildableKind::Fighter(tie), 5));
+        assert!(status_view(states.sources(&world), pending(awing)).is_none());
+        assert!(status_view(states.sources(&world), pending(tie)).is_some());
     }
 
     #[test]

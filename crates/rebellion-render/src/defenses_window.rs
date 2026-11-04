@@ -13,11 +13,13 @@
 
 use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
+use rebellion_core::delivery::DeliveryState;
 use rebellion_core::economy::EconomyState;
 use rebellion_core::fog::FogState;
 use rebellion_core::ids::{
     CharacterKey, DefenseFacilityKey, FighterKey, SpecialForceKey, SystemKey, TroopKey,
 };
+use rebellion_core::manufacturing::{BuildableKind, ManufacturingState};
 use rebellion_core::missions::{MissionMember, MissionState, MissionTarget, MissionTargetPick};
 use rebellion_core::world::GameWorld;
 
@@ -175,6 +177,15 @@ pub enum DefensesItem {
         nth: u32,
     },
     Defense(DefenseFacilityKey),
+    /// The `index`th unit queued or travelling for `system`: a squadron or
+    /// a defense facility not yet completed (`+0x50` bit 2 clear), or a
+    /// facility en route until `arrival` (bit 4).
+    Pending {
+        system: SystemKey,
+        index: usize,
+        kind: BuildableKind,
+        arrival: Option<u64>,
+    },
 }
 
 impl DefensesItem {
@@ -191,15 +202,74 @@ impl DefensesItem {
                 Some(MenuObject::PlanetFighter { system, class })
             }
             Self::Defense(key) => Some(MenuObject::DefenseFacility(key)),
+            Self::Pending {
+                system,
+                kind,
+                arrival,
+                ..
+            } => match kind {
+                BuildableKind::Fighter(class) => Some(MenuObject::PendingFighter { system, class }),
+                BuildableKind::Troop(class) => Some(MenuObject::PendingTroop { system, class }),
+                BuildableKind::DefenseFacility(build) => Some(MenuObject::PendingFacility {
+                    system,
+                    class: build.class,
+                    owner: fleet_side(build.is_alliance),
+                    arrival,
+                }),
+                _ => None,
+            },
         }
     }
 }
 
+/// The units the production queues and deliveries hold for the window's
+/// systems. port: the original creates them at the order, as objects not
+/// yet completed.
+#[derive(Clone, Copy)]
+pub struct DefensesProduction<'a> {
+    pub manufacturing: &'a ManufacturingState,
+    pub deliveries: &'a DeliveryState,
+}
+
 /// What `FUN_0042c3b0(.., 0, 1)` draws under a row's mini: a personnel's
 /// or regiment's backdrop, and a character's damage mark while it is
-/// injured (`FUN_004f7800` sets `+0x50` bit `0x200` to injury != 0). port: nothing in the window is en
-/// route (it leaves out personnel on a visible mission).
+/// injured (`FUN_004f7800` sets `+0x50` bit `0x200` to injury != 0). An
+/// unfinished unit (bit 2 clear) takes STRATEGY `0x2d32` (11570) for side 1,
+/// else `0x2d34` (11572), on top; a defense facility en route (bit 4) takes
+/// 11509 (`0x2cf5`, families `0x22..0x27`). port: no built object in the
+/// window is en route (it leaves out personnel on a visible mission).
 fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
+    if let DefensesItem::Pending { kind, arrival, .. } = row.item {
+        let side_one = match kind {
+            BuildableKind::Fighter(class) => world
+                .fighter_classes
+                .get(class)
+                .is_some_and(|class| class.is_alliance),
+            BuildableKind::DefenseFacility(build) => build.is_alliance,
+            BuildableKind::Troop(class) => world
+                .buildable_classes
+                .get(&class)
+                .is_some_and(|class| class.is_alliance),
+            _ => false,
+        };
+        // A regiment keeps its backdrop, 11513, under the mark.
+        let backdrop = match kind {
+            BuildableKind::Troop(class) => crate::fleet_window::mini_marks(
+                crate::fleet_window::MiniObject::Regiment(class),
+                row.mini,
+                false,
+                false,
+            ),
+            _ => Vec::new(),
+        };
+        return match arrival {
+            Some(_) => vec![(DllSource::Strategy, 11_509)],
+            None => backdrop
+                .into_iter()
+                .chain([(DllSource::Strategy, if side_one { 11_570 } else { 11_572 })])
+                .collect(),
+        };
+    }
     use crate::fleet_window::MiniObject;
     let injured = matches!(row.item, DefensesItem::Character(key)
         if world.characters.get(key).is_some_and(|character| character.injury > 0));
@@ -213,7 +283,9 @@ fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
             .troops
             .get(key)
             .map_or(MiniObject::Craft, |troop| MiniObject::Regiment(troop.class_dat_id)),
-        DefensesItem::Squadron { .. } | DefensesItem::Defense(_) => MiniObject::Craft,
+        DefensesItem::Squadron { .. } | DefensesItem::Defense(_) | DefensesItem::Pending { .. } => {
+            MiniObject::Craft
+        }
     };
     crate::fleet_window::mini_marks(object, row.mini, false, injured)
 }
@@ -392,12 +464,21 @@ impl DefensesWindowState {
         world: &GameWorld,
         fog: &FogState,
         missions: &MissionState,
+        production: DefensesProduction<'_>,
         economy: &EconomyState,
         system: SystemKey,
     ) -> Option<DefensesWindowReport> {
         let window = self.windows.iter().find(|window| window.system == system)?;
         let player = cockpit_faction(self.faction);
-        let rows = page_rows(world, fog, missions, player, system, window.page);
+        let rows = page_rows(
+            world,
+            fog,
+            missions,
+            production,
+            player,
+            system,
+            window.page,
+        );
         let selected = window
             .selected
             .and_then(|item| rows.iter().position(|row| row.item == item));
@@ -405,8 +486,9 @@ impl DefensesWindowState {
             origin: window.logical_position,
             side: shown_side(world, system),
             page: window.page,
-            counts: DefensesPage::ALL
-                .map(|page| page_rows(world, fog, missions, player, system, page).len()),
+            counts: DefensesPage::ALL.map(|page| {
+                page_rows(world, fog, missions, production, player, system, page).len()
+            }),
             rows: rows.into_iter().map(|row| row.label).collect(),
             selected,
             garrison: garrison_line(world, economy, player, system, window.page),
@@ -423,6 +505,7 @@ impl DefensesWindowState {
         world: &GameWorld,
         fog: &FogState,
         missions: &MissionState,
+        production: DefensesProduction<'_>,
         layout: CockpitLayout,
         layer: egui::LayerId,
         point: egui::Pos2,
@@ -433,12 +516,20 @@ impl DefensesWindowState {
             .find(|window| area_id(window.system) == layer.id)?;
         let player = cockpit_faction(self.faction);
         let screen = window_screen_rect(window, layout);
-        let item = page_rows(world, fog, missions, player, window.system, window.page)
-            .into_iter()
-            .take(COLUMNS * VISIBLE_ROWS)
-            .enumerate()
-            .find(|(index, _)| rect_contains(cell_rect(screen, layout.scale, *index), point))
-            .map(|(_, row)| row.item);
+        let item = page_rows(
+            world,
+            fog,
+            missions,
+            production,
+            player,
+            window.system,
+            window.page,
+        )
+        .into_iter()
+        .take(COLUMNS * VISIBLE_ROWS)
+        .enumerate()
+        .find(|(index, _)| rect_contains(cell_rect(screen, layout.scale, *index), point))
+        .map(|(_, row)| row.item);
         let mut pick = MissionTargetPick::from(window.system);
         match item {
             Some(DefensesItem::Character(key)) => pick.character = Some(key),
@@ -450,8 +541,9 @@ impl DefensesWindowState {
                 pick.object = Some(MissionTarget::DefenseFacility(key));
             }
             // port: a mission names a squadron aboard a fleet only
-            // (MissionTarget::Fighter), so one on a planet is no target.
-            Some(DefensesItem::Squadron { .. }) | None => {}
+            // (MissionTarget::Fighter), so one on a planet is no target,
+            // and an unfinished unit is a queue entry.
+            Some(DefensesItem::Squadron { .. } | DefensesItem::Pending { .. }) | None => {}
         }
         Some(pick)
     }
@@ -647,6 +739,7 @@ fn page_rows(
     world: &GameWorld,
     fog: &FogState,
     missions: &MissionState,
+    production: DefensesProduction<'_>,
     player: Faction,
     system: SystemKey,
     page: DefensesPage,
@@ -661,6 +754,98 @@ fn page_rows(
     if side != faction_side(player) && !opposing_contents_visible(world, fog, player, system) {
         return Vec::new();
     }
+    let mut rows = built_rows(world, missions, side, system, page);
+    rows.extend(pending_rows(world, production, side, system, page));
+    rows
+}
+
+/// The units queued for `system` (being built), then those travelling there
+/// (en route), that `page` lists for `side`: squadrons of the side's
+/// classes on page 2, its regiments in training on page 1, its shields or
+/// batteries on pages 3 and 4. port: a squadron or regiment en route is not
+/// listed.
+fn pending_rows(
+    world: &GameWorld,
+    production: DefensesProduction<'_>,
+    side: u8,
+    system: SystemKey,
+    page: DefensesPage,
+) -> Vec<DefensesRow> {
+    let queued = crate::manufacturing_window::pending_units(production.manufacturing, system)
+        .map(|kind| (kind, None))
+        .chain(
+            production
+                .deliveries
+                .en_route()
+                .iter()
+                .filter(|delivery| delivery.destination == system)
+                .filter(|delivery| matches!(delivery.kind, BuildableKind::DefenseFacility(_)))
+                .map(|delivery| (delivery.kind, Some(delivery.arrival_tick))),
+        );
+    queued
+        .enumerate()
+        .filter_map(|(index, (kind, arrival))| {
+            let (unit_side, mini, label) = match (page, kind) {
+                (DefensesPage::Regiments, BuildableKind::Troop(class)) => {
+                    let (mini, label) = troop_mini(class)?;
+                    let alliance = world.buildable_classes.get(&class)?.is_alliance;
+                    (fleet_side(alliance), mini, label.into())
+                }
+                (DefensesPage::Squadrons, BuildableKind::Fighter(class)) => {
+                    let class = world.fighter_classes.get(class)?;
+                    (
+                        fleet_side(class.is_alliance),
+                        fighter_mini_id(class.dat_id)?,
+                        class.name.clone(),
+                    )
+                }
+                (
+                    DefensesPage::Shields | DefensesPage::Batteries,
+                    BuildableKind::DefenseFacility(build),
+                ) => {
+                    if !defense_page_family(page, build.class.family()) {
+                        return None;
+                    }
+                    let (mini, label) = defense_facility_mini(build.class)?;
+                    (fleet_side(build.is_alliance), mini, label.into())
+                }
+                _ => return None,
+            };
+            (unit_side == side).then_some(DefensesRow {
+                item: DefensesItem::Pending {
+                    system,
+                    index,
+                    kind,
+                    arrival,
+                },
+                mini,
+                label,
+            })
+        })
+        .collect()
+}
+
+/// `FUN_00527050`'s families: 0x24 and 0x25 on page 4, 0x22 and 0x23 on
+/// page 5.
+fn defense_page_family(page: DefensesPage, family: u8) -> bool {
+    if page == DefensesPage::Shields {
+        matches!(family, 0x24 | 0x25)
+    } else {
+        matches!(family, 0x22 | 0x23)
+    }
+}
+
+/// The built objects `page` lists for `side` at `system`.
+fn built_rows(
+    world: &GameWorld,
+    missions: &MissionState,
+    side: u8,
+    system: SystemKey,
+    page: DefensesPage,
+) -> Vec<DefensesRow> {
+    let Some(value) = world.systems.get(system) else {
+        return Vec::new();
+    };
     match page {
         // FUN_00536e20: members with no mission key, or on a hidden mission
         // (`+0x78` bit 8).
@@ -764,13 +949,9 @@ fn page_rows(
             .iter()
             .filter_map(|&key| {
                 let facility = world.defense_facilities.get(key)?;
-                let family = facility.class_dat_id.family();
-                let wanted = if page == DefensesPage::Shields {
-                    matches!(family, 0x24 | 0x25)
-                } else {
-                    matches!(family, 0x22 | 0x23)
-                };
-                if !wanted || crate::fleet_window::faction_side(facility.side) != side {
+                if !defense_page_family(page, facility.class_dat_id.family())
+                    || crate::fleet_window::faction_side(facility.side) != side
+                {
                     return None;
                 }
                 let (mini, label) = defense_facility_mini(facility.class_dat_id)?;
@@ -888,6 +1069,7 @@ pub fn draw_defenses_windows(
     world: &GameWorld,
     fog: &FogState,
     missions: &MissionState,
+    production: DefensesProduction<'_>,
     economy: &EconomyState,
     state: &mut DefensesWindowState,
     faction: CockpitFaction,
@@ -904,6 +1086,7 @@ pub fn draw_defenses_windows(
             world,
             fog,
             missions,
+            production,
             economy,
             window,
             focused_system == Some(window.system),
@@ -986,6 +1169,7 @@ fn draw_defenses_window(
     world: &GameWorld,
     fog: &FogState,
     missions: &MissionState,
+    production: DefensesProduction<'_>,
     economy: &EconomyState,
     window: &OpenDefensesWindow,
     focused: bool,
@@ -1000,7 +1184,15 @@ fn draw_defenses_window(
     };
     let player = cockpit_faction(faction);
     let side = shown_side(world, window.system);
-    let rows = page_rows(world, fog, missions, player, window.system, window.page);
+    let rows = page_rows(
+        world,
+        fog,
+        missions,
+        production,
+        player,
+        window.system,
+        window.page,
+    );
     let scale = layout.scale;
     let screen_rect = window_screen_rect(window, layout);
     let id = area_id(window.system);
@@ -1079,7 +1271,16 @@ fn draw_defenses_window(
             // `FUN_00600a40`).
             for page in DefensesPage::ALL {
                 let rect = tab_rect(local, scale, page);
-                let empty = page_rows(world, fog, missions, player, window.system, page).is_empty();
+                let empty = page_rows(
+                    world,
+                    fog,
+                    missions,
+                    production,
+                    player,
+                    window.system,
+                    page,
+                )
+                .is_empty();
                 paint_native(
                     &painter,
                     ctx,
@@ -1406,6 +1607,14 @@ mod tests {
         fog
     }
 
+    /// No unit queued or travelling anywhere.
+    fn idle() -> DefensesProduction<'static> {
+        DefensesProduction {
+            manufacturing: Box::leak(Box::default()),
+            deliveries: Box::leak(Box::default()),
+        }
+    }
+
     fn labels(
         world: &GameWorld,
         fog: &FogState,
@@ -1413,10 +1622,18 @@ mod tests {
         system: SystemKey,
         page: DefensesPage,
     ) -> Vec<String> {
-        page_rows(world, fog, missions, Faction::Alliance, system, page)
-            .into_iter()
-            .map(|row| row.label)
-            .collect()
+        page_rows(
+            world,
+            fog,
+            missions,
+            idle(),
+            Faction::Alliance,
+            system,
+            page,
+        )
+        .into_iter()
+        .map(|row| row.label)
+        .collect()
     }
 
     /// An Alliance system holding one of everything, beside the Empire's
@@ -1534,8 +1751,230 @@ mod tests {
             arrival: 9,
             abode: None,
         });
-        let rows = page_rows(&imperial, &seen(held), &imperial_missions, Faction::Empire, held, DefensesPage::Personnel);
-        assert_eq!(rows.into_iter().map(|row| row.label).collect::<Vec<_>>(), ["Piett"]);
+        let rows = page_rows(
+            &imperial,
+            &seen(held),
+            &imperial_missions,
+            idle(),
+            Faction::Empire,
+            held,
+            DefensesPage::Personnel,
+        );
+        assert_eq!(
+            rows.into_iter().map(|row| row.label).collect::<Vec<_>>(),
+            ["Piett"]
+        );
+    }
+
+    #[test]
+    fn units_being_built_for_the_system_follow_its_own_with_the_unfinished_mark() {
+        // The original creates the unit at the order, in its destination,
+        // not yet completed (+0x50 bit 2 clear): A0 pending-facility/23
+        // lists Pzob's A-wing after its X-wings, over STRATEGY 11570
+        // (0x2d32, side 1; FUN_0042c3b0 draws it last). A defense facility
+        // en route (bit 4) takes 11509 (0x2cf5, families 0x22..0x27).
+        use rebellion_core::manufacturing::{Departure, FacilityBuild, QueueItem};
+        let (world, system, missions) = stocked();
+        let class_named = |name: &str| {
+            world
+                .fighter_classes
+                .iter()
+                .find(|(_, class)| class.name == name)
+                .map(|(key, _)| key)
+                .unwrap()
+        };
+        let xwing = class_named("X-wing");
+        let tie = class_named("TIE Fighter");
+        let build = |raw, is_alliance| {
+            BuildableKind::DefenseFacility(FacilityBuild {
+                class: DatId::new(raw),
+                is_alliance,
+            })
+        };
+        let mut manufacturing = ManufacturingState::default();
+        for kind in [
+            BuildableKind::Fighter(xwing),
+            BuildableKind::Fighter(tie),
+            build(KDY, true),
+            build(KDY, false),
+        ] {
+            manufacturing.enqueue(system, QueueItem::new(kind, 5));
+        }
+        let mut deliveries = DeliveryState::default();
+        deliveries.depart(
+            &world,
+            &[Departure {
+                origin: system,
+                destination: system,
+                tick: 0,
+                kind: build(GENCORE, true),
+            }],
+        );
+        let arrival = deliveries.en_route()[0].arrival_tick;
+        let production = DefensesProduction {
+            manufacturing: &manufacturing,
+            deliveries: &deliveries,
+        };
+        let fog = seen(system);
+        let rows = |page| {
+            page_rows(
+                &world,
+                &fog,
+                &missions,
+                production,
+                Faction::Alliance,
+                system,
+                page,
+            )
+        };
+        let tail = |page| {
+            let built = labels(&world, &fog, &missions, system, page).len();
+            rows(page).split_off(built)
+        };
+
+        let [squadron] = &tail(DefensesPage::Squadrons)[..] else {
+            panic!("{:?}", tail(DefensesPage::Squadrons));
+        };
+        assert_eq!(squadron.label, "X-wing");
+        assert_eq!(
+            squadron.item.menu_object(),
+            Some(MenuObject::PendingFighter {
+                system,
+                class: xwing
+            })
+        );
+        assert_eq!(row_marks(&world, squadron), [(DllSource::Strategy, 11_570)]);
+
+        let [battery] = &tail(DefensesPage::Batteries)[..] else {
+            panic!("{:?}", tail(DefensesPage::Batteries));
+        };
+        assert_eq!(
+            battery.label,
+            defense_facility_mini(DatId::new(KDY)).unwrap().1
+        );
+        assert_eq!(row_marks(&world, battery), [(DllSource::Strategy, 11_570)]);
+        assert_eq!(
+            battery.item.menu_object(),
+            Some(MenuObject::PendingFacility {
+                system,
+                class: DatId::new(KDY),
+                owner: 1,
+                arrival: None,
+            })
+        );
+
+        let [shield] = &tail(DefensesPage::Shields)[..] else {
+            panic!("{:?}", tail(DefensesPage::Shields));
+        };
+        assert_eq!(row_marks(&world, shield), [(DllSource::Strategy, 11_509)]);
+        assert_eq!(
+            shield.item.menu_object(),
+            Some(MenuObject::PendingFacility {
+                system,
+                class: DatId::new(GENCORE),
+                owner: 1,
+                arrival: Some(arrival),
+            })
+        );
+        // Regiments and personnel take nothing from the queues.
+        for page in [DefensesPage::Personnel, DefensesPage::Regiments] {
+            assert!(tail(page).is_empty());
+        }
+    }
+
+    #[test]
+    fn a_regiment_in_training_lists_on_the_regiment_page_over_its_backdrop_and_mark() {
+        // FUN_00504cc0 walks the regiments; one not yet trained (+0x50 bit 2
+        // clear) takes FUN_0042c3b0's backdrop 11513 (0x2cf9), then 11570
+        // (0x2d32, side 1) on top. FUN_00504b30's list: Move, Confirmed
+        // Move, Scrap.
+        use rebellion_core::manufacturing::QueueItem;
+        let (mut world, system, missions) = stocked();
+        for (raw, is_alliance) in [(ALLIANCE_ARMY, true), (STORMTROOPERS, false)] {
+            world.buildable_classes.insert(
+                DatId::new(raw),
+                rebellion_core::world::BuildableClass {
+                    is_alliance,
+                    is_empire: !is_alliance,
+                    ..Default::default()
+                },
+            );
+        }
+        let mut manufacturing = ManufacturingState::default();
+        for raw in [ALLIANCE_ARMY, STORMTROOPERS] {
+            manufacturing.enqueue(
+                system,
+                QueueItem::new(BuildableKind::Troop(DatId::new(raw)), 5),
+            );
+        }
+        let deliveries = DeliveryState::default();
+        let production = DefensesProduction {
+            manufacturing: &manufacturing,
+            deliveries: &deliveries,
+        };
+        let fog = seen(system);
+        let built = labels(&world, &fog, &missions, system, DefensesPage::Regiments).len();
+        let rows = page_rows(
+            &world,
+            &fog,
+            &missions,
+            production,
+            Faction::Alliance,
+            system,
+            DefensesPage::Regiments,
+        );
+        let [training] = &rows[built..] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(
+            training.label,
+            troop_mini(DatId::new(ALLIANCE_ARMY)).unwrap().1
+        );
+        assert_eq!(
+            row_marks(&world, training),
+            [(DllSource::Strategy, 11_513), (DllSource::Strategy, 11_570)]
+        );
+        assert_eq!(
+            training.item.menu_object(),
+            Some(MenuObject::PendingTroop {
+                system,
+                class: DatId::new(ALLIANCE_ARMY)
+            })
+        );
+    }
+
+    #[test]
+    fn the_empires_unfinished_unit_takes_its_sides_mark() {
+        // FUN_0042c3b0: 0x2d34 (11572) when +0x24's side bits are not 1.
+        use rebellion_core::manufacturing::{FacilityBuild, QueueItem};
+        let (world, system) = world(ControlKind::Controlled(Faction::Empire));
+        let mut manufacturing = ManufacturingState::default();
+        manufacturing.enqueue(
+            system,
+            QueueItem::new(
+                BuildableKind::DefenseFacility(FacilityBuild {
+                    class: DatId::new(KDY),
+                    is_alliance: false,
+                }),
+                5,
+            ),
+        );
+        let deliveries = DeliveryState::default();
+        let production = DefensesProduction {
+            manufacturing: &manufacturing,
+            deliveries: &deliveries,
+        };
+        let rows = page_rows(
+            &world,
+            &seen(system),
+            &MissionState::new(),
+            production,
+            Faction::Empire,
+            system,
+            DefensesPage::Batteries,
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(row_marks(&world, &rows[0]), [(DllSource::Strategy, 11_572)]);
     }
 
     #[test]
@@ -1547,6 +1986,7 @@ mod tests {
             &world,
             &seen(system),
             &missions,
+            idle(),
             Faction::Alliance,
             system,
             DefensesPage::Squadrons,
@@ -1725,7 +2165,7 @@ mod tests {
                 .center()
         };
         let pick = |state: &DefensesWindowState, layer, point| {
-            state.mission_target(&world, &fog, &missions, scaled(), layer, point)
+            state.mission_target(&world, &fog, &missions, idle(), scaled(), layer, point)
         };
 
         let first = pick(&state, layer, cell(&state, 0)).unwrap();
@@ -1917,6 +2357,7 @@ mod tests {
                     world,
                     &fog,
                     missions,
+                    idle(),
                     &economy,
                     state,
                     CockpitFaction::Alliance,
@@ -2156,6 +2597,7 @@ mod tests {
                 &world,
                 &seen(system),
                 &missions,
+                idle(),
                 &EconomyState::default(),
                 system,
             )

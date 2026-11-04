@@ -30,7 +30,7 @@ use crate::ids::{CapitalShipKey, DatId, FighterKey, SystemKey};
 /// The class being produced. The order names a class, as Build Selection
 /// lists them (`FUN_00537ff0` -> `FUN_0052e580`), and the instance is made
 /// when the unit completes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BuildableKind {
     /// A capital ship class (Star Destroyer, Mon Cal Cruiser, etc.)
     CapitalShip(CapitalShipKey),
@@ -51,7 +51,7 @@ pub enum BuildableKind {
 
 /// A facility class and the side it is built for: the facility files serve
 /// both sides, so the order carries its builder's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FacilityBuild {
     pub class: DatId,
     pub is_alliance: bool,

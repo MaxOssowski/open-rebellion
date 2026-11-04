@@ -6199,6 +6199,10 @@ async fn main() {
                         &world,
                         fog_state,
                         &mission_state,
+                        rebellion_render::DefensesProduction {
+                            manufacturing: &mfg_state,
+                            deliveries: &delivery_state,
+                        },
                         &economy_state,
                         &mut defenses_window_state,
                         cockpit_state.faction,
@@ -8947,6 +8951,10 @@ async fn main() {
                             &fog_empire_state
                         },
                         missions: &mission_state,
+                        production: rebellion_render::DefensesProduction {
+                            manufacturing: &mfg_state,
+                            deliveries: &delivery_state,
+                        },
                         economy: &economy_state,
                     },
                 );

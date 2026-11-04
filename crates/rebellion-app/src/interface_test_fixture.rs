@@ -774,6 +774,49 @@ pub fn apply(
         }
     }
     if request.scenario == Scenario::BuildSelectionDefensesDestination {
+        // The secondary is the player's, as a system that builds is
+        // (FUN_00538220), and its window lists the holder's side.
+        world.systems[secondary].control = ControlKind::Controlled(player_control);
+        // An A-wing or TIE Fighter being built for the
+        // secondary, its only squadron: A0 pending-facility/23 (Pzob). The
+        // primary's yards build it, at a cost no game day here completes.
+        let name = if player_is_alliance {
+            "A-wing"
+        } else {
+            "TIE Fighter"
+        };
+        let class = world
+            .fighter_classes
+            .iter()
+            .find(|(_, class)| class.is_alliance == player_is_alliance && class.name == name)
+            .map(|(key, _)| key);
+        if let Some(class) = class {
+            world.systems[secondary].fighters.clear();
+            manufacturing.enqueue(
+                primary,
+                rebellion_core::manufacturing::QueueItem::new(
+                    rebellion_core::manufacturing::BuildableKind::Fighter(class),
+                    100_000,
+                )
+                .delivered_to(secondary),
+            );
+        }
+        // And an Alliance Army (TROOPSD 2) or Stormtrooper (6) regiment in
+        // training for it, its only regiment.
+        let troop = rebellion_core::ids::DatId::new(if player_is_alliance {
+            0x1000_0002
+        } else {
+            0x1000_0006
+        });
+        world.systems[secondary].ground_units.clear();
+        manufacturing.enqueue(
+            primary,
+            rebellion_core::manufacturing::QueueItem::new(
+                rebellion_core::manufacturing::BuildableKind::Troop(troop),
+                100_000,
+            )
+            .delivered_to(secondary),
+        );
         let layout = cockpit.layout_for(640.0, 480.0);
         let galaxy = layout.galaxy;
         defenses.open(
@@ -2016,7 +2059,14 @@ pub fn emit_status_rows(
             ("Character Status", rows)
         }
         (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_)))
-        | (_, Some(object @ StatusObject::PendingFacility { .. })) => {
+        | (
+            _,
+            Some(
+                object @ (StatusObject::PendingFacility { .. }
+                | StatusObject::PendingFighter { .. }
+                | StatusObject::PendingTroop { .. }),
+            ),
+        ) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
@@ -4239,6 +4289,7 @@ pub struct QuadrantWindows<'a> {
     pub missions_windows: &'a MissionsWindowState,
     pub fog: &'a FogState,
     pub missions: &'a MissionState,
+    pub production: rebellion_render::DefensesProduction<'a>,
     pub economy: &'a EconomyState,
 }
 
@@ -4288,6 +4339,7 @@ impl QuadrantWatch {
                     world,
                     windows.fog,
                     windows.missions,
+                    windows.production,
                     windows.economy,
                     system,
                 )?;
@@ -8312,6 +8364,8 @@ mod tests {
         let mut fog = FogState::new(Faction::Alliance);
         fog.reveal(primary);
         let economy = EconomyState::default();
+        let manufacturing = rebellion_core::manufacturing::ManufacturingState::default();
+        let deliveries = rebellion_core::delivery::DeliveryState::default();
         let mut defenses = DefensesWindowState::default();
         let mut missions_windows = MissionsWindowState::default();
         let mut watch = QuadrantWatch::default();
@@ -8326,6 +8380,10 @@ mod tests {
                         missions_windows: &missions_windows,
                         fog: &fog,
                         missions: &applied.missions,
+                        production: rebellion_render::DefensesProduction {
+                            manufacturing: &manufacturing,
+                            deliveries: &deliveries,
+                        },
                         economy: &economy,
                     },
                 )
@@ -8459,6 +8517,10 @@ mod tests {
                     missions_windows: &missions_windows,
                     fog: &fog,
                     missions: &applied.missions,
+                    production: rebellion_render::DefensesProduction {
+                        manufacturing: &manufacturing,
+                        deliveries: &deliveries,
+                    },
                     economy: &economy,
                 },
             )

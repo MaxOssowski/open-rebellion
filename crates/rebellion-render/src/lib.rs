@@ -84,7 +84,8 @@ pub use cockpit::{
     STRATEGIC_LOGICAL_WIDTH,
 };
 pub use defenses_window::{
-    draw_defenses_windows, DefensesPage, DefensesWindowAction, DefensesWindowState,
+    draw_defenses_windows, DefensesPage, DefensesProduction, DefensesWindowAction,
+    DefensesWindowState,
 };
 #[cfg(target_arch = "wasm32")]
 pub use encyclopedia::set_encyclopedia_asset_cache;

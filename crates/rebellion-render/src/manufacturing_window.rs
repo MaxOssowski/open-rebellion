@@ -462,17 +462,13 @@ pub fn page_cells(
     cells
 }
 
-/// Every construction unit queued anywhere that will stand at `system`, in
-/// system then queue order.
+/// Every unit queued anywhere that will stand at `system`, in system, area
+/// then queue order.
 pub(crate) fn pending_units(
     manufacturing: &ManufacturingState,
     system: SystemKey,
 ) -> impl Iterator<Item = BuildableKind> + '_ {
-    let mut queues: Vec<_> = manufacturing
-        .queues()
-        .iter()
-        .filter(|((_, area), _)| *area == ProductionArea::ConstructionYard)
-        .collect();
+    let mut queues: Vec<_> = manufacturing.queues().iter().collect();
     queues.sort_unstable_by_key(|(key, _)| **key);
     queues.into_iter().flat_map(move |((origin, _), queue)| {
         queue

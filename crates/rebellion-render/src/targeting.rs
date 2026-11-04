@@ -282,7 +282,18 @@ pub fn mission_release_target(
     let picked = window_layer_at(ctx, point).and_then(|layer| {
         windows
             .defenses
-            .mission_target(world, fog, missions, layout, layer, point)
+            .mission_target(
+                world,
+                fog,
+                missions,
+                crate::defenses_window::DefensesProduction {
+                    manufacturing,
+                    deliveries,
+                },
+                layout,
+                layer,
+                point,
+            )
             .map(Some)
             .or_else(|| {
                 windows.system.mission_target(
@@ -831,6 +842,11 @@ mod tests {
                         world,
                         &fog,
                         &rebellion_core::missions::MissionState::new(),
+                        crate::defenses_window::DefensesProduction {
+                            manufacturing:
+                                &rebellion_core::manufacturing::ManufacturingState::default(),
+                            deliveries: &rebellion_core::delivery::DeliveryState::default(),
+                        },
                         &rebellion_core::economy::EconomyState::default(),
                         defenses,
                         faction,

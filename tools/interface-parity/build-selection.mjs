@@ -525,7 +525,7 @@ async function destinationCase(page, faction, directory) {
 // one: the secondary system's Defenses window at the galaxy view's left.
 // A band's Destination released on it is that system (A0
 // build-selection2/25: Coruscant's Defenses window).
-async function defensesDestinationCase(page, faction, directory) {
+async function defensesDestinationCase(page, faction, directory, source) {
   const fixtureCode = 95 | (faction.byte << 8);
   await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
   await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
@@ -543,7 +543,156 @@ async function defensesDestinationCase(page, faction, directory) {
   await page.waitForFunction((name) => window.__openRebellionInterfaceProduction?.bands
     ?.find(({ area }) => area === "ships")?.destination === name, menu.target_name, { timeout: 10_000 });
   fs.writeFileSync(path.join(directory, "defenses-destination.png"), await page.screenshot({ animations: "disabled" }));
-  return { home, target: menu.target_name };
+  const pending = await pendingSquadronCase(page, faction, directory, source);
+  return { home, target: menu.target_name, pending };
+}
+
+function gokresDirectory() {
+  const candidates = [
+    process.env.REBELLION_GOKRES_BMP_DIR,
+    path.join(root, "data/base/ui/gokres-dll/BMP"),
+  ].filter(Boolean);
+  const directory = candidates.find((candidate) => fs.existsSync(path.join(candidate, "17472.bmp")));
+  if (!directory) {
+    throw new Error("owned GOKRES.DLL BMP extraction is unavailable; set REBELLION_GOKRES_BMP_DIR");
+  }
+  return directory;
+}
+
+// The fixture builds the secondary's one squadron, an A-wing (GOKRES 17984)
+// or a TIE Fighter (18048), its Defenses window at the galaxy view's
+// corner + 5. It stands in the Fighter Squadrons page, not yet completed
+// (A0 pending-facility/23, Pzob): FUN_0042c3b0 lays STRATEGY 11570 (side 1)
+// or 11572 at the cell's corner and keys the mini over it. A0 /24: its
+// menu, A0 /25: its Fighter Squadron Status over 11571 / 11573.
+async function pendingSquadronCase(page, faction, directory, source) {
+  const origin = [faction.galaxy.x + 5, faction.galaxy.y + 5];
+  // The Fighter Squadrons tab, at the strip's (100, 20), 36 by 33.
+  await click(page, { x: origin[0] + 100 + 18, y: origin[1] + 20 + 16 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  await page.waitForTimeout(300);
+  await frames(page);
+  const bytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "pending-squadron.png"), bytes);
+  const gokresBmp = (id, width, height) => decodeIndexedBmp(fs.readFileSync(path.join(gokresDirectory(),
+    `${id}.bmp`)), width, height);
+  const colour = (png, k) => png.data[k] << 16 | png.data[k + 1] << 8 | png.data[k + 2];
+  // The layers' composite where any is opaque, top first: the cell's
+  // pixels FUN_0042c3b0 and the keyed mini decide.
+  const composite = (layers) => {
+    const pixels = [];
+    for (let y = 0; y < 25; y += 1) {
+      for (let x = 0; x < 66; x += 1) {
+        for (const png of layers) {
+          if (x >= png.width) continue;
+          const k = (y * png.width + x) * 4;
+          if (colour(png, k) !== png.key) {
+            pixels.push([x, y, colour(png, k)]);
+            break;
+          }
+        }
+      }
+    }
+    return pixels;
+  };
+  const differing = (pixels, png, [cx, cy]) => pixels.filter(([x, y, value]) =>
+    colour(png, ((cy + y) * png.width + cx + x) * 4) !== value).length;
+  const mark = resource(source, faction.byte === 1 ? 11570 : 11572, 61, 25);
+  const pixels = composite([gokresBmp(faction.byte === 1 ? 17984 : 18048, 66, 25), mark]);
+  const result = { checked: pixels.length, port: differing(pixels, PNG.sync.read(bytes), [origin[0] + 7, origin[1] + 81]) };
+  // A0 pending-facility/23: Pzob's window at (118, 86), the A-wing in the
+  // seventh cell (7, 81 + 2 * 70).
+  const a0Cell = path.join(root, ".artifacts/a0-vm/pending-facility/23-tab0.png");
+  if (faction.byte === 1 && fs.existsSync(a0Cell)) {
+    result.a0 = differing(pixels, PNG.sync.read(fs.readFileSync(a0Cell)), [118 + 7, 86 + 81 + 140]);
+  }
+  assert.ok(result.checked > 1000 && result.port === 0 && (result.a0 ?? 0) === 0, JSON.stringify(result));
+
+  // The regiment in training on the Trooper Regiments page (the strip's
+  // (64, 20)): the mini over 11570 / 11572 over the backdrop 11513
+  // (FUN_0042c3b0; the regiment's Status word is 34673 "Training",
+  // FUN_00445280). No A0 capture.
+  await click(page, { x: origin[0] + 64 + 18, y: origin[1] + 20 + 16 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  await page.waitForTimeout(300);
+  await frames(page);
+  const regimentBytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "pending-regiment.png"), regimentBytes);
+  const regiment = composite([gokresBmp(faction.byte === 1 ? 17473 : 17536, 61, 25), mark,
+    resource(source, 11513, 61, 25)]);
+  result.regiment = { checked: regiment.length,
+    port: differing(regiment, PNG.sync.read(regimentBytes), [origin[0] + 7, origin[1] + 81]) };
+  assert.ok(result.regiment.checked > 1000 && result.regiment.port === 0, JSON.stringify(result));
+  await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+  await click(page, { x: origin[0] + 7 + 33, y: origin[1] + 81 + 12 }, "right");
+  await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+    null, { timeout: 10_000 });
+  const regimentMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+  assert.deepEqual(regimentMenu.row_states, [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true],
+    ["Status", true], ["Scrap", false]], JSON.stringify(regimentMenu));
+  await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+  const regimentRow = (regimentMenu.height - 2) / regimentMenu.rows;
+  await click(page, { x: regimentMenu.left + regimentMenu.width / 2,
+    y: regimentMenu.top + 2 + regimentRow * (regimentMenu.status_window_row + 0.5) });
+  await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+  const regimentStatus = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+  fs.writeFileSync(path.join(directory, "pending-regiment-status.png"), await page.screenshot({ animations: "disabled" }));
+  assert.equal(regimentStatus.title, "Trooper Regiment Status", JSON.stringify(regimentStatus));
+  assert.deepEqual(regimentStatus.rows[1], ["Status:", "Training"], JSON.stringify(regimentStatus));
+  result.regiment.status = regimentStatus.rows;
+  await page.keyboard.press("Escape");
+  await page.mouse.move(2, 2);
+  await frames(page);
+  // Back to the squadron for its menu and Status.
+  await click(page, { x: origin[0] + 100 + 18, y: origin[1] + 20 + 16 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  await page.waitForTimeout(300);
+
+  await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+  await click(page, { x: origin[0] + 7 + 33, y: origin[1] + 81 + 12 }, "right");
+  await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+    null, { timeout: 10_000 });
+  const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+  fs.writeFileSync(path.join(directory, "pending-squadron-menu.png"), await page.screenshot({ animations: "disabled" }));
+  // port: Move and Confirmed Move are grey, where A0 /24 offers them.
+  assert.deepEqual(menu.row_states, [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true],
+    ["Status", true], ["Scrap", false]], JSON.stringify(menu));
+  result.menu = menu.row_states;
+
+  await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+  const row = (menu.height - 2) / menu.rows;
+  await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + row * (menu.status_window_row + 0.5) });
+  await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+  const status = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+  await page.mouse.move(2, 2);
+  await frames(page);
+  const statusShot = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "pending-squadron-status.png"), statusShot);
+  assert.equal(status.title, "Fighter Squadron Status", JSON.stringify(status));
+  assert.equal(status.rows[0][0], "Attached: ", JSON.stringify(status));
+  assert.ok(status.rows.some(([label]) => label === "Squadron Size:"), JSON.stringify(status));
+  result.status = status.rows;
+  // A0 /25 (the window at (108, 79), as here): the portrait over 11571.
+  const a0Status = path.join(root, ".artifacts/a0-vm/pending-facility/25-awing-status.png");
+  if (faction.byte === 1 && fs.existsSync(a0Status)) {
+    const a0 = PNG.sync.read(fs.readFileSync(a0Status));
+    const port = PNG.sync.read(statusShot);
+    const [x0, y0] = [108, 79];
+    let count = 0;
+    for (let y = 15; y < 113; y += 1) for (let x = 242; x < 372; x += 1) {
+      const k = ((y0 + y) * a0.width + x0 + x) * 4;
+      if ([0, 1, 2].some((c) => a0.data[k + c] !== port.data[k + c])) count += 1;
+    }
+    result.a0_picture = count;
+    assert.equal(count, 0, JSON.stringify(result));
+  }
+  await page.keyboard.press("Escape");
+  await page.mouse.move(2, 2);
+  await frames(page);
+  return result;
 }
 
 // Fixture code 96 is Scenario::BuildSelectionFleetDestination (95) plus
@@ -899,9 +1048,27 @@ async function inspect(server, source, faction, executable) {
             || shot.data[at + 2] !== bitmap.data[from + 2]) differing += 1;
         }
       }
-      pages.push({ label, picture, checked, differing });
+      const entry = { label, picture, checked, differing };
+      // A0 pending-facility/31: Pzob's Shipyards page (the Alliance, the
+      // window at (145, 86)) shows its built shipyard, 9006, at (9, 79).
+      const a0Page = path.join(root, ".artifacts/a0-vm/pending-facility/31-pzob-shipyards.png");
+      if (label === "shipyards" && faction.byte === 1 && fs.existsSync(a0Page)) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0Page));
+        entry.a0_differing = 0;
+        for (let y = 0; y < 35; y += 1) {
+          for (let x = 0; x < 67; x += 1) {
+            const from = (y * 67 + x) * 4;
+            if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
+            const at = ((86 + 79 + y) * a0.width + 145 + 9 + x) * 4;
+            if (a0.data[at] !== bitmap.data[from] || a0.data[at + 1] !== bitmap.data[from + 1]
+              || a0.data[at + 2] !== bitmap.data[from + 2]) entry.a0_differing += 1;
+          }
+        }
+      }
+      pages.push(entry);
     }
-    assert.ok(pages.every(({ checked, differing }) => checked > 400 && differing === 0), JSON.stringify(pages));
+    assert.ok(pages.every(({ checked, differing, a0_differing: a0 }) => checked > 400 && differing === 0
+      && (a0 ?? 0) === 0), JSON.stringify(pages));
     fs.writeFileSync(path.join(directory, "training-page.png"), await page.screenshot({ animations: "disabled" }));
     const [cx, cy, cw, ch] = (await production(page)).first_cell;
     await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
@@ -1000,7 +1167,7 @@ async function inspect(server, source, faction, executable) {
     // sets that band's area alone (A0 build-selection2/21: the ships band's
     // Destination on Chandrila; the others keep Coruscant).
     const destination = await destinationCase(page, faction, directory);
-    const defensesDestination = await defensesDestinationCase(page, faction, directory);
+    const defensesDestination = await defensesDestinationCase(page, faction, directory, source);
     const logged = async (description, pattern) => {
       const deadline = Date.now() + 10_000;
       while (Date.now() < deadline) {

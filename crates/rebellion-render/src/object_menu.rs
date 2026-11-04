@@ -121,6 +121,18 @@ pub enum MenuObject {
         owner: u8,
         arrival: Option<u64>,
     },
+    /// A Defenses window squadron being built for `system`'s planet
+    /// (`0x1c..0x1f`, `+0x50` bit 2 clear), by its class.
+    PendingFighter {
+        system: SystemKey,
+        class: FighterKey,
+    },
+    /// A Defenses window regiment in training for `system` (`0x10..0x13`,
+    /// `+0x50` bit 2 clear), by its class.
+    PendingTroop {
+        system: SystemKey,
+        class: rebellion_core::ids::DatId,
+    },
     /// A Missions window's mission, by its id (`0x50..0x7f`): the window's
     /// slot 22 (`FUN_004a0400`) gives the left list's selected missions to
     /// the menu (A0 missionstatus/02: Encyclopedia, Status, Abort).
@@ -146,6 +158,8 @@ impl MenuObject {
             | Self::ProductionFacility(_)
             | Self::Headquarters(_)
             | Self::PendingFacility { .. }
+            | Self::PendingFighter { .. }
+            | Self::PendingTroop { .. }
             | Self::Mission(_) => None,
         }
     }
@@ -177,6 +191,8 @@ impl MenuObject {
             | Self::Fighter { .. }
             | Self::Headquarters(_)
             | Self::PendingFacility { .. }
+            | Self::PendingFighter { .. }
+            | Self::PendingTroop { .. }
             | Self::Mission(_) => None,
         }
     }
@@ -234,6 +250,12 @@ impl MenuObject {
                 owner,
                 arrival,
             }),
+            Self::PendingFighter { system, class } => {
+                Some(StatusObject::PendingFighter { system, class })
+            }
+            Self::PendingTroop { system, class } => {
+                Some(StatusObject::PendingTroop { system, class })
+            }
             Self::Mission(id) => Some(StatusObject::Mission(id)),
             Self::SystemIcon { .. } => None,
         }
@@ -584,7 +606,11 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
         Some(MenuObject::Fleet(_)) => &[MOVE, CONFIRMED_MOVE, BOMBARDMENT, ASSAULT, RENAME, SCRAP],
-        Some(MenuObject::Troop(_)) => &[MOVE, CONFIRMED_MOVE, SCRAP],
+        // A regiment in training keeps them, its Scrap grey for want of a
+        // target. port: its Move rows are grey too (a queue entry).
+        Some(MenuObject::Troop(_) | MenuObject::PendingTroop { .. }) => {
+            &[MOVE, CONFIRMED_MOVE, SCRAP]
+        }
         Some(MenuObject::Ship { .. }) => &[MOVE, CONFIRMED_MOVE, SCRAP, RENAME, CREATE_FLEET],
         Some(MenuObject::SystemIcon { quadrant, .. }) => match quadrant {
             Quadrant::System => &[SCRAP, DESTINATION, RESERVED],
@@ -602,9 +628,14 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         },
         // FUN_00502fe0 -> FUN_00557ce0: 0x201, 0x202, 0x204 (no STRATEGY
         // record) and 0x200.
-        Some(MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. }) => {
-            &[MOVE, CONFIRMED_MOVE, SCRAP]
-        }
+        // An unfinished squadron keeps them (A0 pending-facility/24); its
+        // Scrap names no target, so it is grey. port: its Move rows are grey
+        // too, where A0 offers them: an unfinished unit is a queue entry.
+        Some(
+            MenuObject::Fighter { .. }
+            | MenuObject::PlanetFighter { .. }
+            | MenuObject::PendingFighter { .. },
+        ) => &[MOVE, CONFIRMED_MOVE, SCRAP],
         // Every facility class (defenses, yards, mines and refineries)
         // keeps the base object's order list, slot +0x3c (FUN_005399e0):
         // the one order 0x200 that FUN_00539c20 puts in it. FUN_0051d990
@@ -1936,6 +1967,66 @@ mod tests {
                 class: rebellion_core::ids::DatId::new(0x2d00_0002),
                 owner: 1,
                 arrival: None,
+            })
+        );
+    }
+
+    #[test]
+    fn an_unfinished_squadron_lists_the_squadron_rows_with_a_grey_scrap() {
+        // A0 pending-facility/24: Pzob's A-wing under construction opens
+        // Move, Confirmed Move, Encyclopedia, Status and a grey Scrap
+        // (FUN_00502fe0's list). port: its Move rows stay grey where A0
+        // offers them, for the squadron is a queue entry.
+        let pending = MenuObject::PendingFighter {
+            system: SystemKey::default(),
+            class: FighterKey::default(),
+        };
+        let movable = OrderGates {
+            squadron_move: true,
+            ..MISSION_GATE
+        };
+        let rows = object_menu_rows(Some(pending), movable);
+        assert_eq!(
+            labels(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"]
+        );
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(pending.scrap_target(), None);
+        assert_eq!(pending.mission_member(), None);
+        assert_eq!(
+            pending.status_object(),
+            Some(StatusObject::PendingFighter {
+                system: SystemKey::default(),
+                class: FighterKey::default(),
+            })
+        );
+    }
+
+    #[test]
+    fn a_regiment_in_training_lists_the_regiment_rows_with_a_grey_scrap() {
+        // FUN_00504b30's list: Move, Confirmed Move and Scrap. Its Scrap
+        // names no target, so it is grey. port: its Move rows are grey too,
+        // for the regiment is a queue entry.
+        let pending = MenuObject::PendingTroop {
+            system: SystemKey::default(),
+            class: rebellion_core::ids::DatId::new(0x1000_0002),
+        };
+        let movable = OrderGates {
+            troop_move: true,
+            ..MISSION_GATE
+        };
+        let rows = object_menu_rows(Some(pending), movable);
+        assert_eq!(
+            labels(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"]
+        );
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(pending.scrap_target(), None);
+        assert_eq!(
+            pending.status_object(),
+            Some(StatusObject::PendingTroop {
+                system: SystemKey::default(),
+                class: rebellion_core::ids::DatId::new(0x1000_0002),
             })
         );
     }
