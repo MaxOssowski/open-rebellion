@@ -3495,15 +3495,17 @@
         {
           "id": "CMD-09-C009",
           "requirement": "shipyard en route",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "crates/rebellion-render/src/manufacturing_window.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/",
+            "tools/interface-parity/build-selection.mjs"
           ],
-          "note": "The facility page draws shipyard en route as STRATEGY 9009 (FUN_00458fe0: +0x50 bits 4 and 0x10). A0 personnel-states/34 (Mon Calamari, day 303) shows 9009 at (9, 79), 1 of 2345 pixels off; no browser case of an en-route shipyard yet.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The facility page draws a shipyard en route as STRATEGY 9009 (FUN_00458fe0: base + 3, +0x50 bit 4). A0 personnel-states/34 (Mon Calamari, day 303, window at (314, 86)) shows 9009 at (9, 79), 0 of 2344 opaque pixels off when keyed on the bitmap's first byte. build-selection.mjs (Linux, both sides): the fixture sends an Orbital Shipyard to the primary and its Shipyards page's third cell is 9009, every opaque pixel exact; for the Alliance the gate compares A0 34 too (2026-11-04).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-09-C010",
@@ -5930,9 +5932,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-class-portraits/"
           ],
-          "note": "Compared with A0 on 2026-11-02 (build-selection2/07, 13): the populated band shows the product's name, its mini at the band's (40, 15) (A0's GOKRES 1154 at the window's (95, 153), as the port places it) and 'Training: N'; after its menu no band stays selected (A0 16..18), now ported. build-selection.mjs (Linux): the band queues and, for the Empire, its strip matches A0 07 pixel for pixel.",
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/07, 13): the populated band shows the product's name, its portrait at the band's (40, 15) (A0's GOKRES 1154 at the window's (95, 153); since 2026-11-04 the port draws the portrait, class +0x30 & 0xfff, not the mini, and build-selection.mjs finds it exact against A0 07) and 'Training: N'; after its menu no band stays selected (A0 16..18), now ported. build-selection.mjs (Linux): the band queues and, for the Empire, its strip matches A0 07 pixel for pixel.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -6368,9 +6371,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-palette-yellow/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-unfinished-facility/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-unfinished-facility/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/"
           ],
-          "note": "Compared with A0 on 2026-11-03 (personnel-states/24: Mon Calamari's facilities band building an Orbital Shipyard, its product, 'Building: 1', destination and its bar in (255, 255, 0) at rows 289..292): the port's band lines match the confirmed band of build-selection2/07, and fleet-window.mjs 'delivery' (Linux, both sides) finds the shipyard band's bar part full in the same yellow (0x200f0f0 now drawn as the palette's yellow). 2026-11-04: an unfinished facility's own menu and Status match A0 pending-facility/12-13 (Commenor's refinery: Encyclopedia, Status, grey Scrap; Manufacturing Status 'Under Construction' over 11571, picture and buttons 0 pixels off) in build-selection.mjs (Linux).",
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/24: Mon Calamari's facilities band building an Orbital Shipyard, its product, 'Building: 1', destination and its bar in (255, 255, 0) at rows 289..292): the port's band lines match the confirmed band of build-selection2/07, and fleet-window.mjs 'delivery' (Linux, both sides) finds the shipyard band's bar part full in the same yellow (0x200f0f0 now drawn as the palette's yellow). 2026-11-04: an unfinished facility's own menu and Status match A0 pending-facility/12-13 (Commenor's refinery: Encyclopedia, Status, grey Scrap; Manufacturing Status 'Under Construction' over 11571, picture and buttons 0 pixels off) in build-selection.mjs (Linux). 2026-11-04: the band's manager Status (FUN_0044acd0) is named after its class, TEXTSTRA 11525 \"Shipyard\" (FUN_004f62d0); against A0 pending-facility/34 its picture (GOKRES 262) is exact and the name inks where A0's does (build-selection.mjs, Linux).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -6444,26 +6448,31 @@
         {
           "id": "OBJ-09-C009",
           "requirement": "cancelled",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/build-selection.mjs",
-            "ghidra/notes/manufacturing-build-selection.md"
+            "ghidra/notes/manufacturing-build-selection.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-production-stop-confirmation/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/"
           ],
-          "note": "Stop (manual p. 84) clears the band's area and build-selection.mjs Stops the band on Arch Chromium, but that gate fails its 'opened' case; no A0 capture of a cancelled project.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Stop (0x213, manual p. 84) asks first (FUN_0049a350: 0x7053, 0x7055, picture 1038/1039) and the checkmark empties the band's area: A0 build-selection2/09..15, the band idle after Stop in 11-stopped. build-selection.mjs (Linux, both sides) Stops the troops band, finds it empty, and compares the idle bands' lines and counts with A0 11 (see OBJ-07-C006, C014).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "OBJ-09-C010",
           "requirement": "destination changed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/production-destination.md",
-            "tools/interface-parity/fleet-window.mjs"
+            "tools/interface-parity/fleet-window.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/",
+            "tools/interface-parity/build-selection.mjs"
           ],
-          "note": "Destination (0x214, FUN_00512700 kind 4) changes the area's output target; fleet-window.mjs 'destination' passes on Arch Chromium. No A0 capture of this state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Destination (0x214, FUN_00512700 kind 4) changes one area's output target: A0 build-selection2/21 (the ships band's Destination on Chandrila, the other bands keep Coruscant). build-selection.mjs (fixture 89, Linux, both sides) releases the troops band's Destination on another system's planet and that band alone names it, and fleet-window.mjs 'destination' passes (see OBJ-07-C015..C019).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
@@ -7623,9 +7632,10 @@
             "tools/interface-parity/build-selection.mjs",
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-band-menus-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-checked-menu-width/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-checked-menu-width/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/"
           ],
-          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported.",
+          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-04 open: A0 pending-facility/33 (Pzob, its ships band building) greys Build, Stop, Destination, Rename and Reserved, where the port leaves them white; the cause is not traced.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

@@ -141,6 +141,12 @@ code passes the empty id as the normal bitmap. Counts are of the shown side.
     6209 "Building: " (ships, facilities) or 6208 "Training: " with the
     units left (`+0x58`) at (5, 47);
   - at (5, 57): 6201 "Destination: " and the destination system's name.
+- The band's Status (`FUN_0044acd0`, families `0xa0..0xaf`): the title
+  6185/6193/6195, the manager's name and the picture 262/263/264
+  (`FUN_00443130`). `FUN_004f62d0` names it `+0x34`, else its class: TEXTSTRA
+  11524 "Construction", 11525 "Shipyard", 11526 "Training". A0
+  pending-facility/34: Pzob's "Ship Construction", "Shipyard", GOKRES 262
+  exact (2026-11-04).
 - A progress bar per band (`FUN_004acec0`, ids `0x6d..0x6f`) at (56, 127),
   (56, 208), (56, 289), 160 by 4: position `+0x5c` of range `+0x68`.
 
