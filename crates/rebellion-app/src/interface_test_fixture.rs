@@ -614,6 +614,7 @@ pub fn apply(
         }
         Scenario::Headquarters => {
             world.systems[primary].is_headquarters = true;
+            move_headquarters_object(world, primary);
         }
         Scenario::Uprising => {
             world.systems[primary].control = ControlKind::Uprising(player_control);
@@ -1995,30 +1996,42 @@ pub fn emit_personnel_finder(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
-/// The open Character Status window's rows, in the ForceStatus scenario.
+/// The open Status window's title and rows: a Character Status in the
+/// ForceStatus scenario, a facility's (the headquarters') in Quadrants.
 pub fn emit_status_rows(
     request: FixtureRequest,
-    world: &GameWorld,
-    missions: &MissionState,
+    sources: rebellion_render::status_rows::StatusSources<'_>,
     status: &rebellion_render::status_window::StatusWindowState,
 ) {
-    if request.scenario != Scenario::ForceStatus {
-        return;
-    }
-    let Some(rebellion_render::status_rows::StatusObject::Character(key)) = status.object() else {
-        return;
-    };
-    let Some(rows) = rebellion_render::status_window::character_rows(world, missions.en_route(), key)
-    else {
-        return;
+    use rebellion_render::status_rows::StatusObject;
+    let (title, rows) = match (request.scenario, status.object()) {
+        (Scenario::ForceStatus, Some(StatusObject::Character(key))) => {
+            let Some(rows) = rebellion_render::status_window::character_rows(
+                sources.world,
+                sources.missions.en_route(),
+                key,
+            ) else {
+                return;
+            };
+            ("Character Status", rows)
+        }
+        (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_))) => {
+            let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
+                return;
+            };
+            (view.title, view.rows)
+        }
+        _ => return,
     };
     #[derive(Serialize)]
     struct Report {
         status: &'static str,
+        title: &'static str,
         rows: Vec<(String, String)>,
     }
     let bytes = serde_json::to_vec(&Report {
         status: "status-rows",
+        title,
         rows: rows.into_iter().map(|row| (row.label, row.value)).collect(),
     })
     .expect("serialize the status rows report");
@@ -2834,6 +2847,7 @@ fn place_quadrant_contents(
         }
         world.systems[headquarters].is_headquarters = true;
         world.systems[headquarters].control = ControlKind::Controlled(Faction::Alliance);
+        move_headquarters_object(world, headquarters);
         world.systems[revolt].is_headquarters = false;
         world.systems[revolt].control = ControlKind::Controlled(player);
         uprisings.active_uprisings.insert(
@@ -4050,6 +4064,44 @@ struct FixtureQuadrantSetup {
     uprising: Option<[f32; 4]>,
     /// The day readout's centre, which opens the Game Speed menu.
     day_readout: (f32, f32),
+}
+
+/// Move the headquarters object (ALLFACSD, family `0x20`) to `to`, with the
+/// flag: the sector window's mark and menu stand for that object
+/// (`FUN_00526cf0`, `FUN_0052bed0`).
+fn move_headquarters_object(world: &mut GameWorld, to: SystemKey) {
+    let is_headquarters =
+        |world: &GameWorld, key: &rebellion_core::ids::ManufacturingFacilityKey| {
+            world
+                .manufacturing_facilities
+                .get(*key)
+                .is_some_and(|facility| facility.class_dat_id.family() == 0x20)
+        };
+    let held: Vec<_> = world
+        .manufacturing_facilities
+        .iter()
+        .filter(|(_, facility)| facility.class_dat_id.family() == 0x20)
+        .map(|(key, _)| key)
+        .collect();
+    let keys: Vec<SystemKey> = world.systems.keys().collect();
+    for system in keys {
+        let mut list = std::mem::take(&mut world.systems[system].manufacturing_facilities);
+        list.retain(|key| !is_headquarters(world, key));
+        world.systems[system].manufacturing_facilities = list;
+    }
+    let hq = held.first().copied().unwrap_or_else(|| {
+        world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2000_0001),
+                side: Faction::Alliance,
+                is_shipyard: false,
+            },
+        )
+    });
+    for extra in held.iter().skip(1) {
+        world.manufacturing_facilities.remove(*extra);
+    }
+    world.systems[to].manufacturing_facilities.push(hq);
 }
 
 /// The primary's sector's first two systems other than the primary and the

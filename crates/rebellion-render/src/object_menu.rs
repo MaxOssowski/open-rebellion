@@ -108,6 +108,10 @@ pub enum MenuObject {
     ManufacturingFacility(ManufacturingFacilityKey),
     /// A System window mine or refinery (`0x2c..0x2d`).
     ProductionFacility(ProductionFacilityKey),
+    /// The Alliance headquarters (ALLFACSD, `0x20`), chosen by its sector
+    /// window overlay (id `0x10000`, `FUN_0045bbb0`); the port keeps it
+    /// with the yards.
+    Headquarters(ManufacturingFacilityKey),
     /// A Missions window's mission, by its id (`0x50..0x7f`): the window's
     /// slot 22 (`FUN_004a0400`) gives the left list's selected missions to
     /// the menu (A0 missionstatus/02: Encyclopedia, Status, Abort).
@@ -131,6 +135,7 @@ impl MenuObject {
             | Self::DefenseFacility(_)
             | Self::ManufacturingFacility(_)
             | Self::ProductionFacility(_)
+            | Self::Headquarters(_)
             | Self::Mission(_) => None,
         }
     }
@@ -160,6 +165,7 @@ impl MenuObject {
             | Self::SystemIcon { .. }
             | Self::Producer { .. }
             | Self::Fighter { .. }
+            | Self::Headquarters(_)
             | Self::Mission(_) => None,
         }
     }
@@ -202,7 +208,9 @@ impl MenuObject {
                 Some(StatusObject::PlanetFighter { system, class })
             }
             Self::DefenseFacility(key) => Some(StatusObject::DefenseFacility(key)),
-            Self::ManufacturingFacility(key) => Some(StatusObject::ManufacturingFacility(key)),
+            Self::ManufacturingFacility(key) | Self::Headquarters(key) => {
+                Some(StatusObject::ManufacturingFacility(key))
+            }
             Self::ProductionFacility(key) => Some(StatusObject::ProductionFacility(key)),
             Self::Mission(id) => Some(StatusObject::Mission(id)),
             Self::SystemIcon { .. } => None,
@@ -583,6 +591,11 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             | MenuObject::ManufacturingFacility(_)
             | MenuObject::ProductionFacility(_),
         ) => &[SCRAP],
+        // The headquarters' slot +0x3c (FUN_00526860 -> FUN_00526c00):
+        // 0x201, 0x202 and 0x204 (no STRATEGY record) after FUN_004f2a10's
+        // empty object list; no Scrap. port: the headquarters does not move
+        // in the port, so no gate enables Move or Confirmed Move.
+        Some(MenuObject::Headquarters(_)) => &[MOVE, CONFIRMED_MOVE],
         None => &[],
     };
     let mut rows: Vec<ObjectMenuRow> = offered
@@ -1833,6 +1846,30 @@ mod tests {
                 class: FighterKey::default(),
             })
         );
+    }
+
+    #[test]
+    fn the_headquarters_lists_move_confirmed_move_encyclopedia_and_status_without_scrap() {
+        // The HQ class's slot +0x3c (vtable 0x0065f280, FUN_00526860 ->
+        // FUN_00526c00): 0x201, 0x202 and 0x204, which has no STRATEGY
+        // record. FUN_0051d990 adds 0x100 and 0x103, Status enabled since
+        // the object is no system. The manual (p. 134, Fig. 3.82): "drag
+        // the HQ icon onto a new system or right-click, select Move".
+        let hq = MenuObject::Headquarters(ManufacturingFacilityKey::default());
+        let rows = object_menu_rows(Some(hq), MISSION_GATE);
+
+        assert_eq!(
+            labels(&rows),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+        );
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(
+            hq.status_object(),
+            Some(StatusObject::ManufacturingFacility(
+                ManufacturingFacilityKey::default()
+            ))
+        );
+        assert_eq!(hq.scrap_target(), None);
     }
 
     #[test]

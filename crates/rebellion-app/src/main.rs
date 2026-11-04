@@ -7172,12 +7172,26 @@ async fn main() {
                         }
                     }
 
+                    let status_sources = StatusSources {
+                        world: &world,
+                        missions: &mission_state,
+                        movement: &movement_state,
+                        transport: &troop_transport_state,
+                        manufacturing: &mfg_state,
+                        today: clock.tick,
+                        objectives: rebellion_render::status_rows::ObjectiveSource {
+                            alliance: cockpit_state.faction
+                                == rebellion_render::cockpit::CockpitFaction::Alliance,
+                            conditions_word: victory_state.conditions_word,
+                            standard: campaign_config.victory_conditions
+                                == VictoryConditions::Standard,
+                        },
+                    };
                     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
                     if let Some(request) = interface_fixture_request {
                         interface_test_fixture::emit_status_rows(
                             request,
-                            &world,
-                            &mission_state,
+                            status_sources,
                             &status_window_state,
                         );
                     }
@@ -7185,21 +7199,7 @@ async fn main() {
                     // the Encyclopedia; 0x65 closes it.
                     if let Some(action) = draw_status_window(
                         ctx,
-                        StatusSources {
-                            world: &world,
-                            missions: &mission_state,
-                            movement: &movement_state,
-                            transport: &troop_transport_state,
-                            manufacturing: &mfg_state,
-                            today: clock.tick,
-                            objectives: rebellion_render::status_rows::ObjectiveSource {
-                                alliance: cockpit_state.faction
-                                    == rebellion_render::cockpit::CockpitFaction::Alliance,
-                                conditions_word: victory_state.conditions_word,
-                                standard: campaign_config.victory_conditions
-                                    == VictoryConditions::Standard,
-                            },
-                        },
+                        status_sources,
                         &mut status_window_state,
                         cockpit_state.faction,
                         cockpit_layout,

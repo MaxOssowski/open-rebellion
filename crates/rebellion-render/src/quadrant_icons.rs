@@ -219,11 +219,16 @@ impl<'a> SystemContents<'a> {
         let Some(value) = self.world.systems.get(self.system) else {
             return 0;
         };
+        // FUN_0053b6e0 walks families 0x28..0x30, so the headquarters
+        // (0x20), which the port keeps with the yards, is left out.
         let manufacturing = value.manufacturing_facilities.iter().filter(|key| {
             self.world
                 .manufacturing_facilities
                 .get(**key)
-                .is_some_and(|facility| self.seen(crate::fleet_window::faction_side(facility.side)))
+                .is_some_and(|facility| {
+                    (0x28..0x30).contains(&facility.class_dat_id.family())
+                        && self.seen(crate::fleet_window::faction_side(facility.side))
+                })
         });
         let production = value.production_facilities.iter().filter(|key| {
             self.world
@@ -631,6 +636,23 @@ mod tests {
                 Some(expected)
             );
         }
+    }
+
+    #[test]
+    fn the_headquarters_lights_neither_the_system_nor_the_defenses_icon() {
+        // FUN_0045cdc0 counts FUN_0053b6e0's families 0x28..0x30 and
+        // FUN_0045ce80 FUN_00526fd0's 0x22..0x28; the HQ is family 0x20.
+        let (mut world, system) = alliance_world();
+        let hq = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2000_0001),
+                side: rebellion_core::dat::Faction::Alliance,
+                is_shipyard: false,
+            });
+        world.systems[system].manufacturing_facilities.push(hq);
+        assert_eq!(alliance_side(&world, system, Quadrant::System), None);
+        assert_eq!(alliance_side(&world, system, Quadrant::Defenses), None);
     }
 
     #[test]

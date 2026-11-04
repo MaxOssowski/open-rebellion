@@ -50,11 +50,13 @@ impl WindowColumn {
     }
 }
 
-/// A selected quadrant icon and the art it showed when chosen.
+/// A selected overlay and the art it showed when chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SelectedIcon {
     system: SystemKey,
-    quadrant: Quadrant,
+    /// A quadrant icon, or `None` for the headquarters overlay (id
+    /// `0x10000`, kind 1).
+    quadrant: Option<Quadrant>,
     /// The icon's first bitmap when it was chosen, which tells a changed
     /// icon from the one chosen.
     art: u32,
@@ -234,7 +236,7 @@ impl SectorWindowState {
             {
                 window.selection = Some(SelectedIcon {
                     system,
-                    quadrant,
+                    quadrant: Some(quadrant),
                     art,
                 });
             }
@@ -559,25 +561,19 @@ pub fn draw_sector_windows(
         if result.icon_pressed.is_some() || result.drag_end.is_some() || result.selection_lapsed {
             chosen.push((window.sector, selection, result.drag_from));
         }
-        if let (
-            Some(Some((point, confirmed))),
-            Some(SelectedIcon {
-                system, quadrant, ..
-            }),
-        ) = (result.drag_end, selection)
+        let selection_object = selection.and_then(|icon| selected_object(world, icon));
+        if let (Some(Some((point, confirmed))), Some(selection)) =
+            (result.drag_end, selection_object)
         {
             actions.push(SectorWindowAction::DropSelection {
-                selection: MenuObject::SystemIcon { system, quadrant },
+                selection,
                 point,
                 confirmed,
             });
         }
         if let Some(point) = result.object_menu {
             actions.push(SectorWindowAction::OpenObjectMenu {
-                selection: selection.map(|icon| MenuObject::SystemIcon {
-                    system: icon.system,
-                    quadrant: icon.quadrant,
-                }),
+                selection: selection_object,
                 point,
             });
         }
@@ -793,6 +789,38 @@ fn draw_sector_window(
             // list (`+0x174`), so every icon lies above every planet.
             let mut overlays: Vec<(SystemKey, Quadrant, egui::Rect, (u32, u32))> = Vec::new();
             let mut headquarters: Vec<egui::Rect> = Vec::new();
+            // FUN_0045cc10 walks the overlay list, sorted by id (mode 1,
+            // Class_0066e148_vt4), so the headquarters overlay (0x10000)
+            // comes before every quadrant icon (sys_id | 0x40000 and up)
+            // and takes a point wherever its bitmap is opaque.
+            let headquarters_at = |point: egui::Pos2, cache: &mut BmpCache| {
+                sector.systems.iter().copied().find(|system_key| {
+                    world.systems.get(*system_key).is_some_and(|system| {
+                        let (planet_x, planet_y) =
+                            sector_planet_position(sector.x, sector.y, system.x, system.y);
+                        shows_alliance_headquarters(world, fog, player, *system_key)
+                            && headquarters_hit(
+                                cache,
+                                planet_rect(window_rect, layout.scale, planet_x, planet_y),
+                                layout.scale,
+                                point,
+                            )
+                    })
+                })
+            };
+            let headquarters_pressed = press.and_then(|point| headquarters_at(point, cache));
+            let headquarters_double_clicked =
+                double_click.is_some_and(|point| headquarters_at(point, cache).is_some());
+            if let Some(system) = headquarters_pressed {
+                result.icon_pressed = Some(SelectedIcon {
+                    system,
+                    quadrant: None,
+                    art: HEADQUARTERS_MARK,
+                });
+                if primary_pressed {
+                    result.drag_from = press.map(|point| screen_to_logical(layout, point));
+                }
+            }
             for system_key in &sector.systems {
                 let Some(system) = world.systems.get(*system_key) else {
                     continue;
@@ -835,24 +863,34 @@ fn draw_sector_window(
                 // when its icon hides or its art changes
                 // (ghidra/notes/sector-quadrants.md).
                 if let Some(selected) = window.selection.filter(|icon| icon.system == *system_key) {
-                    result.selection_lapsed = !icons.iter().any(|(quadrant, _, (normal, _))| {
-                        *quadrant == selected.quadrant && *normal == selected.art
-                    });
+                    result.selection_lapsed = match selected.quadrant {
+                        Some(chosen) => !icons.iter().any(|(quadrant, _, (normal, _))| {
+                            *quadrant == chosen && *normal == selected.art
+                        }),
+                        None => !shows_alliance_headquarters(world, fog, player, *system_key),
+                    };
                 }
-                let icon_double_clicked = double_click.and_then(|point| {
-                    icons
-                        .iter()
-                        .find(|(_, rect, _)| rect_contains(*rect, point))
-                        .map(|(quadrant, rect, _)| (*quadrant, *rect))
-                });
-                if let Some((quadrant, _, (normal, _))) = press.and_then(|point| {
-                    icons
-                        .iter()
-                        .find(|(_, rect, _)| rect_contains(*rect, point))
-                }) {
+                // FUN_0045aac0 opens nothing for the headquarters' kind 1,
+                // but FUN_0045cc10 found it first.
+                let icon_double_clicked = double_click
+                    .filter(|_| !headquarters_double_clicked)
+                    .and_then(|point| {
+                        icons
+                            .iter()
+                            .find(|(_, rect, _)| rect_contains(*rect, point))
+                            .map(|(quadrant, rect, _)| (*quadrant, *rect))
+                    });
+                if let Some((quadrant, _, (normal, _))) = press
+                    .filter(|_| headquarters_pressed.is_none())
+                    .and_then(|point| {
+                        icons
+                            .iter()
+                            .find(|(_, rect, _)| rect_contains(*rect, point))
+                    })
+                {
                     result.icon_pressed = Some(SelectedIcon {
                         system: *system_key,
-                        quadrant: *quadrant,
+                        quadrant: Some(*quadrant),
                         art: *normal,
                     });
                     if primary_pressed {
@@ -1004,8 +1042,8 @@ fn draw_sector_window(
                 );
             }
             for (system, quadrant, rect, (normal, pressed)) in overlays {
-                let chosen =
-                    selected.is_some_and(|icon| icon.system == system && icon.quadrant == quadrant);
+                let chosen = selected
+                    .is_some_and(|icon| icon.system == system && icon.quadrant == Some(quadrant));
                 paint_native(
                     ui.painter(),
                     ctx,
@@ -1283,6 +1321,52 @@ fn uprising_mark(
         2 => Some(UPRISING_MARKS[1]),
         _ => None,
     }
+}
+
+/// Whether `point` takes the headquarters overlay over `rect` (the planet's
+/// rect, `+0x40`): `FUN_005fca00` tests the bitmap's pixel at the point's
+/// offset against its transparent key, and the hit mask, as it does, wants
+/// the offset above 0 in x and y.
+fn headquarters_hit(cache: &mut BmpCache, rect: egui::Rect, scale: f32, point: egui::Pos2) -> bool {
+    if !rect_contains(rect, point) {
+        return false;
+    }
+    let x = ((point.x - rect.min.x) / scale).floor() as usize;
+    let y = ((point.y - rect.min.y) / scale).floor() as usize;
+    cache.is_resource_hit(DllSource::Strategy, HEADQUARTERS_MARK, x, y)
+}
+
+/// The menu object of a window's selection: its quadrant icon's system, or
+/// the headquarters object in the system ([`headquarters_object`]).
+fn selected_object(world: &GameWorld, icon: SelectedIcon) -> Option<MenuObject> {
+    match icon.quadrant {
+        Some(quadrant) => Some(MenuObject::SystemIcon {
+            system: icon.system,
+            quadrant,
+        }),
+        None => headquarters_object(world, icon.system).map(MenuObject::Headquarters),
+    }
+}
+
+/// The headquarters object (family `0x20`) among `system`'s facilities, as
+/// `FUN_0052bed0` gives the overlay its id.
+#[must_use]
+pub fn headquarters_object(
+    world: &GameWorld,
+    system: SystemKey,
+) -> Option<rebellion_core::ids::ManufacturingFacilityKey> {
+    world
+        .systems
+        .get(system)?
+        .manufacturing_facilities
+        .iter()
+        .copied()
+        .find(|key| {
+            world
+                .manufacturing_facilities
+                .get(*key)
+                .is_some_and(|facility| facility.class_dat_id.family() == 0x20)
+        })
 }
 
 /// `FUN_0045bbb0`'s item state bit 8: the viewer's record of the system holds
@@ -2113,6 +2197,20 @@ mod tests {
         assert!(!rect_contains(rect, egui::pos2(10.0, 34.0)));
     }
 
+    thread_local! {
+        /// The bitmap folder the click helpers' caches read, if any.
+        static CLICK_BASE: std::cell::RefCell<Option<std::path::PathBuf>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    fn click_cache() -> BmpCache {
+        let mut cache = BmpCache::new();
+        if let Some(base) = CLICK_BASE.with(|base| base.borrow().clone()) {
+            cache.set_base_path(base);
+        }
+        cache
+    }
+
     /// Draw `system`'s sector window and double-click at the canvas point
     /// `at`, returning every action.
     fn double_click_at(
@@ -2140,7 +2238,7 @@ mod tests {
         let mut fog = FogState::new(Faction::Alliance);
         fog.reveal(system);
         let ctx = egui::Context::default();
-        let mut cache = BmpCache::new();
+        let mut cache = click_cache();
         let uprisings = rebellion_core::uprising::UprisingState::default();
         let point = egui::pos2(layout.canvas.x + at.0, layout.canvas.y + at.1);
         let button = |pressed| egui::Event::PointerButton {
@@ -2201,7 +2299,7 @@ mod tests {
         fog.reveal(system);
         let missions = rebellion_core::missions::MissionState::new();
         let ctx = egui::Context::default();
-        let mut cache = BmpCache::new();
+        let mut cache = click_cache();
         let uprisings = rebellion_core::uprising::UprisingState::default();
         let mut frames = Vec::new();
         for &(button, at) in clicks {
@@ -2281,6 +2379,152 @@ mod tests {
             menus(&clicks_at(&world, system, &[(RIGHT, (100.0, 85.0))])),
             [(fleets, (100, 85))]
         );
+    }
+
+    /// Make `system` the Alliance headquarters, holding the HQ object, and
+    /// give the click helpers a 904 whose pixels are opaque in x 10..30 and
+    /// y 5..20, in column 0 and in row 0, and keyed (the first DIB pixel's
+    /// index) elsewhere.
+    fn with_headquarters(
+        world: &mut GameWorld,
+        system: SystemKey,
+    ) -> (
+        rebellion_core::ids::ManufacturingFacilityKey,
+        std::path::PathBuf,
+    ) {
+        world.systems[system].is_headquarters = true;
+        let hq = world.manufacturing_facilities.insert(
+            rebellion_core::world::ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2000_0001),
+                side: Faction::Alliance,
+                is_shipyard: false,
+            },
+        );
+        world.systems[system].manufacturing_facilities.push(hq);
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-sector-headquarters-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        let (width, height) = (37_usize, 37_usize);
+        let stride = 40;
+        let mut bytes = Vec::new();
+        let offset = 14 + 40 + 4 * 2;
+        bytes.extend(b"BM");
+        bytes.extend(
+            u32::try_from(offset + stride * height)
+                .unwrap()
+                .to_le_bytes(),
+        );
+        bytes.extend([0; 4]);
+        bytes.extend(u32::try_from(offset).unwrap().to_le_bytes());
+        bytes.extend(40u32.to_le_bytes());
+        bytes.extend(i32::try_from(width).unwrap().to_le_bytes());
+        bytes.extend(i32::try_from(height).unwrap().to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(8u16.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend(u32::try_from(stride * height).unwrap().to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(2u32.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend([255, 0, 0, 0, 255, 255, 255, 0]);
+        // Bottom-up rows; the first stored pixel, (0, 36), is the key.
+        for stored in 0..height {
+            let y = height - 1 - stored;
+            for x in 0..stride {
+                let opaque = x < width
+                    && ((x == 0 && y != 36)
+                        || y == 0
+                        || ((10..30).contains(&x) && (5..20).contains(&y)));
+                bytes.push(u8::from(opaque));
+            }
+        }
+        std::fs::write(folder.join("904.bmp"), bytes).unwrap();
+        CLICK_BASE.with(|cell| *cell.borrow_mut() = Some(base.clone()));
+        (hq, base)
+    }
+
+    fn without_headquarters_art(base: std::path::PathBuf) {
+        CLICK_BASE.with(|cell| *cell.borrow_mut() = None);
+        std::fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_headquarters_pixel_test_wants_an_opaque_pixel_above_offset_0_at_any_scale() {
+        // FUN_005fca00: the offset into the overlay's bitmap must be above 0
+        // in x and y and its pixel not the key.
+        let (mut world, system, _) = fixture_world();
+        let (_, base) = with_headquarters(&mut world, system);
+        let mut cache = click_cache();
+        let rect = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(74.0, 74.0));
+        let hit = |cache: &mut BmpCache, x: f32, y: f32| {
+            headquarters_hit(cache, rect, 2.0, egui::pos2(10.0 + 2.0 * x, 20.0 + 2.0 * y))
+        };
+        let results = [
+            hit(&mut cache, 15.0, 6.0),
+            hit(&mut cache, 0.0, 10.0),
+            hit(&mut cache, 15.0, 0.0),
+            hit(&mut cache, 33.0, 2.0),
+            hit(&mut cache, 29.5, 19.5),
+        ];
+        without_headquarters_art(base);
+
+        // Opaque; column 0 and row 0, opaque but at offset 0; keyed; the
+        // last opaque pixel, half a logical pixel in.
+        assert_eq!(results, [true, false, false, false, true]);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_headquarters_takes_a_press_on_its_opaque_pixels_before_the_icons() {
+        // FUN_0045cc10 walks the overlay list sorted by id (FUN_0060a790(1),
+        // Class_0066e148_vt4), so the headquarters overlay 0x10000
+        // (FUN_0045bbb0) comes before the fleet icon (sys_id | 0x100000).
+        // FUN_005fca00 takes it only where 904 is opaque, at an offset above
+        // 0. Its object is the HQ (FUN_0052bed0), whose menu FUN_00526c00
+        // lists. Chandrila's planet sits at (74, 79); the fleet icon spans
+        // (93, 78) to (121, 97).
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let (hq, base) = with_headquarters(&mut world, system);
+        let fleets = Some(MenuObject::SystemIcon {
+            system,
+            quadrant: Quadrant::Fleets,
+        });
+
+        // (100, 85) is 904's (26, 6), opaque, under the fleet icon.
+        let on_mark = menus(&clicks_at(&world, system, &[(RIGHT, (100.0, 85.0))]));
+        // (108, 81) is its (34, 2), keyed.
+        let keyed = menus(&clicks_at(&world, system, &[(RIGHT, (108.0, 81.0))]));
+        // (74, 89) is its (0, 10): opaque, but FUN_005fca00 wants x above 0.
+        // No icon lies there: the HQ lights none (FUN_0045cdc0).
+        let left_edge = menus(&clicks_at(&world, system, &[(RIGHT, (74.0, 89.0))]));
+        // A double click on the mark opens no Fleet window (FUN_0045aac0
+        // has no window for kind 1).
+        let double = double_click_at(&world, system, (100.0, 85.0));
+        // A press on the mark, then on the fleet icon, moves the selection.
+        let then_icon = menus(&clicks_at(
+            &world,
+            system,
+            &[(LEFT, (100.0, 85.0)), (RIGHT, (108.0, 81.0))],
+        ));
+        without_headquarters_art(base);
+
+        assert_eq!(on_mark, [(Some(MenuObject::Headquarters(hq)), (100, 85))]);
+        assert_eq!(keyed, [(fleets, (108, 81))]);
+        assert_eq!(left_edge, [(None, (74, 89))]);
+        assert!(
+            !double
+                .iter()
+                .any(|action| matches!(action, SectorWindowAction::OpenFleetWindow { .. })),
+            "{double:?}"
+        );
+        assert_eq!(then_icon, [(fleets, (108, 81))]);
     }
 
     #[test]

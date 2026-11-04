@@ -1012,7 +1012,11 @@ pub fn defense_facility_rows(
     let world = sources.world;
     let facility = world.defense_facilities.get(key)?;
     let system = facility_system(world, key, |value| &value.defense_facilities)?;
-    let class = facility.class_dat_id;
+    Some(defense_rows(world, system, facility.class_dat_id))
+}
+
+/// `FUN_00444e20`'s rows for a facility of class `class` at `system`.
+fn defense_rows(world: &GameWorld, system: SystemKey, class: DatId) -> Vec<StatusRow> {
     let stats = world
         .buildable_classes
         .get(&class)
@@ -1033,7 +1037,7 @@ pub fn defense_facility_rows(
         "Bombardment Defense Strength:",
         stats.bombardment.to_string(),
     ));
-    Some(rows)
+    rows
 }
 
 /// The Manufacturing Status rows (`FUN_00446c50`), for a yard, mine or
@@ -1378,12 +1382,27 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
         StatusObject::ManufacturingFacility(key) => {
             let facility = world.manufacturing_facilities.get(key)?;
             let system = facility_system(world, key, |value| &value.manufacturing_facilities)?;
+            let class = facility.class_dat_id;
+            // FUN_00443130 fills families 0x20..0x27 with FUN_00444e20, so
+            // the headquarters (ALLFACSD, 0x20) shows Defense Facility
+            // Status, though the port keeps it with the yards.
+            let (title, rows) = if (0x20..=0x27).contains(&class.family()) {
+                (
+                    "Defense Facility Status",
+                    defense_rows(world, system, class),
+                )
+            } else {
+                (
+                    "Manufacturing Status",
+                    manufacturing_rows(world, system, class),
+                )
+            };
             view(
-                "Manufacturing Status",
+                title,
                 faction_index(facility.side),
-                picture(manufacturing_facility_mini(facility.class_dat_id).map(|(mini, _)| mini)),
-                class_name(world, facility.class_dat_id),
-                manufacturing_rows(world, system, facility.class_dat_id),
+                picture(manufacturing_facility_mini(class).map(|(mini, _)| mini)),
+                class_name(world, class),
+                rows,
             )
         }
         StatusObject::ProductionFacility(key) => {
@@ -2298,6 +2317,61 @@ mod tests {
 
         assert_eq!(view.title, "Manufacturing Status");
         assert_eq!(view.side, 1);
+    }
+
+    #[test]
+    fn the_headquarters_shows_defense_facility_status_with_its_bombardment_defense() {
+        // FUN_00443130 gives families 0x20..0x27 to FUN_00444e20 (TEXTSTRA
+        // 34403); weapons and shield rows only for 0x22..0x27. The HQ's
+        // vtable 0x0065f280 +0x1c0 is 0x558050 (FUN_00520b60, class +0x58)
+        // and +0x1c4 is 0x6158b0 (0).
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Yavin",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let class = DatId::new(0x2000_0001);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                maintenance_cost: 2,
+                stats: rebellion_core::world::ClassStats {
+                    bombardment: 9,
+                    attack_strength: 7,
+                    shield_strength: 5,
+                },
+                processing_rate: 3,
+                ..Default::default()
+            },
+        );
+        let hq = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: class,
+                side: Faction::Alliance,
+                is_shipyard: false,
+            });
+        world.systems[here].manufacturing_facilities.push(hq);
+        let states = States::new();
+
+        let view = status_view(
+            states.sources(&world),
+            StatusObject::ManufacturingFacility(hq),
+        )
+        .unwrap();
+
+        assert_eq!(view.title, "Defense Facility Status");
+        assert_eq!(view.picture, Some((DllSource::Gokres, 17_216 - 0x4000)));
+        assert_eq!(
+            rows(&view.rows),
+            [
+                ("Location:", "Yavin"),
+                ("Status:", "Active"),
+                ("Maintenance Cost:", "2"),
+                ("Bombardment Defense Strength:", "9"),
+            ]
+        );
     }
 
     #[test]

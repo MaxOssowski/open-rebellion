@@ -1041,7 +1041,7 @@ pub fn original_encyclopedia_object(
         }
         MenuObject::PlanetFighter { class, .. } => world.fighter_classes.get(class)?.dat_id,
         MenuObject::DefenseFacility(key) => world.defense_facilities.get(key)?.class_dat_id,
-        MenuObject::ManufacturingFacility(key) => {
+        MenuObject::ManufacturingFacility(key) | MenuObject::Headquarters(key) => {
             world.manufacturing_facilities.get(key)?.class_dat_id
         }
         MenuObject::ProductionFacility(key) => world.production_facilities.get(key)?.class_dat_id,
