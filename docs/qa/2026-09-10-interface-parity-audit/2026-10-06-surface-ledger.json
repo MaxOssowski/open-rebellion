@@ -7291,7 +7291,7 @@
         133,
         135
       ],
-      "current_implementation": "The sector window's HQ mark 904 is an overlay that takes a press before the quadrant icons (FUN_0045cc10); its menu (Move, Confirmed Move, Encyclopedia, Status) and its Defense Facility Status match A0 (2026-11-04). Moving the HQ is not ported.",
+      "current_implementation": "The sector window's HQ mark 904 is an overlay that takes a press before the quadrant icons (FUN_0045cc10); its menu (Move, Confirmed Move, Encyclopedia, Status) and its Defense Facility Status match A0 (2026-11-04). The HQ moves by Move, Confirmed Move or a drag of 904 to the side's own systems, at once and en route until arrival (rebellion_core::headquarters_move, 2026-11-04).",
       "finding_ids": [
         "UIP-F-007"
       ],
@@ -7340,31 +7340,45 @@
         {
           "id": "OBJ-13-C004",
           "requirement": "HQ item menu",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/headquarters-overlay.md",
             "tools/interface-parity/sector-quadrants.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/",
+            "ghidra/notes/headquarters-move.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-move/"
           ],
-          "note": "The HQ's menu opens from its sector window overlay (id 0x10000, sorted before the icons, opaque 904 pixels, FUN_0045cc10/FUN_005fca00): Move, Confirmed Move (FUN_00526860 -> FUN_00526c00; 0x204 has no row), Encyclopedia, Status; no Scrap. A0 headquarters/01-hq-menu: 104 by 82 at the cursor, the same rows, as the port's in sector-quadrants.mjs 'headquarters-menu' (Linux). Open: A0 enables Move and Confirmed Move; the port greys them (port: HQ movement, OBJ-13-C005) (2026-11-04).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The HQ's menu opens from its sector window overlay (id 0x10000, sorted before the icons, opaque 904 pixels, FUN_0045cc10/FUN_005fca00): Move, Confirmed Move (FUN_00526860 -> FUN_00526c00; 0x204 has no row), Encyclopedia, Status; no Scrap. A0 headquarters/01-hq-menu: 104 by 82 at the cursor, the same rows, as the port's in sector-quadrants.mjs 'headquarters-menu' (Linux). (2026-11-04). Move and Confirmed Move are white, as in A0, while FUN_00578c00 passes (side, not en route, FUN_005555e0's blockade test); 'headquarters-menu' asserts all four rows enabled.",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-13-C005",
           "requirement": "move HQ",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No original HQ move surface is implemented (ledger: custom action)."
+          "evidence": [
+            "ghidra/notes/headquarters-move.md",
+            "crates/rebellion-core/src/headquarters_move.rs",
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-move/"
+          ],
+          "note": "The HQ's Move and Confirmed Move (FUN_00526c00 -> 0x204 -> command 0x201) and a drag of 904 (manual p. 134) move it to the side's own system (FUN_0053d430 1/0x28) at the GNPRTB 1 speed (FUN_004f63f0); refused for the other side (FUN_004f9860 1), en route (4) and under a blockade it cannot break (FUN_005555e0 0x90/4); Confirmed Move and a blockaded Move ask (FUN_00487cc0). The move costs a populated origin GNPRTB 7706 (5) of Alliance support and gives it to a populated destination (System_vtc8 FUN_00508660, FUN_0050c9f0; manual p. 134's 'small drop'). sector-quadrants.mjs 'headquarters-move' (Linux) moves it to Ithor: 904 leaves its origin and stands over Ithor exactly. A0 headquarters-move/06, /09: the HQ moved from Pzob to Gandolo IV (Status 'Location: Gandolo IV', 'Active'), but which order sent it is unknown; the VM's drags and targeting releases did not register. port: a fleet destination is refused (2026-11-04).",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-13-C006",
           "requirement": "HQ in transit",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No HQ in-transit state or display."
+          "evidence": [
+            "ghidra/notes/headquarters-move.md",
+            "crates/rebellion-render/src/status_rows.rs",
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-move/"
+          ],
+          "note": "FUN_00556390 puts the HQ in its destination at once, en route until arrival (save v112): 904 shows there (FUN_0045bbb0 mode 3), its menu greys both moves (FUN_004f9860 4), and its Defense Facility Status leads with 'ETA Destination: Day N' (FUN_004fd2b0) and reads 'Enroute' (FUN_0044a470); sector-quadrants.mjs 'headquarters-move' (Linux) checks all three. Open: A0 headquarters-move/07 vs /09 shows an open sector window keeping 904 over the origin until reopened (the overlay is rebuilt only by a system refresh, FUN_0045b770 -> FUN_0045bbb0, from the side's record FUN_004f3220); the port redraws at once. No A0 capture en route; no arrival notice traced (2026-11-04).",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-13-C007",

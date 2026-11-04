@@ -890,9 +890,9 @@ const cases = [
     // Confirmed Move; FUN_0051d990 adds Encyclopedia and Status. Status
     // opens FUN_00444e20's Defense Facility Status (families 0x20..0x27):
     // Location, Status, Maintenance Cost and Bombardment Defense Strength.
-    // The manual (p. 134): "right-click, select Move". port: the HQ does
-    // not move, so Move and Confirmed Move stay grey. The Empire does not
-    // see this headquarters (the icons case), so its press selects nothing.
+    // The manual (p. 134): "right-click, select Move"; FUN_00578c00 enables
+    // both moves for the HQ at rest. The Empire does not see this
+    // headquarters (the icons case), so its press selects nothing.
     async run(page, faction, setup, directory) {
       const [left, top] = setup.headquarters;
       // 904's (20, 12) is opaque, in the fleet icon's quadrant.
@@ -908,9 +908,9 @@ const cases = [
         return { at, menu };
       }
       assert.deepEqual(menu.row_states,
-        [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", true]], JSON.stringify(menu));
+        [["Move", true], ["Confirmed Move", true], ["Encyclopedia", true], ["Status", true]], JSON.stringify(menu));
       // A0 headquarters/01-hq-menu (Pzob): 104 by 82 from the cursor, the
-      // same four rows (Move and Confirmed Move white there).
+      // same four rows, all white.
       assert.deepEqual([menu.left, menu.top, menu.width, menu.height], [at.x, at.y, 104, 82], JSON.stringify(menu));
       const height = (menu.height - 2) / menu.rows;
       await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
@@ -963,6 +963,65 @@ const cases = [
       // 0x0065f280 +0x1c0), is 9.
       assert.deepEqual([status.rows[1][1], status.rows[3][1]], ["Active", "9"], JSON.stringify(status));
       return { at, menu, status, a0 };
+    },
+  },
+  {
+    name: "headquarters-move",
+    // Move (0x201) of the HQ, then a click on another of the side's
+    // systems (the manual, p. 134). The command moves the object at once
+    // and marks it en route (FUN_00556390): 904 now stands over the
+    // destination (FUN_0045bbb0, mode 3 "existing"; port: redrawn at once,
+    // where A0 headquarters-move/09 keeps an open window's mark at the
+    // origin until the window reopens), the HQ's menu greys
+    // both moves (FUN_004f9860 4), and its Status leads with the ETA
+    // (FUN_004fd2b0) and reads "Enroute" (FUN_0044a470). The Empire sees no
+    // headquarters here.
+    async run(page, faction, setup, directory, source) {
+      if (faction.side !== 1) return { skipped: "the Empire sees no headquarters" };
+      const [left, top] = setup.headquarters;
+      const [toLeft, toTop] = setup.uprising;
+      const at = { x: Math.round(left) + 20, y: Math.round(top) + 12 };
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, at);
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      assert.deepEqual([menu.move_row, menu.row_states[menu.move_row]], [0, ["Move", true]], JSON.stringify(menu));
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.move_row + 0.5) });
+      await frames(page, 2);
+      await click(page, { x: Math.round(toLeft) + 18, y: Math.round(toTop) + 18 });
+      await page.waitForTimeout(600);
+      await page.mouse.move(2, 2);
+      const screen = await stableScreen(page, directory, "headquarters-moved");
+      const icon = resource(source, 904);
+      const gone = compareIcon(screen, setup.headquarters, icon, "headquarters-origin", directory);
+      const arrived = compareIcon(screen, setup.uprising, icon, "headquarters-destination", directory);
+      assert.ok(gone.different_pixels > gone.pixels_checked / 2, `904 left its origin: ${JSON.stringify(gone)}`);
+      assert.equal(arrived.different_pixels, 0, `904 over the destination: ${JSON.stringify(arrived)}`);
+      const there = { x: Math.round(toLeft) + 20, y: Math.round(toTop) + 12 };
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, there);
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const enRoute = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      await stableScreen(page, directory, "headquarters-en-route-menu");
+      assert.deepEqual(enRoute.row_states,
+        [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", true]], JSON.stringify(enRoute));
+      const rowHeight = (enRoute.height - 2) / enRoute.rows;
+      await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+      await click(page, { x: enRoute.left + enRoute.width / 2, y: enRoute.top + 2 + rowHeight * (enRoute.status_window_row + 0.5) });
+      await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+      const status = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+      await page.mouse.move(2, 2);
+      await stableScreen(page, directory, "headquarters-en-route-status");
+      assert.equal(status.title, "Defense Facility Status", JSON.stringify(status));
+      assert.deepEqual(status.rows.map(([label]) => label),
+        ["ETA Destination:", "Location:", "Status:", "Maintenance Cost:", "Bombardment Defense Strength:"],
+        JSON.stringify(status));
+      assert.match(status.rows[0][1], /^Day \d+$/, JSON.stringify(status));
+      assert.equal(status.rows[2][1], "Enroute", JSON.stringify(status));
+      return { menu, gone, arrived, enRoute, status };
     },
   },
   {

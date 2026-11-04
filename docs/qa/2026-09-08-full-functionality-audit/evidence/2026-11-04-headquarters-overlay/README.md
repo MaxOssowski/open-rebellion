@@ -21,7 +21,7 @@ This covers surface ledger cells OBJ-13-C003 ("HQ status") and OBJ-13-C004 ("HQ 
 ## Now
 
 - **The overlay.** `sector_window.rs` tests it first. A press selects it, and the right release opens `MenuObject::Headquarters`. A double click on it opens no icon's window.
-- **The menu.** It reads Move, Confirmed Move, Encyclopedia, Status. port: the HQ does not move in the port, so Move and Confirmed Move are grey, and a drag of it drops nothing.
+- **The menu.** It reads Move, Confirmed Move, Encyclopedia, Status. At first Move and Confirmed Move were grey, because the HQ did not move. Since the later 2026-11-04 batch they are white, as in A0 (`../2026-11-04-headquarters-move/`).
 - **Status.** It shows Defense Facility Status with the four rows.
 - **Quadrant icons.** The facilities icon leaves the HQ out.
 - **The fixture.** The HQ object now moves with the `is_headquarters` flag. The mark stands for that object.
@@ -50,7 +50,7 @@ Run `sector-quadrants-2026-11-04T11-08-21-918Z-1074795` (`icons`, `system-menu` 
 
 Captured in the Windows 10 VM: an Alliance save, day 488, the Moddell sector window. The HQ stands at Pzob. The files are in `.artifacts/a0-vm/headquarters/`.
 - `00-moddell`: 904 over Pzob.
-- `01-hq-menu`: a right click at (148, 272), on 904's opaque pixels, opens a 104 by 82 menu at the cursor. Its rows are Move, Confirmed Move, Encyclopedia and Status, all white. The port's menu matches it in size, place and rows. The port greys Move and Confirmed Move (`port:`, above).
+- `01-hq-menu`: a right click at (148, 272), on 904's opaque pixels, opens a 104 by 82 menu at the cursor. Its rows are Move, Confirmed Move, Encyclopedia and Status, all white. The port's menu matches it in size, place and rows. Its Move and Confirmed Move were grey at first, and are white since the HQ moves (above).
   - While the HQ is selected, the part of Pzob the menu leaves uncovered is pixel-identical to `00-moddell`. So the selected overlay keeps 904, as the port draws it.
 - `02-hq-status`: "Defense Facility Status" at (108, 79). Its rows are:
   - Location Pzob;
@@ -67,4 +67,4 @@ Captured in the Windows 10 VM: an Alliance save, day 488, the Moddell sector win
 
 ## Open
 
-- Moving the HQ (OBJ-13-C005, C006). A0 enables Move and Confirmed Move.
+- Moving the HQ is covered in `../2026-11-04-headquarters-move/`.

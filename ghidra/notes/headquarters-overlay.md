@@ -67,14 +67,13 @@ The HQ object lights no quadrant icon:
   for `MenuObject::Headquarters`. A double click on it opens no icon's
   window.
 - `object_menu.rs` gives `Headquarters` the rows Move, Confirmed Move,
-  Encyclopedia and Status. port: the HQ does not move in the port, so
-  Move and Confirmed Move stay disabled, and a drag of it drops nothing.
+  Encyclopedia and Status. The two moves are enabled since 2026-11-04
+  (`headquarters-move.md`).
 - `status_rows.rs` shows Defense Facility Status for a family `0x20..0x27`
   manufacturing-facility key.
 - `quadrant_icons.rs` leaves the HQ out of the facilities count.
 
 Open:
-- the move itself (OBJ-13-C005, C006);
 - the selected overlay's bitmap. `FUN_0060bd20(0x388, 0, ..)` sets no
   second bitmap. A0 headquarters/01 shows the part of the selected
   overlay that the menu leaves uncovered unchanged, and the port keeps
