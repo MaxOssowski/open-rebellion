@@ -323,6 +323,71 @@ function labelsAgainstA0(port, origin) {
   return checks;
 }
 
+// The selected class (FUN_00437880, FUN_00457c90): its GOKRES portrait,
+// class +0x30 & 0xfff (the mini less 0x4000), centered in the 195 by 63
+// box at (6, 22), every opaque pixel above the name exact; the name's foot
+// within a pixel of A0 build-selection/10's (the Construction Yard,
+// portrait 258). The A0 box is checked against 258 the same way.
+const TROOP_PORTRAITS = { "Alliance Fleet Regiment": 1088, "Alliance Army Regiment": 1089,
+  "Sullustan Regiment": 1090, "Wookiee Regiment": 1091, "Mon Calamari Regiment": 1092,
+  "Stormtrooper Regiment": 1152, "Imperial Fleet Regiment": 1153, "Imperial Army Regiment": 1154,
+  "War Droid Regiment": 1155, "Dark Trooper Regiment": 1156 };
+function classPortraitCase(port, origin, className) {
+  const portrait = TROOP_PORTRAITS[className];
+  assert.ok(portrait, `no portrait known for ${className}`);
+  const gokres = (id) => {
+    const bytes = fs.readFileSync(path.join(gokresDirectory(), `${id}.bmp`));
+    return decodeIndexedBmp(bytes, bytes.readInt32LE(18), Math.abs(bytes.readInt32LE(22)));
+  };
+  const differing = (png, [ox, oy], bitmap) => {
+    const [x0, y0] = [ox + 6 + Math.floor((195 - bitmap.width) / 2), oy + 22 + Math.floor((63 - bitmap.height) / 2)];
+    let checked = 0;
+    let count = 0;
+    // Above the name's line (the window's row 70), which overlays the
+    // portrait's foot.
+    for (let y = 0; y < Math.min(bitmap.height, oy + 70 - y0); y += 1) {
+      for (let x = 0; x < bitmap.width; x += 1) {
+        const from = (y * bitmap.width + x) * 4;
+        if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
+        const at = ((y0 + y) * png.width + x0 + x) * 4;
+        checked += 1;
+        if ([0, 1, 2].some((c) => png.data[at + c] !== bitmap.data[from + c])) count += 1;
+      }
+    }
+    return { checked, differing: count };
+  };
+  // The rows of white ink across the box's middle, below the portrait's
+  // centre line.
+  const rows = (png, [ox, oy], threshold) => {
+    const found = [];
+    for (let y = 60; y < 86; y += 1) {
+      let n = 0;
+      for (let x = 30; x < 180; x += 1) {
+        const i = ((oy + y) * png.width + ox + x) * 4;
+        if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) > threshold) n += 1;
+      }
+      if (n >= 3) found.push(y);
+    }
+    return found;
+  };
+  const result = { className, portrait, port: differing(port, [origin.x, origin.y], gokres(portrait)),
+    port_rows: rows(port, [origin.x, origin.y], 215) };
+  assert.ok(result.port.checked > 1000 && result.port.differing === 0, JSON.stringify(result));
+  const a0File = path.join(root, ".artifacts/a0-vm/build-selection/10-build.png");
+  if (fs.existsSync(a0File)) {
+    const a0 = PNG.sync.read(fs.readFileSync(a0File));
+    result.a0 = differing(a0, [192, 84], gokres(258));
+    result.a0_rows = rows(a0, [192, 84], 215);
+    assert.equal(result.a0.differing, 0, JSON.stringify(result));
+    // The name's last ink row above the box's edge (84): the portraits'
+    // own white pixels share the rows above the name's top, so only its
+    // foot is compared.
+    const foot = (list) => list.filter((y) => y < 84).at(-1);
+    assert.ok(Math.abs(foot(result.a0_rows) - foot(result.port_rows)) <= 1, JSON.stringify(result));
+  }
+  return result;
+}
+
 // The idle overview against A0 build-selection2/11 (the Empire's
 // Coruscant, every band idle, the window at (203, 91); the fixture's at
 // (225, 76)): each band's status line (TEXTSTRA 6198..6200 at the band's
@@ -893,6 +958,8 @@ async function inspect(server, source, faction, executable) {
     await frames(page);
     const textChecks = a0Dir && faction.name === "alliance"
       ? labelsAgainstA0(PNG.sync.read(fs.readFileSync(path.join(directory, "opened-screen.png"))), origin) : null;
+    const portraitCheck = classPortraitCase(PNG.sync.read(fs.readFileSync(path.join(directory, "opened-screen.png"))),
+      origin, opened.build_selection_class);
     // FUN_00437f80 / FUN_00438620's tips (TEXTSTRA 0x190c, 0x1906..0x190b,
     // and 0x1903 on the close box through FUN_00606e10): every control
     // shows one.
@@ -961,6 +1028,37 @@ async function inspect(server, source, faction, executable) {
       }
       assert.equal(stripDiffering, 0, `the confirmed band's strip differs from A0 07 in ${stripDiffering} pixels`);
     }
+    // The band's product picture (FUN_00457c90): GOKRES class +0x30 & 0xfff,
+    // the portrait, at the band's (40, 15); the troops band is at (55, 138).
+    // Between its lines (the band's rows 31..46), every opaque pixel exact,
+    // and for the Empire the same as A0 07 (Imperial Army Regiment).
+    const bandPortrait = (() => {
+      const id = TROOP_PORTRAITS[built.product];
+      assert.ok(id, `no portrait known for ${built.product}`);
+      const bytes = fs.readFileSync(path.join(gokresDirectory(), `${id}.bmp`));
+      const bitmap = decodeIndexedBmp(bytes, bytes.readInt32LE(18), Math.abs(bytes.readInt32LE(22)));
+      const count = (png, [ox, oy]) => {
+        let checked = 0;
+        let differing = 0;
+        for (let y = 31 - 15; y < 47 - 15; y += 1) {
+          for (let x = 0; x < bitmap.width; x += 1) {
+            const from = (y * bitmap.width + x) * 4;
+            if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
+            const at = ((oy + 138 + 15 + y) * png.width + ox + 55 + 40 + x) * 4;
+            checked += 1;
+            if ([0, 1, 2].some((c) => png.data[at + c] !== bitmap.data[from + c])) differing += 1;
+          }
+        }
+        return { checked, differing };
+      };
+      const result = { product: built.product, portrait: id, port: count(PNG.sync.read(confirmedBytes), [225, 76]) };
+      if (faction.name === "empire" && fs.existsSync(stripA0) && built.product === "Imperial Army Regiment") {
+        result.a0 = count(PNG.sync.read(fs.readFileSync(stripA0)), [203, 91]);
+      }
+      assert.ok(result.port.checked > 300 && result.port.differing === 0 && (result.a0?.differing ?? 0) === 0,
+        JSON.stringify(result));
+      return result;
+    })();
 
     // Stop (0x213) asks first (FUN_00487cc0, FUN_0049a350 case 0x213):
     // the 424 by 331 confirmation centred in the galaxy view, its picture
@@ -1201,6 +1299,8 @@ async function inspect(server, source, faction, executable) {
       built: { product: built.product, queued: built.queued },
       comparisons,
       textChecks,
+      portraitCheck,
+      bandPortrait,
       requests,
       errors,
       console: consoleLines,

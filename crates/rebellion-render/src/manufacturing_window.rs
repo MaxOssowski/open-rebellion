@@ -51,12 +51,12 @@ pub const PROGRESS_RECTS: [(f32, f32, f32, f32); 3] = [
 ];
 
 /// Inside a band (`FUN_00458080`): the title, the status line, the units
-/// line and the destination line, font 10; the product's mini.
+/// line and the destination line, font 10; the product's portrait.
 pub const BAND_TITLE: (f32, f32) = (5.0, 1.0);
 pub const BAND_STATUS: (f32, f32) = (5.0, 16.0);
 pub const BAND_UNITS: (f32, f32) = (5.0, 47.0);
 pub const BAND_DESTINATION: (f32, f32) = (5.0, 57.0);
-pub const BAND_MINI: (f32, f32) = (40.0, 15.0);
+pub const BAND_PORTRAIT: (f32, f32) = (40.0, 15.0);
 
 /// The facility pages' list (`FUN_00607ea0`, id 2) and its 69 by 40 cells.
 pub const LIST: (f32, f32, f32, f32) = (8.0, 77.0, 222.0, 225.0);
@@ -118,8 +118,9 @@ pub struct Band {
     pub area: ProductionArea,
     /// The product's name, or the band's idle text.
     pub status: String,
-    /// The product's GOKRES mini (class `+0x30 & 0xfff`).
-    pub mini: Option<u32>,
+    /// The product's GOKRES portrait (class `+0x30 & 0xfff`,
+    /// `FUN_00457c90`).
+    pub portrait: Option<u32>,
     /// "Building: N" or "Training: N", the units left, with a product.
     pub units: Option<String>,
     /// "Destination: " and the area's destination system.
@@ -159,7 +160,7 @@ pub fn band(
         return Band {
             area,
             status: band_idle_text(area).into(),
-            mini: None,
+            portrait: None,
             units: None,
             destination,
             progress: None,
@@ -168,7 +169,7 @@ pub fn band(
     let active = queue
         .active()
         .expect("a non-empty queue has an active unit");
-    let (name, mini) = product(world, active.kind);
+    let (name, portrait) = product(world, active.kind);
     let verb = if area == ProductionArea::TrainingFacility {
         "Training"
     } else {
@@ -177,17 +178,25 @@ pub fn band(
     Band {
         area,
         status: name,
-        mini,
+        portrait,
         units: Some(format!("{verb}: {}", queue.len())),
         destination,
         progress: Some(queue.progress_fraction()),
     }
 }
 
-/// A product's name and GOKRES mini: its class's (`FUN_00437880`, class
-/// `+0x30 & 0xfff`).
+/// A product's name and GOKRES portrait: its class's `+0x30 & 0xfff`
+/// (`FUN_00437880`, `FUN_00457c90`), its mini less `0x4000` (the mini is
+/// `(class & 0xfff) + 0x4000`, `FUN_0042c3b0`). A0 build-selection/10 and
+/// build-selection2/07 show the portrait, 122 by 50.
 #[must_use]
 pub fn product(world: &GameWorld, kind: BuildableKind) -> (String, Option<u32>) {
+    let (name, mini) = product_mini(world, kind);
+    (name, mini.map(|mini| mini - 0x4000))
+}
+
+/// A product's name and GOKRES mini, `(class & 0xfff) + 0x4000`.
+pub(crate) fn product_mini(world: &GameWorld, kind: BuildableKind) -> (String, Option<u32>) {
     match kind {
         BuildableKind::CapitalShip(key) => world
             .capital_ship_classes
@@ -682,11 +691,28 @@ mod tests {
             .iter()
             .all(|band| band.destination == "Destination: Bortras"
                 && band.units.is_none()
-                && band.mini.is_none()
+                && band.portrait.is_none()
                 && band.progress.is_none()));
     }
 
-    // FUN_00457c90: a product's name, mini and units left, "Building: " for
+    #[test]
+    fn a_product_shows_its_class_portrait_not_its_mini() {
+        // FUN_00457c90 and FUN_00437880 load GOKRES class +0x30 & 0xfff; the
+        // mini is that + 0x4000 (FUN_0042c3b0). A0 build-selection/10 shows
+        // the Construction Yard's 122 by 50 portrait, pending-facility/32
+        // the Mine's (GOKRES 1, 0 sampled pixels off).
+        let world = GameWorld::default();
+        let mine = BuildableKind::ProductionFacility(FacilityBuild {
+            class: DatId::new(0x2c00_0001),
+            is_alliance: true,
+        });
+        assert_eq!(product(&world, mine), ("Mine".to_owned(), Some(1)));
+        assert_eq!(product_mini(&world, mine).1, Some(16_385));
+        let regiment = BuildableKind::Troop(DatId::new(0x1000_0002));
+        assert_eq!(product(&world, regiment).1, Some(1_089));
+    }
+
+    // FUN_00457c90: a product's name, portrait and units left, "Building: " for
     // ships, and the area's destination.
     #[test]
     fn a_building_band_shows_its_product_units_progress_and_destination() {
@@ -714,8 +740,12 @@ mod tests {
             ProductionArea::Shipyard,
         );
         assert_eq!(shown.status, "Corellian Corvette");
-        assert_eq!(shown.mini, capital_ship_mini_id(DatId::new(0x1400_0040)));
-        assert!(shown.mini.is_some());
+        // FUN_00457c90 loads class +0x30 & 0xfff, the portrait.
+        assert_eq!(
+            shown.portrait,
+            capital_ship_mini_id(DatId::new(0x1400_0040)).map(|mini| mini - 0x4000)
+        );
+        assert!(shown.portrait.is_some());
         assert_eq!(shown.units.as_deref(), Some("Building: 3"));
         assert_eq!(shown.destination, "Destination: Denab");
         assert_eq!(shown.progress, Some(0.0));

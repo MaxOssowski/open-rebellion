@@ -54,6 +54,10 @@ const NOT_AVAILABLE: &str = "n/a";
 // Geometry (FUN_00437f80, FUN_00438500, FUN_00438620), in window pixels.
 /// The selected class, 195 by 63 at (6, 22) (list `FUN_0060bed0`).
 const ITEM_BOX: (f32, f32, f32, f32) = (6.0, 22.0, 195.0, 63.0);
+/// Where an item's name line starts, from the item's top. hyp: A0 inks the
+/// name in the box's rows 53..62 whatever the portrait (build-selection/10,
+/// pending-facility/32), so the list draws it at a fixed place.
+const NAME_TOP: f32 = 49.0;
 /// Refined material (`+0x134`) and maintenance (`+0x138`), 64 by 23.
 const REFINED_FIELD: (f32, f32) = (36.0, 110.0);
 const MAINTENANCE_FIELD: (f32, f32) = (138.0, 110.0);
@@ -421,8 +425,8 @@ pub fn draw_build_selection(
                 );
             }
 
-            // The selected class: its mini centered in the box, its name
-            // under it (FUN_00437880's 195 by 63 item).
+            // The selected class: its portrait centered in the box, its name
+            // near the foot (FUN_00437880's 195 by 63 item).
             let (x, y, w, h) = ITEM_BOX;
             paint_item(
                 &painter,
@@ -581,7 +585,7 @@ pub fn draw_build_selection(
             // The class list (FUN_00437f80: FUN_0060bed0(.., 6, 0x16, 0xc3,
             // 0x3f, 2, ..), +0xa4 = 0x46): 70-pixel items, two visible,
             // under the 195-wide box (selection_list). A0 manufacturing/24:
-            // each item's mini sits as in the box, its name 2 pixels lower;
+            // each item's portrait sits as in the box, its name 2 pixels lower;
             // the shown class's name gray and the others' white. hyp: the
             // mission dialog's list colours them the other way round (A0
             // kinds/31); which item state picks the item's +0x60 gray is not
@@ -633,8 +637,8 @@ pub fn draw_build_selection(
     action
 }
 
-/// One class: its GOKRES mini centered in the box and its name under it.
-/// hyp: the name sits under the mini, centered, as the mission kinds'.
+/// One class: its GOKRES portrait centered in the box (`FUN_00437880`) and
+/// its name near the box's foot.
 #[expect(
     clippy::too_many_arguments,
     reason = "Keep explicit painter, cache and geometry inputs at this drawing boundary."
@@ -667,11 +671,14 @@ fn paint_item_with(
     colour: egui::Color32,
     text_dy: f32,
 ) {
-    let (name, mini) = product(world, kind);
-    let image = mini
-        .and_then(|id| paint_centered(painter, ctx, cache, DllSource::Gokres, id, bounds, scale));
-    // The name in font 10, centred across the item under its mini.
-    let top = image.map_or(bounds.center().y, |rect| rect.max.y) + text_dy * scale;
+    let (name, portrait) = product(world, kind);
+    if let Some(id) = portrait {
+        let _ = paint_centered(painter, ctx, cache, DllSource::Gokres, id, bounds, scale);
+    }
+    // The name in font 10, centred across the item at a fixed height,
+    // over the portrait's foot: A0 build-selection/10 (Construction Yard)
+    // and pending-facility/32 (Mine) ink it in the same rows.
+    let top = bounds.min.y + (NAME_TOP + text_dy) * scale;
     crate::theme::paint_gdi_text(
         painter,
         egui::Rect::from_min_max(egui::pos2(bounds.min.x, top), egui::pos2(bounds.max.x, top + 16.0 * scale)),
@@ -1304,7 +1311,7 @@ mod tests {
     }
 
     // FUN_00438500 fonts 5, 4 and 10 and FUN_00437f80's value fonts, at
-    // twice the size on a doubled layout; the class's name under its mini.
+    // twice the size on a doubled layout; the class's name.
     #[test]
     fn texts_scale_with_the_window_and_name_the_class() {
         let (world, system) = galaxy(true);
@@ -1327,6 +1334,25 @@ mod tests {
         assert_eq!(size("8"), font(4));
         assert_eq!(size("6"), font(4));
         assert_eq!(size("Alliance Fleet Regiment"), font(10));
+    }
+
+    #[test]
+    fn the_class_name_sits_at_a_fixed_height_in_the_box() {
+        // A0 build-selection/10 (Construction Yard) and pending-facility/32
+        // (Mine) ink the name in the same rows, 75..84 of the window, over
+        // portraits of different extents.
+        let (world, system) = galaxy(true);
+        let mut state = opened(system, true);
+        let (_, texts) = drive_at(&world, &mut state, 1.0, (0.0, 0.0), vec![]);
+        let origin = window_rect(layout()).min;
+        let (_, pen, _) = texts
+            .iter()
+            .find(|(text, _, _)| text == "Alliance Fleet Regiment")
+            .unwrap();
+        assert_eq!(
+            pen.y - origin.y,
+            ITEM_BOX.1 + NAME_TOP + crate::theme::original_font_metrics(10).0
+        );
     }
 
     // FUN_00438dd0 / FUN_00438f30: 9999 at most, " Days" (14357), and "n/a"

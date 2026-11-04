@@ -26,9 +26,9 @@ use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::{control_side, paint_native};
 use crate::manufacturing_window::{
     band, band_strip, contents_visible, item_frame, page_cells, yard_count, yard_page,
-    FacilityItem, FacilityPage, BAND_AREAS, BAND_DESTINATION, BAND_FRAME, BAND_MINI, BAND_RECTS,
-    BAND_STATUS, BAND_TITLE, BAND_UNITS, CELL, COLUMNS, COUNT_ORIGINS, LIST, PROGRESS_RECTS,
-    YARD_COLUMN,
+    FacilityItem, FacilityPage, BAND_AREAS, BAND_DESTINATION, BAND_FRAME, BAND_PORTRAIT,
+    BAND_RECTS, BAND_STATUS, BAND_TITLE, BAND_UNITS, CELL, COLUMNS, COUNT_ORIGINS, LIST,
+    PROGRESS_RECTS, YARD_COLUMN,
 };
 use crate::object_menu::{MenuObject, ObjectMenuCommand};
 use crate::window_move::{self, MoveAnchor};
@@ -1315,13 +1315,13 @@ fn draw_system_window(
                             egui::Color32::BLACK,
                         );
                         line(&shown.status, BAND_STATUS, white);
-                        if let Some(mini) = shown.mini {
+                        if let Some(portrait) = shown.portrait {
                             paint(
                                 cache,
                                 DllSource::Gokres,
-                                mini,
-                                bx + BAND_MINI.0,
-                                by + BAND_MINI.1,
+                                portrait,
+                                bx + BAND_PORTRAIT.0,
+                                by + BAND_PORTRAIT.1,
                             );
                         }
                         if let Some(units) = &shown.units {
@@ -2510,8 +2510,8 @@ mod tests {
 
     #[test]
     fn a_building_band_shows_its_product_and_units() {
-        // FUN_00457c90: the product's name, mini at (40, 15) and units at
-        // (5, 47).
+        // FUN_00457c90: the product's name, its portrait (class +0x30 &
+        // 0xfff) at (40, 15) and units at (5, 47).
         let (mut world, systems) = fixture_world(1);
         let class = world.capital_ship_classes.insert(CapitalShipClass {
             dat_id: DatId::new(0x1400_0040),
@@ -2528,9 +2528,10 @@ mod tests {
         let run = run_with(&world, &manufacturing, &mut state, hover(at(150.0, 10.0)));
         assert_eq!(text(&run, "Corellian Corvette").1, line_at(60.0, 73.0, 10));
         assert_eq!(text(&run, "Building: 2").1, line_at(60.0, 104.0, 10));
-        let mini = crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap();
+        let portrait =
+            crate::minis::capital_ship_mini_id(DatId::new(0x1400_0040)).unwrap() - 0x4000;
         assert!(
-            run.painted.contains(&(mini, at(95.0, 72.0))),
+            run.painted.contains(&(portrait, at(95.0, 72.0))),
             "{:?}",
             run.painted
         );

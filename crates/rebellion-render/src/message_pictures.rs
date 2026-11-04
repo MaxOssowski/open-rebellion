@@ -370,7 +370,7 @@ pub fn portrait_key(world: &GameWorld, character: CharacterKey) -> Option<(DatId
 /// A new unit deployed (`FUN_00497940`): the unit's own picture.
 #[must_use]
 pub fn deployed(world: &GameWorld, kind: BuildableKind) -> Option<MessagePicture> {
-    crate::manufacturing_window::product(world, kind)
+    crate::manufacturing_window::product_mini(world, kind)
         .1
         .and_then(object)
 }
