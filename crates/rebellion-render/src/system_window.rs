@@ -641,6 +641,24 @@ impl SystemWindowState {
         });
     }
 
+    /// Take `system`'s minimized Fleet window off the rail and return where
+    /// it stood: its sector icon's double click brings it back, as the
+    /// Defenses window's does (A0 personnel-states/38). port: the Fleet
+    /// icon's restore is not captured in A0; the windows share
+    /// `FUN_0045aac0`.
+    pub fn take_railed_fleet(&mut self, system: SystemKey) -> Option<(i16, i16)> {
+        let entry = *self.rail.iter().flatten().find(
+            |entry| matches!(entry, RailEntry::Fleet { system: held, .. } if *held == system),
+        )?;
+        self.take_rail(&entry);
+        match entry {
+            RailEntry::Fleet {
+                logical_position, ..
+            } => Some(logical_position),
+            _ => None,
+        }
+    }
+
     /// Take `system`'s minimized Defenses window off the rail, with where it
     /// stood and its page: its sector icon's double click brings it back
     /// rather than opening another (A0 personnel-states/38, Mon Calamari's
@@ -2917,6 +2935,10 @@ mod tests {
         assert_eq!(state.rail_count(), 1);
         assert!(state.rail[1].is_none());
         assert_eq!(state.take_railed_defenses(systems[1]), None);
+        state.minimize_fleet_window(systems[1], (60, 20));
+        assert_eq!(state.take_railed_defenses(systems[1]), None);
+        assert_eq!(state.take_railed_fleet(systems[1]), Some((60, 20)));
+        assert!(state.rail[1].is_none());
         assert_eq!(
             state.rail[0],
             Some(RailEntry::Defenses {

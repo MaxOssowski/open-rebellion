@@ -535,6 +535,12 @@ impl ItemObject {
 pub struct FleetWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenFleetWindow>,
+    /// Minimized windows (`0x466`): hidden, not destroyed, so one comes
+    /// back with its selection and tab (A0 personnel-states/39, Pzob's
+    /// window back with its Arrow selected). port: the rail's thirteenth
+    /// window destroys the oldest's window (`FUN_00428b40`); a hidden one
+    /// whose rail slot was taken stays here until its system's next open.
+    hidden: Vec<OpenFleetWindow>,
     drag: Option<ItemDrag>,
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
@@ -546,6 +552,7 @@ impl Default for FleetWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            hidden: Vec::new(),
             drag: None,
             created: false,
         }
@@ -578,6 +585,13 @@ impl FleetWindowState {
             return true;
         }
         self.created = true;
+        if let Some(index) = self.hidden.iter().position(|window| window.system == system) {
+            let mut window = self.hidden.remove(index);
+            window.moving = None;
+            window.last_click = None;
+            self.windows.push(window);
+            return true;
+        }
         self.windows.push(OpenFleetWindow {
             system,
             logical_position: clamp_window_to_galaxy(
@@ -923,7 +937,18 @@ impl FleetWindowState {
 
     pub fn clear(&mut self) {
         self.windows.clear();
+        self.hidden.clear();
         self.drag = None;
+    }
+
+    /// Minimize `system`'s window (`0x466`): hide it with its state and
+    /// return where it stood, for its rail entry.
+    pub fn hide(&mut self, system: SystemKey) -> Option<(i16, i16)> {
+        // A shown window has no hidden one: `open` takes it back.
+        let window = self.close(system)?;
+        let at = window.logical_position;
+        self.hidden.push(window);
+        Some(at)
     }
 
     /// Whether a left press on a Troops tab regiment is held: the list has
@@ -1805,10 +1830,10 @@ pub fn draw_fleet_windows(
             continue;
         }
         if result.minimize {
-            if let Some(closed) = state.close(system) {
+            if let Some(logical_position) = state.hide(system) {
                 actions.push(FleetWindowAction::Minimize {
                     system,
-                    logical_position: closed.logical_position,
+                    logical_position,
                 });
             }
             continue;
@@ -3335,6 +3360,31 @@ pub(crate) mod tests {
         .contains(&ship));
         assert!(state.select(system, ship));
         assert_eq!(state.windows[0].expanded, [fleet]);
+    }
+
+    #[test]
+    fn a_minimized_window_comes_back_with_its_selection_and_tab() {
+        // A0 personnel-states/39: Pzob's Fleet window, minimized with its
+        // Arrow selected, comes back from the rail with the Arrow selected.
+        let (mut world, system) = world(ControlKind::Uncontrolled);
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let mut state = FleetWindowState::default();
+        let ship = FleetWindowEntry::Ship { fleet, index: 0 };
+        assert!(state.open(&world, system, (40, 30), CockpitFaction::Alliance, layout()));
+        assert!(state.select(system, ship));
+        state.windows[0].tab = FleetWindowTab::Fighters;
+        let at = state.windows[0].logical_position;
+        assert_eq!(state.hide(system), Some(at));
+        assert_eq!(state.window_count(), 0);
+        assert!(state.take_created());
+
+        assert!(state.open(&world, system, (0, 0), CockpitFaction::Alliance, layout()));
+        let window = &state.windows[0];
+        assert_eq!(
+            (window.selected, window.tab, window.logical_position),
+            (Some(ship), FleetWindowTab::Fighters, at)
+        );
+        assert!(state.hidden.is_empty());
     }
 
     /// The canvas 10 by 20 pixels in and twice the original size, so offsets

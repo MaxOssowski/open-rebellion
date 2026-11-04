@@ -5598,10 +5598,13 @@ async fn main() {
                                 logical_position,
                             } => {
                                 map_state.selected_system = Some(system);
+                                // A railed window comes back from the rail
+                                // (A0 personnel-states/38, the Defenses').
+                                let railed = system_window_state.take_railed_fleet(system);
                                 fleet_window_state.open(
                                     &world,
                                     system,
-                                    logical_position,
+                                    railed.unwrap_or(logical_position),
                                     cockpit_state.faction,
                                     cockpit_layout,
                                 );
