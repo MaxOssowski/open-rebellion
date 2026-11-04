@@ -3691,6 +3691,37 @@ pub fn post_story_messages(
     }
 }
 
+/// The EventMessages scenario's Character Captured message (`FUN_00490340`,
+/// notification `0x1e0`): the Emperor taken by the Alliance at Corfai, as
+/// A0 messages-day633 shows it, for each side's reader.
+pub fn post_capture_message(
+    request: FixtureRequest,
+    world: &GameWorld,
+    log: &mut rebellion_render::MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    if request.scenario != Scenario::EventMessages {
+        return;
+    }
+    let Some(emperor) = world
+        .characters
+        .values()
+        .find(|character| character.is_empire && character.dat_id.index() == 0x280)
+    else {
+        return;
+    };
+    if let Some(message) = rebellion_render::story_messages::captured_message(
+        emperor,
+        true,
+        "Corfai",
+        request.faction,
+        0,
+        texts,
+    ) {
+        log.push(message);
+    }
+}
+
 /// The event-message scenario's messages: one per report class whose
 /// picture the port attaches (`message_pictures`), titled by its class and
 /// filed under the Mission rail so one category lists them all.
@@ -6779,6 +6810,50 @@ mod tests {
         // The planet is not under the window.
         assert!(planet.center().x < band.min.x - 55.0, "{planet:?} {band:?}");
         assert!(applied.systems.band_screen_rect(layout, primary, rebellion_core::manufacturing::ProductionArea::TrainingFacility).is_some());
+    }
+
+    // FUN_00490340: the EventMessages scenario files the Emperor's capture
+    // at Corfai for its reader (A0 messages-day633).
+    #[test]
+    fn the_event_messages_scenario_files_the_emperors_capture() {
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x7158, "{1:1} Captured"),
+            (0x7159, "{1:1} was captured by the {3:1} at {2:1}."),
+            (0x715a, "{1:1} Captured"),
+            (0x715b, "{1:1} was captured at {2:1}."),
+            (0x4d50, "Alliance"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let request = request(Scenario::EventMessages, CockpitFaction::Alliance);
+        let applied = apply_to_loading_world_with(request, |world| {
+            world.characters.insert(rebellion_core::world::Character {
+                name: "Emperor Palpatine".into(),
+                dat_id: rebellion_core::ids::DatId::new(0x3000_0280),
+                is_major: true,
+                is_empire: true,
+                ..Default::default()
+            });
+        });
+        let mut log = rebellion_render::MessageLog::new();
+        post_capture_message(request, &applied.world, &mut log, &texts);
+        let [message] = log.messages() else {
+            panic!("{:?}", log.messages());
+        };
+        assert_eq!(message.title.as_deref(), Some("Emperor Palpatine Captured"));
+        assert_eq!(
+            message.text,
+            "Emperor Palpatine was captured by the Alliance at Corfai."
+        );
+        let mut none = rebellion_render::MessageLog::new();
+        post_capture_message(
+            super::tests::request(Scenario::StoryMessages, CockpitFaction::Alliance),
+            &applied.world,
+            &mut none,
+            &texts,
+        );
+        assert!(none.messages().is_empty());
     }
 
     // FUN_00458fe0: an object en route takes its base + 3; the Build

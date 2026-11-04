@@ -186,14 +186,22 @@ async function run(browser, base, faction) {
     assert.ok(asking >= 0, JSON.stringify(again.rows));
     const showMessage = [again.window_left + (faction.byte === 1 ? 0x1a7 + 16 : 0x1aa + 22),
       again.window_top + (faction.byte === 1 ? 0x5d + 15 : 0x59 + 20)];
-    // The list shows nine rows; the oldest needs one wheel notch (a row).
+    // The list shows nine rows; a row below them needs a wheel notch for
+    // each row past the ninth, from the top.
     const shown = async (index) => {
-      if (index < 9) return row(index);
       const [x, y] = row(4);
       await page.mouse.move(x, y);
-      await page.mouse.wheel(0, 120);
-      await frames(page, 6);
-      return row(index - 1);
+      // Back to the top first: the list keeps its scroll.
+      for (let notch = 0; notch < 4; notch += 1) {
+        await page.mouse.wheel(0, -120);
+        await frames(page, 6);
+      }
+      if (index < 9) return row(index);
+      for (let notch = 8; notch < index; notch += 1) {
+        await page.mouse.wheel(0, 120);
+        await frames(page, 6);
+      }
+      return row(8);
     };
     await click(page, await shown(asking));
     await click(page, showMessage);
@@ -226,9 +234,45 @@ async function run(browser, base, faction) {
     const plain = PNG.sync.read(await page.screenshot());
     assert.ok(differing(plain, check, await bitmap(10926)) > 0, "the answered report still shows its checkmark");
 
+    // Character Captured (FUN_00490340, 0x1e0): the Emperor taken by the
+    // Alliance at Corfai. A0 messages-day633/capture-palpatine (the
+    // Alliance): TEXTSTRA 0x7158 / 0x7159 over STRATEGY 1049 (0x419, a
+    // captive of side 2) at (74, 82), every pixel exact. The Empire reads
+    // 0x715a / 0x715b (hyp: its own captive's).
+    await click(page, showMessage);
+    const list = await waitReport(page, (value) => value.mode === "list", "Display Message goes back to the list");
+    const captured = list.rows.findIndex((text) => text.startsWith("Emperor Palpatine Captured"));
+    assert.ok(captured >= 0, JSON.stringify(list.rows));
+    await click(page, await shown(captured));
+    await click(page, showMessage);
+    const capture = await waitReport(page, (value) => value.mode === "single"
+      && value.viewing_title === "Emperor Palpatine Captured", "Display Message shows the capture");
+    assert.equal(capture.viewing_text, faction.byte === 1
+      ? "Emperor Palpatine was captured by the Alliance at Corfai."
+      : "Emperor Palpatine was captured at Corfai.", JSON.stringify(capture));
+    assert.equal(capture.viewing_background, 0x419, JSON.stringify(capture));
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await shot("capture");
+    const captureScreen = PNG.sync.read(await page.screenshot());
+    const picture = (await bitmap(1049));
+    // The picture at the window's (12, 33) (message_index PICTURE_ORIGIN);
+    // A0's window stands at (62, 49).
+    const pictureAt = [Math.round(capture.window_left) + 12, Math.round(capture.window_top) + 33];
+    const captureChecks = { at: pictureAt, port: differing(captureScreen, pictureAt, picture) };
+    const a0File = path.join(ROOT, ".artifacts/a0-vm/messages-day633/capture-palpatine.png");
+    if (faction.byte === 1) {
+      try {
+        captureChecks.a0 = differing(PNG.sync.read(await fs.readFile(a0File)), [74, 82], picture);
+      } catch {
+        captureChecks.a0 = null;
+      }
+    }
+    assert.ok(captureChecks.port === 0 && (captureChecks.a0 ?? 0) === 0, JSON.stringify(captureChecks));
+
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
-      question: viewing.viewing_question, answers, abort: aborts[0], shots };
+      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };

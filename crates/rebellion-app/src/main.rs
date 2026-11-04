@@ -1654,6 +1654,7 @@ async fn main() {
         );
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_event_messages(request, &mut world, &mut mission_state, &mut msg_log);
+        interface_test_fixture::post_capture_message(request, &world, &mut msg_log, &message_texts);
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {
             AiFaction::Alliance
@@ -3137,7 +3138,12 @@ async fn main() {
                             msg_log.push(message);
                         }
                     }
-                    if let MissionEffect::CharacterCaptured { character, .. } = effect {
+                    if let MissionEffect::CharacterCaptured {
+                        character,
+                        captured_by,
+                        at_system,
+                    } = effect
+                    {
                         if rebellion_core::jabba::held_at_palace(&world, *character) {
                             if let Some(message) =
                                 rebellion_render::story_messages::jabba_captures_message(
@@ -3147,6 +3153,27 @@ async fn main() {
                                 )
                             {
                                 msg_log.push(message);
+                            }
+                        } else if let Some(captive) = world.characters.get(*character) {
+                            // Notification 0x1e0 (FUN_00490340), each
+                            // side's message.
+                            let place = world
+                                .systems
+                                .get(*at_system)
+                                .map_or("", |system| system.name.as_str());
+                            for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+                                if let Some(message) =
+                                    rebellion_render::story_messages::captured_message(
+                                        captive,
+                                        *captured_by == MissionFaction::Alliance,
+                                        place,
+                                        reader,
+                                        current_tick,
+                                        &message_texts,
+                                    )
+                                {
+                                    msg_log.push(message);
+                                }
                             }
                         }
                     }

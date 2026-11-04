@@ -480,6 +480,64 @@ pub fn jabba_captures_message(
     )
 }
 
+/// Character Captured (`FUN_00490340` cases 3 and 4): notification `0x1e0`
+/// for a character a side takes captive at `system`. A captive of the
+/// reader's enemy reads TEXTSTRA `0x7158` "{1} Captured" / `0x7159` "{1}
+/// was captured by the {3} at {2}." with the captor's side; one of the
+/// reader's own reads `0x715a` / `0x715b` "{1} was captured at {2}.". The
+/// background is `0x418` for a captive of side 1, else `0x419`, and the
+/// speaker is the captive's ([`captured_event`]). A0 messages-day633: the
+/// Alliance reads "Emperor Palpatine was captured by the Alliance at
+/// Corfai." over `0x419`.
+///
+/// hyp: which side's message takes case 3 is read from A0's one capture,
+/// as the class's side test (`+0x20`, `FUN_004edc80`) does not settle it;
+/// the reader's own captive taking case 4 follows from it. port: the
+/// Jabba case 5 is [`jabba_captures_message`]; Han's capture with
+/// `+0xb0` bit 2 (no message) is not modelled.
+#[must_use]
+pub fn captured_message(
+    character: &rebellion_core::world::Character,
+    captor_is_alliance: bool,
+    system: &str,
+    reader: CockpitFaction,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let reader_is_alliance = reader == CockpitFaction::Alliance;
+    let (title, body) = if character.is_alliance == reader_is_alliance {
+        (0x715a, 0x715b)
+    } else {
+        (0x7158, 0x7159)
+    };
+    let parameters = [
+        MessageParameter::Named {
+            name: &character.name,
+        },
+        MessageParameter::Named { name: system },
+        side_parameter(captor_is_alliance, texts),
+    ];
+    let audience = if reader_is_alliance {
+        RailAudience::Alliance
+    } else {
+        RailAudience::Empire
+    };
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&body)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, audience)
+        .with_title(fill_message_text(texts.get(&title)?, &parameters))
+        .with_picture(MessagePicture {
+            background: if character.is_alliance { 0x418 } else { 0x419 },
+            foreground: None,
+        })
+        .with_advisor_event(captured_event(character)),
+    )
+}
+
 /// Character Discovers Traitor (`FUN_0048c9c0`): notification `0x361`,
 /// a character's TraitorDiscovered key set to a traitor (`FUN_00588e80`).
 /// The discoverer's side reads TEXTSTRA `0x71e8` "{1:1} Discovers Traitor"
@@ -3812,6 +3870,76 @@ mod tests {
         // FUN_00490340: no major character, 0x15.
         assert_eq!(message.advisor_event, [0x15; 2]);
         assert!(jabba_captures_message(&chewbacca, 9, &HashMap::new()).is_none());
+    }
+
+    #[test]
+    fn a_capture_reads_the_captor_to_the_other_side_and_the_place_to_its_own() {
+        // FUN_00490340 cases 3 and 4: TEXTSTRA 0x7158 / 0x7159 with the
+        // captor's side (FUN_0052d920 kind 1), or 0x715a / 0x715b; the
+        // background (captive side != 1) + 0x418; Emperor's speaker 0x22.
+        // A0 messages-day633/capture-palpatine: the Alliance reads "Emperor
+        // Palpatine was captured by the Alliance at Corfai." over 0x419.
+        let emperor = rebellion_core::world::Character {
+            name: "Emperor Palpatine".into(),
+            dat_id: rebellion_core::ids::DatId::new(0x3000_0280),
+            is_major: true,
+            is_empire: true,
+            ..Default::default()
+        };
+        let texts: HashMap<u16, String> = [
+            (0x7158, "{1:1} Captured"),
+            (0x7159, "{1:1} was captured by the {3:1} at {2:1}."),
+            (0x715a, "{1:1} Captured"),
+            (0x715b, "{1:1} was captured at {2:1}."),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let alliance = captured_message(
+            &emperor,
+            true,
+            "Corfai",
+            CockpitFaction::Alliance,
+            7,
+            &texts,
+        )
+        .expect("message");
+        assert_eq!(
+            alliance.title.as_deref(),
+            Some("Emperor Palpatine Captured")
+        );
+        assert_eq!(
+            alliance.text,
+            "Emperor Palpatine was captured by the Alliance at Corfai."
+        );
+        assert_eq!(alliance.picture.map(|p| p.background), Some(0x419));
+        assert_eq!(alliance.audience, RailAudience::Alliance);
+        assert_eq!(alliance.advisor_event, [0x22; 2]);
+        let empire = captured_message(&emperor, true, "Corfai", CockpitFaction::Empire, 7, &texts)
+            .expect("message");
+        assert_eq!(empire.text, "Emperor Palpatine was captured at Corfai.");
+        assert_eq!(empire.audience, RailAudience::Empire);
+        // An Alliance captive takes 0x418, and the Empire as captor.
+        let leia = rebellion_core::world::Character {
+            name: "Leia".into(),
+            is_alliance: true,
+            ..Default::default()
+        };
+        let taken = captured_message(&leia, false, "Bespin", CockpitFaction::Empire, 7, &texts)
+            .expect("message");
+        assert_eq!(taken.text, "Leia was captured by the Empire at Bespin.");
+        assert_eq!(taken.picture.map(|p| p.background), Some(0x418));
+        assert!(captured_message(
+            &leia,
+            false,
+            "Bespin",
+            CockpitFaction::Empire,
+            7,
+            &HashMap::new()
+        )
+        .is_none());
     }
 
     #[test]
