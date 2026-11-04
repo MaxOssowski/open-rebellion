@@ -518,7 +518,7 @@ impl SystemWindowState {
                 Some(MissionTarget::ManufacturingFacility(key))
             }
             Some(FacilityItem::Production(key)) => Some(MissionTarget::ProductionFacility(key)),
-            Some(FacilityItem::Pending(_) | FacilityItem::Deposit(_)) => return Some(None),
+            Some(FacilityItem::Pending { .. } | FacilityItem::Deposit(_)) => return Some(None),
             None => None,
         };
         Some(Some(pick))
@@ -1464,8 +1464,10 @@ fn draw_system_window(
                                 .interact_pointer_pos()
                                 .filter(|point| rect_contains(rect.intersect(list), *point))
                             {
-                                result.object_menu =
-                                    Some((cell.item.menu_object(), canvas_point(layout, point)));
+                                result.object_menu = Some((
+                                    cell.item.menu_object(window.system),
+                                    canvas_point(layout, point),
+                                ));
                             }
                         }
                     }

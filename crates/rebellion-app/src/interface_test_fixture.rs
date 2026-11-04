@@ -2015,7 +2015,8 @@ pub fn emit_status_rows(
             };
             ("Character Status", rows)
         }
-        (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_))) => {
+        (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_)))
+        | (_, Some(object @ StatusObject::PendingFacility { .. })) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };

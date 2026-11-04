@@ -112,6 +112,15 @@ pub enum MenuObject {
     /// window overlay (id `0x10000`, `FUN_0045bbb0`); the port keeps it
     /// with the yards.
     Headquarters(ManufacturingFacilityKey),
+    /// A facility page's unfinished unit for `system`: one being built
+    /// (`+0x50` bit 2 clear), or travelling there until `arrival` (bit 4).
+    /// `owner` is its side, 1 or 2.
+    PendingFacility {
+        system: SystemKey,
+        class: rebellion_core::ids::DatId,
+        owner: u8,
+        arrival: Option<u64>,
+    },
     /// A Missions window's mission, by its id (`0x50..0x7f`): the window's
     /// slot 22 (`FUN_004a0400`) gives the left list's selected missions to
     /// the menu (A0 missionstatus/02: Encyclopedia, Status, Abort).
@@ -136,6 +145,7 @@ impl MenuObject {
             | Self::ManufacturingFacility(_)
             | Self::ProductionFacility(_)
             | Self::Headquarters(_)
+            | Self::PendingFacility { .. }
             | Self::Mission(_) => None,
         }
     }
@@ -166,6 +176,7 @@ impl MenuObject {
             | Self::Producer { .. }
             | Self::Fighter { .. }
             | Self::Headquarters(_)
+            | Self::PendingFacility { .. }
             | Self::Mission(_) => None,
         }
     }
@@ -212,6 +223,17 @@ impl MenuObject {
                 Some(StatusObject::ManufacturingFacility(key))
             }
             Self::ProductionFacility(key) => Some(StatusObject::ProductionFacility(key)),
+            Self::PendingFacility {
+                system,
+                class,
+                owner,
+                arrival,
+            } => Some(StatusObject::PendingFacility {
+                system,
+                class,
+                owner,
+                arrival,
+            }),
             Self::Mission(id) => Some(StatusObject::Mission(id)),
             Self::SystemIcon { .. } => None,
         }
@@ -587,10 +609,13 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         // keeps the base object's order list, slot +0x3c (FUN_005399e0):
         // the one order 0x200 that FUN_00539c20 puts in it. FUN_0051d990
         // adds Encyclopedia and Status.
+        // An unfinished unit keeps its class's list too; its Scrap names no
+        // target, so it is grey (A0 pending-facility/12).
         Some(
             MenuObject::DefenseFacility(_)
             | MenuObject::ManufacturingFacility(_)
-            | MenuObject::ProductionFacility(_),
+            | MenuObject::ProductionFacility(_)
+            | MenuObject::PendingFacility { .. },
         ) => &[SCRAP],
         // The headquarters' slot +0x3c (FUN_00526860 -> FUN_00526c00):
         // 0x201, 0x202 and 0x204 (no STRATEGY record) after FUN_004f2a10's
@@ -1887,6 +1912,32 @@ mod tests {
             ))
         );
         assert_eq!(hq.scrap_target(), None);
+    }
+
+    #[test]
+    fn an_unfinished_facility_lists_encyclopedia_status_and_a_grey_scrap() {
+        // A0 pending-facility/12: a refinery under construction at Commenor
+        // opens Encyclopedia, Status and a grey Scrap (FUN_005399e0's list;
+        // its Scrap names no target, so the main.rs gate refuses it).
+        let pending = MenuObject::PendingFacility {
+            system: SystemKey::default(),
+            class: rebellion_core::ids::DatId::new(0x2d00_0002),
+            owner: 1,
+            arrival: None,
+        };
+        let rows = object_menu_rows(Some(pending), MISSION_GATE);
+        assert_eq!(labels(&rows), ["Encyclopedia", "Status", "Scrap"]);
+        assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        assert_eq!(pending.scrap_target(), None);
+        assert_eq!(
+            pending.status_object(),
+            Some(StatusObject::PendingFacility {
+                system: SystemKey::default(),
+                class: rebellion_core::ids::DatId::new(0x2d00_0002),
+                owner: 1,
+                arrival: None,
+            })
+        );
     }
 
     #[test]

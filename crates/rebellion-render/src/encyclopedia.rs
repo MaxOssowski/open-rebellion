@@ -1045,6 +1045,7 @@ pub fn original_encyclopedia_object(
             world.manufacturing_facilities.get(key)?.class_dat_id
         }
         MenuObject::ProductionFacility(key) => world.production_facilities.get(key)?.class_dat_id,
+        MenuObject::PendingFacility { class, .. } => class,
         MenuObject::SystemIcon { system, .. } => world.systems.get(system)?.dat_id,
         // port: a mission opens its kind's MISSNSD record; the caller,
         // which holds the missions, resolves it.

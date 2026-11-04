@@ -1991,6 +1991,12 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 11500..=11502
                 | 11513..=11516
                 | 11520
+                // Its facility en route marks (11505/11506, 11509/11510) and
+                // the unfinished object's marks 11570..11573 (one key pixel
+                // each; A0 pending-facility/13 shows the frame through it).
+                | 11505..=11506
+                | 11509..=11510
+                | 11570..=11573
                 // The Objectives' portraits (`FUN_0044b2d0`), composed on
                 // the first icon's key colour and blitted keyed by the list
                 // (A0 2026-10-29); its planet 10234 is a sector planet and
@@ -2955,6 +2961,10 @@ pub(crate) mod tests {
             (DllSource::Strategy, 11_515),
             (DllSource::Strategy, 11_516),
             (DllSource::Strategy, 11_520),
+            (DllSource::Strategy, 11_506),
+            (DllSource::Strategy, 11_510),
+            (DllSource::Strategy, 11_571),
+            (DllSource::Strategy, 11_573),
             (DllSource::Gokres, 0x2640),
             (DllSource::Gokres, 0x278f),
             (DllSource::Gokres, 0x6640),
@@ -3511,7 +3521,7 @@ pub(crate) mod tests {
         for resource_id in [11127, 11128, 11539, 11541, 11560, 11569] {
             assert_eq!(alpha(DllSource::Strategy, resource_id), 0, "{resource_id}");
         }
-        for resource_id in [11126, 11129, 11165, 11542, 11559, 11570] {
+        for resource_id in [11126, 11129, 11165, 11542, 11559, 11574] {
             assert_eq!(
                 alpha(DllSource::Strategy, resource_id),
                 255,

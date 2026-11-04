@@ -81,6 +81,14 @@ pub enum StatusObject {
     ManufacturingFacility(ManufacturingFacilityKey),
     /// `0x2c..0x2d`, `FUN_00446c50`.
     ProductionFacility(ProductionFacilityKey),
+    /// `0x28..0x2d`, `FUN_00446c50`: a facility page's unfinished unit for
+    /// `system`, being built or travelling until `arrival`.
+    PendingFacility {
+        system: SystemKey,
+        class: DatId,
+        owner: u8,
+        arrival: Option<u64>,
+    },
     /// `0x50..0x7f`, `FUN_00445c60`: an active mission by its id.
     Mission(u64),
     /// The empty id, `FUN_004ece30` (Agent menu `0x114`): the Objectives,
@@ -1052,13 +1060,42 @@ fn defense_rows(
     rows
 }
 
+/// A pending unit's facility class.
+fn pending_class_id(kind: rebellion_core::manufacturing::BuildableKind) -> Option<DatId> {
+    use rebellion_core::manufacturing::BuildableKind;
+    match kind {
+        BuildableKind::ManufacturingFacility(build) | BuildableKind::ProductionFacility(build) => {
+            Some(build.class)
+        }
+        _ => None,
+    }
+}
+
+/// `FUN_0044a470`'s Status word for an unfinished object: 34628 "Enroute"
+/// while it travels (`+0x50` bit 4), else 34647 "Under Construction" (bit 2
+/// clear; A0 pending-facility/13).
+fn unfinished_status(arrival: Option<u64>) -> &'static str {
+    if arrival.is_some() {
+        "Enroute"
+    } else {
+        "Under Construction"
+    }
+}
+
 /// The Manufacturing Status rows (`FUN_00446c50`), for a yard, mine or
-/// refinery.
-fn manufacturing_rows(world: &GameWorld, system: SystemKey, class: DatId) -> Vec<StatusRow> {
+/// refinery: built, or unfinished (`unfinished`, see [`unfinished_status`]).
+/// An object en route takes its ETA (`FUN_004fd2b0`) after Location.
+fn manufacturing_rows(
+    world: &GameWorld,
+    system: SystemKey,
+    class: DatId,
+    unfinished: Option<Option<u64>>,
+) -> Vec<StatusRow> {
     let value = world.buildable_classes.get(&class);
-    vec![
-        row("Location:", system_name(world, system)),
-        row("Status:", ACTIVE),
+    let mut rows = vec![row("Location:", system_name(world, system))];
+    eta(&mut rows, unfinished.flatten());
+    rows.extend([
+        row("Status:", unfinished.map_or(ACTIVE, unfinished_status)),
         row("Maintenance Cost:", maintenance(world, class)),
         row(
             "Standard Processing Rate:",
@@ -1068,7 +1105,8 @@ fn manufacturing_rows(world: &GameWorld, system: SystemKey, class: DatId) -> Vec
             "Bombardment Value:",
             value.map_or(0, |value| value.stats.bombardment).to_string(),
         ),
-    ]
+    ]);
+    rows
 }
 
 /// A mission's target by name (`+0x70`), or 34087 "Target Unknown".
@@ -1398,13 +1436,13 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             // FUN_00443130 fills families 0x20..0x27 with FUN_00444e20, so
             // the headquarters (ALLFACSD, 0x20) shows Defense Facility
             // Status, though the port keeps it with the yards.
+            // The headquarters' trip (headquarters_move).
+            let arrival = sources
+                .transport
+                .headquarters
+                .filter(|transit| class.family() == 0x20 && transit.destination == system)
+                .map(|transit| transit.arrival_tick);
             let (title, rows) = if (0x20..=0x27).contains(&class.family()) {
-                // The headquarters' trip (headquarters_move).
-                let arrival = sources
-                    .transport
-                    .headquarters
-                    .filter(|transit| transit.destination == system)
-                    .map(|transit| transit.arrival_tick);
                 (
                     "Defense Facility Status",
                     defense_rows(world, system, class, arrival),
@@ -1412,16 +1450,24 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             } else {
                 (
                     "Manufacturing Status",
-                    manufacturing_rows(world, system, class),
+                    manufacturing_rows(world, system, class, None),
                 )
             };
-            view(
-                title,
-                faction_index(facility.side),
-                picture(manufacturing_facility_mini(class).map(|(mini, _)| mini)),
-                class_name(world, class),
-                rows,
-            )
+            StatusView {
+                // FUN_0042c3b0: STRATEGY 11506 under a facility's portrait
+                // (0x20..0x2f outside 0x22..0x27) while it is en route.
+                marks: arrival
+                    .map(|_| (DllSource::Strategy, 11_506))
+                    .into_iter()
+                    .collect(),
+                ..view(
+                    title,
+                    faction_index(facility.side),
+                    picture(manufacturing_facility_mini(class).map(|(mini, _)| mini)),
+                    class_name(world, class),
+                    rows,
+                )
+            }
         }
         StatusObject::ProductionFacility(key) => {
             let facility = world.production_facilities.get(key)?;
@@ -1431,8 +1477,45 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                 faction_index(facility.side),
                 picture(production_facility_mini(facility.class_dat_id).map(|(mini, _)| mini)),
                 class_name(world, facility.class_dat_id),
-                manufacturing_rows(world, system, facility.class_dat_id),
+                manufacturing_rows(world, system, facility.class_dat_id, None),
             )
+        }
+        // FUN_00446c50 on an object not yet completed or en route;
+        // FUN_0042c3b0(.., 1, 1) lays STRATEGY 11571 (side 1) / 11573 under
+        // an unfinished portrait (bit 2 clear) and 11506 under a facility
+        // en route (bit 4; 11510 for 0x22..0x27).
+        StatusObject::PendingFacility {
+            system,
+            class,
+            owner,
+            arrival,
+        } => {
+            let still_there = match arrival {
+                Some(day) => sources.today <= day,
+                None => crate::manufacturing_window::pending_units(sources.manufacturing, system)
+                    .any(|kind| pending_class_id(kind) == Some(class)),
+            };
+            if !still_there {
+                return None;
+            }
+            let mini = manufacturing_facility_mini(class)
+                .or_else(|| production_facility_mini(class))
+                .map(|(mini, _)| mini);
+            let marks = match arrival {
+                Some(_) => vec![(DllSource::Strategy, 11_506)],
+                None if owner == 1 => vec![(DllSource::Strategy, 11_571)],
+                None => vec![(DllSource::Strategy, 11_573)],
+            };
+            StatusView {
+                marks,
+                ..view(
+                    "Manufacturing Status",
+                    usize::from(owner != 1),
+                    picture(mini),
+                    class_name(world, class),
+                    manufacturing_rows(world, system, class, Some(arrival)),
+                )
+            }
         }
         StatusObject::Mission(id) => {
             let mission = sources
@@ -2435,6 +2518,114 @@ mod tests {
                 ("Bombardment Defense Strength:", "0"),
             ]
         );
+        // FUN_0042c3b0: 11506 under an en route facility's portrait.
+        assert_eq!(view.marks, [(DllSource::Strategy, 11_506)]);
+        // A yard where the HQ is bound is not the HQ: no ETA, no mark.
+        let yard = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: Faction::Alliance,
+                is_shipyard: true,
+            });
+        world.systems[here].manufacturing_facilities.push(yard);
+        let yard_view = status_view(
+            states.sources(&world),
+            StatusObject::ManufacturingFacility(yard),
+        )
+        .unwrap();
+        assert!(yard_view.marks.is_empty());
+        assert_eq!(yard_view.rows[1], row("Status:", "Active"));
+    }
+
+    #[test]
+    fn an_unfinished_refinery_reads_under_construction_and_en_route_with_its_marks() {
+        // A0 pending-facility/13 (Commenor, built at Pzob): Manufacturing
+        // Status, "Location: Commenor", "Status: Under Construction"
+        // (FUN_0044a470, +0x50 bit 2 clear), the refinery's portrait over
+        // STRATEGY 11571 (FUN_0042c3b0, side 1). En route (bit 4) it reads
+        // FUN_004fd2b0's ETA after Location (FUN_00446c50), "Enroute" and
+        // 11506.
+        let mut world = GameWorld::default();
+        let pzob = system(
+            &mut world,
+            "Pzob",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let commenor = system(
+            &mut world,
+            "Commenor",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let class = DatId::new(0x2d00_0002);
+        world.buildable_classes.insert(
+            class,
+            rebellion_core::world::BuildableClass {
+                name: "Refinery".into(),
+                processing_rate: 5,
+                stats: rebellion_core::world::ClassStats {
+                    bombardment: 2,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        );
+        let mut states = States::new();
+        let refinery =
+            BuildableKind::ProductionFacility(rebellion_core::manufacturing::FacilityBuild {
+                class,
+                is_alliance: true,
+            });
+        states
+            .manufacturing
+            .enqueue(pzob, QueueItem::new(refinery, 5).delivered_to(commenor));
+        let pending = |arrival| StatusObject::PendingFacility {
+            system: commenor,
+            class,
+            owner: 1,
+            arrival,
+        };
+
+        let building = status_view(states.sources(&world), pending(None)).unwrap();
+        assert_eq!(building.title, "Manufacturing Status");
+        assert_eq!(building.name, "Refinery");
+        assert_eq!(building.picture, Some((DllSource::Gokres, 16_386 - 0x4000)));
+        assert_eq!(building.marks, [(DllSource::Strategy, 11_571)]);
+        assert_eq!(
+            rows(&building.rows),
+            [
+                ("Location:", "Commenor"),
+                ("Status:", "Under Construction"),
+                ("Maintenance Cost:", "0"),
+                ("Standard Processing Rate:", "5"),
+                ("Bombardment Value:", "2"),
+            ]
+        );
+        let travelling = status_view(states.sources(&world), pending(Some(12))).unwrap();
+        assert_eq!(travelling.marks, [(DllSource::Strategy, 11_506)]);
+        assert_eq!(
+            rows(&travelling.rows)[..3],
+            [
+                ("Location:", "Commenor"),
+                ("ETA Destination:", "Day 12"),
+                ("Status:", "Enroute"),
+            ]
+        );
+        // The Empire's takes 11573 and its own background row.
+        let empire = StatusObject::PendingFacility {
+            system: commenor,
+            class,
+            owner: 2,
+            arrival: None,
+        };
+        let imperial = status_view(states.sources(&world), empire).unwrap();
+        assert_eq!(imperial.marks, [(DllSource::Strategy, 11_573)]);
+        assert_eq!((building.side, imperial.side), (0, 1));
+        // Gone once it arrives (today 7 in these sources) or leaves the
+        // queue.
+        assert!(status_view(states.sources(&world), pending(Some(6))).is_none());
+        states.manufacturing = ManufacturingState::new();
+        assert!(status_view(states.sources(&world), pending(None)).is_none());
     }
 
     #[test]

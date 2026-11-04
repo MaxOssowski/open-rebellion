@@ -275,24 +275,44 @@ pub enum FacilityState {
 pub enum FacilityItem {
     Manufacturing(ManufacturingFacilityKey),
     Production(ProductionFacilityKey),
-    /// The `index`th unit queued or travelling for this system.
-    Pending(usize),
+    /// The `index`th unit queued or travelling for this system: its class,
+    /// its side (1 or 2) and, while it travels, its arrival day. The
+    /// original holds it as an object that is not yet completed, or en
+    /// route (`FUN_00458fe0`).
+    Pending {
+        index: usize,
+        class: DatId,
+        owner: u8,
+        arrival: Option<u64>,
+    },
     /// The mines page's `index`th empty deposit.
     Deposit(usize),
 }
 
 impl FacilityItem {
-    /// The object the item's pop-up menu stands for. port: a pending unit's
-    /// and an empty deposit's objects are untraced, so their menu stands
-    /// for nothing.
+    /// The object the item's pop-up menu stands for, on `system`'s page. A
+    /// pending unit is its unfinished object (A0 pending-facility/12).
+    /// port: an empty deposit's object is untraced, so its menu stands for
+    /// nothing.
     #[must_use]
-    pub const fn menu_object(self) -> Option<crate::object_menu::MenuObject> {
+    pub const fn menu_object(self, system: SystemKey) -> Option<crate::object_menu::MenuObject> {
         match self {
             Self::Manufacturing(key) => {
                 Some(crate::object_menu::MenuObject::ManufacturingFacility(key))
             }
             Self::Production(key) => Some(crate::object_menu::MenuObject::ProductionFacility(key)),
-            Self::Pending(_) | Self::Deposit(_) => None,
+            Self::Pending {
+                class,
+                owner,
+                arrival,
+                ..
+            } => Some(crate::object_menu::MenuObject::PendingFacility {
+                system,
+                class,
+                owner,
+                arrival,
+            }),
+            Self::Deposit(_) => None,
         }
     }
 }
@@ -399,22 +419,32 @@ pub fn page_cells(
         }
     }
     let queued = pending_units(manufacturing, system)
-        .map(|kind| (kind, FacilityState::UnderConstruction))
+        .map(|kind| (kind, None))
         .chain(
             deliveries
                 .en_route()
                 .iter()
                 .filter(|delivery| delivery.destination == system)
-                .map(|delivery| (delivery.kind, FacilityState::EnRoute)),
+                .map(|delivery| (delivery.kind, Some(delivery.arrival_tick))),
         );
-    for (index, (kind, state)) in queued.enumerate() {
+    for (index, (kind, arrival)) in queued.enumerate() {
         let Some((class, owner)) = pending_class(kind) else {
             continue;
+        };
+        let state = if arrival.is_some() {
+            FacilityState::EnRoute
+        } else {
+            FacilityState::UnderConstruction
         };
         if wanted(class, owner) {
             if let Some(picture) = facility_picture(class, owner, state) {
                 cells.push(FacilityCell {
-                    item: FacilityItem::Pending(index),
+                    item: FacilityItem::Pending {
+                        index,
+                        class,
+                        owner,
+                        arrival,
+                    },
                     picture,
                 });
             }
@@ -434,7 +464,7 @@ pub fn page_cells(
 
 /// Every construction unit queued anywhere that will stand at `system`, in
 /// system then queue order.
-fn pending_units(
+pub(crate) fn pending_units(
     manufacturing: &ManufacturingState,
     system: SystemKey,
 ) -> impl Iterator<Item = BuildableKind> + '_ {
@@ -779,11 +809,21 @@ mod tests {
                     picture: 9_006
                 },
                 FacilityCell {
-                    item: FacilityItem::Pending(0),
+                    item: FacilityItem::Pending {
+                        index: 0,
+                        class: DatId::new(0x2800_0004),
+                        owner: 1,
+                        arrival: None,
+                    },
                     picture: 9_012
                 },
                 FacilityCell {
-                    item: FacilityItem::Pending(1),
+                    item: FacilityItem::Pending {
+                        index: 1,
+                        class: DatId::new(0x2800_0004),
+                        owner: 1,
+                        arrival: Some(deliveries.en_route()[0].arrival_tick),
+                    },
                     picture: 9_013
                 },
             ]
@@ -879,7 +919,12 @@ mod tests {
             mines,
             [
                 FacilityCell {
-                    item: FacilityItem::Pending(0),
+                    item: FacilityItem::Pending {
+                        index: 0,
+                        class: DatId::new(0x2c00_0001),
+                        owner: 1,
+                        arrival: None,
+                    },
                     picture: 9_003
                 },
                 FacilityCell {
