@@ -1989,7 +1989,7 @@ mod tests {
     // ── Message filtering ───────────────────────────────────────────────
 
     fn test_log() -> MessageLog {
-        let mut log = MessageLog::new(100);
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "Fleet arrived", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
@@ -2264,7 +2264,7 @@ mod tests {
         // FUN_00467f10 goes to it (FUN_00429440) and closes (0x28).
         use rebellion_core::ids::SystemKey;
         let system = SystemKey::default();
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "No place", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
@@ -2330,7 +2330,7 @@ mod tests {
         // FUN_00469de0 shows them, with 0x2aae / 0x2ab1, for a kind-5
         // message in mode 2, and FUN_00467f10 answers through the message's
         // vt +0x38 (continue) or +0x3c (the held Abort), then runs 0x65.
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "Do you wish the mission to continue?", MessageCategory::Diplomacy)
                 .on_rail(MessageRail::Mission, RailAudience::Both)
@@ -2393,7 +2393,7 @@ mod tests {
     fn a_question_narrows_the_message_text_to_0x140() {
         // FUN_00469de0: the text control is 0x140 wide for a kind-5 message
         // and 0x18b otherwise, from (17, 234), 80 high (drawn at 1.5).
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "Asks to continue", MessageCategory::Diplomacy)
                 .on_rail(MessageRail::Mission, RailAudience::Both)
@@ -2524,7 +2524,7 @@ mod tests {
 
     #[test]
     fn messages_for_the_other_side_are_hidden() {
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "For alliance", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Alliance),
@@ -3016,7 +3016,7 @@ mod tests {
     /// Build a `MessageLog` with enough fleet messages for scroll testing.
     #[allow(dead_code)]
     fn scroll_log(count: usize) -> MessageLog {
-        let mut log = MessageLog::new(100);
+        let mut log = MessageLog::new();
         for i in 0..count {
             log.push(
                 GameMessage::new(

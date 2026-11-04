@@ -30,7 +30,7 @@ use serde::Serialize;
 /// Stable identity for a message, assigned by [`MessageLog::push`].
 ///
 /// The counter is monotonically increasing and never reused, even after
-/// deletion or capacity eviction. Selection and delete in the Message
+/// deletion or expiry. Selection and delete in the Message
 /// Index address messages by this id.
 pub type MessageId = u64;
 
@@ -228,6 +228,42 @@ pub struct GameMessage {
     /// player answers in the Message Index.
     #[serde(skip)]
     pub continue_question: Option<u64>,
+    /// When the message expires (its class's slot `+0x30`).
+    #[serde(skip)]
+    pub lifetime: MessageLifetime,
+    /// The scheduler's sub-tick when it was posted (`+0x38`, which the base
+    /// constructor `FUN_004c4ce0` takes from `FUN_004fcee0`); set by
+    /// [`MessageLog::push`].
+    #[serde(skip)]
+    pub posted: u64,
+}
+
+/// Sub-ticks a message stays in the index: the base class's slot `+0x30`
+/// (`Class_0065c538_vt30`, `FUN_004c4fe0`) expires it once the scheduler's
+/// sub-tick (`FUN_004fcee0`) passes its `+0x38` plus 300. A day has the
+/// speed's rate of sub-ticks (600 Very Slow, 60 Slow, 12 Medium, 4 Fast), so
+/// that is half a day to 75 days.
+pub const MESSAGE_LIFETIME_SUB_TICKS: u64 = 300;
+
+/// When a message expires (its class's slot `+0x30`, which `FUN_0048a2a0`
+/// asks of every message). The agent's advice (class `0x0065b188`) and the
+/// Assault Summary reports (`0x0065b870`) never expire by class, whatever
+/// their lifetime here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MessageLifetime {
+    /// The base class's [`MESSAGE_LIFETIME_SUB_TICKS`] sub-ticks.
+    #[default]
+    Days,
+    /// Never: slot `+0x30` is `FUN_006158b0`, which returns 0. Future Jedi
+    /// Discovered (`0x0065b520`) is such a class.
+    Kept,
+    /// Facility Idle (`0x0065b260`, `Class_0065b260_vt30` = `FUN_0048c2b0`):
+    /// kept while the system's `area` manager still exists, stands idle
+    /// (`+0x58` is 0) and is the message's side.
+    WhileIdle {
+        system: SystemKey,
+        area: rebellion_core::manufacturing::ProductionArea,
+    },
 }
 
 impl GameMessage {
@@ -248,6 +284,8 @@ impl GameMessage {
             assault_report: None,
             advisor_event: [0; 2],
             continue_question: None,
+            lifetime: MessageLifetime::Days,
+            posted: 0,
         }
     }
 
@@ -273,6 +311,34 @@ impl GameMessage {
             assault_report: None,
             advisor_event: [0; 2],
             continue_question: None,
+            lifetime: MessageLifetime::Days,
+            posted: 0,
+        }
+    }
+
+    /// Give the message its class's lifetime (slot `+0x30`).
+    #[must_use]
+    pub fn with_lifetime(mut self, lifetime: MessageLifetime) -> Self {
+        self.lifetime = lifetime;
+        self
+    }
+
+    /// Whether the message has expired at sub-tick `now` (`FUN_0048a2a0`
+    /// asks slot `+0x30`). `idle` tells whether a system's area manager
+    /// still stands idle for the message's side.
+    #[must_use]
+    pub fn expired(
+        &self,
+        now: u64,
+        idle: &dyn Fn(SystemKey, rebellion_core::manufacturing::ProductionArea) -> bool,
+    ) -> bool {
+        if self.rail == Some(MessageRail::Advice) || self.assault_report.is_some() {
+            return false;
+        }
+        match self.lifetime {
+            MessageLifetime::Days => self.posted + MESSAGE_LIFETIME_SUB_TICKS < now,
+            MessageLifetime::Kept => false,
+            MessageLifetime::WhileIdle { system, area } => !idle(system, area),
         }
     }
 
@@ -359,15 +425,24 @@ pub struct StoryMovie {
     pub caption: String,
 }
 
-/// Capped FIFO buffer of game messages.
+/// The message manager's list of game messages (`DAT_006be3a8`).
 ///
-/// When `capacity` is exceeded the oldest message is dropped. Lives alongside
-/// `GameWorld` and simulation state — not inside either.
+/// Messages leave it when deleted or when they expire (`FUN_0048a2a0`);
+/// there is no cap. Lives alongside `GameWorld` and simulation state — not
+/// inside either.
 #[derive(Debug, Clone)]
 pub struct MessageLog {
     messages: Vec<GameMessage>,
-    capacity: usize,
     next_id: MessageId,
+    /// The manager's `+8` bit `0x10000000`: the Message Index is open, so no
+    /// expiry runs (`FUN_0048a610`, from `FUN_004665f0` and `FUN_004664d0`).
+    index_open: bool,
+    /// A message was posted since the last expiry: `FUN_0048a060` runs
+    /// `FUN_0048a2a0` after filing one.
+    expiry_due: bool,
+    /// The scheduler's sub-tick (`FUN_004fcee0`), which stamps each posted
+    /// message and dates expiry.
+    now: u64,
     /// Event codes delivered to each side's advisor and not yet taken:
     /// `(is_alliance, code)`.
     advisor_events: Vec<(bool, u32)>,
@@ -385,18 +460,20 @@ pub const SILENT: u32 = 4;
 
 impl Default for MessageLog {
     fn default() -> Self {
-        Self::new(500)
+        Self::new()
     }
 }
 
 impl MessageLog {
-    /// Create a new empty log with the given capacity.
+    /// Create a new empty log.
     #[must_use]
-    pub fn new(capacity: usize) -> Self {
+    pub fn new() -> Self {
         MessageLog {
-            messages: Vec::with_capacity(capacity.min(512)),
-            capacity,
+            messages: Vec::new(),
             next_id: 1,
+            index_open: false,
+            expiry_due: false,
+            now: 0,
             advisor_events: Vec::new(),
             posting: (0, std::collections::BTreeMap::new()),
             story_movies: std::collections::VecDeque::new(),
@@ -420,12 +497,14 @@ impl MessageLog {
 
     /// Append a message, assigning it a stable [`MessageId`].
     ///
-    /// Drops the oldest entry when capacity is exceeded. The returned id
-    /// is unique for this log's lifetime.
+    /// The returned id is unique for this log's lifetime. A message filed on
+    /// a rail makes an expiry due ([`Self::expire_if_due`]), as
+    /// `FUN_0048a060` runs `FUN_0048a2a0` after filing one.
     pub fn push(&mut self, mut msg: GameMessage) -> MessageId {
         let id = self.next_id;
         self.next_id += 1;
         msg.id = id;
+        msg.posted = self.now;
         // FUN_0048a060: a delivered message (port: one filed on a side's
         // rail) hands its event code to that side's advisor unless its
         // category posts silently (FUN_0048a1c0 bit 4).
@@ -440,11 +519,52 @@ impl MessageLog {
                 }
             }
         }
-        if self.messages.len() >= self.capacity {
-            self.messages.remove(0);
-        }
+        self.expiry_due |= msg.rail.is_some();
         self.messages.push(msg);
         id
+    }
+
+    /// Set the scheduler's sub-tick (`FUN_004fcee0`), which stamps the
+    /// messages posted from now on and dates their expiry.
+    pub fn set_now(&mut self, sub_tick: u64) {
+        self.now = sub_tick;
+    }
+
+    /// `FUN_0048a2a0`: drop every message that has expired, unless the
+    /// Message Index is open.
+    pub fn expire(
+        &mut self,
+        idle: &dyn Fn(SystemKey, rebellion_core::manufacturing::ProductionArea) -> bool,
+    ) {
+        if self.index_open {
+            return;
+        }
+        self.expiry_due = false;
+        let now = self.now;
+        self.messages.retain(|msg| !msg.expired(now, idle));
+    }
+
+    /// Run [`Self::expire`] when a message was filed since the last run.
+    pub fn expire_if_due(
+        &mut self,
+        idle: &dyn Fn(SystemKey, rebellion_core::manufacturing::ProductionArea) -> bool,
+    ) {
+        if self.expiry_due {
+            self.expire(idle);
+        }
+    }
+
+    /// `FUN_0048a610`: the Message Index opens (no expiry runs while it is
+    /// open) or closes (expiry runs at once).
+    pub fn set_index_open(
+        &mut self,
+        open: bool,
+        idle: &dyn Fn(SystemKey, rebellion_core::manufacturing::ProductionArea) -> bool,
+    ) {
+        let was_open = std::mem::replace(&mut self.index_open, open);
+        if was_open && !open {
+            self.expire(idle);
+        }
     }
 
     /// The event codes delivered to the side's advisor since the last call,
@@ -975,19 +1095,23 @@ mod tests {
     }
 
     #[test]
-    fn dropping_the_oldest_message_can_rest_its_rail() {
-        let mut log = MessageLog::new(1);
+    fn an_expired_message_can_rest_its_rail() {
+        // FUN_0048a2a0 rebuilds the unread mask +0x50 from the messages it
+        // keeps.
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "built", MessageCategory::Manufacturing)
                 .on_rail(MessageRail::Manufacturing, RailAudience::Both),
         );
-        log.push(GameMessage::new(2, "saved", MessageCategory::Event));
+        assert_eq!(log.unread_mask(true), 0x008);
+        log.set_now(301);
+        log.expire(&|_, _| true);
         assert_eq!(log.unread_mask(true), 0);
     }
 
     #[test]
     fn push_assigns_a_stable_monotonic_id() {
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         let a = log.push(GameMessage::new(1, "first", MessageCategory::Event));
         let b = log.push(GameMessage::new(2, "second", MessageCategory::Event));
         let c = log.push(GameMessage::new(3, "third", MessageCategory::Event));
@@ -1000,23 +1124,145 @@ mod tests {
     }
 
     #[test]
-    fn ids_survive_capacity_eviction_and_never_reuse() {
-        let mut log = MessageLog::new(2);
-        let a = log.push(GameMessage::new(1, "first", MessageCategory::Event));
-        let _b = log.push(GameMessage::new(2, "second", MessageCategory::Event));
-        let c = log.push(GameMessage::new(3, "third", MessageCategory::Event));
+    fn ids_survive_expiry_and_never_reuse() {
+        let mut log = MessageLog::new();
+        let a = log.push(
+            GameMessage::new(1, "first", MessageCategory::Event)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.set_now(301);
+        log.expire(&|_, _| true);
+        let c = log.push(GameMessage::new(303, "third", MessageCategory::Event));
 
-        // a was evicted but c's id is still > a's
+        // a expired but c's id is still > a's
         assert!(c > a);
-        assert_eq!(log.messages().len(), 2);
+        assert_eq!(log.messages().len(), 1);
         assert_eq!(log.messages()[0].id, 2);
-        assert_eq!(log.messages()[1].id, 3);
+    }
+
+    #[test]
+    fn a_message_expires_300_sub_ticks_after_it_is_posted_unless_its_class_keeps_it() {
+        // FUN_004c4ce0 stamps +0x38 with FUN_004fcee0, the scheduler's
+        // sub-tick; Class_0065c538_vt30 (FUN_004c4fe0): +0x38 + 300 < now.
+        // The advice class 0x0065b188, Future Jedi Discovered (0x0065b520)
+        // and the Assault Summary reports (0x0065b870) take FUN_006158b0
+        // (0). The manual (p. 79): "Messages are eventually deleted whether
+        // or not you read them, except for agent advice messages."
+        let report = rebellion_core::assault_report::AssaultReport {
+            system: SystemKey::default(),
+            assault: true,
+            attacker: rebellion_core::dat::Faction::Empire,
+            defender: None,
+            taken: false,
+            attackers: Default::default(),
+            system_forces: Default::default(),
+        };
+        let mut log = MessageLog::new();
+        log.set_now(10);
+        for msg in [
+            GameMessage::new(1, "fleet", MessageCategory::Mission)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+            GameMessage::new(1, "advice", MessageCategory::Event)
+                .on_rail(MessageRail::Advice, RailAudience::Both),
+            GameMessage::new(1, "jedi", MessageCategory::Event)
+                .on_rail(MessageRail::Mission, RailAudience::Both)
+                .with_lifetime(MessageLifetime::Kept),
+            GameMessage::new(1, "assault", MessageCategory::Combat)
+                .on_rail(MessageRail::Conflict, RailAudience::Both)
+                .with_assault_report(report),
+        ] {
+            log.push(msg);
+        }
+        let texts = |log: &MessageLog| -> Vec<String> {
+            log.messages().iter().map(|msg| msg.text.clone()).collect()
+        };
+
+        assert_eq!(log.messages()[0].posted, 10);
+        log.set_now(310);
+        log.expire(&|_, _| true);
+        assert_eq!(texts(&log), ["fleet", "advice", "jedi", "assault"]);
+        log.set_now(311);
+        log.expire(&|_, _| true);
+        assert_eq!(texts(&log), ["advice", "jedi", "assault"]);
+    }
+
+    #[test]
+    fn a_facility_idle_message_lasts_while_its_manager_stands_idle() {
+        // Class_0065b260_vt30 (FUN_0048c2b0): expired once the manager is
+        // gone, no longer idle (+0x58), or another side's.
+        use rebellion_core::manufacturing::ProductionArea;
+        let system = SystemKey::default();
+        let mut log = MessageLog::new();
+        log.push(
+            GameMessage::new(10, "idle", MessageCategory::Manufacturing)
+                .on_rail(MessageRail::Manufacturing, RailAudience::Both)
+                .with_lifetime(MessageLifetime::WhileIdle {
+                    system,
+                    area: ProductionArea::Shipyard,
+                }),
+        );
+        log.set_now(5_000);
+        log.expire(&|_, area| area == ProductionArea::Shipyard);
+        assert_eq!(log.messages().len(), 1);
+        log.expire(&|_, _| false);
+        assert!(log.messages().is_empty());
+    }
+
+    #[test]
+    fn expiry_waits_for_a_posted_message_and_for_the_index_to_close() {
+        // FUN_0048a060 runs FUN_0048a2a0 after filing a message;
+        // FUN_0048a610 holds it off while the Message Index is open
+        // (+8 bit 0x10000000, FUN_004665f0) and runs it on close
+        // (FUN_004664d0).
+        let mut log = MessageLog::new();
+        log.push(GameMessage::new(1, "old", MessageCategory::Event));
+        log.set_now(400);
+        log.expire_if_due(&|_, _| true);
+        assert_eq!(
+            log.messages().len(),
+            1,
+            "a message off the rails posts no expiry"
+        );
+        log.set_index_open(true, &|_, _| true);
+        log.push(
+            GameMessage::new(400, "new", MessageCategory::Mission)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.expire_if_due(&|_, _| true);
+        assert_eq!(log.messages().len(), 2, "the open index holds expiry off");
+        log.set_index_open(false, &|_, _| true);
+        assert_eq!(log.messages().len(), 1);
+        assert_eq!(log.messages()[0].text, "new");
+    }
+
+    #[test]
+    fn a_filed_message_runs_the_expiry_that_an_idle_frame_does_not() {
+        // FUN_0048a060 runs FUN_0048a2a0 after filing; port: main.rs calls
+        // set_index_open and expire_if_due every frame, so only the index's
+        // closing (FUN_0048a610(0)) or a filing expires.
+        let mut log = MessageLog::new();
+        log.push(
+            GameMessage::new(1, "old", MessageCategory::Mission)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.expire_if_due(&|_, _| true);
+        log.set_now(400);
+        log.set_index_open(false, &|_, _| true);
+        log.expire_if_due(&|_, _| true);
+        assert_eq!(log.messages().len(), 1, "no filing, no expiry");
+        log.push(
+            GameMessage::new(2, "new", MessageCategory::Mission)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.expire_if_due(&|_, _| true);
+        assert_eq!(log.messages().len(), 1);
+        assert_eq!(log.messages()[0].text, "new");
     }
 
     #[test]
     fn delete_by_ids_removes_matching_messages() {
         // FUN_005f54a0: delete a single message by key from the manager's list.
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         let a = log.push(
             GameMessage::new(1, "fleet", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
@@ -1040,7 +1286,7 @@ mod tests {
     fn delete_recomputes_the_unread_mask() {
         // FUN_0048a2a0: after deletion the unread mask drops categories
         // that no longer have unread messages.
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         let a = log.push(
             GameMessage::new(1, "fleet", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
@@ -1060,7 +1306,7 @@ mod tests {
     #[test]
     fn mark_all_read_clears_every_message() {
         // FUN_0048a530 with param 0: clears all unread bits.
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         log.push(
             GameMessage::new(1, "fleet", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
@@ -1080,7 +1326,7 @@ mod tests {
         // FUN_00469de0: displaying a message sets its font to 10 (read).
         // port: the original only changes the list item's font; the port
         // sets the message's unread field.
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         let a = log.push(
             GameMessage::new(1, "fleet", MessageCategory::Mission)
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
@@ -1100,7 +1346,7 @@ mod tests {
 
     #[test]
     fn export_jsonl_round_trip() {
-        let mut log = MessageLog::new(10);
+        let mut log = MessageLog::new();
         log.push(GameMessage::new(1, "Test event", MessageCategory::Event));
         log.push(GameMessage::new(
             2,
@@ -1129,7 +1375,7 @@ mod tests {
     fn story_movies_wait_in_order_and_post_no_message() {
         // FUN_0048a060's kind 6 (0x48a149) adds the message to the movie
         // list +0x28 only; FUN_00488b90 takes the oldest first.
-        let mut log = MessageLog::new(8);
+        let mut log = MessageLog::new();
         let movie = |movie: u32| StoryMovie {
             movie,
             caption: format!("caption {movie}"),

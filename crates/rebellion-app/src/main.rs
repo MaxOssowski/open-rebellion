@@ -2215,6 +2215,9 @@ async fn main() {
         } else {
             vec![]
         };
+        // The messages posted from here on carry the scheduler's sub-tick
+        // (FUN_004c4ce0's +0x38 from FUN_004fcee0).
+        msg_log.set_now(clock.sub_tick());
 
         if !tick_events.is_empty() {
             // Used by the Dabora 2 notification paths that need to timestamp
@@ -2534,7 +2537,12 @@ async fn main() {
                         .with_title(title)
                         .with_picture_if(picture)
                         // FUN_0048be60 writes code 3.
-                        .with_advisor_event(3),
+                        .with_advisor_event(3)
+                        // Class_0065b260_vt30: kept while the manager idles.
+                        .with_lifetime(rebellion_render::message_log::MessageLifetime::WhileIdle {
+                            system,
+                            area,
+                        }),
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(player_faction == MissionFaction::Alliance)),
                     ));
@@ -5357,6 +5365,27 @@ async fn main() {
                                 &mut advice_saved_speed,
                             );
                         }
+                    }
+                    // FUN_0048a610 with the Message Index's state, then
+                    // FUN_0048a2a0 once a message was filed. Facility Idle
+                    // (FUN_0048c2b0) lasts while the system is the player's,
+                    // its area builds nothing and still has its facility.
+                    {
+                        let player_side = if player_faction == MissionFaction::Alliance {
+                            Faction::Alliance
+                        } else {
+                            Faction::Empire
+                        };
+                        let idle = |system, area| {
+                            world.systems.get(system).is_some_and(|value| {
+                                value.control.faction() == Some(player_side)
+                            }) && mfg_state
+                                .queue(system, area)
+                                .is_none_or(|queue| queue.items().is_empty())
+                                && pictures::idle_yard(&world, system, area).is_some()
+                        };
+                        msg_log.set_index_open(message_index.is_some(), &idle);
+                        msg_log.expire_if_due(&idle);
                     }
                     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
                     if let Some(request) = interface_fixture_request {
@@ -12972,7 +13001,7 @@ mod fleet_move_tests {
         let mut issued = Issued {
             actions: Vec::new(),
             confirmation: MoveConfirmationState::default(),
-            log: MessageLog::new(8),
+            log: MessageLog::new(),
         };
         issue_fleet_move(
             &FleetMoveContext {
@@ -13389,7 +13418,7 @@ mod character_health_tests {
             injury: 7,
             ..rebellion_core::world::Character::default()
         });
-        let mut log = MessageLog::new(8);
+        let mut log = MessageLog::new();
         push_character_health(&mut log, &world, character, 3);
         world.characters[character].injury = 0;
         push_character_health(&mut log, &world, character, 9);
@@ -13453,7 +13482,7 @@ mod character_health_tests {
             },
         ];
         rebellion_core::missions::apply_advance_effects(&mut world, &effects);
-        let mut log = MessageLog::new(8);
+        let mut log = MessageLog::new();
         push_advance_injuries(&mut log, &world, &effects, 5);
         assert_eq!(world.characters[han].injury, 4);
         assert_eq!(log.messages().len(), 1);
@@ -13486,7 +13515,7 @@ mod character_health_tests {
             (0x7178, "Future Jedi Discovered".to_owned()),
             (0x7179, "I have detected that {1:1} has the ability to use the Force.  We should consider allowing me to conduct training in the way of the Force.".to_owned()),
         ]);
-        let mut log = MessageLog::new(8);
+        let mut log = MessageLog::new();
         push_force_discoveries(
             &mut log,
             &world,

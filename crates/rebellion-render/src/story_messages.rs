@@ -297,7 +297,10 @@ pub fn force_user_discovered(
                 foreground: character_portrait(speaker.dat_id, speaker.is_major),
             })
             // FUN_0048f1e0's speaker map on the same character.
-            .with_advisor_event(character_speaker_event(Some(speaker))),
+            .with_advisor_event(character_speaker_event(Some(speaker)))
+            // Class 0x0065b520's slot +0x30 is FUN_006158b0: it never
+            // expires.
+            .with_lifetime(crate::message_log::MessageLifetime::Kept),
     )
 }
 
@@ -2908,6 +2911,8 @@ mod tests {
         let (world, vader, klev, _) = discovery_world(100);
         let message = force_user_discovered(&world, vader, klev, 9, &discovery_texts()).unwrap();
         assert!(message.text.contains("We should consider allowing me"));
+        // Class 0x0065b520's slot +0x30 is FUN_006158b0: never expired.
+        assert!(!message.expired(5_000, &|_, _| true));
         // Below 100: "Once I reach the rank of Jedi Knight".
         let (world, vader, klev, _) = discovery_world(99);
         let message = force_user_discovered(&world, vader, klev, 9, &discovery_texts()).unwrap();
