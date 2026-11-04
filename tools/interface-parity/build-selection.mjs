@@ -609,7 +609,71 @@ async function defensesDestinationCase(page, faction, directory, source) {
     ?.find(({ area }) => area === "ships")?.destination === name, menu.target_name, { timeout: 10_000 });
   fs.writeFileSync(path.join(directory, "defenses-destination.png"), await page.screenshot({ animations: "disabled" }));
   const pending = await pendingSquadronCase(page, faction, directory, source);
-  return { home, target: menu.target_name, pending };
+  const producer = await producerStatusCase(page, faction, directory);
+  return { home, target: menu.target_name, pending, producer };
+}
+
+// The ships band, building the squadron, opens its manager's Status
+// (FUN_0044acd0): "Ship Construction", named after the manager's class,
+// TEXTSTRA 11525 "Shipyard" (FUN_004f62d0), over GOKRES 262. A0
+// pending-facility/34 (Pzob, the window at (108, 79), as here): the
+// picture matches exactly, the name inks within the accepted text
+// deviation.
+async function producerStatusCase(page, faction, directory) {
+  const ships = (await production(page)).bands.find(({ area }) => area === "ships");
+  await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+  await bandOrder(page, ships, "status_window_row", directory, "producer-status");
+  await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+  const status = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+  await page.mouse.move(2, 2);
+  await frames(page);
+  const bytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "producer-status.png"), bytes);
+  assert.equal(status.title, "Ship Construction", JSON.stringify(status));
+  assert.equal(status.name, "Shipyard", JSON.stringify(status));
+  assert.deepEqual(status.rows.map(([label]) => label),
+    ["Location:", "Status:", "Items to Build:", "Estimated Day of Completion:"], JSON.stringify(status));
+  assert.deepEqual(status.rows.slice(1, 3), [["Status:", "Building"], ["Items to Build:", "1"]], JSON.stringify(status));
+  const bitmapBytes = fs.readFileSync(path.join(gokresDirectory(), "262.bmp"));
+  const bitmap = decodeIndexedBmp(bitmapBytes, 126, 88);
+  const differing = (png) => {
+    let count = 0;
+    for (let y = 0; y < 88; y += 1) for (let x = 0; x < 126; x += 1) {
+      const from = (y * 126 + x) * 4;
+      if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
+      const at = ((79 + 20 + y) * png.width + 108 + 244 + x) * 4;
+      if ([0, 1, 2].some((c) => png.data[at + c] !== bitmap.data[from + c])) count += 1;
+    }
+    return count;
+  };
+  const port = PNG.sync.read(bytes);
+  // The Status window stands at (108, 79) in the Alliance's cockpit.
+  const result = { status, port_picture: faction.byte === 1 ? differing(port) : null };
+  const a0File = path.join(root, ".artifacts/a0-vm/pending-facility/34-ship-construction-status-day633.png");
+  if (faction.byte === 1 && fs.existsSync(a0File)) {
+    const a0 = PNG.sync.read(fs.readFileSync(a0File));
+    result.a0_picture = differing(a0);
+    const ink = (png, [xa, ya, xb, yb]) => {
+      let box = null;
+      for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+        const k = ((79 + y) * png.width + 108 + x) * 4;
+        if (Math.min(png.data[k], png.data[k + 1], png.data[k + 2]) <= 200) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+      return box;
+    };
+    const name = [242, 137, 372, 181];
+    result.name = { a0: ink(a0, name), port: ink(port, name) };
+    const [a, p] = [result.name.a0, result.name.port];
+    const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+    assert.ok(a && p && Math.abs(a[1] - p[1]) <= 2 && Math.abs(a[3] - p[3]) <= 2
+      && Math.abs((a[0] + a[2]) - (p[0] + p[2])) <= 4 && ratio > 0.85 && ratio < 1.15, JSON.stringify(result));
+  }
+  assert.ok((result.port_picture ?? 0) === 0 && (result.a0_picture ?? 0) === 0, JSON.stringify(result));
+  await page.keyboard.press("Escape");
+  await page.mouse.move(2, 2);
+  await frames(page);
+  return result;
 }
 
 function gokresDirectory() {
@@ -1115,11 +1179,14 @@ async function inspect(server, source, faction, executable) {
     // system, each in its page's second cell (78, 79) under construction:
     // base + 2 for side 1, + 1 otherwise (FUN_00458fe0; A0
     // personnel-states/35, Xyquine's 9020). The Mines page's first empty
-    // deposit, 9005, follows at the third cell's corner (8 + 138, 77).
+    // deposit, 9005, follows at the third cell's corner (8 + 138, 77). An
+    // Orbital Shipyard travelling to the system follows in the Shipyards
+    // page's third cell: base + 3, 9009 (A0 personnel-states/34).
     const building = faction.byte === 1 ? 2 : 1;
     const second = [78, 79];
     for (const [offset, picture, label, cell] of [[-32, 9006, "shipyards"], [-32, 9006 + building, "shipyard-building", second],
       [32, 9022, "construction-yards"],
+      [-32, 9006 + 3, "shipyard-en-route", [147, 79]],
       [64, 9030, "refineries"], [64, 9030 + building, "refinery-building", second],
       [96, 9001, "mines"], [96, 9001 + building, "mine-building", second], [96, 9005, "deposit", [146, 77]],
       [0, 9014, "training"], [0, 9018 + building, "advanced-training-building", second]]) {
@@ -1150,14 +1217,18 @@ async function inspect(server, source, faction, executable) {
       // A0 pending-facility/31: Pzob's Shipyards page (the Alliance, the
       // window at (145, 86)) shows its built shipyard, 9006, at (9, 79).
       const a0Page = path.join(root, ".artifacts/a0-vm/pending-facility/31-pzob-shipyards.png");
-      if (label === "shipyards" && faction.byte === 1 && fs.existsSync(a0Page)) {
-        const a0 = PNG.sync.read(fs.readFileSync(a0Page));
+      // A0 personnel-states/34: Mon Calamari's Shipyards page (the window
+      // at (314, 86)) shows a shipyard en route, 9009, at (9, 79).
+      const a0EnRoute = path.join(root, ".artifacts/a0-vm/personnel-states/34-mon-calamari-shipyards-day303.png");
+      const a0At = label === "shipyards" ? [145, 86, a0Page] : label === "shipyard-en-route" ? [314, 86, a0EnRoute] : null;
+      if (a0At && faction.byte === 1 && fs.existsSync(a0At[2])) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0At[2]));
         entry.a0_differing = 0;
         for (let y = 0; y < 35; y += 1) {
           for (let x = 0; x < 67; x += 1) {
             const from = (y * 67 + x) * 4;
             if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
-            const at = ((86 + 79 + y) * a0.width + 145 + 9 + x) * 4;
+            const at = ((a0At[1] + 79 + y) * a0.width + a0At[0] + 9 + x) * 4;
             if (a0.data[at] !== bitmap.data[from] || a0.data[at + 1] !== bitmap.data[from + 1]
               || a0.data[at + 2] !== bitmap.data[from + 2]) entry.a0_differing += 1;
           }

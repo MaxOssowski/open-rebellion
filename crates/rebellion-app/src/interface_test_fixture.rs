@@ -532,6 +532,39 @@ pub fn requested() -> Option<FixtureRequest> {
     clippy::too_many_lines,
     reason = "Keep the deterministic browser fixture setup in its existing order."
 )]
+/// The deliveries a scenario starts with, after [`apply`]. Build Selection:
+/// an Orbital Shipyard travelling from the secondary to the primary, the
+/// Shipyards page's third cell (FUN_00458fe0: base + 3 en route; A0
+/// personnel-states/34, Mon Calamari's 9009). Its departure day lies past
+/// any the gate reaches, so it stays en route.
+pub fn place_deliveries(
+    request: FixtureRequest,
+    world: &GameWorld,
+    deliveries: &mut rebellion_core::delivery::DeliveryState,
+) {
+    if request.scenario != Scenario::BuildSelection {
+        return;
+    }
+    let system_keys: Vec<_> = world.systems.keys().take(2).collect();
+    let [primary, secondary] = system_keys[..] else {
+        return;
+    };
+    deliveries.depart(
+        world,
+        &[rebellion_core::manufacturing::Departure {
+            origin: secondary,
+            destination: primary,
+            tick: 100_000,
+            kind: rebellion_core::manufacturing::BuildableKind::ManufacturingFacility(
+                rebellion_core::manufacturing::FacilityBuild {
+                    class: rebellion_core::ids::DatId::new(0x2800_0001),
+                    is_alliance: request.faction == CockpitFaction::Alliance,
+                },
+            ),
+        }],
+    );
+}
+
 pub fn apply(
     request: FixtureRequest,
     world: &mut GameWorld,
@@ -2039,15 +2072,16 @@ pub fn emit_personnel_finder(
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
 }
 
-/// The open Status window's title and rows: a Character Status in the
-/// ForceStatus scenario, a facility's (the headquarters') in Quadrants.
+/// The open Status window's title, name and rows: a Character Status in the
+/// ForceStatus scenario, a facility's (the headquarters') in Quadrants, and
+/// an unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
     request: FixtureRequest,
     sources: rebellion_render::status_rows::StatusSources<'_>,
     status: &rebellion_render::status_window::StatusWindowState,
 ) {
     use rebellion_render::status_rows::StatusObject;
-    let (title, rows) = match (request.scenario, status.object()) {
+    let (title, name, rows) = match (request.scenario, status.object()) {
         (Scenario::ForceStatus, Some(StatusObject::Character(key))) => {
             let Some(rows) = rebellion_render::status_window::character_rows(
                 sources.world,
@@ -2056,7 +2090,7 @@ pub fn emit_status_rows(
             ) else {
                 return;
             };
-            ("Character Status", rows)
+            ("Character Status", None, rows)
         }
         (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_)))
         | (
@@ -2064,13 +2098,14 @@ pub fn emit_status_rows(
             Some(
                 object @ (StatusObject::PendingFacility { .. }
                 | StatusObject::PendingFighter { .. }
-                | StatusObject::PendingTroop { .. }),
+                | StatusObject::PendingTroop { .. }
+                | StatusObject::Producer { .. }),
             ),
         ) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
-            (view.title, view.rows)
+            (view.title, Some(view.name), view.rows)
         }
         _ => return,
     };
@@ -2078,11 +2113,13 @@ pub fn emit_status_rows(
     struct Report {
         status: &'static str,
         title: &'static str,
+        name: Option<String>,
         rows: Vec<(String, String)>,
     }
     let bytes = serde_json::to_vec(&Report {
         status: "status-rows",
         title,
+        name,
         rows: rows.into_iter().map(|row| (row.label, row.value)).collect(),
     })
     .expect("serialize the status rows report");
@@ -6742,6 +6779,43 @@ mod tests {
         // The planet is not under the window.
         assert!(planet.center().x < band.min.x - 55.0, "{planet:?} {band:?}");
         assert!(applied.systems.band_screen_rect(layout, primary, rebellion_core::manufacturing::ProductionArea::TrainingFacility).is_some());
+    }
+
+    // FUN_00458fe0: an object en route takes its base + 3; the Build
+    // Selection scenario sends a shipyard to the primary for the Shipyards
+    // page's third cell (A0 personnel-states/34, 9009).
+    #[test]
+    fn the_build_selection_scenario_sends_a_shipyard_to_the_primary() {
+        use rebellion_render::manufacturing_window::{page_cells, FacilityPage};
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let request = request(Scenario::BuildSelection, faction);
+            let applied = apply_to_loading_world_with(request, |_| {});
+            let world = &applied.world;
+            let primary = world.systems.keys().next().unwrap();
+            let mut deliveries = rebellion_core::delivery::DeliveryState::default();
+            place_deliveries(request, world, &mut deliveries);
+            let [delivery] = deliveries.en_route() else {
+                panic!("{:?}", deliveries.en_route());
+            };
+            assert_eq!(delivery.destination, primary);
+            assert!(delivery.arrival_tick > 100_000);
+            let cells = page_cells(
+                world,
+                &ManufacturingState::default(),
+                &deliveries,
+                true,
+                primary,
+                FacilityPage::Shipyards,
+            );
+            assert_eq!(cells.last().map(|cell| cell.picture), Some(9_009));
+            let mut none = rebellion_core::delivery::DeliveryState::default();
+            place_deliveries(
+                super::tests::request(Scenario::BuildSelectionDestination, faction),
+                world,
+                &mut none,
+            );
+            assert!(none.en_route().is_empty());
+        }
     }
 
     // FUN_00509710: the other side's squadrons make it present beside the

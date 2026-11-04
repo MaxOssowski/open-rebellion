@@ -1623,6 +1623,7 @@ async fn main() {
             &mut troop_transport_state,
             &mut uprising_state,
         );
+        interface_test_fixture::place_deliveries(request, &world, &mut delivery_state);
         // Every fixture's cockpit shows its own side's droids (the
         // Empire's IMP sprites, not the Alliance's).
         let side = if player_faction == MissionFaction::Alliance {

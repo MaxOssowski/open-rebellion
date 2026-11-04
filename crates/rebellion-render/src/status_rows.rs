@@ -1216,6 +1216,20 @@ pub fn mission_rows(sources: StatusSources<'_>, id: u64) -> Option<Vec<StatusRow
     Some(rows)
 }
 
+/// An area's manager name: `FUN_004f62d0` gives the object's own name
+/// (`+0x34`), else its class's, the class names TEXTSTRA 11524
+/// "Construction", 11525 "Shipyard" and 11526 "Training" (families
+/// `0xa0..0xa1`, `0xa2..0xa3`, `0xa4..`, in the order of the pictures
+/// 263, 262, 264). A0 pending-facility/34: Pzob's Ship Construction Status
+/// names it "Shipyard".
+const fn manager_name(area: ProductionArea) -> &'static str {
+    match area {
+        ProductionArea::ConstructionYard => "Construction",
+        ProductionArea::Shipyard => "Shipyard",
+        ProductionArea::TrainingFacility => "Training",
+    }
+}
+
 /// An area's manager title (6195, 6185, 6193), the yard family it counts
 /// and its busy word (34672 "Building", 34673 "Training").
 const fn manager(area: ProductionArea) -> (&'static str, u8, &'static str) {
@@ -1632,9 +1646,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
                     title,
                     holder_index(world, system),
                     Some((DllSource::Gokres, picture)),
-                    // hyp: the manager's name (FUN_004f62d0) is its
-                    // system's.
-                    system_name(world, system),
+                    manager_name(area).into(),
                     producer_rows(sources, system, area)?,
                 )
             }
@@ -2459,6 +2471,41 @@ mod tests {
         assert!(producer.manager_title);
         assert_eq!(producer.picture, Some((DllSource::Gokres, 264)));
         assert!(!fleet_view.manager_title);
+    }
+
+    #[test]
+    fn a_producers_status_names_its_manager_class() {
+        // FUN_004f62d0: the manager's class name, TEXTSTRA 11524..11526.
+        // A0 pending-facility/34: "Ship Construction" over GOKRES 262 (0 of
+        // 10728 pixels off), named "Shipyard", at Pzob.
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Pzob",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let states = States::new();
+        let names = [
+            ProductionArea::Shipyard,
+            ProductionArea::ConstructionYard,
+            ProductionArea::TrainingFacility,
+        ]
+        .map(|area| {
+            let view = status_view(
+                states.sources(&world),
+                StatusObject::Producer { system: here, area },
+            )
+            .unwrap();
+            (view.name, view.picture)
+        });
+        assert_eq!(
+            names,
+            [
+                ("Shipyard".to_owned(), Some((DllSource::Gokres, 262))),
+                ("Construction".to_owned(), Some((DllSource::Gokres, 263))),
+                ("Training".to_owned(), Some((DllSource::Gokres, 264))),
+            ]
+        );
     }
 
     #[test]
