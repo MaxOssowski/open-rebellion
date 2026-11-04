@@ -1786,12 +1786,14 @@
         {
           "id": "CMD-02-C021",
           "requirement": "HQ",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-gid-headquarters-a0/"
           ],
-          "note": "The GID gate renders an HQ fixture, but no GID-specific HQ overlay is traced or drawn (the legacy egui HQ label is not original); no A0."
+          "note": "A headquarters system's GID item carries flag 8 (FUN_0042b330, FUN_00526cf0 families 0x20..0x21, no side filter), so FUN_0042cde0 blits the burst STRATEGY 10166 keyed under the mark at the cell's top left; none with the unexplored mark. A0 gid/hq-burst-alliance-day390 (Alliance, day 390): 10166 under 10146, 0 of 89 pixels off. run.mjs 'headquarters' (Linux, 640x480): Alliance 10166+10146 0/89, Empire 10166+10150 0/59 (2026-11-04).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "CMD-02-C022",

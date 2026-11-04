@@ -257,7 +257,11 @@ The mark tables and how a mark is drawn (read 2026-10-22):
   population.
 - After the switch, `FUN_0042b330` (`0x42c0e5..0x42c191`) rebuilds the
   item's flags:
-  - 8 when the system has children of type 3 (`FUN_00526cf0(system, 3)`);
+  - 8 when the system holds a headquarters: `FUN_00526cf0(system, 3)` walks
+    its direct children of families `0x20..0x21` in mode 3 (existing), with
+    no side filter (read 2026-11-04). `FUN_0042cde0` then draws 10166, the
+    burst, under the mark. A0 gid/hq-burst-alliance-day390 shows it under
+    10146; ported as `gid_headquarters_burst`;
   - one bit by side, through the jump table at `0x42c39c`: side 0 gives
     `0x80`, 1 gives `0x10`, 2 gives `0x20`, 3 gives `0x40`.
   It stores them when they changed.

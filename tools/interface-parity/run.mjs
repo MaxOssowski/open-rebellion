@@ -410,6 +410,39 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   const outside = point(control.x - 2, control.y + control.height / 2);
   const probes = [];
 
+  // A headquarters system's item carries flag 8 (FUN_0042b330,
+  // FUN_00526cf0 families 0x20..0x21): FUN_0042cde0 blits the burst 10166
+  // keyed at the 17 by 17 cell's top left, then the mark over it (A0
+  // gid/hq-burst-alliance-day390: 10166 under 10146, 0 of 89 off).
+  if (scenario.slug === "headquarters" && scale === 1) {
+    assert.equal(ready.primary_gid_marks.length, 2, JSON.stringify(ready));
+    assert.equal(ready.primary_gid_marks[0], 10166, JSON.stringify(ready));
+    const shot = PNG.sync.read(await page.screenshot({ path: path.join(folder, "headquarters-burst.png"),
+      animations: "disabled" }));
+    const expected = new Map();
+    for (const id of ready.primary_gid_marks) {
+      const bitmap = decodeIndexedBmp(fs.readFileSync(path.join(root, `data/base/ui/strategy-dll/BMP/${id}.bmp`)));
+      const key = bitmap.pixel(0, bitmap.height - 1).join(",");
+      for (let y = 0; y < bitmap.height; y += 1) {
+        for (let x = 0; x < bitmap.width; x += 1) {
+          const rgb = bitmap.pixel(x, y);
+          if (rgb.join(",") !== key) expected.set(`${x},${y}`, rgb);
+        }
+      }
+    }
+    const left = Math.round(ready.primary_screen_x - 8.5);
+    const top = Math.round(ready.primary_screen_y - 8.5);
+    let different = 0;
+    for (const [at, rgb] of expected) {
+      const [x, y] = at.split(",").map(Number);
+      const index = ((top + y) * shot.width + left + x) * 4;
+      if (shot.data[index] !== rgb[0] || shot.data[index + 1] !== rgb[1] || shot.data[index + 2] !== rgb[2]) different += 1;
+    }
+    probes.push({ type: "headquarters-burst", marks: ready.primary_gid_marks, left, top,
+      pixels_checked: expected.size, different_pixels: different });
+    assert.equal(different, 0, `${faction}: ${different} of ${expected.size} headquarters burst pixels differ`);
+  }
+
   const commandLines = () => consoleLines.map(({ text }) => text)
     .filter((line) => line.includes("[interface] command="));
   await page.mouse.click(outside.x, outside.y);

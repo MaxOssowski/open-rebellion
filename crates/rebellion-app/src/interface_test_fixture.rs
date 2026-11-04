@@ -2979,6 +2979,11 @@ struct FixtureReady<'a> {
     probe_system_name: &'a str,
     probe_screen_x: f32,
     probe_screen_y: f32,
+    /// The primary system's point and the GID bitmaps drawn there, in
+    /// order (the headquarters burst under the mark, `FUN_0042cde0`).
+    primary_screen_x: f32,
+    primary_screen_y: f32,
+    primary_gid_marks: Vec<u32>,
 }
 
 pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapState) {
@@ -3011,6 +3016,11 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
             distance(a.1, a.2).total_cmp(&distance(b.1, b.2))
         })
         .expect("fixture has a visible system for hover probe");
+    let primary = world
+        .systems
+        .values()
+        .next()
+        .map_or((0.0, 0.0), |system| screen_point(system, request.faction));
     let report = FixtureReady {
         schema_version: 1,
         status: "ready",
@@ -3026,6 +3036,14 @@ pub fn emit_ready(request: FixtureRequest, world: &GameWorld, map: &GalaxyMapSta
         probe_system_name: &probe.0.name,
         probe_screen_x: probe.1,
         probe_screen_y: probe.2,
+        primary_screen_x: primary.0,
+        primary_screen_y: primary.1,
+        primary_gid_marks: map
+            .drawn_gid_markers
+            .iter()
+            .filter(|(_, [x, y])| (x - primary.0).abs() < 0.5 && (y - primary.1).abs() < 0.5)
+            .map(|(id, _)| *id)
+            .collect(),
     };
     let bytes = serde_json::to_vec(&report).expect("serialize interface fixture report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
