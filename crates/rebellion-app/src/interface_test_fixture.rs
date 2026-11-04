@@ -2789,7 +2789,8 @@ fn place_loading_fleet(
 ///   one agent of each side on a Diplomacy mission there (kind `0x40`, the
 ///   other side's art, `FUN_004a1f60`);
 /// - second: a player regiment (kind 8, the system's side art) and a player
-///   agent on a mission there (kind `0x40`, the player's art).
+///   agent on a mission there (kind `0x40`, the player's art), still in
+///   hyperspace to it.
 ///
 /// Only the primary system's sector window is open.
 fn place_quadrant_contents(
@@ -2933,7 +2934,7 @@ fn place_quadrant_contents(
             continue;
         };
         world.characters[agent].current_system = Some(system);
-        missions.dispatch(rebellion_core::missions::MissionRequest::single(
+        let id = missions.dispatch(rebellion_core::missions::MissionRequest::single(
             MissionKind::Diplomacy,
             if alliance {
                 MissionFaction::Alliance
@@ -2946,6 +2947,18 @@ fn place_quadrant_contents(
             0,
         ));
         rebellion_core::missions::set_on_mission(world, MissionMember::Character(agent), true);
+        if system == second {
+            // The second system's agent is still in hyperspace to it
+            // (FUN_00556430: listed at its target with the en route mark).
+            world.characters[agent].current_system = None;
+            missions.push_transit(rebellion_core::missions::MemberTransit {
+                member: MissionMember::Character(agent),
+                mission_id: id,
+                to: second,
+                arrival: 99,
+                abode: None,
+            });
+        }
     }
     sectors.open_for_system(world, primary, request.faction);
 }
@@ -4088,6 +4101,7 @@ struct FixtureMissionsWindow {
     tab: &'static str,
     tab_side: Option<u8>,
     members: Vec<String>,
+    member_art: Vec<(Option<u32>, Vec<u32>)>,
     target: Option<String>,
     row_rects: Vec<[f32; 4]>,
     tabs: Vec<(&'static str, [f32; 4])>,
@@ -4220,6 +4234,7 @@ impl QuadrantWatch {
                     tab: missions_tab_name(report.tab),
                     tab_side: report.tab_side,
                     members: report.members,
+                    member_art: report.member_art,
                     target: report.target,
                 })
             })
@@ -8089,7 +8104,10 @@ mod tests {
                     .filter(|character| character.current_system == Some(system))
                     .count()
             };
-            assert_eq!((at(primary), at(second)), (2, 1), "{faction:?}");
+            // The second system's agent is in hyperspace to it.
+            assert_eq!((at(primary), at(second)), (2, 0), "{faction:?}");
+            let bound: Vec<_> = applied.missions.en_route().iter().map(|transit| transit.to).collect();
+            assert_eq!(bound, [second], "{faction:?}");
             // What lies at the fourth system stays there.
             let fourth = world.systems.keys().nth(3).unwrap();
             assert_eq!(at(fourth), 1, "{faction:?}");

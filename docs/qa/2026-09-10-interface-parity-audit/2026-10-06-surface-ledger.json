@@ -2129,9 +2129,10 @@
           "evidence": [
             "ghidra/notes/sector-quadrants.md",
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
-            "tools/interface-parity/sector-quadrants.mjs"
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/"
           ],
-          "note": "The show rules are traced (sector-quadrants.md) and sector-quadrants.mjs passes 12/12 on Linux; A0 only shows that unexplored planets carry no icons.",
+          "note": "The show rules are traced (sector-quadrants.md) and sector-quadrants.mjs passes 12/12 on Linux; A0 only shows that unexplored planets carry no icons. 2026-11-04: members in hyperspace to a system count there (FUN_00556390 to the target container +0x74): the mission icon, its Abort team and the Defenses icon's personnel (quadrant_icons members_with_arrivals).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3688,12 +3689,12 @@
         {
           "id": "CMD-10-C010",
           "requirement": "disabled ignores input",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md"
           ],
-          "note": "No per-control disabled state exists; only global suppression (overlays, targeting). The disabled path is open in P46B."
+          "note": "2026-11-04: the controls' class has a disabled bit (+0xc4 bit 2, set by vtable +0x10 FUN_006028a0 and cleared by +0xc FUN_00602880): FUN_006035f0 then misses every press and FUN_00602d30 paints the disabled art (+0x9c, else the normal art). The galaxy view disables all seven controls and shows the wait cursor at creation (FUN_00422ce0 WM_CREATE -> FUN_0042d570) and enables them only when the game is ready (FUN_00422620 -> FUN_0042d4d0, from FUN_00415420 and the load slot); nothing else calls either. The port draws the cockpit only after loading ends, so no control is ever shown disabled. Not observed in A0 during a load."
         },
         {
           "id": "CMD-10-C011",
@@ -7080,9 +7081,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
-            "ghidra/notes/status-window.md"
+            "ghidra/notes/status-window.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/"
           ],
-          "note": "Commit c60881b3 adds the static hyperspace mark to travelling minis in the Missions window (GOKRES class variants); browser only via the GID/status gates on Arch Chromium. No A0 capture of this state.",
+          "note": "Commit c60881b3 adds the static hyperspace mark to travelling minis in the Missions window (GOKRES class variants); browser only via the GID/status gates on Arch Chromium. No A0 capture of this state. 2026-11-04: sector-quadrants.mjs 'missions-en-route' (Linux, both sides): a Diplomacy agent in hyperspace to its target is listed there on 11500, 11501 and its mini, 1525 pixels exact (FUN_0042c3b0); its mission now lights the target's icon (FUN_00556390 puts it in the target container). A0 still lacks a mission member in hyperspace.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7236,9 +7238,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/"
           ],
-          "note": "Only a static hyperspace mark is drawn (c60881b3); the moving-star animation is not ported. No A0 capture of this state.",
+          "note": "The mark is the still bitmap 11501 (FUN_0042c3b0); the Missions window sets no timer, and the manual's 'moving starfield' (Figs. 2.35, 3.51) is its streaks. sector-quadrants.mjs 'missions-en-route' (Linux, both sides) finds the same 1525 pixels 1.5 s apart. No A0 capture of a mission member in hyperspace (2026-11-04).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

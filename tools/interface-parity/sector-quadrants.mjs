@@ -1049,6 +1049,58 @@ const cases = [
     },
   },
   {
+    name: "missions-en-route",
+    // The second system's agent is in hyperspace to it. FUN_00556430 and
+    // FUN_00556390 put it in the target's container at once
+    // (mission-lifecycle.md), so its mission lights the icon
+    // (FUN_004a1f60) and the window lists it, its mini standing on the
+    // en route mark 11501 (FUN_0042c3b0: +0x50 bit 4; the mini keyed over
+    // it). The mark is a still bitmap: the manual's "moving starfield"
+    // (Figs. 2.35, 3.51) is its streaks, and the window has no timer.
+    async run(page, faction, setup, directory, source) {
+      const [left, top] = quadrant(setup, "second", "missions");
+      const at = { x: Math.round(left) + 24, y: Math.round(top) + 9 };
+      await doubleClick(page, at);
+      const dat = setup.second_dat_id;
+      const opened = await until(page, "the second system's missions icon opens its window",
+        (o, value) => o.missions_windows.some((window) => window.system_dat_id === value), dat);
+      const window = missionsWindow(opened, dat);
+      assert.equal(window.members.length, 1, JSON.stringify(window));
+      const [mini, marks] = window.member_art[0];
+      // The personnel backdrop 11500 first, then the mark. The backdrop's
+      // key pixel shows the window through it, as A0's Defenses page
+      // minis do (personnel-states/40, (24, 41, 104) at its bottom left).
+      assert.deepEqual(marks, [11500, 11501], JSON.stringify(window));
+      assert.ok(mini, JSON.stringify(window));
+      const backdrop = resource(source, 11500);
+      const mark = resource(source, 11501);
+      const face = gokres(mini);
+      // The mark and the mini keyed over the backdrop, all at the mini's
+      // centred place in the 122 by 43 image box (FUN_0049fef0's integer
+      // offsets).
+      const composite = new PNG({ width: backdrop.width, height: backdrop.height });
+      backdrop.data.copy(composite.data);
+      for (const layer of [mark, face]) {
+        for (let y = 0; y < Math.min(layer.height, backdrop.height); y += 1) {
+          for (let x = 0; x < Math.min(layer.width, backdrop.width); x += 1) {
+            const from = (y * layer.width + x) * 4;
+            if (!blueKey(layer.data, from)) layer.data.copy(composite.data, (y * backdrop.width + x) * 4, from, from + 4);
+          }
+        }
+      }
+      const [cellLeft, cellTop] = window.member_rects[0];
+      const place = [cellLeft + Math.trunc((122 - face.width) / 2), cellTop + Math.trunc((43 - face.height) / 2)];
+      const first = await stableScreen(page, directory, "en-route");
+      const checks = [{ id: 11501, mini, ...compareIcon(first, place, composite, "en-route-mini", directory) }];
+      assertExact(checks);
+      await page.waitForTimeout(1_500);
+      const later = await stableScreen(page, directory, "en-route-later");
+      const still = compareIcon(later, place, composite, "en-route-mini-later", directory);
+      assert.equal(still.different_pixels, 0, `the mark moved: ${JSON.stringify(still)}`);
+      return { at, window, checks, still };
+    },
+  },
+  {
     name: "missions",
     // FUN_0045aac0 maps kind 0x40 to type 11 (FUN_0049f130): the primary
     // system's two Diplomacy missions, the player's first and selected
@@ -1133,8 +1185,29 @@ const cases = [
       const restored = missionsWindow(await until(page, "the rail slot restores the window",
         (o, value) => o.missions_windows.some((w) => w.system_dat_id === value)
           && !o.rail.some(([system, kind]) => system === value && kind === "missions"), dat), dat);
+      // FUN_00428b40 keeps the window's object in its rail slot, for every
+      // window kind: it comes back as it was minimized, with the second
+      // mission and the Decoys tab (A0 personnel-states/39, the Fleet
+      // window back with its selection).
       assert.deepEqual(restored.origin, window.origin);
-      assert.equal(restored.selected, 0);
+      assert.deepEqual([restored.selected, restored.tab], [1, "decoys"]);
+      // The icon's double click takes a railed window back too, as the
+      // Defenses icon's does (A0 personnel-states/38).
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(500);
+      await click(page, { x: origin[0] + 210, y: origin[1] + 9 });
+      await until(page, "minimize sends the window to the rail again",
+        (o, value) => !o.missions_windows.some((w) => w.system_dat_id === value)
+          && o.rail.some(([system, kind]) => system === value && kind === "missions"), dat);
+      await page.mouse.move(2, 2);
+      await frames(page, 4);
+      await page.waitForTimeout(1_000);
+      await doubleClick(page, at);
+      const fromIcon = missionsWindow(await until(page, "the icon takes the window off the rail",
+        (o, value) => o.missions_windows.some((w) => w.system_dat_id === value)
+          && !o.rail.some(([system, kind]) => system === value && kind === "missions"), dat), dat);
+      assert.deepEqual([fromIcon.selected, fromIcon.tab, fromIcon.origin], [1, "decoys", window.origin],
+        JSON.stringify(fromIcon));
 
       // The first mission's menu (Encyclopedia, Status, Abort) and its
       // Status (FUN_00445c60): A0 missionstatus/02, 03 (the Alliance's
@@ -1185,7 +1258,7 @@ const cases = [
             `mission status ${name}: ${JSON.stringify(missionStatus)}`);
         }
       }
-      return { at, window, opening, reselected, reselectedChecks, decoyChecks, railChecks, restored, missionMenu, missionStatus };
+      return { at, window, opening, reselected, reselectedChecks, decoyChecks, railChecks, restored, fromIcon, missionMenu, missionStatus };
     },
   },
 ];
