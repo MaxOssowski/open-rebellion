@@ -442,6 +442,13 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
       pixels_checked: expected.size, different_pixels: different });
     assert.equal(different, 0, `${faction}: ${different} of ${expected.size} headquarters burst pixels differ`);
   }
+  // Neither FUN_0042b330 nor FUN_0042cde0 reads the blockade bit (+0x88
+  // bit 0x20; they test only bits 1 and 2): a blockaded system's item is
+  // its display's mark alone.
+  if (scenario.slug === "blockade" && scale === 1) {
+    assert.equal(ready.primary_gid_marks.length, 1, JSON.stringify(ready));
+    probes.push({ type: "blockade-marks", marks: ready.primary_gid_marks });
+  }
 
   const commandLines = () => consoleLines.map(({ text }) => text)
     .filter((line) => line.includes("[interface] command="));
