@@ -134,7 +134,7 @@ pub fn own_visible_missions(
     let keys = mission_keys(missions);
     let own = contents.player_side;
     let mut ids: Vec<u64> = contents
-        .members()
+        .members_with_arrivals(missions)
         .filter(|&(_, side, hidden)| side == own && !hidden)
         .filter_map(|(member, _, _)| keys.get(&member).copied())
         .collect();
@@ -266,7 +266,7 @@ impl<'a> SystemContents<'a> {
             .sum();
         let keys = mission_keys(missions);
         let idle = self
-            .members()
+            .members_with_arrivals(missions)
             .filter(|(member, _, hidden)| *hidden || !keys.contains_key(member));
         defense.count() + regiments.count() + squadrons + idle.count()
     }
@@ -276,6 +276,52 @@ impl<'a> SystemContents<'a> {
     fn members(&self) -> impl Iterator<Item = (MissionMember, u8, bool)> + '_ {
         system_members(self.world, self.system).filter(|(_, side, _)| self.seen(*side))
     }
+
+    /// [`Self::members`], then those on their way here: a member's transit
+    /// puts it in its target's container at once (`FUN_00556430`, then
+    /// `FUN_00556390` to `+0x74`; `mission-lifecycle.md`), so the system's
+    /// walks count it.
+    fn members_with_arrivals<'b>(
+        &'b self,
+        missions: &'b MissionState,
+    ) -> impl Iterator<Item = (MissionMember, u8, bool)> + 'b {
+        // One bound for an abode goes into the abode, not the system, as
+        // the Defenses window lists it (`defenses_window`).
+        let arrivals = missions.en_route().iter().filter(|transit| transit.abode.is_none());
+        self.members().chain(
+            transit_members(self.world, arrivals, self.system)
+                .filter(|(_, side, _)| self.seen(*side)),
+        )
+    }
+}
+
+/// The living members whose transit ends at `system`, each with its side
+/// and whether it is on a hidden mission.
+pub(crate) fn transit_members<'a>(
+    world: &'a GameWorld,
+    transits: impl IntoIterator<Item = &'a rebellion_core::missions::MemberTransit> + 'a,
+    system: SystemKey,
+) -> impl Iterator<Item = (MissionMember, u8, bool)> + 'a {
+    transits
+        .into_iter()
+        .filter(move |transit| transit.to == system)
+        .filter_map(move |transit| match transit.member {
+            MissionMember::Character(key) => {
+                let character = world.characters.get(key).filter(|value| !value.is_killed)?;
+                let side = if character.is_alliance {
+                    1
+                } else if character.is_empire {
+                    2
+                } else {
+                    0
+                };
+                Some((transit.member, side, character.on_hidden_mission))
+            }
+            MissionMember::SpecialForce(key) => {
+                let force = world.special_forces.get(key)?;
+                Some((transit.member, fleet_side(force.is_alliance), false))
+            }
+        })
 }
 
 /// The characters and special forces at `system`, each with its side and
@@ -347,7 +393,7 @@ fn mission_side(contents: &SystemContents<'_>, missions: &MissionState) -> u8 {
     let keys = mission_keys(missions);
     let mut own_missions = HashSet::new();
     let mut other_missions = HashSet::new();
-    for (member, side, hidden) in contents.members() {
+    for (member, side, hidden) in contents.members_with_arrivals(missions) {
         let Some(&key) = keys.get(&member) else {
             continue;
         };
@@ -700,6 +746,46 @@ mod tests {
             ),
             Some(1)
         );
+    }
+
+    #[test]
+    fn a_mission_whose_team_is_on_its_way_lights_its_targets_icon() {
+        // FUN_00556430 then FUN_00556390 put a travelling member in the
+        // target's container at once (mission-lifecycle.md), so
+        // FUN_004a1f60's and FUN_00553350's walks of the target find it.
+        let (mut world, system) = alliance_world();
+        let agent = add_character(&mut world, system, true);
+        let mut missions = MissionState::new();
+        // A mission of an agent elsewhere takes id 0.
+        let away = add_character(&mut world, system, true);
+        world.characters[away].current_system = None;
+        send_on_mission(&mut missions, away, system);
+        send_on_mission(&mut missions, agent, system);
+        world.characters[agent].current_system = None;
+        let player = Faction::Alliance;
+        assert_eq!(side(&world, &missions, player, system, Quadrant::Missions), None);
+
+        missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(agent),
+            mission_id: 1,
+            to: system,
+            arrival: 9,
+            abode: None,
+        });
+        assert_eq!(side(&world, &missions, player, system, Quadrant::Missions), Some(1));
+        let fog = FogState::new(player);
+        assert_eq!(own_visible_missions(&world, &fog, &missions, player, system), [1]);
+        // On its way, an agent off any mission is idle personnel there.
+        let walker = add_character(&mut world, system, true);
+        world.characters[walker].current_system = None;
+        missions.push_transit(rebellion_core::missions::MemberTransit {
+            member: MissionMember::Character(walker),
+            mission_id: 0,
+            to: system,
+            arrival: 9,
+            abode: None,
+        });
+        assert_eq!(side(&world, &missions, player, system, Quadrant::Defenses), Some(1));
     }
 
     #[test]

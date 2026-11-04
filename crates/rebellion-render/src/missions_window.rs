@@ -194,6 +194,12 @@ struct OpenMissionsWindow {
 pub struct MissionsWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenMissionsWindow>,
+    /// Minimized windows (`0x466`): hidden, not destroyed, so one comes
+    /// back with its selected mission and tab. `FUN_00428b40` keeps every
+    /// window kind's object in its rail slot alike (A0 personnel-states/39,
+    /// the Fleet window's). port: a hidden one whose rail slot was taken
+    /// stays here until its system's next open.
+    hidden: Vec<OpenMissionsWindow>,
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
     created: bool,
@@ -204,6 +210,7 @@ impl Default for MissionsWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            hidden: Vec::new(),
             created: false,
         }
     }
@@ -241,11 +248,17 @@ impl MissionsWindowState {
         if self.focus(system) {
             return true;
         }
+        self.created = true;
+        if let Some(index) = self.hidden.iter().position(|window| window.system == system) {
+            let mut window = self.hidden.remove(index);
+            window.moving = None;
+            self.windows.push(window);
+            return true;
+        }
         let player = cockpit_faction(faction);
         let selected = mission_rows(world, fog, missions, player, system)
             .first()
             .map(|row| row.mission);
-        self.created = true;
         self.windows.push(OpenMissionsWindow {
             system,
             logical_position: clamp_window_to_galaxy(
@@ -364,6 +377,10 @@ impl MissionsWindowState {
             selected,
             tab: window.tab,
             tab_side: selected_row.map(|row| row.side),
+            member_art: members
+                .iter()
+                .map(|row| (row.mini, row.marks.iter().map(|&(_, id)| id).collect()))
+                .collect(),
             members: members.into_iter().map(|row| row.label).collect(),
             target: selected_row
                 .map(|row| target_name(world, target(missions, player, system, row))),
@@ -383,6 +400,16 @@ impl MissionsWindowState {
 
     pub fn clear(&mut self) {
         self.windows.clear();
+        self.hidden.clear();
+    }
+
+    /// Minimize `system`'s window (`0x466`): hide it, keeping its state, and
+    /// return where it stood for its rail slot.
+    pub fn hide(&mut self, system: SystemKey) -> Option<(i16, i16)> {
+        let window = self.close(system)?;
+        let at = window.logical_position;
+        self.hidden.push(window);
+        Some(at)
     }
 
     fn prepare_faction(&mut self, faction: CockpitFaction) {
@@ -465,6 +492,8 @@ pub struct MissionsWindowReport {
     /// The selected mission's side, which picks the tab art.
     pub tab_side: Option<u8>,
     pub members: Vec<String>,
+    /// Each member's GOKRES mini and the marks drawn under it.
+    pub member_art: Vec<(Option<u32>, Vec<u32>)>,
     /// The selected mission's target name, or "Target Unknown".
     pub target: Option<String>,
 }
@@ -555,29 +584,9 @@ fn listed_members(
     let opposing_visible =
         crate::system_window::opposing_contents_visible(world, fog, player, system);
     let own = crate::fleet_window::faction_side(player);
-    for transit in transits.iter().filter(|transit| transit.to == system) {
-        let (side, hidden) = match transit.member {
-            MissionMember::Character(key) => match world.characters.get(key) {
-                Some(character) if !character.is_killed => (
-                    if character.is_alliance {
-                        1
-                    } else if character.is_empire {
-                        2
-                    } else {
-                        0
-                    },
-                    character.on_hidden_mission,
-                ),
-                _ => continue,
-            },
-            MissionMember::SpecialForce(key) => match world.special_forces.get(key) {
-                Some(force) => (crate::fleet_window::fleet_side(force.is_alliance), false),
-                None => continue,
-            },
-        };
-        if (opposing_visible || side == own) && !members.iter().any(|(m, ..)| *m == transit.member)
-        {
-            members.push((transit.member, side, hidden, true));
+    for (member, side, hidden) in crate::quadrant_icons::transit_members(world, transits, system) {
+        if (opposing_visible || side == own) && !members.iter().any(|(m, ..)| *m == member) {
+            members.push((member, side, hidden, true));
         }
     }
     members
@@ -964,10 +973,10 @@ pub fn draw_missions_windows(
             continue;
         }
         if result.minimize {
-            if let Some(closed) = state.close(system) {
+            if let Some(logical_position) = state.hide(system) {
                 actions.push(MissionsWindowAction::Minimize {
                     system,
-                    logical_position: closed.logical_position,
+                    logical_position,
                 });
             }
             continue;
@@ -1820,6 +1829,34 @@ mod tests {
         let idle = CharacterKey::default();
         assert!(!state.show_member(&missions, system, MissionMember::Character(idle)));
         assert_eq!(state.windows[0].selected, Some(0));
+    }
+
+    #[test]
+    fn a_minimized_window_comes_back_with_its_selected_mission_and_tab() {
+        // FUN_00428b40 keeps the minimized window's object in its rail slot
+        // for every window kind (A0 personnel-states/39, the Fleet window
+        // back with its selection), so reopening shows it as it was.
+        let (world, system, missions, [_, _, _, spy]) = busy();
+        let fog = unseen();
+        let mut state = MissionsWindowState::default();
+        let open = |state: &mut MissionsWindowState, at| {
+            state.open(&world, &fog, &missions, system, at, CockpitFaction::Alliance, scaled())
+        };
+        assert!(open(&mut state, (20, 30)));
+        assert!(state.show_member(&missions, system, MissionMember::Character(spy)));
+        state.windows[0].tab = MissionsTab::Decoys;
+        let at = state.windows[0].logical_position;
+        assert_eq!(state.hide(system), Some(at));
+        assert_eq!(state.window_count(), 0);
+        assert!(state.take_created());
+
+        assert!(open(&mut state, (0, 0)));
+        let window = &state.windows[0];
+        assert_eq!(
+            (window.selected, window.tab, window.logical_position),
+            (Some(1), MissionsTab::Decoys, at)
+        );
+        assert!(state.hidden.is_empty());
     }
 
     #[test]

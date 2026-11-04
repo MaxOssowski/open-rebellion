@@ -681,6 +681,23 @@ impl SystemWindowState {
         }
     }
 
+    /// Take `system`'s minimized Missions window off the rail and return
+    /// where it stood, as its sector icon brings back the Defenses window
+    /// (A0 personnel-states/38). port: the Missions icon's restore is not
+    /// captured in A0; the windows share `FUN_0045aac0`.
+    pub fn take_railed_missions(&mut self, system: SystemKey) -> Option<(i16, i16)> {
+        let entry = *self.rail.iter().flatten().find(
+            |entry| matches!(entry, RailEntry::Missions { system: held, .. } if *held == system),
+        )?;
+        self.take_rail(&entry);
+        match entry {
+            RailEntry::Missions {
+                logical_position, ..
+            } => Some(logical_position),
+            _ => None,
+        }
+    }
+
     /// Put a minimized Missions window on the rail (`0x466`).
     pub fn minimize_missions_window(&mut self, system: SystemKey, logical_position: (i16, i16)) {
         self.push_rail(RailEntry::Missions {
@@ -2938,6 +2955,11 @@ mod tests {
         state.minimize_fleet_window(systems[1], (60, 20));
         assert_eq!(state.take_railed_defenses(systems[1]), None);
         assert_eq!(state.take_railed_fleet(systems[1]), Some((60, 20)));
+        assert!(state.rail[1].is_none());
+        state.minimize_missions_window(systems[1], (30, 10));
+        assert_eq!(state.take_railed_fleet(systems[1]), None);
+        assert_eq!(state.take_railed_missions(systems[1]), Some((30, 10)));
+        assert_eq!(state.take_railed_missions(systems[1]), None);
         assert!(state.rail[1].is_none());
         assert_eq!(
             state.rail[0],
