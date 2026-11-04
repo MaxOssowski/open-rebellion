@@ -828,14 +828,16 @@ const cases = [
   {
     name: "system-menu",
     // A press on a planet hits no overlay, so FUN_004593e0 returns and the
-    // window's selection is kept (sector-icon-menus.md): the right release
+    // window's selection is kept (sector-icon-menus.md). The planet is the
+    // system in uprising's: the headquarters' mark 904 is an overlay
+    // (FUN_0045cc10), opaque at its planet's centre. The right release
     // lists that selection's orders (FUN_004ac5c0, FUN_0051d990). With
     // nothing selected, Encyclopedia (one object) and Status are both
     // disabled. After a press selects the primary's mission icon, a right
     // click on another planet shows the mission icon's menu, as A0
     // menus/10-planet-right.png shows the kept fleet icon's menu.
     async run(page, faction, setup, directory) {
-      const [left, top, width, height] = setup.headquarters;
+      const [left, top, width, height] = setup.uprising;
       const planet = { x: Math.round(left + width / 2), y: Math.round(top + height / 2) };
       const openMenu = async (label) => {
         await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
@@ -877,6 +879,90 @@ const cases = [
       const keptRows = [brightest(kept, 0), brightest(kept, 1)];
       assert.deepEqual(keptRows, [255, 128], `the kept icon: ${JSON.stringify(keptRows)}`);
       return { empty: empty.menu, emptyRows, kept: kept.menu, keptRows };
+    },
+  },
+  {
+    name: "headquarters-menu",
+    // The headquarters overlay (id 0x10000, FUN_0045bbb0) sorts before
+    // every quadrant icon (FUN_0060a790(1)), so FUN_0045cc10 gives a press
+    // on 904's opaque pixels to it. Its object is the HQ (ALLFACSD, 0x20),
+    // whose slot +0x3c (FUN_00526860 -> FUN_00526c00) lists Move and
+    // Confirmed Move; FUN_0051d990 adds Encyclopedia and Status. Status
+    // opens FUN_00444e20's Defense Facility Status (families 0x20..0x27):
+    // Location, Status, Maintenance Cost and Bombardment Defense Strength.
+    // The manual (p. 134): "right-click, select Move". port: the HQ does
+    // not move, so Move and Confirmed Move stay grey. The Empire does not
+    // see this headquarters (the icons case), so its press selects nothing.
+    async run(page, faction, setup, directory) {
+      const [left, top] = setup.headquarters;
+      // 904's (20, 12) is opaque, in the fleet icon's quadrant.
+      const at = { x: Math.round(left) + 20, y: Math.round(top) + 12 };
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, at);
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      await stableScreen(page, directory, "headquarters-menu");
+      if (faction.side !== 1) {
+        assert.deepEqual(menu.row_states, [["Encyclopedia", false], ["Status", false]], JSON.stringify(menu));
+        return { at, menu };
+      }
+      assert.deepEqual(menu.row_states,
+        [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", true]], JSON.stringify(menu));
+      // A0 headquarters/01-hq-menu (Pzob): 104 by 82 from the cursor, the
+      // same four rows (Move and Confirmed Move white there).
+      assert.deepEqual([menu.left, menu.top, menu.width, menu.height], [at.x, at.y, 104, 82], JSON.stringify(menu));
+      const height = (menu.height - 2) / menu.rows;
+      await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.status_window_row + 0.5) });
+      await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+      const status = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+      await page.mouse.move(2, 2);
+      const screen = await stableScreen(page, directory, "headquarters-status");
+      assert.equal(status.title, "Defense Facility Status", JSON.stringify(status));
+      // A0 headquarters/02-hq-status (Pzob, day 446, the window at (108,
+      // 79), as here): the picture frame and the buttons match exactly;
+      // the title, the five label lines, the name and three values each
+      // ink within a pixel of A0's (the accepted text deviation). The
+      // Location value names another system and is skipped.
+      let a0 = null;
+      const a0File = path.join(root, ".artifacts/a0-vm/headquarters/02-hq-status.png");
+      if (fs.existsSync(a0File)) {
+        const shot = PNG.sync.read(fs.readFileSync(a0File));
+        const [x0, y0] = [108, 79];
+        const pixel = (png, x, y) => Array.from(png.data.subarray(((y0 + y) * png.width + x0 + x) * 4, ((y0 + y) * png.width + x0 + x) * 4 + 3));
+        const differing = ([xa, ya, xb, yb]) => {
+          let count = 0;
+          for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+            if (pixel(shot, x, y).some((value, k) => value !== pixel(screen, x, y)[k])) count += 1;
+          }
+          return count;
+        };
+        const ink = (png, [xa, ya, xb, yb]) => {
+          let box = null;
+          for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+            if (Math.min(...pixel(png, x, y)) <= 200) continue;
+            box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+          }
+          return box;
+        };
+        a0 = { picture: differing([242, 15, 372, 113]), buttons: differing([242, 200, 372, 260]), ink: {} };
+        assert.deepEqual([a0.picture, a0.buttons], [0, 0], JSON.stringify(a0));
+        const regions = { title: [15, 18, 226, 36], name: [242, 137, 372, 181] };
+        for (let k = 0; k < 5; k += 1) regions[`label-${k}`] = [16, 47 + 14 * k, 118, 61 + 14 * k];
+        for (const k of [1, 2, 4]) regions[`value-${k}`] = [119, 47 + 14 * k, 210, 61 + 14 * k];
+        for (const [name, region] of Object.entries(regions)) {
+          const [a, b] = [ink(shot, region), ink(screen, region)];
+          a0.ink[name] = { a0: a, port: b };
+          assert.ok(a && b && a.every((value, k) => Math.abs(value - b[k]) <= 1), `${name}: ${JSON.stringify(a0.ink[name])}`);
+        }
+      }
+      assert.deepEqual(status.rows.map(([label]) => label),
+        ["Location:", "Status:", "Maintenance Cost:", "Bombardment Defense Strength:"], JSON.stringify(status));
+      // ALLFACSD 1's last word, class +0x58 (FUN_00520b60 via vtable
+      // 0x0065f280 +0x1c0), is 9.
+      assert.deepEqual([status.rows[1][1], status.rows[3][1]], ["Active", "9"], JSON.stringify(status));
+      return { at, menu, status, a0 };
     },
   },
   {

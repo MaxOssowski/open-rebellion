@@ -2133,9 +2133,10 @@
             "ghidra/notes/sector-quadrants.md",
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/sector-quadrants.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/"
           ],
-          "note": "The show rules are traced (sector-quadrants.md) and sector-quadrants.mjs passes 12/12 on Linux; A0 only shows that unexplored planets carry no icons. 2026-11-04: members in hyperspace to a system count there (FUN_00556390 to the target container +0x74): the mission icon, its Abort team and the Defenses icon's personnel (quadrant_icons members_with_arrivals).",
+          "note": "The show rules are traced (sector-quadrants.md) and sector-quadrants.mjs passes 12/12 on Linux; A0 only shows that unexplored planets carry no icons. 2026-11-04: members in hyperspace to a system count there (FUN_00556390 to the target container +0x74): the mission icon, its Abort team and the Defenses icon's personnel (quadrant_icons members_with_arrivals). 2026-11-04: the HQ object (family 0x20) lights no icon (FUN_0053b6e0 0x28..0x30, FUN_00526fd0 0x22..0x28); the port counted it for the facilities icon.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7290,7 +7291,7 @@
         133,
         135
       ],
-      "current_implementation": "HQ is a text tag and custom action; original status and movement surfaces are absent.",
+      "current_implementation": "The sector window's HQ mark 904 is an overlay that takes a press before the quadrant icons (FUN_0045cc10); its menu (Move, Confirmed Move, Encyclopedia, Status) and its Defense Facility Status match A0 (2026-11-04). Moving the HQ is not ported.",
       "finding_ids": [
         "UIP-F-007"
       ],
@@ -7326,12 +7327,15 @@
         {
           "id": "OBJ-13-C003",
           "requirement": "HQ status",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/facility-ownership.md"
+            "ghidra/notes/headquarters-overlay.md",
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/"
           ],
-          "note": "No HQ Status (facility family 0x20) window case exists; the HQ is a system flag and an egui 'HEADQUARTERS' label remains (lib.rs). No A0 capture of this state."
+          "note": "The HQ (ALLFACSD, family 0x20) takes FUN_00444e20's Defense Facility Status (FUN_00443130 families 0x20..0x27): Location, Status, Maintenance Cost, Bombardment Defense Strength (vtable 0x0065f280 +0x1c0 = FUN_00520b60, ALLFACSD's 9); no weapons or shield rows. The port showed Manufacturing Status. A0 headquarters/02-hq-status (Pzob, day 488): the port's window at (108, 79) matches the picture frame and buttons exactly (0 pixels) and inks title, labels, name and values within 1 pixel; sector-quadrants.mjs 'headquarters-menu' (Linux) asserts it (2026-11-04).",
+          "scope": "Verified against A0 and the Linux browser build; see the note."
         },
         {
           "id": "OBJ-13-C004",
@@ -7339,9 +7343,11 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/"
+            "ghidra/notes/headquarters-overlay.md",
+            "tools/interface-parity/sector-quadrants.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-overlay/"
           ],
-          "note": "The System window lists the HQ (17216 'Alliance Headquarters') among facilities whose menu offers Scrap (disabled), Encyclopedia and Status; unit tests only, no browser or A0 check of the HQ menu.",
+          "note": "The HQ's menu opens from its sector window overlay (id 0x10000, sorted before the icons, opaque 904 pixels, FUN_0045cc10/FUN_005fca00): Move, Confirmed Move (FUN_00526860 -> FUN_00526c00; 0x204 has no row), Encyclopedia, Status; no Scrap. A0 headquarters/01-hq-menu: 104 by 82 at the cursor, the same rows, as the port's in sector-quadrants.mjs 'headquarters-menu' (Linux). Open: A0 enables Move and Confirmed Move; the port greys them (port: HQ movement, OBJ-13-C005) (2026-11-04).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

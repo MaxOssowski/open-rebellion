@@ -93,7 +93,7 @@ If items overlap, the item added first to the list wins (append order from
 
 1. `FUN_0045c660` finds the planet item whose rect holds the point.
 2. `FUN_0060a860` searches overlay list `+0x174` for the first item with
-   flag `0x10000` at `+0x0c` (the fleet-status overlay).
+   flag `0x10000` at `+0x0c` (the headquarters overlay; corrected 2026-11-04, `headquarters-overlay.md`).
 3. If no overlay: return the planet item's id.
 4. If overlay found: `PtInRect` on overlay `+0x40` (same rect as planet).
 5. If point in overlay rect: `FUN_005fca00` does a per-pixel transparent-color
@@ -123,6 +123,8 @@ missed. hyp: off-by-one inherited from the original engine's bitmap class.
 Two kinds of overlay in list `+0x174`:
 
 ### Fleet-status overlay (flag 0x10000)
+
+Corrected 2026-11-04: this is the headquarters overlay, STRATEGY 904 over the HQ's planet, one per window; it sorts first in the list (`headquarters-overlay.md`). The text below keeps its first reading.
 
 Created per-system in `FUN_0045bbb0` when a fleet is present at the system
 (status bit 8). Rect matches the parent planet's rect (37x37). Bitmap is
