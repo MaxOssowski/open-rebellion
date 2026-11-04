@@ -602,8 +602,11 @@ const cases = [
       // (209, 3) closes it, off the rail too (A0 personnel-states/31:
       // Mon Calamari's System window gone after its close box).
       const restore = async (label) => {
+        // The frames after a minimize can run slow; egui pairs the two
+        // clicks only within its double-click time, so let them settle.
         await page.mouse.move(2, 2);
-        await page.waitForTimeout(500);
+        await frames(page, 4);
+        await page.waitForTimeout(1_000);
         await doubleClick(page, at);
         return until(page, label,
           (o, value) => o.system_windows.some(([system]) => system === value)
@@ -812,7 +815,8 @@ const cases = [
         (o, value) => !o.defenses_windows.some((w) => w.system_dat_id === value)
           && o.rail.some(([system, kind]) => system === value && kind === "defenses"), dat);
       await page.mouse.move(2, 2);
-      await page.waitForTimeout(500);
+      await frames(page, 4);
+      await page.waitForTimeout(1_000);
       await doubleClick(page, at);
       const fromIcon = defensesWindow(await until(page, "the icon takes the window off the rail",
         (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value)

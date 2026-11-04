@@ -3,3 +3,7 @@
 fee172e80349e9af954b63ef0d8faed7e7b971b7607aefcbeb0b40ea8db9ef60  38-defenses-icon-fresh-personnel.png
 44b976d616e492978f15d867590b3e1455a8c539d66bc3f8fe56e49de665cd08  38-defenses-icon-restores-railed-window.png
 af245648abf746926d00ac10dca58b12f044159b94b52a51622d238d823651b2  38-mon-calamari-icons.png
+67fdbdd44fc1816d3132d125dcaa7636882d1de95572dd5f5a82c78b9df66bc0  39-pzob-fleet-arrow-selected.png
+15fa05d7a32a25e8e4b65ed6ae1b2af0ee65764a10c5744ef1020989f5d69def  39-pzob-fleet-railed-slot7.png
+67fdbdd44fc1816d3132d125dcaa7636882d1de95572dd5f5a82c78b9df66bc0  39-pzob-fleet-restored-arrow.png
+e596b310ff1266fad32d7b96ca302c586991092aba218d5b9d77d01141b5f6c5  39-pzob-fleet-restored-fleet6.png

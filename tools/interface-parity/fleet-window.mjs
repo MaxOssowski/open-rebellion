@@ -707,6 +707,10 @@ const cases = [
       await doubleClick(page, { x: rail.x + rail.width / 2, y: rail.y + rail.height / 2 });
       const restored = await until(page, "the rail restores the window", (o) => o.window_open);
       assert.deepEqual(restored.origin, opened.origin);
+      // Minimized, the window was hidden, not destroyed: it comes back with
+      // its fleet selected (A0 personnel-states/39, Pzob's Arrow).
+      assert.deepEqual([restored.tab, restored.enabled, restored.items.length],
+        [selected.tab, selected.enabled, selected.items.length], JSON.stringify(restored));
       for (const check of [openCheck, selectedCheck]) {
         assert.equal(check.different_pixels, 0, `${check.label}: ${check.different_pixels} of ${check.pixels_checked} pixels differ`);
       }
