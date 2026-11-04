@@ -60,4 +60,44 @@ A0, the Windows 10 VM, Alliance, day 563 (`.artifacts/a0-vm/pending-facility/`):
 - **Keys.** `bmp_cache` keys the marks 11505/11506, 11509/11510 and
   11570..11573.
 - **port:** an unfinished defense facility (`0x22..0x27`) is not on the
-  facility pages, and its Defenses window row is not ported.
+  facility pages. Its Defenses window row came on 2026-11-04 (below).
+
+## The Defenses window (read 2026-11-04)
+
+A0, the same game (`.artifacts/a0-vm/pending-facility/`):
+- **The page.** Pzob's Fighter Squadrons page lists an A-wing under
+  construction after its six X-wings, over the red grid (`23-tab0`).
+- **The menu.** Move, Confirmed Move, Encyclopedia and Status are white
+  and Scrap is grey (`24-awing-menu`).
+- **Status.** "Fighter Squadron Status" with Attached: Pzob, Maintenance
+  Cost 4, Squadron Size 12:12 and the class rows, with no Status row. The
+  picture is the A-wing over the red grid (`25-awing-status`).
+
+`FUN_0042c3b0` draws the mini's marks in this order: the backdrop, en
+route (bit 4), damaged (bit `0x200`), then unfinished (bit 2 clear) on
+top. Side 1 is `+0x24 & 0xc0 == 0x40`. The mini's unfinished mark is
+`0x2d32` (11570) or `0x2d34` (11572). A defense facility en route
+(`0x22..0x27`) takes `0x2cf5` (11509), or 11510 for the portrait.
+
+Ported:
+- **The rows.** `DefensesItem::Pending` lists the units queued for the
+  system, then the defense facilities travelling there, after the built
+  objects:
+  - regiments in training of the shown side on the regiments page;
+  - squadrons of the shown side on the squadrons page;
+  - shields (`0x24`, `0x25`) and batteries (`0x22`, `0x23`) on theirs.
+- **The menus.** A squadron opens `MenuObject::PendingFighter` and a
+  regiment `MenuObject::PendingTroop` (Move, Confirmed Move, grey Scrap).
+  A defense facility opens
+  `MenuObject::PendingFacility`, whose Scrap is grey.
+- **Status.**
+  - A squadron shows the planet squadron's rows over 11571 or 11573.
+  - A regiment shows the Trooper Regiment Status. `FUN_00445280` writes
+    `0x8771` (34673 "Training") when bits 4 and 2 are clear, over its
+    backdrop 11514 and 11571 or 11573. Its mini takes 11513, then 11570
+    or 11572.   - A defense facility shows the Defense Facility Status, with Status
+    "Under Construction" or "Enroute" and its ETA first.
+- **port:**
+  - the Move rows of an unfinished squadron or regiment are grey, where
+    A0 offers them for the squadron, because the unit is a queue entry;
+  - a squadron or regiment en route is not listed.

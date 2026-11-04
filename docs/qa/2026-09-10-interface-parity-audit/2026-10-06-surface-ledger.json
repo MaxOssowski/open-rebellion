@@ -3468,14 +3468,16 @@
         {
           "id": "CMD-09-C007",
           "requirement": "shipyard active",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/",
+            "tools/interface-parity/build-selection.mjs"
           ],
-          "note": "The facility page draws shipyard active as STRATEGY 9006 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The facility page draws a built shipyard as STRATEGY 9006 at its first cell, (9, 79) (FUN_00458fe0: base + 0 built). A0 pending-facility/31 (Pzob, Alliance, window at (145, 86)): 0 of 2344 opaque pixels off. build-selection.mjs compares the port's Shipyards page with 9006 on Linux for both sides, every opaque pixel exact, and compares A0 31 with the same bitmap (2026-11-04).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-09-C008",
@@ -4654,9 +4656,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-defenses-pages-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-defenses-pages-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/"
           ],
-          "note": "Compared with A0 on 2026-11-02 (status/19-tab3: the Fighter Squadrons page, its label at the window's (65..168, 50..66)): sector-quadrants.mjs 'defenses' (Linux, both sides) opens the page and finds its label at (65..168, 51..63); the tab's art was already exact.",
+          "note": "Compared with A0 on 2026-11-02 (status/19-tab3: the Fighter Squadrons page, its label at the window's (65..168, 50..66)): sector-quadrants.mjs 'defenses' (Linux, both sides) opens the page and finds its label at (65..168, 51..63); the tab's art was already exact. 2026-11-04: a squadron being built is listed after the planet's own, over 11570 (A0 pending-facility/23, Pzob's A-wing). build-selection.mjs matches the A0 cell, the menu (A0 24, with the Move rows grey; see the port note) and the Status picture (A0 25), with 0 differing pixels.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -6548,9 +6551,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "tools/interface-parity/build-selection.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-idle/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-idle/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/"
           ],
-          "note": "Training through a training facility: A0 opened Build Selection on Coruscant's training facility and agent-build.mjs (Arch Chromium) queues a regiment; the training band/progress itself has no A0 capture and the Build Selection chrome gate fails 6 pixels.",
+          "note": "Training through a training facility: A0 opened Build Selection on Coruscant's training facility and agent-build.mjs (Arch Chromium) queues a regiment; the training band/progress itself has no A0 capture and the Build Selection chrome gate fails 6 pixels. 2026-11-04: a regiment in training stands in its destination's Defenses window, over its backdrop 11513 and the mark 11570/11572. Its Status reads 34673 \"Training\" (FUN_00445280, 0x8771). build-selection.mjs checks the cell, the menu and the Status on Linux for both sides. No A0 of a regiment in training.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
