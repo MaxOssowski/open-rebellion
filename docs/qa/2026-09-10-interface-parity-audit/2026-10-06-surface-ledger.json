@@ -7199,10 +7199,15 @@
         {
           "id": "OBJ-12-C011",
           "requirement": "continue",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No 'continue' control of a mission report/status was found in the port."
+          "evidence": [
+            "ghidra/notes/mission-report-question.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-mission-report-question/",
+            "tools/interface-parity/message-display.mjs"
+          ],
+          "note": "The Mission Report of Diplomacy, the design researches and Subdue Uprising (outcome 2) ends on TEXTSTRA 0x70db 'Do you wish the mission to continue?' and is kind 5, holding an Abort order (FUN_004927c0). In the Message Index's mode 2 the text narrows to 0x140 and the checkmark 0x98 (0x2aae) and X 0x99 (0x2ab1) stand at (355, 244) and (355, 281) (FUN_004665f0, FUN_00469de0); the checkmark keeps the mission (vt38), the X sends the Abort with force 1 (vt3c -> FUN_0041ce20), which the validator refuses outside phase 8. Ported 2026-11-04; message-display.mjs (Linux, both sides): both buttons 0 pixels off, the X logs the refused Abort and the report asks no more. No A0 capture of a report's question yet.",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-12-C012",

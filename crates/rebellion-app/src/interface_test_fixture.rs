@@ -3594,12 +3594,46 @@ pub fn post_story_messages(
 /// filed under the Mission rail so one category lists them all.
 pub fn post_event_messages(
     request: FixtureRequest,
-    world: &GameWorld,
+    world: &mut GameWorld,
+    missions: &mut MissionState,
     log: &mut rebellion_render::MessageLog,
 ) {
     if request.scenario != Scenario::EventMessages {
         return;
     }
+    // A player agent on a Diplomacy mission at the first system, which the
+    // Mission Report asks to continue (FUN_004927c0 case 0x51: 0x70db,
+    // kind 5, the Abort it holds). It has not reached phase 8, so its X is
+    // refused (FUN_00521600, 0x41).
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let asked = world.systems.keys().next().and_then(|system| {
+        let agent = world
+            .characters
+            .iter()
+            .find(|(_, character)| {
+                character.is_alliance == player_is_alliance
+                    && character.is_empire != player_is_alliance
+                    && !character.is_killed
+                    && !character.is_captive
+            })
+            .map(|(key, _)| key)?;
+        world.characters[agent].current_system = Some(system);
+        let id = missions.dispatch(rebellion_core::missions::MissionRequest::single(
+            MissionKind::Diplomacy,
+            if player_is_alliance {
+                MissionFaction::Alliance
+            } else {
+                MissionFaction::Empire
+            },
+            agent,
+            system,
+            None,
+            0,
+        ));
+        rebellion_core::missions::set_on_mission(world, MissionMember::Character(agent), true);
+        Some(id)
+    });
+    let world: &GameWorld = world;
     use rebellion_core::manufacturing::BuildableKind;
     use rebellion_render::message_pictures::{self as pictures, Arrival, ReportedMission};
     let leia = world
@@ -3672,6 +3706,10 @@ pub fn post_event_messages(
                 rebellion_render::MessageCategory::Event,
             ),
         };
+        let message = match asked.filter(|_| title == "Mission Report") {
+            Some(id) => message.with_continue_question(id),
+            None => message,
+        };
         log.push(
             message
             .with_title(title)
@@ -3701,6 +3739,8 @@ struct FixtureStoryMessages {
     viewing_text: Option<String>,
     viewing_background: Option<u32>,
     viewing_foreground: Option<u32>,
+    /// The viewed message's open question: the mission it asks about.
+    viewing_question: Option<u64>,
 }
 
 fn story_messages_report(
@@ -3755,6 +3795,7 @@ fn story_messages_report(
         viewing_foreground: viewing
             .and_then(|message| message.picture)
             .and_then(|picture| picture.foreground),
+        viewing_question: viewing.and_then(|message| message.continue_question),
     })
 }
 

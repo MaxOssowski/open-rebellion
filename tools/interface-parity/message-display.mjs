@@ -8,6 +8,12 @@
 // arrival enables it, and a click goes to its system (FUN_00467f10 ->
 // FUN_00429440: port, the system's sector window) and closes the index.
 // While it shows, the GID control does nothing (the index is modal).
+// The Mission Report asks to continue its Diplomacy mission
+// (FUN_004927c0: 0x70db, kind 5): in mode 2 the checkmark 0x98 and the X
+// 0x99 stand at (355, 244) and (355, 281) with 0x2aae and 0x2ab1
+// (FUN_004665f0, FUN_00469de0). The X sends the held Abort with force 1
+// (Class_0065b710_vt3c -> FUN_0041ce20), which the mission's phase refuses
+// here, and the message asks no more.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node message-display.mjs [--out=DIR] [--faction=alliance|empire]
@@ -19,6 +25,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SITE = path.join(ROOT, ".artifacts/interface-parity/site");
@@ -74,6 +81,35 @@ async function click(page, [x, y]) {
 }
 
 const report = (page) => page.evaluate(() => window.__openRebellionInterfaceReady);
+
+// An 8-bit STRATEGY bitmap's opaque pixels (the bottom-left pixel keys).
+async function bitmap(id) {
+  const bytes = await fs.readFile(path.join(ROOT, `data/base/ui/strategy-dll/BMP/${id}.bmp`));
+  const offset = bytes.readUInt32LE(10);
+  const width = bytes.readInt32LE(18);
+  const height = bytes.readInt32LE(22);
+  const palette = 14 + bytes.readUInt32LE(14);
+  const stride = (width + 3) & ~3;
+  const rgb = (x, y) => {
+    const entry = palette + bytes[offset + (height - 1 - y) * stride + x] * 4;
+    return [bytes[entry + 2], bytes[entry + 1], bytes[entry]];
+  };
+  const key = rgb(0, height - 1).join(",");
+  const pixels = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (rgb(x, y).join(",") !== key) pixels.push([x, y, rgb(x, y)]);
+    }
+  }
+  return pixels;
+}
+
+function differing(png, [left, top], pixels) {
+  return pixels.filter(([x, y, rgb]) => {
+    const at = ((top + y) * png.width + left + x) * 4;
+    return png.data[at] !== rgb[0] || png.data[at + 1] !== rgb[1] || png.data[at + 2] !== rgb[2];
+  }).length;
+}
 
 async function waitReport(page, predicate, description) {
   const deadline = Date.now() + 15_000;
@@ -141,8 +177,58 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("after-display");
+
+    // The Mission Report's question.
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const again = await waitReport(page, (value) => value.index_open && value.rows.length > 0,
+      "the Mission rail opens the index again");
+    const asking = again.rows.findIndex((text) => text.startsWith("Mission Report"));
+    assert.ok(asking >= 0, JSON.stringify(again.rows));
+    const showMessage = [again.window_left + (faction.byte === 1 ? 0x1a7 + 16 : 0x1aa + 22),
+      again.window_top + (faction.byte === 1 ? 0x5d + 15 : 0x59 + 20)];
+    // The list shows nine rows; the oldest needs one wheel notch (a row).
+    const shown = async (index) => {
+      if (index < 9) return row(index);
+      const [x, y] = row(4);
+      await page.mouse.move(x, y);
+      await page.mouse.wheel(0, 120);
+      await frames(page, 6);
+      return row(index - 1);
+    };
+    await click(page, await shown(asking));
+    await click(page, showMessage);
+    const viewing = await waitReport(page, (value) => value.mode === "single",
+      "Display Message shows the report");
+    assert.ok(Number.isInteger(viewing.viewing_question), JSON.stringify(viewing));
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await shot("question");
+    const screen = PNG.sync.read(await page.screenshot());
+    const check = [again.window_left + 355, again.window_top + 244];
+    const cross = [again.window_left + 355, again.window_top + 281];
+    const answers = {
+      check: differing(screen, check, await bitmap(10926)),
+      cross: differing(screen, cross, await bitmap(10929)),
+    };
+    assert.deepEqual(answers, { check: 0, cross: 0 }, JSON.stringify(answers));
+    await click(page, [cross[0] + 25, cross[1] + 17]);
+    const answered = await waitReport(page, (value) => value.mode === "list", "the X goes back to the list");
+    const aborts = log.filter((line) => line.includes("[interface] message_index answer=abort"));
+    assert.equal(aborts.length, 1, JSON.stringify(log.slice(-6)));
+    assert.match(aborts[0], new RegExp(`mission=${viewing.viewing_question} result=false$`));
+    await click(page, await shown(answered.rows.findIndex((text) => text.startsWith("Mission Report"))));
+    await click(page, showMessage);
+    const after = await waitReport(page, (value) => value.mode === "single", "the report shows again");
+    assert.equal(after.viewing_question, null, JSON.stringify(after));
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await shot("question-answered");
+    const plain = PNG.sync.read(await page.screenshot());
+    assert.ok(differing(plain, check, await bitmap(10926)) > 0, "the answered report still shows its checkmark");
+
     assert.deepEqual(errors, [], errors.join("; "));
-    return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode, shots };
+    return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
+      question: viewing.viewing_question, answers, abort: aborts[0], shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
