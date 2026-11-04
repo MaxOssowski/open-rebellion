@@ -223,6 +223,11 @@ pub struct GameMessage {
     /// (`FUN_0048a060` → slot `+0x14`), Alliance then Empire; 0 for none.
     #[serde(skip)]
     pub advisor_event: [u32; 2],
+    /// The mission a Mission Report asks to continue (kind 5, `+0x84`; the
+    /// Abort order `0x250` it holds at `+0x90`, `FUN_004927c0`), until the
+    /// player answers in the Message Index.
+    #[serde(skip)]
+    pub continue_question: Option<u64>,
 }
 
 impl GameMessage {
@@ -242,6 +247,7 @@ impl GameMessage {
             title: None,
             assault_report: None,
             advisor_event: [0; 2],
+            continue_question: None,
         }
     }
 
@@ -266,6 +272,7 @@ impl GameMessage {
             title: None,
             assault_report: None,
             advisor_event: [0; 2],
+            continue_question: None,
         }
     }
 
@@ -283,6 +290,14 @@ impl GameMessage {
     #[must_use]
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+
+    /// Ask whether `mission` should continue (`FUN_004927c0`: text
+    /// `0x70db`, kind 5, an Abort order held at `+0x90`).
+    #[must_use]
+    pub fn with_continue_question(mut self, mission: u64) -> Self {
+        self.continue_question = Some(mission);
         self
     }
 
@@ -516,6 +531,16 @@ impl MessageLog {
         if let Some(msg) = self.messages.iter_mut().find(|m| m.id == id) {
             msg.unread = false;
         }
+    }
+
+    /// Answer a Mission Report's question (`Class_0065b710_vt38` /
+    /// `vt3c` drop the held Abort order once used): it asks no more, and
+    /// returns the mission it asked about.
+    pub fn answer_continue_question(&mut self, id: MessageId) -> Option<u64> {
+        self.messages
+            .iter_mut()
+            .find(|message| message.id == id)
+            .and_then(|message| message.continue_question.take())
     }
 
     /// Remove every message whose id appears in `ids` (`FUN_005f54a0`).

@@ -1013,6 +1013,31 @@ pub fn unit_message_rail(
     }
 }
 
+/// Whether a Mission Report asks to continue its mission (`FUN_004927c0`
+/// on the mission's family `+0x80`): Diplomacy (`0x51`), the three design
+/// researches (`0x53`) and Subdue Uprising (`0x57`, on outcome 2 only)
+/// append TEXTSTRA `0x70db` "Do you wish the mission to continue?" and are
+/// kind 5 (`+0x84`), holding an Abort order (`0x250`) for the X. port: it
+/// asks while the mission goes on after the report, which is what outcome
+/// 2 is for Subdue Uprising; a report of a mission that has ended asks
+/// nothing, since the X would find no mission (`Class_0065b710_vt3c`).
+#[must_use]
+pub fn mission_report_asks_to_continue(
+    kind: rebellion_core::missions::MissionKind,
+    continuing: bool,
+) -> bool {
+    use rebellion_core::missions::MissionKind;
+    continuing
+        && matches!(
+            kind,
+            MissionKind::Diplomacy
+                | MissionKind::ShipDesignResearch
+                | MissionKind::FacilityDesignResearch
+                | MissionKind::TroopTrainingResearch
+                | MissionKind::SubdueUprising
+        )
+}
+
 /// The advisor event a message names its speaker by (`FUN_0048db30`, and
 /// the same switch in the mission report `FUN_004927c0` on its `+0x74`):
 /// the major characters' own codes, Mon Mothma `0x17`, Leia `0x18`, Luke
@@ -1849,6 +1874,26 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn diplomacy_research_and_subdue_reports_ask_to_continue_while_the_mission_goes_on() {
+        // FUN_004927c0 cases 0x51, 0x53 and 0x57 (outcome 2) append 0x70db
+        // and are kind 5; the others (0x52 Espionage, 0x55 ...) are kind 3.
+        use rebellion_core::missions::MissionKind;
+        for kind in [
+            MissionKind::Diplomacy,
+            MissionKind::ShipDesignResearch,
+            MissionKind::FacilityDesignResearch,
+            MissionKind::TroopTrainingResearch,
+            MissionKind::SubdueUprising,
+        ] {
+            assert!(mission_report_asks_to_continue(kind, true), "{kind:?}");
+            assert!(!mission_report_asks_to_continue(kind, false), "{kind:?}");
+        }
+        for kind in [MissionKind::Espionage, MissionKind::Recruitment, MissionKind::Sabotage] {
+            assert!(!mission_report_asks_to_continue(kind, true), "{kind:?}");
+        }
+    }
 
     // FUN_00497940 and FUN_004981c0 set their category mask (+0x34) by the
     // unit's family; FUN_0042d8d0 files the message on that rail.

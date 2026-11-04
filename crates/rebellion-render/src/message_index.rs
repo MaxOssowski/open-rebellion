@@ -84,6 +84,8 @@ const TEXT_AREA_X: f32 = 17.0;
 const TEXT_AREA_Y: f32 = 234.0;
 /// Default width for non-encyclopedia messages (`0x18b`).
 const TEXT_AREA_WIDTH: f32 = 395.0;
+/// A question's text width (`FUN_00469de0`: `0x140` for kind 5).
+const QUESTION_TEXT_AREA_WIDTH: f32 = 320.0;
 const TEXT_AREA_HEIGHT: f32 = 80.0;
 
 /// Visible rows the list shows at once: `194 / 21 = 9`.
@@ -478,6 +480,7 @@ fn draw_window_buttons(
     silent: bool,
     list_empty: bool,
     display: bool,
+    question: bool,
 ) -> Option<u16> {
     let mut clicked = None;
     egui::Area::new(egui::Id::new("original-message-index-buttons"))
@@ -512,7 +515,10 @@ fn draw_window_buttons(
                     ),
                 );
             }
-            for button in window_button_specs(faction, mode, silent, list_empty, display) {
+            for button in window_button_specs(faction, mode, silent, list_empty, display)
+                .into_iter()
+                .chain(question_button_specs(mode, question))
+            {
                 let rect = message_index_rect(
                     window_rect,
                     scale,
@@ -737,6 +743,29 @@ fn paint_strategy_resource(
     );
 }
 
+/// The checkmark (`0x98`) and X (`0x99`) a Mission Report's question shows
+/// beside its text in mode 2 (`FUN_004665f0` places them at (355, 244) and
+/// (355, 281), 51 by 35; `FUN_00469de0` gives a kind-5 message the art
+/// `0x2aae`/`0x2aaf` and `0x2ab1`/`0x2ab2`).
+#[must_use]
+pub fn question_button_specs(mode: IndexMode, question: bool) -> Vec<WindowButtonSpec> {
+    if mode != IndexMode::SingleMessage || !question {
+        return Vec::new();
+    }
+    [(0x98, 0xf4, 0x2aae), (0x99, 0x119, 0x2ab1)]
+        .into_iter()
+        .map(|(command_id, y, normal)| WindowButtonSpec {
+            command_id,
+            x: 0x163,
+            y,
+            width: 0x33,
+            height: 0x23,
+            normal_resource: normal,
+            pressed_resource: normal + 1,
+        })
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // IndexMode, Actions, State
 // ---------------------------------------------------------------------------
@@ -776,6 +805,12 @@ pub enum MessageIndexAction {
     /// message's object (`FUN_00429440`). port: a message carries its
     /// system, whose sector window opens with the system chosen.
     Display(SystemKey),
+    /// A Mission Report's checkmark (`0x98`): the mission continues and
+    /// the message asks no more.
+    ContinueMission { message: MessageId },
+    /// A Mission Report's X (`0x99`): the app aborts `mission` without
+    /// asking (`FUN_0041ce20(order, 1)`), when its validator allows.
+    AbortMission { message: MessageId, mission: u64 },
     /// The posting toggle (`0x66`, `FUN_00467f10`): the app flips the
     /// category's silent bit ([`MessageLog::toggle_silent`]); `None` is All
     /// Messages' default.
@@ -1064,6 +1099,16 @@ pub fn display_target(rows: &[&GameMessage], state: &MessageIndexState) -> Optio
     message.system
 }
 
+/// The viewed message's open question and the mission it names, in mode 2.
+#[must_use]
+pub fn viewed_question(rows: &[&GameMessage], state: &MessageIndexState) -> Option<(MessageId, u64)> {
+    if state.mode != IndexMode::SingleMessage {
+        return None;
+    }
+    let message = rows.iter().find(|message| state.viewing == Some(message.id))?;
+    message.continue_question.map(|mission| (message.id, mission))
+}
+
 /// Whether the category posts silently, which the toggle's art shows
 /// (`FUN_004697b0`: the option's bit 4).
 #[must_use]
@@ -1246,6 +1291,7 @@ pub fn draw_message_index(
     let posting = posting_mask(state.category);
     let silent = posting_silent(log, state.category);
     let target = display_target(&rows, state);
+    let question = viewed_question(&rows, state);
     match draw_window_buttons(
         ctx,
         cache,
@@ -1256,7 +1302,22 @@ pub fn draw_message_index(
         silent,
         rows.is_empty(),
         target.is_some(),
+        question.is_some(),
     ) {
+        // FUN_00467f10 in mode 2: the checkmark keeps the mission going
+        // (vt +0x38 drops the held Abort), the X sends the Abort with force
+        // 1 (vt +0x3c -> FUN_0041ce20(order, 1)); both then run 0x65, back
+        // to the list.
+        Some(answer @ (0x98 | 0x99)) => {
+            if let Some((message, mission)) = question {
+                actions.push(if answer == 0x98 {
+                    MessageIndexAction::ContinueMission { message }
+                } else {
+                    MessageIndexAction::AbortMission { message, mission }
+                });
+                actions.extend(state.toggle_display());
+            }
+        }
         Some(0x66) => actions.push(MessageIndexAction::ToggleSilent(posting)),
         Some(0x67) => {
             // FUN_00467f10: go to the object (FUN_00429440), then close
@@ -1618,7 +1679,13 @@ fn draw_single_message(
         ))
         .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
-            let area_size = egui::vec2(TEXT_AREA_WIDTH * scale, TEXT_AREA_HEIGHT * scale);
+            // FUN_00469de0: 0x140 for a kind-5 message, beside its answers.
+            let width = if msg.continue_question.is_some() {
+                QUESTION_TEXT_AREA_WIDTH
+            } else {
+                TEXT_AREA_WIDTH
+            };
+            let area_size = egui::vec2(width * scale, TEXT_AREA_HEIGHT * scale);
             let (area_rect, _) = ui.allocate_exact_size(area_size, egui::Sense::hover());
 
             // hyp: font 10 (read) for the display; unmapped.
@@ -2255,6 +2322,105 @@ mod tests {
                 .contains(&MessageIndexAction::Display(system))
         );
         assert!(result.actions.contains(&MessageIndexAction::Close));
+    }
+
+    #[test]
+    fn a_mission_reports_question_answers_continue_or_abort_then_returns_to_the_list() {
+        // FUN_004665f0 places 0x98 at (355, 244) and 0x99 at (355, 281);
+        // FUN_00469de0 shows them, with 0x2aae / 0x2ab1, for a kind-5
+        // message in mode 2, and FUN_00467f10 answers through the message's
+        // vt +0x38 (continue) or +0x3c (the held Abort), then runs 0x65.
+        let mut log = MessageLog::new(10);
+        log.push(
+            GameMessage::new(1, "Do you wish the mission to continue?", MessageCategory::Diplomacy)
+                .on_rail(MessageRail::Mission, RailAudience::Both)
+                .with_continue_question(7),
+        );
+        log.push(
+            GameMessage::new(2, "A report that asks nothing", MessageCategory::Diplomacy)
+                .on_rail(MessageRail::Mission, RailAudience::Both),
+        );
+        let rows = filtered_messages(&log, 0x7c, true);
+        let (asking, plain) = (rows[1].id, rows[0].id);
+        assert_eq!(
+            question_button_specs(IndexMode::SingleMessage, true)
+                .iter()
+                .map(|b| (b.command_id, b.x, b.y, b.width, b.height, b.normal_resource, b.pressed_resource))
+                .collect::<Vec<_>>(),
+            [(0x98, 0x163, 0xf4, 0x33, 0x23, 0x2aae, 0x2aaf), (0x99, 0x163, 0x119, 0x33, 0x23, 0x2ab1, 0x2ab2)]
+        );
+        assert!(question_button_specs(IndexMode::List, true).is_empty());
+        assert!(question_button_specs(IndexMode::SingleMessage, false).is_empty());
+
+        let viewing = |id| {
+            let mut state = MessageIndexState::new();
+            state.set_category(0x7c);
+            state.mode = IndexMode::SingleMessage;
+            state.viewing = Some(id);
+            state.selected.insert(id);
+            state
+        };
+        assert_eq!(viewed_question(&rows, &viewing(plain)), None);
+        assert_eq!(viewed_question(&rows, &viewing(asking)), Some((asking, 7)));
+
+        let check = egui::pos2(355.0 + 25.0, 244.0 + 17.0);
+        let cross = egui::pos2(355.0 + 25.0, 281.0 + 17.0);
+        let mut state = viewing(asking);
+        let result = drive(&log, &mut state, click_at(check));
+        assert!(result.actions.contains(&MessageIndexAction::ContinueMission { message: asking }));
+        assert_eq!(state.mode, IndexMode::List);
+        let mut state = viewing(asking);
+        let result = drive(&log, &mut state, click_at(cross));
+        assert!(result
+            .actions
+            .contains(&MessageIndexAction::AbortMission { message: asking, mission: 7 }));
+        assert_eq!(state.mode, IndexMode::List);
+        // A message that asks nothing has no answers there.
+        let mut state = viewing(plain);
+        let result = drive(&log, &mut state, click_at(check));
+        assert!(result.actions.iter().all(|action| !matches!(
+            action,
+            MessageIndexAction::ContinueMission { .. } | MessageIndexAction::AbortMission { .. }
+        )));
+        assert_eq!(state.mode, IndexMode::SingleMessage);
+
+        // Either answer asks no more (vt +0x38 / +0x3c clear +0x90).
+        assert_eq!(log.answer_continue_question(asking), Some(7));
+        assert_eq!(log.answer_continue_question(asking), None);
+    }
+
+    #[test]
+    fn a_question_narrows_the_message_text_to_0x140() {
+        // FUN_00469de0: the text control is 0x140 wide for a kind-5 message
+        // and 0x18b otherwise, from (17, 234), 80 high (drawn at 1.5).
+        let mut log = MessageLog::new(10);
+        log.push(
+            GameMessage::new(1, "Asks to continue", MessageCategory::Diplomacy)
+                .on_rail(MessageRail::Mission, RailAudience::Both)
+                .with_continue_question(3),
+        );
+        log.push(
+            GameMessage::new(2, "Asks nothing", MessageCategory::Diplomacy)
+                .on_rail(MessageRail::Mission, RailAudience::Both),
+        );
+        let rows = filtered_messages(&log, 0x7c, true);
+        let ids: Vec<_> = rows.iter().map(|message| message.id).collect();
+        for (id, text, width) in [(ids[1], "Asks to continue", 320.0), (ids[0], "Asks nothing", 395.0)] {
+            let mut state = MessageIndexState::new();
+            state.set_category(0x7c);
+            state.mode = IndexMode::SingleMessage;
+            state.viewing = Some(id);
+            let lines = drive_scaled(&log, &mut state, vec![], 1.5).lines;
+            let line = lines.iter().find(|line| line.text == text).expect(text);
+            assert_eq!(
+                line.clip,
+                egui::Rect::from_min_size(
+                    egui::pos2(17.0 * 1.5, 234.0 * 1.5),
+                    egui::vec2(width * 1.5, 80.0 * 1.5)
+                ),
+                "{text}"
+            );
+        }
     }
 
     #[test]
@@ -2904,11 +3070,20 @@ mod tests {
         state: &mut MessageIndexState,
         frames: Vec<(egui::Pos2, Vec<egui::Event>)>,
     ) -> DriveResult {
+        drive_scaled(log, state, frames, 1.0)
+    }
+
+    /// [`drive`] with the window drawn at `scale`.
+    fn drive_scaled(
+        log: &MessageLog,
+        state: &mut MessageIndexState,
+        frames: Vec<(egui::Pos2, Vec<egui::Event>)>,
+        scale: f32,
+    ) -> DriveResult {
         let ctx = egui::Context::default();
         crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let origin = egui::Pos2::ZERO;
-        let scale = 1.0;
         let mut all_actions = Vec::new();
         let mut lines = Vec::new();
 

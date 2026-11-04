@@ -1652,7 +1652,7 @@ async fn main() {
             &mut fog_empire_state,
         );
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
-        interface_test_fixture::post_event_messages(request, &world, &mut msg_log);
+        interface_test_fixture::post_event_messages(request, &mut world, &mut mission_state, &mut msg_log);
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {
             AiFaction::Alliance
@@ -3032,8 +3032,13 @@ async fn main() {
             }
 
             for result in &mission_advance.results {
+                let continuing = mission_state
+                    .missions()
+                    .iter()
+                    .any(|mission| mission.id == result.mission_id && mission.end_code == 0);
                 apply_mission_result(
                     result,
+                    continuing,
                     &mut world,
                     &mut research_state,
                     &mut msg_log,
@@ -5281,6 +5286,28 @@ async fn main() {
                                 macroquad::logging::info!(
                                     "[interface] message_index display system={:?}",
                                     world.systems.get(system).map(|value| value.name.as_str())
+                                );
+                            }
+                        }
+                        // A Mission Report's X (Class_0065b710_vt3c): while
+                        // the mission lasts, its held Abort goes out with
+                        // force 1 (FUN_0041ce20 -> FUN_00487740), which
+                        // validates (FUN_00521600: phase 8) and asks nothing;
+                        // a refusal goes to the advisor (FUN_00487c90).
+                        for action in &actions {
+                            if let MessageIndexAction::AbortMission { mission, .. } = *action {
+                                let allowed = mission_state.abort_allowed(mission, player_faction);
+                                let aborted = allowed && mission_state.abort(mission);
+                                macroquad::logging::info!(
+                                    "[interface] message_index answer=abort mission={} result={}",
+                                    mission,
+                                    aborted
+                                );
+                            }
+                            if let MessageIndexAction::ContinueMission { message } = *action {
+                                macroquad::logging::info!(
+                                    "[interface] message_index answer=continue message={}",
+                                    message
                                 );
                             }
                         }
@@ -9846,6 +9873,12 @@ fn apply_message_index_actions(
             MessageIndexAction::MessageDisplayed(id) => log.mark_message_read(id),
             // The caller opened the object's window.
             MessageIndexAction::Display(_) => {}
+            // Either answer drops the held Abort (vt +0x38 / +0x3c); the
+            // caller sent it for the X.
+            MessageIndexAction::ContinueMission { message }
+            | MessageIndexAction::AbortMission { message, .. } => {
+                log.answer_continue_question(message);
+            }
             MessageIndexAction::ToggleSilent(mask) => {
                 log.toggle_silent(mask);
                 macroquad::logging::info!(
@@ -11015,6 +11048,7 @@ fn push_force_discoveries(
 
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
+    continuing: bool,
     world: &mut GameWorld,
     research_state: &mut ResearchState,
     log: &mut MessageLog,
@@ -11104,14 +11138,26 @@ fn apply_mission_result(
         )
     };
     // Notifications 0x16 and 0x17, Mission Report and Mission Failed.
+    // FUN_004927c0: Diplomacy, research and Subdue Uprising end on TEXTSTRA
+    // 0x70db and ask (kind 5).
+    let asks = rebellion_render::story_messages::mission_report_asks_to_continue(
+        result.kind,
+        continuing,
+    );
+    let mut text = format!("{faction_name} {kind_name} mission at {sys_name} {outcome_str}");
+    if asks {
+        if let Some(question) = message_texts.get(&0x70db) {
+            let question = rebellion_render::story_messages::fill_message_text(question, &[]);
+            text = format!("{text} {question}");
+        }
+    }
+    let mut report = GameMessage::at_system(result.tick, text, category, result.target_system)
+        .with_picture(picture);
+    if asks {
+        report = report.with_continue_question(result.mission_id);
+    }
     log.push(filed(
-        GameMessage::at_system(
-            result.tick,
-            format!("{faction_name} {kind_name} mission at {sys_name} {outcome_str}"),
-            category,
-            result.target_system,
-        )
-        .with_picture(picture)
+        report
         // FUN_004927c0's speaker map on the report's leader (+0x74).
         .with_advisor_event(rebellion_render::story_messages::speaker_event(
             world,
