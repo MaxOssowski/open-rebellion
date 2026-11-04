@@ -3252,10 +3252,15 @@
         {
           "id": "CMD-08-C015",
           "requirement": "clear",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Not yet identified."
+          "evidence": [
+            "ghidra/notes/message-expiry.md",
+            "crates/rebellion-render/src/message_log.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-message-expiry/"
+          ],
+          "note": "Messages clear themselves (manual p. 79: 'eventually deleted ... except for agent advice messages'): FUN_0048a2a0 drops each message whose slot +0x30 says so, after each filed message (FUN_0048a060) and when the Message Index closes (FUN_0048a610; nothing while it is open). The base rule (Class_0065c538_vt30, FUN_004c4fe0) is +0x38 + 300 < FUN_004fcee0, both scheduler sub-ticks (25 days at Medium); advice (0x65b188), Future Jedi Discovered (0x65b520), Assault Summary reports (0x65b870) and Chat (0x65ba20) never expire; Facility Idle (0x65b260, FUN_0048c2b0) lasts while its manager idles. Ported in message_log.rs with unit tests (the invented 500-message cap is removed); no browser case or A0 timing (2026-11-04).",
+          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-08-C016",
