@@ -136,7 +136,7 @@ Notes on the rows:
 | New Resources / Resources Depleted | `0x155`, then 2 | `FUN_0048e940` | `0x3ea` | `0x7194` / `0x7199`, `0x719a`; `0x7196` / `0x7197`, `0x7198` |
 | Character Injured / Healed | `0x106` | `FUN_0048fdf0` (`0x65b5f0`) | `0x41a` / `0x41b` + portrait | `0x7160` / `0x7161`; `0x7162` / `0x7163` |
 | Character Killed | `0x106`, dead | `FUN_0048fdf0` | `0x42e`, or `0x433` | `0x7164` / `0x7365` |
-| Captured / Escaped | `0x1e0` | `FUN_00490340` (`0x65b638`) | `0x418`/`0x419`, `0x405`, side | `0x7158`-`0x715f` |
+| Captured / Escaped | `0x1e0` | `FUN_00490340` (`0x65b638`) | `0x418`/`0x419`, `0x405`, side | `0x7158`-`0x715f` (see below) |
 | Informants Provide Information | `0x153` | `FUN_00491060` (`0x65b680`) | `0x3e8` | `0x7150` / `0x7151` |
 | Saboteurs Strike | `0x305` | `FUN_0048b9a0` (`0x65b218`) | `0x3f5`/`0x3f6`, set in slot `+0x40` `FUN_0048bbf0` | `0x7083` / `0x7084`, `0x7085` |
 | Maintenance Shortfall | `0x304` | `FUN_00498970` | `0x3f5`/`0x3f6`, set in slot `+0x40` `FUN_0048bbf0` | `0x7080` / `0x7081`, `0x7082` |
@@ -407,3 +407,40 @@ Facts used to port the overnight message stages (`evidence/2026-10-21-*`):
 - A class sets its message's category mask (`+0x34`), which picks the
   Message Index rail. Units Deployed and Unit Arrival set it by the
   unit's family.
+
+## Character Captured (read 2026-11-04)
+
+`FUN_00490340` (class `0x65b638`, slot `+0x14`) on notification `0x1e0`:
+- **The setup.** It finds the character's system, the one it names, through
+  `FUN_00490f60`, `FUN_0048a640` and `FUN_00490f40`.
+- **The families.** It speaks for characters, families `0x30..0x3b`.
+- **The cases (`+0x64`).**
+  - 5, Jabba: the captor is Jabba's Palace (`0x98000481`), on background
+    `0x429`.
+  - 3 and 4, captured: when `+0x98` is 0, on background `(side != 1) +
+    0x418`. That is `FUN_004edc80`'s side, the captive's own.
+  - 1 and 2, escaped: when `+0x98` is set, on background `0x405`.
+- **The texts.** TEXTSTRA RCDATA, parameters 1 = the character, 2 = the
+  system, 3 = the side (`FUN_004f3dd0`):
+  - `0x7158` "{1} Captured" / `0x7159` "{1} was captured by the {3} at {2}.";
+  - `0x715a` "{1} Captured" / `0x715b` "{1} was captured at {2}.";
+  - `0x715c` "{1} Escaped" / `0x715d` "{1} escaped from the {3} at {2}.";
+  - `0x715e` "{1} Escaped" / `0x715f` "{1} has escaped from imprisonment at
+    {2}.".
+- **Han.** Han Solo (`0x33000243`) with `+0xb0` bit 2 gets no message.
+- **The speakers.** For the majors, `FUN_004c4990` is called with `0xf6`,
+  `0xe2`, `0xce`/`0xd8`, `0xec`, `0x10a` and `0x100`.
+
+A0 (Windows 10 VM, day 633, `.artifacts/a0-vm/messages-day633/`):
+- **The message.** The Alliance's Mission Messages list "Emperor Palpatine
+  Captured". It reads "Emperor Palpatine was captured by the Alliance at
+  Corfai." over STRATEGY 1049 (`0x419`).
+- **The picture.** At the screen's (74, 82), with the index window at (62,
+  49), all 80000 pixels match.
+- **What it settles.** The captive's enemy reads case 3, with the captor's
+  side. hyp: the class's side test (`+0x20` against `FUN_004edc80`) does not
+  say which reader takes which case; the port gives the captive's own side
+  case 4.
+
+Ported (`story_messages::captured_message`, 2026-11-04): each side's message
+on a mission capture, posted in `main.rs`. port: escapes post no message.

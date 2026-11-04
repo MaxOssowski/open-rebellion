@@ -8009,15 +8009,18 @@
         {
           "id": "EVT-01-C011",
           "requirement": "capture",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-capture-remove-request/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-palace-rescue/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-speaker-events/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-speaker-events/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-capture-message/",
+            "tools/interface-parity/message-display.mjs",
+            "crates/rebellion-render/src/story_messages.rs"
           ],
-          "note": "Capture is simulated (remove request, captured speaker event 0x21 via captured_event); the capture message presentation is not checked in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A mission capture posts Character Captured (FUN_00490340 cases 3/4, notification 0x1e0) to each side: TEXTSTRA 0x7158/0x7159 with the captor's side for the captive's enemy, 0x715a/0x715b for its own side (hyp, see the evidence), on (captive side != 1) + 0x418, the captive's speaker. A0 messages-day633 (the Alliance, day 633): 'Emperor Palpatine Captured', 'Emperor Palpatine was captured by the Alliance at Corfai.' over STRATEGY 1049. message-display.mjs (Linux, both sides) files the same capture and shows the same title and text and the picture at A0's (74, 82), every pixel exact against the bitmap and A0. Open: escapes post no message.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C012",
