@@ -912,6 +912,77 @@ async function inspect(server, source, faction, executable) {
     fs.writeFileSync(path.join(directory, "facility-menu.png"), await page.screenshot({ animations: "disabled" }));
     assert.deepEqual(facilityMenu.row_states, [["Encyclopedia", true], ["Status", true], ["Scrap", true]],
       JSON.stringify(facilityMenu));
+    await page.keyboard.press("Escape");
+    await page.mouse.move(2, 2);
+    await frames(page);
+
+    // The refinery being built for the system is an unfinished object
+    // (FUN_00458fe0's second cell). A0 pending-facility/12 and /13
+    // (Commenor): its menu lists Encyclopedia, Status and a grey Scrap,
+    // and its Manufacturing Status reads "Under Construction"
+    // (FUN_0044a470, +0x50 bit 2 clear) after Location.
+    await click(page, { x: tx + tw / 2 + 64, y: ty + th / 2 });
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+    await click(page, { x: 225 + second[0] + 33, y: 76 + second[1] + 17 }, "right");
+    await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+      null, { timeout: 10_000 });
+    const pendingMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+    fs.writeFileSync(path.join(directory, "pending-menu.png"), await page.screenshot({ animations: "disabled" }));
+    assert.deepEqual(pendingMenu.row_states, [["Encyclopedia", true], ["Status", true], ["Scrap", false]],
+      JSON.stringify(pendingMenu));
+    await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+    const pendingRow = (pendingMenu.height - 2) / pendingMenu.rows;
+    await click(page, { x: pendingMenu.left + pendingMenu.width / 2,
+      y: pendingMenu.top + 2 + pendingRow * (pendingMenu.status_window_row + 0.5) });
+    await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+    const pendingStatus = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+    await page.mouse.move(2, 2);
+    await frames(page);
+    const pendingShot = await page.screenshot({ animations: "disabled" });
+    fs.writeFileSync(path.join(directory, "pending-status.png"), pendingShot);
+    // A0 pending-facility/13 (the Alliance, the window at (108, 79), as
+    // here): the refinery's portrait over 11571, keyed through its one key
+    // pixel, and the buttons match exactly; the name inks within a pixel.
+    const a0File = path.join(root, ".artifacts/a0-vm/pending-facility/13-status.png");
+    let pendingA0 = null;
+    if (faction.byte === 1 && fs.existsSync(a0File)) {
+      const a0 = PNG.sync.read(fs.readFileSync(a0File));
+      const port = PNG.sync.read(pendingShot);
+      const [x0, y0] = [108, 79];
+      const pixel = (png, x, y) => Array.from(png.data.subarray(((y0 + y) * png.width + x0 + x) * 4, ((y0 + y) * png.width + x0 + x) * 4 + 3));
+      const differing = ([xa, ya, xb, yb]) => {
+        let count = 0;
+        for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+          if (pixel(a0, x, y).some((value, k) => value !== pixel(port, x, y)[k])) count += 1;
+        }
+        return count;
+      };
+      const ink = (png, [xa, ya, xb, yb]) => {
+        let box = null;
+        for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+          if (Math.min(...pixel(png, x, y)) <= 200) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+        return box;
+      };
+      const name = [242, 137, 372, 181];
+      pendingA0 = { picture: differing([242, 15, 372, 113]), buttons: differing([242, 200, 372, 260]),
+        name: { a0: ink(a0, name), port: ink(port, name) } };
+      assert.deepEqual([pendingA0.picture, pendingA0.buttons], [0, 0], JSON.stringify(pendingA0));
+      assert.ok(pendingA0.name.a0.every((value, k) => Math.abs(value - pendingA0.name.port[k]) <= 1),
+        JSON.stringify(pendingA0));
+    }
+    assert.equal(pendingStatus.title, "Manufacturing Status", JSON.stringify(pendingStatus));
+    assert.deepEqual(pendingStatus.rows.map(([label]) => label),
+      ["Location:", "Status:", "Maintenance Cost:", "Standard Processing Rate:", "Bombardment Value:"],
+      JSON.stringify(pendingStatus));
+    assert.equal(pendingStatus.rows[1][1], "Under Construction", JSON.stringify(pendingStatus));
+    await page.keyboard.press("Escape");
+    await page.mouse.move(2, 2);
+    await frames(page);
 
     assert.ok(comparisons.every(({ different_pixels: d }) => d === 0),
       JSON.stringify(comparisons.filter(({ different_pixels: d }) => d !== 0)));
