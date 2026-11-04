@@ -234,6 +234,8 @@ pub fn run_simulation_tick(
         .troop_transport
         .squadrons
         .advance(world, current_tick);
+    // The headquarters' trip ends (rebellion_core::headquarters_move).
+    let _ = rebellion_core::headquarters_move::advance(&mut states.troop_transport, current_tick);
 
     // ── 3. Combat ────────────────────────────────────────────────────────
     let combat_triggers: Vec<_> = world

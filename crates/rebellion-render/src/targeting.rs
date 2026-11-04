@@ -83,6 +83,9 @@ pub enum TargetOrder {
         /// days first (A0 fleet3/11 "Corellian Corvette 1:  0").
         confirmed: bool,
     },
+    /// The headquarters' Move (`0x201`), or Confirmed Move (`0x202`) when
+    /// `confirmed` (`FUN_00526c00`; [`rebellion_core::headquarters_move`]).
+    HeadquartersMove { confirmed: bool },
     /// Destination (`0x214`): the target system becomes where production
     /// delivers. A facility icon's team is every production area of the
     /// system (`FUN_00512700` kind 4 → `FUN_0052c170`); a Manufacturing

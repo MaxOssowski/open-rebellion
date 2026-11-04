@@ -78,6 +78,9 @@ pub enum ConfirmedOrder {
     /// A Stop (`0x213`) of the confirmation's `destination` system's
     /// `area` manager: what it builds is dropped.
     Stop { area: ProductionArea },
+    /// The headquarters' Move or Confirmed Move to `destination`: a Move's
+    /// text and pictures, one line for the headquarters.
+    MoveHeadquarters,
 }
 
 /// An order waiting for the player's answer: a fleet move, a character's
@@ -227,6 +230,9 @@ pub enum MoveConfirmationAction {
         system: SystemKey,
         area: ProductionArea,
     },
+    /// The checkmark on the headquarters' move: it leaves for
+    /// `destination`.
+    MoveHeadquarters { destination: SystemKey },
     /// The X (control `0x15`) or Escape: the order is destroyed.
     Cancel,
 }
@@ -271,6 +277,10 @@ impl MoveConfirmationState {
             MoveConfirmationAction::Stop {
                 system: window.destination,
                 area,
+            }
+        } else if confirm && window.order == ConfirmedOrder::MoveHeadquarters {
+            MoveConfirmationAction::MoveHeadquarters {
+                destination: window.destination,
             }
         } else if confirm && window.order == ConfirmedOrder::Scrap {
             MoveConfirmationAction::Scrap {
@@ -706,6 +716,35 @@ mod tests {
             })
         );
         assert!(!state.is_open());
+    }
+
+    #[test]
+    fn the_headquarters_move_reads_as_a_move_and_its_checkmark_sends_it() {
+        // FUN_0049a350 for 0x201/0x202: 0x7057 and one line per object
+        // (FUN_0053d200), or 0x7056 and 1031/1030 from a blockaded system;
+        // FUN_0044f5e0's checkmark resubmits the order.
+        let destination = SystemKey::default();
+        let mut window = MoveConfirmation {
+            order: ConfirmedOrder::MoveHeadquarters,
+            fleets: Vec::new(),
+            lines: vec![("Alliance Headquarters".into(), 7)],
+            destination,
+            ..confirmation(MissionFaction::Alliance)
+        };
+        assert_eq!(
+            window.text(),
+            "Transit time in days\nAlliance Headquarters:  7"
+        );
+        assert_eq!(window.picture(), 1018);
+        window.blockaded = true;
+        assert!(window.text().starts_with(EVACUATION));
+        assert_eq!(window.picture(), 1031);
+        let mut state = MoveConfirmationState::default();
+        state.open(window);
+        assert_eq!(
+            click(&mut state, (355.0 + 25.0, 244.0 + 17.0)),
+            Some(MoveConfirmationAction::MoveHeadquarters { destination })
+        );
     }
 
     #[test]

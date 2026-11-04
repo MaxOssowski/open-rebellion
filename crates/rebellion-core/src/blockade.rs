@@ -529,6 +529,14 @@ impl BlockadeSystem {
         if has_kdy_150 {
             return FULL_WITHDRAW_PERCENT;
         }
+        Self::escape_percent(world, sys)
+    }
+
+    /// `FUN_0055a020(ships, fighters)` over every fleet at `sys` and the
+    /// squadrons on its planet, both sides:
+    /// `max(0, 100 - ships * GNPRTB[7684] - fighters * GNPRTB[7685])`.
+    #[must_use]
+    pub fn escape_percent(world: &GameWorld, sys: &crate::world::System) -> u8 {
         let (ships, fighters) = sys
             .fleets
             .iter()

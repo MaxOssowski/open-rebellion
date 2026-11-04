@@ -2663,6 +2663,16 @@ async fn main() {
                     transit.origin,
                 ));
             }
+            // The headquarters' trip ends (rebellion_core::headquarters_move).
+            // port: no arrival message is traced for it.
+            if let Some(transit) =
+                rebellion_core::headquarters_move::advance(&mut troop_transport_state, now)
+            {
+                macroquad::logging::info!(
+                    "[interface] headquarters arrived day={}",
+                    transit.arrival_tick
+                );
+            }
 
             let current_tick = tick_events.last().map_or(0, |event| event.tick);
 
@@ -5747,6 +5757,42 @@ async fn main() {
                                     );
                                 }
                             }
+                            // The manual (p. 134): "drag the HQ icon onto a
+                            // new system"; Ctrl makes it a Confirmed Move.
+                            SectorWindowAction::DropSelection {
+                                selection: MenuObject::Headquarters(_),
+                                point,
+                                confirmed,
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                if let Some(ReleaseTarget::System(destination)) = release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    order_headquarters_move(
+                                        &world,
+                                        &troop_transport_state,
+                                        player_faction,
+                                        destination,
+                                        confirmed,
+                                        clock.tick,
+                                        &mut msg_log,
+                                        &mut move_confirmation_state,
+                                        &mut panel_actions,
+                                    );
+                                }
+                            }
                             SectorWindowAction::DropSelection { .. } => {}
                         }
                     }
@@ -6596,6 +6642,15 @@ async fn main() {
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
+                        // FUN_00526c00: the headquarters' 0x201 and 0x202.
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::Headquarters(_)),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::HeadquartersMove {
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                            }));
+                        }
                         Some((
                             command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
                             Some(MenuObject::Troop(troop)),
@@ -7287,6 +7342,11 @@ async fn main() {
                             ));
                         }
                     }
+                    if let Some(MoveConfirmationAction::MoveHeadquarters { destination }) = &answer {
+                        panel_actions.push(PanelAction::MoveHeadquarters {
+                            destination: *destination,
+                        });
+                    }
                     if let Some(MoveConfirmationAction::Retire {
                         characters,
                         special_forces,
@@ -7603,6 +7663,33 @@ async fn main() {
                                         });
                                     }
                                 }
+                                // The headquarters' 0x201 against the
+                                // release window's +0x70. port: a Fleet
+                                // window's fleet is refused, the HQ only
+                                // standing in systems.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::HeadquartersMove { confirmed },
+                                    target,
+                                }) => match target {
+                                    ReleaseTarget::System(destination) => {
+                                        order_headquarters_move(
+                                            &world,
+                                            &troop_transport_state,
+                                            player_faction,
+                                            destination,
+                                            confirmed,
+                                            clock.tick,
+                                            &mut msg_log,
+                                            &mut move_confirmation_state,
+                                            &mut panel_actions,
+                                        );
+                                    }
+                                    ReleaseTarget::Fleet { .. } => {
+                                        macroquad::logging::info!(
+                                            "[interface] command=0x201 headquarters status=refused reason=fleet"
+                                        );
+                                    }
+                                },
                                 // A regiment's 0x201 against the release
                                 // window's +0x70 (FUN_004a3130 for a Fleet
                                 // window), boarding, landing or travelling.
@@ -9167,6 +9254,73 @@ fn confirm_troop_move(
     });
 }
 
+/// The headquarters' Move to `destination`. `FUN_00487cc0` asks for a
+/// Confirmed Move, and for a Move out of a blockaded system of its side;
+/// otherwise the order goes at once. The confirmation lists the trip's days
+/// (`FUN_0053d200`) under 0x7057, or the evacuation warning 0x7056
+/// (`FUN_0049a350`, the headquarters being no fleet).
+fn order_headquarters_move(
+    world: &GameWorld,
+    transport: &TroopTransportState,
+    faction: MissionFaction,
+    destination: rebellion_core::ids::SystemKey,
+    confirmed: bool,
+    tick: u64,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+    panel_actions: &mut Vec<PanelAction>,
+) {
+    use rebellion_core::headquarters_move;
+    let alliance = faction == MissionFaction::Alliance;
+    let (origin, days) = match headquarters_move::plan(world, transport, alliance, destination) {
+        Ok(plan) => plan,
+        Err(error) => {
+            macroquad::logging::info!(
+                "[interface] command=0x201 headquarters status=refused reason={error}"
+            );
+            // port: FUN_00487c90's advisor reaction; this line stands in.
+            msg_log.push(GameMessage::new(
+                tick,
+                format!("Headquarters move rejected: {error}"),
+                MessageCategory::Event,
+            ));
+            return;
+        }
+    };
+    let blockaded = world.systems.get(origin).is_some_and(|value| {
+        rebellion_core::blockade::BlockadeSystem::system_is_blockaded(world, value)
+    });
+    if !confirmed && !blockaded {
+        panel_actions.push(PanelAction::MoveHeadquarters { destination });
+        return;
+    }
+    let name = headquarters_move::headquarters(world)
+        .and_then(|(_, key)| world.manufacturing_facilities.get(key))
+        .and_then(|facility| world.buildable_classes.get(&facility.class_dat_id))
+        .map_or_else(String::new, |class| class.name.clone());
+    macroquad::logging::info!(
+        "[interface] headquarters_move confirm days={} blockaded={}",
+        days,
+        blockaded
+    );
+    move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::MoveHeadquarters,
+        faction,
+        fleets: Vec::new(),
+        characters: Vec::new(),
+        special_forces: Vec::new(),
+        troops: Vec::new(),
+        squadrons: Vec::new(),
+        ships: None,
+        missions: Vec::new(),
+        scrap: Vec::new(),
+        blockaded,
+        destination,
+        join: None,
+        lines: vec![(name, days)],
+    });
+}
+
 /// A squadron's Confirmed Move (`0x202`): the confirmation lists the
 /// squadron's days (`FUN_0053c2e0`) and warns of an evacuation when it
 /// stands on a blockaded planet (`FUN_0049a350`).
@@ -9587,6 +9741,12 @@ fn order_gates(
             }
             _ => false,
         },
+        headquarters_move: matches!(selection, Some(MenuObject::Headquarters(_)))
+            && rebellion_core::headquarters_move::move_enabled(
+                world,
+                troop_transport_state,
+                is_alliance,
+            ),
         squadron_move: match selection {
             Some(MenuObject::Fighter { fleet, index }) => world
                 .fleets
@@ -10165,6 +10325,31 @@ fn apply_panel_action(
                 msg_log.push(GameMessage::new(
                     clock.tick,
                     format!("Regiment move rejected: {error}"),
+                    MessageCategory::Event,
+                ));
+            }
+        }
+        // FUN_00578f30 → FUN_00556390 for the headquarters
+        // (rebellion_core::headquarters_move).
+        PanelAction::MoveHeadquarters { destination } => {
+            let result = rebellion_core::headquarters_move::move_headquarters(
+                world,
+                troop_transport_state,
+                victory_state,
+                *player_faction == MissionFaction::Alliance,
+                destination,
+                clock.tick,
+            );
+            macroquad::logging::info!(
+                "[interface] command=0x201 headquarters destination={:?} result={:?}",
+                world.systems.get(destination).map(|value| value.name.as_str()),
+                result
+            );
+            // port: FUN_00487c90's advisor reaction; this line stands in.
+            if let Err(error) = result {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    format!("Headquarters move rejected: {error}"),
                     MessageCategory::Event,
                 ));
             }

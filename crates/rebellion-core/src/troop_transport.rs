@@ -32,6 +32,10 @@ pub struct TroopTransportState {
     /// Squadrons travelling on their own ([`crate::squadrons`]).
     #[serde(default)]
     pub squadrons: crate::squadrons::SquadronTransits,
+    /// The Alliance headquarters on its way to a new system
+    /// ([`crate::headquarters_move`]; save v112).
+    #[serde(default)]
+    pub headquarters: Option<crate::headquarters_move::HeadquartersTransit>,
 }
 
 /// Where a regiment's Move is released: the drop window's `+0x70` object

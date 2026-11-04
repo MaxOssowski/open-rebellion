@@ -557,6 +557,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
     let special_force = matches!(selection, Some(MenuObject::SpecialForce(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
+    let headquarters = matches!(selection, Some(MenuObject::Headquarters(_)));
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
@@ -593,8 +594,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         ) => &[SCRAP],
         // The headquarters' slot +0x3c (FUN_00526860 -> FUN_00526c00):
         // 0x201, 0x202 and 0x204 (no STRATEGY record) after FUN_004f2a10's
-        // empty object list; no Scrap. port: the headquarters does not move
-        // in the port, so no gate enables Move or Confirmed Move.
+        // empty object list; no Scrap.
         Some(MenuObject::Headquarters(_)) => &[MOVE, CONFIRMED_MOVE],
         None => &[],
     };
@@ -613,6 +613,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (troop && gates.troop_move)
                         || (ship && gates.ship_move)
                         || (squadron && gates.squadron_move)
+                        || (headquarters && gates.headquarters_move)
                 }
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
@@ -632,6 +633,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (squadron && gates.squadron_move)
                         || (character && gates.character_move)
                         || (special_force && gates.special_force_move)
+                        || (headquarters && gates.headquarters_move)
                 }
                 // hyp: a submenu parent is enabled when one of its
                 // children is. A0 shows Planetary Bombardment grey, its
@@ -731,6 +733,8 @@ pub struct OrderGates {
     /// A squadron's Move: the player's, on a planet or aboard a fleet in
     /// orbit ([`rebellion_core::squadrons`]).
     pub squadron_move: bool,
+    /// The headquarters' Move ([`rebellion_core::headquarters_move::move_enabled`]).
+    pub headquarters_move: bool,
     pub ship_move: bool,
     /// Rename (0x203): the selection is the player's and can take a name
     /// (`FUN_004f6e60` refuses a destroyed object).
@@ -988,6 +992,7 @@ mod tests {
         troop_move: false,
         special_force_move: false,
         squadron_move: false,
+        headquarters_move: false,
         ship_move: false,
         rename: false,
         destination: false,
@@ -1219,6 +1224,7 @@ mod tests {
             troop_move: true,
             special_force_move: false,
             squadron_move: true,
+            headquarters_move: true,
             ship_move: true,
             rename: false,
             destination: false,
@@ -1575,6 +1581,7 @@ mod tests {
             troop_move: true,
             special_force_move: false,
             squadron_move: true,
+            headquarters_move: true,
             ship_move: true,
             rename: false,
             destination: false,
@@ -1863,6 +1870,16 @@ mod tests {
             ["Move", "Confirmed Move", "Encyclopedia", "Status"]
         );
         assert_eq!(enabled(&rows), ["Encyclopedia", "Status"]);
+        // A0 headquarters/01: Move and Confirmed Move white while the HQ
+        // may move (FUN_00578c00).
+        let movable = OrderGates {
+            headquarters_move: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(Some(hq), movable)),
+            ["Move", "Confirmed Move", "Encyclopedia", "Status"]
+        );
         assert_eq!(
             hq.status_object(),
             Some(StatusObject::ManufacturingFacility(

@@ -2528,6 +2528,36 @@ mod tests {
     }
 
     #[test]
+    fn a_drag_from_the_headquarters_mark_drops_the_headquarters() {
+        // The manual (p. 134, Fig. 3.82): "drag the HQ icon onto a new
+        // system". FUN_004593e0 drags the selected overlay as an icon; its
+        // object is the HQ (FUN_0052bed0).
+        let (mut world, system, _) = fixture_world();
+        add_fleet(&mut world, system);
+        let (hq, base) = with_headquarters(&mut world, system);
+        let none = egui::Modifiers::default();
+        let dropped = drops(&drag_at(
+            &world,
+            system,
+            (100.0, 85.0),
+            (200.0, 150.0),
+            none,
+        ));
+        let ctrl = drops(&drag_at(
+            &world,
+            system,
+            (100.0, 85.0),
+            (200.0, 150.0),
+            egui::Modifiers::CTRL,
+        ));
+        without_headquarters_art(base);
+
+        let at = (10.0 + 200.0, 20.0 + 150.0);
+        assert_eq!(dropped, [(MenuObject::Headquarters(hq), at, false)]);
+        assert_eq!(ctrl, [(MenuObject::Headquarters(hq), at, true)]);
+    }
+
+    #[test]
     fn each_shown_icon_is_its_own_selection() {
         // FUN_00459e30 gives each quadrant its own item and kind.
         let (mut world, system, _) = fixture_world();
@@ -2626,7 +2656,7 @@ mod tests {
         fog.reveal(system);
         let missions = rebellion_core::missions::MissionState::new();
         let ctx = egui::Context::default();
-        let mut cache = BmpCache::new();
+        let mut cache = click_cache();
         let uprisings = rebellion_core::uprising::UprisingState::default();
         let at =
             |point: (f32, f32)| egui::pos2(layout.canvas.x + point.0, layout.canvas.y + point.1);

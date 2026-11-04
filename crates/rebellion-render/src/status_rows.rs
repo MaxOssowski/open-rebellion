@@ -1012,21 +1012,33 @@ pub fn defense_facility_rows(
     let world = sources.world;
     let facility = world.defense_facilities.get(key)?;
     let system = facility_system(world, key, |value| &value.defense_facilities)?;
-    Some(defense_rows(world, system, facility.class_dat_id))
+    Some(defense_rows(world, system, facility.class_dat_id, None))
 }
 
-/// `FUN_00444e20`'s rows for a facility of class `class` at `system`.
-fn defense_rows(world: &GameWorld, system: SystemKey, class: DatId) -> Vec<StatusRow> {
+/// `FUN_00444e20`'s rows for a facility of class `class` at `system`. An
+/// object en route (`arrival`) leads with its ETA (`FUN_004fd2b0`) and its
+/// Status reads 34628 "Enroute" (`FUN_0044a470`, `+0x50` bit 4).
+fn defense_rows(
+    world: &GameWorld,
+    system: SystemKey,
+    class: DatId,
+    arrival: Option<u64>,
+) -> Vec<StatusRow> {
     let stats = world
         .buildable_classes
         .get(&class)
         .map(|value| value.stats)
         .unwrap_or_default();
-    let mut rows = vec![
+    let mut rows = Vec::new();
+    eta(&mut rows, arrival);
+    rows.extend([
         row("Location:", system_name(world, system)),
-        row("Status:", ACTIVE),
+        row(
+            "Status:",
+            if arrival.is_some() { "Enroute" } else { ACTIVE },
+        ),
         row("Maintenance Cost:", maintenance(world, class)),
-    ];
+    ]);
     if (0x22..=0x27).contains(&class.family()) {
         rows.extend([
             row("Weapons Rating:", stats.attack_strength.to_string()),
@@ -1387,9 +1399,15 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             // the headquarters (ALLFACSD, 0x20) shows Defense Facility
             // Status, though the port keeps it with the yards.
             let (title, rows) = if (0x20..=0x27).contains(&class.family()) {
+                // The headquarters' trip (headquarters_move).
+                let arrival = sources
+                    .transport
+                    .headquarters
+                    .filter(|transit| transit.destination == system)
+                    .map(|transit| transit.arrival_tick);
                 (
                     "Defense Facility Status",
-                    defense_rows(world, system, class),
+                    defense_rows(world, system, class, arrival),
                 )
             } else {
                 (
@@ -2370,6 +2388,51 @@ mod tests {
                 ("Status:", "Active"),
                 ("Maintenance Cost:", "2"),
                 ("Bombardment Defense Strength:", "9"),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_headquarters_en_route_leads_with_its_eta_and_reads_enroute() {
+        // FUN_00444e20: FUN_004fd2b0's ETA rows before Location, then
+        // FUN_0044a470's 34628 "Enroute" for +0x50 bit 4.
+        let mut world = GameWorld::default();
+        let here = system(
+            &mut world,
+            "Yavin",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        let class = DatId::new(0x2000_0001);
+        let hq = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: class,
+                side: Faction::Alliance,
+                is_shipyard: false,
+            });
+        world.systems[here].manufacturing_facilities.push(hq);
+        let mut states = States::new();
+        states.transport.headquarters =
+            Some(rebellion_core::headquarters_move::HeadquartersTransit {
+                origin: SystemKey::default(),
+                destination: here,
+                arrival_tick: 40,
+            });
+
+        let view = status_view(
+            states.sources(&world),
+            StatusObject::ManufacturingFacility(hq),
+        )
+        .unwrap();
+
+        assert_eq!(
+            rows(&view.rows),
+            [
+                ("ETA Destination:", "Day 40"),
+                ("Location:", "Yavin"),
+                ("Status:", "Enroute"),
+                ("Maintenance Cost:", "0"),
+                ("Bombardment Defense Strength:", "0"),
             ]
         );
     }
