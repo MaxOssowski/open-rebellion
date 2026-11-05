@@ -351,11 +351,38 @@ try {
       assert.ok(ratio > 0.85 && ratio < 1.15, `question width ratio ${ratio.toFixed(3)}`);
     }
   };
+  // The Exit question against A0 game-options-exit/00 (2026-11-05: Exit in
+  // the main menu's window): "Are you sure you want to quit?" (0x1202, one
+  // line). Its pixels outside the question's rect and A0's pointer must
+  // match; the line's ink box within the accepted text deviation.
+  const a0Quit = await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/game-options-exit/00-quit-question.png"))
+    .then((bytes) => PNG.sync.read(bytes)).catch(() => null);
+  const QUIT_POINTER = [600, 455, 40, 25];
+  const compareExit = (png) => {
+    if (!a0Quit) return;
+    const differing = [];
+    for (let y = DIALOG[1]; y < DIALOG[1] + DIALOG[3]; y += 1) {
+      for (let x = DIALOG[0]; x < DIALOG[0] + DIALOG[2]; x += 1) {
+        if (inside(x, y, QUESTION[0]) || inside(x, y, QUIT_POINTER)) continue;
+        if (!same(png, x, y, a0Quit, x, y)) differing.push([x, y]);
+      }
+    }
+    const a = inkBox(a0Quit, QUESTION[0], cream);
+    const p = inkBox(png, QUESTION[0], cream);
+    result.exit_dialog = { differing: differing.length, first: differing.slice(0, 10), text: { a0: a, port: p } };
+    assert.equal(differing.length, 0, `${differing.length} exit dialog pixels differ from A0`);
+    assert.ok(a && p, "the quit question has no ink");
+    const near = (u, v) => Math.abs(u - v) <= 1;
+    assert.ok(near((a[0] + a[2]) / 2, (p[0] + p[2]) / 2) && near(a[1], p[1]) && near(a[3], p[3]),
+      `quit ink ${p} vs A0 ${a}`);
+    const ratio = (p[2] - p[0] + 1) / (a[2] - a[0] + 1);
+    assert.ok(ratio > 0.85 && ratio < 1.15, `quit width ratio ${ratio.toFixed(3)}`);
+  };
   // Exit and Restart: No leaves the window as it was. Restart asks only
   // while nothing was saved in this visit (FUN_00406b80 0x91), so before
   // the overwrite.
   for (const [label, point] of [["exit", [269, 402]], ["restart", [97, 402]]]) {
-    await confirm(label, point, false, label === "restart" ? compareRestart : null);
+    await confirm(label, point, false, label === "restart" ? compareRestart : compareExit);
     const after = await shot(`${label}-refused`);
     assert.ok(!dialogShown(after), `No closes the ${label} confirmation`);
   }

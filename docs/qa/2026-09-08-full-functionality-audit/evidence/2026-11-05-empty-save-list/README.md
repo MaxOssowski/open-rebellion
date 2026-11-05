@@ -13,3 +13,8 @@ The Windows 10 VM: the six `SAVEGAME.00n` files moved aside, a fresh launch, and
 `game-options.mjs` (Linux) asserts six rows with no name and no crest. It now compares the list's area (78..335, 75..315) with A0's, every pixel, and finds 0 differing: the name and crest frames and the Load buttons.
 
 The Save buttons (34..75) are left out. The gate opens the window from a game, where Save is enabled. A0's comes from the main menu, where it is disabled. The port follows the same rule by origin (`game_options.rs`: Save disabled outside the command center).
+
+## The Exit question (PRE-03-C014)
+
+- **A0** (`game-options-exit/00-quit-question.png`). Exit in the main menu's Game Options asks "Are you sure you want to quit?" with the check and the X.
+- **`game-options.mjs`.** Exit's question in the port matches A0's dialog pixel for pixel outside the question line and A0's pointer, 0 differing. The line's ink box is (223, 215)..(414, 227) against A0's (222, 215)..(414, 227). No keeps the window.
