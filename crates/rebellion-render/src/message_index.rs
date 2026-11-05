@@ -898,6 +898,15 @@ impl MessageIndexState {
         self.selected = rows.iter().map(|message| message.id).collect();
     }
 
+    /// Mode 2's text starts at its top for each message shown: the
+    /// control is refilled (`FUN_00469de0` -> `FUN_0041fc30`).
+    fn follow_text(&mut self, id: MessageId) {
+        if self.text_scroll.1 != Some(id) {
+            self.text_scroll = (0.0, Some(id));
+            self.text_scroll_hold = None;
+        }
+    }
+
     /// Switch the category, returning actions the app must handle.
     ///
     /// `FUN_004697b0`: switching to `0x82` (Advice) drops speed; switching
@@ -1776,10 +1785,7 @@ fn draw_single_message(
     let Some(msg) = rows.iter().find(|m| m.id == id) else {
         return;
     };
-    if state.text_scroll.1 != Some(id) {
-        state.text_scroll = (0.0, Some(id));
-        state.text_scroll_hold = None;
-    }
+    state.follow_text(id);
 
     if let Some(picture) = msg.picture {
         draw_message_picture(ctx, cache, artwork, origin, scale, picture);
@@ -1827,9 +1833,13 @@ fn draw_single_message(
             let painter = ui.painter().with_clip_rect(area_rect);
             crate::theme::paint_gdi_text_block(
                 &painter,
-                egui::Rect::from_min_size(
-                    area_rect.min - egui::vec2(0.0, first * scale),
-                    egui::vec2(wrap * scale, (TEXT_AREA_HEIGHT + first) * scale),
+                on_screen(
+                    area_rect.min,
+                    scale,
+                    egui::Rect::from_min_size(
+                        egui::pos2(0.0, -first),
+                        egui::vec2(wrap, TEXT_AREA_HEIGHT + first),
+                    ),
                 ),
                 scale,
                 font,
@@ -1845,7 +1855,7 @@ fn draw_single_message(
                 state.text_scroll.0 = crate::list_scroll_bar::ui_bar(
                     ui,
                     cache,
-                    egui::Rect::from_min_size(origin, egui::vec2(470.0, 331.0) * scale),
+                    egui::Rect::from_min_size(origin, egui::Vec2::ZERO),
                     scale,
                     crate::status_window::BAR_ART,
                     (TEXT_AREA_X, TEXT_AREA_Y, width, TEXT_AREA_HEIGHT),
@@ -3429,6 +3439,20 @@ mod tests {
             actions: all_actions,
             lines,
         }
+    }
+
+    #[test]
+    fn each_message_shown_starts_its_text_at_the_top() {
+        let log = test_log();
+        let rows = make_rows(&log);
+        let mut state = MessageIndexState::new();
+        state.follow_text(rows[0].id);
+        state.text_scroll.0 = 32.0;
+        state.follow_text(rows[0].id);
+        assert_eq!(state.text_scroll, (32.0, Some(rows[0].id)));
+        state.follow_text(rows[1].id);
+        assert_eq!(state.text_scroll, (0.0, Some(rows[1].id)));
+        assert!(state.text_scroll_hold.is_none());
     }
 
     #[test]

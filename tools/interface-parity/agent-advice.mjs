@@ -331,6 +331,31 @@ async function run(browser, base, faction) {
         textBar = null;
       }
       assert.ok(textBar === null || (textBar.up === 0 && textBar.down === 0), JSON.stringify(textBar));
+      // The down arrow scrolls the text a line, 16 pixels (font 4's
+      // tmHeight): the text's rows from 250 now show what stood at 266.
+      const before = PNG.sync.read(await page.screenshot());
+      await page.mouse.move(531, 361);
+      await page.waitForTimeout(100);
+      await page.mouse.down();
+      await page.waitForTimeout(100);
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      await page.mouse.move(2, 2);
+      await page.waitForTimeout(300);
+      await shot("advice-message-scrolled");
+      const after = PNG.sync.read(await page.screenshot());
+      let moved = 0;
+      let changed = 0;
+      for (let y = 290; y < 330; y += 1) {
+        for (let x = 145; x < 520; x += 1) {
+          const i = (y * 640 + x) * 4;
+          const j = ((y + 16) * 640 + x) * 4;
+          if ([0, 1, 2].some((c) => after.data[i + c] !== before.data[j + c])) moved += 1;
+          if ([0, 1, 2].some((c) => after.data[i + c] !== before.data[i + c])) changed += 1;
+        }
+      }
+      textBar = { ...(textBar ?? {}), scrolled_mismatch: moved, scrolled_changed: changed };
+      assert.ok(moved === 0 && changed > 0, JSON.stringify(textBar));
     }
     assert.equal(posted().length, 9, "nothing more is posted at once");
     // The Message Index is modal (A0 a0-vm/modal2/18..21: the droids do
