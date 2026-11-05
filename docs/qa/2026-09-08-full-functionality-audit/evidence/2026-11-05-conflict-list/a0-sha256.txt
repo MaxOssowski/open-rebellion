@@ -1,0 +1,2 @@
+9796bd80637f3e9850cac785f927e8237b9da856553afc0d1099f8a8d3f3aaf9  .artifacts/a0-vm/messages-day633/index-tab7.png
+2ebc0b4160b8b6de60e9e4247677d2ab0688faae2baef44872990c488433b00c  .artifacts/a0-vm/messages-day633/index-all.png

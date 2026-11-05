@@ -3260,13 +3260,14 @@
         {
           "id": "CMD-08-C011",
           "requirement": "combat",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-encounter-messages/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-encounter-messages/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-conflict-list/"
           ],
-          "note": "Battle reports open their Assault Summary from the index; not compared in an A0 Conflict list.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Battle reports open their Assault Summary from the index. 2026-11-05: the Conflict list compared with A0 messages-day633/index-tab7 (message-display.mjs, Linux): chosen and unchosen rows' icon 0x2ad7 and 32x17 heads 0 differing; the unchosen row's icon loses its last column and row (FUN_00468ab0, A0). The title's TTF smoothing is the accepted text deviation (extent x 32..136 vs A0 33..136).",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-08-C012",
