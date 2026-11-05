@@ -208,6 +208,33 @@ try {
   await page.waitForTimeout(1500);
   assert.ok(await page.locator("#main-menu-semantics[data-active=true]").count() > 0,
     "Restart from the shuttle cockpit did not return to the main menu");
+  // A0 game-options-restart/00 (2026-11-05: Restart in the main menu's Game
+  // Options of a fresh launch): the shuttle cockpit at once. Every pixel
+  // outside the animated buttons, the game type label, the port's extension
+  // chips, A0's pointer and the galaxy size lever and lights (the steps
+  // above left the port at another size than A0's fresh Standard) is A0's.
+  const restartA0File = path.join(ROOT, ".artifacts/a0-vm/game-options-restart/00-after-restart.png");
+  const restartA0 = await fs.readFile(restartA0File).then((bytes) => PNG.sync.read(bytes)).catch(() => null);
+  if (restartA0) {
+    await page.mouse.move(2, 470);
+    await page.waitForTimeout(500);
+    const menu = PNG.sync.read(await page.screenshot({ path: path.join(OUT, "after-restart.png") }));
+    const skipped = [[61, 41, 51, 36], [124, 40, 49, 36], [187, 41, 45, 36], [153, 308, 62, 55],
+      [437, 307, 62, 55], [411, 232, 40, 37], [67, 381, 51, 61], [536, 393, 63, 64], [520, 0, 120, 40],
+      [271, 370, 110, 22], [600, 455, 40, 25], [0, 455, 40, 25], [242, 271, 107, 42]];
+    let differ = 0;
+    let compared = 0;
+    for (let y = 0; y < 480; y += 1) {
+      for (let x = 0; x < 640; x += 1) {
+        if (skipped.some(([rx, ry, rw, rh]) => x >= rx && y >= ry && x < rx + rw && y < ry + rh)) continue;
+        compared += 1;
+        const i = (y * 640 + x) * 4;
+        if ([0, 1, 2].some((c) => menu.data[i + c] !== restartA0.data[i + c])) differ += 1;
+      }
+    }
+    result.after_restart = { compared, differing: differ };
+    assert.equal(differ, 0, `the menu after Restart differs from A0 in ${differ} pixels`);
+  }
   result.errors = errors;
   assert.deepEqual(errors, []);
   result.status = "pass";

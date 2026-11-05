@@ -18,3 +18,8 @@ The Save buttons (34..75) are left out. The gate opens the window from a game, w
 
 - **A0** (`game-options-exit/00-quit-question.png`). Exit in the main menu's Game Options asks "Are you sure you want to quit?" with the check and the X.
 - **`game-options.mjs`.** Exit's question in the port matches A0's dialog pixel for pixel outside the question line and A0's pointer, 0 differing. The line's ink box is (223, 215)..(414, 227) against A0's (222, 215)..(414, 227). No keeps the window.
+
+## Restart from the main menu (PRE-03-C012)
+
+- **A0** (`game-options-restart/00-after-restart.png`). Restart in the main menu's Game Options of a fresh launch goes straight to the shuttle cockpit, with no question. This is `FUN_00406b80` `0x91` with no game in progress.
+- **`main-menu-states.mjs`.** Restart from the port's cockpit context returns to the menu with no question. 272,823 compared pixels equal A0's, 0 differing. Left out: the animated buttons, the game type label, the extension chips, the pointer, and the galaxy size lever and lights. The gate's earlier steps leave the port at another size than A0's fresh Standard.

@@ -1,2 +1,3 @@
 065301b065b5fd4aae2128fd367524a4f5cef95a4eff2c3b53feb9763e7d6ffb  game-options-empty/00-empty-save-list.png
 fd72ad5ceb8d42956247d2e01bf999c4ff3d410f63592ac240e2da38c9e0ac7a  game-options-exit/00-quit-question.png
+d0812ba0f5ae21ad43c421c723ff436b4f6028bbd56a43dc3ab471e3e2886c24  game-options-restart/00-after-restart.png
