@@ -547,6 +547,7 @@ pub fn draw_fleet_finder(
     let mut tab = None;
     let mut mode = None;
     let mut clicked_row = None;
+    let mut step = None;
     let mut name = window.name.clone();
     let mut name_changed = false;
     let mut enter = false;
@@ -746,6 +747,7 @@ pub fn draw_fleet_finder(
             }
             name_changed = edit.changed();
             enter = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            step = crate::list_prefix::key_step(ui, edit.has_focus());
 
             // The list (0xcc), scrolled by pixels with its bar.
             let list_rect = at(frame, scale, LIST);
@@ -895,6 +897,18 @@ pub fn draw_fleet_finder(
         open_window.last_clicked = Some((row, at));
         open_window.chosen = Some(list[row].object);
         open_window.name.clone_from(&list[row].name);
+    }
+    // A key steps the chosen row and copies its name, as a click does (A0
+    // finder-keys/).
+    if let Some(step) = step {
+        let current = list
+            .iter()
+            .position(|row| Some(row.object) == open_window.chosen);
+        if let Some(row) = crate::list_prefix::stepped_row(current, list.len(), step) {
+            open_window.chosen = Some(list[row].object);
+            open_window.name.clone_from(&list[row].name);
+            open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
+        }
     }
     if enter {
         open = open.or(open_window.chosen);

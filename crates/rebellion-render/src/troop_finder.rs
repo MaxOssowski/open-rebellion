@@ -494,6 +494,7 @@ pub fn draw_troop_finder(
     let mut open_action: Option<TroopFinderAction> = None;
     let mut tab = None;
     let mut clicked_row = None;
+    let mut step = None;
     let mut name = window.name.clone();
     let mut name_changed = false;
     let mut enter = false;
@@ -662,6 +663,7 @@ pub fn draw_troop_finder(
             }
             name_changed = edit.changed();
             enter = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            step = crate::list_prefix::key_step(ui, edit.has_focus());
 
             // The list (0xca).
             let list_rect = at(frame, scale, LIST);
@@ -814,6 +816,15 @@ pub fn draw_troop_finder(
         open_window.last_clicked = Some((row, at_time));
         open_window.chosen = Some(row);
         open_window.name.clone_from(&list[row].name);
+    }
+    // A key steps the chosen row and copies its name, as a click does (A0
+    // finder-keys/, the Fleet Finder's list).
+    if let Some(step) = step {
+        if let Some(row) = crate::list_prefix::stepped_row(open_window.chosen, list.len(), step) {
+            open_window.chosen = Some(row);
+            open_window.name = list[row].name.clone();
+            open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
+        }
     }
     if enter {
         if let Some(chosen) = open_window.chosen {

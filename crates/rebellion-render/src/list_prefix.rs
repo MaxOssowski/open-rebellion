@@ -56,8 +56,104 @@ fn shared(name: &[char], typed: &[char]) -> usize {
     }
 }
 
+/// A key's step through a Finder's list. A0 2026-11-05 (finder-keys/): in
+/// the Fleet Finder, Down and Up move the chosen row by one and copy its
+/// name into the name box, also while the box has the focus; with the
+/// list's focus (after a click on a row), Home chooses the first row and
+/// End the last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListStep {
+    Up,
+    Down,
+    First,
+    Last,
+}
+
+/// The step this frame's keys ask for ([`step_of`]).
+#[must_use]
+pub fn key_step(ui: &egui_macroquad::egui::Ui, name_focused: bool) -> Option<ListStep> {
+    use egui_macroquad::egui::Key;
+    let keys = ui.input(|input| {
+        [Key::ArrowDown, Key::ArrowUp, Key::Home, Key::End].map(|key| input.key_pressed(key))
+    });
+    step_of(keys, name_focused)
+}
+
+/// The step for the keys pressed (Down, Up, Home, End): Up and Down
+/// always, Home and End only while the name box has not the focus (they
+/// move its caret there).
+#[must_use]
+pub fn step_of([down, up, home, end]: [bool; 4], name_focused: bool) -> Option<ListStep> {
+    if down {
+        Some(ListStep::Down)
+    } else if up {
+        Some(ListStep::Up)
+    } else if home && !name_focused {
+        Some(ListStep::First)
+    } else if end && !name_focused {
+        Some(ListStep::Last)
+    } else {
+        None
+    }
+}
+
+/// The row a `step` chooses in a list of `len` rows from the `current`
+/// one: Down and Up move one row and stop at the ends. With no row chosen
+/// the list's own current row is its first: A0 finder-keys/p0, p1 (the
+/// Personnel Finder opened with none chosen) take Down to the second.
+#[must_use]
+pub fn stepped_row(current: Option<usize>, len: usize, step: ListStep) -> Option<usize> {
+    if len == 0 {
+        return None;
+    }
+    Some(match step {
+        ListStep::Down => (current.unwrap_or(0) + 1).min(len - 1),
+        ListStep::Up => current.unwrap_or(0).saturating_sub(1),
+        ListStep::First => 0,
+        ListStep::Last => len - 1,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_key_steps_the_chosen_row_and_stops_at_the_lists_ends() {
+        use super::{step_of, stepped_row, ListStep};
+        // A0 finder-keys/f1..f6: Fleet 1, Down to 2 and 3, Up to 2, End to
+        // 4, Home to 1.
+        assert_eq!(stepped_row(Some(0), 4, ListStep::Down), Some(1));
+        assert_eq!(stepped_row(Some(2), 4, ListStep::Up), Some(1));
+        assert_eq!(stepped_row(Some(1), 4, ListStep::Last), Some(3));
+        assert_eq!(stepped_row(Some(3), 4, ListStep::First), Some(0));
+        assert_eq!(stepped_row(Some(3), 4, ListStep::Down), Some(3));
+        assert_eq!(stepped_row(Some(0), 4, ListStep::Up), Some(0));
+        // A0 finder-keys/p0, p1: none chosen, Down takes the second row.
+        assert_eq!(stepped_row(None, 4, ListStep::Down), Some(1));
+        assert_eq!(stepped_row(None, 4, ListStep::Up), Some(0));
+        assert_eq!(stepped_row(None, 1, ListStep::Down), Some(0));
+        assert_eq!(stepped_row(Some(0), 0, ListStep::Down), None);
+        // The name box keeps Home and End for its caret.
+        assert_eq!(
+            step_of([true, false, false, false], true),
+            Some(ListStep::Down)
+        );
+        assert_eq!(
+            step_of([false, true, false, false], true),
+            Some(ListStep::Up)
+        );
+        assert_eq!(
+            step_of([false, false, true, false], false),
+            Some(ListStep::First)
+        );
+        assert_eq!(
+            step_of([false, false, false, true], false),
+            Some(ListStep::Last)
+        );
+        assert_eq!(step_of([false, false, true, false], true), None);
+        assert_eq!(step_of([false, false, false, true], true), None);
+        assert_eq!(step_of([false; 4], false), None);
+    }
+
     use super::best_prefix_row;
 
     #[test]

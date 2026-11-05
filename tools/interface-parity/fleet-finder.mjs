@@ -470,6 +470,34 @@ const cases = [
     },
   },
   {
+    name: "keys",
+    // A0 finder-keys/f1..f6 (the Fleet Finder, 2026-11-05): after a click
+    // on Fleet 1, Down chooses Fleet 2 and Fleet 3, Up Fleet 2, End the
+    // last row and Home the first, each copying its name into the box.
+    async run(page) {
+      const opened = await openFinder(page);
+      assert.ok(opened.rows.length >= 3, JSON.stringify(opened.rows));
+      // Opened with none chosen, Down takes the second row: the list's own
+      // current row is its first (A0 finder-keys/p0, p1, the Personnel
+      // Finder; g0, g1, the Fleet Finder reopened).
+      assert.equal(opened.chosen, null);
+      await page.keyboard.press("ArrowDown");
+      const fromNone = await until(page, "Down from none chooses the second row", (o) => o.chosen === 1);
+      assert.equal(fromNone.name, fromNone.rows[1].name);
+      await click(page, point(opened.controls.rows[0]));
+      await until(page, "the click chooses the first row", (o) => o.chosen === 0);
+      const steps = [];
+      const last = opened.rows.length - 1;
+      for (const [key, row] of [["ArrowDown", 1], ["ArrowDown", 2], ["ArrowUp", 1], ["End", last], ["Home", 0]]) {
+        await page.keyboard.press(key);
+        const after = await until(page, `${key} chooses row ${row}`, (o, r) => o.chosen === r, row);
+        assert.equal(after.name, after.rows[row].name, `${key}: the box shows the row's name`);
+        steps.push({ key, chosen: after.chosen, name: after.name });
+      }
+      return { opened, steps };
+    },
+  },
+  {
     name: "sector-occlusion",
     // A Finder empty-list double click must belong only to the top-level
     // Finder, even when the same pixels cover another planet in the original

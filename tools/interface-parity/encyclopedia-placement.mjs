@@ -281,6 +281,28 @@ async function run(browser, base, faction) {
           finderText.reopened = { rows: [0, 1, 2, 3].map(rowTop) };
           assert.ok(finderText.reopened.rows[0] > 230 && finderText.reopened.rows[2] < 200,
             `the reopened Finder chooses its first row: ${JSON.stringify(finderText.reopened)}`);
+          // Down and Up step the chosen row (A0 finder-keys/t0..t3: Drall,
+          // Down to the second row, Up back).
+          const stepTo = async (key) => {
+            await page.keyboard.press(key);
+            await page.waitForTimeout(400);
+            const png = PNG.sync.read(await page.screenshot());
+            const top = (row) => {
+              let best = 0;
+              for (let y = 196 + 25 * row; y < 196 + 25 * row + 12; y += 1) {
+                for (let x = 102; x < 250; x += 1) {
+                  const i = (y * png.width + x) * 4;
+                  best = Math.max(best, Math.min(png.data[i], png.data[i + 1], png.data[i + 2]));
+                }
+              }
+              return best;
+            };
+            return [0, 1, 2].map(top);
+          };
+          finderText.down = await stepTo("ArrowDown");
+          finderText.up = await stepTo("ArrowUp");
+          assert.ok(finderText.down[1] > 230 && finderText.down[0] < 200 && finderText.up[0] > 230 && finderText.up[1] < 200,
+            `Down and Up step the Troop Finder's row: ${JSON.stringify({ down: finderText.down, up: finderText.up })}`);
           // The other side's tab (0x6f at the window's (88, 72)), with the
           // name box empty, chooses its first row (FUN_0046ce40's
           // FUN_0060d7e0(side, 1); A0 troop-finder-first-row/alliance-tab:

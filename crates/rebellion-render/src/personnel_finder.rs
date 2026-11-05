@@ -772,6 +772,7 @@ pub fn draw_personnel_finder(
     let mut new_side_tab = None;
     let mut new_view_tab = None;
     let mut clicked_row = None;
+    let mut step = None;
     let mut name = window.name.clone();
     let mut name_changed = false;
     let mut enter = false;
@@ -979,6 +980,7 @@ pub fn draw_personnel_finder(
             }
             name_changed = edit.changed();
             enter = edit.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+            step = crate::list_prefix::key_step(ui, edit.has_focus());
 
             // The list (0xca).
             let list_rect = at(frame, scale, LIST);
@@ -1151,6 +1153,15 @@ pub fn draw_personnel_finder(
         open_window.chosen = Some(row);
         // Copy the display name into the name box.
         open_window.name = list[row].display_name().to_owned();
+    }
+    // A key steps the chosen row and copies its name, as a click does (A0
+    // finder-keys/, the Fleet Finder's list).
+    if let Some(step) = step {
+        if let Some(row) = crate::list_prefix::stepped_row(open_window.chosen, list.len(), step) {
+            open_window.chosen = Some(row);
+            open_window.name = list[row].display_name().to_owned();
+            open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
+        }
     }
     if enter {
         if let Some(chosen) = open_window.chosen {
