@@ -3874,23 +3874,29 @@ async function probeTacticalBattleAlertEntry(
   // (0x65, FUN_00450540 -> FUN_004362b0 answer 1) resolves the battle and
   // shows its results over the strategy view, as A0 does from the alert
   // (message-rail/battle-averam-result: "The Alliance fleet is defeated.").
+  // The Empire's letterboxed run takes Retreat instead (0x67,
+  // FUN_00450540 -> FUN_00487830): the same abstract battle with the
+  // player's retreat order, then the same results (A0
+  // message-rail/retreat-*).
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
-    const simulate = point(278 + dx, 363.5 + dy);
-    const before = await stableInteractionFrame(page, folder, "battle-alert-before-simulate");
-    await page.mouse.move(simulate.x, simulate.y);
+    const [route, logged, status] = alliance
+      ? [point(278 + dx, 363.5 + dy), "command=simulate", "status=routed"]
+      : [point(144 + dx, 363.5 + dy), "command=retreat", "status=simulated"];
+    const before = await stableInteractionFrame(page, folder, "battle-alert-before-route");
+    await page.mouse.move(route.x, route.y);
     await page.mouse.down({ button: "left" });
     await page.waitForTimeout(100);
     await page.mouse.up({ button: "left" });
     await page.waitForTimeout(300);
     await page.mouse.move(2, 2);
-    const results = await stableInteractionFrame(page, folder, "battle-alert-simulated-results");
+    const results = await stableInteractionFrame(page, folder, "battle-alert-routed-results");
     assert.ok(consoleLines.some(({ text }) =>
-      text.includes("[battle_alert] command=simulate") && text.includes("status=routed")),
-    `${faction}: Simulate did not route the battle`);
+      text.includes(`[battle_alert] ${logged}`) && text.includes(status)),
+    `${faction}: ${logged} did not route the battle`);
     assert.ok(!consoleLines.some(({ text }) => text.includes("[battle_alert] command=take_command")),
-      `${faction}: Simulate entered the tactical battle`);
-    assert.notEqual(sha256(results), sha256(before), `${faction}: Simulate left the alert unchanged`);
-    probes.push({ type: "battle-alert-simulate-route", screenshot_sha256: sha256(results) });
+      `${faction}: ${logged} entered the tactical battle`);
+    assert.notEqual(sha256(results), sha256(before), `${faction}: ${logged} left the alert unchanged`);
+    probes.push({ type: "battle-alert-simulate-route", route: logged, screenshot_sha256: sha256(results) });
     return probes;
   }
 
