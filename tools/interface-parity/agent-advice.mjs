@@ -306,6 +306,32 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(500);
     await shot("advice-message");
+    // A long advice shows the text control's bar (FUN_0041efe0:
+    // FUN_0060a490(.., 0x299a, ..)) at its right edge: A0
+    // agent-advice/02-advice-message (the Empire) has its up and down
+    // arrows at (525, 286) and (525, 357), 13 by 9, every pixel; the
+    // thumb follows the text, which differs.
+    let textBar = null;
+    if (faction.name === "empire") {
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/agent-advice/02-advice-message.png")));
+        const screen = PNG.sync.read(await page.screenshot());
+        const differ = (y0) => {
+          let count = 0;
+          for (let y = y0; y < y0 + 9; y += 1) {
+            for (let x = 525; x < 538; x += 1) {
+              const i = (y * 640 + x) * 4;
+              if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[i + c])) count += 1;
+            }
+          }
+          return count;
+        };
+        textBar = { up: differ(286), down: differ(357) };
+      } catch {
+        textBar = null;
+      }
+      assert.ok(textBar === null || (textBar.up === 0 && textBar.down === 0), JSON.stringify(textBar));
+    }
     assert.equal(posted().length, 9, "nothing more is posted at once");
     // The Message Index is modal (A0 a0-vm/modal2/18..21: the droids do
     // nothing under it), so it closes first.
@@ -330,7 +356,7 @@ async function run(browser, base, faction) {
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle, rail,
+    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle, rail, textBar,
       agent: log.filter((line) => line.startsWith("[agent]") || line.includes("message_index")) };
   } catch (error) {
     await shot("failure").catch(() => {});

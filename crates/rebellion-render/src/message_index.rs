@@ -835,6 +835,10 @@ pub struct MessageIndexState {
     scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// Message being viewed in mode 2.
     viewing: Option<MessageId>,
+    /// Mode 2's text control (`FUN_0041ecf0`): its first pixel, for which
+    /// message, and a press held on its bar.
+    text_scroll: (f32, Option<MessageId>),
+    text_scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// Last clicked row and when, for double-click detection.
     /// port: egui counts double clicks across widgets; the list keeps its own
     /// (same approach as `fleet_finder.rs`).
@@ -851,6 +855,8 @@ impl Default for MessageIndexState {
             scroll_offset: 0,
             scroll_hold: None,
             viewing: None,
+            text_scroll: (0.0, None),
+            text_scroll_hold: None,
             last_clicked: None,
         }
     }
@@ -1762,7 +1768,7 @@ fn draw_single_message(
     origin: egui::Pos2,
     scale: f32,
     rows: &[&GameMessage],
-    state: &MessageIndexState,
+    state: &mut MessageIndexState,
 ) {
     let Some(id) = state.viewing else {
         return;
@@ -1770,6 +1776,10 @@ fn draw_single_message(
     let Some(msg) = rows.iter().find(|m| m.id == id) else {
         return;
     };
+    if state.text_scroll.1 != Some(id) {
+        state.text_scroll = (0.0, Some(id));
+        state.text_scroll_hold = None;
+    }
 
     if let Some(picture) = msg.picture {
         draw_message_picture(ctx, cache, artwork, origin, scale, picture);
@@ -1796,21 +1806,55 @@ fn draw_single_message(
             let area_size = egui::vec2(width * scale, TEXT_AREA_HEIGHT * scale);
             let (area_rect, _) = ui.allocate_exact_size(area_size, egui::Sense::hover());
 
-            // The text control writes in font 4, the title's (A0
-            // messages-day633/capture-palpatine: "Emperor" is 48 wide in
-            // both, its ink from (18, 237)), and wraps at its width
-            // (launchbox frame "event-imperial-future-jedi" shows three
-            // wrapped lines).
+            // The text control writes in font 4 (FUN_0041ecf0:
+            // FUN_006002b0(4); A0 messages-day633/capture-palpatine:
+            // "Emperor" is 48 wide as in the title, its ink from (18, 237))
+            // and wraps at its width (launchbox frame
+            // "event-imperial-future-jedi" shows three wrapped lines).
+            let font = crate::DEFAULT_FONT;
+            let (ascent, descent) = crate::theme::original_font_metrics(font);
+            let pitch = ascent + descent;
+            let measure = ui.painter().clone();
+            let (wrap, content, barred) = text_wrap(width, |wrap| {
+                #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
+                let lines = crate::theme::gdi_word_break(&msg.text, wrap, |line| {
+                    crate::theme::gdi_text_width(&measure, font, line, scale)
+                })
+                .len() as f32;
+                lines * pitch
+            });
+            let first = if barred { state.text_scroll.0 } else { 0.0 };
             let painter = ui.painter().with_clip_rect(area_rect);
             crate::theme::paint_gdi_text_block(
                 &painter,
-                area_rect,
+                egui::Rect::from_min_size(
+                    area_rect.min - egui::vec2(0.0, first * scale),
+                    egui::vec2(wrap * scale, (TEXT_AREA_HEIGHT + first) * scale),
+                ),
                 scale,
-                4,
+                font,
                 &msg.text,
                 Color32::WHITE,
                 crate::theme::GdiAlign::Left,
             );
+            // FUN_0041efe0 (create): FUN_0060a490(.., 7, 0x299a, ..), the
+            // Status window's 12-wide bar at the control's right edge (A0
+            // agent-advice/02-advice-message: a long advice's bar at
+            // x 525..537 of the Empire's window at 125).
+            if barred {
+                state.text_scroll.0 = crate::list_scroll_bar::ui_bar(
+                    ui,
+                    cache,
+                    egui::Rect::from_min_size(origin, egui::vec2(470.0, 331.0) * scale),
+                    scale,
+                    crate::status_window::BAR_ART,
+                    (TEXT_AREA_X, TEXT_AREA_Y, width, TEXT_AREA_HEIGHT),
+                    content,
+                    state.text_scroll.0,
+                    &mut state.text_scroll_hold,
+                    pitch,
+                );
+            }
         });
 }
 
@@ -1827,6 +1871,20 @@ fn title_icon_layout(size: egui::Vec2) -> (egui::Rect, egui::Rect, egui::Rect) {
     let (shown, uv) = row_icon_shown(size, false);
     let icon = egui::Rect::from_min_size(image.min + egui::vec2(1.0, 1.0), shown);
     (image, icon, uv)
+}
+
+/// The text control's wrap width, its lines' height and whether its bar
+/// shows, for a control `width` wide whose text takes `height_at(wrap)`.
+/// hyp: the control wraps at its full width while its text fits the
+/// 80-pixel height, else beside its 12-wide bar (A0 agent-advice/
+/// 02-advice-message wraps a long advice short of the bar).
+fn text_wrap(width: f32, height_at: impl Fn(f32) -> f32) -> (f32, f32, bool) {
+    let full = height_at(width);
+    if full <= TEXT_AREA_HEIGHT {
+        return (width, full, false);
+    }
+    let wrap = width - f32::from(crate::status_window::BAR_ART.width);
+    (wrap, height_at(wrap), true)
 }
 
 /// Paint a message's title in white across the title strip:
@@ -3371,6 +3429,16 @@ mod tests {
             actions: all_actions,
             lines,
         }
+    }
+
+    #[test]
+    fn a_long_text_wraps_beside_the_bar_and_a_short_one_does_not() {
+        // A0 agent-advice/02-advice-message: the long advice wraps short of
+        // the control's 12-wide bar (FUN_0060a490(.., 0x299a, ..)).
+        let lines = |wrap: f32| if wrap >= 395.0 { 96.0 } else { 112.0 };
+        assert_eq!(text_wrap(395.0, lines), (383.0, 112.0, true));
+        assert_eq!(text_wrap(395.0, |_| 80.0), (395.0, 80.0, false));
+        assert_eq!(text_wrap(395.0, |_| 16.0), (395.0, 16.0, false));
     }
 
     #[test]
