@@ -26,8 +26,11 @@ Read 2026-10-23 (P34, tracker item "Droidy-doradcy"). It continues
 hyp: `+0xc` is the game's day, so the briefing plays on a new game's
 first day. The GOG install ships the two briefing DLLs renamed
 `ALBRIEF.DLL.OLD` / `EMBRIEF.DLL.OLD`; with the files missing,
-`FUN_00603810` cannot load slot `0xd`. What the game then does is not
-read.
+`FUN_00603810` cannot load slot `0xd`. A0 (2026-11-05,
+`.artifacts/a0-vm/new-alliance-game`): with the files missing, a new game
+plays no briefing and opens on the galaxy and the advice index; with
+`ALBRIEF.DLL` / `EMBRIEF.DLL` restored, it plays the briefing, then the
+same index (`.artifacts/a0-vm/briefing-alliance`, `briefing-empire`).
 
 ## The briefing DLLs
 

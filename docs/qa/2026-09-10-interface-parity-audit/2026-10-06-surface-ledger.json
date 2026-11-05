@@ -412,7 +412,7 @@
         {
           "id": "PRE-02-C009",
           "requirement": "Alliance start",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
@@ -420,15 +420,17 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-briefing-a0/",
+            "tools/interface-parity/briefing.mjs"
           ],
-          "note": "Alliance start goes straight to the galaxy; the Linux browser gate briefing.mjs (Arch Chromium, 2026-10-29) starts an Alliance game from the main menu. No A0 comparison of the start transition.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Alliance start (the main menu's Alliance button at (437, 307)) plays MDATA.003, then the game opens on the galaxy with the briefing (A0 briefing-alliance) or, without ALBRIEF.DLL, the advice index (A0 new-alliance-game); briefing.mjs (Linux) starts an Alliance game from the menu and matches A0's briefing and index.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-02-C010",
           "requirement": "Empire start",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
@@ -436,10 +438,12 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-briefing-a0/",
+            "tools/interface-parity/briefing.mjs"
           ],
-          "note": "As Alliance: Empire start verified by briefing.mjs on Linux (2026-10-29); no A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Empire start (the Empire button at (153, 308)) plays MDATA.004, then the briefing over the galaxy and the advice index, as A0 briefing-empire shows; briefing.mjs (Linux) matches them.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-02-C011",
@@ -909,26 +913,30 @@
         {
           "id": "PRE-05-C001",
           "requirement": "Alliance briefing",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-briefing-a0/",
+            "tools/interface-parity/briefing.mjs"
           ],
-          "note": "Alliance briefing (FUN_004c27f0 message 0x29, update FUN_004c0a60, actions FUN_004c30c0) plays all 18 actions and 16 ALBRIEF voices in the Linux browser gate briefing.mjs; captions compared with SquakeNet frames, not A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Alliance briefing (FUN_004c27f0 message 0x29, update FUN_004c0a60, actions FUN_004c30c0): A0 briefing-alliance (ALBRIEF.DLL restored) plays it over the galaxy view; briefing.mjs 'full' (Linux) finds each of the port's 16 action screenshots among A0's frames at 0.989 to 0.999 of pixels within 32 per channel, and all 18 actions and 16 ALBRIEF voices in order.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-05-C002",
           "requirement": "Imperial briefing",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-briefing-a0/",
+            "tools/interface-parity/briefing.mjs"
           ],
-          "note": "Imperial briefing (FUN_004c0710 message 0x4a, actions FUN_004c0fc0) passes briefing.mjs on Linux; no A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Imperial briefing (FUN_004c0710 message 0x4a, actions FUN_004c0fc0): A0 briefing-empire (EMBRIEF.DLL restored); briefing.mjs 'full' (Linux) finds each action screenshot among A0's frames at 0.993 to 0.999.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-05-C003",
@@ -970,26 +978,30 @@
         {
           "id": "PRE-05-C006",
           "requirement": "natural completion",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-briefing-a0/",
+            "tools/interface-parity/briefing.mjs"
           ],
-          "note": "Full cases run to the end in briefing.mjs on Linux; no A0 comparison of the end state.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The full briefing runs to its end (action 0xd): in A0 and the port the galaxy view brightens and the Message Index opens on the Advice Messages, Victory Conditions chosen; briefing.mjs finds the index's window at 0.961 (Alliance) and 0.964 (Empire) of A0's, the same nine advice rows in order (the readouts, droids and the rows' bold font differ).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-05-C007",
           "requirement": "transition to command center",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-briefing-a0/",
+            "tools/interface-parity/briefing.mjs"
           ],
-          "note": "The briefing plays on the command center and releases map input at code 0xd; the transition is not compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The briefing plays on the command center and hands the map back at code 0xd, then the advice index opens: A0 briefing-alliance b100..b121 and briefing-empire e090..e098 show the same transition the port's after-briefing screenshot matches (briefing.mjs, Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
