@@ -337,6 +337,100 @@ async function run(browser, base, faction) {
       }
       assert.ok(rowChecks.icon_port === 0 && (rowChecks.icon_a0 ?? 0) === 0 && (rowChecks.row_head_a0 ?? 0) === 0,
         JSON.stringify(rowChecks));
+
+      // The Conflict list's row (A0 messages-day633/index-tab7: "Assault on
+      // Coruscant" chosen): STRATEGY 0x2ad7 at the row's (1, 1), keyed on
+      // index 0, and the row's head (x 0..32) every pixel A0's.
+      const conflictTab = [missionList.window_left + 365 - 62, missionList.window_top + 113 - 49];
+      await click(page, conflictTab);
+      const conflictList = await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0]?.startsWith("Assault on Coruscant"), "the Conflict list");
+      assert.equal(conflictList.rows[1], "Assault on Umgul", JSON.stringify(conflictList.rows));
+      // A0's reports were read (font 10, FUN_00469de0): show each once,
+      // the older first, and come back with Coruscant chosen.
+      for (const [index, title] of [[1, "Assault on Umgul"], [0, "Assault on Coruscant"]]) {
+        await click(page, row(index));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === title, `Display Message shows ${title}`);
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Conflict list again");
+      }
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("conflict-list");
+      const conflictScreen = PNG.sync.read(await page.screenshot());
+      const conflictIcon = (await indexedBitmap(0x2ad7)).filter(([, , , index]) => index !== 0);
+      const conflictAt = [conflictList.window_left + 25 + 1, conflictList.window_top + 108 + 1];
+      rowChecks.conflict_icon_port = differing(conflictScreen, conflictAt, conflictIcon);
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/messages-day633/index-tab7.png")));
+        rowChecks.conflict_icon_a0 = differing(a0, [62 + 26, 49 + 109], conflictIcon);
+        let differ = 0;
+        for (let y = 0; y < 17; y += 1) {
+          for (let x = 0; x < 32; x += 1) {
+            const i = ((conflictList.window_top + 108 + y) * 640 + conflictList.window_left + 25 + x) * 4;
+            const j = ((49 + 108 + y) * 640 + 62 + 25 + x) * 4;
+            if ([0, 1, 2].some((c) => conflictScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        rowChecks.conflict_head_a0 = differ;
+        let rowDiffer = 0;
+        for (let y = 0; y < 17; y += 1) {
+          for (let x = 32; x < 352; x += 1) {
+            const i = ((conflictList.window_top + 108 + y) * 640 + conflictList.window_left + 25 + x) * 4;
+            const j = ((49 + 108 + y) * 640 + 62 + 25 + x) * 4;
+            if ([0, 1, 2].some((c) => conflictScreen.data[i + c] !== a0.data[j + c])) rowDiffer += 1;
+          }
+        }
+        // The port's TTF glyphs are smoothed where A0's GDI ones are not
+        // (an accepted deviation), so the text's pixels are counted, and
+        // its bright extent (sum over 600) is A0's within a pixel: the
+        // smoothed "A" reaches a column left of A0's (x 32 vs 33), the
+        // last "t" ends on A0's 136.
+        rowChecks.conflict_text_a0 = rowDiffer;
+        const extent = (image, left, top) => {
+          let [low, high] = [Infinity, -Infinity];
+          // Inside the bar's white frame.
+          for (let y = 2; y < 15; y += 1) {
+            for (let x = 32; x < 340; x += 1) {
+              const i = ((top + 108 + y) * 640 + left + 25 + x) * 4;
+              if (image.data[i] + image.data[i + 1] + image.data[i + 2] > 600) {
+                low = Math.min(low, x);
+                high = Math.max(high, x);
+              }
+            }
+          }
+          return [low, high];
+        };
+        rowChecks.conflict_text_x = extent(conflictScreen, conflictList.window_left, conflictList.window_top);
+        rowChecks.conflict_text_x_a0 = extent(a0, 62, 49);
+        // The unchosen row below (21 down): its icon keyed over the list
+        // without its last column and row (FUN_00468ab0 blits it at (1, 1)
+        // of an image its own size), the row's head every pixel A0's.
+        const clipped = conflictIcon.filter(([x, y]) => x < 14 && y < 14);
+        rowChecks.unchosen_icon_port = differing(conflictScreen, [conflictAt[0], conflictAt[1] + 21], clipped);
+        rowChecks.unchosen_icon_a0 = differing(a0, [62 + 26, 49 + 109 + 21], clipped);
+        let unchosen = 0;
+        for (let y = 0; y < 17; y += 1) {
+          for (let x = 0; x < 32; x += 1) {
+            const i = ((conflictList.window_top + 129 + y) * 640 + conflictList.window_left + 25 + x) * 4;
+            const j = ((49 + 129 + y) * 640 + 62 + 25 + x) * 4;
+            if ([0, 1, 2].some((c) => conflictScreen.data[i + c] !== a0.data[j + c])) unchosen += 1;
+          }
+        }
+        rowChecks.unchosen_head_a0 = unchosen;
+      } catch {
+        rowChecks.conflict_icon_a0 = null;
+        rowChecks.conflict_head_a0 = null;
+      }
+      assert.ok(rowChecks.conflict_icon_port === 0 && (rowChecks.conflict_icon_a0 ?? 0) === 0
+        && (rowChecks.conflict_head_a0 ?? 0) === 0
+        && (rowChecks.unchosen_icon_port ?? 0) === 0 && (rowChecks.unchosen_icon_a0 ?? 0) === 0
+        && (rowChecks.unchosen_head_a0 ?? 0) === 0
+        && (rowChecks.conflict_text_x_a0 === undefined
+          || rowChecks.conflict_text_x.every((x, i) => Math.abs(x - rowChecks.conflict_text_x_a0[i]) <= 1)),
+        JSON.stringify(rowChecks));
     }
 
     assert.deepEqual(errors, [], errors.join("; "));

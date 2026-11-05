@@ -3761,6 +3761,31 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's battle reports on its reader's Conflict rail
+/// (`FUN_0048bc60`, category `0x100`), as A0 messages-day633/index-tab7's
+/// "Assault on Coruscant" over the older "Assault on Umgul".
+pub fn post_conflict_report(request: FixtureRequest, log: &mut rebellion_render::MessageLog) {
+    if request.scenario != Scenario::EventMessages {
+        return;
+    }
+    for system in ["Umgul", "Coruscant"] {
+        log.push(
+            rebellion_render::GameMessage::new(
+                0,
+                format!("The Alliance has assaulted {system}."),
+                rebellion_render::MessageCategory::Combat,
+            )
+            .with_title(format!("Assault on {system}"))
+            .on_rail(
+                rebellion_render::MessageRail::Conflict,
+                rebellion_render::message_log::RailAudience::side(
+                    request.faction == CockpitFaction::Alliance,
+                ),
+            ),
+        );
+    }
+}
+
 /// The event-message scenario's messages: one per report class whose
 /// picture the port attaches (`message_pictures`), titled by its class and
 /// filed under the Mission rail so one category lists them all.
@@ -6849,6 +6874,34 @@ mod tests {
         // The planet is not under the window.
         assert!(planet.center().x < band.min.x - 55.0, "{planet:?} {band:?}");
         assert!(applied.systems.band_screen_rect(layout, primary, rebellion_core::manufacturing::ProductionArea::TrainingFacility).is_some());
+    }
+
+    // FUN_0048bc60: the EventMessages scenario files a battle report on its
+    // reader's Conflict rail (A0 messages-day633/index-tab7).
+    #[test]
+    fn the_event_messages_scenario_files_a_conflict_report_for_its_reader() {
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            let mut log = rebellion_render::MessageLog::new();
+            post_conflict_report(request(Scenario::EventMessages, faction), &mut log);
+            let [older, newer] = log.messages() else {
+                panic!("{:?}", log.messages());
+            };
+            assert_eq!(older.title.as_deref(), Some("Assault on Umgul"));
+            assert_eq!(newer.title.as_deref(), Some("Assault on Coruscant"));
+            for message in [older, newer] {
+                assert_eq!(message.rail, Some(rebellion_render::MessageRail::Conflict));
+                assert!(message.unread);
+                assert_eq!(
+                    message.audience,
+                    rebellion_render::message_log::RailAudience::side(
+                        faction == CockpitFaction::Alliance
+                    )
+                );
+            }
+            let mut none = rebellion_render::MessageLog::new();
+            post_conflict_report(request(Scenario::StoryMessages, faction), &mut none);
+            assert!(none.messages().is_empty());
+        }
     }
 
     // FUN_00490340: the EventMessages scenario files the Emperor's capture

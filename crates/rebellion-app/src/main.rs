@@ -1652,6 +1652,7 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        interface_test_fixture::post_conflict_report(request, &mut msg_log);
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_event_messages(request, &mut world, &mut mission_state, &mut msg_log);
         interface_test_fixture::post_capture_message(request, &world, &mut msg_log, &message_texts);

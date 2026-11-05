@@ -1467,14 +1467,14 @@ fn draw_list_rows(
                     }
                 }
                 // The icon at (1, 1) in its own size (15 by 15 or 15 by
-                // 16), keyed on black (FUN_005fcc30 into the item image).
+                // 16), keyed on black (FUN_005fcc30 into the item image);
+                // an unchosen row's image is the icon's size, so it holds
+                // all but the icon's last column and row.
                 if let Some(icon) = icon {
-                    if let Some(size) = cache
-                        .get(ctx, DllSource::Strategy, icon)
-                        .map(|texture| texture.size_vec2())
-                    {
+                    if let Some(texture) = cache.get(ctx, DllSource::Strategy, icon) {
+                        let (size, uv) = row_icon_shown(texture.size_vec2(), is_selected);
                         let rect = egui::Rect::from_min_size(layout.icon.min, size * scale);
-                        paint_strategy_resource(&painter, ctx, cache, icon, rect);
+                        painter.image(texture.id(), rect, uv, Color32::WHITE);
                     }
                 }
 
@@ -1594,6 +1594,28 @@ fn row_layout(list_rect: egui::Rect, scale: f32, index: usize, scroll: usize) ->
         text: origin + egui::vec2(TEXT_INSET * scale, ROW_TEXT_Y * scale),
         click: row.intersect(short_of_bar),
     })
+}
+
+/// The part of a row's icon (`size`, unscaled) shown at the row's (1, 1)
+/// and its texture coordinates. `FUN_00468ab0` blits the icon at (1, 1)
+/// into an item image of the icon's own size, so an unchosen row loses
+/// the icon's last column and row (A0 messages-day633/index-tab7: "Assault
+/// on Umgul" lacks 0x2ad7's column 14, which the chosen row shows).
+fn row_icon_shown(size: egui::Vec2, chosen: bool) -> (egui::Vec2, egui::Rect) {
+    if chosen || size.x < 1.0 || size.y < 1.0 {
+        return (
+            size,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+        );
+    }
+    let shown = size - egui::vec2(1.0, 1.0);
+    (
+        shown,
+        egui::Rect::from_min_max(
+            egui::Pos2::ZERO,
+            egui::pos2(shown.x / size.x, shown.y / size.y),
+        ),
+    )
 }
 
 /// The chosen bar's pieces around the icon's cell at (1, 1) of `size`
@@ -3202,6 +3224,32 @@ mod tests {
         DriveResult {
             actions: all_actions,
             lines,
+        }
+    }
+
+    #[test]
+    fn an_unchosen_rows_icon_loses_its_last_column_and_row() {
+        // FUN_00468ab0: the icon at (1, 1) of an image its own size; A0
+        // messages-day633/index-tab7 shows 0x2ad7's column 14 only on the
+        // chosen row.
+        let (size, uv) = row_icon_shown(egui::vec2(15.0, 16.0), false);
+        assert_eq!(size, egui::vec2(14.0, 15.0));
+        assert_eq!(uv.min, egui::Pos2::ZERO);
+        assert_eq!(uv.max, egui::pos2(14.0 / 15.0, 15.0 / 16.0));
+        let (size, uv) = row_icon_shown(egui::vec2(15.0, 16.0), true);
+        assert_eq!(size, egui::vec2(15.0, 16.0));
+        assert_eq!(uv.max, egui::pos2(1.0, 1.0));
+        // A one-pixel icon at (1, 1) of its own one-pixel image shows none.
+        for (thin, shown) in [
+            (egui::vec2(1.0, 5.0), egui::vec2(0.0, 4.0)),
+            (egui::vec2(5.0, 1.0), egui::vec2(4.0, 0.0)),
+        ] {
+            assert_eq!(row_icon_shown(thin, false).0, shown);
+        }
+        for empty in [egui::vec2(0.0, 5.0), egui::vec2(5.0, 0.0)] {
+            let (size, uv) = row_icon_shown(empty, false);
+            assert_eq!(size, empty);
+            assert_eq!(uv.max, egui::pos2(1.0, 1.0));
         }
     }
 
