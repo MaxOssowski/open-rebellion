@@ -78,68 +78,78 @@
         {
           "id": "PRE-01-C001",
           "requirement": "LucasArts logo",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "MDATA.000 (the LucasArts logo, then Coolhand's) plays first (FUN_004138a0 state 1) in the browser's <video> (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "MDATA.000's LucasArts logo plays first (FUN_004138a0 state 1). A0 intro/natural/f036 against the port's 000.webm at 8.17 s: 99.6% of pixels within 32 per channel (cutscenes.mjs 'a0-frames', Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C002",
           "requirement": "Coolhand logo",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "Coolhand's logo is the second half of MDATA.000, which the browser plays (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Coolhand's logo, the end of MDATA.000. A0 intro/natural/f048 against the port's 000.webm at 14.53 s: every pixel within 32 per channel (cutscenes.mjs 'a0-frames', Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C003",
           "requirement": "long-time-ago card",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "The 'long time ago' card opens MDATA.001, which follows 000 (state 2) in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The 'A long time ago in a galaxy far, far away....' card opens MDATA.001 (state 2). A0 intro/natural/f058 against the port's 001.webm at 0.60 s, centred from row 78 as A0: every pixel within 32 per channel.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C004",
           "requirement": "opening crawl",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "The crawl is part of MDATA.001, played after 000 in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The REBELLION crawl of MDATA.001. A0 intro/natural/f114 against the port's 001.webm at 21.5 s: every pixel within 32 per channel (cutscenes.mjs 'a0-frames', Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C005",
           "requirement": "Star Wars title",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "The STAR WARS title is part of MDATA.001, played after 000 in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The STAR WARS title of MDATA.001. A0 intro/natural/f078 against the port's 001.webm at 8.10 s: 99.997% of pixels within 32 per channel (cutscenes.mjs 'a0-frames', Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C006",
@@ -149,38 +159,44 @@
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "The opening cinematic is the rest of MDATA.001 (169 s), played in the browser (cutscenes.mjs, Linux); not yet compared with A0.",
+          "note": "The opening cinematic is the rest of MDATA.001 (169 s), played in the browser (cutscenes.mjs, Linux); not yet compared with A0. 2026-11-05: the card, the title and the crawl's opening match A0 intro/natural frame by frame (cutscenes.mjs 'a0-frames'); the rest of the 169 s cinematic is not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "PRE-01-C007",
           "requirement": "skip",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "Escape or a left click ends a movie, any other key too outside the trench run (FUN_005f7240, FUN_00421790); a skip ends only the playing movie, so 001 follows a skipped 000 (cutscenes.mjs skips, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Escape or a left click ends a movie, any other key too outside the trench run (FUN_005f7240, FUN_00421790); a skip ends only the playing movie. A0 intro/skip: Escape on the LucasArts logo starts MDATA.001's card (Coolhand skipped), a second Escape on the title shows the main menu; cutscenes.mjs 'skips' (Linux) follows the same flow.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C008",
           "requirement": "natural completion",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "000 ends into 001 and 001 into the main menu (FUN_004138a0's 0x405), in the browser (cutscenes.mjs natural-end, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "000 ends into 001 and 001 into the main menu (FUN_004138a0's 0x405). A0 intro/natural and intro/menu: with no input the logos run into the card and the cinematic's end into the main menu; cutscenes.mjs 'natural-end' (Linux) lets 001 end on its own (seeking its last second) and the menu follows.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C009",
@@ -797,54 +813,62 @@
         {
           "id": "PRE-04-C001",
           "requirement": "open",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "Credits (command 0x73, FUN_00406000) play MDATA.005, the credits over cinematic footage; the replacement scrolling screen is gone (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Credits (command 0x73, FUN_00406000) play MDATA.005. A0 credits/: the main menu's Credits button (STRATEGY 11271 at (459, 242)) starts the credit lines over footage; cutscenes.mjs 'credits-and-new-game' (Linux) opens 005 the same way.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-04-C002",
           "requirement": "playback",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "Playback is the 2-minute MDATA.005 movie, as the original has no credit strings (cutscenes.mjs, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Playback is MDATA.005, the credits over cinematic footage. A0 credits/c006, c012, c024 and c033 against the port's 005.webm at 2.2, 3.2, 9.47 and 12.53 s: 99.94% or more of pixels within 32 per channel.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-04-C003",
           "requirement": "completion",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "When 005 ends the main menu shows again (LAB_00406520) (unit-traced; the browser case ends it by a click); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "When 005 ends the main menu shows again (LAB_00406520). A0 credits/end: 'Special Thanks to George Lucas', then the menu with no input; cutscenes.mjs lets the movie end on its own (seeking its last second) and the menu follows.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-04-C004",
           "requirement": "back",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/main_menu_destinations.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "Escape, a click or a key ends the credits movie and returns to the menu (cutscenes.mjs credits case, Linux); not yet compared with A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A click ends the credits and returns to the menu. A0 credits/c038 (a click at 16 s) shows the menu; cutscenes.mjs's second Credits ends by a click and the menu follows (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
