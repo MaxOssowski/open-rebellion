@@ -144,6 +144,29 @@ try {
     `the game-type label's ink box ${portInk} differs from A0 ${a0Ink}`);
   assert.equal(portInk[2] - portInk[0], a0Ink[2] - a0Ink[0], `the label's width ${portInk} vs A0 ${a0Ink}`);
   assert.ok(Math.abs(portInk[0] - a0Ink[0]) <= 1, `the label's left edge ${portInk[0]} vs A0 ${a0Ink[0]}`);
+  // Hover changes no art (FUN_006028c0 has no WM_MOUSEMOVE case): the
+  // still controls, the galaxy lever, the three size lights and the game
+  // type button, show the same pixels with the pointer resting over each as
+  // with the pointer away. Their tip is not counted (it shows below).
+  const STILL = { lever: [242, 271, 44, 47], small: [290, 293, 24, 21], medium: [326, 293, 24, 21],
+    large: [362, 293, 24, 21], "game-type": [305, 333, 42, 30] };
+  const away = port[0];
+  result.hover = {};
+  for (const [name, [rx, ry, rw, rh]] of Object.entries(STILL)) {
+    await page.mouse.move(rx + rw / 2, ry + rh / 2, { steps: 4 });
+    await page.waitForTimeout(400);
+    const over = PNG.sync.read(await page.screenshot({ path: path.join(OUT, `hover-${name}.png`) }));
+    let differ = 0;
+    for (let y = ry; y < ry + rh; y += 1) {
+      for (let x = rx; x < rx + rw; x += 1) {
+        // The pointer itself is not in the page's pixels (the OS draws it).
+        if (pixel(over, x, y) !== pixel(away, x, y)) differ += 1;
+      }
+    }
+    result.hover[name] = differ;
+  }
+  await page.mouse.move(2, 470);
+  assert.ok(Object.values(result.hover).every((count) => count === 0), JSON.stringify(result.hover));
   assert.deepEqual(errors, []);
 } catch (error) {
   result = { ...(result ?? {}), status: "fail", error: String(error.stack || error) };

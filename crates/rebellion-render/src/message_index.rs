@@ -77,7 +77,8 @@ const ROW_COLOR: Color32 = Color32::from_rgb(0x78, 0x78, 0x78);
 const ROW_CHOSEN_ALLIANCE: u32 = 0x2aa2;
 const ROW_CHOSEN_EMPIRE: u32 = 0x2aa3;
 const ROW_CHOSEN_SIZE: (f32, f32) = (352.0, 17.0);
-/// A row's category icon, 15 by 15.
+/// A row's category icon cell's width and least height: the icons are 15
+/// by 15 or 15 by 16, drawn in their own size.
 const ROW_ICON_SIZE: f32 = 15.0;
 /// Text area for single-message display (`FUN_00469de0`).
 const TEXT_AREA_X: f32 = 17.0;
@@ -1447,18 +1448,34 @@ fn draw_list_rows(
                 // (15 by 15) at (1, 1) (A0 2026-10-29). hyp: only the bar's
                 // top-left 352 by 17 shows; A0 has neither its 4-pixel
                 // shadow nor its blue corners.
+                let icon = msg.rail.and_then(|rail| row_icon(rail, faction));
+                // The bar leaves the icon's cell to the list's own
+                // background: A0 messages-day633/index-tab3 shows the stars
+                // under the Mission icon (x 1..15, y 1..16 of the row), the
+                // bar's red around it. hyp: the item's selected image is
+                // the bar with the icon copied in whole (FUN_005fcc30), and
+                // the list blits it keyed on black (FUN_005fc710).
                 if is_selected {
+                    let icon_size = icon
+                        .and_then(|id| cache.get(ctx, DllSource::Strategy, id))
+                        .map(|texture| texture.size_vec2());
                     if let Some(texture) = cache.get(ctx, DllSource::Strategy, chosen_bar) {
-                        painter.image(
-                            texture.id(),
-                            layout.bar,
-                            chosen_bar_uv(texture.size()),
-                            Color32::WHITE,
-                        );
+                        let full = chosen_bar_uv(texture.size());
+                        for (part, uv) in bar_around_icon(layout.bar, full, icon_size, scale) {
+                            painter.image(texture.id(), part, uv, Color32::WHITE);
+                        }
                     }
                 }
-                if let Some(icon) = msg.rail.and_then(|rail| row_icon(rail, faction)) {
-                    paint_strategy_resource(&painter, ctx, cache, icon, layout.icon);
+                // The icon at (1, 1) in its own size (15 by 15 or 15 by
+                // 16), keyed on black (FUN_005fcc30 into the item image).
+                if let Some(icon) = icon {
+                    if let Some(size) = cache
+                        .get(ctx, DllSource::Strategy, icon)
+                        .map(|texture| texture.size_vec2())
+                    {
+                        let rect = egui::Rect::from_min_size(layout.icon.min, size * scale);
+                        paint_strategy_resource(&painter, ctx, cache, icon, rect);
+                    }
                 }
 
                 // The text at the item's +0x30 (32), its line 2 below the
@@ -1577,6 +1594,46 @@ fn row_layout(list_rect: egui::Rect, scale: f32, index: usize, scroll: usize) ->
         text: origin + egui::vec2(TEXT_INSET * scale, ROW_TEXT_Y * scale),
         click: row.intersect(short_of_bar),
     })
+}
+
+/// The chosen bar's pieces around the icon's cell at (1, 1) of `size`
+/// (the icon's own, unscaled): the bar's column 0, its row 0 above the
+/// icon, the strip right of the icon and the rows below it. With no icon,
+/// the whole bar.
+fn bar_around_icon(
+    bar: egui::Rect,
+    uv: egui::Rect,
+    size: Option<egui::Vec2>,
+    scale: f32,
+) -> Vec<(egui::Rect, egui::Rect)> {
+    let Some(size) = size else {
+        return vec![(bar, uv)];
+    };
+    // A logical rectangle of the bar, on the screen and in the texture.
+    let piece = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        let (width, height) = (bar.width() / scale, bar.height() / scale);
+        let (x1, y1) = (x1.min(width), y1.min(height));
+        (
+            egui::Rect::from_min_max(
+                bar.min + egui::vec2(x0, y0) * scale,
+                bar.min + egui::vec2(x1, y1) * scale,
+            ),
+            egui::Rect::from_min_max(
+                uv.min + egui::vec2(x0 / width * uv.width(), y0 / height * uv.height()),
+                uv.min + egui::vec2(x1 / width * uv.width(), y1 / height * uv.height()),
+            ),
+        )
+    };
+    let (right, bottom) = (1.0 + size.x, 1.0 + size.y);
+    vec![
+        piece(0.0, 0.0, 1.0, bottom),
+        piece(1.0, 0.0, right, 1.0),
+        piece(right, 0.0, f32::MAX, f32::MAX),
+        piece(0.0, bottom, right, f32::MAX),
+    ]
+    .into_iter()
+    .filter(|(rect, _)| rect.width() > 0.0 && rect.height() > 0.0)
+    .collect()
 }
 
 /// The part of the chosen bar's texture that shows: its top-left
@@ -3146,6 +3203,58 @@ mod tests {
             actions: all_actions,
             lines,
         }
+    }
+
+    #[test]
+    fn the_chosen_bar_leaves_the_icons_cell_to_the_list() {
+        // A0 messages-day633/index-tab3: under the chosen Mission row's icon
+        // (15 by 16 at (1, 1)) the list's background shows; the bar's red
+        // covers the rest of its 352 by 17 (x 0 and y 0, x from 16, y 17).
+        let bar = egui::Rect::from_min_size(egui::pos2(100.0, 200.0), egui::vec2(704.0, 34.0));
+        let uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(0.5, 0.25));
+        let pieces = bar_around_icon(bar, uv, Some(egui::vec2(15.0, 16.0)), 2.0);
+        let area: f32 = pieces.iter().map(|(rect, _)| rect.area()).sum();
+        assert_eq!(area, 704.0 * 34.0 - 30.0 * 32.0);
+        let icon_cell = egui::Rect::from_min_size(egui::pos2(102.0, 202.0), egui::vec2(30.0, 32.0));
+        for (rect, _) in &pieces {
+            assert!(
+                rect.intersect(icon_cell).area() <= 0.0,
+                "{rect:?} covers the icon"
+            );
+        }
+        // The pieces' texture coordinates follow their places on the bar.
+        let (right, right_uv) = pieces
+            .iter()
+            .find(|(rect, _)| rect.min.x == 132.0)
+            .copied()
+            .unwrap();
+        assert_eq!(right.max.x, 804.0);
+        assert_eq!(right_uv.min.x, 16.0 / 352.0 * 0.5);
+        assert_eq!(right_uv.max.y, 0.25);
+        // Every piece samples the texture where it lies on the bar: its
+        // logical corners over 352 by 17, scaled into the UV rectangle.
+        // A 15 by 16 icon fills the bar's height below row 0: three pieces.
+        assert_eq!(pieces.len(), 3);
+        for (rect, piece_uv) in &pieces {
+            let to_uv = |point: egui::Pos2| {
+                let logical = (point - bar.min) / 2.0;
+                egui::pos2(logical.x / 352.0 * 0.5, logical.y / 17.0 * 0.25)
+            };
+            assert_eq!(piece_uv.min, to_uv(rect.min), "{rect:?}");
+            assert_eq!(piece_uv.max, to_uv(rect.max), "{rect:?}");
+        }
+        // A 15 by 15 icon leaves the bar's last row below it: four pieces.
+        let short = bar_around_icon(bar, uv, Some(egui::vec2(15.0, 15.0)), 2.0);
+        assert_eq!(short.len(), 4);
+        let (_, below_uv) = short
+            .iter()
+            .find(|(rect, _)| rect.min.y == 232.0 && rect.max.y == 234.0)
+            .copied()
+            .unwrap();
+        assert_eq!(below_uv.min.y, 16.0 / 17.0 * 0.25);
+        assert_eq!(below_uv.max.y, 0.25);
+        // No icon: the whole bar.
+        assert_eq!(bar_around_icon(bar, uv, None, 2.0), [(bar, uv)]);
     }
 
     #[test]

@@ -104,6 +104,26 @@ async function bitmap(id) {
   return pixels;
 }
 
+// An 8-bit STRATEGY bitmap's pixels with their palette index, for icons
+// keyed on index 0 (FUN_00468ab0's category icons).
+async function indexedBitmap(id) {
+  const bytes = await fs.readFile(path.join(ROOT, `data/base/ui/strategy-dll/BMP/${id}.bmp`));
+  const offset = bytes.readUInt32LE(10);
+  const width = bytes.readInt32LE(18);
+  const height = bytes.readInt32LE(22);
+  const palette = 14 + bytes.readUInt32LE(14);
+  const stride = (width + 3) & ~3;
+  const pixels = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = bytes[offset + (height - 1 - y) * stride + x];
+      const entry = palette + index * 4;
+      pixels.push([x, y, [bytes[entry + 2], bytes[entry + 1], bytes[entry]], index]);
+    }
+  }
+  return pixels;
+}
+
 function differing(png, [left, top], pixels) {
   return pixels.filter(([x, y, rgb]) => {
     const at = ((top + y) * png.width + left + x) * 4;
@@ -270,9 +290,58 @@ async function run(browser, base, faction) {
     }
     assert.ok(captureChecks.port === 0 && (captureChecks.a0 ?? 0) === 0, JSON.stringify(captureChecks));
 
+    // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's
+    // Mission Messages holding the capture, chosen): the category icon
+    // STRATEGY 0x2a9e at the row's (1, 1), keyed on palette index 0
+    // (FUN_00468ab0), every opaque pixel A0's.
+    let rowChecks = null;
+    if (faction.byte === 1) {
+      await click(page, showMessage);
+      const listed = await waitReport(page, (value) => value.mode === "list", "the list again");
+      const mission = [listed.window_left + 212 - 62, listed.window_top + 113 - 49];
+      await click(page, mission);
+      // The fixture files every event under the Mission rail; the capture,
+      // newest, is the first row, as A0's one.
+      const missionList = await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0]?.startsWith("Emperor Palpatine Captured"), "the Mission list");
+      await click(page, row(0));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("mission-list");
+      const screen = PNG.sync.read(await page.screenshot());
+      const icon = (await indexedBitmap(0x2a9e)).filter(([, , , index]) => index !== 0);
+      const at = [missionList.window_left + 25 + 1, missionList.window_top + 108 + 1];
+      rowChecks = { icon_port: differing(screen, at, icon) };
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/messages-day633/index-tab3.png")));
+        rowChecks.icon_a0 = differing(a0, [62 + 26, 49 + 109], icon);
+      } catch {
+        rowChecks.icon_a0 = null;
+      }
+      // The chosen row's bar (0x2aa2, 352 by 17 at the row's origin) with
+      // the list's background under the icon's cell: every pixel of the
+      // row outside its text (x 32 on) as A0's.
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/messages-day633/index-tab3.png")));
+        let differ = 0;
+        for (let y = 0; y < 17; y += 1) {
+          for (let x = 0; x < 32; x += 1) {
+            const i = ((missionList.window_top + 108 + y) * 640 + missionList.window_left + 25 + x) * 4;
+            const j = ((49 + 108 + y) * 640 + 62 + 25 + x) * 4;
+            if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        rowChecks.row_head_a0 = differ;
+      } catch {
+        rowChecks.row_head_a0 = null;
+      }
+      assert.ok(rowChecks.icon_port === 0 && (rowChecks.icon_a0 ?? 0) === 0 && (rowChecks.row_head_a0 ?? 0) === 0,
+        JSON.stringify(rowChecks));
+    }
+
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
-      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, shots };
+      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
