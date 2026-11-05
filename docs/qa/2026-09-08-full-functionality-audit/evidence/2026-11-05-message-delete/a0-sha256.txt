@@ -1,0 +1,14 @@
+9131a7934d66d1c59dc300dcaf4fe3323f1260c639b01377502897b0bd565557  .artifacts/a0-vm/message-delete/del3.png
+b729b53b267088f864cabca207c784155496003430eacc2113e347f0f353a2c4  .artifacts/a0-vm/message-delete/del4.png
+7cbaf3b1b3323336a5c891f475063a2d9fec53a1351de6f822a41fe19df8d44a  .artifacts/a0-vm/message-delete/del5.png
+6b92424a862d76c22bfdf0b9aaa3ba8030feea2a5c79d9f7f1aeed7292d676d3  .artifacts/a0-vm/message-delete/del6.png
+82a05cbdca0629a9dbb83eb92b46a357bffa3d1fe3a32c0bfeff902a48dd17c9  .artifacts/a0-vm/message-delete/del7.png
+14d2817f9cc3b0fecacaf91ffc7518b9535afa586c1bbf484bcb5dd1941f79df  .artifacts/a0-vm/message-delete/del8.png
+b1a903f73d25b11b38fedb5e7b3d8f331aeff9ba381df1ea8ee23f25e67175e8  .artifacts/a0-vm/message-delete/del9.png
+41be80c47d7c230e1eed94987196a2763b82ef11c7a868960557803e34debbf2  .artifacts/a0-vm/message-delete/sel0.png
+35004cf6da8a3118ab614a321dfaf55f45006b350a9827bfeffaeeb1693bea51  .artifacts/a0-vm/message-delete/sel1.png
+595f5087f746ebcf333bc087d64b912d8b8c004eba042f9cc01b65e78d043bf8  .artifacts/a0-vm/message-delete/sel2.png
+dce5b9a3aaeba162eb20e7a36137e472bcc29619a2bb075cdb52735f3e6d6697  .artifacts/a0-vm/message-delete/sel3.png
+7ecbf4f9602b3f208a9f07413baaf0f39c720337ee7b4382db7d5980bae0fb8d  .artifacts/a0-vm/message-delete/sh0.png
+d4886205b7666eef950df796ac92f9899c85f3d47e9214d52bf68158b8e6e208  .artifacts/a0-vm/message-delete/sh1.png
+036b8ddb541d70b4e9a404e3c8d13f66d959f54a2b95013505d8a7485fbd0303  .artifacts/a0-vm/message-delete/sh2.png
