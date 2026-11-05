@@ -8315,14 +8315,15 @@
         {
           "id": "EVT-02-C006",
           "requirement": "simulate",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-enemy-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-squadron-parent-after-battle-vm/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-squadron-parent-after-battle-vm/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-alert-simulate/"
           ],
-          "note": "A0 shows the simulated result (results-summary-sim.png, mc-sim-results.png); the browser checks only the Simulate button's rest art, not its route from the alert.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 shows the simulated result (results-summary-sim.png, mc-sim-results.png); the browser checks only the Simulate button's rest art, not its route from the alert. 2026-11-05: run.mjs --battle (production-battle-alert-entry, letterboxed, both sides) presses Simulate on the alert: the battle is routed (no tactical entry) and the Battle Results window shows over the strategy view, as A0 message-rail/battle-averam-result.",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "EVT-02-C007",

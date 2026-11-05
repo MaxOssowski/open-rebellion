@@ -1,0 +1,2 @@
+78a3ffd71f0bd04c793c3a393562f81dfa9e7e90d7984520f4d103d5b373672b  .artifacts/a0-vm/message-rail/battle-averam-result.png
+8e5e208eb52e1e40f6dff806909d64f2231643ea56acbd4ae28a2aed6a859410  .artifacts/a0-vm/2026-10-27-controls/results-summary-sim.png
