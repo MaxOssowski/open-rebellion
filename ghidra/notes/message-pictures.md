@@ -180,3 +180,13 @@ set none; the others have no recovered class.
 5. Titles and bodies: the port's messages keep their own wording.
 6. Where the Assault and bombardment messages are shown, and with what
    layout.
+
+## Personnel Arrive in detail (read 2026-11-06)
+
+`Class_0065b798_vt14` (`FUN_004955b0`) handles notification `0x200`, an object's new container, for one side's message.
+- **When it posts.** The object is a character (`0x30..0x3f`) or a special force (`0x40..0x4f`); the special force `0x3c000009` stays silent. It stops at the first container above the object that is a system (`0x90..0x97`); if it meets an abode (`0x98..0x9f`) first, nothing posts. Nothing posts either when the notification's `+0x28` is set or the container's `+0x50` bit `0x20` is.
+- **A major character** (`+0x74` family `0x30..0x37`, in `+0x30` of the notification): the title is `0x70c1` "{1:1} Arrives at {2:1}". The body is `0x70c5` "I have arrived at {2:1}.  " when one arrives (`+0x78` < 2), else `0x70c4` "… The following personnel have arrived with me:". The speaker by `+0x74 & 0xffffff` is 0x240 Mon Mothma (0x17), 0x241 Leia (0x18), 0x242 Luke (0x16), 0x243 Han (0x19), 0x280 the Emperor (0x1a), 0x281 Vader (0x1b), each with its own picture (`FUN_004c4990`).
+- **Otherwise.** The title is `0x70c0` "Personnel Arrive at {2:1}", the body `0x70c3` "The following personnel have arrived at {2:1}.\n", speaker 0x15. Each arrival adds a line `0x70c2` to `+0x68`.
+- **The picture.** Its default is `0x412` / `0x413` by the reader, at `+0x2e`; `+0x30` is `0x47c` / `0x47d`.
+
+The port posts no Personnel Arrive message (2026-11-06).
