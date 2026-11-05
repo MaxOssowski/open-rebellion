@@ -1,0 +1,2 @@
+0f225013da1a1f6dc10aa5e59c3c2e5595edbf9058dbcf3c59873fb5dc740b7c  .artifacts/a0-vm/encyclopedia/topic-step-6.png
+0f225013da1a1f6dc10aa5e59c3c2e5595edbf9058dbcf3c59873fb5dc740b7c  .artifacts/a0-vm/encyclopedia/topic-step-5.png
