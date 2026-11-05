@@ -8,7 +8,7 @@
 //
 // Serves the release site in web/ (build first: ./scripts/build-wasm.sh,
 // which stages data/video/*.webm from assets/references/ref-videos).
-// Run:  node cutscenes.mjs [--out=DIR]
+// Run:  node cutscenes.mjs [--out=DIR] [--case=NAME]
 // Env:  CHROMIUM_PATH (default /usr/bin/chromium)
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -17,6 +17,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SITE = path.join(ROOT, "web");
@@ -35,7 +36,18 @@ function serve(root) {
     const file = path.join(root, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     try {
       const bytes = await fs.readFile(file);
-      response.writeHead(200, { "content-type": MIME[path.extname(file)] ?? "application/octet-stream" });
+      const type = MIME[path.extname(file)] ?? "application/octet-stream";
+      // Byte ranges, so a paused <video> can seek (the A0 frame case).
+      const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? "");
+      if (range) {
+        const start = range[1] ? Number(range[1]) : 0;
+        const end = range[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+        response.writeHead(206, { "content-type": type, "accept-ranges": "bytes",
+          "content-range": `bytes ${start}-${end}/${bytes.length}`, "content-length": end - start + 1 });
+        response.end(bytes.subarray(start, end + 1));
+        return;
+      }
+      response.writeHead(200, { "content-type": type, "accept-ranges": "bytes" });
       response.end(bytes);
     } catch {
       response.writeHead(404);
@@ -89,17 +101,92 @@ const menuActive = () => document.getElementById("main-menu-semantics")?.dataset
 // and 2: MDATA.000 (the logos), then MDATA.001 (the card, title, crawl and
 // cinematic), then the main menu. A skip (Escape, a click, any key) ends only
 // the playing movie.
+// A0 (Windows 10 VM, 2026-11-05, .artifacts/a0-vm/intro/natural/): a fresh
+// launch's screen every 0.37 s. Each target is one A0 frame and the time
+// near which the port's movie holds the same picture; the case pauses the
+// <video>, steps it a frame (15 fps) at a time across the window and keeps
+// the best match. The movies are 640 by 480 (000) and 640 by 324 (001),
+// which the page centres as the original does (001 from row 78).
+const A0_FRAMES = [
+  { stem: "000", file: "f036.png", near: 6.5, label: "LucasArts" },
+  { stem: "000", file: "f048.png", near: 13.0, label: "Coolhand" },
+  { stem: "001", file: "f058.png", near: 1.0, label: "long-time-ago card" },
+  { stem: "001", file: "f078.png", near: 7.5, label: "STAR WARS title" },
+  { stem: "001", file: "f114.png", near: 20.7, label: "opening crawl" },
+];
+const A0_INTRO = path.join(ROOT, ".artifacts/a0-vm/intro/natural");
+// A0 .artifacts/a0-vm/credits/: Credits from the main menu, a screen every
+// 0.4 s; MDATA.005 (640 by 324, centred) under the credit lines.
+const A0_CREDITS = [
+  { stem: "005", file: "c006.png", near: 2.2, label: "Director and Lead Designer", dir: "credits" },
+  { stem: "005", file: "c012.png", near: 4.0, label: "Assistant Project Director", dir: "credits" },
+  { stem: "005", file: "c024.png", near: 10.6, label: "Technical Director", dir: "credits" },
+  { stem: "005", file: "c033.png", near: 12.8, label: "Design Assistance", dir: "credits" },
+];
+
+// The share of pixels whose channels are all within 32 of A0's.
+function closeness(a, b) {
+  let close = 0;
+  for (let i = 0; i < a.data.length; i += 4) {
+    if (Math.abs(a.data[i] - b.data[i]) <= 32 && Math.abs(a.data[i + 1] - b.data[i + 1]) <= 32
+      && Math.abs(a.data[i + 2] - b.data[i + 2]) <= 32) close += 1;
+  }
+  return close / (a.width * a.height);
+}
+
+async function bestFrame(page, target) {
+  const directory = target.dir ? path.join(ROOT, ".artifacts/a0-vm", target.dir) : A0_INTRO;
+  const a0 = PNG.sync.read(await fs.readFile(path.join(directory, target.file)));
+  let best = { time: null, closeness: -1 };
+  for (let k = -45; k <= 45; k += 1) {
+    const time = target.near + k / 15;
+    if (time < 0) continue;
+    await page.evaluate((t) => new Promise((resolve) => {
+      const v = document.querySelector("video");
+      v.pause();
+      v.addEventListener("seeked", () => requestAnimationFrame(() => requestAnimationFrame(resolve)), { once: true });
+      v.currentTime = t;
+    }), time);
+    const shot = PNG.sync.read(await page.screenshot());
+    const value = closeness(shot, a0);
+    if (value > best.closeness) best = { time, closeness: value };
+  }
+  return { ...target, ...best };
+}
+
 const CASES = {
+  async "a0-frames"(page, shot) {
+    await waitStem(page, "000", "the logos play");
+    const frames = [];
+    for (const target of A0_FRAMES.filter(({ stem }) => stem === "000")) frames.push(await bestFrame(page, target));
+    await page.evaluate(() => document.querySelector("video").play());
+    await page.locator("#glcanvas").focus();
+    await page.keyboard.press("Escape");
+    await waitStem(page, "001", "the cinematic plays");
+    for (const target of A0_FRAMES.filter(({ stem }) => stem === "001")) frames.push(await bestFrame(page, target));
+    await shot("last-a0-frame");
+    for (const frame of frames) {
+      assert.ok(frame.closeness >= 0.98, `${frame.label}: ${JSON.stringify(frame)}`);
+    }
+    return { frames };
+  },
   async "natural-end"(page, shot) {
     const logos = await waitStem(page, "000", "the logos play");
     assert.equal(await page.evaluate(menuActive), false, "the main menu waits for the intro");
     await shot("logos");
     const cinematic = await waitStem(page, "001", "the logos' end starts the cinematic", 60_000);
     await shot("cinematic");
-    await page.locator("#glcanvas").focus();
-    await page.keyboard.press("Escape");
-    await waitFor(page, menuActive, "the main menu follows the cinematic");
-    return { logos, cinematic };
+    // The cinematic's own end, as A0 intro/menu shows the menu after it
+    // with no input: the case seeks it a second from its end and lets it
+    // finish (the <video>'s ended, FUN_004138a0's 0x405).
+    const ending = await page.evaluate(() => {
+      const v = document.querySelector("video");
+      v.currentTime = Math.max(0, v.duration - 1);
+      return v.duration;
+    });
+    await waitFor(page, menuActive, "the main menu follows the cinematic's end", 30_000);
+    await shot("main-menu-after-end");
+    return { logos, cinematic, ending };
   },
   async "skips"(page, shot) {
     await waitStem(page, "000", "the logos play");
@@ -127,6 +214,24 @@ const CASES = {
     await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(11));
     const credits = await waitStem(page, "005", "the credits movie plays");
     await shot("credits");
+    // A0 credits/: the same credit lines over the same footage.
+    const frames = [];
+    for (const target of A0_CREDITS) frames.push(await bestFrame(page, target));
+    for (const frame of frames) {
+      assert.ok(frame.closeness >= 0.98, `${frame.label}: ${JSON.stringify(frame)}`);
+    }
+    // The movie's own end shows the menu again (LAB_00406520; A0
+    // credits/end: "Special Thanks to George Lucas", then the menu with no
+    // input): the case seeks its last second.
+    await page.evaluate(() => {
+      const v = document.querySelector("video");
+      v.currentTime = Math.max(0, v.duration - 1);
+      return v.play();
+    });
+    await waitFor(page, menuActive, "the credits' end shows the menu again", 30_000);
+    // Again, and a click ends them (A0 credits/c038: a click at 16 s).
+    await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(11));
+    await waitStem(page, "005", "the credits movie plays again");
     await page.mouse.click(320, 240);
     await waitFor(page, menuActive, "a click ends the credits and the menu shows again");
     // Start as the Empire (state 7): MDATA.004 before the game starts.
@@ -136,7 +241,7 @@ const CASES = {
     await page.keyboard.press("Escape");
     await waitFor(page, () => !document.querySelector("video") && !(document.getElementById("main-menu-semantics")?.dataset.active === "true"),
       "the game starts after the movie");
-    return { credits, newGame };
+    return { credits, frames, newGame };
   },
 };
 
@@ -184,7 +289,10 @@ const browser = await chromium.launch({
 });
 const results = [];
 try {
-  for (const name of Object.keys(CASES)) results.push(await run(browser, base, name));
+  // `--case=NAME` runs one case.
+  for (const name of Object.keys(CASES).filter((name) => !args.case || args.case === name)) {
+    results.push(await run(browser, base, name));
+  }
 } finally {
   await browser.close();
   server.close();
