@@ -3158,14 +3158,15 @@
         {
           "id": "CMD-08-C002",
           "requirement": "unread",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-advice/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-rail/"
           ],
-          "note": "Unread messages light their rail; closing a category marks it read (FUN_0048a530, message_index tests).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Unread messages light their rail; closing a category marks it read (FUN_0048a530, message_index tests). 2026-11-05: A0 message-rail/easy-index-open (lit 10067) and -closed (resting 10057) match the port's Advice control to the pixel in agent-advice.mjs (Linux); the rail art is keyed on its first pixel (FUN_00427270 CoolStrobeButtons, FUN_005fd170).",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-08-C003",

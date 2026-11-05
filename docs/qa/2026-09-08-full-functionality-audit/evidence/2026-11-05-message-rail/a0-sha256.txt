@@ -1,0 +1,2 @@
+8fc72554b3b8367497ee4f712119be4cb53aec43093fd5d3893a76c160932f2f  .artifacts/a0-vm/message-rail/easy-index-closed.png
+0e05fbfb70abfb05773c39aa50a45c4fb160ee107b1aed62d3e8fbe83a46d5e2  .artifacts/a0-vm/message-rail/easy-index-open.png
