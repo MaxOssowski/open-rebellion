@@ -8042,9 +8042,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-arrival/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-fleet-arrival/"
           ],
-          "note": "Deployed (0x107) and arrival (0x105) messages go to the unit family's rail; delivery seen in the browser (delivery-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "Deployed (0x107) and arrival (0x105) messages go to the unit family's rail; delivery seen in the browser (delivery-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a fleet's arrival now takes FUN_004981c0's TEXTSTRA 0x7078/0x7079 ('Fleet Arrives at {system}', '{fleet} has arrived at {system}.') as A0 message-rail/fleet-arrives-averam; the port had its own untitled English. Personnel Arrive (0x200, Class_0065b798_vt14: 0x70c0..0x70c5) is not posted by the port.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
