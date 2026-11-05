@@ -377,11 +377,56 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(300);
     await shot("alerts-menu");
+    // Message Alerts' submenu lists the nine categories, each checked while
+    // it alerts; a click flips its category (FUN_00486fb0). A0 (2026-11-06,
+    // personnel-captured/r3, r5): all checked, then Fleets bare after a
+    // click on it, the other eight still checked.
+    let alerts = null;
+    if (faction.name === "alliance") {
+      const flips = () => log.filter((line) => line.includes("[interface] message_alerts mask="));
+      const openSubmenu = async () => {
+        await page.mouse.move(400, 436, { steps: 4 });
+        await page.waitForTimeout(800);
+      };
+      const checkCells = async () => {
+        const png = PNG.sync.read(await page.screenshot());
+        return [278, 298, 318, 338, 358, 378, 398, 418, 438].map((y) => {
+          let white = 0;
+          for (let dy = -7; dy <= 7; dy += 1) {
+            for (let x = 236; x < 254; x += 1) {
+              const i = ((y + dy) * 640 + x) * 4;
+              if (png.data[i] > 240 && png.data[i + 1] > 240 && png.data[i + 2] > 240) white += 1;
+            }
+          }
+          return white > 10;
+        });
+      };
+      await openSubmenu();
+      await shot("alerts-submenu");
+      const before = await checkCells();
+      await page.mouse.move(370, 436, { steps: 2 });
+      await page.mouse.move(342, 436, { steps: 2 });
+      await page.mouse.move(300, 298, { steps: 4 });
+      await page.waitForTimeout(300);
+      await page.mouse.down();
+      await page.waitForTimeout(100);
+      await page.mouse.up();
+      await waitFor(page, log, "Fleets' alerts turn off", () => flips().length === 1, 5_000);
+      assert.match(flips()[0], /mask=0x80 silent=true/);
+      await click(page, faction.secondDroid, "right");
+      await page.waitForTimeout(400);
+      await openSubmenu();
+      await shot("alerts-submenu-fleets-off");
+      const after = await checkCells();
+      alerts = { before, after, flips: flips() };
+      assert.deepEqual(before, Array(9).fill(true), JSON.stringify(alerts));
+      assert.deepEqual(after, [true, false, true, true, true, true, true, true, true], JSON.stringify(alerts));
+    }
     await page.keyboard.press("Escape");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle, rail, textBar,
+    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle, rail, textBar, alerts,
       agent: log.filter((line) => line.startsWith("[agent]") || line.includes("message_index")) };
   } catch (error) {
     await shot("failure").catch(() => {});
