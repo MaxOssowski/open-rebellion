@@ -3803,6 +3803,17 @@ async function probeTacticalBattleAlertEntry(
     ...verifyStrategyBitmap(viewport, stable.bytes, resources.command[0], 345 + dx, 350 + dy),
   }];
 
+  // The alert holds the command center (A0 2026-11-05: with the Battle at
+  // Umgul alert up, two clicks on the Popular Support rail opened no
+  // Message Index and the day readout no speed menu).
+  const rail = point(alliance ? 16 : 624, alliance ? 120 : 121);
+  for (let press = 0; press < 2; press += 1) {
+    await page.mouse.click(rail.x, rail.y);
+    await page.waitForTimeout(200);
+  }
+  await page.waitForTimeout(300);
+  assert.ok(!consoleLines.some(({ text }) => text.includes("destination=message_index")),
+    `${faction}: the rail opened the Message Index under the Battle Alert`);
   const tabX = (alliance ? 503.5 : 513) + dx;
   const tabY = (alliance ? [95.5, 155.5, 217.5, 279.5] : [91.5, 154.5, 217.5, 280.5]).map((y) => y + dy);
   for (let index = 1; index < 4; index++) {
