@@ -469,17 +469,19 @@
         {
           "id": "PRE-02-C012",
           "requirement": "credits",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-completion/credits.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
+            "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "The Credits control routes and returns (Astra, macOS), but its destination is a replacement egui screen (see PRE-04). No A0 comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The Credits control (STRATEGY 11271 at (459, 242), command 0x73, FUN_00406000) plays MDATA.005 and returns to the menu, by its end or a click; the replacement egui screen is long gone. A0 credits/ and credits/end against cutscenes.mjs 'credits-and-new-game' (Linux): four frames at 99.94% or more, both returns to the menu (see PRE-04).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-02-C013",
@@ -495,17 +497,20 @@
         {
           "id": "PRE-02-C014",
           "requirement": "exit",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/quit-exit.png"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-r3/quit-exit.png",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-main-menu-quit/",
+            "tools/interface-parity/main-menu-states.mjs",
+            "crates/rebellion-render/src/rebdlog_dialog.rs"
           ],
-          "note": "Quit plays COMMON WAVE 8002, stops music and leaves the surface (Astra R3/R4). No A0 comparison. Browser run on macOS only; rerun on Linux. 2026-11-05 A0 (.artifacts/a0-vm/main-menu-quit/q0..q5): the main menu's Quit asks REBDLOG 0x1202 'Are you sure you want to quit?' over the shuttle cockpit, its buttons still animating (FUN_00414330 shows FUN_00401110(0x470, 0, 0x1202)); the port's Quit leaves at once (MainMenuAction::Quit). Open: the port must ask first.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Quit asks REBDLOG 0x1202 'Are you sure you want to quit?' first (FUN_00414330: FUN_00401110(0x470, 0, 0x1202)); Yes quits (COMMON WAVE 8002, audio stopped), No keeps the menu. A0 main-menu-quit/q0 (2026-11-05): the question over the shuttle cockpit in its palette; main-menu-states.mjs (Linux) finds the port's dialog frame and buttons pixel-identical to A0's and the line within a pixel, and No keeps the menu. Until 2026-11-05 the port quit at once.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
@@ -759,7 +764,7 @@
         {
           "id": "PRE-03-C013",
           "requirement": "return",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -768,10 +773,11 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
-            "ghidra/notes/game-options-text.md"
+            "ghidra/notes/game-options-text.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-main-menu-quit/"
           ],
-          "note": "Return/re-entry passes game-options-smoke; context-specific Return art 10020-10031 not verified; no A0. Browser run on macOS only; rerun on Linux. 2026-10-31: Return art by window mode and side (FUN_00407180): 10023 at (162,382) pixel-identical to A0 in an Empire galaxy game; Alliance 10020 seen on the Linux browser; battle 10026 by unit test only. Return/re-entry behaviour smoke-tested on macOS only.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Return/re-entry passes game-options-smoke; context-specific Return art 10020-10031 not verified; no A0. Browser run on macOS only; rerun on Linux. 2026-10-31: Return art by window mode and side (FUN_00407180): 10023 at (162,382) pixel-identical to A0 in an Empire galaxy game; Alliance 10020 seen on the Linux browser; battle 10026 by unit test only. Return/re-entry behaviour smoke-tested on macOS only. 2026-11-05: A0 game-options-alliance/00, 01: from an Alliance galaxy game the Return button is 10020 at (162, 382) and goes back to the galaxy; game-options.mjs (Linux) matches the Alliance button pixel for pixel and presses it back to the galaxy (command=return origin=CommandCenter); the Empire's 10023 matched A0 tooltip/200 before.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-03-C014",

@@ -1,0 +1,4 @@
+842ac5000c91c4b4a6dc750017a949415592754c133011106bba7a347af529d2  main-menu-quit/q0.png
+419599d360d193d7af37b1ac78576b1330831b0998124e8b2396bdf22c25652f  main-menu-quit/q5.png
+70174af65042388b5e52e780e91d14730e242cb6f7e1ed365fefff18b7ac34d0  game-options-alliance/00-from-galaxy.png
+7d94ea16d530a4213d96bda1baf65637423d34833fd3ba5edcb6b4223d5cb613  game-options-alliance/01-after-return.png
