@@ -431,6 +431,60 @@ async function run(browser, base, faction) {
         && (rowChecks.conflict_text_x_a0 === undefined
           || rowChecks.conflict_text_x.every((x, i) => Math.abs(x - rowChecks.conflict_text_x_a0[i]) <= 1)),
         JSON.stringify(rowChecks));
+      // Delete (0x91 at the window's (340, 87), 56 by 20): Coruscant goes
+      // and the row after it, Umgul, is chosen in its place (FUN_00467f10;
+      // A0 message-delete/del4, del6): its head is the chosen Coruscant's
+      // in A0 index-tab7, the same icon on the bar.
+      await click(page, [conflictList.window_left + 340 + 28, conflictList.window_top + 87 + 10]);
+      const afterDelete = await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0] === "Assault on Umgul", "Delete removes Coruscant");
+      assert.equal(afterDelete.rows.includes("Assault on Coruscant"), false, JSON.stringify(afterDelete.rows));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("conflict-deleted");
+      const deletedScreen = PNG.sync.read(await page.screenshot());
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/messages-day633/index-tab7.png")));
+        let differ = 0;
+        for (let y = 0; y < 17; y += 1) {
+          for (let x = 0; x < 32; x += 1) {
+            const i = ((afterDelete.window_top + 108 + y) * 640 + afterDelete.window_left + 25 + x) * 4;
+            const j = ((49 + 108 + y) * 640 + 62 + 25 + x) * 4;
+            if ([0, 1, 2].some((c) => deletedScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        rowChecks.deleted_head_a0 = differ;
+      } catch {
+        rowChecks.deleted_head_a0 = null;
+      }
+      assert.equal(rowChecks.deleted_head_a0 ?? 0, 0, JSON.stringify(rowChecks));
+
+      // Ctrl and Shift on the Mission list (A0 message-delete/sel0..sel2,
+      // sh0..sh2): a click on row 0, Ctrl on row 2, Shift on row 4 choose
+      // rows 0 and 2..4; Shift back on row 3 keeps row 4. A chosen row's
+      // bar is red at its (345, 8), past any title.
+      await click(page, mission);
+      const many = await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0]?.startsWith("Emperor Palpatine Captured") && value.rows.length >= 5, "the Mission list again");
+      const press = async (index, modifier) => {
+        await page.keyboard.down(modifier);
+        await click(page, row(index));
+        await page.keyboard.up(modifier);
+      };
+      await click(page, row(0));
+      await press(2, "Control");
+      await press(4, "Shift");
+      await press(3, "Shift");
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("mission-ctrl-shift");
+      const chosenScreen = PNG.sync.read(await page.screenshot());
+      const chosen = [0, 1, 2, 3, 4, 5].map((index) => {
+        const at = ((many.window_top + 108 + 21 * index + 8) * 640 + many.window_left + 25 + 345) * 4;
+        return chosenScreen.data[at] === 255 && chosenScreen.data[at + 1] === 0 && chosenScreen.data[at + 2] === 0;
+      });
+      rowChecks.ctrl_shift_chosen = chosen;
+      assert.deepEqual(chosen, [true, false, true, true, true, false], JSON.stringify(rowChecks));
     }
 
     assert.deepEqual(errors, [], errors.join("; "));

@@ -936,16 +936,38 @@ impl MessageIndexState {
         ]
     }
 
-    /// Delete the currently selected messages. Returns a
+    /// Delete the currently selected messages, choosing the row after the
+    /// first of them in `rows`. Returns a
     /// [`MessageIndexAction::DeleteSelected`] the app must apply.
-    pub fn delete_selected(&mut self) -> Option<MessageIndexAction> {
+    pub fn delete_selected(&mut self, rows: &[&GameMessage]) -> Option<MessageIndexAction> {
         if self.selected.is_empty() {
             return None;
         }
         let ids: Vec<MessageId> = self.selected.iter().copied().collect();
+        // FUN_00467f10 (0x91, mode 1): the row after the first chosen one,
+        // or before it at the list's end, is chosen once they go (A0
+        // message-delete/del4, del6, del9). port: a successor that goes
+        // too, which the original would choose freed, leaves none.
+        let first = rows.iter().position(|row| self.selected.contains(&row.id));
+        let successor = first
+            .and_then(|at| {
+                rows.get(at + 1)
+                    .or_else(|| at.checked_sub(1).and_then(|before| rows.get(before)))
+            })
+            .map(|row| row.id)
+            .filter(|id| !self.selected.contains(id));
+        let remaining: Vec<MessageId> = rows
+            .iter()
+            .map(|row| row.id)
+            .filter(|id| !self.selected.contains(id))
+            .collect();
         self.selected.clear();
         self.anchor = None;
         self.last_clicked = None;
+        if let Some(id) = successor {
+            self.selected.insert(id);
+            self.anchor = remaining.iter().position(|row| *row == id);
+        }
         Some(MessageIndexAction::DeleteSelected(ids))
     }
 
@@ -1331,7 +1353,7 @@ pub fn draw_message_index(
         Some(0x90) => state.select_all(&rows),
         Some(0x28) => actions.push(MessageIndexAction::Close),
         Some(0x65) => actions.extend(state.toggle_display()),
-        Some(0x91) => actions.extend(state.delete_selected()),
+        Some(0x91) => actions.extend(state.delete_selected(&rows)),
         Some(command @ (0x96 | 0x9a)) => {
             let ids: Vec<MessageId> = rows.iter().map(|message| message.id).collect();
             actions.extend(state.view_adjacent(&ids, command == 0x96));
@@ -1701,11 +1723,12 @@ fn apply_click(
         }
         state.anchor = Some(row_index);
     } else if modifiers.shift {
-        // Shift-click: contiguous range from anchor (manual p. 43).
+        // Shift-click: contiguous range from anchor (manual p. 43), added
+        // to the rows already chosen (A0 message-delete/sel2: row 0 stays
+        // chosen beside the range 2..4; sh2: a shorter range keeps 3..4).
         if let Some(anchor) = state.anchor {
             let start = anchor.min(row_index);
             let end = anchor.max(row_index);
-            state.selected.clear();
             for i in start..=end {
                 if let Some(m) = rows.get(i) {
                     state.selected.insert(m.id);
@@ -2745,6 +2768,32 @@ mod tests {
     }
 
     #[test]
+    fn shift_click_adds_its_range_to_the_rows_already_chosen() {
+        // A0 message-delete/sel0..sel2: a click on row 0, Ctrl on row 2,
+        // then Shift on row 4 chooses 0 and 2..4; sh0..sh2: Shift back
+        // inside a range keeps the rows past it. Here: row 0, Ctrl on 2,
+        // Shift on 1 and then on 2 keep all three.
+        let log = test_log();
+        let rows = make_rows(&log);
+        let mut state = MessageIndexState::new();
+        let shift = egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        let ctrl = egui::Modifiers {
+            command: true,
+            ..Default::default()
+        };
+        let all = BTreeSet::from([rows[0].id, rows[1].id, rows[2].id]);
+        apply_click(&mut state, 0, &rows, egui::Modifiers::NONE);
+        apply_click(&mut state, 2, &rows, ctrl);
+        apply_click(&mut state, 1, &rows, shift);
+        assert_eq!(state.selected, all);
+        apply_click(&mut state, 2, &rows, shift);
+        assert_eq!(state.selected, all);
+    }
+
+    #[test]
     fn shift_click_range_works_backwards() {
         // Manual p. 43: range is contiguous, direction doesn't matter.
         let log = test_log();
@@ -2783,9 +2832,11 @@ mod tests {
     // ── Delete ──────────────────────────────────────────────────────────
 
     #[test]
-    fn delete_selected_returns_the_ids_and_clears_selection() {
+    fn delete_returns_the_ids_and_chooses_the_row_after_the_first() {
         // FUN_005f54a0: delete a single message by key, iterated over
-        // the selection.
+        // the selection; FUN_00467f10 then chooses the row after the
+        // first chosen one (A0 message-delete/del6: "The Battle Alert"
+        // after "Positioning Fleets").
         let log = test_log();
         let rows = make_rows(&log);
         let mut state = MessageIndexState::new();
@@ -2797,16 +2848,61 @@ mod tests {
         apply_click(&mut state, 0, &rows, egui::Modifiers::NONE);
         apply_click(&mut state, 2, &rows, ctrl);
 
-        let action = state.delete_selected();
+        let action = state.delete_selected(&rows);
 
         assert!(matches!(action, Some(MessageIndexAction::DeleteSelected(ids)) if ids.len() == 2));
+        assert_eq!(state.selected, BTreeSet::from([rows[1].id]));
+        assert_eq!(state.anchor, Some(0));
+    }
+
+    #[test]
+    fn deleting_the_last_row_chooses_the_one_before() {
+        // FUN_00467f10: no next row, so the one before (A0
+        // message-delete/del9: "Adjusting Time" after "Advice
+        // Available").
+        let log = test_log();
+        let rows = make_rows(&log);
+        let last = rows.len() - 1;
+        let mut state = MessageIndexState::new();
+        apply_click(&mut state, last, &rows, egui::Modifiers::NONE);
+        assert!(state.delete_selected(&rows).is_some());
+        assert_eq!(state.selected, BTreeSet::from([rows[last - 1].id]));
+        assert_eq!(state.anchor, Some(last - 1));
+    }
+
+    #[test]
+    fn a_successor_deleted_too_leaves_no_row_chosen() {
+        // port: the original would choose the freed row.
+        let log = test_log();
+        let rows = make_rows(&log);
+        let mut state = MessageIndexState::new();
+        let shift = egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        apply_click(&mut state, 0, &rows, egui::Modifiers::NONE);
+        apply_click(&mut state, 1, &rows, shift);
+        assert!(state.delete_selected(&rows).is_some());
         assert!(state.selected.is_empty());
+        assert_eq!(state.anchor, None);
+    }
+
+    #[test]
+    fn deleting_the_only_row_chooses_none() {
+        let log = test_log();
+        let rows = make_rows(&log);
+        let only = &rows[..1];
+        let mut state = MessageIndexState::new();
+        apply_click(&mut state, 0, only, egui::Modifiers::NONE);
+        assert!(state.delete_selected(only).is_some());
+        assert!(state.selected.is_empty());
+        assert_eq!(state.anchor, None);
     }
 
     #[test]
     fn delete_with_nothing_selected_returns_none() {
         let mut state = MessageIndexState::new();
-        assert!(state.delete_selected().is_none());
+        assert!(state.delete_selected(&[]).is_none());
     }
 
     // ── Window buttons ──────────────────────────────────────────────────
