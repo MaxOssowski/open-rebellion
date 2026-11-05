@@ -19,3 +19,11 @@ This covers CMD-08-C009 ("event"): the remaining gap in one message shown.
 - **Unit test.** `a_long_text_wraps_beside_the_bar_and_a_short_one_does_not` fails without the change. `text_wrap` mutants: 25 caught.
 - **`agent-advice.mjs`** (Linux, the Empire; its newest advice is long). The bar's up and down arrows, 13 by 9 at (525, 286) and (525, 357), are 0 differing from A0. The thumb is not compared, because the advice texts differ.
 - **The b77 batch.** It ran all 21 Linux gates, and every one passed. Its in-diff run left 15 mutants in `draw_single_message`'s paint arithmetic (scale products, which equal their alternatives at the gates' scale 1, and the scroll reset); the gates' pixel checks cover the drawing.
+
+## b78: tested helpers and the scroll
+
+- **`follow_text`.** The scroll's reset per message moved into `MessageIndexState::follow_text`. `each_message_shown_starts_its_text_at_the_top` covers it; its mutants: 6 caught.
+- **The text rectangle.** It now goes through `on_screen`.
+- **Survivors.** Three in-diff mutants survive on the scrolled rectangle's `-first` / `+ first`.
+- **`agent-advice.mjs` scroll case.** It now presses the Empire bar's down arrow. The text moves up one line, 16 pixels: rows 290..330 now show what stood 16 pixels lower, 0 differing, with 8240 pixels changed.
+- **The b78 batch.** It ran all 21 Linux gates, and every one passed.
