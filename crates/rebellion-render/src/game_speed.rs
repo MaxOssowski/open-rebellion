@@ -261,8 +261,9 @@ pub fn pause_alert_contains_screen_point(
 /// Draw the "Resume Game Play?" alert while a pause is pending or holding.
 ///
 /// Returns true when the checkmark is clicked or Enter is pressed; the caller
-/// then resumes the clock. The original is a child window, not a modal
-/// dialog, so the rest of the command center stays usable.
+/// then resumes the clock. The command center takes no input meanwhile (A0
+/// speed2/pause-modal-*: no sector window closes, no rail opens the index,
+/// no speed menu opens); the caller holds it.
 pub fn draw_pause_alert(
     ctx: &egui::Context,
     clock: &GameClock,
@@ -284,8 +285,20 @@ pub fn draw_pause_alert(
     };
     let full_uv = egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0));
 
-    let clicked = egui::Area::new(egui::Id::new("original_pause_alert"))
+    // The held command center: a layer over every window that takes the
+    // pointer, under the alert.
+    egui::Area::new(egui::Id::new("original_pause_alert_hold"))
         .order(egui::Order::Foreground)
+        .fade_in(false)
+        .fixed_pos(egui::Pos2::ZERO)
+        .show(ctx, |ui| {
+            let screen = ctx.screen_rect();
+            ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+            let _ = ui.interact(screen, ui.id().with("hold"), egui::Sense::click_and_drag());
+        });
+
+    let clicked = egui::Area::new(egui::Id::new("original_pause_alert"))
+        .order(egui::Order::Tooltip)
         .fade_in(false)
         .fixed_pos(origin)
         .show(ctx, |ui| {

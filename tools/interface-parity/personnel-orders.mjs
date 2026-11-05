@@ -395,6 +395,16 @@ const cases = [
       // REBDLOG label "Resume" (A0 a0-vm/tooltip/321-resume-box.png, the
       // pointer at (320, 298), the tip at (320, 319)).
       assert.ok(await tipShows(page, { x: 320, y: 298 }), "the Resume button shows no tip");
+      // The alert holds the command center (A0 speed2/pause-modal-*: no
+      // window closes, no rail or speed menu opens under it): a right
+      // click on the agent opens no menu until the checkmark resumes play.
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await click(page, at, "right");
+      await page.waitForTimeout(1_000);
+      assert.equal(await page.evaluate(() => window.__openRebellionInterfaceObjectMenu?.status), undefined,
+        "a menu opened under the pause alert");
+      await click(page, { x: 320, y: 298 });
+      await page.waitForTimeout(500);
       const running = await openMenu(page, at, directory, "running");
       assert.equal(running.abort_enabled, true, `a running mission takes Abort: ${JSON.stringify(running)}`);
       await choose(page, running, running.abort_row, "Abort");

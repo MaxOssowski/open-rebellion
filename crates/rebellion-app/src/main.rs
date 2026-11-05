@@ -4967,13 +4967,17 @@ async fn main() {
                 // `a0-vm/modal2`) takes no click on the cockpit controls, the
                 // GID control, the rail, the droids or the map until it
                 // closes.
-                let modal_window_open = fleet_finder_state.is_open()
+                let window_modal_open = fleet_finder_state.is_open()
                     || troop_finder_state.is_open()
                     || personnel_finder_state.is_open()
                     || system_finder_state.is_open()
                     || status_window_state.is_open()
                     || enc_state.open
                     || message_index.is_some();
+                // The "Resume Game Play?" alert holds the command center:
+                // A0 speed2/pause-modal-* (no sector window closes, no rail
+                // opens the index, no speed menu opens until its checkmark).
+                let modal_window_open = window_modal_open || clock.pause_requested();
                 map_state.pointer_blocked = modal_window_open
                     || sector_window_state
                     .contains_screen_point(cockpit_layout, pointer)
@@ -5434,7 +5438,8 @@ async fn main() {
                             }),
                         );
                     }
-                    if draw_pause_alert(ctx, &clock, &mut bmp_cache, cockpit_layout, speed_input) {
+                    let pause_input = !original_modal_fixture_open && !window_modal_open;
+                    if draw_pause_alert(ctx, &clock, &mut bmp_cache, cockpit_layout, pause_input) {
                         clock.resume();
                     }
 
