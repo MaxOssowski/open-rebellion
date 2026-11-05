@@ -3690,14 +3690,15 @@
         {
           "id": "CMD-10-C004",
           "requirement": "Imperial pressed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-empire-pressed/"
           ],
-          "note": "As Alliance pressed; no A0 pressed capture for the Empire.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "As Alliance pressed. 2026-11-05: A0 controls-empire/ (new Empire game) holds the Fleet Finder, Encyclopedia and GID controls: they show 10017, 10023 and 10025 as the port's pairs, released off they return to the normal art; the GID gate (run.mjs, Linux) checks the held Empire GID control against 10025 in every opaque pixel.",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-10-C005",

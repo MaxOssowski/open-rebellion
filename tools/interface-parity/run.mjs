@@ -498,7 +498,15 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   await page.evaluate(() => new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
-  await page.screenshot({ path: path.join(folder, "control-pressed.png"), animations: "disabled" });
+  const pressedBytes = await page.screenshot({ path: path.join(folder, "control-pressed.png"), animations: "disabled" });
+  // Held, the Empire's control shows its pressed art 10025 (FUN_00602d30):
+  // A0 controls-empire/eg1 (2026-11-05) matches it in every opaque pixel;
+  // its one key-colour pixel, (0, 21), shows the shell (FUN_005fd170).
+  if (faction === "empire") {
+    probes.push({ type: "control-pressed-art",
+      ...verifyStrategyBitmap(viewport, pressedBytes, 10025, control.x, control.y,
+        [{ x: 0, y: 21, width: 1, height: 1 }]) });
+  }
   const opened = "command=0x132 destination=gid_menu status=opened_original";
   await performCommand(page, opened, () => page.mouse.up());
   const rootCapture = await page.screenshot({ path: path.join(folder, "menu-root.png"), animations: "disabled" });
