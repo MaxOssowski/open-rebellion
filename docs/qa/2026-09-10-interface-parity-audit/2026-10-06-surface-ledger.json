@@ -3207,13 +3207,14 @@
         {
           "id": "CMD-08-C006",
           "requirement": "build",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-yard-research-messages/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-yard-research-messages/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-manufacturing-list/"
           ],
-          "note": "Manufacturing messages post on their rail with their pictures; not compared in an A0 Manufacturing list.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Manufacturing messages post on their rail with their pictures. 2026-11-05: A0 manufacturing-messages/ (a new Alliance game) lists 'Construction Yard Idle on Womrik' and 'Construction Yard Deployed at Chandrila', the port's titles; message-display.mjs (Linux) compares the Manufacturing list's chosen row, icon 0x2a9c and its head, 0 differing from A0.",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-08-C007",

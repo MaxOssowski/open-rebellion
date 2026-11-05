@@ -515,6 +515,48 @@ async function run(browser, base, faction) {
         && (rowChecks.conflict_text_x_a0 === undefined
           || rowChecks.conflict_text_x.every((x, i) => Math.abs(x - rowChecks.conflict_text_x_a0[i]) <= 1)),
         JSON.stringify(rowChecks));
+      // The Manufacturing list (A0 manufacturing-messages/q01, a new
+      // Alliance game, day 39 on: "Construction Yard Idle on Womrik"
+      // chosen): STRATEGY 0x2a9c at the row's (1, 1), keyed on index 0, and
+      // the row's head (x 0..32) every pixel A0's.
+      await click(page, [conflictList.window_left + 287 - 62, conflictList.window_top + 113 - 49]);
+      const manufacturing = await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0]?.startsWith("Construction Yard Idle on Womrik"), "the Manufacturing list");
+      await click(page, row(0));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "single", "Display Message shows the idle report");
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Manufacturing list again");
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("manufacturing-list");
+      const mfScreen = PNG.sync.read(await page.screenshot());
+      const mfIcon = (await indexedBitmap(0x2a9c)).filter(([, , , index]) => index !== 0);
+      rowChecks.manufacturing_icon_port = differing(mfScreen,
+        [manufacturing.window_left + 25 + 1, manufacturing.window_top + 108 + 1], mfIcon);
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/manufacturing-messages/q06.png")));
+        rowChecks.manufacturing_icon_a0 = differing(a0, [62 + 26, 49 + 109], mfIcon);
+        let differ = 0;
+        for (let y = 0; y < 17; y += 1) {
+          for (let x = 0; x < 32; x += 1) {
+            const i = ((manufacturing.window_top + 108 + y) * 640 + manufacturing.window_left + 25 + x) * 4;
+            const j = ((49 + 108 + y) * 640 + 62 + 25 + x) * 4;
+            if ([0, 1, 2].some((c) => mfScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        rowChecks.manufacturing_head_a0 = differ;
+      } catch {
+        rowChecks.manufacturing_icon_a0 = null;
+        rowChecks.manufacturing_head_a0 = null;
+      }
+      assert.ok(rowChecks.manufacturing_icon_port === 0 && (rowChecks.manufacturing_icon_a0 ?? 0) === 0
+        && (rowChecks.manufacturing_head_a0 ?? 0) === 0, JSON.stringify(rowChecks));
+      await click(page, [conflictList.window_left + 365 - 62, conflictList.window_top + 113 - 49]);
+      await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0]?.startsWith("Assault on Coruscant"), "the Conflict list again");
+      await click(page, row(0));
+
       // Delete (0x91 at the window's (340, 87), 56 by 20): Coruscant goes
       // and the row after it, Umgul, is chosen in its place (FUN_00467f10;
       // A0 message-delete/del4, del6): its head is the chosen Coruscant's

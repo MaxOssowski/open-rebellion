@@ -3763,11 +3763,29 @@ pub fn post_capture_message(
 
 /// The event-message scenario's battle reports on its reader's Conflict rail
 /// (`FUN_0048bc60`, category `0x100`), as A0 messages-day633/index-tab7's
-/// "Assault on Coruscant" over the older "Assault on Umgul".
+/// "Assault on Coruscant" over the older "Assault on Umgul", and a
+/// construction yard's idle report on the Manufacturing rail, as A0
+/// manufacturing-messages/.
 pub fn post_conflict_report(request: FixtureRequest, log: &mut rebellion_render::MessageLog) {
     if request.scenario != Scenario::EventMessages {
         return;
     }
+    // A0 manufacturing-messages/q01..q05: a construction yard's idle report
+    // on the Manufacturing rail (Facility Idle, 0x71f8).
+    log.push(
+        rebellion_render::GameMessage::new(
+            0,
+            "The Construction Yard on Womrik is idle.",
+            rebellion_render::MessageCategory::Manufacturing,
+        )
+        .with_title("Construction Yard Idle on Womrik")
+        .on_rail(
+            rebellion_render::MessageRail::Manufacturing,
+            rebellion_render::message_log::RailAudience::side(
+                request.faction == CockpitFaction::Alliance,
+            ),
+        ),
+    );
     for system in ["Umgul", "Coruscant"] {
         log.push(
             rebellion_render::GameMessage::new(
@@ -6883,13 +6901,17 @@ mod tests {
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let mut log = rebellion_render::MessageLog::new();
             post_conflict_report(request(Scenario::EventMessages, faction), &mut log);
-            let [older, newer] = log.messages() else {
+            let [idle, older, newer] = log.messages() else {
                 panic!("{:?}", log.messages());
             };
+            assert_eq!(idle.title.as_deref(), Some("Construction Yard Idle on Womrik"));
+            assert_eq!(idle.rail, Some(rebellion_render::MessageRail::Manufacturing));
             assert_eq!(older.title.as_deref(), Some("Assault on Umgul"));
             assert_eq!(newer.title.as_deref(), Some("Assault on Coruscant"));
             for message in [older, newer] {
                 assert_eq!(message.rail, Some(rebellion_render::MessageRail::Conflict));
+            }
+            for message in [idle, older, newer] {
                 assert!(message.unread);
                 assert_eq!(
                     message.audience,
