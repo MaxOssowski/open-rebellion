@@ -1060,9 +1060,11 @@ async function inspect(server, source, faction, executable) {
     // A0 build-selection/tip-* (Windows 10 VM, Alliance, the same points in
     // the window): each box (left, top, right inclusive) from the pointer.
     // Left and top must match; the width may differ by the accepted text
-    // deviation. A0's Done was disabled there and showed no tip.
+    // deviation. A0's Done was disabled there and showed no tip; enabled
+    // (build-selection3/d4, Chandrila, 2026-11-05) its "Done" box runs from
+    // the pointer's tip at (274, 315) to x 307, 21 below.
     const A0_TIPS = { quantity: [0, 21, 72], list: [0, 21, 78], more: [0, 21, 48], fewer: [0, 21, 52],
-      encyclopedia: [0, 21, 75], cancel: [0, 21, 41], close: [0, 21, 34] };
+      encyclopedia: [0, 21, 75], done: [0, 21, 33], cancel: [0, 21, 41], close: [0, 21, 34] };
     for (const [name, [left, top, right]] of Object.entries(A0_TIPS)) {
       const box = tips[name];
       assert.equal(box.top, top, `${name} tip top ${box.top} vs A0 ${top}`);

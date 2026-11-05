@@ -30,3 +30,7 @@ The port's dialog showed `listed_classes`' `DatId` order. For facilities that wa
 ## Still open
 
 The Training Facility's list (regiments and special forces, C004) and the defenses (C006) are not captured in A0. The port's Empire training list starts with Bounty Hunters by name; A0's Empire capture (manufacturing/11) shows the Imperial Army Regiment, which may be the class last built there (`DAT_006b28a0`).
+
+## The enabled Done's tip (CMD-11-C023)
+
+A0 `build-selection3/d4` (Build Facilities on Chandrila, a new Alliance game, Done enabled) shows "Done" under the pointer. The pointer's tip is at (274, 315); the box's grey top runs from x 274 to 307, 21 below. `build-selection.mjs` now holds Done to that box: left and top exact, width within 15%. It passes on Linux.

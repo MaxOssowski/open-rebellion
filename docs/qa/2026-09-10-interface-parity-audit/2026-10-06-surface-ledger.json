@@ -4264,17 +4264,18 @@
         {
           "id": "CMD-11-C023",
           "requirement": "Build Selection",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
             "crates/rebellion-render/src/build_selection.rs",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-build-selection-tips-a0/",
-            "ghidra/notes/tooltips.md"
+            "ghidra/notes/tooltips.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
           ],
-          "note": "FUN_00437f80 / FUN_00438620's seven tips (0x190c, 0x1906..0x190b) show at the shared placement in build-selection.mjs (Linux), none on the close box; no A0 capture of Build Selection's tips. 2026-10-31: A0 build-selection/tip-* (Kimanan, Alliance): Edit Number, Items to Build, Increase, Decrease, Encyclopedia, Cancel and Close show at the pointer plus (0, 21). The close box's Close (0x1903 through FUN_00606e10) was missing in the port and is added. build-selection.mjs compares each box with A0 (left and top exact, width within 15%) and passes on Linux. A disabled Done shows no tip in A0; an enabled Done's tip was not seen in A0 (Kimanan had no room to build).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_00437f80 / FUN_00438620's seven tips (0x190c, 0x1906..0x190b) show at the shared placement in build-selection.mjs (Linux), none on the close box; no A0 capture of Build Selection's tips. 2026-10-31: A0 build-selection/tip-* (Kimanan, Alliance): Edit Number, Items to Build, Increase, Decrease, Encyclopedia, Cancel and Close show at the pointer plus (0, 21). The close box's Close (0x1903 through FUN_00606e10) was missing in the port and is added. build-selection.mjs compares each box with A0 (left and top exact, width within 15%) and passes on Linux. A disabled Done shows no tip in A0; 2026-11-05: an enabled Done shows 'Done' at the pointer plus (0, 21) in A0 build-selection3/d4 (Chandrila), and build-selection.mjs holds the port's to it.",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-11-C024",
