@@ -117,6 +117,10 @@ pub struct EncyclopediaState {
     pub original_scroll: usize,
     /// A press held on the index list's scroll bar.
     pub original_scroll_hold: Option<crate::list_scroll_bar::Hold>,
+    /// The topic body's text control (`FUN_0041ecf0`): its first pixel,
+    /// the topic it scrolls, and a press held on its bar.
+    pub original_topic_scroll: (f32, Option<String>),
+    pub original_topic_scroll_hold: Option<crate::list_scroll_bar::Hold>,
     /// The original window shows the selected object's topic (command
     /// `0x67`) instead of the index (`0x68`, `FUN_0045f480`).
     pub original_topic_mode: bool,
@@ -187,6 +191,8 @@ impl Default for EncyclopediaState {
             original_selected_object_id: None,
             original_scroll: 0,
             original_scroll_hold: None,
+            original_topic_scroll: (0.0, None),
+            original_topic_scroll_hold: None,
             original_topic_mode: false,
             original_extra_entry: None,
             original_topic_text: None,
@@ -1343,19 +1349,60 @@ pub fn draw_encyclopedia_topic(
             );
             if let Some(body) = &topic.body {
                 let body_rect = encyclopedia_rect(window_rect, scale, 17.0, 231.0, 395.0, 80.0);
-                // hyp: the body's text object (FUN_0041ecf0) keeps the
-                // default font. A0 2026-10-29 measures lines 16 apart with
-                // capitals from y 234 and a 13-pixel em: font 4 as GDI draws
-                // it (13 ppem, tmHeight 16, tmAscent 13 from 231).
+                // The body's text object (FUN_0041ecf0) writes in font 4
+                // (FUN_006002b0(4)). A0 2026-10-29 measures lines 16 apart
+                // with capitals from y 234 and a 13-pixel em: font 4 as GDI
+                // draws it (13 ppem, tmHeight 16, tmAscent 13 from 231). A
+                // body longer than the control shows the control's bar
+                // (FUN_0041efe0: FUN_0060a490(.., 7, 0x299a, ..)) and wraps
+                // beside it (A0 encyclopedia/topic-step-5, the A-wing).
+                if state.original_topic_scroll.1.as_deref() != Some(topic.title.as_str()) {
+                    state.original_topic_scroll = (0.0, Some(topic.title.clone()));
+                    state.original_topic_scroll_hold = None;
+                }
+                let font = crate::DEFAULT_FONT;
+                let (ascent, descent) = crate::theme::original_font_metrics(font);
+                let pitch = ascent + descent;
+                let measure = ui.painter().clone();
+                let (wrap, content, barred) = crate::message_index::text_wrap(395.0, |wrap| {
+                    #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
+                    let lines = crate::theme::gdi_word_break(body, wrap, |line| {
+                        crate::theme::gdi_text_width(&measure, font, line, scale)
+                    })
+                    .len() as f32;
+                    lines * pitch
+                });
+                let first = if barred {
+                    state.original_topic_scroll.0
+                } else {
+                    0.0
+                };
                 let _ = crate::theme::paint_gdi_text_block(
                     &ui.painter().with_clip_rect(body_rect),
-                    body_rect,
+                    egui::Rect::from_min_size(
+                        body_rect.min - egui::vec2(0.0, first * scale),
+                        egui::vec2(wrap * scale, (80.0 + first) * scale),
+                    ),
                     scale,
-                    crate::DEFAULT_FONT,
+                    font,
                     body,
                     Color32::WHITE,
                     crate::theme::GdiAlign::Left,
                 );
+                if barred {
+                    state.original_topic_scroll.0 = crate::list_scroll_bar::ui_bar(
+                        ui,
+                        cache,
+                        window_rect,
+                        scale,
+                        crate::status_window::BAR_ART,
+                        (17.0, 231.0, 395.0, 80.0),
+                        content,
+                        state.original_topic_scroll.0,
+                        &mut state.original_topic_scroll_hold,
+                        pitch,
+                    );
+                }
             }
         });
     // FUN_0045fe60: Left and Right step through the topics.

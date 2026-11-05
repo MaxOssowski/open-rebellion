@@ -1888,7 +1888,7 @@ fn title_icon_layout(size: egui::Vec2) -> (egui::Rect, egui::Rect, egui::Rect) {
 /// hyp: the control wraps at its full width while its text fits the
 /// 80-pixel height, else beside its 12-wide bar (A0 agent-advice/
 /// 02-advice-message wraps a long advice short of the bar).
-fn text_wrap(width: f32, height_at: impl Fn(f32) -> f32) -> (f32, f32, bool) {
+pub(crate) fn text_wrap(width: f32, height_at: impl Fn(f32) -> f32) -> (f32, f32, bool) {
     let full = height_at(width);
     if full <= TEXT_AREA_HEIGHT {
         return (width, full, false);

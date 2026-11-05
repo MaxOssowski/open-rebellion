@@ -21,6 +21,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SITE = path.join(ROOT, ".artifacts/interface-parity/site");
@@ -298,6 +299,28 @@ async function run(browser, base, faction) {
     const stayed = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
     assert.equal(stayed.topic, "A-wing", "a grey Previous does nothing");
     await shot("encyclopedia-topic-first");
+    // A-wing's body outgrows the 80-pixel text control (FUN_0041ecf0), so
+    // its bar (FUN_0041efe0: 0x299a) stands at the control's right edge:
+    // A0 encyclopedia/topic-step-6 (the Alliance) has its up and down
+    // arrows, 13 by 9, at the window's (399, 231) and (399, 302), every
+    // pixel; the thumb follows the line count and is not compared.
+    let topicBar = null;
+    if (faction.name === "alliance") {
+      const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/encyclopedia/topic-step-6.png")));
+      const port = PNG.sync.read(await page.screenshot());
+      const differ = (top) => {
+        let count = 0;
+        for (let y = ey + top; y < ey + top + 9; y += 1) {
+          for (let x = ex + 399; x < ex + 412; x += 1) {
+            const i = (y * 640 + x) * 4;
+            if ([0, 1, 2].some((c) => port.data[i + c] !== a0.data[i + c])) count += 1;
+          }
+        }
+        return count;
+      };
+      topicBar = { up: differ(231), down: differ(302) };
+      assert.ok(topicBar.up === 0 && topicBar.down === 0, `the topic's bar: ${JSON.stringify(topicBar)}`);
+    }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", busy: busy[0], travelling: travelling[0],
       commanding: commanding[0], available, rows: shown.rows,
