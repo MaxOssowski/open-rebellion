@@ -35,6 +35,4 @@ The port drew no image left of the title. The title and the body were in a stand
   - The fixture files Fleet Arrives under Mission, so its title image is not compared.
 - **Batches.** b75 and b76 each ran all 21 Linux gates, and every one passed. `agent-advice.mjs` passes on the b76 WASM.
 
-## Still open
-
-A long text shows the text control's scroll bar in A0 (`agent-advice/02-advice-message`, art 0x299a at the control's right edge, `FUN_0041ecf0` / `FUN_0041efe0`); the port has none yet.
+The text control's scroll bar followed in b77 (`2026-11-05-message-text-bar/`).
