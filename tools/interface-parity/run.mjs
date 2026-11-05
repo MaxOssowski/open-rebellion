@@ -3870,6 +3870,30 @@ async function probeTacticalBattleAlertEntry(
     });
   }
 
+  // The letterboxed run takes the alert's other route: Simulate Results
+  // (0x65, FUN_00450540 -> FUN_004362b0 answer 1) resolves the battle and
+  // shows its results over the strategy view, as A0 does from the alert
+  // (message-rail/battle-averam-result: "The Alliance fleet is defeated.").
+  if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
+    const simulate = point(278 + dx, 363.5 + dy);
+    const before = await stableInteractionFrame(page, folder, "battle-alert-before-simulate");
+    await page.mouse.move(simulate.x, simulate.y);
+    await page.mouse.down({ button: "left" });
+    await page.waitForTimeout(100);
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+    await page.mouse.move(2, 2);
+    const results = await stableInteractionFrame(page, folder, "battle-alert-simulated-results");
+    assert.ok(consoleLines.some(({ text }) =>
+      text.includes("[battle_alert] command=simulate") && text.includes("status=routed")),
+    `${faction}: Simulate did not route the battle`);
+    assert.ok(!consoleLines.some(({ text }) => text.includes("[battle_alert] command=take_command")),
+      `${faction}: Simulate entered the tactical battle`);
+    assert.notEqual(sha256(results), sha256(before), `${faction}: Simulate left the alert unchanged`);
+    probes.push({ type: "battle-alert-simulate-route", screenshot_sha256: sha256(results) });
+    return probes;
+  }
+
   const command = point(412 + dx, 363.5 + dy);
   await page.mouse.move(command.x, command.y);
   await page.mouse.down({ button: "left" });
@@ -4963,6 +4987,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? [{ type: "tactical-lod-fixture", requested: ready.tactical_lod }]
         : [{ type: "tactical-3d-negative-control", proof_enabled: false }])]
       : await probeGid(page, faction, scenario, viewport, folder, consoleLines, ready);
+    // Simulate Results from the alert never enters the tactical scene.
+    const simulatedRoute = probes.some(({ type }) => type === "battle-alert-simulate-route");
     if (battle) {
       assert.equal(ready.schema_version, 36);
       assert.equal(ready.family, "tactical");
@@ -5422,7 +5448,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         text.includes("[tactical_3d] planet_scene"));
       const expectsPlanet = Boolean(
         scenario.production_participants || scenario.suppress_capital_fallback,
-      ) && !scenario.battle_results_presentation && !scenario.empty_space_presentation;
+      ) && !scenario.battle_results_presentation && !scenario.empty_space_presentation
+        && !simulatedRoute;
       assert.equal(planetLoadLogs.length, expectsPlanet ? 1 : 0,
         "tactical scene loaded the wrong number of system-selected planets");
       assert.equal(planetSceneLogs.length, expectsPlanet ? 1 : 0,
@@ -5606,7 +5633,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         assert.equal(familyLogs.length, 0, "negative control loaded the tactical LOD family");
         assert.equal(lodLogs.length, 0, "negative control submitted a tactical LOD mesh");
         if (scenario.production_participants) {
-          if (!scenario.battle_results_presentation && !scenario.tactical_audio_presentation) {
+          if (!scenario.battle_results_presentation && !scenario.tactical_audio_presentation
+            && !simulatedRoute) {
           // A0 TAC-01-C003's battle has a Medium Transport and a Victory.
           const participantFamilies = scenario.hull_scale_presentation ? [2070, 2550] : [2010, 2510];
           assert.equal(participantFamilyLogs.length, 2,
