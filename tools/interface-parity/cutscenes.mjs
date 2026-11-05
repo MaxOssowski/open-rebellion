@@ -113,6 +113,15 @@ const A0_FRAMES = [
   { stem: "001", file: "f058.png", near: 1.0, label: "long-time-ago card" },
   { stem: "001", file: "f078.png", near: 7.5, label: "STAR WARS title" },
   { stem: "001", file: "f114.png", near: 20.7, label: "opening crawl" },
+  // A0 .artifacts/a0-vm/intro/full/: the same launch left to run (a
+  // screen every 0.92 s), the crawl's end and the credit lines over the
+  // cinematic.
+  { stem: "001", file: "g080.png", near: 53.0, label: "crawl", dir: "intro/full" },
+  { stem: "001", file: "g125.png", near: 94.0, label: "Artwork", dir: "intro/full" },
+  { stem: "001", file: "g140.png", near: 108.0, label: "Programming", dir: "intro/full" },
+  { stem: "001", file: "g165.png", near: 131.0, label: "cinematic", dir: "intro/full" },
+  { stem: "001", file: "g185.png", near: 149.5, label: "cinematic", dir: "intro/full" },
+  { stem: "001", file: "g200.png", near: 163.0, label: "Director and Lead Designer", dir: "intro/full" },
 ];
 const A0_INTRO = path.join(ROOT, ".artifacts/a0-vm/intro/natural");
 // A0 .artifacts/a0-vm/credits/: Credits from the main menu, a screen every

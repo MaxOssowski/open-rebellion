@@ -9,6 +9,10 @@ The Windows 10 VM, a fresh REBEXE launch. The frames are in `.artifacts/a0-vm/in
   - MDATA.000: a light burst, the LucasArts logo (`f036`), then Coolhand (`f048`).
   - MDATA.001: the "A long time ago in a galaxy far, far away...." card (`f058`), the STAR WARS title shrinking away (`f078`), and the REBELLION crawl (`f114`).
   - About `f012`..`f030`, Windows' Xbox Game Bar hint covers the logo. Those frames are not used.
+- **`full/`.** A second launch left to run, a screen every 0.92 s for 205 s.
+  - The crawl's end (`g080`).
+  - The credit lines over the cinematic: Artwork (`g125`), Programming (`g140`), footage (`g165`, `g185`), and Director and Lead Designer (`g200`).
+  - The main menu (`g215`).
 - **`menu/`.** The main menu, the shuttle, after MDATA.001 ended on its own with no input.
 - **`skip/`.** Escape at 11 s, during the LucasArts logo, ends MDATA.000 and skips Coolhand. MDATA.001's card follows (`s026`..`s030`). A second Escape at 25 s, during the title, ends MDATA.001, and the main menu shows (`s060`..`s064`).
 
@@ -32,6 +36,13 @@ The page plays `data/video/000.webm` (640 by 480) and `001.webm` (640 by 324) in
   | title (`f078`) | 001 at 8.10 s | 0.99997 |
   | crawl (`f114`) | 001 at 21.5 s | 1.0 |
 
+  | crawl's end (`full/g080`) | 001 at 53.3 s | 1.0 |
+  | Artwork (`full/g125`) | 001 at 94.5 s | 1.0 |
+  | Programming (`full/g140`) | 001 at 108.3 s | 1.0 |
+  | cinematic (`full/g165`) | 001 at 131.3 s | 1.0 |
+  | cinematic (`full/g185`) | 001 at 149.7 s | 1.0 |
+  | Director and Lead Designer (`full/g200`) | 001 at 163.3 s | 1.0 |
+
   The case requires 0.98 for each.
 - **`credits-and-new-game`.** Credits (command `0x73`) play 005. Four A0 `credits/` frames are found the same way, each with a share of 0.9994 or more (`c006` at 2.2 s, `c012` at 3.2 s, `c024` at 9.47 s, `c033` at 12.53 s). The movie's own end, seeked a second before it, shows the menu again, as in A0 `credits/end`. A second Credits ended by a click shows the menu too, as in A0 `c038`.
 - **`natural-end`.** It now lets MDATA.001 end on its own: it seeks a second before the end. Before, it pressed Escape. The main menu follows, as in A0 `menu/`.
@@ -40,5 +51,4 @@ The page plays `data/video/000.webm` (640 by 480) and `001.webm` (640 by 324) in
 
 ## Open
 
-- **PRE-01-C006.** The rest of MDATA.001, after the crawl's opening, is not compared frame by frame.
 - **PRE-01-C009.** A missing movie file is not traced in the original.

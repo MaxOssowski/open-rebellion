@@ -154,7 +154,7 @@
         {
           "id": "PRE-01-C006",
           "requirement": "intro cinematics",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
@@ -163,8 +163,8 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-intro-a0/",
             "tools/interface-parity/cutscenes.mjs"
           ],
-          "note": "The opening cinematic is the rest of MDATA.001 (169 s), played in the browser (cutscenes.mjs, Linux); not yet compared with A0. 2026-11-05: the card, the title and the crawl's opening match A0 intro/natural frame by frame (cutscenes.mjs 'a0-frames'); the rest of the 169 s cinematic is not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The opening cinematic is MDATA.001 (169 s): the card, the title, the crawl and the credit lines over footage, then the main menu. A0 intro/natural and intro/full (two fresh launches, no input) against the port's 001.webm: eleven frames from 0.6 s to 163.3 s each match 99.99% or more of pixels within 32 per channel (cutscenes.mjs 'a0-frames', Linux), and its end shows the menu in both.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-01-C007",
