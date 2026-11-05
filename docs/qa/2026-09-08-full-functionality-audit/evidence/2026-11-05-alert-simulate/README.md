@@ -19,3 +19,13 @@ The captures are in `.artifacts/a0-vm/`.
   - That route never enters the tactical scene, so its run skips the planet and participant-family checks. The 640×480 run keeps them.
 
 Gate run: 2026-11-05T16-32-53-653Z-1596731, all four executions pass.
+
+## Retreat (EVT-02-C005, still partial)
+
+**A0** (a new Expert Alliance game, day 37: `message-rail/retreat-alert-commenor`, `retreat-result-commenor`). Retreat on the Battle at Commenor alert shows the same results window: "The Alliance fleet is defeated." "Commenor is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Bortras."
+
+**Port.** The Empire's letterboxed run now presses Retreat (144, 363.5). The app logs `[battle_alert] command=retreat … status=simulated` and does not enter the tactical scene, and the results window shows: "The Imperial fleet is defeated. … has been completely destroyed."
+
+**The outcome.** It follows the abstract battle: a side with the retreat order leaves only with a working hyperdrive and once its strength falls under 0.33 of the enemy's (`FUN_005d0f50`, `FUN_005d19a0`). The fixture's Imperial fleet died before it could leave, while A0's Alliance fleet withdrew. The forces differ, so the outcome is not compared.
+
+Gate run: 2026-11-05T16-35-34-366Z-1600102, all four executions pass.

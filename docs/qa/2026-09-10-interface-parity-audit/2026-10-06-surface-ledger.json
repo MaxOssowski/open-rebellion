@@ -8307,9 +8307,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-alert-simulate/"
           ],
-          "note": "Retreat enabled per FUN_00516730/FUN_004865b0 and its rest art checked in the browser; the retreat route and its outcome are not compared with A0.",
+          "note": "Retreat enabled per FUN_00516730/FUN_004865b0 and its rest art checked in the browser; the retreat route and its outcome are not compared with A0. 2026-11-05: the route matches A0 (message-rail/retreat-*: the results window over the strategy view); run.mjs --battle (Empire, letterboxed) presses Retreat and finds the routed results. The outcome is not compared: the fixture's fleet dies before it can leave (FUN_005d19a0), A0's withdrew.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

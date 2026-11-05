@@ -1,2 +1,4 @@
 78a3ffd71f0bd04c793c3a393562f81dfa9e7e90d7984520f4d103d5b373672b  .artifacts/a0-vm/message-rail/battle-averam-result.png
 8e5e208eb52e1e40f6dff806909d64f2231643ea56acbd4ae28a2aed6a859410  .artifacts/a0-vm/2026-10-27-controls/results-summary-sim.png
+8b1240e5e0c5e0ab2259142fe4d19e357004945f39c272fdae145211b8be5d08  .artifacts/a0-vm/message-rail/retreat-alert-commenor.png
+5a2fb990671a5ac152c6c4a1dd4f2e7bfabf67fedfad1af5f5508f6d932bd3f6  .artifacts/a0-vm/message-rail/retreat-result-commenor.png
