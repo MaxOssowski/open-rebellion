@@ -191,4 +191,6 @@ Alliance's Assault on Coruscant, the window at (62, 49).
 - **Personnel.** Survivors, Captured and Killed. Veers is under Captured on
   the Alliance's page, so the assault took him. The port's hyp ("the
   assault captures no personnel") is contradicted. Ported: the empty
-  column's font and place. Open: the scroll bar and the captures.
+  column's font and place, and (2026-11-05) the list's scroll bar,
+  `FUN_0060a490(.., 7, 0x29fc, ..)`. Its thumb stands one column right of
+  its arrows (`list_scroll_bar.rs`, hyp). Open: the captures.

@@ -8455,16 +8455,17 @@
         {
           "id": "EVT-03-C010",
           "requirement": "force tabs",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/",
-            "tools/interface-parity/fleet-window.mjs"
+            "tools/interface-parity/fleet-window.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-scroll-bar/"
           ],
-          "note": "Six categories and both forces pages open in the browser (FUN_0044e290 labels); no scroll bar on this window. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-05: on the Trooper Regiments page of both forces, the six-button category bar matches A0 messages-day633 pixel for pixel and the labels within the text deviation; A0 draws the list's scroll bar, which the port lacks.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Both forces pages (0x66, 0x67) with the six category buttons (FUN_0044e290, FUN_0044e500) and the list's scroll bar (FUN_0060a490(.., 7, 0x29fc)). Against A0 messages-day633/assault-coruscant-* (the Alliance, the window at (62, 49)) fleet-window.mjs 'assault-taken' (Linux, both sides) finds the category bar exact on both pages, the subtitle, category label, heads and empty labels within the text deviation, and the scroll bar exact (six regiments: a 57-pixel thumb; none beside 'None') (2026-11-05). The other five categories' pages are not compared one by one.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-03-C011",
