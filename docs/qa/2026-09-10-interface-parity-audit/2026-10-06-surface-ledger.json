@@ -8416,25 +8416,29 @@
         {
           "id": "EVT-03-C007",
           "requirement": "assault summary",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/",
+            "tools/interface-parity/fleet-window.mjs"
           ],
-          "note": "Assault Summary window (FUN_0044c410/FUN_0044c630) opens for the attacker in the browser fleet-window gate. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The Assault Summary window (FUN_0044c410/FUN_0044c630) opens for the attacker at once. Against A0 messages-day633/assault-coruscant* (the Alliance's Assault on Coruscant, the window at (62, 49)) fleet-window.mjs 'assault-taken' (Linux, both sides) finds the summary picture exact between the title and the body, the title's rows and centre, the body's corner, and on both forces pages the category bar exact and the labels' ink boxes within the accepted text deviation (2026-11-05). Open: the forces list's scroll bar (C010), captured personnel.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-03-C008",
           "requirement": "assault success",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/",
+            "tools/interface-parity/fleet-window.mjs"
           ],
-          "note": "Assault success body 0x7091/0x7093 (unit tests); the browser fixture never takes the planet. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "An assault that takes the system reads TEXTSTRA 0x7090 / 0x7091 '{attacker} troops have taken control of the {defender} system {system}' over 0x2b98 / 0x2b99 (FUN_00496770). The fixture FleetAssaultTaken (no defending regiment) takes the system; fleet-window.mjs 'assault-taken' (Linux, both sides) reads the title and body and, for the Alliance, matches A0 messages-day633/assault-coruscant (picture exact, title rows, body corner).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-03-C009",
@@ -8455,9 +8459,11 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/",
+            "tools/interface-parity/fleet-window.mjs"
           ],
-          "note": "Six categories and both forces pages open in the browser (FUN_0044e290 labels); no scroll bar on this window. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Six categories and both forces pages open in the browser (FUN_0044e290 labels); no scroll bar on this window. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-05: on the Trooper Regiments page of both forces, the six-button category bar matches A0 messages-day633 pixel for pixel and the labels within the text deviation; A0 draws the list's scroll bar, which the port lacks.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8486,9 +8492,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/"
           ],
-          "note": "Operational column filled from the report's units; browser shows it. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Operational column filled from the report's units; browser shows it. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-05: A0 messages-day633 lists the Alliance's regiments under Operational; the port's empty column now reads 'None' / 'No Casualties' in font 6 (FUN_0044edb0), matching A0's ink boxes; the rows' pictures are not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

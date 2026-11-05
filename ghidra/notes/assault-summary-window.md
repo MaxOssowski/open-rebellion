@@ -170,3 +170,25 @@ is filed under the attacker's Destroyed.
 
 Open: the exact y of each rail button; how `+0x90`/`+0x98` are filled for
 system personnel; the row widget `FUN_0044edb0`; `+0x28`'s use.
+
+## The empty column and A0 (read 2026-11-05)
+
+`FUN_0044e500` gives an empty column one item through `FUN_0044edb0(0, 0,
+text)`: "None" (`0x8526`) or "No Casualties" (`0x1941`). With no object,
+`FUN_0044edb0` makes a text item in font 6 (`+0x38`), 10 below the item's
+top (`+0x34`), centred (`+0x50` 5). A unit's item takes font 10, under its
+picture (`+0x34` = the picture's height plus its top, `+0x50` 1).
+
+A0 (Windows 10 VM, day 633, `.artifacts/a0-vm/messages-day633/`): the
+Alliance's Assault on Coruscant, the window at (62, 49).
+- **Summary.** The picture 11160 is at (12, 13).
+- **The forces pages.** "Alliance Forces" and "System Forces", each with
+  the six category buttons, Trooper Regiments down. The Operational and
+  Destroyed heads sit between the lines at rows 118 and 134. "None" and "No
+  Casualties" are in the large font.
+- **The list's scroll bar.** It shows at the right of the list on the
+  Trooper Regiments and Fighter Squadrons pages.
+- **Personnel.** Survivors, Captured and Killed. Veers is under Captured on
+  the Alliance's page, so the assault took him. The port's hyp ("the
+  assault captures no personnel") is contradicted. Ported: the empty
+  column's font and place. Open: the scroll bar and the captures.
