@@ -20,6 +20,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const WEB = path.join(ROOT, "web");
@@ -103,6 +104,57 @@ async function waitFor(page, log, description, predicate, timeout) {
   }
 }
 
+// A0 (Windows 10 VM, 2026-11-05): a new game with the side's briefing DLL
+// restored (the GOG install ships ALBRIEF.DLL / EMBRIEF.DLL as .OLD and
+// then plays no briefing), a screen every 1.5 s (Alliance) or 2 s
+// (Empire). Each of the port's action screenshots is compared with every
+// A0 frame over the galaxy view; the best must hold `ACTION_SHARE` of
+// pixels within 32 per channel. After the briefing both show the Message
+// Index on the Advice Messages; its window must hold `INDEX_SHARE` (the
+// readouts, the droids and the row font differ).
+const A0_BRIEFING = { alliance: "briefing-alliance", empire: "briefing-empire" };
+// The two games are separate new games: their systems' sides and the
+// briefing marks' animation phase differ (A0 b010 against the port's 0xe:
+// the same view and caption, other loyal systems), so a few marks differ.
+const ACTION_SHARE = 0.985;
+const INDEX_SHARE = 0.95;
+const GALAXY_VIEW = { alliance: [55, 40, 540, 390], empire: [120, 40, 600, 395] };
+const INDEX_WINDOW = { alliance: [62, 49, 532, 380], empire: [125, 52, 595, 383] };
+
+async function a0Frames(faction) {
+  const directory = path.join(ROOT, ".artifacts/a0-vm", A0_BRIEFING[faction.name]);
+  let names;
+  try {
+    names = (await fs.readdir(directory)).filter((file) => file.endsWith(".png")).sort();
+  } catch {
+    return null;
+  }
+  return Promise.all(names.map(async (file) => ({ file, png: PNG.sync.read(await fs.readFile(path.join(directory, file))) })));
+}
+
+function share(a, b, [x0, y0, x1, y1]) {
+  let close = 0;
+  let all = 0;
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) {
+      const i = (y * a.width + x) * 4;
+      all += 1;
+      if (Math.abs(a.data[i] - b.data[i]) <= 32 && Math.abs(a.data[i + 1] - b.data[i + 1]) <= 32
+        && Math.abs(a.data[i + 2] - b.data[i + 2]) <= 32) close += 1;
+    }
+  }
+  return close / all;
+}
+
+function bestA0(frames, png, box) {
+  let best = { file: null, share: -1 };
+  for (const frame of frames) {
+    const value = share(png, frame.png, box);
+    if (value > best.share) best = { file: frame.file, share: value };
+  }
+  return best;
+}
+
 async function run(browser, base, faction, name) {
   const directory = path.join(OUT, `${faction.name}-${name}`);
   await fs.mkdir(directory, { recursive: true });
@@ -130,7 +182,10 @@ async function run(browser, base, faction, name) {
   const shot = async (label) => {
     const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
     shots.push({ label, sha256: createHash("sha256").update(bytes).digest("hex") });
+    return bytes;
   };
+  const a0 = name === "full" ? await a0Frames(faction) : null;
+  const a0Checks = [];
   let marks = {};
   try {
     await page.goto(base);
@@ -167,7 +222,13 @@ async function run(browser, base, faction, name) {
         if (done.length > seen) {
           await page.waitForTimeout(200);
           for (; seen < done.length; seen += 1) {
-            await shot(`action-${String(seen + 1).padStart(2, "0")}-0x${done[seen].toString(16)}`);
+            const label = `action-${String(seen + 1).padStart(2, "0")}-0x${done[seen].toString(16)}`;
+            const bytes = await shot(label);
+            // 0xd hands the map back as the index opens; the index is
+            // checked below.
+            if (a0 && done[seen] !== 0xd && done[seen] !== 0xb) {
+              a0Checks.push({ label, ...bestA0(a0, PNG.sync.read(bytes), GALAXY_VIEW[faction.name]) });
+            }
           }
         }
         await page.waitForTimeout(100);
@@ -186,13 +247,21 @@ async function run(browser, base, faction, name) {
       }
       assert.notEqual(places.coruscant, places.yavin, JSON.stringify(places));
       marks = places;
-      await shot("after-briefing");
+      const after = await shot("after-briefing");
+      if (a0) {
+        const index = { label: "after-briefing", ...bestA0(a0, PNG.sync.read(after), INDEX_WINDOW[faction.name]) };
+        assert.ok(index.share >= INDEX_SHARE, JSON.stringify(index));
+        for (const check of a0Checks) {
+          assert.ok(check.share >= ACTION_SHARE, JSON.stringify(check));
+        }
+        a0Checks.push(index);
+      }
     }
     assert.ok(voices().every(({ directory: dll }) => dll === faction.directory), JSON.stringify(voices()));
     assert.ok(voices().every(({ seconds }) => seconds > 0), "every voice has its length");
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400), JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, case: name, status: "pass", actions: actions(), voices: voices(), marks,
+    return { faction: faction.name, case: name, status: "pass", actions: actions(), voices: voices(), marks, a0: a0Checks,
       advisor: log.filter((line) => line.startsWith("[advisor]")), shots, network };
   } catch (error) {
     await shot("failure").catch(() => {});
