@@ -115,6 +115,8 @@ struct OpenSummary {
     page: SummaryPage,
     category: ReportCategory,
     scroll: usize,
+    /// A press held on the list's scroll bar.
+    bar_hold: Option<crate::list_scroll_bar::Hold>,
 }
 
 /// The open Assault Summary windows, the last on top.
@@ -175,6 +177,7 @@ impl AssaultSummaryState {
             page: SummaryPage::Summary,
             category,
             scroll: 0,
+            bar_hold: None,
         });
     }
 
@@ -454,6 +457,8 @@ struct DrawResult {
     page: Option<SummaryPage>,
     category: Option<ReportCategory>,
     scroll: Option<usize>,
+    /// The scroll bar's held press after the frame.
+    bar_hold: Option<Option<crate::list_scroll_bar::Hold>>,
     action: Option<AssaultSummaryAction>,
 }
 
@@ -501,6 +506,9 @@ impl AssaultSummaryState {
                 open.scroll = 0;
             }
         }
+        if let Some(hold) = result.bar_hold {
+            open.bar_hold = hold;
+        }
         if let Some(scroll) = result.scroll {
             open.scroll = scroll;
         }
@@ -547,7 +555,7 @@ fn empty_label(column: usize, columns: usize) -> &'static str {
 }
 
 /// The wheel's scroll: down a row while rows remain below, up a row while
-/// any are above. port: the list's scroll bar is not drawn.
+/// any are above.
 pub(crate) fn scrolled(scroll: usize, wheel: f32, rows: usize, visible: usize) -> Option<usize> {
     if wheel < 0.0 && scroll + visible < rows {
         Some(scroll + 1)
@@ -704,10 +712,43 @@ fn draw_window(
                         let visible = visible_rows(window.category);
                         let list = logical_rect(local, scale, LIST.0, LIST.1, LIST.2, LIST.3);
                         let hovered = pointer.is_some_and(|point| rect_contains(list, point));
+                        let rows = columns.iter().map(Vec::len).max().unwrap_or(0);
                         if hovered {
                             let wheel = ctx.input(|input| input.raw_scroll_delta.y);
-                            let rows = columns.iter().map(Vec::len).max().unwrap_or(0);
                             result.scroll = scrolled(window.scroll, wheel, rows, visible);
+                        }
+                        // The list's bar (FUN_0044c630: FUN_0060a490(..,
+                        // 7, 0x29fc, ..), the Battle Alert's art), at its
+                        // right edge; it shows while the rows overflow (A0
+                        // messages-day633/assault-coruscant-alliance-*).
+                        // port: the rows scroll whole, so the bar's pixels
+                        // round to rows.
+                        #[expect(
+                            clippy::cast_precision_loss,
+                            clippy::cast_possible_truncation,
+                            clippy::cast_sign_loss,
+                            reason = "A list's rows and pixels."
+                        )]
+                        {
+                            let mut hold = window.bar_hold;
+                            let first = crate::list_scroll_bar::ui_bar(
+                                ui,
+                                cache,
+                                local,
+                                scale,
+                                crate::list_scroll_bar::ALERT_ART,
+                                LIST,
+                                rows as f32 * cell_h,
+                                window.scroll as f32 * cell_h,
+                                &mut hold,
+                                cell_h,
+                            );
+                            let row = (first / cell_h).round().max(0.0) as usize;
+                            let row = row.min(rows.saturating_sub(visible));
+                            if result.scroll.is_none() && row != window.scroll {
+                                result.scroll = Some(row);
+                            }
+                            result.bar_hold = Some(hold);
                         }
                         let list_painter = painter.with_clip_rect(list);
                         for (column, units) in columns.iter().enumerate() {
@@ -1482,6 +1523,32 @@ mod tests {
         );
         assert_eq!(state.windows[0].scroll, 1);
         assert!(frame.actions.is_empty());
+    }
+
+    #[test]
+    fn the_forces_list_shows_its_scroll_bar_while_the_rows_overflow() {
+        // FUN_0044c630: FUN_0060a490(.., 7, 0x29fc, ..), the Battle Alert's
+        // bar art (RCDATA 10748), at the list's right edge (374, 136): A0
+        // messages-day633/assault-coruscant-alliance-regiments shows it
+        // beside the Alliance's regiments, and none beside System Forces'
+        // "None". The arrows 10750 / 10752, the thumb's cap 10754 below
+        // the up arrow, one column right of them (A0's thumb).
+        let (mut state, _) = opened(4);
+        state.show_page(SummaryPage::SystemForces);
+        let frame = run(&mut state, vec![vec![]]);
+        let x = 374.0 + 5.0 - 6.0;
+        assert_eq!(painted(&frame, 10_750), [at(x, 136.0)]);
+        assert_eq!(painted(&frame, 10_752), [at(x, 136.0 + 166.0 - 9.0)]);
+        assert_eq!(painted(&frame, 10_754), [at(374.0, 145.0)]);
+        // The down arrow scrolls a row.
+        let down = at(x + 6.0, 136.0 + 166.0 - 4.0);
+        run(&mut state, click(down));
+        assert_eq!(state.windows[0].scroll, 1);
+        // Two rows fit: no bar.
+        let (mut state, _) = opened(2);
+        state.show_page(SummaryPage::SystemForces);
+        let frame = run(&mut state, vec![vec![]]);
+        assert!(painted(&frame, 10_750).is_empty());
     }
 
     #[test]

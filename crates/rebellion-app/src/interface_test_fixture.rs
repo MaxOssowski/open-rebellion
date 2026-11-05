@@ -2869,8 +2869,25 @@ fn place_loading_fleet(
         world.systems[primary].ground_units.push(key);
         let _ = troop_transport.embark(world, fleet, &[key]);
     }
-    // The taken variant: the other side's regiments leave the planet.
+    // The taken variant: six of the player's regiments aboard, as A0
+    // messages-day633's Alliance Forces list them (its bar's 57-pixel thumb
+    // is six 70-pixel rows), on copies of the fleet's ship enough to carry
+    // them; the other side's regiments leave the planet.
     if request.scenario == Scenario::FleetAssaultTaken {
+        let ship = world.fleets[fleet].capital_ships.first().cloned();
+        if let Some(ship) = ship {
+            let capacity = world
+                .capital_ship_classes
+                .get(ship.class)
+                .map_or(0, |class| class.troop_capacity);
+            while capacity > 0 && world.fleets[fleet].capital_ships.len() * (capacity as usize) < 6
+            {
+                world.fleets[fleet].capital_ships.push(ship.clone());
+            }
+        }
+        let more: Vec<_> = (0..5).map(|_| world.troops.insert(regiment())).collect();
+        world.systems[primary].ground_units.extend(&more);
+        let _ = troop_transport.embark(world, fleet, &more);
         let player_side = player_is_alliance;
         let troops = &world.troops;
         world.systems[primary].ground_units.retain(|key| {
@@ -7392,8 +7409,9 @@ mod tests {
             assert!(enabled);
             // The taken variant leaves the planet no regiment of the other
             // side's, so the assault takes it (0x7091).
+            // It carries six, as A0 messages-day633's Alliance Forces.
             let (taken, aboard, enabled) = assault(Scenario::FleetAssaultTaken);
-            assert_eq!(aboard.len(), 1);
+            assert_eq!(aboard.len(), 6);
             assert!(enabled);
             let target = taken.world.systems.keys().next().unwrap();
             assert!(taken.world.systems[target]

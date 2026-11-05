@@ -1082,7 +1082,8 @@ const cases = [
   {
     name: "assault-taken",
     code: FLEET_ASSAULT_TAKEN,
-    // As "assault" with no regiment of the other side's on the planet: the
+    // As "assault" with six of the player's regiments aboard and no
+    // regiment of the other side's on the planet: the
     // assault takes the system (FUN_00496770: 0x7090 "Assault on {system}",
     // 0x7091 "{attacker} troops have taken control of the {defender}
     // system {system}"). A0 messages-day633/assault-coruscant* (the
@@ -1205,6 +1206,17 @@ const cases = [
         }
         checks[`${page_}-bar`] = bar;
         assert.equal(bar, 0, `${page_} category bar differs from A0 in ${bar} pixels`);
+        // The list's scroll bar (FUN_0060a490(.., 7, 0x29fc, ..)), 10 wide
+        // at (374, 136): the six regiments overflow the list and show it
+        // with A0's 57-pixel thumb; System Forces' "None" shows none.
+        let scroll = 0;
+        for (let y = 136; y < 302; y += 1) for (let x = 374; x < 384; x += 1) {
+          const i = ((49 + y) * a0.width + 62 + x) * 4;
+          const j = ((oy + y) * portShot.width + ox + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== portShot.data[j + c])) scroll += 1;
+        }
+        checks[`${page_}-scroll-bar`] = scroll;
+        assert.equal(scroll, 0, `${page_} scroll bar differs from A0 in ${scroll} pixels`);
         for (const [name, region, test] of [...labels, ...extra]) {
           const a = ink(a0, [62, 49], region, test);
           const p = ink(portShot, [ox, oy], region, test);

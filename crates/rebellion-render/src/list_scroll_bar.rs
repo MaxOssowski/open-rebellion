@@ -220,14 +220,27 @@ impl ScrollBar {
             return pieces;
         }
         let art = self.art;
-        let x = self.x
-            + f32::from(i16::try_from(art.width / 2).unwrap_or(0)
-                - i16::try_from(PIECE_WIDTH / 2).unwrap_or(0));
+        let offset = f32::from(
+            i16::try_from(art.width / 2).unwrap_or(0) - i16::try_from(PIECE_WIDTH / 2).unwrap_or(0),
+        );
+        // The arrows are child buttons moved to the offset (FUN_0060fa80),
+        // clipped by the bar. The track and the thumb are copied into the
+        // bar's own buffer (FUN_0060b3d0, FUN_005fcc30). hyp: that copy
+        // starts a negative offset at the buffer's column 0. A0
+        // messages-day633/assault-coruscant-alliance-regiments (the 10-wide
+        // bar of RCDATA 0x29fc) shows the thumb one column right of the
+        // arrows.
+        let x = self.x + offset;
+        let buffer_x = self.x + offset.max(0.0);
         let track_top = self.y + ARROW_HEIGHT;
         let track_bottom = self.y + self.view - ARROW_HEIGHT;
         let mut y = track_top;
         while y < track_bottom {
-            pieces.push(Piece { id: art.track, x, y });
+            pieces.push(Piece {
+                id: art.track,
+                x: buffer_x,
+                y,
+            });
             y += TRACK_TILE_HEIGHT;
         }
         let (top, height) = self.thumb();
@@ -240,15 +253,19 @@ impl ScrollBar {
             let tile = y.min(top + height - THUMB_MIDDLE_HEIGHT).max(top);
             pieces.push(Piece {
                 id: art.middle,
-                x,
+                x: buffer_x,
                 y: tile,
             });
             y += THUMB_MIDDLE_HEIGHT;
         }
-        pieces.push(Piece { id: art.top, x, y: top });
+        pieces.push(Piece {
+            id: art.top,
+            x: buffer_x,
+            y: top,
+        });
         pieces.push(Piece {
             id: art.bottom,
-            x,
+            x: buffer_x,
             y: top + height - THUMB_CAP_HEIGHT,
         });
         let state = |part| usize::from(pressed == Some(part));
@@ -462,6 +479,31 @@ pub fn ui_bar(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_narrow_bars_thumb_starts_at_its_column_0_and_its_arrows_one_left() {
+        // FUN_0060fa80 moves the arrows to width / 2 - 13 / 2; the thumb and
+        // the track are copied into the bar's buffer from column 0 when
+        // that is negative (hyp; A0 messages-day633: the 10-wide bar's
+        // thumb one column right of its arrows). A 12-wide bar's offset is
+        // 0, so nothing moves.
+        let alert = ScrollBar::new(ALERT_ART, 37.0, 136.0, 347.0, 166.0, 420.0, 0.0);
+        let at = |bar: &ScrollBar, id| {
+            bar.pieces(None)
+                .into_iter()
+                .find(|piece| piece.id == id)
+                .unwrap()
+                .x
+        };
+        assert_eq!(at(&alert, ALERT_ART.up[0]), 373.0);
+        assert_eq!(at(&alert, ALERT_ART.top), 374.0);
+        assert_eq!(at(&alert, ALERT_ART.track), 374.0);
+        let results = results_bar(0.0);
+        assert_eq!(
+            at(&results, RESULTS_ART.up[0]),
+            at(&results, RESULTS_ART.top)
+        );
+    }
 
     /// The battle results' forces list (`FUN_0046f360`): (37, 136), 347
     /// by 166, three 70-high rows (content 210).

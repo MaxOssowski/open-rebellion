@@ -3798,14 +3798,18 @@ async function probeTacticalBattleAlertEntry(
     if (index === 1) {
       // FUN_0044f860 -> FUN_0060a490(.., 7, 0x29fc): five squadrons a side
       // outgrow the 234-high list, so its 10-wide bar (RCDATA 10748) shows
-      // at window x 329, its 13-wide art at 328 with the outer columns
-      // clipped; the thumb's top cap starts at the track's top (49).
+      // at window x 329, its 13-wide arrows at 328 with the outer columns
+      // clipped; the thumb, copied into the bar from its column 0 (hyp,
+      // list_scroll_bar.rs: A0 messages-day633's thumb one column right of
+      // its arrows), at 329 with its last three columns clipped; its top
+      // cap starts at the track's top (49).
       const clipped = [{ x: 0, y: 0, width: 1, height: 13 }, { x: 11, y: 0, width: 2, height: 13 }];
+      const thumbClipped = [{ x: 10, y: 0, width: 3, height: 13 }];
       probes.push({
         type: "battle-alert-scroll-bar",
         up_arrow: verifyStrategyBitmap(viewport, capture, 10750, 65 + dx + 328, 54 + dy + 40, clipped),
         down_arrow: verifyStrategyBitmap(viewport, capture, 10752, 65 + dx + 328, 54 + dy + 265, clipped),
-        thumb_top: verifyStrategyBitmap(viewport, capture, 10754, 65 + dx + 328, 54 + dy + 49, clipped),
+        thumb_top: verifyStrategyBitmap(viewport, capture, 10754, 65 + dx + 329, 54 + dy + 49, thumbClipped),
       });
       // A click on the down arrow steps the list's 10 pixels (0x44fcd6):
       // the thumb's top leaves 49.
@@ -3816,7 +3820,7 @@ async function probeTacticalBattleAlertEntry(
       if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1) {
         for (let y = 50; y < 80 && moved === null; y++) {
           try {
-            verifyStrategyBitmap(viewport, stepped, 10754, 65 + dx + 328, 54 + dy + y, clipped);
+            verifyStrategyBitmap(viewport, stepped, 10754, 65 + dx + 329, 54 + dy + y, thumbClipped);
             moved = y;
           } catch (_) {
             // not at this row
