@@ -290,7 +290,7 @@
         {
           "id": "PRE-02-C003",
           "requirement": "hover",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-cockpit.md",
@@ -302,8 +302,8 @@
             "tools/interface-parity/main-menu-rest.mjs",
             "crates/rebellion-render/src/main_menu.rs"
           ],
-          "note": "The original has no hover art (FUN_006028c0 has no WM_MOUSEMOVE; its buttons animate always on a 66 ms clock, A0 tooltip/221..234). Since 2026-10-31 the port animates always and changes nothing on hover; only the tooltip shows. No browser assertion checks the art under the pointer.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The original has no hover art (FUN_006028c0 has no WM_MOUSEMOVE; its buttons animate always on a 66 ms clock, A0 tooltip/221..234). main-menu-rest.mjs (Linux) finds the menu's still pixels equal to A0's at rest, and with the pointer resting on each still control (the galaxy lever, the three size lights, the game type button) every pixel of it unchanged (2026-11-05); only the tip shows.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-02-C004",
@@ -3214,13 +3214,15 @@
         {
           "id": "CMD-08-C007",
           "requirement": "mission",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-index-row/",
+            "tools/interface-parity/message-display.mjs"
           ],
-          "note": "Mission messages post on their rail; not compared in an A0 Mission list.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Mission messages post on the Mission rail (category 0x7c, icon STRATEGY 0x2a9e / 0x2a9f). Against A0 messages-day633/index-tab3 (the Alliance's Mission Messages, the capture chosen) message-display.mjs (Linux) lists the capture first and finds the chosen row's icon exact and its head (bar, icon, the list's background under the icon) pixel-identical to A0 (2026-11-05). The row's text and the other categories' lists are not compared.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-08-C008",
