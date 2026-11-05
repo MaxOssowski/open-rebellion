@@ -3241,9 +3241,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery-message/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-uprising-incident-off-index/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-uprising-incident-off-index/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-single-view/"
           ],
-          "note": "Story and event messages post with their classes' pictures; not compared in an A0 list.",
+          "note": "Story and event messages post with their classes' pictures; not compared in an A0 list. 2026-11-05: one message shown against A0 (capture-palpatine, fleet-arrives-averam): the title's item image at its own size (Class_0065a1c0_vt44), title and body in font 4, Fleet Arrives' picture 1018, all within a pixel in message-display.mjs (Linux). Open: the text control's scroll bar for long text.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
