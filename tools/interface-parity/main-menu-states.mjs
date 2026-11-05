@@ -55,6 +55,12 @@ const STEPS = [
   ["04-lever-3", centre(LEVER), [LEVER, SIZE_LIGHTS, EASY], false],
   ["05-type-2", [326, 348], [LEVER, SIZE_LIGHTS, EASY], true],
   ["06-type-1", [326, 348], [LEVER, SIZE_LIGHTS, EASY], true],
+  // A press on the Intermediate monitor's keyed corners, inside its
+  // rectangle, takes nothing: Easy stays chosen, as frame 06 (A0 hit/,
+  // 2026-11-05: (126, 73) and (169, 43); the controls hit on their
+  // bitmaps' opaque pixels).
+  ["06-type-1", [126, 73], [LEVER, SIZE_LIGHTS, EASY], true],
+  ["06-type-1", [169, 43], [LEVER, SIZE_LIGHTS, EASY], true],
   ["07-intermediate", centre(INTERMEDIATE), [LEVER, SIZE_LIGHTS, INTERMEDIATE], false],
   ["08-expert", centre(EXPERT), [LEVER, SIZE_LIGHTS, EXPERT], false],
   ["09-easy", centre(EASY), [LEVER, SIZE_LIGHTS, EASY], false],
@@ -154,6 +160,19 @@ try {
       assert.ok(ratio > 0.85 && ratio < 1.15, `${frame}: label width ratio ${ratio.toFixed(3)}`);
     }
   }
+  // A click on the Alliance button's keyed top-right corner, inside its
+  // rectangle, starts no game (A0 hit/allianceDeep, 2026-11-05: (492,
+  // 310); likewise the Easy, lever, Empire and Quit corners).
+  await page.mouse.move(492, 310);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(1500);
+  result.alliance_corner = consoleLog.filter((line) => line.includes("[campaign] faction=")).length;
+  assert.equal(result.alliance_corner, 0, "a click on the Alliance button's keyed corner started a game");
   // The Empire button held shows its pressed art; released off it, nothing
   // starts (FUN_00602d30, the button's capture).
   await page.mouse.move(...centre(EMPIRE));

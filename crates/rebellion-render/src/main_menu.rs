@@ -360,6 +360,49 @@ pub fn hit_test(canvas: Rect, pointer: Pos2) -> Option<MainMenuControl> {
         .find_map(|(control, rect)| rect.contains(logical).then_some(*control))
 }
 
+/// [`hit_test`] as the original resolves a press: an animated or strobe
+/// control (`FUN_00603870`, `FUN_00602d30`) takes it only on a pixel of its
+/// current bitmap other than the first pixel's colour, which `opaque(control,
+/// x, y)` answers in the control's own pixels. A0 (2026-11-05, hit/): the
+/// Intermediate monitor ignores its rectangle's keyed corners, (126, 73)
+/// and (169, 43), and takes (144, 73). The galaxy-size screens are pointer
+/// regions of the window (`FUN_00405050`) and keep their rectangles.
+pub fn hit_test_exact(
+    canvas: Rect,
+    pointer: Pos2,
+    mut opaque: impl FnMut(MainMenuControl, usize, usize) -> bool,
+) -> Option<MainMenuControl> {
+    if music_toggle_rect(canvas).contains(pointer) {
+        return Some(MainMenuControl::MusicToggle);
+    }
+    if fleet_registry_rect(canvas).contains(pointer) {
+        return Some(MainMenuControl::FleetRegistry);
+    }
+    let logical = logical_pointer(canvas, pointer)?;
+    CONTROL_RECTS[..ORIGINAL_CONTROL_COUNT]
+        .iter()
+        .find_map(|(control, rect)| {
+            if !rect.contains(logical) {
+                return None;
+            }
+            if matches!(
+                control,
+                MainMenuControl::SmallGalaxy
+                    | MainMenuControl::MediumGalaxy
+                    | MainMenuControl::LargeGalaxy
+            ) {
+                return Some(*control);
+            }
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "A pixel inside the control's rectangle."
+            )]
+            let (x, y) = ((logical.x - rect.x) as usize, (logical.y - rect.y) as usize);
+            opaque(*control, x, y).then_some(*control)
+        })
+}
+
 /// The menu's animation clock (`FUN_00405560` -> `FUN_00603b90`): one
 /// periodic `timeSetEvent` of 66 ms whose callback (`LAB_004054a0`) steps
 /// every animated button to its next frame (`FUN_00603a50`), so they run
@@ -748,7 +791,16 @@ pub fn draw_main_menu(
             let hovered = ctx
                 .input(|input| input.pointer.hover_pos())
                 .filter(|_| !state.registry_open())
-                .and_then(|pointer| hit_test(canvas, pointer));
+                .and_then(|pointer| {
+                    hit_test_exact(canvas, pointer, |control, x, y| {
+                        let resource = texture_for(control, state, false, now);
+                        // Without the original bitmap, its rectangle.
+                        cache
+                            .original_resource_size(DllSource::Common, resource)
+                            .is_none()
+                            || cache.is_resource_hit(DllSource::Common, resource, x, y)
+                    })
+                });
             if hovered != state.hovered {
                 state.hovered = hovered;
                 state.hover_started_at = now;
@@ -1133,6 +1185,41 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_press_takes_a_control_only_on_its_bitmaps_opaque_pixels() {
+        // A0 2026-11-05 (hit/): the Intermediate monitor's keyed corners
+        // (126, 73) and (169, 43) leave Easy chosen; (144, 73) takes it.
+        let canvas = Rect::from_min_size(Pos2::ZERO, Vec2::new(640.0, 480.0));
+        let mut asked = Vec::new();
+        let keyed_corners = |control, x: usize, y: usize| {
+            asked.push((control, x, y));
+            !(x < 10 && y > 30) && !(x > 41 && y < 5)
+        };
+        assert_eq!(
+            hit_test_exact(canvas, Pos2::new(126.0, 73.0), keyed_corners),
+            None
+        );
+        assert_eq!(asked, vec![(MainMenuControl::Intermediate, 2, 33)]);
+        let open = |_, _, _| true;
+        let shut = |_, _, _| false;
+        assert_eq!(
+            hit_test_exact(canvas, Pos2::new(144.0, 73.0), open),
+            Some(MainMenuControl::Intermediate)
+        );
+        assert_eq!(hit_test_exact(canvas, Pos2::new(169.0, 43.0), shut), None);
+        // FUN_00405050: the galaxy-size screens are the window's pointer
+        // regions, whole rectangles.
+        assert_eq!(
+            hit_test_exact(canvas, Pos2::new(291.0, 294.0), shut),
+            Some(MainMenuControl::SmallGalaxy)
+        );
+        assert_eq!(
+            hit_test_exact(canvas, Pos2::new(609.0, 25.0), shut),
+            Some(MainMenuControl::MusicToggle)
+        );
+        assert_eq!(hit_test_exact(canvas, Pos2::new(5.0, 5.0), open), None);
     }
 
     #[test]
