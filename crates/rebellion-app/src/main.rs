@@ -6832,11 +6832,14 @@ async fn main() {
                             Some(MenuObject::Producer { system, area }),
                         )) => {
                             let is_alliance = player_faction == MissionFaction::Alliance;
-                            let kinds = rebellion_core::build_selection::listed_classes(
+                            let kinds = rebellion_render::build_selection::in_list_order(
+                                &world,
+                                rebellion_core::build_selection::listed_classes(
                                 &world,
                                 &research_state,
                                 area,
                                 is_alliance,
+                            ),
                             );
                             if build_selection_state.open(system, area, is_alliance, kinds) {
                                 macroquad::logging::info!(
@@ -7890,11 +7893,14 @@ async fn main() {
                                                 destination,
                                             });
                                             let is_alliance = player_faction == MissionFaction::Alliance;
-                                            let kinds = rebellion_core::build_selection::listed_classes(
+                                            let kinds = rebellion_render::build_selection::in_list_order(
+                                &world,
+                                rebellion_core::build_selection::listed_classes(
                                                 &world,
                                                 &research_state,
                                                 area,
                                                 is_alliance,
+                                            ),
                                             );
                                             let opened = build_selection_state
                                                 .open_for_agent(producer, area, is_alliance, kinds);

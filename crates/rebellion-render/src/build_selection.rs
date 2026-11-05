@@ -281,6 +281,19 @@ pub enum BuildSelectionAction {
     Encyclopedia,
 }
 
+/// The classes in the dialog's list order. `FUN_00437880` inserts each
+/// item into a sorted list (`FUN_005f59f0`, the list's compare), and A0
+/// shows them by name: a new Alliance game's construction yard lists
+/// Construction Yard, GenCore Level I, KDY-150, LNR Series I, Mine, Orbital
+/// Shipyard, Refinery, Training Facility (build-selection3/, 2026-11-05).
+/// hyp: the compare is the names' byte order; the compare function is
+/// not read. The AI keeps `listed_classes`' id order.
+#[must_use]
+pub fn in_list_order(world: &GameWorld, mut kinds: Vec<BuildableKind>) -> Vec<BuildableKind> {
+    kinds.sort_by_cached_key(|kind| product(world, *kind).0);
+    kinds
+}
+
 /// The window's screen rectangle. hyp: placed in the galaxy view like the
 /// mission dialog, centered.
 #[must_use]
@@ -702,6 +715,34 @@ mod tests {
 
     /// More unallocated maintenance than any order here costs.
     const ROOMY: i32 = 1_000;
+
+    #[test]
+    fn the_list_shows_its_classes_by_name() {
+        // A0 build-selection3/ (2026-11-05): KDY-150 (0x2a…) and Mine
+        // (0x2c…) stand between GenCore Level I (0x22…) and Training
+        // Facility (0x29…) by name, not by id.
+        let mut world = GameWorld::default();
+        let mut add = |raw: u32, name: &str| {
+            let class = DatId::new(raw);
+            world.buildable_classes.insert(
+                class,
+                BuildableClass { name: name.into(), ..Default::default() },
+            );
+            BuildableKind::ManufacturingFacility(rebellion_core::manufacturing::FacilityBuild {
+                class,
+                is_alliance: true,
+            })
+        };
+        let gencore = add(0x2200_0001, "GenCore Level I");
+        let training = add(0x2900_0001, "Training Facility");
+        let yard = add(0x2a00_0001, "Construction Yard");
+        let kdy = add(0x2a00_0002, "KDY-150");
+        let mine = add(0x2c00_0001, "Mine");
+        assert_eq!(
+            in_list_order(&world, vec![gencore, training, yard, kdy, mine]),
+            vec![yard, gencore, kdy, mine, training]
+        );
+    }
 
     fn layout() -> CockpitLayout {
         scaled(1.0)

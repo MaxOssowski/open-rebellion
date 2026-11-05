@@ -331,7 +331,13 @@ function labelsAgainstA0(port, origin) {
 const TROOP_PORTRAITS = { "Alliance Fleet Regiment": 1088, "Alliance Army Regiment": 1089,
   "Sullustan Regiment": 1090, "Wookiee Regiment": 1091, "Mon Calamari Regiment": 1092,
   "Stormtrooper Regiment": 1152, "Imperial Fleet Regiment": 1153, "Imperial Army Regiment": 1154,
-  "War Droid Regiment": 1155, "Dark Trooper Regiment": 1156 };
+  "War Droid Regiment": 1155, "Dark Trooper Regiment": 1156,
+  // Special forces: their minis 17728..17731, 17792..17796 less 0x4000
+  // (system_window::special_force_mini; the list shows classes by name,
+  // so a training facility can open on one).
+  "Guerrillas": 1344, "Infiltrators": 1345, "Longprobe Y-wing Recon Team": 1346, "Bothan Spies": 1347,
+  "Imperial Probe Droid": 1408, "Imperial Espionage Droid": 1409, "Imperial Commandos": 1410,
+  "Noghri Death Commandos": 1411, "Bounty Hunters": 1412 };
 function classPortraitCase(port, origin, className) {
   const portrait = TROOP_PORTRAITS[className];
   assert.ok(portrait, `no portrait known for ${className}`);
@@ -348,7 +354,11 @@ function classPortraitCase(port, origin, className) {
     for (let y = 0; y < Math.min(bitmap.height, oy + 70 - y0); y += 1) {
       for (let x = 0; x < bitmap.width; x += 1) {
         const from = (y * bitmap.width + x) * 4;
-        if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
+        const rgb = bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2];
+        // The portraits are keyed on their first byte or, for the GOKRES
+        // portraits 265..1412, on pure blue (bmp_cache's blue matte): a
+        // special force's first pixel is not blue (Bounty Hunters, 1412).
+        if (rgb === bitmap.key || rgb === 0x0000ff) continue;
         const at = ((y0 + y) * png.width + x0 + x) * 4;
         checked += 1;
         if ([0, 1, 2].some((c) => png.data[at + c] !== bitmap.data[from + c])) count += 1;
@@ -873,8 +883,21 @@ async function overMaintenanceCase(page, faction, directory) {
   await bandOrder(page, troops, "build_row", directory, "over-maintenance-build");
   await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
     null, { timeout: 10_000 });
-  const opened = await production(page);
+  let opened = await production(page);
   const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
+  // A0 manufacturing/11 shows the Imperial Army Regiment, whose upkeep the
+  // side lacks. The list shows its classes by name, and the Empire's first,
+  // Bounty Hunters, costs no maintenance (its Confirm stays live, as an
+  // order with no upkeep passes, FUN_0052e970): step to the regiment.
+  if (faction.name === "empire") {
+    for (let step = 0; step < 12 && opened.build_selection_class !== "Imperial Army Regiment"; step += 1) {
+      await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+      await production(page);
+      await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+      opened = await production(page);
+    }
+    assert.equal(opened.build_selection_class, "Imperial Army Regiment", JSON.stringify(opened));
+  }
   await stableWindow(page, origin, directory, "over-maintenance");
   const port = PNG.sync.read(fs.readFileSync(path.join(directory, "over-maintenance-screen.png")));
   const result = { origin };
