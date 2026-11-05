@@ -282,9 +282,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-completion.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-semantics-r1/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-semantics-r1/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-main-menu-hit/"
           ],
-          "note": "The 14 logical regions from REBEXE (main-menu-parity.md) and outside-edge probes pass in Astra R2/R3 and F-016D (84/84 focus transitions). No A0 hit test. Browser run on macOS only; rerun on Linux.",
+          "note": "The 14 logical regions from REBEXE (main-menu-parity.md) and outside-edge probes pass in Astra R2/R3 and F-016D (84/84 focus transitions). No A0 hit test. Browser run on macOS only; rerun on Linux. 2026-11-05: A0 hit test (main-menu-hit/): the controls take a press only on their bitmaps' opaque pixels (Intermediate, Easy, lever, Empire, Alliance, Quit keyed corners do nothing); the port now hit-tests so (hit_test_exact), checked in main-menu-states.mjs on Linux. Open: the galaxy-size screens, Game Type, Load/Options, Credits and Multiplayer have no A0 probe.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
