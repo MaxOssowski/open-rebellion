@@ -23,3 +23,9 @@ The port painted the body clipped at 80 pixels, with no bar.
 ## Still open
 
 The Abduction body's third line breaks one word earlier than A0's (Liberation Sans against GDI Arial).
+
+## b82: the text control's arithmetic, tested
+
+The text control's line pitch, line height and scrolled rectangle moved into helpers that the Message Index and the Encyclopedia both use: `theme::line_pitch`, `message_index::text_wrap_lines` and `scrolled_text_rect`. The per-topic reset moved into `EncyclopediaState::follow_topic`.
+- **Mutants.** `line_pitch` 5 caught; `text_wrap_lines` 24 caught; `scrolled_text_rect` 7 caught and 1 unviable; `follow_topic` 2 caught. The batch's in-diff run: 34 caught, 1 unviable, none missed. That closes b81's 12 survivors.
+- **The b82 batch.** It ran all 21 Linux gates, and every one passed.
