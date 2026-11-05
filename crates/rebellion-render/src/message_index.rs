@@ -42,7 +42,7 @@ const MESSAGE_TITLE_STRIP: (u32, (f32, f32, f32, f32)) = (10_933, (12.0, 14.0, 4
 const MESSAGE_TEXT_PANE: (u32, (f32, f32, f32, f32)) = (10_932, (12.0, 232.0, 400.0, 87.0));
 /// Where a message's title starts in the title strip (launchbox frame
 /// "event-imperial-future-jedi": the title begins 41 pixels into the
-/// window). port: the emblem drawn left of it is not recovered.
+/// window); the chosen item's image left of it ([`title_icon_layout`]).
 const MESSAGE_TITLE_X: f32 = 40.0;
 
 // ---------------------------------------------------------------------------
@@ -1307,7 +1307,7 @@ pub fn draw_message_index(
             actions.extend(list_actions);
         }
         IndexMode::SingleMessage => {
-            draw_single_message(ctx, cache, artwork, origin, scale, &rows, state);
+            draw_single_message(ctx, cache, artwork, faction, origin, scale, &rows, state);
         }
     }
 
@@ -1750,10 +1750,15 @@ fn apply_click(
 }
 
 /// Draw the single-message text in mode 2.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Mode 2 paints the picture, the item's image and the title together."
+)]
 fn draw_single_message(
     ctx: &egui::Context,
     cache: &mut BmpCache,
     artwork: &mut EncyclopediaState,
+    faction: CockpitFaction,
     origin: egui::Pos2,
     scale: f32,
     rows: &[&GameMessage],
@@ -1769,8 +1774,9 @@ fn draw_single_message(
     if let Some(picture) = msg.picture {
         draw_message_picture(ctx, cache, artwork, origin, scale, picture);
     }
+    let icon = msg.rail.and_then(|rail| row_icon(rail, faction));
     if let Some(title) = &msg.title {
-        draw_message_title(ctx, origin, scale, title);
+        draw_message_title(ctx, cache, origin, scale, title, icon);
     }
 
     let text_id = egui::Id::new("message-index-single-text");
@@ -1790,44 +1796,88 @@ fn draw_single_message(
             let area_size = egui::vec2(width * scale, TEXT_AREA_HEIGHT * scale);
             let (area_rect, _) = ui.allocate_exact_size(area_size, egui::Sense::hover());
 
-            // hyp: font 10 (read) for the display; unmapped.
-            let font = egui::FontId::proportional((9.0 * scale).max(6.0));
-            // The text control wraps at its width (launchbox frame
-            // "event-imperial-future-jedi" shows three wrapped lines).
+            // The text control writes in font 4, the title's (A0
+            // messages-day633/capture-palpatine: "Emperor" is 48 wide in
+            // both, its ink from (18, 237)), and wraps at its width
+            // (launchbox frame "event-imperial-future-jedi" shows three
+            // wrapped lines).
             let painter = ui.painter().with_clip_rect(area_rect);
-            let galley = painter.layout(
-                msg.text.clone(),
-                font,
+            crate::theme::paint_gdi_text_block(
+                &painter,
+                area_rect,
+                scale,
+                4,
+                &msg.text,
                 Color32::WHITE,
-                area_rect.width() - 4.0 * scale,
-            );
-            painter.galley(
-                area_rect.left_top() + egui::vec2(2.0 * scale, 2.0 * scale),
-                galley,
-                Color32::WHITE,
+                crate::theme::GdiAlign::Left,
             );
         });
 }
 
-/// Paint a message's title in white across the title strip.
-fn draw_message_title(ctx: &egui::Context, origin: egui::Pos2, scale: f32, title: &str) {
-    let (_, (_, strip_y, strip_width, strip_height)) = MESSAGE_TITLE_STRIP;
+/// The item's image in mode 2's title (`Class_0065a1c0_vt44`), relative to
+/// the window, for an icon of `size`: the image is the icon's size, black,
+/// with the icon at (1, 1) cut by its last column and row (`FUN_00468ab0`).
+/// `FUN_005fc140` is called with no destination, so `SetDIBitsToDevice`
+/// puts it at the image's own width and height (A0 messages-day633/
+/// capture-palpatine: 0x2a9e, 15 by 16, at (15, 16); message-rail/
+/// fleet-arrives-averam: 0x2ad4, 15 by 15, at (15, 15)). Returns the image
+/// rectangle, the icon's rectangle and its texture coordinates.
+fn title_icon_layout(size: egui::Vec2) -> (egui::Rect, egui::Rect, egui::Rect) {
+    let image = egui::Rect::from_min_size(egui::pos2(size.x, size.y), size);
+    let (shown, uv) = row_icon_shown(size, false);
+    let icon = egui::Rect::from_min_size(image.min + egui::vec2(1.0, 1.0), shown);
+    (image, icon, uv)
+}
+
+/// Paint a message's title in white across the title strip:
+/// `Class_0065a1c0_vt44` writes it in font 4 at (40, 13), after the
+/// chosen item's image.
+fn draw_message_title(
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    origin: egui::Pos2,
+    scale: f32,
+    title: &str,
+    icon: Option<u32>,
+) {
+    let texture = icon.and_then(|id| cache.get(ctx, DllSource::Strategy, id));
     egui::Area::new(egui::Id::new("message-index-single-title"))
         .fixed_pos(origin)
         .order(egui::Order::Tooltip)
         .show(ctx, |ui| {
-            let clip = egui::Rect::from_min_size(
-                origin + egui::vec2(MESSAGE_TITLE_X, strip_y) * scale,
-                egui::vec2(strip_width - MESSAGE_TITLE_X, strip_height) * scale,
-            );
-            ui.painter().with_clip_rect(clip).text(
-                egui::pos2(clip.min.x, clip.center().y),
-                egui::Align2::LEFT_CENTER,
+            if let Some(texture) = texture {
+                let (image, icon, uv) = title_icon_layout(texture.size_vec2());
+                ui.painter()
+                    .rect_filled(on_screen(origin, scale, image), 0.0, Color32::BLACK);
+                ui.painter().image(
+                    texture.id(),
+                    on_screen(origin, scale, icon),
+                    uv,
+                    Color32::WHITE,
+                );
+            }
+            crate::theme::paint_gdi_text(
+                ui.painter(),
+                on_screen(origin, scale, TITLE_TEXT_CELL),
+                scale,
+                4,
                 title,
-                egui::FontId::proportional((11.0 * scale).max(7.0)),
                 Color32::WHITE,
+                (crate::theme::GdiAlign::Left, crate::theme::GdiVAlign::Top),
             );
         });
+}
+
+/// Mode 2's title cell (`Class_0065a1c0_vt44`: `FUN_00601b30(0x28, 0xd)`),
+/// as wide as the title strip after it.
+const TITLE_TEXT_CELL: egui::Rect = egui::Rect {
+    min: egui::pos2(MESSAGE_TITLE_X, 13.0),
+    max: egui::pos2(412.0, 43.0),
+};
+
+/// A rectangle in the window's own pixels on the screen.
+fn on_screen(origin: egui::Pos2, scale: f32, rect: egui::Rect) -> egui::Rect {
+    egui::Rect::from_min_size(origin + rect.min.to_vec2() * scale, rect.size() * scale)
 }
 
 /// Where a message's picture sits in the window (`FUN_0046a320`:
@@ -3321,6 +3371,38 @@ mod tests {
             actions: all_actions,
             lines,
         }
+    }
+
+    #[test]
+    fn a_window_rectangle_lands_on_the_screen_scaled_from_the_origin() {
+        let rect = egui::Rect::from_min_size(egui::pos2(15.0, 16.0), egui::vec2(15.0, 16.0));
+        assert_eq!(
+            on_screen(egui::pos2(100.0, 50.0), 2.0, rect),
+            egui::Rect::from_min_size(egui::pos2(130.0, 82.0), egui::vec2(30.0, 32.0))
+        );
+        // Class_0065a1c0_vt44: the title from (40, 13).
+        assert_eq!(TITLE_TEXT_CELL.min, egui::pos2(40.0, 13.0));
+    }
+
+    #[test]
+    fn the_titles_image_stands_at_its_own_size_with_the_cut_icon() {
+        // Class_0065a1c0_vt44 -> FUN_005fc140 with no destination: A0
+        // messages-day633/capture-palpatine shows 0x2a9e's image at
+        // (15, 16), message-rail/fleet-arrives-averam 0x2ad4's at (15, 15),
+        // each icon cut by its last column and row.
+        let (image, icon, uv) = title_icon_layout(egui::vec2(15.0, 16.0));
+        assert_eq!(
+            image,
+            egui::Rect::from_min_size(egui::pos2(15.0, 16.0), egui::vec2(15.0, 16.0))
+        );
+        assert_eq!(
+            icon,
+            egui::Rect::from_min_size(egui::pos2(16.0, 17.0), egui::vec2(14.0, 15.0))
+        );
+        assert_eq!(uv.max, egui::pos2(14.0 / 15.0, 15.0 / 16.0));
+        let (image, icon, _) = title_icon_layout(egui::vec2(15.0, 15.0));
+        assert_eq!(image.min, egui::pos2(15.0, 15.0));
+        assert_eq!(icon.min, egui::pos2(16.0, 16.0));
     }
 
     #[test]

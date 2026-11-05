@@ -315,7 +315,64 @@ async function run(browser, base, faction) {
         captureChecks.a0 = null;
       }
     }
-    assert.ok(captureChecks.port === 0 && (captureChecks.a0 ?? 0) === 0, JSON.stringify(captureChecks));
+    // The title (Class_0065a1c0_vt44): the item's image, 15 by 16, black
+    // with 0x2a9e cut at (1, 1), at the window's (15, 16), every pixel A0's
+    // (capture-palpatine); the title in font 4 at (40, 13), its bright
+    // extent (rows 12..31, under the frame) within two pixels of A0's.
+    if (faction.byte === 1) {
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(a0File));
+        const [left, top] = [Math.round(capture.window_left), Math.round(capture.window_top)];
+        let differ = 0;
+        for (let y = 0; y < 16; y += 1) {
+          for (let x = 0; x < 15; x += 1) {
+            const i = ((top + 16 + y) * 640 + left + 15 + x) * 4;
+            const j = ((49 + 16 + y) * 640 + 62 + 15 + x) * 4;
+            if ([0, 1, 2].some((c) => captureScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        captureChecks.title_image_a0 = differ;
+        const extent = (png, x0, y0) => {
+          let box = null;
+          for (let y = y0 + 12; y < y0 + 32; y += 1) {
+            for (let x = x0 + 36; x < x0 + 360; x += 1) {
+              const i = (y * 640 + x) * 4;
+              if (png.data[i] + png.data[i + 1] + png.data[i + 2] <= 600) continue;
+              box = box ? [Math.min(box[0], x - x0), Math.min(box[1], y - y0), Math.max(box[2], x - x0),
+                Math.max(box[3], y - y0)] : [x - x0, y - y0, x - x0, y - y0];
+            }
+          }
+          return box;
+        };
+        captureChecks.title_text = extent(captureScreen, left, top);
+        captureChecks.title_text_a0 = extent(a0, 62, 49);
+        // The body: the text control's font 4 at (17, 234), its ink box
+        // (x 16..410, y 234..300) within two pixels of A0's.
+        const body = (png, x0, y0) => {
+          let box = null;
+          for (let y = y0 + 234; y < y0 + 300; y += 1) {
+            for (let x = x0 + 16; x < x0 + 410; x += 1) {
+              const i = (y * 640 + x) * 4;
+              if (png.data[i] + png.data[i + 1] + png.data[i + 2] <= 600) continue;
+              box = box ? [Math.min(box[0], x - x0), Math.min(box[1], y - y0), Math.max(box[2], x - x0),
+                Math.max(box[3], y - y0)] : [x - x0, y - y0, x - x0, y - y0];
+            }
+          }
+          return box;
+        };
+        captureChecks.body_text = body(captureScreen, left, top);
+        captureChecks.body_text_a0 = body(a0, 62, 49);
+      } catch {
+        captureChecks.title_image_a0 = null;
+      }
+    }
+    assert.ok(captureChecks.port === 0 && (captureChecks.a0 ?? 0) === 0
+      && (captureChecks.title_image_a0 ?? 0) === 0
+      && (!captureChecks.title_text_a0
+        || captureChecks.title_text.every((v, i) => Math.abs(v - captureChecks.title_text_a0[i]) <= 2))
+      && (!captureChecks.body_text_a0
+        || captureChecks.body_text.every((v, i) => Math.abs(v - captureChecks.body_text_a0[i]) <= 2)),
+      JSON.stringify(captureChecks));
 
     // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's
     // Mission Messages holding the capture, chosen): the category icon
@@ -512,6 +569,36 @@ async function run(browser, base, faction) {
       });
       rowChecks.ctrl_shift_chosen = chosen;
       assert.deepEqual(chosen, [true, false, true, true, true, false], JSON.stringify(rowChecks));
+
+      // Fleet Arrives (A0 message-rail/fleet-arrives-averam, a new Expert
+      // game): the Alliance arrival's picture STRATEGY 1018 at the
+      // window's (12, 33), every pixel A0's; the title's image 0x2ad4 in
+      // A0 is the Fleet rail's, while the fixture files it under Mission.
+      const arrivalRow = many.rows.findIndex((text) => text.startsWith("Fleet Arrives"));
+      assert.ok(arrivalRow >= 0, JSON.stringify(many.rows));
+      await click(page, row(arrivalRow));
+      await click(page, showMessage);
+      const arrivalShown = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title?.startsWith("Fleet Arrives"), "Display Message shows the arrival");
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("fleet-arrives");
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/message-rail/fleet-arrives-averam.png")));
+        const shown = PNG.sync.read(await page.screenshot());
+        let differ = 0;
+        for (let y = 0; y < 200; y += 1) {
+          for (let x = 0; x < 400; x += 1) {
+            const i = ((arrivalShown.window_top + 33 + y) * 640 + arrivalShown.window_left + 12 + x) * 4;
+            const j = ((49 + 33 + y) * 640 + 62 + 12 + x) * 4;
+            if ([0, 1, 2].some((c) => shown.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        rowChecks.fleet_arrives_picture_a0 = differ;
+      } catch {
+        rowChecks.fleet_arrives_picture_a0 = null;
+      }
+      assert.equal(rowChecks.fleet_arrives_picture_a0 ?? 0, 0, JSON.stringify(rowChecks));
     }
 
     assert.deepEqual(errors, [], errors.join("; "));
