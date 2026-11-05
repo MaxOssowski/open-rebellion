@@ -154,6 +154,22 @@ try {
     return n;
   };
   assert.deepEqual(ROW_Y.map((y) => crestColours(empty, y)), [0, 0, 0, 0, 0, 0], "an empty row shows no crest");
+  // A0 game-options-empty/00 (2026-11-05: the VM's saves moved aside, the
+  // window from the main menu): the six empty rows, their name and crest
+  // frames and their Load buttons (78..335, 75..315), every pixel as the
+  // port's empty list. The Save buttons (34..75) are left out: A0's window
+  // is the main menu's, whose Save is disabled (FUN_00407180), and the
+  // port's here a game's, whose Save is enabled.
+  const emptyA0File = path.join(ROOT, ".artifacts/a0-vm/game-options-empty/00-empty-save-list.png");
+  try {
+    const emptyA0 = PNG.sync.read(await fs.readFile(emptyA0File));
+    let differing = 0;
+    for (let y = 75; y < 315; y += 1) for (let x = 78; x < 335; x += 1) if (!same(empty, x, y, emptyA0, x, y)) differing += 1;
+    result.empty_list_a0_differing = differing;
+    assert.equal(differing, 0, `the empty list differs from A0 in ${differing} pixels`);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
 
   // Save "test" from the first row.
   await page.mouse.click(180, 91);

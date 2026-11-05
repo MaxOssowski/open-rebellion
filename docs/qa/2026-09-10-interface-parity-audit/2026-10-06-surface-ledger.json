@@ -557,7 +557,7 @@
         {
           "id": "PRE-03-C001",
           "requirement": "save list empty",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -566,10 +566,11 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
-            "ghidra/notes/game-options-text.md"
+            "ghidra/notes/game-options-text.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-empty-save-list/"
           ],
-          "note": "Six COMMON 20002 rows from FUN_00407180 implemented; an empty list was not asserted on its own in any browser run; no A0 capture. 2026-10-31: game-options.mjs (Linux browser) asserts six blank rows with no name and no crest, as FUN_00407180 draws an empty slot (ghidra/notes/game-options-text.md); A0 has no empty-list capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Six COMMON 20002 rows from FUN_00407180; an empty slot shows no name and no crest. A0 game-options-empty/00 (the VM's saves moved aside, 2026-11-05): game-options.mjs (Linux) asserts the six blank rows and finds the list's name and crest frames and Load buttons (78..335, 75..315) pixel-identical to A0; the Save buttons differ only by the window's origin (A0 the main menu's, disabled; the gate's a game's).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-03-C002",
