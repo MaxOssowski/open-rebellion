@@ -3384,22 +3384,25 @@
         {
           "id": "CMD-08-C022",
           "requirement": "Agent Advice defaults off for Medium and Hard",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "FUN_00439320 (agent_automation tests); no A0 game at Medium or Hard compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-agent-advice-menu/"
+          ],
+          "note": "FUN_00439320 (agent_automation tests). 2026-11-05: A0 new Alliance games show Agent Advice checked at Easy and bare at Intermediate and Expert (agent-menu/alliance-easy-day1, -intermediate-day2, -expert-day1); agent-advice.mjs (Linux) starts an Intermediate game: no advice posted, the index stays shut, the menu row bare.",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-08-C023",
           "requirement": "Agent Advice menu toggle",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-agent-advice-menu/"
           ],
-          "note": "Menu item 0x11e flips advice (agent_automation tests); the A0 Agent menu shows it checked.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Menu item 0x11e flips advice (agent_automation tests). 2026-11-05: A0 agent-menu/alliance-agent-menu-day53 checked, -advice-off-day54 bare after a click; agent-objectives.mjs (Linux, both sides) toggles it off and on through the menu and checks the cell; the check mark 11902 is now keyed on blue as A0 shows it.",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
     },

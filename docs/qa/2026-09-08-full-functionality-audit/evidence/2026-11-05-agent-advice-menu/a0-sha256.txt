@@ -1,0 +1,6 @@
+ea0f3d761cf6f93ca7e28c7d247bcf2e7b797815faf02f6092d5071da234cfa9  .artifacts/a0-vm/agent-menu/alliance-agent-menu-advice-off-day54.png
+7724ad774136a81f220b12247a693e5cd9a88b55f3156f128801edc0795912da  .artifacts/a0-vm/agent-menu/alliance-agent-menu-day53.png
+8fc72554b3b8367497ee4f712119be4cb53aec43093fd5d3893a76c160932f2f  .artifacts/a0-vm/agent-menu/alliance-easy-day1.png
+03de8a0ec151a4639d63ee443932e0ca100d6e588c137072c5d32255e3f45890  .artifacts/a0-vm/agent-menu/alliance-expert-day1.png
+278fb1922b27a432d6cf0d438715ec54d9f15e797530653e44a61fc6930f71a6  .artifacts/a0-vm/agent-menu/alliance-intermediate-day2.png
+cb959f4eff9b144551033a0902dae746798c0c5f785595c745e6eafcda66ed66  .artifacts/a0-vm/agent-menu/main-menu-intermediate.png
