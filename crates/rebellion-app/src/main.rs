@@ -2567,20 +2567,36 @@ async fn main() {
                     .systems
                     .get(arrival.system)
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                // Notification 0xd, Unit Arrival.
+                // Notification 0xd, Unit Arrival (FUN_004981c0, case 1):
+                // TEXTSTRA 0x7078 / 0x7079 name the fleet and the system.
+                let fleet_name = world
+                    .fleet_name(arrival.fleet)
+                    .map(str::to_owned)
+                    .unwrap_or_default();
+                let texts = rebellion_render::story_messages::fleet_arrival_texts(
+                    &fleet_name,
+                    &sys_name,
+                    &message_texts,
+                );
+                let mut message = GameMessage::at_system(
+                    arrival.tick,
+                    texts
+                        .as_ref()
+                        .map_or_else(|| format!("Fleet arrived at {sys_name}"), |(_, body)| body.clone()),
+                    MessageCategory::Mission,
+                    arrival.system,
+                )
+                .with_picture_if(pictures::arrival(
+                    pictures::Arrival::Fleet,
+                    pictures::reader(applied.is_alliance),
+                ))
+                // hyp: FUN_004981c0's fleet case (1), code 5.
+                .with_advisor_event(5);
+                if let Some((title, _)) = texts {
+                    message = message.with_title(title);
+                }
                 msg_log.push(filed(
-                    GameMessage::at_system(
-                        arrival.tick,
-                        format!("Fleet arrived at {sys_name}"),
-                        MessageCategory::Mission,
-                        arrival.system,
-                    )
-                    .with_picture_if(pictures::arrival(
-                        pictures::Arrival::Fleet,
-                        pictures::reader(applied.is_alliance),
-                    ))
-                    // hyp: FUN_004981c0's fleet case (1), code 5.
-                    .with_advisor_event(5),
+                    message,
                     MessageRail::Fleet,
                     Some(RailAudience::side(applied.is_alliance)),
                 ));

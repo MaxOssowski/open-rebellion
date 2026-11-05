@@ -1198,6 +1198,28 @@ pub fn arrival_texts(
     Some((fill_message_text(texts.get(&title)?, &parameters), text))
 }
 
+/// A fleet's arrival (`FUN_004981c0`, case 1, an object of family
+/// `0x08..0x0f`): TEXTSTRA `0x7078` "Fleet Arrives at {2:1}" and `0x7079`
+/// "{1:1} has arrived at {2:1}.", the fleet the first substitution and the
+/// system the second (A0 message-rail/fleet-arrives-averam: "Fleet Arrives
+/// at Averam", "Fleet 3 has arrived at Averam."). Returns the title and
+/// body.
+#[must_use]
+pub fn fleet_arrival_texts(
+    fleet: &str,
+    system: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let parameters = [
+        MessageParameter::Named { name: fleet },
+        MessageParameter::Named { name: system },
+    ];
+    Some((
+        fill_message_text(texts.get(&0x7078)?, &parameters),
+        fill_message_text(texts.get(&0x7079)?, &parameters),
+    ))
+}
+
 /// Units Deployed (`FUN_00497940`): notification `0x107` for a unit put
 /// in place, to the unit's side. The texts follow the unit's family:
 /// - a capital ship TEXTSTRA `0x7086` / `0x7087`, the Death Star `0x708e`
@@ -2060,6 +2082,30 @@ mod tests {
                 "F'tral",
                 &texts
             ),
+            None
+        );
+    }
+
+    // FUN_004981c0 case 1: A0 message-rail/fleet-arrives-averam reads
+    // "Fleet Arrives at Averam" over "Fleet 3 has arrived at Averam.".
+    #[test]
+    fn a_fleets_arrival_names_the_fleet_and_the_system() {
+        let texts: HashMap<u16, String> = [
+            (0x7078, "Fleet Arrives at {2:1}"),
+            (0x7079, "{1:1} has arrived at {2:1}."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            fleet_arrival_texts("Fleet 3", "Averam", &texts),
+            Some((
+                "Fleet Arrives at Averam".into(),
+                "Fleet 3 has arrived at Averam.".into()
+            ))
+        );
+        assert_eq!(
+            fleet_arrival_texts("Fleet 3", "Averam", &HashMap::new()),
             None
         );
     }
