@@ -190,3 +190,11 @@ set none; the others have no recovered class.
 - **The picture.** Its default is `0x412` / `0x413` by the reader, at `+0x2e`; `+0x30` is `0x47c` / `0x47d`.
 
 The port posts no Personnel Arrive message (2026-11-06).
+
+## Mission Foiled in detail (read 2026-11-06)
+
+`Class_0065b6c8_vt14` (`FUN_00491500`) handles notification `0x1f1`.
+- **The other side.** When the reader is not the mission's side (`+0x24` bits 6..7) and no team member it holds stands at a system, it posts `0x713e` "Enemy Mission Foiled" over `0x713f` "An enemy {1:1} mission to {2:1} has been foiled by our forces.", with the mission and its target. The picture is `0x431` / `0x432` by the reader, `+0x30` `0x47c` / `0x47d`. A0 message-rail/display-mission-chosen (day 43) shows it on the Mission rail.
+- **The mission's own side.** It posts `0x7148` "{1:1} Mission Foiled" over `0x7149` (a major character's "My {2:1} mission to {3:1} has been foiled…") or `0x714a` / `0x714b` for others, through the speaker map.
+
+The port detects and captures teams (`mission_detection.rs`) but posts no 0x1f1 message, and its Mission Report bodies are its own English, not TEXTSTRA (2026-11-06).
