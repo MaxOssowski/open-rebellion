@@ -599,6 +599,53 @@ async function run(browser, base, faction) {
         rowChecks.fleet_arrives_picture_a0 = null;
       }
       assert.equal(rowChecks.fleet_arrives_picture_a0 ?? 0, 0, JSON.stringify(rowChecks));
+
+      // Messages clear themselves after 300 sub-ticks, 25 days at Medium
+      // (Class_0065c538_vt30, FUN_004c4fe0), on the walk FUN_0048a2a0 runs
+      // as the index closes (FUN_0048a610(0)). A0 (a new Expert game at
+      // Medium, message-expiry/): Saboteurs Strike at Corsin, first seen
+      // on day 103, stood on 122 and was gone by 128; Fleet Arrives at
+      // Umgul (108) stood on 133, gone by 138. The fixture's messages are
+      // posted on its first day: after 18 days at Medium they stand, after
+      // 27 they are gone.
+      await page.keyboard.press("Escape");
+      await waitReport(page, (value) => !value.index_open, "Escape closes the index");
+      const days = () => log.flatMap((line) => {
+        const match = line.match(/\[ai\] day=(\d+) speed=Medium/);
+        return match ? [Number(match[1])] : [];
+      });
+      await page.mouse.move(144, 27);
+      await frames(page);
+      await page.mouse.down({ button: "right" });
+      await frames(page);
+      await page.mouse.up({ button: "right" });
+      await page.waitForTimeout(300);
+      await click(page, [190, 96]);
+      const started = Date.now();
+      while (days().length === 0 && Date.now() - started < 20_000) await page.waitForTimeout(200);
+      assert.ok(days().length > 0, "Medium runs the clock");
+      const firstDay = days()[0];
+      const reach = async (day) => {
+        const deadline = Date.now() + 180_000;
+        while ((days().at(-1) ?? 0) < day && Date.now() < deadline) await page.waitForTimeout(250);
+        assert.ok((days().at(-1) ?? 0) >= day, `the clock reaches day ${day}: ${days().at(-1)}`);
+      };
+      const listOnRail = async () => {
+        await click(page, [opened.rail_x, opened.rail_y]);
+        const value = await waitReport(page, (report) => report.index_open && report.mode === "list", "the rail opens the index");
+        const rows = value.rows;
+        await page.keyboard.press("Escape");
+        await waitReport(page, (report) => !report.index_open, "Escape closes the index");
+        return rows;
+      };
+      await reach(firstDay + 18);
+      const standing = await listOnRail();
+      await reach(firstDay + 27);
+      const cleared = await listOnRail();
+      rowChecks.expiry = { first_day: firstDay, standing, cleared };
+      assert.ok(standing.some((text) => text.startsWith("Fleet Arrives")), JSON.stringify(rowChecks.expiry));
+      assert.ok(!cleared.some((text) => text.startsWith("Fleet Arrives") || text.startsWith("Emperor Palpatine Captured")),
+        JSON.stringify(rowChecks.expiry));
     }
 
     assert.deepEqual(errors, [], errors.join("; "));
