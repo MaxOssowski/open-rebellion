@@ -2131,6 +2131,14 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
         && matches!(
             resource_id,
             10_001..=10_028
+                // The Message Index rail's controls, resting and lit
+                // (FUN_00427270's CoolStrobeButtons): A0
+                // message-rail/easy-index-closed shows the shell under each
+                // Alliance control's first-pixel colour, 0 other pixels.
+                | 10_030..=10_038
+                | 10_040..=10_048
+                | 10_050..=10_058
+                | 10_060..=10_068
                 | 10_117..=10_118
                 | 10_128..=10_129
                 | 10_108..=10_109
@@ -2722,6 +2730,19 @@ pub(crate) mod tests {
                 uses_blue_screen_transparency(DllSource::Strategy, resource_id),
                 "{resource_id}"
             );
+        }
+    }
+
+    #[test]
+    fn the_message_rails_controls_are_keyed_on_their_first_pixel() {
+        // A0 message-rail/easy-index-open and -closed: each Alliance rail
+        // control differs from its bitmap only where its first pixel's
+        // colour lies; FUN_00427270 makes the Empire's the same buttons.
+        for id in [10_030, 10_038, 10_040, 10_048, 10_050, 10_058, 10_060, 10_068] {
+            assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+        }
+        for id in [10_029, 10_039, 10_049, 10_059, 10_069] {
+            assert!(!uses_first_pixel_key(DllSource::Strategy, id), "{id}");
         }
     }
 

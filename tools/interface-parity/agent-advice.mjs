@@ -44,6 +44,27 @@ async function toggleAgainstA0(page, file) {
   }
   return differ;
 }
+
+// The Alliance Advice rail control (0x13d, 27 by 22 at (3, 284)) against
+// an A0 capture of a new Easy game (message-rail/): the differing pixels,
+// or null without the capture.
+async function adviceRailAgainstA0(page, file) {
+  let a0;
+  try {
+    a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/message-rail", file)));
+  } catch {
+    return null;
+  }
+  const screen = PNG.sync.read(await page.screenshot());
+  let differ = 0;
+  for (let y = 284; y < 306; y += 1) {
+    for (let x = 3; x < 30; x += 1) {
+      const i = (y * 640 + x) * 4;
+      if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[i + c])) differ += 1;
+    }
+  }
+  return differ;
+}
 const WEB = path.join(ROOT, "web");
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, value = "true"] = arg.replace(/^--/, "").split("=");
@@ -251,6 +272,9 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(500);
     await shot("advice-index");
+    // The rail lights Advice while its advice is unread (FUN_0048a2a0,
+    // art 10067), the index open on it (A0 message-rail/easy-index-open).
+    const rail = { open: faction.name === "alliance" ? await adviceRailAgainstA0(page, "easy-index-open.png") : null };
     const rowsText = args.a0 && faction.name === "alliance"
       ? await rowsAgainstA0(path.join(directory, "advice-index.png")) : null;
     // Select All (0x90) chooses every row; the posting toggle (0x66,
@@ -287,6 +311,12 @@ async function run(browser, base, faction) {
     // nothing under it), so it closes first.
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
+    // Closing the index marks Advice read (FUN_0048a610): the rail rests
+    // (10057, A0 message-rail/easy-index-closed).
+    await page.mouse.move(320, 200);
+    await page.waitForTimeout(300);
+    rail.closed = faction.name === "alliance" ? await adviceRailAgainstA0(page, "easy-index-closed.png") : null;
+    assert.ok((rail.open ?? 0) === 0 && (rail.closed ?? 0) === 0, JSON.stringify(rail));
     // The second droid's panel (FUN_0042d050, 0xbeef) opens the Message
     // Alerts menu (FUN_00487a60): "Messages" and the "Message Alerts"
     // submenu.
@@ -300,7 +330,7 @@ async function run(browser, base, faction) {
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle,
+    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle, rail,
       agent: log.filter((line) => line.startsWith("[agent]") || line.includes("message_index")) };
   } catch (error) {
     await shot("failure").catch(() => {});

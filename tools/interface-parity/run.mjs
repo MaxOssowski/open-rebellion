@@ -283,6 +283,9 @@ function decodeIndexedBmp(bytes) {
   return {
     width,
     height,
+    index(x, y) {
+      return bytes[dataOffset + (height - 1 - y) * stride + x];
+    },
     pixel(x, y) {
       const index = bytes[dataOffset + (height - 1 - y) * stride + x];
       const entry = paletteOffset + index * 4;
@@ -376,6 +379,7 @@ function verifyMessageIndexRail(faction, viewport, screenshotBytes) {
   const x0 = faction === "alliance" ? 3 : 611;
   const y0 = faction === "alliance" ? 109 : 110;
   const firstResource = faction === "alliance" ? 10050 : 10030;
+  let keyed = 0;
   for (let control = 0; control < 9; control++) {
     const resource = firstResource + control;
     const source = decodeIndexedBmp(fs.readFileSync(path.join(
@@ -383,8 +387,17 @@ function verifyMessageIndexRail(faction, viewport, screenshotBytes) {
     )));
     assert.equal(source.width, 27);
     assert.equal(source.height, 22);
+    // Each control is a CoolStrobeButton (FUN_00427270) blitted keyed on
+    // its first DIB pixel (FUN_005fd170, the bottom row's first): A0
+    // message-rail/easy-index-closed shows the shell under those pixels
+    // and every other pixel as the bitmap's.
+    const key = source.index(0, source.height - 1);
     for (let y = 0; y < source.height; y++) {
       for (let x = 0; x < source.width; x++) {
+        if (source.index(x, y) === key) {
+          keyed += 1;
+          continue;
+        }
         const actualOffset = ((y0 + control * 25 + y) * screenshot.width + x0 + x) * 4;
         assert.deepEqual(
           Array.from(screenshot.data.subarray(actualOffset, actualOffset + 3)),
@@ -394,7 +407,8 @@ function verifyMessageIndexRail(faction, viewport, screenshotBytes) {
       }
     }
   }
-  return { status: "source-bitmap-exact", source_bitmaps_checked: 9, pixels_checked: 9 * 27 * 22 };
+  return { status: "source-bitmap-exact", source_bitmaps_checked: 9, pixels_checked: 9 * 27 * 22 - keyed,
+    pixels_keyed: keyed };
 }
 
 async function probeGid(page, faction, scenario, viewport, folder, consoleLines, ready) {
