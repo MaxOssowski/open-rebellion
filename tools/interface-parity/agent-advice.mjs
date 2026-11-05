@@ -65,6 +65,10 @@ const FACTIONS = [
   { name: "empire", menuIndex: 8, firstRow: [args.empire_row_x ?? 330, args.empire_row_y ?? 160],
     selectAll: [125 + 0x11a + 28, 52 + 0x57 + 10], post: [125 + 0x1aa + 22, 52 + 0x94 + 20],
     secondDroid: [302 + 50, 401 + 39] },
+  // Intermediate (control 1) before the Alliance: FUN_00439320 leaves
+  // Agent Advice off (A0 agent-menu/alliance-intermediate-day2 and
+  // alliance-expert-day1 bare, alliance-easy-day1 checked).
+  { name: "alliance-intermediate", menuIndex: 9, difficulty: 1, droid: [570, 400], adviceRow: [480, 387] },
 ].filter(({ name }) => !args.faction || args.faction === name);
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".wav": "audio/wav", ".bmp": "image/bmp" };
@@ -193,6 +197,10 @@ async function run(browser, base, faction) {
     // skips each movie until the main menu shows.
     await skipToMainMenu(page);
     await page.waitForTimeout(1_000);
+    if (faction.difficulty !== undefined) {
+      await page.evaluate((index) => wasm_exports.open_rebellion_menu_activate(index), faction.difficulty);
+      await page.waitForTimeout(500);
+    }
     await page.evaluate((index) => wasm_exports.open_rebellion_menu_activate(index), faction.menuIndex);
     await waitFor(page, log, "the new game starts",
       () => log.some((line) => line.includes("[campaign] faction=")), 60_000);
@@ -202,6 +210,36 @@ async function run(browser, base, faction) {
     await click(page, [320, 240]);
     await waitFor(page, log, "the short form ends",
       () => log.some((line) => /clip finished kind=2 code=0xd /.test(line)), 60_000);
+    if (faction.difficulty !== undefined) {
+      // No advice is posted and the index stays shut; the Agent menu's
+      // last row, Agent Advice, shows no check mark beside it.
+      await page.waitForTimeout(2_000);
+      assert.equal(posted().length, 0, JSON.stringify(posted()));
+      assert.ok(!log.some((line) => line.includes("status=opened_by_briefing")), "the index stays shut");
+      await click(page, faction.droid, "right");
+      await page.waitForTimeout(400);
+      await shot("agent-menu");
+      const png = PNG.sync.read(await page.screenshot());
+      const white = (x, y) => {
+        const i = (y * 640 + x) * 4;
+        return png.data[i] === 255 && png.data[i + 1] === 255 && png.data[i + 2] === 255;
+      };
+      const [rowX, rowY] = faction.adviceRow;
+      let border = rowX - 80;
+      while (border < rowX && ![0, 2, 4, 6].every((dy) => white(border, rowY - 8 + dy)
+        || white(border, rowY - 7 + dy))) border += 1;
+      const cell = (y) => {
+        let count = 0;
+        for (let dy = -9; dy <= 9; dy += 1) {
+          for (let x = border + 2; x < border + 22; x += 1) if (white(x, y + dy)) count += 1;
+        }
+        return count;
+      };
+      const checks = { advice: cell(rowY), translate: cell(rowY - 20) };
+      assert.ok(checks.advice === 0 && checks.translate > 10, JSON.stringify(checks));
+      assert.deepEqual(errors, [], errors.join("; "));
+      return { faction: faction.name, status: "pass", posted: posted(), checks, shots };
+    }
     await waitFor(page, log, "the index opens on Advice",
       () => log.some((line) => line.includes("category=0x82 status=opened_by_briefing")), 5_000);
     // FUN_00439f20: the kind-7 advice, posted from the last node back (9

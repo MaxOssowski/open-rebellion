@@ -1952,6 +1952,10 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 // background (2026-10-29). Its pressed art 11553, blue
                 // inside, has no capture and stays opaque.
                 | 11552
+                // The menus' check mark, a record's word 10 (11902): its
+                // blue square shows the menu behind it in A0 menus3/33 (a
+                // band's Reserved) and agent-menu/alliance-agent-menu-day53.
+                | 11902
                 | 10716..=10745
                 | 10766
                 | 10792
@@ -2848,6 +2852,14 @@ pub(crate) mod tests {
         let panel = decode_color_image(&encoded, DllSource::Tactical, 1302).unwrap();
         assert_eq!(control.pixels[0].a(), 0);
         assert_eq!(panel.pixels[0].a(), 255);
+    }
+
+    #[test]
+    fn the_menus_check_mark_keys_out_blue() {
+        // A0 menus3/33 and agent-menu/alliance-agent-menu-day53: the
+        // menu's fill shows around each check mark, none of its blue.
+        assert!(uses_blue_screen_transparency(DllSource::Strategy, 11902));
+        assert!(!uses_blue_screen_transparency(DllSource::Strategy, 11901));
     }
 
     #[test]

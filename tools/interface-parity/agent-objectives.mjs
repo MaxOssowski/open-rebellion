@@ -209,6 +209,52 @@ async function run(browser, base, faction) {
     await click(page, faction.droid, "right");
     await page.waitForTimeout(400);
     await shot("agent-menu");
+    // Agent Advice (0x11e, the last row, four below Objectives) flips its
+    // check (FUN_00439e80): A0 agent-menu/alliance-agent-menu-day53 shows
+    // it checked, -advice-off-day54 bare after a click; the check mark
+    // 11902 keyed on blue (A0 shows none of its blue). The check cell:
+    // white pixels left of the row's text.
+    const advice = [faction.objectives[0], faction.objectives[1] + 80];
+    const isWhite = (png, x, y) => {
+      const i = (y * png.width + x) * 4;
+      return png.data[i] === 255 && png.data[i + 1] === 255 && png.data[i + 2] === 255;
+    };
+    const checkCell = async (y) => {
+      const png = PNG.sync.read(await page.screenshot());
+      // The menu's dotted left border: the first column with white on
+      // every other row of the cell.
+      let border = faction.objectives[0] - 80;
+      while (border < faction.objectives[0] && ![0, 2, 4, 6].every((dy) => isWhite(png, border, y - 8 + dy)
+        || isWhite(png, border, y - 7 + dy))) border += 1;
+      let white = 0;
+      let blue = 0;
+      for (let dy = -9; dy <= 9; dy += 1) {
+        for (let x = border + 2; x < border + 22; x += 1) {
+          const i = ((y + dy) * png.width + x) * 4;
+          if (png.data[i] === 255 && png.data[i + 1] === 255 && png.data[i + 2] === 255) white += 1;
+          if (png.data[i] === 0 && png.data[i + 1] === 0 && png.data[i + 2] === 255) blue += 1;
+        }
+      }
+      return { white, blue };
+    };
+    const adviceCheck = { on: await checkCell(advice[1]), translate: await checkCell(advice[1] - 20) };
+    const adviceLog = () => log.filter((line) => line.includes("[agent] command=agent_advice"));
+    await click(page, advice);
+    await waitFor(page, log, "Agent Advice turns off", () => adviceLog().length === 1, 5_000);
+    assert.match(adviceLog()[0], /status=off source=menu/);
+    await click(page, faction.droid, "right");
+    await page.waitForTimeout(400);
+    await shot("agent-menu-advice-off");
+    adviceCheck.off = await checkCell(advice[1]);
+    adviceCheck.translate_after = await checkCell(advice[1] - 20);
+    await click(page, advice);
+    await waitFor(page, log, "Agent Advice turns on", () => adviceLog().length === 2, 5_000);
+    assert.match(adviceLog()[1], /status=on source=menu/);
+    assert.ok(adviceCheck.on.white > 10 && adviceCheck.off.white === 0 && adviceCheck.translate.white > 10
+      && adviceCheck.translate_after.white > 10
+      && [adviceCheck.on, adviceCheck.translate].every(({ blue }) => blue === 0), JSON.stringify(adviceCheck));
+    await click(page, faction.droid, "right");
+    await page.waitForTimeout(400);
     await click(page, faction.objectives);
     await waitFor(page, log, "the menu's Objectives opens the window", () => opened().length === 1, 5_000);
     assert.match(opened()[0], /source=menu/);
