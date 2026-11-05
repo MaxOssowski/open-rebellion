@@ -6204,9 +6204,10 @@
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
           ],
-          "note": "A shipyard band lists researched ships (FUN_00537ff0 producer type 0 -> 0x28; listed_classes unit tests). Build Selection is ported (FUN_00437df0/FUN_00438500, 210x261 over 10800, strip 10801/10802); build-selection.mjs on Arch Chromium 155 still fails 6 of 28,646 chrome pixels in its 'opened' case. No A0 capture of this state.",
+          "note": "A shipyard band lists researched ships (FUN_00537ff0 producer type 0 -> 0x28; listed_classes unit tests). Build Selection is ported (FUN_00437df0/FUN_00438500, 210x261 over 10800, strip 10801/10802); build-selection.mjs on Arch Chromium 155 still fails 6 of 28,646 chrome pixels in its 'opened' case. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6217,9 +6218,10 @@
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
           ],
-          "note": "Fighters are listed with ships for a shipyard (a_shipyard_lists_its_sides_researched_ships_and_fighters). No browser case picks a fighter class. No A0 capture of this state.",
+          "note": "Fighters are listed with ships for a shipyard (a_shipyard_lists_its_sides_researched_ships_and_fighters). No browser case picks a fighter class. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6259,9 +6261,10 @@
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
           ],
-          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state.",
+          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
