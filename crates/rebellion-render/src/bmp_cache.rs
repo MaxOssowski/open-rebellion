@@ -2142,6 +2142,10 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 10_117..=10_118
                 | 10_128..=10_129
                 | 10_108..=10_109
+                // The sector window's switch-side button beside its close
+                // box (FUN_00602d30): A0 message-rail/display-sesswenna
+                // shows the frame under its green first pixel at (264, 50).
+                | 10_210..=10_211
                 | 10_168
                 | 10_240
                 | 10_592..=10_597
@@ -2731,6 +2735,15 @@ pub(crate) mod tests {
                 "{resource_id}"
             );
         }
+    }
+
+    #[test]
+    fn the_sector_windows_switch_side_button_is_keyed_on_its_first_pixel() {
+        // A0 message-rail/display-sesswenna: the frame shows under the
+        // button's green bottom-left pixel.
+        assert!(uses_first_pixel_key(DllSource::Strategy, 10_210));
+        assert!(uses_first_pixel_key(DllSource::Strategy, 10_211));
+        assert!(!uses_first_pixel_key(DllSource::Strategy, 10_212));
     }
 
     #[test]

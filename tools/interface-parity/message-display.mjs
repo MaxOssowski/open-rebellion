@@ -197,6 +197,33 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("after-display");
+    // A0 message-rail/display-sesswenna: Display closes the index and
+    // opens the system's sector window at (56, 36) (FUN_00429440). Its
+    // frame's left, bottom and switch-side button (10210, keyed on its
+    // green first pixel) are A0's to the pixel; the sector differs.
+    let frameChecks = null;
+    if (faction.byte === 1) {
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/message-rail/display-sesswenna.png")));
+        const after = PNG.sync.read(await page.screenshot());
+        const differ = ([x0, y0, x1, y1]) => {
+          let count = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = (y * 640 + x) * 4;
+              if ([0, 1, 2].some((c) => after.data[i + c] !== a0.data[i + c])) count += 1;
+            }
+          }
+          return count;
+        };
+        frameChecks = { left: differ([56, 36, 62, 396]), bottom: differ([56, 392, 297, 398]),
+          switch_side_key: differ([264, 50, 265, 51]) };
+      } catch {
+        frameChecks = null;
+      }
+      assert.ok(frameChecks === null || Object.values(frameChecks).every((count) => count === 0),
+        JSON.stringify(frameChecks));
+    }
 
     // The Mission Report's question.
     await click(page, [ready.rail_x, ready.rail_y]);
@@ -489,7 +516,7 @@ async function run(browser, base, faction) {
 
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
-      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, shots };
+      question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };
