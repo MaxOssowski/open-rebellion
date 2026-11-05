@@ -141,6 +141,15 @@ pub struct EncyclopediaState {
 }
 
 impl EncyclopediaState {
+    /// The topic body starts at its top for each topic shown: its text
+    /// object is refilled (`FUN_0041ecf0`).
+    fn follow_topic(&mut self, title: &str) {
+        if self.original_topic_scroll.1.as_deref() != Some(title) {
+            self.original_topic_scroll = (0.0, Some(title.to_owned()));
+            self.original_topic_scroll_hold = None;
+        }
+    }
+
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -1356,22 +1365,17 @@ pub fn draw_encyclopedia_topic(
                 // body longer than the control shows the control's bar
                 // (FUN_0041efe0: FUN_0060a490(.., 7, 0x299a, ..)) and wraps
                 // beside it (A0 encyclopedia/topic-step-5, the A-wing).
-                if state.original_topic_scroll.1.as_deref() != Some(topic.title.as_str()) {
-                    state.original_topic_scroll = (0.0, Some(topic.title.clone()));
-                    state.original_topic_scroll_hold = None;
-                }
+                state.follow_topic(&topic.title);
                 let font = crate::DEFAULT_FONT;
-                let (ascent, descent) = crate::theme::original_font_metrics(font);
-                let pitch = ascent + descent;
+                let pitch = crate::theme::line_pitch(font);
                 let measure = ui.painter().clone();
-                let (wrap, content, barred) = crate::message_index::text_wrap(395.0, |wrap| {
-                    #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
-                    let lines = crate::theme::gdi_word_break(body, wrap, |line| {
-                        crate::theme::gdi_text_width(&measure, font, line, scale)
-                    })
-                    .len() as f32;
-                    lines * pitch
-                });
+                let (wrap, content, barred) =
+                    crate::message_index::text_wrap_lines(395.0, pitch, |wrap| {
+                        crate::theme::gdi_word_break(body, wrap, |line| {
+                            crate::theme::gdi_text_width(&measure, font, line, scale)
+                        })
+                        .len()
+                    });
                 let first = if barred {
                     state.original_topic_scroll.0
                 } else {
@@ -1379,10 +1383,7 @@ pub fn draw_encyclopedia_topic(
                 };
                 let _ = crate::theme::paint_gdi_text_block(
                     &ui.painter().with_clip_rect(body_rect),
-                    egui::Rect::from_min_size(
-                        body_rect.min - egui::vec2(0.0, first * scale),
-                        egui::vec2(wrap * scale, (80.0 + first) * scale),
-                    ),
+                    crate::message_index::scrolled_text_rect(body_rect.min, scale, wrap, first),
                     scale,
                     font,
                     body,
@@ -2257,6 +2258,24 @@ fn stat_row_pair(ui: &mut egui::Ui, label: &str, base: u32, variance: u32) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn each_topic_shown_starts_its_body_at_the_top() {
+        let mut state = EncyclopediaState::default();
+        state.follow_topic("A-wing");
+        state.original_topic_scroll.0 = 32.0;
+        state.follow_topic("A-wing");
+        assert_eq!(
+            state.original_topic_scroll,
+            (32.0, Some("A-wing".to_owned()))
+        );
+        state.follow_topic("Abduction");
+        assert_eq!(
+            state.original_topic_scroll,
+            (0.0, Some("Abduction".to_owned()))
+        );
+        assert!(state.original_topic_scroll_hold.is_none());
+    }
+
     #[test]
     fn each_control_has_its_tooltip_string() {
         // FUN_0045ddc0 (A0 tooltip/101..116).

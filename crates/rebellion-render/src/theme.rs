@@ -189,6 +189,14 @@ pub fn original_font_metrics(font: u16) -> (f32, f32) {
     }
 }
 
+/// A font's line pitch, `tmHeight`: its ascent plus descent, as
+/// `DrawTextA` steps the lines of a `DT_WORDBREAK` block.
+#[must_use]
+pub fn line_pitch(font: u16) -> f32 {
+    let (ascent, descent) = original_font_metrics(font);
+    ascent + descent
+}
+
 /// The whole-pixel cell egui draws font `font` in for [`paint_gdi_text`].
 /// epaint scales egui's size, the em, by the face's cell over its em and
 /// rounds that cell to whole pixels, so it cannot draw GDI's ppem exactly;
@@ -613,6 +621,15 @@ pub fn apply_theme(ctx: &egui::Context) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_fonts_line_pitch_is_its_ascent_plus_descent() {
+        // A0 2026-10-29: the Encyclopedia body's font 4 lines stand 16
+        // apart (tmHeight 16); font 10's cell is 14 (11 + 3).
+        assert_eq!(line_pitch(4), 16.0);
+        assert_eq!(line_pitch(10), 14.0);
+        assert_eq!(line_pitch(12), 28.0);
+    }
+
     use super::*;
 
     #[test]

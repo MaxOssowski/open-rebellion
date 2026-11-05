@@ -1818,29 +1818,19 @@ fn draw_single_message(
             // and wraps at its width (launchbox frame
             // "event-imperial-future-jedi" shows three wrapped lines).
             let font = crate::DEFAULT_FONT;
-            let (ascent, descent) = crate::theme::original_font_metrics(font);
-            let pitch = ascent + descent;
+            let pitch = crate::theme::line_pitch(font);
             let measure = ui.painter().clone();
-            let (wrap, content, barred) = text_wrap(width, |wrap| {
-                #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
-                let lines = crate::theme::gdi_word_break(&msg.text, wrap, |line| {
+            let (wrap, content, barred) = text_wrap_lines(width, pitch, |wrap| {
+                crate::theme::gdi_word_break(&msg.text, wrap, |line| {
                     crate::theme::gdi_text_width(&measure, font, line, scale)
                 })
-                .len() as f32;
-                lines * pitch
+                .len()
             });
             let first = if barred { state.text_scroll.0 } else { 0.0 };
             let painter = ui.painter().with_clip_rect(area_rect);
             crate::theme::paint_gdi_text_block(
                 &painter,
-                on_screen(
-                    area_rect.min,
-                    scale,
-                    egui::Rect::from_min_size(
-                        egui::pos2(0.0, -first),
-                        egui::vec2(wrap, TEXT_AREA_HEIGHT + first),
-                    ),
-                ),
+                scrolled_text_rect(area_rect.min, scale, wrap, first),
                 scale,
                 font,
                 &msg.text,
@@ -1897,6 +1887,35 @@ pub(crate) fn text_wrap(width: f32, height_at: impl Fn(f32) -> f32) -> (f32, f32
     (wrap, height_at(wrap), true)
 }
 
+/// [`text_wrap`] for a text of `lines_at(wrap)` lines, `pitch` apart.
+pub(crate) fn text_wrap_lines(
+    width: f32,
+    pitch: f32,
+    lines_at: impl Fn(f32) -> usize,
+) -> (f32, f32, bool) {
+    #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
+    text_wrap(width, |wrap| lines_at(wrap) as f32 * pitch)
+}
+
+/// Where a text control's lines start on the screen: `wrap` wide from its
+/// top-left `origin`, scrolled up by `first` pixels, as tall as the
+/// control and the scrolled part.
+pub(crate) fn scrolled_text_rect(
+    origin: egui::Pos2,
+    scale: f32,
+    wrap: f32,
+    first: f32,
+) -> egui::Rect {
+    on_screen(
+        origin,
+        scale,
+        egui::Rect::from_min_size(
+            egui::pos2(0.0, -first),
+            egui::vec2(wrap, TEXT_AREA_HEIGHT + first),
+        ),
+    )
+}
+
 /// Paint a message's title in white across the title strip:
 /// `Class_0065a1c0_vt44` writes it in font 4 at (40, 13), after the
 /// chosen item's image.
@@ -1944,7 +1963,7 @@ const TITLE_TEXT_CELL: egui::Rect = egui::Rect {
 };
 
 /// A rectangle in the window's own pixels on the screen.
-fn on_screen(origin: egui::Pos2, scale: f32, rect: egui::Rect) -> egui::Rect {
+pub(crate) fn on_screen(origin: egui::Pos2, scale: f32, rect: egui::Rect) -> egui::Rect {
     egui::Rect::from_min_size(origin + rect.min.to_vec2() * scale, rect.size() * scale)
 }
 
@@ -3453,6 +3472,21 @@ mod tests {
         state.follow_text(rows[1].id);
         assert_eq!(state.text_scroll, (0.0, Some(rows[1].id)));
         assert!(state.text_scroll_hold.is_none());
+    }
+
+    #[test]
+    fn a_text_controls_lines_take_their_pitch_and_scroll_up_by_the_first_pixel() {
+        // Seven 16-pixel lines (112) overflow the 80-pixel control: they
+        // wrap beside the 12-wide bar; five (80) fit at the full width.
+        let seven = |wrap: f32| if wrap >= 395.0 { 6 } else { 7 };
+        assert_eq!(text_wrap_lines(395.0, 16.0, seven), (383.0, 112.0, true));
+        assert_eq!(text_wrap_lines(395.0, 16.0, |_| 5), (395.0, 80.0, false));
+        // Scrolled 16 pixels at scale 2 from (10, 20): the lines start 32
+        // above, 383 wide, the control's 80 and the 16 tall.
+        assert_eq!(
+            scrolled_text_rect(egui::pos2(10.0, 20.0), 2.0, 383.0, 16.0),
+            egui::Rect::from_min_size(egui::pos2(10.0, -12.0), egui::vec2(766.0, 192.0))
+        );
     }
 
     #[test]
