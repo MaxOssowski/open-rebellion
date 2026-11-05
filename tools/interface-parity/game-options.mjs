@@ -415,6 +415,40 @@ try {
   assert.ok(consoleLog.some((line) => line.includes("[campaign] restored slot=0")
     && line.includes(`fingerprint=${fingerprint}`) && line.includes("faction=Empire")), "the load restores the campaign");
   result.confirmations = ["overwrite No", "overwrite Yes", "exit No", "restart No", "load Yes"];
+  // Load from the main menu loads at once (A0 load-from-menu/00, 01: Load on
+  // a save in the menu's Game Options opens the game with no question; the
+  // port asks only with a live campaign, FUN_00406b80). The loaded game's
+  // F1, Restart Yes back to the shuttle cockpit, Load/Options (0x68), and
+  // Load on the stored slot 0.
+  const click = async ([x, y]) => {
+    await page.mouse.move(x, y);
+    await page.waitForTimeout(300);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    await page.mouse.move(2, 470);
+    await page.waitForTimeout(800);
+  };
+  await page.waitForTimeout(1000);
+  await page.locator("#glcanvas").focus();
+  await page.keyboard.press("F1");
+  await page.waitForTimeout(1000);
+  await click([97, 402]);
+  if (dialogShown(await shot("menu-load-restart"))) await click(YES);
+  await page.waitForFunction(() => document.getElementById("main-menu-semantics")?.dataset.active === "true",
+    null, { timeout: 15_000 });
+  await page.waitForTimeout(1000);
+  await click([431, 250]);
+  const fromMenu = await shot("menu-load-options");
+  assert.ok(!dialogShown(fromMenu), "the menu's Game Options opened with a question");
+  const restoredBefore = consoleLog.filter((line) => line.includes("[campaign] restored slot=0")).length;
+  await click([305, 91]);
+  await shot("menu-load-done");
+  // One click restores the campaign: no question waits for an answer.
+  assert.equal(consoleLog.filter((line) => line.includes("[campaign] restored slot=0")).length, restoredBefore + 1,
+    "Load from the main menu did not restore the campaign at once (a question?)");
+  result.load_from_menu = { question: false, restored: true };
   assert.deepEqual(errors, []);
   // From an Alliance galaxy game the Return button is the Alliance frame
   // 10020 (FUN_00407180). A0 game-options-alliance/00 (2026-11-05: an

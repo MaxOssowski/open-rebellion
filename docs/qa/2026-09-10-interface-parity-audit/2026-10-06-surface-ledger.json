@@ -614,7 +614,7 @@
         {
           "id": "PRE-03-C004",
           "requirement": "load",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -623,10 +623,11 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
-            "tools/interface-parity/game-options.mjs"
+            "tools/interface-parity/game-options.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-empty-save-list/"
           ],
-          "note": "Fingerprint-verified load passes game-options-smoke (macOS) and native Linux acceptance 2026-10-18 (load_state_fingerprint slot=1); no A0 and no Linux browser run. 2026-10-31: Load Yes on the Linux browser reads the saved fingerprint and restores the Empire campaign (game-options.mjs); no A0 of a load.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Fingerprint-verified load passes game-options-smoke (macOS) and native Linux acceptance 2026-10-18 (load_state_fingerprint slot=1); no A0 and no Linux browser run. 2026-10-31: Load Yes on the Linux browser reads the saved fingerprint and restores the Empire campaign (game-options.mjs); no A0 of a load. 2026-11-05: A0 load-from-menu/00, 01: Load on a save in the main menu's Game Options opens the game at once; game-options.mjs (Linux) loads slot 0 from the menu's Game Options in one click, with no question, and restores the campaign, and in a game asks 'Load without saving?' first (both fingerprint-checked).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-03-C005",
