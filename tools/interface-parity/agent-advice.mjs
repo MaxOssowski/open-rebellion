@@ -23,6 +23,27 @@ import { chromium } from "playwright-core";
 import { PNG } from "pngjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+// The posting toggle's 32 by 31 cell at the screen's (485, 196) (the
+// index at (62, 49), 0x66 at its (0x1a7, 0x93)) against an A0 capture:
+// the differing pixels, or null without the capture.
+async function toggleAgainstA0(page, file) {
+  let a0;
+  try {
+    a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/message-silent", file)));
+  } catch {
+    return null;
+  }
+  const screen = PNG.sync.read(await page.screenshot());
+  let differ = 0;
+  for (let y = 196; y < 227; y += 1) {
+    for (let x = 485; x < 517; x += 1) {
+      const i = (y * 640 + x) * 4;
+      if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[i + c])) differ += 1;
+    }
+  }
+  return differ;
+}
 const WEB = path.join(ROOT, "web");
 const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
   const [key, value = "true"] = arg.replace(/^--/, "").split("=");
@@ -207,9 +228,16 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await page.waitForTimeout(300);
     await shot("posting-silent");
+    // A0 message-silent/silent: Advice silenced, 0x2ac7 keyed on its first
+    // pixel (FUN_005fd170), the rail through its border; alerting: 0x2a78.
+    const toggle = { silent: faction.name === "alliance" ? await toggleAgainstA0(page, "silent.png") : null };
     await click(page, faction.post);
     await waitFor(page, log, "the toggle turns the alerts back on", () => posting().length === 2, 5_000);
     assert.match(posting()[1], /mask=Some\(512\) silent=false/);
+    await page.mouse.move(2, 2);
+    await page.waitForTimeout(300);
+    toggle.alerting = faction.name === "alliance" ? await toggleAgainstA0(page, "alerting.png") : null;
+    assert.ok((toggle.silent ?? 0) === 0 && (toggle.alerting ?? 0) === 0, JSON.stringify(toggle));
     // The newest advice (9, "Advice Available") heads the list.
     await click(page, faction.firstRow);
     await click(page, faction.firstRow);
@@ -234,7 +262,7 @@ async function run(browser, base, faction) {
     assert.deepEqual(errors, [], errors.join("; "));
     assert.ok(network.every(({ status }) => status < 400),
       JSON.stringify(network.filter(({ status }) => status >= 400)));
-    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText,
+    return { faction: faction.name, status: "pass", posted: posted(), shots, rowsText, toggle,
       agent: log.filter((line) => line.startsWith("[agent]") || line.includes("message_index")) };
   } catch (error) {
     await shot("failure").catch(() => {});

@@ -1,0 +1,2 @@
+b16bdb058ea78d0561c1c655d9776cdd482deb999d15815c017ec631d92ac49e  .artifacts/a0-vm/message-silent/alerting.png
+7c5f46fcec5e921167f8130543c9e2dd39f820c40b471c75f5cf7e974c92c578  .artifacts/a0-vm/message-silent/silent.png

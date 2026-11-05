@@ -3280,13 +3280,14 @@
         {
           "id": "CMD-08-C013",
           "requirement": "silent",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-posting/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-posting/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-silent/"
           ],
-          "note": "A silent category keeps its messages from the advisor (FUN_0048a060); browser toggle verified.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A silent category keeps its messages from the advisor (FUN_0048a060); browser toggle verified. 2026-11-05: the toggle's silent (0x2ac7, keyed on its first pixel) and alerting (0x2a78) art match A0 message-silent/ to the pixel in agent-advice.mjs (Linux, Alliance).",
+          "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-08-C014",
