@@ -32,6 +32,7 @@ const SQUADRON_LOAD = 65;
 const SQUADRON_BATTLE = 66;
 const FLEET_BOMBARDMENT = 67;
 const FLEET_ASSAULT = 68;
+const FLEET_ASSAULT_TAKEN = 97;
 const FLEET_DESTROY_SYSTEM = 74;
 const PRODUCTION_DELIVERY = 75;
 const UPRISING_INCIDENT = 76;
@@ -1079,6 +1080,146 @@ const cases = [
     },
   },
   {
+    name: "assault-taken",
+    code: FLEET_ASSAULT_TAKEN,
+    // As "assault" with no regiment of the other side's on the planet: the
+    // assault takes the system (FUN_00496770: 0x7090 "Assault on {system}",
+    // 0x7091 "{attacker} troops have taken control of the {defender}
+    // system {system}"). A0 messages-day633/assault-coruscant* (the
+    // Alliance's Assault on Coruscant, the window at (62, 49)): the
+    // picture 0x2b98 at (12, 13), every pixel between the title and the
+    // body exact; the title's rows and centre and the body's corner; on
+    // the forces pages the labels' ink boxes (FUN_0044e290, FUN_0044e500).
+    async run(page, faction, setup, directory) {
+      await until(page, "the planet holds none of the other side's regiments",
+        (o) => o.enemy_regiments === 0 && o.last_assault_message === null);
+      const menu = await openMenu(page, point(setup.icon), directory, "assault-taken");
+      assert.notEqual(menu.assault_row, null, JSON.stringify(menu));
+      const height = (menu.height - 2) / menu.rows;
+      await click(page, { x: menu.left + menu.width / 2, y: menu.top + 2 + height * (menu.assault_row + 0.5) });
+      const after = await until(page, "the assault takes the system and its Assault Summary opens",
+        (o) => o.assault_summary?.page === "Summary");
+      const summary = after.assault_summary;
+      const attacker = faction.name === "alliance" ? "Alliance" : "Imperial";
+      assert.match(summary.title, /^Assault on /, JSON.stringify(summary));
+      assert.match(summary.body, new RegExp(`^${attacker} troops have taken control of the `), JSON.stringify(summary));
+      assert.equal(summary.picture, faction.name === "alliance" ? 0x2b98 : 0x2b99);
+      await page.mouse.move(2, 2);
+      await frames(page, 3);
+      const summaryShot = await shot(page, directory, "assault-taken-summary");
+      const [ox, oy] = summary.origin.map(Math.round);
+      const a0Dir = path.join(root, ".artifacts/a0-vm/messages-day633");
+      const alliance = faction.name === "alliance" && fs.existsSync(path.join(a0Dir, "assault-coruscant.png"));
+      const read = (file) => PNG.sync.read(fs.readFileSync(path.join(a0Dir, file)));
+      const red = (data, k) => data[k] > 180 && data[k + 1] < 100 && data[k + 2] < 100;
+      const white = (data, k) => Math.min(data[k], data[k + 1], data[k + 2]) > 190;
+      const ink = (png, [x0, y0], [xa, ya, xb, yb], test) => {
+        let box = null;
+        for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+          if (!test(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+        return box;
+      };
+      const checks = {};
+      // The picture, 400 by 310 at (12, 13), between the title's rows and
+      // the body's (the bitmap's rows 25..205).
+      const bitmap = (() => {
+        const bytes = fs.readFileSync(path.join(root, "data/base/ui/strategy-dll/BMP/11160.bmp"));
+        const offset = bytes.readUInt32LE(10);
+        const width = bytes.readInt32LE(18);
+        const rows = Math.abs(bytes.readInt32LE(22));
+        const palette = 14 + bytes.readUInt32LE(14);
+        const stride = (width + 3) & ~3;
+        return { width, rows, rgb: (x, y) => {
+          const entry = palette + bytes[offset + (rows - 1 - y) * stride + x] * 4;
+          return [bytes[entry + 2], bytes[entry + 1], bytes[entry]];
+        } };
+      })();
+      const pictureDiff = (png, [x0, y0]) => {
+        let count = 0;
+        for (let y = 25; y < 205; y += 1) for (let x = 0; x < bitmap.width; x += 1) {
+          const k = ((y0 + 13 + y) * png.width + x0 + 12 + x) * 4;
+          const [r, g, b] = bitmap.rgb(x, y);
+          if (png.data[k] !== r || png.data[k + 1] !== g || png.data[k + 2] !== b) count += 1;
+        }
+        return count;
+      };
+      const port = PNG.sync.read(summaryShot.bytes);
+      if (faction.name === "alliance") checks.picture = { port: pictureDiff(port, [ox, oy]) };
+      if (alliance) {
+        const a0 = read("assault-coruscant.png");
+        checks.picture.a0 = pictureDiff(a0, [62, 49]);
+        // The title (centred, red) and the body's first line (red).
+        const title = [12, 10, 412, 40];
+        const body = [20, 220, 400, 245];
+        checks.title = { a0: ink(a0, [62, 49], title, red), port: ink(port, [ox, oy], title, red) };
+        checks.body = { a0: ink(a0, [62, 49], body, red), port: ink(port, [ox, oy], body, red) };
+        const t = checks.title;
+        assert.ok(t.a0 && t.port && Math.abs(t.a0[1] - t.port[1]) <= 2 && Math.abs(t.a0[3] - t.port[3]) <= 2
+          && Math.abs((t.a0[0] + t.a0[2]) - (t.port[0] + t.port[2])) <= 6, JSON.stringify(checks));
+        const b = checks.body;
+        assert.ok(b.a0 && b.port && Math.abs(b.a0[0] - b.port[0]) <= 2 && Math.abs(b.a0[1] - b.port[1]) <= 2,
+          JSON.stringify(checks));
+      }
+      if (checks.picture) {
+        assert.ok(checks.picture.port === 0 && (checks.picture.a0 ?? 0) === 0, JSON.stringify(checks));
+      }
+      // The forces pages: the rail's 0x66 and 0x67.
+      const rail = faction.name === "alliance"
+        ? { x: 418, ys: [88, 141, 196, 250], width: 41 }
+        : { x: 426, ys: [89, 148, 207, 266], width: 44 };
+      const railButton = (index) => point([ox + rail.x + rail.width / 2, oy + rail.ys[index] + 20]);
+      const labels = [
+        ["subtitle", [12, 34, 412, 56], red],
+        // Below the category bar's line (row 99).
+        ["category", [38, 101, 300, 116], white],
+        // Inside the column lines (rows 118 and 134, the columns split at
+        // 203).
+        ["operational-head", [40, 119, 201, 134], white],
+        ["destroyed-head", [206, 119, 367, 134], white],
+        ["destroyed", [206, 136, 367, 175], white],
+      ];
+      for (const [index, page_, file, extra] of [[1, "Attackers", "assault-coruscant-alliance-regiments.png", []],
+        [2, "SystemForces", "assault-coruscant-system-regiments.png", [["operational", [40, 136, 201, 175], white]]]]) {
+        await click(page, railButton(index));
+        const shown = await until(page, `the ${page_} page shows the regiments`,
+          (o, value) => o.assault_summary?.page === value && o.assault_summary.category === "Troops", page_);
+        await page.mouse.move(2, 2);
+        await frames(page, 3);
+        const forces = await shot(page, directory, `assault-taken-${page_.toLowerCase()}`);
+        assert.deepEqual(shown.assault_summary.columns.at(-1), [], JSON.stringify(shown.assault_summary));
+        if (page_ === "SystemForces") {
+          assert.deepEqual(shown.assault_summary.columns[0], [], JSON.stringify(shown.assault_summary));
+        }
+        if (!alliance) continue;
+        const a0 = read(file);
+        const portShot = PNG.sync.read(forces.bytes);
+        // The category bar (CATEGORY_BAR (36, 59), six 49 by 41 buttons,
+        // Trooper Regiments down), every pixel as A0's.
+        let bar = 0;
+        for (let y = 59; y < 100; y += 1) for (let x = 36; x < 384; x += 1) {
+          const i = ((49 + y) * a0.width + 62 + x) * 4;
+          const j = ((oy + y) * portShot.width + ox + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== portShot.data[j + c])) bar += 1;
+        }
+        checks[`${page_}-bar`] = bar;
+        assert.equal(bar, 0, `${page_} category bar differs from A0 in ${bar} pixels`);
+        for (const [name, region, test] of [...labels, ...extra]) {
+          const a = ink(a0, [62, 49], region, test);
+          const p = ink(portShot, [ox, oy], region, test);
+          checks[`${page_}-${name}`] = { a0: a, port: p };
+          const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+          assert.ok(a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2 && ratio > 0.85 && ratio < 1.15,
+            `${page_} ${name}: ${JSON.stringify(checks[`${page_}-${name}`])}`);
+        }
+      }
+      await press(page, "Escape");
+      await until(page, "Escape closes the Assault Summary", (o) => o.assault_summary === null);
+      return { summary, checks };
+    },
+  },
+  {
     name: "assault",
     code: FLEET_ASSAULT,
     // The fleet icon's menu lists Planetary Assault (0x234, FUN_00507290),
@@ -1971,8 +2112,9 @@ async function inspect(server, source, faction, testCase, executable) {
       assert.ok(setup.capacity > 0, "the fleet carries regiments");
       const start = await latest(page);
       assert.equal(start.window_open, false, JSON.stringify(start));
-      // The refused variant's regiment starts aboard (interface_test_fixture.rs).
-      const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED;
+      // The refused variant's regiment starts aboard (interface_test_fixture.rs),
+      // and the taken assault's player regiment is the one aboard.
+      const startsAboard = testCase.code === REGIMENT_UNLOAD_REFUSED || testCase.code === FLEET_ASSAULT_TAKEN;
       assert.equal(start.aboard, startsAboard, JSON.stringify(start));
       assert.equal(start.troop_system_dat_id, startsAboard ? null : setup.primary_dat_id, JSON.stringify(start));
     }

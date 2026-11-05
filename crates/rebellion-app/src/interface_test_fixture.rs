@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 96;
+const SCENARIO_COUNT: u8 = 97;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -304,6 +304,10 @@ pub enum Scenario {
     /// window: a band's Destination released on the fleet is refused (A0
     /// build-selection2/30, 32, 35).
     BuildSelectionFleetDestination = 95,
+    /// As `FleetAssault` with no regiment of the other side's on the
+    /// planet: the assault takes the system, and the Assault Summary reads
+    /// TEXTSTRA `0x7091` (A0 messages-day633/assault-coruscant).
+    FleetAssaultTaken = 96,
 }
 
 impl Scenario {
@@ -405,6 +409,7 @@ impl Scenario {
             93 => Self::ForceStatus,
             94 => Self::BuildSelectionDefensesDestination,
             95 => Self::BuildSelectionFleetDestination,
+            96 => Self::FleetAssaultTaken,
             _ => return None,
         })
     }
@@ -423,6 +428,7 @@ impl Scenario {
                 | Self::SquadronBattle
                 | Self::FleetBombardment
                 | Self::FleetAssault
+                | Self::FleetAssaultTaken
                 | Self::FleetDestroySystem
                 | Self::ProductionDelivery
                 | Self::UprisingIncident
@@ -2844,7 +2850,10 @@ fn place_loading_fleet(
     }
     if matches!(
         request.scenario,
-        Scenario::FleetBombardment | Scenario::FleetAssault | Scenario::FleetDestroySystem
+        Scenario::FleetBombardment
+            | Scenario::FleetAssault
+            | Scenario::FleetAssaultTaken
+            | Scenario::FleetDestroySystem
     ) {
         place_bombarding_fleet(world, fleet, primary, elsewhere, player_is_alliance);
     }
@@ -2852,10 +2861,23 @@ fn place_loading_fleet(
         place_death_star(world, fleet, primary, player_is_alliance);
     }
     // The assault variant: one of the player's regiments aboard the fleet.
-    if request.scenario == Scenario::FleetAssault {
+    if matches!(
+        request.scenario,
+        Scenario::FleetAssault | Scenario::FleetAssaultTaken
+    ) {
         let key = world.troops.insert(regiment());
         world.systems[primary].ground_units.push(key);
         let _ = troop_transport.embark(world, fleet, &[key]);
+    }
+    // The taken variant: the other side's regiments leave the planet.
+    if request.scenario == Scenario::FleetAssaultTaken {
+        let player_side = player_is_alliance;
+        let troops = &world.troops;
+        world.systems[primary].ground_units.retain(|key| {
+            troops
+                .get(*key)
+                .is_none_or(|troop| troop.is_alliance == player_side)
+        });
     }
 
     let layout = cockpit.layout_for(640.0, 480.0);
@@ -7368,6 +7390,16 @@ mod tests {
             assert_eq!(aboard.len(), 1);
             assert_eq!(applied.world.troops[aboard[0]].is_alliance, alliance);
             assert!(enabled);
+            // The taken variant leaves the planet no regiment of the other
+            // side's, so the assault takes it (0x7091).
+            let (taken, aboard, enabled) = assault(Scenario::FleetAssaultTaken);
+            assert_eq!(aboard.len(), 1);
+            assert!(enabled);
+            let target = taken.world.systems.keys().next().unwrap();
+            assert!(taken.world.systems[target]
+                .ground_units
+                .iter()
+                .all(|key| taken.world.troops[*key].is_alliance == alliance));
             // The bombardment variant carries none, so the order is off.
             let (_, aboard, enabled) = assault(Scenario::FleetBombardment);
             assert!(aboard.is_empty());
@@ -8781,6 +8813,7 @@ mod tests {
                 Scenario::ForceStatus,
                 Scenario::BuildSelectionDefensesDestination,
                 Scenario::BuildSelectionFleetDestination,
+                Scenario::FleetAssaultTaken,
             ]
         );
     }

@@ -529,6 +529,13 @@ fn cell_origin(category: ReportCategory, column: usize, row: usize) -> (f32, f32
     (LIST.0 + column as f32 * width, LIST.1 + row as f32 * height)
 }
 
+/// An empty column's text item (`FUN_0044edb0(0, 0, text)`): font 6
+/// (`+0x38`), 10 below the item's top (`+0x34`). A0
+/// messages-day633/assault-coruscant-*: "None" and "No Casualties" in the
+/// large font.
+const EMPTY_LABEL_FONT: u16 = 6;
+const EMPTY_LABEL_Y: f32 = 10.0;
+
 /// An empty column's line: "None" (`0x8526`) for the first or middle
 /// column, "No Casualties" (`0x1941`) for the last (`FUN_0044e500`).
 fn empty_label(column: usize, columns: usize) -> &'static str {
@@ -705,9 +712,19 @@ fn draw_window(
                         let list_painter = painter.with_clip_rect(list);
                         for (column, units) in columns.iter().enumerate() {
                             let (x, _) = cell_origin(window.category, column, 0);
+                            // FUN_0044edb0 with no object: a text item
+                            // in font 6 (+0x38), 10 below the item's top
+                            // (+0x34), centred (+0x50 5).
                             if units.is_empty() && window.scroll == 0 {
                                 let label = empty_label(column, columns.len());
-                                text(label, x, LIST.1 + 4.0, cell_w, 10.0, egui::Color32::WHITE);
+                                gdi_text(
+                                    label,
+                                    x,
+                                    LIST.1 + EMPTY_LABEL_Y,
+                                    cell_w,
+                                    EMPTY_LABEL_FONT,
+                                    egui::Color32::WHITE,
+                                );
                             }
                             let shown = units.iter().skip(window.scroll).take(visible + 1);
                             for (row, unit) in shown.enumerate() {
@@ -1419,10 +1436,12 @@ mod tests {
         assert_eq!(subtitle.y, at(0.0, 36.0).y);
         let (category, colour) = has(&frame, "Trooper Regiments").unwrap();
         assert_eq!((category, colour), (at(38.0, 100.0), egui::Color32::WHITE));
-        assert_eq!(has(&frame, "None").unwrap().0.y, at(0.0, 140.0).y);
+        // FUN_0044edb0(0, 0, text): font 6 (+0x38), 10 below the list's
+        // top (+0x34), as A0 messages-day633/assault-coruscant-* shows them.
+        assert_eq!(has(&frame, "None").unwrap().0.y, at(0.0, 146.0).y);
         assert!(has(&frame, "No Casualties").is_some());
         let (font, _, wrap) = metrics(&frame, "None");
-        assert_eq!((font, wrap), (20.0, 330.0));
+        assert_eq!((font, wrap), (crate::theme::gdi_font(6, 2.0).size, 330.0));
         assert_eq!(painted(&frame, FORCES_TWO_COLUMNS), [at(12.0, 13.0)]);
         assert_eq!(painted(&frame, FORCES_THREE_COLUMNS).len(), 0);
         // The shown category's button is down (Trooper Regiments).
