@@ -416,6 +416,51 @@ try {
     && line.includes(`fingerprint=${fingerprint}`) && line.includes("faction=Empire")), "the load restores the campaign");
   result.confirmations = ["overwrite No", "overwrite Yes", "exit No", "restart No", "load Yes"];
   assert.deepEqual(errors, []);
+  // From an Alliance galaxy game the Return button is the Alliance frame
+  // 10020 (FUN_00407180). A0 game-options-alliance/00 (2026-11-05: an
+  // Alliance save loaded, then F1) shows it at (162, 382), every pixel.
+  const allianceA0 = await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/game-options-alliance/00-from-galaxy.png"))
+    .then((bytes) => PNG.sync.read(bytes)).catch(() => null);
+  if (allianceA0) {
+    const alliance = await (await browser.newContext({ viewport: { width: 640, height: 480 } })).newPage();
+    alliance.on("pageerror", (error) => errors.push(String(error)));
+    const allianceLog = [];
+    alliance.on("console", (message) => allianceLog.push(message.text()));
+    await alliance.goto(`http://127.0.0.1:${server.address().port}/?fixture-code=${FLEET_FINDER | (1 << 8)}`);
+    await alliance.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
+      null, { timeout: 30_000 });
+    await alliance.locator("#glcanvas").focus();
+    await alliance.waitForTimeout(500);
+    await alliance.keyboard.press("F1");
+    await alliance.waitForTimeout(1000);
+    await alliance.mouse.move(330, 250);
+    await alliance.waitForTimeout(300);
+    const options = PNG.sync.read(await alliance.screenshot({ path: path.join(OUT, "alliance-options.png") }));
+    let differing = 0;
+    for (let y = 382; y < 424; y += 1) for (let x = 162; x < 204; x += 1) if (!same(options, x, y, allianceA0, x, y)) differing += 1;
+    result.alliance_return_differing = differing;
+    assert.equal(differing, 0, `the Alliance Return button differs from A0 in ${differing} pixels`);
+    // Return (162, 382) goes back to the galaxy (A0 game-options-alliance/01:
+    // the game as before F1): the window's Saved Games strip at (57, 37) is
+    // gone.
+    await alliance.mouse.move(183, 403);
+    await alliance.waitForTimeout(300);
+    await alliance.mouse.down();
+    await alliance.waitForTimeout(150);
+    await alliance.mouse.up();
+    // The release is read on the next frame, under the pointer.
+    await alliance.waitForTimeout(300);
+    await alliance.mouse.move(2, 470);
+    await alliance.waitForTimeout(1000);
+    const back = PNG.sync.read(await alliance.screenshot({ path: path.join(OUT, "alliance-returned.png") }));
+    let strip = 0;
+    for (let y = 37; y < 57; y += 1) for (let x = 57; x < 300; x += 1) if (same(back, x, y, options, x, y)) strip += 1;
+    result.alliance_return_strip_kept = strip;
+    result.alliance_log = allianceLog.filter((line) => /\[game_options\]/.test(line)).slice(-4);
+    assert.ok(strip < 200, `Return left the options window open (${strip} pixels of its strip remain)`);
+    await alliance.close();
+  }
+  assert.deepEqual(errors, []);
   result.status = "pass";
 } catch (error) {
   result.error = String(error.stack || error);

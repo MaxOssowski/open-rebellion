@@ -214,6 +214,8 @@ pub struct MainMenuState {
     keyboard_focus: Option<MainMenuControl>,
     semantic_focus: Option<MainMenuControl>,
     pending_sfx: Option<SfxKind>,
+    /// Quit's question is open (REBDLOG 0x1202, A0 main-menu-quit/q0).
+    quit_question: bool,
 }
 
 impl Default for MainMenuState {
@@ -230,6 +232,7 @@ impl Default for MainMenuState {
             keyboard_focus: None,
             semantic_focus: None,
             pending_sfx: None,
+            quit_question: false,
         }
     }
 }
@@ -258,7 +261,7 @@ impl MainMenuState {
     /// canvas-keyboard behavior, including the recovered COMMON.DLL effect.
     /// The open Fleet Registry holds the cockpit beneath it still.
     pub fn activate_control(&mut self, control: MainMenuControl) -> Option<MainMenuAction> {
-        if self.registry_open() {
+        if self.registry_open() || self.quit_question {
             return None;
         }
         self.pending_sfx = Some(sfx_for(control));
@@ -269,6 +272,12 @@ impl MainMenuState {
     #[must_use]
     pub const fn registry_open(&self) -> bool {
         self.registry.is_some()
+    }
+
+    /// Whether Quit's question is open over the cockpit.
+    #[must_use]
+    pub const fn quit_question_open(&self) -> bool {
+        self.quit_question
     }
 }
 
@@ -507,7 +516,10 @@ fn activate(control: MainMenuControl, state: &mut MainMenuState) -> Option<MainM
         MainMenuControl::LoadOptions => return Some(MainMenuAction::LoadGame),
         MainMenuControl::Credits => return Some(MainMenuAction::Credits),
         MainMenuControl::Multiplayer => return Some(MainMenuAction::Multiplayer),
-        MainMenuControl::Quit => return Some(MainMenuAction::Quit),
+        // The quit question first (FUN_00414330: FUN_00401110(0x470, 0,
+        // 0x1202); A0 main-menu-quit/q0 shows it over the cockpit); its Yes
+        // quits.
+        MainMenuControl::Quit => state.quit_question = true,
         MainMenuControl::MusicToggle => return Some(MainMenuAction::ToggleMusic),
         MainMenuControl::FleetRegistry => state.registry = Some(FleetRegistryState::new()),
     }
@@ -875,6 +887,55 @@ pub fn draw_main_menu(
                 ),
             );
         });
+    if state.quit_question {
+        let canvas = main_menu_canvas_rect(ctx.screen_rect());
+        let text =
+            crate::win_tooltip::module_string(crate::win_tooltip::StringModule::Dialog, 0x1202)
+                .unwrap_or_else(|| "Are you sure you want to quit?".to_owned());
+        // The cockpit's realized palette (COMMON 20001's, entry 254 white):
+        // A0 main-menu-quit/q0's dialog is 10623 in its nearest entries.
+        let palette = crate::rebdlog_dialog::realized_palette(
+            cache,
+            DllSource::Common,
+            resources::common::MAIN_MENU_BG,
+        );
+        let answer = egui::Area::new(egui::Id::new("main-menu-quit-question"))
+            .order(egui::Order::Foreground)
+            .fixed_pos(canvas.min)
+            .show(ctx, |ui| {
+                ui.set_min_size(canvas.size());
+                crate::rebdlog_dialog::paint(
+                    ui,
+                    ctx,
+                    cache,
+                    crate::rebdlog_dialog::Screen {
+                        origin: canvas.min,
+                        scale: canvas.width() / LOGICAL_WIDTH,
+                    },
+                    crate::rebdlog_dialog::Kind::Question,
+                    &crate::rebdlog_dialog::Texts {
+                        first: None,
+                        second: &text,
+                    },
+                    &palette,
+                    "shuttle",
+                )
+            })
+            .inner;
+        // Escape answers No, as the dialog's X.
+        let answer = answer.or_else(|| {
+            ctx.input(|input| input.key_pressed(egui::Key::Escape))
+                .then_some(false)
+        });
+        match answer {
+            Some(true) => {
+                state.quit_question = false;
+                action = Some(MainMenuAction::Quit);
+            }
+            Some(false) => state.quit_question = false,
+            None => {}
+        }
+    }
     if let Some(registry) = state.registry.as_mut() {
         let canvas = main_menu_canvas_rect(ctx.screen_rect());
         let emblems = [MainMenuControl::Empire, MainMenuControl::Alliance].map(|control| {
@@ -1310,6 +1371,7 @@ mod tests {
     /// actions the frames produced.
     fn run_menu(state: &mut MainMenuState, frames: Vec<Vec<egui::Event>>) -> Vec<MainMenuAction> {
         let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
         let mut cache = BmpCache::new();
         let mut actions = Vec::new();
         for events in [vec![], vec![]].into_iter().chain(frames) {
@@ -1366,6 +1428,36 @@ mod tests {
         assert_eq!(state.take_sfx(), Some(SfxKind::MenuSelect));
         let started = run_menu(&mut state, click_at(empire.0, empire.1));
         assert!(matches!(started.as_slice(), [MainMenuAction::StartGame { .. }]));
+    }
+
+    #[test]
+    fn quit_asks_first_and_yes_quits() {
+        // FUN_00414330: FUN_00401110(0x470, 0, 0x1202), A0 main-menu-quit/q0:
+        // the main menu's Quit asks "Are you sure you want to quit?" over the
+        // cockpit; Yes (or Enter) quits, No (or Escape) keeps the menu, and
+        // the cockpit takes no click meanwhile.
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        };
+        let quit = (567.0, 425.0);
+        let empire = (184.0, 335.0);
+        let mut state = MainMenuState::default();
+        assert!(run_menu(&mut state, click_at(quit.0, quit.1)).is_empty());
+        assert!(state.quit_question_open());
+        assert!(run_menu(&mut state, click_at(empire.0, empire.1)).is_empty());
+        assert!(state.quit_question_open());
+        assert!(run_menu(&mut state, vec![vec![key(egui::Key::Escape)]]).is_empty());
+        assert!(!state.quit_question_open());
+        run_menu(&mut state, click_at(quit.0, quit.1));
+        assert_eq!(
+            run_menu(&mut state, vec![vec![key(egui::Key::Enter)]]),
+            [MainMenuAction::Quit]
+        );
+        assert!(!state.quit_question_open());
     }
 
     #[test]

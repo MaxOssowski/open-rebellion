@@ -235,6 +235,72 @@ try {
     result.after_restart = { compared, differing: differ };
     assert.equal(differ, 0, `the menu after Restart differs from A0 in ${differ} pixels`);
   }
+  // Quit asks first (FUN_00414330: FUN_00401110(0x470, 0, 0x1202)). A0
+  // main-menu-quit/q0 (2026-11-05): "Are you sure you want to quit?" over
+  // the cockpit, REBDLOG 10623 at (114, 152) in the cockpit's palette. The
+  // dialog's pixels outside its text band and its buttons are A0's; the
+  // line's ink within the accepted text deviation; the buttons' art too
+  // (the pointer stands elsewhere); No keeps the menu.
+  const quitA0 = await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/main-menu-quit/q0.png"))
+    .then((bytes) => PNG.sync.read(bytes)).catch(() => null);
+  // The menu after Restart takes a moment to settle its hover.
+  await page.waitForTimeout(1000);
+  await page.mouse.move(560, 420, { steps: 4 });
+  await page.waitForTimeout(300);
+  await page.mouse.move(567, 425);
+  await page.waitForTimeout(300);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  await page.mouse.move(2, 470);
+  await page.waitForTimeout(800);
+  const asked = PNG.sync.read(await page.screenshot({ path: path.join(OUT, "quit-question.png") }));
+  assert.ok(await page.locator("#main-menu-semantics[data-active=true]").count() > 0, "Quit left the menu at once");
+  if (quitA0) {
+    let frame = 0;
+    let buttons = 0;
+    for (let y = 152; y < 328; y += 1) {
+      for (let x = 114; x < 526; x += 1) {
+        const i = (y * 640 + x) * 4;
+        const differs = [0, 1, 2].some((c) => asked.data[i + c] !== quitA0.data[i + c]);
+        if (!differs) continue;
+        const text = x >= 157 && x < 482 && y >= 177 && y < 264;
+        const button = y >= 287 && y < 315 && ((x >= 252 && x < 309) || (x >= 343 && x < 400));
+        if (button) buttons += 1;
+        else if (!text) frame += 1;
+      }
+    }
+    const cream = (png, x, y) => {
+      const i = (y * 640 + x) * 4;
+      return png.data[i] > 200 && png.data[i + 1] > 200 && png.data[i + 2] > 180;
+    };
+    const ink = (png) => {
+      let box = null;
+      for (let y = 177; y < 264; y += 1) for (let x = 157; x < 482; x += 1) {
+        if (!cream(png, x, y)) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+      }
+      return box;
+    };
+    const a = ink(quitA0);
+    const p = ink(asked);
+    result.quit_question = { frame_differing: frame, buttons_differing: buttons, text: { a0: a, port: p } };
+    assert.equal(frame, 0, `the quit dialog's frame differs from A0 in ${frame} pixels`);
+    assert.equal(buttons, 0, `the quit dialog's buttons differ from A0 in ${buttons} pixels`);
+    assert.ok(a && p, "the quit question has no ink");
+    const near = (u, v) => Math.abs(u - v) <= 1;
+    assert.ok(near((a[0] + a[2]) / 2, (p[0] + p[2]) / 2) && near(a[1], p[1]) && near(a[3], p[3]),
+      `quit ink ${p} vs A0 ${a}`);
+  }
+  // No: the X at (343, 287), 57 by 28.
+  await page.mouse.move(371, 301);
+  await page.waitForTimeout(150);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  assert.ok(await page.locator("#main-menu-semantics[data-active=true]").count() > 0, "No left the menu");
   result.errors = errors;
   assert.deepEqual(errors, []);
   result.status = "pass";

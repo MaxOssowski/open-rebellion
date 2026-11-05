@@ -1124,162 +1124,40 @@ pub fn draw_game_options_overlay(
             // message after a save (FUN_00417020: 10622, one button at
             // (176, 134) in the dialog).
             let dialog = match (&state.pending, state.saved_notice) {
-                (Some(action), _) => Some((10623, confirmation_strings(action), false)),
-                (None, Some(saved)) => Some((10622, (None, saved_notice_string(saved)), true)),
+                (Some(action), _) => Some((
+                    crate::rebdlog_dialog::Kind::Question,
+                    confirmation_strings(action),
+                )),
+                (None, Some(saved)) => Some((
+                    crate::rebdlog_dialog::Kind::Message,
+                    (None, saved_notice_string(saved)),
+                )),
                 (None, None) => None,
             };
-            if let Some((background, (first, second), notice)) = dialog {
-                let assets = [background, 10624, 10625, 10626, 10627];
-                let complete = assets.iter().all(|id| {
-                    cache.get(ctx, DllSource::Rebdlog, *id).is_some()
-                        && cache
-                            .original_resource_size(DllSource::Rebdlog, *id)
-                            .is_some()
-                });
-                let bounds = rect(114.0, 152.0, 412.0, 176.0);
-                let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-                // The screen is 8-bit: GDI shows the dialog's DIBs in the
-                // window's realized palette, COMMON 20002's with entry 254 white
-                // (A0 tooltip/211, 212: every pixel of 10623, 10625 and 10627
-                // is its nearest entry).
-                let palette: Vec<[u8; 3]> = cache
-                    .original_palette_rgba(DllSource::Common, resources::common::GAME_OPTIONS_BG)
-                    .map(|entries| {
-                        let mut palette: Vec<[u8; 3]> =
-                            entries.iter().map(|[r, g, b, _]| [*r, *g, *b]).collect();
-                        palette[254] = [255, 255, 255];
-                        palette
-                    })
-                    .unwrap_or_default();
-                let dialog_texture = |cache: &mut BmpCache, id: u32| {
-                    if palette.is_empty() {
-                        cache
-                            .get(ctx, DllSource::Rebdlog, id)
-                            .map(|texture| texture.id())
-                    } else {
-                        cache
-                            .get_in_screen_palette(ctx, DllSource::Rebdlog, id, "options", &palette)
-                            .map(|texture| texture.id())
-                    }
-                };
-                if complete {
-                    if let Some(texture) = dialog_texture(cache, background) {
-                        ui.painter().image(texture, bounds, uv, Color32::WHITE);
-                    }
-                } else {
-                    ui.painter()
-                        .rect_filled(bounds, 4.0, Color32::from_rgb(30, 30, 35));
-                }
-                // Class_00658950_vt3c: the question's first string in font 5,
-                // 0x2f0fbff, centred and word-wrapped from the top of (43, 25)
-                // to (368, 86); the second centred on one line in (43, 87) to
-                // (368, 112), or in (43, 25) to (368, 112) alone.
-                // DrawTextA through theme::paint_gdi_text(_block).
-                let cream = Color32::from_rgb(255, 251, 240);
-                let (left, top) = (114.0 + 43.0, 152.0);
-                if let Some(first) = &first {
-                    let _ = crate::theme::paint_gdi_text_block(
-                        ui.painter(),
-                        rect(left, top + 25.0, 325.0, 61.0),
-                        canvas.scale,
-                        5,
-                        first,
-                        cream,
-                        crate::theme::GdiAlign::Center,
-                    );
-                }
-                let (band_top, band_height) = if first.is_some() {
-                    (87.0, 25.0)
-                } else {
-                    (25.0, 87.0)
-                };
-                crate::theme::paint_gdi_text(
-                    ui.painter(),
-                    rect(left, top + band_top, 325.0, band_height),
-                    canvas.scale,
-                    5,
-                    &second,
-                    cream,
-                    (
-                        crate::theme::GdiAlign::Center,
-                        crate::theme::GdiVAlign::VCenter,
-                    ),
+            if let Some((kind, (first, second))) = dialog {
+                // GDI shows the dialog in the window's realized palette,
+                // COMMON 20002's with entry 254 white (A0 tooltip/211, 212).
+                let palette = crate::rebdlog_dialog::realized_palette(
+                    cache,
+                    DllSource::Common,
+                    resources::common::GAME_OPTIONS_BG,
                 );
-                // FUN_00416e90: Yes shows 0x2981 and 0x2980 when held, No 0x2983
-                // and 0x2982 (A0 tooltip/211, 212 show 10625 and 10627). The
-                // message's one button (Class_006589a8_vt40) has Yes's art at
-                // (290, 286).
-                let buttons: &[(f32, f32, u32, u32, bool, &str)] = if notice {
-                    &[(290.0, 286.0, 10625, 10624, true, "Yes")]
-                } else {
-                    &[
-                        (252.0, 287.0, 10625, 10624, true, "Yes"),
-                        (343.0, 287.0, 10627, 10626, false, "No"),
-                    ]
-                };
-                // Class_00658950_vt4c / Class_006589a8_vt4c: Enter answers Yes.
-                if ctx.input(|input| input.key_pressed(egui::Key::Enter)) {
-                    answer = Some(true);
-                }
-                for &(x, y, normal, pressed, value, label) in buttons {
-                    let bounds = rect(x, y, 57.0, 28.0);
-                    if complete {
-                        let response =
-                            ui.interact(bounds, ui.id().with(normal), egui::Sense::click());
-                        // FUN_00416e90: REBDLOG 0x1300 "Yes", 0x1301 "No" (A0
-                        // tooltip/211, 212).
-                        if let Some(text) = crate::win_tooltip::module_string(
-                            crate::win_tooltip::StringModule::Dialog,
-                            if value { 0x1300 } else { 0x1301 },
-                        ) {
-                            if response.hovered() {
-                                crate::win_tooltip::tool(ctx, response.id, &text);
-                            }
-                        }
-                        let id = if response.is_pointer_button_down_on() {
-                            pressed
-                        } else {
-                            normal
-                        };
-                        if let Some(texture) = dialog_texture(cache, id) {
-                            ui.painter().image(texture, bounds, uv, Color32::WHITE);
-                        }
-                        let capture_id = ui.id().with((normal, "source_capture"));
-                        if ctx.input(|i| i.pointer.primary_pressed()) {
-                            let hit = ctx.pointer_latest_pos().is_some_and(|pos| {
-                                bounds.contains(pos)
-                                    && cache.is_resource_hit(
-                                        DllSource::Rebdlog,
-                                        normal,
-                                        ((pos.x - bounds.left()) / canvas.scale) as usize,
-                                        ((pos.y - bounds.top()) / canvas.scale) as usize,
-                                    )
-                            });
-                            ui.data_mut(|data| data.insert_temp(capture_id, hit));
-                        }
-                        let captured =
-                            ui.data(|data| data.get_temp::<bool>(capture_id).unwrap_or(false));
-                        if captured
-                            && response.clicked()
-                            && response.interact_pointer_pos().is_some_and(|pos| {
-                                cache.is_resource_hit(
-                                    DllSource::Rebdlog,
-                                    normal,
-                                    ((pos.x - bounds.left()) / canvas.scale) as usize,
-                                    ((pos.y - bounds.top()) / canvas.scale) as usize,
-                                )
-                            })
-                        {
-                            answer = Some(value);
-                        }
-                    } else {
-                        let response =
-                            ui.put(bounds, egui::Button::new(label).min_size(bounds.size()));
-                        if response.clicked() {
-                            answer = Some(value);
-                        }
-                    }
-                }
+                answer = crate::rebdlog_dialog::paint(
+                    ui,
+                    ctx,
+                    cache,
+                    crate::rebdlog_dialog::Screen {
+                        origin: Pos2::new(canvas.offset_x, canvas.offset_y),
+                        scale: canvas.scale,
+                    },
+                    kind,
+                    &crate::rebdlog_dialog::Texts {
+                        first: first.as_deref(),
+                        second: &second,
+                    },
+                    &palette,
+                    "options",
+                );
             }
             if let Some(error) = &state.error {
                 ui.painter().text(
