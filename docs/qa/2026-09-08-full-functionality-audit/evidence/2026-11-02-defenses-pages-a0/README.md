@@ -64,3 +64,5 @@ Two explanations remain open:
 - `FUN_004a90d0`'s `iVar2` is not the window's system at that point.
 
 The port keeps the code's reading until one of them is checked in the asm.
+
+**Settled (2026-11-06).** Neither explanation was needed. DS_flip_allian builds its messages for the Empire behind an Alliance cockpit, so `FUN_0041cdb0` returned the Empire there. An unedited Alliance game shows the line on its own Yavin. See `../2026-11-06-garrison-line-clean/`.

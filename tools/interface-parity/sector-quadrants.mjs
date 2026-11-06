@@ -763,13 +763,40 @@ const cases = [
       assert.match(regiments.garrison, /^Garrison Requirement: \d+$/);
       screenshot = await stableScreen(page, directory, "regiments");
       // "Trooper Regiments" against A0 personnel-states/15 (Mon Calamari's
-      // window at (305, 86)), its first line only: the port draws "Garrison
-      // Requirement" under it (FUN_004a90d0 for the holder's player), which
-      // A0's Alliance windows (Mon Calamari, Pzob) do not show.
+      // window at (305, 86)), its first line only. That save builds its
+      // messages for the Empire behind an Alliance cockpit, so it showed no
+      // garrison line on the Alliance's systems.
       await page.mouse.move(2, 2);
       await page.waitForTimeout(300);
-      checkLabel("regiments", await stableScreen(page, directory, "regiments-label"),
+      const regimentsLabel = await stableScreen(page, directory, "regiments-label");
+      checkLabel("regiments", regimentsLabel,
         path.join(root, ".artifacts/a0-vm/personnel-states/15-mon-calamari-regiments.png"), [305, 86], 66);
+      // The garrison line (FUN_004a90d0's tail for the player's side's
+      // system) against an unedited Alliance game's own Yavin (A0
+      // garrison-clean/test-day483-yavin-regiments, window at (305, 86):
+      // "Garrison Requirement: 0"): its ink box's left and top within 2
+      // pixels, its width within 15% (the accepted text deviation).
+      const garrisonA0 = path.join(root, ".artifacts/a0-vm/garrison-clean/test-day483-yavin-regiments.png");
+      if (faction.side === 1 && fs.existsSync(garrisonA0)) {
+        const garrisonBox = (png, [ox, oy]) => {
+          let box = null;
+          for (let y = oy + 66; y < oy + 80; y += 1) {
+            for (let x = ox + 30; x < ox + 210; x += 1) {
+              const i = (y * png.width + x) * 4;
+              if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 215) continue;
+              box = box ? [Math.min(box[0], x - ox), Math.min(box[1], y - oy), Math.max(box[2], x - ox),
+                Math.max(box[3], y - oy)] : [x - ox, y - oy, x - ox, y - oy];
+            }
+          }
+          return box;
+        };
+        const a = garrisonBox(PNG.sync.read(fs.readFileSync(garrisonA0)), [305, 86]);
+        const p = garrisonBox(regimentsLabel, origin);
+        pageLabels.garrison = { a0: a, port: p };
+        const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+        assert.ok(a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2 && ratio > 0.85 && ratio < 1.15,
+          `the garrison line ${JSON.stringify(pageLabels.garrison)}`);
+      }
       const mini = REGIMENT_MINI[faction.side];
       const regimentChecks = [
         ...compareTabs(screenshot, source, regiments, directory, "regiments"),

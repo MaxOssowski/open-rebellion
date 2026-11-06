@@ -4723,9 +4723,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-buttons/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-defenses-pages-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-defenses-pages-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-garrison-line-clean/"
           ],
-          "note": "Compared with A0 on 2026-11-02 (personnel-states/15: Mon Calamari's Trooper Regiments page, label at (63..170, 51..65)): sector-quadrants.mjs 'defenses' (Linux, both sides) finds the port's at (65..170, 50..65); tab art and regiment mini were already exact. Open: A0's Alliance windows show no 'Garrison Requirement' line under the label, which the port draws after FUN_004a90d0 (A0's Empire Coruscant shows it); see the evidence README.",
+          "note": "Compared with A0 on 2026-11-02 (personnel-states/15: Mon Calamari's Trooper Regiments page, label at (63..170, 51..65)): sector-quadrants.mjs 'defenses' (Linux, both sides) finds the port's at (65..170, 50..65); tab art and regiment mini were already exact. Open: A0's Alliance windows show no 'Garrison Requirement' line under the label, which the port draws after FUN_004a90d0 (A0's Empire Coruscant shows it); see the evidence README. 2026-11-06: the open point is settled: A0 in the unedited 'test' save (Alliance, day 483) shows 'Garrison Requirement: 0' under the label on the Alliance's own Yavin (garrison-clean/), as FUN_004a90d0 reads; the Alliance windows without it were from DS_flip_allian, which builds its messages for the Empire. sector-quadrants.mjs (Linux) compares the port's line with A0's: x 46..185 against 46..184, top row 66 both.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -4814,9 +4815,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-defenses-drag/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-defenses-own-hostile-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-defenses-own-hostile-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-garrison-line-clean/"
           ],
-          "note": "Compared with A0 on 2026-11-03 (personnel-states/18: Umgul, the Empire's, seen by the Alliance player, green title strip): sector-quadrants.mjs 'defenses-other-side' (Linux) opens the other side's window; its strip, buttons and frame match A0 but for each button's bottom-left pixel and the name's first column; tab art exact. Open: A0 shows the garrison line on Umgul's regiment page; the port draws it only for the player's side (FUN_004a90d0 reading).",
+          "note": "Compared with A0 on 2026-11-03 (personnel-states/18: Umgul, the Empire's, seen by the Alliance player, green title strip): sector-quadrants.mjs 'defenses-other-side' (Linux) opens the other side's window; its strip, buttons and frame match A0 but for each button's bottom-left pixel and the name's first column; tab art exact. Open: A0 shows the garrison line on Umgul's regiment page; the port draws it only for the player's side (FUN_004a90d0 reading). 2026-11-06: settled: Umgul showed the garrison line because DS_flip_allian's local side is the Empire; an unedited Alliance game shows it on its own Yavin. The port draws it only for the player's side, as FUN_004a90d0 does.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
@@ -6701,12 +6703,13 @@
         {
           "id": "OBJ-10-C007",
           "requirement": "garrison requirement",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ai-modules/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-ai-modules/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-garrison-line-clean/"
           ],
-          "note": "Garrison requirement is only an AI module input and the Agent menu's Manage Garrisons toggle (agent_menu.rs 0x115); no player-facing garrison requirement display was found. No A0 capture of this state."
+          "note": "Garrison requirement is only an AI module input and the Agent menu's Manage Garrisons toggle (agent_menu.rs 0x115); no player-facing garrison requirement display was found. No A0 capture of this state. 2026-11-06: the player sees the garrison requirement on a Defenses window's regiment page (FUN_004a90d0, TEXTSTRA 6471, the system's +0x80): A0 unedited 'test' save shows 'Garrison Requirement: 0' on the Alliance's Yavin; the port draws it for the player's side's systems (defenses_window::garrison_line, unit tests) and sector-quadrants.mjs (Linux) finds it on the player's system, not on the other side's, and its ink box within 2 pixels of A0's."
         },
         {
           "id": "OBJ-10-C008",
