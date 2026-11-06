@@ -3237,9 +3237,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-popular-support-list/",
-            "tools/interface-parity/message-display.mjs"
+            "tools/interface-parity/message-display.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/"
           ],
-          "note": "Pass (2026-11-06): A0 message-index/category-1-day228 lists 'Commenor Joins Enemy' over 'Corellia Joins Enemy' under Popular Support Messages; message-display.mjs (Linux) files the same through the app's system_joins_message (FUN_00499760, 0x7039) and the rows' heads differ from A0 in 0 pixels. Caveat (2026-11-06): the A0 capture is from DS_flip_allian, whose messages are built for the Empire behind an Alliance cockpit, so Commenor and Corellia joined the Alliance there; the fixture's Alliance reader with systems joining the Empire takes the same 0x7039 title, so the compared rows hold."
+          "note": "Pass (2026-11-06): A0 message-index/category-1-day228 lists 'Commenor Joins Enemy' over 'Corellia Joins Enemy' under Popular Support Messages; message-display.mjs (Linux) files the same through the app's system_joins_message (FUN_00499760, 0x7039) and the rows' heads differ from A0 in 0 pixels. Caveat (2026-11-06): the A0 capture is from DS_flip_allian, whose messages are built for the Empire behind an Alliance cockpit, so Commenor and Corellia joined the Alliance there; the fixture's Alliance reader with systems joining the Empire takes the same 0x7039 title, so the compared rows hold. 2026-11-06 (later): an unedited Alliance game confirms the reading: 'Xyquine Joins Enemy' joined the Empire (joins-clean/)."
         },
         {
           "id": "CMD-08-C009",
@@ -5314,9 +5315,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/"
           ],
-          "note": "A0 troop-finder-first-row/alliance-tab: the other side's tab chooses its first row, Yavin, white. encyclopedia-placement.mjs --window=finders (Linux, Alliance) presses the Troop Finder's other tab with the name box empty and finds its first row white and the others grey (FUN_0046ce40, FUN_0060d7e0(side, 1)).",
+          "note": "A0 troop-finder-first-row/alliance-tab: the other side's tab chooses its first row, Yavin, white. encyclopedia-placement.mjs --window=finders (Linux, Alliance) presses the Troop Finder's other tab with the name box empty and finds its first row white and the others grey (FUN_0046ce40, FUN_0060d7e0(side, 1)). 2026-11-06: A0 in the unedited 'test' save (Alliance, day 220) lists no Imperial regiment (troop-other-side/test-day220-imperial-tab-empty); the port now lists the other side's regiments only where opposing_contents_visible holds, and personnel-states.mjs (Linux, Alliance) finds the empty list and the tabs 0 pixels from A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -8036,9 +8038,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-system-joins-message/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-battle/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-occupation-and-finder-sides/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-occupation-and-finder-sides/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/"
           ],
-          "note": "A system moved by support joins a side or declares neutrality (0x100, control_change_texts); unit tests only, not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a planet taken by regiments alone posts no message (FUN_00510d70 leaves bit 0x2000 clear, so FUN_00499760 is silent; 0x31b has no message in FUN_00488de0); the port's 'X occupied by Y' left the index. A0 (DS_flip_allian, day 306) shows 'Ghorman Joins Enemy' over 0x703c; that save builds its messages for the Empire.",
+          "note": "A system moved by support joins a side or declares neutrality (0x100, control_change_texts); unit tests only, not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a planet taken by regiments alone posts no message (FUN_00510d70 leaves bit 0x2000 clear, so FUN_00499760 is silent; 0x31b has no message in FUN_00488de0); the port's 'X occupied by Y' left the index. A0 (DS_flip_allian, day 306) shows 'Ghorman Joins Enemy' over 0x703c; that save builds its messages for the Empire. 2026-11-06 (later): A0 in the unedited 'test' save (Alliance, day 215) shows 'Xyquine Joins Enemy' over 'Popular dissent on Xyquine has caused that world to join the Empire.' on STRATEGY 1005; message-display.mjs (Linux, Alliance) opens the fixture's 'Commenor Joins Enemy', reads the matching 0x703c body and finds its picture and title image 0 pixels from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

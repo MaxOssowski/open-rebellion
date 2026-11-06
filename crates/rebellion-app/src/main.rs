@@ -7217,6 +7217,7 @@ async fn main() {
                     let troop_choice = draw_troop_finder(
                         ctx,
                         &world,
+                        fog_state,
                         &mut troop_finder_state,
                         cockpit_layout,
                         &mut bmp_cache,

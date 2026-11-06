@@ -268,6 +268,40 @@ async function run(browser, base, faction) {
     await frames(page, 3);
     await shot("fleet-finder-other-side");
 
+    // F4: the Troop Finder's other side's tab lists no regiment here either
+    // (FUN_0046ea10 walks the player's side's views; A0 troop-other-side/
+    // test-day220-imperial-tab-empty, an unedited Alliance game): its empty
+    // list and the side tabs every pixel A0's.
+    if (faction.name === "alliance") {
+      await page.keyboard.press("Escape");
+      await frames(page, 4);
+      await page.keyboard.press("F4");
+      await frames(page, 6);
+      await page.mouse.move(62 + 88 + 24, 50 + 72 + 20);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page);
+      await page.mouse.up();
+      await frames(page, 3);
+      await page.mouse.move(2, 2);
+      await frames(page, 3);
+      await shot("troop-finder-other-side");
+      const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/troop-other-side/test-day220-imperial-tab-empty.png")));
+      const port = PNG.sync.read(await page.screenshot());
+      const differing = (x0, y0, x1, y1) => {
+        let count = 0;
+        for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+          const i = (y * a0.width + x) * 4;
+          const j = (y * port.width + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) count += 1;
+        }
+        return count;
+      };
+      const troopsOtherSide = { list: differing(99, 192, 449, 353), tabs: differing(98, 122, 200, 163) };
+      assert.deepEqual(troopsOtherSide, { list: 0, tabs: 0 }, JSON.stringify(troopsOtherSide));
+    }
+
     // F7: the Encyclopedia index, each category icon (0x6f..0x75 at the
     // window's (36 + 52 i, 78)) against A0's label, rows and choice.
     await page.keyboard.press("Escape");

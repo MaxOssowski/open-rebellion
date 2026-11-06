@@ -10,6 +10,8 @@
 //! for the choice (`FUN_00429440`).
 
 use egui_macroquad::egui;
+use rebellion_core::dat::Faction;
+use rebellion_core::fog::FogState;
 use rebellion_core::ids::{FleetKey, SystemKey, TroopKey};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::GameWorld;
@@ -18,7 +20,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::paint_native;
 use crate::mission_dialog::{button, galaxy_centered_rect};
-use crate::system_window::{fleet_label, logical_rect, rect_contains};
+use crate::system_window::{fleet_label, logical_rect, opposing_contents_visible, rect_contains};
 
 pub const TROOP_FINDER_WIDTH: f32 = 470.0;
 pub const TROOP_FINDER_HEIGHT: f32 = 330.0;
@@ -226,17 +228,29 @@ fn count_troops(world: &GameWorld, troops: &[TroopKey], tab: TroopTab) -> [Troop
 /// each fleet at that system of the tab's side, if any of its ships
 /// carries regiments (via `TroopTransportState`), a row named by the
 /// fleet is listed. The walks (`FUN_00504cc0`, `FUN_004ffef0`) run in
-/// mode 3, existing, and test no visibility, so the other side's tab lists
-/// every regiment it holds.
+/// mode 3, existing, over the player's side's views of the systems.
+///
+/// A0 troop-other-side/test-day220-imperial-tab-empty (an unedited
+/// Alliance game, day 220) lists no Imperial regiment. hyp: the port has no
+/// per-side views, so the other side's tab lists a system's or a fleet's
+/// regiments where the player sees the other side's objects
+/// (`opposing_contents_visible`), as the Fleet Finder does.
 #[must_use]
 pub fn rows(
     world: &GameWorld,
+    fog: &FogState,
+    player: Faction,
     tab: TroopTab,
     transport: &TroopTransportState,
 ) -> Vec<TroopFinderRow> {
     let mut rows = Vec::new();
 
     for (system_key, system) in &world.systems {
+        if !tab.lists(player == Faction::Alliance)
+            && !opposing_contents_visible(world, fog, player, system_key)
+        {
+            continue;
+        }
         // Check direct ground troops at this system. FUN_00504cc0 walks
         // them in mode 3, existing (+0x50 bit 6), with no visibility test.
         let ground: Vec<TroopKey> = system
@@ -469,6 +483,7 @@ fn cell_colours(tab: TroopTab) -> (egui::Color32, egui::Color32) {
 pub fn draw_troop_finder(
     ctx: &egui::Context,
     world: &GameWorld,
+    fog: &FogState,
     state: &mut TroopFinderState,
     layout: CockpitLayout,
     cache: &mut BmpCache,
@@ -479,7 +494,11 @@ pub fn draw_troop_finder(
     let controls = &CONTROLS[side_idx];
     let scale = layout.scale;
     let rect = window_rect(layout);
-    let list = rows(world, window.tab, transport);
+    let player = match window.faction {
+        CockpitFaction::Alliance => Faction::Alliance,
+        CockpitFaction::Empire => Faction::Empire,
+    };
+    let list = rows(world, fog, player, window.tab, transport);
     if window.rematch {
         // FUN_0046df90 case 100: FUN_00609650 chooses and scrolls to it.
         window.rematch = false;
@@ -1013,17 +1032,56 @@ mod tests {
         let galaxy = galaxy();
         let transport = TroopTransportState::default();
 
-        let alliance = rows(&galaxy.world, TroopTab::Alliance, &transport);
+        let fog = FogState::new(Faction::Alliance);
+        let alliance = rows(
+            &galaxy.world,
+            &fog,
+            Faction::Alliance,
+            TroopTab::Alliance,
+            &transport,
+        );
         assert_eq!(names(&alliance), ["Yavin"]);
         assert_eq!(alliance[0].counts[0].count, 2, "Army Regiment column");
         assert_eq!(alliance[0].counts[1].count, 1, "Fleet Regiment column");
         assert_eq!(alliance[0].counts[2].count, 0);
 
-        let imperial = rows(&galaxy.world, TroopTab::Imperial, &transport);
-        // FUN_0046ea10 walks all systems; ground troops are shown
-        // regardless of fog.
+        // A0 troop-other-side/test-day220-imperial-tab-empty: the other
+        // side's regiments list only where the player sees them.
+        let imperial = rows(
+            &galaxy.world,
+            &fog,
+            Faction::Alliance,
+            TroopTab::Imperial,
+            &transport,
+        );
+        assert!(imperial.is_empty());
+        let mut fog = FogState::new(Faction::Alliance);
+        let coruscant = galaxy
+            .world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == "Coruscant")
+            .map(|(key, _)| key)
+            .unwrap();
+        fog.reveal(coruscant);
+        let imperial = rows(
+            &galaxy.world,
+            &fog,
+            Faction::Alliance,
+            TroopTab::Imperial,
+            &transport,
+        );
         assert_eq!(names(&imperial), ["Coruscant"]);
         assert_eq!(imperial[0].counts[0].count, 1, "Stormtrooper column");
+        // The Empire sees its own regiments wherever they are.
+        let own = rows(
+            &galaxy.world,
+            &FogState::new(Faction::Empire),
+            Faction::Empire,
+            TroopTab::Imperial,
+            &transport,
+        );
+        assert_eq!(names(&own), ["Coruscant"]);
     }
 
     #[test]
@@ -1044,7 +1102,14 @@ mod tests {
             .embark(&mut galaxy.world, fleet, &[troop])
             .unwrap();
 
-        let listed = rows(&galaxy.world, TroopTab::Alliance, &transport);
+        let fog = FogState::new(Faction::Alliance);
+        let listed = rows(
+            &galaxy.world,
+            &fog,
+            Faction::Alliance,
+            TroopTab::Alliance,
+            &transport,
+        );
 
         // Yavin (ground) and the fleet.
         assert_eq!(listed.len(), 2);
@@ -1071,7 +1136,14 @@ mod tests {
         add_troop(&mut world, alpha, 0x1000_0002, true);
         let transport = TroopTransportState::default();
 
-        let listed = rows(&world, TroopTab::Alliance, &transport);
+        let fog = FogState::new(Faction::Alliance);
+        let listed = rows(
+            &world,
+            &fog,
+            Faction::Alliance,
+            TroopTab::Alliance,
+            &transport,
+        );
         assert_eq!(names(&listed), ["Alpha", "beta"]);
     }
 
@@ -1222,10 +1294,12 @@ mod tests {
             let system = add_system(&mut world, name, ControlKind::Controlled(Faction::Alliance));
             add_troop(&mut world, system, 0x1000_0002, true);
         }
+        // An Imperial regiment where the Alliance sees it: on a planet the
+        // Alliance holds.
         let coruscant = add_system(
             &mut world,
             "Coruscant",
-            ControlKind::Controlled(Faction::Empire),
+            ControlKind::Controlled(Faction::Alliance),
         );
         add_troop(&mut world, coruscant, 0x1000_0008, false);
         let mut state = TroopFinderState::default();
@@ -1279,6 +1353,7 @@ mod tests {
             draw_troop_finder(
                 ctx,
                 &galaxy.world,
+                &FogState::new(Faction::Alliance),
                 &mut state,
                 layout,
                 &mut cache,
@@ -1304,7 +1379,15 @@ mod tests {
                     ..Default::default()
                 },
                 |ctx| {
-                    let _ = draw_troop_finder(ctx, world, state, layout(), &mut cache, &transport);
+                    let _ = draw_troop_finder(
+                        ctx,
+                        world,
+                        &FogState::new(Faction::Alliance),
+                        state,
+                        layout(),
+                        &mut cache,
+                        &transport,
+                    );
                 },
             );
             shapes = output.shapes;
@@ -1415,7 +1498,15 @@ mod tests {
                         ..Default::default()
                     },
                     |ctx| {
-                        let _ = draw_troop_finder(ctx, &world, &mut state, layout(), &mut cache, &transport);
+                        let _ = draw_troop_finder(
+                            ctx,
+                            &world,
+                            &FogState::new(Faction::Alliance),
+                            &mut state,
+                            layout(),
+                            &mut cache,
+                            &transport,
+                        );
                     },
                 )
                 .shapes;
@@ -1435,21 +1526,33 @@ mod tests {
 
         // A press at x 370 chooses the row; a wheel notch moves a row
         // (port); held on the arrow, it draws pressed.
-        let mut frame = |state: &mut TroopFinderState, at: egui::Pos2, event: Option<egui::Event>| {
-            crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
-            let mut events = vec![egui::Event::PointerMoved(at)];
-            events.extend(event);
-            let _ = ctx.run(
-                egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(700.0, 520.0))),
-                    events,
-                    ..Default::default()
-                },
-                |ctx| {
-                    let _ = draw_troop_finder(ctx, &world, state, layout(), &mut cache, &transport);
-                },
-            );
-        };
+        let mut frame =
+            |state: &mut TroopFinderState, at: egui::Pos2, event: Option<egui::Event>| {
+                crate::fleet_window::tests::PAINTED.with(|painted| painted.borrow_mut().clear());
+                let mut events = vec![egui::Event::PointerMoved(at)];
+                events.extend(event);
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(700.0, 520.0),
+                        )),
+                        events,
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        let _ = draw_troop_finder(
+                            ctx,
+                            &world,
+                            &FogState::new(Faction::Alliance),
+                            state,
+                            layout(),
+                            &mut cache,
+                            &transport,
+                        );
+                    },
+                );
+            };
         let press = |at: egui::Pos2, pressed| egui::Event::PointerButton {
             pos: at,
             button: egui::PointerButton::Primary,
@@ -1490,7 +1593,15 @@ mod tests {
                 ..Default::default()
             },
             |ctx| {
-                let _ = draw_troop_finder(ctx, &world, &mut state, layout(), &mut cache, &transport);
+                let _ = draw_troop_finder(
+                    ctx,
+                    &world,
+                    &FogState::new(Faction::Alliance),
+                    &mut state,
+                    layout(),
+                    &mut cache,
+                    &transport,
+                );
             },
         );
         assert!(!named(&output.shapes, "S0"));
@@ -1530,7 +1641,15 @@ mod tests {
                         ..Default::default()
                     },
                     |ctx| {
-                        let _ = draw_troop_finder(ctx, &galaxy.world, &mut state, layout, &mut cache, &transport);
+                        let _ = draw_troop_finder(
+                            ctx,
+                            &galaxy.world,
+                            &FogState::new(Faction::Alliance),
+                            &mut state,
+                            layout,
+                            &mut cache,
+                            &transport,
+                        );
                     },
                 )
                 .shapes;
@@ -1563,7 +1682,15 @@ mod tests {
                     ..Default::default()
                 },
                 |ctx| {
-                    let _ = draw_troop_finder(ctx, &world, &mut state, layout, &mut cache, &transport);
+                    let _ = draw_troop_finder(
+                        ctx,
+                        &world,
+                        &FogState::new(Faction::Alliance),
+                        &mut state,
+                        layout,
+                        &mut cache,
+                        &transport,
+                    );
                 },
             );
         }

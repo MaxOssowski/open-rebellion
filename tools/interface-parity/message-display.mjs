@@ -558,6 +558,47 @@ async function run(browser, base, faction) {
       }
       assert.deepEqual(rowChecks.support_heads_a0 ?? [0, 0], [0, 0], JSON.stringify(rowChecks));
 
+      // The chosen System Joins message shown (A0 joins-clean/test-day215-
+      // xyquine-joins-enemy, an unedited Alliance game: "Xyquine Joins
+      // Enemy" over "Popular dissent on Xyquine has caused that world to
+      // join the Empire."): FUN_00499760's 0x7039 / 0x703c, picture 0x3ed
+      // (STRATEGY 1005) at the window's (12, 33) and the title's item image
+      // at (15, 16), every pixel A0's.
+      await click(page, showMessage);
+      const joins = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Commenor Joins Enemy", "Display Message shows Commenor Joins Enemy");
+      assert.equal(joins.viewing_text,
+        "Popular dissent on Commenor has caused that world to join the Empire.", JSON.stringify(joins));
+      assert.equal(joins.viewing_background, 0x3ed, JSON.stringify(joins));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("joins-enemy");
+      const joinsScreen = PNG.sync.read(await page.screenshot());
+      const joinsPicture = await bitmap(1005);
+      const [joinsLeft, joinsTop] = [Math.round(joins.window_left), Math.round(joins.window_top)];
+      const joinsChecks = { port: differing(joinsScreen, [joinsLeft + 12, joinsTop + 33], joinsPicture) };
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/joins-clean/test-day215-xyquine-joins-enemy.png")));
+        joinsChecks.a0 = differing(a0, [74, 82], joinsPicture);
+        let differ = 0;
+        for (let y = 0; y < 16; y += 1) {
+          for (let x = 0; x < 15; x += 1) {
+            const i = ((joinsTop + 16 + y) * 640 + joinsLeft + 15 + x) * 4;
+            const j = ((49 + 16 + y) * 640 + 62 + 15 + x) * 4;
+            if ([0, 1, 2].some((c) => joinsScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        joinsChecks.title_image_a0 = differ;
+      } catch {
+        joinsChecks.a0 = null;
+      }
+      rowChecks.joins = joinsChecks;
+      assert.ok(joinsChecks.port === 0 && (joinsChecks.a0 ?? 0) === 0 && (joinsChecks.title_image_a0 ?? 0) === 0,
+        JSON.stringify(joinsChecks));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Popular Support list again");
+
       // The Conflict list's row (A0 messages-day633/index-tab7: "Assault on
       // Coruscant" chosen): STRATEGY 0x2ad7 at the row's (1, 1), keyed on
       // index 0, and the row's head (x 0..32) every pixel A0's.

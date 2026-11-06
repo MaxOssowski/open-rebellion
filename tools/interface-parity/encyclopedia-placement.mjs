@@ -343,8 +343,14 @@ async function run(browser, base, faction) {
             heading: [heading(reopened), heading(other)] };
           assert.notEqual(finderText.otherTab.heading[0], finderText.otherTab.heading[1],
             "the tab did not change");
-          assert.ok(finderText.otherTab.rows[0] > 230 && finderText.otherTab.rows.slice(1).every((top) => top < 200),
-            `the other side's tab chooses its first row: ${JSON.stringify(finderText.otherTab)}`);
+          // The tab lists only the regiments the player's side sees (A0
+          // troop-other-side/test-day220-imperial-tab-empty), and this
+          // galaxy's fog moves while it runs: either no row (the list's
+          // background, under 100) or the first row chosen.
+          const otherRows = finderText.otherTab.rows;
+          assert.ok((otherRows[0] > 230 && otherRows.slice(1).every((top) => top < 200))
+            || otherRows.every((top) => top < 100),
+            `the other side's tab chooses its first row or lists none: ${JSON.stringify(finderText.otherTab)}`);
         }
         if (label === "personnel-finder" && faction.name === "alliance") {
           // The Alliance's Personnel Finder against A0
