@@ -1099,66 +1099,155 @@ pub fn mission_report_asks_to_continue(
         )
 }
 
+/// What a Mission Report names (`FUN_004927c0`). `success` is outcome 3,
+/// a failure outcome 2 (`param_3 + 0x28`); the leader (`+0x74`) is its
+/// name and whether it is a major character (family `0x30..0x37`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReportFacts<'a> {
+    pub success: bool,
+    pub leader: Option<(&'a str, bool)>,
+    /// The target system (`+0x5c`).
+    pub system: &'a str,
+    /// The system's support side after the mission (`+0x84` bits 2..3).
+    pub support: Option<rebellion_core::dat::Faction>,
+    /// The target character or object (`+0x70`).
+    pub target: Option<&'a str>,
+    /// Whether the target is destroyed (`+0x50` bit 3).
+    pub target_killed: bool,
+    /// The recruited character (`+0xa8`).
+    pub recruit: Option<&'a str>,
+}
+
 /// A Mission Report's title and body (`FUN_004927c0`, notification
 /// `0x1f0`) for the kinds ported so far; `None` for the others. A leader
-/// (`+0x74`) that is a major character (family `0x30..0x37`) reports in
-/// the first person, its name the first substitution; otherwise the report
-/// names the mission's kind and leaves the leader out. `success` is outcome
-/// 3, a failure outcome 2 (`param_3 + 0x28`). The texts:
+/// that is a major character reports in the first person, its name the
+/// first substitution and the system the second; otherwise the report
+/// names the mission's kind and the system comes first. The texts:
 /// - Diplomacy (`0x51`): `0x70d0` / `0x70d4`, then `0x70d1` / `0x70d5`
 ///   (support rose) or `0x70d2` / `0x70d6` (no effect), then the support
-///   side (`+0x84` bits 2..3): `0x70d9` the Alliance, `0x70d8` the Empire,
-///   `0x70da` neither;
+///   side: `0x70d9` the Alliance, `0x70d8` the Empire, `0x70da` neither;
 /// - Espionage (`0x52`): `0x7108` / `0x710b`, then `0x7109` / `0x710c` or
 ///   `0x710a` / `0x710d`;
+/// - Recruitment (`0x55`), first person only: `0x711b` "{1:1} Recruits
+///   {3:1}" over `0x7119`, or `0x7118` over `0x711a`;
 /// - Subdue Uprising (`0x57`): `0x7110` / `0x7113`, then `0x7111` /
 ///   `0x7114` or `0x7112` / `0x7115`;
 /// - Jedi Training (`0x58`): `0x71c0` / `0x71c3`, then `0x71c1` / `0x71c4`
-///   or `0x71c2` / `0x71c5`.
+///   or `0x71c2` / `0x71c5`;
+/// - Sabotage (`0x69`): `0x70e0` / `0x70e1` over `0x70e3` / `0x70e2`, the
+///   target object last, then `0x70e4` (destroyed) or `0x70e5`;
+/// - Rescue (`0x61`): `0x7130` / `0x7133`, then `0x7131` / `0x7134` or
+///   `0x7132` / `0x7135`, the target the last substitution;
+/// - Abduction (`0x62`): `0x70f0` / `0x70f3`, then `0x70f1` / `0x70f4`,
+///   `0x70f6` / `0x70f7` for a target killed, or `0x70f2` / `0x70f5`;
+/// - Assassination (`0x63`): `0x70f8` / `0x70fb`, then `0x70f9` /
+///   `0x70fc` for a target killed, the third person's `0x70fe` (injured)
+///   for one that lives, or `0x70fa` / `0x70fd`; the first person's
+///   success that leaves the target alive has a title and no body.
 ///
 /// port: a diplomacy failure reads "no effect" (outcome 2); the port's
 /// result does not tell a fall in support (outcome 1, `0x70d3`). An
-/// espionage report lists no further systems (`FUN_00494df0`, `0x710e`),
-/// as the port's espionage reveals only its target.
+/// espionage report lists no further systems (`FUN_00494df0`, `0x710e`).
+/// A failed assassination reads `0x70fa`; the `0x70ff` of a target with
+/// `+0x50` bit 9 is no shipped text. The returning line `0x70e6` of
+/// Sabotage, Rescue, Abduction and Assassination is left out: its place (the first
+/// member's fleet or system) is not settled against A0.
 #[must_use]
 pub fn mission_report_texts(
     kind: rebellion_core::missions::MissionKind,
-    success: bool,
-    leader: Option<(&str, bool)>,
-    target: &str,
-    support: Option<rebellion_core::dat::Faction>,
+    facts: &ReportFacts<'_>,
     texts: &HashMap<u16, String>,
 ) -> Option<(String, String)> {
     use rebellion_core::dat::Faction;
     use rebellion_core::missions::MissionKind;
-    // (first-person title, success, failure; third-person title, success,
-    // failure).
-    let ids: [u16; 6] = match kind {
-        MissionKind::Diplomacy => [0x70d0, 0x70d1, 0x70d2, 0x70d4, 0x70d5, 0x70d6],
-        MissionKind::Espionage => [0x7108, 0x7109, 0x710a, 0x710b, 0x710c, 0x710d],
-        MissionKind::SubdueUprising => [0x7110, 0x7111, 0x7112, 0x7113, 0x7114, 0x7115],
-        MissionKind::JediTraining => [0x71c0, 0x71c1, 0x71c2, 0x71c3, 0x71c4, 0x71c5],
+    let success = facts.success;
+    let speaker = facts
+        .leader
+        .filter(|&(_, major)| major)
+        .map(|(name, _)| name);
+    let target = facts.target.unwrap_or_default();
+    let killed = facts.target_killed;
+    // (title, body) for the first person, then for the third; a body of 0
+    // is none.
+    let (first, third): ((u16, u16), (u16, u16)) = match kind {
+        MissionKind::Diplomacy => (
+            (0x70d0, if success { 0x70d1 } else { 0x70d2 }),
+            (0x70d4, if success { 0x70d5 } else { 0x70d6 }),
+        ),
+        MissionKind::Espionage => (
+            (0x7108, if success { 0x7109 } else { 0x710a }),
+            (0x710b, if success { 0x710c } else { 0x710d }),
+        ),
+        MissionKind::Recruitment if speaker.is_some() => {
+            let pair = if success {
+                (0x711b, 0x7119)
+            } else {
+                (0x7118, 0x711a)
+            };
+            (pair, pair)
+        }
+        MissionKind::SubdueUprising => (
+            (0x7110, if success { 0x7111 } else { 0x7112 }),
+            (0x7113, if success { 0x7114 } else { 0x7115 }),
+        ),
+        MissionKind::JediTraining => (
+            (0x71c0, if success { 0x71c1 } else { 0x71c2 }),
+            (0x71c3, if success { 0x71c4 } else { 0x71c5 }),
+        ),
+        MissionKind::Rescue => (
+            (0x7130, if success { 0x7131 } else { 0x7132 }),
+            (0x7133, if success { 0x7134 } else { 0x7135 }),
+        ),
+        MissionKind::Sabotage => ((0x70e0, 0x70e3), (0x70e1, 0x70e2)),
+        MissionKind::Abduction => match (success, killed) {
+            (true, false) => ((0x70f0, 0x70f1), (0x70f3, 0x70f4)),
+            (true, true) => ((0x70f0, 0x70f6), (0x70f3, 0x70f7)),
+            (false, _) => ((0x70f0, 0x70f2), (0x70f3, 0x70f5)),
+        },
+        MissionKind::Assassination => match (success, killed) {
+            (true, true) => ((0x70f8, 0x70f9), (0x70fb, 0x70fc)),
+            (true, false) => ((0x70f8, 0), (0x70fb, 0x70fe)),
+            (false, _) => ((0x70f8, 0x70fa), (0x70fb, 0x70fd)),
+        },
         _ => return None,
     };
-    let speaker = leader.filter(|&(_, major)| major).map(|(name, _)| name);
+    let recruit = facts.recruit.unwrap_or_default();
     let (title, body, parameters) = match speaker {
         Some(name) => (
-            ids[0],
-            if success { ids[1] } else { ids[2] },
+            first.0,
+            first.1,
             vec![
                 MessageParameter::Named { name },
-                MessageParameter::Named { name: target },
+                MessageParameter::Named { name: facts.system },
+                MessageParameter::Named {
+                    name: if kind == MissionKind::Recruitment {
+                        recruit
+                    } else {
+                        target
+                    },
+                },
             ],
         ),
         None => (
-            ids[3],
-            if success { ids[4] } else { ids[5] },
-            vec![MessageParameter::Named { name: target }],
+            third.0,
+            third.1,
+            vec![
+                MessageParameter::Named { name: facts.system },
+                MessageParameter::Named { name: target },
+            ],
         ),
     };
-    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    let mut text = if body == 0 {
+        String::new()
+    } else {
+        fill_message_text(texts.get(&body)?, &parameters)
+    };
+    if kind == MissionKind::Sabotage {
+        let line = if success { 0x70e4 } else { 0x70e5 };
+        text.push_str(&fill_message_text(texts.get(&line)?, &[]));
+    }
     if kind == MissionKind::Diplomacy {
-        let line = match support {
+        let line = match facts.support {
             Some(Faction::Alliance) => 0x70d9,
             Some(Faction::Empire) => 0x70d8,
             _ => 0x70da,
@@ -2243,7 +2332,14 @@ mod tests {
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
         let report = |kind, success, leader, support| {
-            mission_report_texts(kind, success, leader, "Averam", support, &texts)
+            let facts = ReportFacts {
+                success,
+                leader,
+                system: "Averam",
+                support,
+                ..ReportFacts::default()
+            };
+            mission_report_texts(kind, &facts, &texts)
         };
         assert_eq!(
             report(MissionKind::Diplomacy, true, Some(("Leia Organa", true)), Some(Faction::Alliance)),
@@ -2302,17 +2398,233 @@ mod tests {
                 "My Jedi Training mission on Averam was a success.".into()
             ))
         );
-        assert_eq!(report(MissionKind::Sabotage, true, None, None), None);
+        assert_eq!(report(MissionKind::Reconnaissance, true, None, None), None);
         assert_eq!(
             mission_report_texts(
                 MissionKind::Espionage,
-                true,
-                None,
-                "Averam",
-                None,
+                &ReportFacts {
+                    success: true,
+                    system: "Averam",
+                    ..ReportFacts::default()
+                },
                 &HashMap::new()
             ),
             None
+        );
+    }
+
+    // FUN_004927c0 case 0x69: the shipped sabotage texts.
+    #[test]
+    fn a_sabotage_report_names_its_target_and_whether_it_fell() {
+        use rebellion_core::missions::MissionKind;
+        let texts: HashMap<u16, String> = [
+            (0x70e0, "{1:1} Mission Report"),
+            (0x70e1, "Sabotage Mission Report"),
+            (
+                0x70e2,
+                "The sabotage mission to {1:1} targeting the {2:1} is complete.  ",
+            ),
+            (
+                0x70e3,
+                "My sabotage mission to {2:1} targeting the {3:1} is complete.  ",
+            ),
+            (0x70e4, "The target was destroyed."),
+            (0x70e5, "  The target was not destroyed."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let report = |success, leader| {
+            let facts = ReportFacts {
+                success,
+                leader,
+                system: "Averam",
+                target: Some("Orbital Battery"),
+                ..ReportFacts::default()
+            };
+            mission_report_texts(MissionKind::Sabotage, &facts, &texts)
+        };
+        assert_eq!(
+            report(true, Some(("Han Solo", true))),
+            Some((
+                "Han Solo Mission Report".into(),
+                "My sabotage mission to Averam targeting the Orbital Battery is complete.  The target was destroyed."
+                    .into()
+            ))
+        );
+        assert_eq!(
+            report(false, None),
+            Some((
+                "Sabotage Mission Report".into(),
+                "The sabotage mission to Averam targeting the Orbital Battery is complete.    The target was not destroyed."
+                    .into()
+            ))
+        );
+    }
+
+    // FUN_004927c0 cases 0x55, 0x61, 0x62 and 0x63: the shipped texts with
+    // the target (+0x70) or recruit (+0xa8) last.
+    #[test]
+    fn character_mission_reports_name_their_target_and_how_it_ended() {
+        use rebellion_core::missions::MissionKind;
+        let texts: HashMap<u16, String> = [
+            (0x70f0, "{1:1} Mission Report"),
+            (
+                0x70f1,
+                "My mission to abduct {3:1} from {2:1} was a success.\n",
+            ),
+            (0x70f3, "Abduction Mission Report"),
+            (0x70f5, "The mission to abduct {2:1} from {1:1} failed.\n"),
+            (
+                0x70f6,
+                "{3:1} was killed during my abduction attempt at {2:1}.\n",
+            ),
+            (
+                0x70f7,
+                "{2:1} was killed during the abduction attempt at {1:1}.\n",
+            ),
+            (0x70f8, "{1:1} Mission Report"),
+            (
+                0x70f9,
+                "My assassination mission is complete. {3:1} has been eliminated.\n",
+            ),
+            (
+                0x70fa,
+                "My assassination mission to {2:1} is complete.  {3:1} has not been eliminated.\n",
+            ),
+            (0x70fb, "Assassination Mission Report"),
+            (
+                0x70fc,
+                "The assassination mission to {1:1} is complete.  {2:1} has been eliminated.\n",
+            ),
+            (
+                0x70fd,
+                "The assassination mission to {1:1} is complete.  {2:1} has not been eliminated.\n",
+            ),
+            (
+                0x70fe,
+                "The assassination mission to {1:1} is complete.  {2:1} has been injured.\n",
+            ),
+            (0x7118, "{1:1} Mission Report"),
+            (
+                0x7119,
+                "My recruitment mission to {2:1} was successful. {3:1} is at your command.",
+            ),
+            (
+                0x711a,
+                "My recruitment mission to {2:1} is complete.  I have failed to recruit anyone.",
+            ),
+            (0x711b, "{1:1} Recruits {3:1}"),
+            (0x7130, "{1:1} Mission Report"),
+            (0x7132, "My mission to rescue {3:1} from {2:1} failed."),
+            (0x7133, "Rescue Mission Report"),
+            (
+                0x7134,
+                "The mission to rescue {2:1} from {1:1} succeeded.\n",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let report = |kind, success, leader, killed| {
+            let facts = ReportFacts {
+                success,
+                leader,
+                system: "Averam",
+                target: Some("Jan Dodonna"),
+                target_killed: killed,
+                recruit: Some("Wedge Antilles"),
+                ..ReportFacts::default()
+            };
+            mission_report_texts(kind, &facts, &texts)
+        };
+        let leia = Some(("Leia Organa", true));
+        let agent = Some(("Agent", false));
+        let pair = |title: &str, body: &str| Some((title.to_owned(), body.to_owned()));
+        assert_eq!(
+            report(MissionKind::Recruitment, true, leia, false),
+            pair(
+                "Leia Organa Recruits Wedge Antilles",
+                "My recruitment mission to Averam was successful. Wedge Antilles is at your command."
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Recruitment, false, leia, false),
+            pair(
+                "Leia Organa Mission Report",
+                "My recruitment mission to Averam is complete.  I have failed to recruit anyone."
+            )
+        );
+        // Only a major character's recruitment has texts.
+        assert_eq!(report(MissionKind::Recruitment, true, agent, false), None);
+        assert_eq!(
+            report(MissionKind::Rescue, false, leia, false),
+            pair(
+                "Leia Organa Mission Report",
+                "My mission to rescue Jan Dodonna from Averam failed."
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Rescue, true, agent, false),
+            pair(
+                "Rescue Mission Report",
+                "The mission to rescue Jan Dodonna from Averam succeeded.\n"
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Abduction, true, leia, false).map(|(_, body)| body),
+            Some("My mission to abduct Jan Dodonna from Averam was a success.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::Abduction, true, leia, true).map(|(_, body)| body),
+            Some("Jan Dodonna was killed during my abduction attempt at Averam.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::Abduction, true, None, true),
+            pair(
+                "Abduction Mission Report",
+                "Jan Dodonna was killed during the abduction attempt at Averam.\n"
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Abduction, false, agent, true).map(|(_, body)| body),
+            Some("The mission to abduct Jan Dodonna from Averam failed.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::Assassination, true, leia, true).map(|(_, body)| body),
+            Some("My assassination mission is complete. Jan Dodonna has been eliminated.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::Assassination, true, leia, false),
+            pair("Leia Organa Mission Report", "")
+        );
+        assert_eq!(
+            report(MissionKind::Assassination, false, leia, false).map(|(_, body)| body),
+            Some(
+                "My assassination mission to Averam is complete.  Jan Dodonna has not been eliminated.\n"
+                    .into()
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Assassination, true, agent, true),
+            pair(
+                "Assassination Mission Report",
+                "The assassination mission to Averam is complete.  Jan Dodonna has been eliminated.\n"
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Assassination, true, agent, false).map(|(_, body)| body),
+            Some(
+                "The assassination mission to Averam is complete.  Jan Dodonna has been injured.\n"
+                    .into()
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Assassination, false, agent, false).map(|(_, body)| body),
+            Some(
+                "The assassination mission to Averam is complete.  Jan Dodonna has not been eliminated.\n"
+                    .into()
+            )
         );
     }
 

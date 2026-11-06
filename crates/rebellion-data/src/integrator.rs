@@ -3295,6 +3295,8 @@ mod tests {
                 faction: MissionFaction::Alliance,
                 character: Some(agent),
                 target_system: system,
+                target_character: None,
+                target_object: None,
                 outcome: MissionOutcome::Success,
                 effects: vec![MissionEffect::UprisingSubdued {
                     system,
@@ -3341,6 +3343,8 @@ mod tests {
             faction: MissionFaction::Empire,
             character: Some(agent),
             target_system: system,
+            target_character: None,
+            target_object: None,
             outcome: MissionOutcome::Success,
             effects: vec![MissionEffect::UprisingSubdued {
                 system,
@@ -3389,6 +3393,8 @@ mod tests {
             faction: MissionFaction::Empire,
             character: None,
             target_system: system,
+            target_character: None,
+            target_object: None,
             outcome: MissionOutcome::Success,
             effects: vec![MissionEffect::ResearchPoints {
                 faction: MissionFaction::Empire,

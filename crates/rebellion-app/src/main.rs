@@ -11365,6 +11365,38 @@ fn push_force_discoveries(
     }
 }
 
+/// The names a Mission Report gives (`FUN_004927c0`): its leader (`+0x74`)
+/// with its major flag, target object or character (`+0x70`) and recruit
+/// (`+0xa8`), read
+/// before the effects, and whether the effects kill the target.
+fn report_names(
+    world: &GameWorld,
+    result: &rebellion_core::missions::MissionResult,
+) -> (Option<(String, bool)>, Option<String>, Option<String>, bool) {
+    let name_of = |character: Option<CharacterKey>| {
+        character
+            .and_then(|character| world.characters.get(character))
+            .map(|character| (character.name.clone(), character.is_major))
+    };
+    let recruited = result.effects.iter().find_map(|effect| match effect {
+        MissionEffect::CharacterRecruited { character, .. } => Some(*character),
+        _ => None,
+    });
+    let target_killed = result.effects.iter().any(|effect| {
+        matches!(effect, MissionEffect::CharacterKilled { character, .. }
+            if Some(*character) == result.target_character)
+    });
+    (
+        name_of(result.character),
+        result
+            .target_object
+            .and_then(|object| rebellion_render::status_rows::object_name(world, object))
+            .or_else(|| name_of(result.target_character).map(|(name, _)| name)),
+        name_of(recruited).map(|(name, _)| name),
+        target_killed,
+    )
+}
+
 /// A Mission Report's title and text: the shipped report when there is
 /// one, else the port's `fallback` line, then the continue `question`.
 /// The shipped body runs straight on into the question (`FUN_004927c0`
@@ -11478,11 +11510,8 @@ fn apply_mission_result(
                 .and_then(|character| pictures::portrait_key(world, character)),
         )
     };
-    // The report's leader (+0x74), read before the effects.
-    let leader = result
-        .character
-        .and_then(|character| world.characters.get(character))
-        .map(|character| (character.name.clone(), character.is_major));
+    // The report's names, read before the effects.
+    let (leader, target, recruit, target_killed) = report_names(world, result);
     // SFX + voice lines for mission outcomes
     #[cfg(not(target_arch = "wasm32"))]
     if result.outcome == rebellion_core::missions::MissionOutcome::Success {
@@ -11770,10 +11799,15 @@ fn apply_mission_result(
     });
     let shipped = rebellion_render::story_messages::mission_report_texts(
         result.kind,
-        result.outcome == rebellion_core::missions::MissionOutcome::Success,
-        leader.as_ref().map(|(name, major)| (name.as_str(), *major)),
-        &sys_name,
-        support,
+        &rebellion_render::story_messages::ReportFacts {
+            success: result.outcome == rebellion_core::missions::MissionOutcome::Success,
+            leader: leader.as_ref().map(|(name, major)| (name.as_str(), *major)),
+            system: &sys_name,
+            support,
+            target: target.as_deref(),
+            target_killed,
+            recruit: recruit.as_deref(),
+        },
         message_texts,
     );
     let question = message_texts
@@ -13681,6 +13715,68 @@ mod character_health_tests {
         assert_eq!(messages[0].title.as_deref(), Some("Future Jedi Discovered"));
         assert!(messages[0].text.starts_with("I have detected that Klev"));
         assert_eq!(messages[0].audience, RailAudience::Empire);
+    }
+
+    #[test]
+    fn a_report_names_its_leader_target_and_recruit_and_sees_the_target_killed() {
+        // FUN_004927c0 reads +0x74, +0x70 and +0xa8; +0x50 bit 3 is a
+        // destroyed target.
+        use rebellion_core::missions::{MissionOutcome, MissionResult};
+        let mut world = GameWorld::default();
+        let mut add = |name: &str, is_major| {
+            world.characters.insert(rebellion_core::world::Character {
+                name: name.into(),
+                is_major,
+                ..rebellion_core::world::Character::default()
+            })
+        };
+        let leia = add("Leia Organa", true);
+        let dodonna = add("Jan Dodonna", false);
+        let wedge = add("Wedge Antilles", false);
+        let other = add("Other", false);
+        let mut result = MissionResult {
+            mission_id: 1,
+            tick: 3,
+            kind: MissionKind::Assassination,
+            faction: MissionFaction::Alliance,
+            character: Some(leia),
+            target_system: Default::default(),
+            target_character: Some(dodonna),
+            target_object: None,
+            outcome: MissionOutcome::Success,
+            effects: vec![
+                MissionEffect::CharacterKilled {
+                    character: other,
+                    faction: MissionFaction::Empire,
+                },
+                MissionEffect::CharacterRecruited {
+                    character: wedge,
+                    system: Default::default(),
+                    faction: MissionFaction::Alliance,
+                    pool_emptied: false,
+                },
+            ],
+        };
+        assert_eq!(
+            report_names(&world, &result),
+            (
+                Some(("Leia Organa".into(), true)),
+                Some("Jan Dodonna".into()),
+                Some("Wedge Antilles".into()),
+                false
+            )
+        );
+        result.effects.push(MissionEffect::CharacterKilled {
+            character: dodonna,
+            faction: MissionFaction::Empire,
+        });
+        assert!(report_names(&world, &result).3);
+        result.effects.clear();
+        result.character = None;
+        assert_eq!(
+            report_names(&world, &result),
+            (None, Some("Jan Dodonna".into()), None, false)
+        );
     }
 
     #[test]

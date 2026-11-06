@@ -1135,42 +1135,50 @@ fn manufacturing_rows(
     rows
 }
 
+/// The name of a mission's target object: its class, or a Death Star's
+/// fleet.
+#[must_use]
+pub fn object_name(world: &GameWorld, target: MissionTarget) -> Option<String> {
+    let named = |name: Option<String>| name.filter(|name| !name.is_empty());
+    named(match target {
+        MissionTarget::DefenseFacility(key) => world
+            .defense_facilities
+            .get(key)
+            .map(|value| class_name(world, value.class_dat_id)),
+        MissionTarget::ManufacturingFacility(key) => world
+            .manufacturing_facilities
+            .get(key)
+            .map(|value| class_name(world, value.class_dat_id)),
+        MissionTarget::ProductionFacility(key) => world
+            .production_facilities
+            .get(key)
+            .map(|value| class_name(world, value.class_dat_id)),
+        MissionTarget::Troop(key) => world
+            .troops
+            .get(key)
+            .map(|value| class_name(world, value.class_dat_id)),
+        MissionTarget::SpecialForce(key) => world
+            .special_forces
+            .get(key)
+            .map(|value| class_name(world, value.class_dat_id)),
+        MissionTarget::DeathStar(fleet) => fleet_label(world, fleet),
+        MissionTarget::CapitalShip { class, .. } => world
+            .capital_ship_classes
+            .get(class)
+            .map(|value| value.name.clone()),
+        MissionTarget::Fighter { class, .. } => world
+            .fighter_classes
+            .get(class)
+            .map(|value| value.name.clone()),
+    })
+}
+
 /// A mission's target by name (`+0x70`), or 34087 "Target Unknown".
 fn target_name(world: &GameWorld, mission: &rebellion_core::missions::ActiveMission) -> String {
     let named = |name: Option<String>| name.filter(|name| !name.is_empty());
-    let object = mission.target_object.and_then(|target| {
-        named(match target {
-            MissionTarget::DefenseFacility(key) => world
-                .defense_facilities
-                .get(key)
-                .map(|value| class_name(world, value.class_dat_id)),
-            MissionTarget::ManufacturingFacility(key) => world
-                .manufacturing_facilities
-                .get(key)
-                .map(|value| class_name(world, value.class_dat_id)),
-            MissionTarget::ProductionFacility(key) => world
-                .production_facilities
-                .get(key)
-                .map(|value| class_name(world, value.class_dat_id)),
-            MissionTarget::Troop(key) => world
-                .troops
-                .get(key)
-                .map(|value| class_name(world, value.class_dat_id)),
-            MissionTarget::SpecialForce(key) => world
-                .special_forces
-                .get(key)
-                .map(|value| class_name(world, value.class_dat_id)),
-            MissionTarget::DeathStar(fleet) => fleet_label(world, fleet),
-            MissionTarget::CapitalShip { class, .. } => world
-                .capital_ship_classes
-                .get(class)
-                .map(|value| value.name.clone()),
-            MissionTarget::Fighter { class, .. } => world
-                .fighter_classes
-                .get(class)
-                .map(|value| value.name.clone()),
-        })
-    });
+    let object = mission
+        .target_object
+        .and_then(|target| object_name(world, target));
     object
         .or_else(|| {
             named(
@@ -1665,6 +1673,39 @@ mod tests {
         BuildableClass, ClassStats, ControlKind, DefenseFacilityInstance, FighterClass,
         FighterEntry, Fleet, ManufacturingFacilityInstance, SpecialForceUnit, System, TroopUnit,
     };
+
+    #[test]
+    fn a_ship_or_squadron_target_is_named_by_its_class() {
+        let mut world = GameWorld::default();
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            name: "Nebulon-B Frigate".into(),
+            ..CapitalShipClass::default()
+        });
+        let fighter = world.fighter_classes.insert(FighterClass {
+            name: "X-wing".into(),
+            ..FighterClass::default()
+        });
+        let fleet = FleetKey::default();
+        assert_eq!(
+            object_name(&world, MissionTarget::CapitalShip { fleet, class }),
+            Some("Nebulon-B Frigate".into())
+        );
+        assert_eq!(
+            object_name(
+                &world,
+                MissionTarget::Fighter {
+                    fleet,
+                    class: fighter
+                }
+            ),
+            Some("X-wing".into())
+        );
+        world.capital_ship_classes[class].name.clear();
+        assert_eq!(
+            object_name(&world, MissionTarget::CapitalShip { fleet, class }),
+            None
+        );
+    }
 
     /// The states a Status window reads, all idle.
     struct States {

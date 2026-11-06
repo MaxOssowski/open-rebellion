@@ -2582,6 +2582,11 @@ pub struct MissionResult {
     /// the mission's messages.
     pub character: Option<CharacterKey>,
     pub target_system: SystemKey,
+    /// The target character (`+0x70`), named by the report
+    /// (`FUN_004927c0`).
+    pub target_character: Option<CharacterKey>,
+    /// The target object (`+0x70`) of a sabotage.
+    pub target_object: Option<MissionTarget>,
     pub outcome: MissionOutcome,
     /// World-state changes to apply, in the order the members acted.
     pub effects: Vec<MissionEffect>,
@@ -4437,6 +4442,8 @@ impl MissionSystem {
             faction: mission.faction,
             character: mission.lead_character(),
             target_system: target,
+            target_character: mission.target_character,
+            target_object: mission.target_object,
             outcome: if result == 3 {
                 MissionOutcome::Success
             } else {
@@ -6711,6 +6718,26 @@ mod tests {
             seen.into_iter().collect::<Vec<_>>(),
             (1..=7).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn a_result_carries_its_missions_target_character() {
+        // FUN_004927c0 names the mission's target (+0x70) in its report.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let envoy = agent_at(&mut world, here, true);
+        let target = agent_at(&mut world, here, false);
+
+        let result = phase_ten(
+            &world,
+            MissionKind::Diplomacy,
+            vec![MissionMember::Character(envoy)],
+            here,
+            Some(target),
+        );
+
+        assert_eq!(result.target_character, Some(target));
+        assert_eq!(result.target_object, None);
     }
 
     #[test]

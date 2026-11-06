@@ -10146,6 +10146,8 @@ mod tests {
             faction: crate::missions::MissionFaction::Alliance,
             character: None,
             target_system: SystemKey::default(),
+            target_character: None,
+            target_object: None,
             outcome,
             effects: vec![],
         }
