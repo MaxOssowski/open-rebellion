@@ -201,3 +201,18 @@ Ported 2026-11-06: `MissionAdvance::arrivals` (`missions::note_arrival`), `story
 - **The mission's own side.** It posts `0x7148` "{1:1} Mission Foiled" over `0x7149` (a major character's "My {2:1} mission to {3:1} has been foiled…") or `0x714a` / `0x714b` for others, through the speaker map.
 
 The port detects and captures teams (`mission_detection.rs`) but posts no 0x1f1 message, and its Mission Report bodies are its own English, not TEXTSTRA (2026-11-06).
+
+### A0: Maintenance Shortfall seen by the other side (2026-11-06)
+
+A0 `maintenance-shortfall/alliance-view-coruscant-day163.png` (DS_flip_allian,
+Alliance player, day 163) shows "Maintenance Shortfall" for TIE Fighters lost
+at Imperial Coruscant. Its picture matches STRATEGY 1014 (`0x3f6`) pixel for
+pixel at screen (74, 82). The reader is the Alliance, but the system is the
+Empire's, so `FUN_00498970` leaves `+0x40` at 0 and `FUN_0048bbf0` does not set
+the picture for this copy. The `0x3f6` seen is most likely carried over from
+the Empire's original through `FUN_004c4b50` in the clone constructor
+`FUN_004988f0` (not traced). In effect the picture follows the side that lost
+the units, which the port already gives to the owner's message. The difference
+is the audience: the port files the message only for the owner
+(`RailAudience::side`), while A0 also showed it to the Alliance. When the
+other side receives it (always, or only with a view of the system) is open.

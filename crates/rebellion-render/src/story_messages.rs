@@ -538,6 +538,101 @@ pub fn captured_message(
     )
 }
 
+/// A character's health as Character Health reports it (`FUN_0048fdf0`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharacterHealth {
+    Injured,
+    Healed,
+    Killed,
+}
+
+/// Character Health (`FUN_0048fdf0`, notification `0x106`): TEXTSTRA
+/// `0x7160` "{1} Injured" / `0x7161` "{1} has been injured.", `0x7162`
+/// "{1} Healed" / `0x7163` "{1} has been healed of all injuries.", or for
+/// a destroyed character `0x7164` "{1} Killed" / `0x7365` "{1} has been
+/// killed.". Returns the title and body.
+#[must_use]
+pub fn character_health_texts(
+    name: &str,
+    health: CharacterHealth,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let (title, body) = match health {
+        CharacterHealth::Injured => (0x7160, 0x7161),
+        CharacterHealth::Healed => (0x7162, 0x7163),
+        CharacterHealth::Killed => (0x7164, 0x7365),
+    };
+    let parameters = [MessageParameter::Named { name }];
+    Some((
+        fill_message_text(texts.get(&title)?, &parameters),
+        fill_message_text(texts.get(&body)?, &parameters),
+    ))
+}
+
+/// Character Escaped (`FUN_00490340` cases 1 and 2): notification `0x1e0`
+/// with the character's escape flag (`+0x98`) set, for a captive leaving
+/// its captor at `system`. As with a capture (case 3 to the captor, A0
+/// messages-day633), the captor's side reads TEXTSTRA `0x715c` "{1}
+/// Escaped" / `0x715d` "{1} escaped from the {3} at {2}." with its own
+/// name; the escapee's side reads `0x715e` / `0x715f` "{1} has escaped from
+/// imprisonment at {2}.". Both stand on background `0x405`. A major
+/// escapee speaks: Mon Mothma `0x26`, Leia `0x18`, Luke `0x25`, Han `0x19`,
+/// the Emperor `0x27`, Vader `0x28`; any other `0x24` on its own side.
+///
+/// hyp: the reader of each case follows the capture's (the class tests the
+/// same `FUN_004edc80` side); a minor escapee's case 1 sets no event
+/// (port: none).
+#[must_use]
+pub fn escaped_message(
+    character: &rebellion_core::world::Character,
+    captor_is_alliance: bool,
+    system: &str,
+    reader: CockpitFaction,
+    tick: u64,
+    texts: &HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let reader_is_alliance = reader == CockpitFaction::Alliance;
+    let captors = reader_is_alliance == captor_is_alliance;
+    let (title, body) = if captors {
+        (0x715c, 0x715d)
+    } else {
+        (0x715e, 0x715f)
+    };
+    let parameters = [
+        MessageParameter::Named {
+            name: &character.name,
+        },
+        MessageParameter::Named { name: system },
+        side_parameter(captor_is_alliance, texts),
+    ];
+    let audience = if reader_is_alliance {
+        RailAudience::Alliance
+    } else {
+        RailAudience::Empire
+    };
+    let event = match (character.is_major, character.dat_id.index()) {
+        (true, 0x240) => 0x26,
+        (true, 0x241) => 0x18,
+        (true, 0x242) => 0x25,
+        (true, 0x243) => 0x19,
+        (true, 0x280) => 0x27,
+        (true, 0x281) => 0x28,
+        _ if captors => 0,
+        _ => 0x24,
+    };
+    Some(
+        GameMessage::new(
+            tick,
+            fill_message_text(texts.get(&body)?, &parameters),
+            MessageCategory::Event,
+        )
+        .on_rail(STORY_RAIL, audience)
+        .with_title(fill_message_text(texts.get(&title)?, &parameters))
+        .with_picture(crate::message_pictures::escaped())
+        .with_advisor_event(event),
+    )
+}
+
 /// Character Discovers Traitor (`FUN_0048c9c0`): notification `0x361`,
 /// a character's TraitorDiscovered key set to a traitor (`FUN_00588e80`).
 /// The discoverer's side reads TEXTSTRA `0x71e8` "{1:1} Discovers Traitor"
@@ -1415,6 +1510,26 @@ pub fn arrival_texts(
     let mut text = fill_message_text(texts.get(&body)?, &parameters);
     text.push_str(&fill_message_text(texts.get(&0x707e)?, &parameters));
     Some((fill_message_text(texts.get(&title)?, &parameters), text))
+}
+
+/// The Headquarters' arrival (`FUN_004981c0` case 4, an object of family
+/// `0x20..0x21`): TEXTSTRA `0x707c` "Headquarters Arrives" over `0x707d`
+/// "The Alliance Headquarters has arrived at {2:1}", the system the second
+/// substitution. Only the Alliance's reader posts it (the Empire's falls to
+/// the default, no message). Returns the title and body.
+#[must_use]
+pub fn headquarters_arrival_texts(
+    system: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let parameters = [
+        MessageParameter::Named { name: "" },
+        MessageParameter::Named { name: system },
+    ];
+    Some((
+        fill_message_text(texts.get(&0x707c)?, &parameters),
+        fill_message_text(texts.get(&0x707d)?, &parameters),
+    ))
 }
 
 /// A fleet's arrival (`FUN_004981c0`, case 1, an object of family
@@ -3035,6 +3150,150 @@ mod tests {
         );
     }
 
+    // FUN_0048fdf0: TEXTSTRA 0x7160..0x7164 and 0x7365 as shipped.
+    #[test]
+    fn character_health_takes_its_titles_and_bodies() {
+        let texts: HashMap<u16, String> = [
+            (0x7160, "{1:1} Injured"),
+            (0x7161, "{1:1} has been injured."),
+            (0x7162, "{1:1} Healed"),
+            (0x7163, "{1:1} has been healed of all injuries."),
+            (0x7164, "{1:1} Killed"),
+            (0x7365, "{1:1} has been killed."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let pair = |a: &str, b: &str| Some((a.to_owned(), b.to_owned()));
+        assert_eq!(
+            character_health_texts("Han Solo", CharacterHealth::Injured, &texts),
+            pair("Han Solo Injured", "Han Solo has been injured.")
+        );
+        assert_eq!(
+            character_health_texts("Han Solo", CharacterHealth::Healed, &texts),
+            pair(
+                "Han Solo Healed",
+                "Han Solo has been healed of all injuries."
+            )
+        );
+        assert_eq!(
+            character_health_texts("Han Solo", CharacterHealth::Killed, &texts),
+            pair("Han Solo Killed", "Han Solo has been killed.")
+        );
+        assert_eq!(
+            character_health_texts("Han Solo", CharacterHealth::Killed, &HashMap::new()),
+            None
+        );
+    }
+
+    // FUN_00490340 cases 1 and 2: TEXTSTRA 0x715c..0x715f as shipped.
+    #[test]
+    fn an_escape_reads_from_the_captors_side_and_the_escapees() {
+        let texts: HashMap<u16, String> = [
+            (0x4d51, "Empire"),
+            (0x715c, "{1:1} Escaped"),
+            (0x715d, "{1:1} escaped from the {3:1} at {2:1}."),
+            (0x715e, "{1:1} Escaped"),
+            (0x715f, "{1:1} has escaped from imprisonment at {2:1}."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let leia = rebellion_core::world::Character {
+            dat_id: DatId::new(0x241),
+            name: "Leia Organa".into(),
+            is_alliance: true,
+            is_major: true,
+            ..rebellion_core::world::Character::default()
+        };
+        let captors =
+            escaped_message(&leia, false, "Coruscant", CockpitFaction::Empire, 9, &texts).unwrap();
+        assert_eq!(captors.title.as_deref(), Some("Leia Organa Escaped"));
+        assert_eq!(
+            captors.text,
+            "Leia Organa escaped from the Empire at Coruscant."
+        );
+        assert_eq!(captors.audience, RailAudience::Empire);
+        assert_eq!(captors.picture.map(|p| p.background), Some(0x405));
+        assert_eq!(captors.advisor_event, [0x18, 0x18]);
+        let own = escaped_message(
+            &leia,
+            false,
+            "Coruscant",
+            CockpitFaction::Alliance,
+            9,
+            &texts,
+        )
+        .unwrap();
+        assert_eq!(
+            own.text,
+            "Leia Organa has escaped from imprisonment at Coruscant."
+        );
+        assert_eq!(own.audience, RailAudience::Alliance);
+        // FUN_00490340's speaker per major (case 1).
+        for (record, code) in [
+            (0x240, 0x26),
+            (0x241, 0x18),
+            (0x242, 0x25),
+            (0x243, 0x19),
+            (0x280, 0x27),
+            (0x281, 0x28),
+        ] {
+            let major = rebellion_core::world::Character {
+                dat_id: DatId::new(record),
+                is_major: true,
+                ..leia.clone()
+            };
+            let message =
+                escaped_message(&major, false, "X", CockpitFaction::Empire, 1, &texts).unwrap();
+            assert_eq!(message.advisor_event, [code, code], "{record:#x}");
+        }
+        let agent = rebellion_core::world::Character {
+            name: "Agent".into(),
+            is_alliance: true,
+            ..rebellion_core::world::Character::default()
+        };
+        let mine = |reader| {
+            escaped_message(&agent, false, "X", reader, 1, &texts)
+                .unwrap()
+                .advisor_event
+        };
+        assert_eq!(mine(CockpitFaction::Alliance), [0x24, 0x24]);
+        assert_eq!(mine(CockpitFaction::Empire), [0, 0]);
+        assert!(escaped_message(
+            &agent,
+            false,
+            "X",
+            CockpitFaction::Empire,
+            1,
+            &HashMap::new()
+        )
+        .is_none());
+    }
+
+    // FUN_004981c0 case 4: TEXTSTRA 0x707c / 0x707d as shipped.
+    #[test]
+    fn the_headquarters_arrival_names_its_system() {
+        let texts: HashMap<u16, String> = [
+            (0x707c, "Headquarters Arrives"),
+            (0x707d, "The Alliance Headquarters has arrived at {2:1}"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            headquarters_arrival_texts("Dantooine", &texts),
+            Some((
+                "Headquarters Arrives".into(),
+                "The Alliance Headquarters has arrived at Dantooine".into()
+            ))
+        );
+        assert_eq!(
+            headquarters_arrival_texts("Dantooine", &HashMap::new()),
+            None
+        );
+    }
+
     // FUN_00491500 codes 3..5: TEXTSTRA 0x7148..0x714b as shipped.
     #[test]
     fn a_foiled_mission_reports_to_its_side_through_its_leader() {
@@ -3610,6 +3869,16 @@ mod tests {
             Some((
                 "Maintenance Shortfall".into(),
                 "The following units have been destroyed at Kuat due to a maintenance shortfall:\nVictory-class Star Destroyer\n".into()
+            ))
+        );
+        // A0 maintenance-shortfall/alliance-view-coruscant-day163: "The
+        // following units have been destroyed at Coruscant due to a
+        // maintenance shortfall:" over "TIE Fighter".
+        assert_eq!(
+            maintenance_texts(Some("Coruscant"), "TIE Fighter", &texts),
+            Some((
+                "Maintenance Shortfall".into(),
+                "The following units have been destroyed at Coruscant due to a maintenance shortfall:\nTIE Fighter\n".into()
             ))
         );
         assert_eq!(

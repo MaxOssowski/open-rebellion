@@ -2654,14 +2654,31 @@ async fn main() {
                     .troops
                     .get(transit.troop)
                     .map(|troop| RailAudience::side(troop.is_alliance));
-                // Notification 0xd, Unit Arrival.
-                msg_log.push(filed(
-                    GameMessage::at_system(
-                        transit.arrival_tick,
-                        format!("Regiment arrived at {name}"),
-                        MessageCategory::Mission,
-                        system,
+                // Notification 0xd, Unit Arrival (FUN_004981c0 case 3:
+                // 0x707a / 0x707b and the unit's 0x707e line).
+                let shipped = world.troops.get(transit.troop).and_then(|troop| {
+                    rebellion_render::story_messages::arrival_texts(
+                        &world,
+                        rebellion_core::manufacturing::BuildableKind::Troop(troop.class_dat_id),
+                        &name,
+                        &message_texts,
                     )
+                });
+                let (title, text) = match shipped {
+                    Some((title, body)) => (Some(title), body),
+                    None => (None, format!("Regiment arrived at {name}")),
+                };
+                let mut message = GameMessage::at_system(
+                    transit.arrival_tick,
+                    text,
+                    MessageCategory::Mission,
+                    system,
+                );
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
+                msg_log.push(filed(
+                    message
                     .with_picture_if(world.troops.get(transit.troop).and_then(
                         |troop| {
                             pictures::arrival(
@@ -2699,14 +2716,28 @@ async fn main() {
                     .get(system)
                     .map_or_else(|| "unknown".into(), |s| s.name.clone());
                 let alliance = rebellion_core::squadrons::is_alliance(&world, transit.class);
-                // Notification 0xd, Unit Arrival.
+                // Notification 0xd, Unit Arrival (FUN_004981c0 case 3).
+                let shipped = rebellion_render::story_messages::arrival_texts(
+                    &world,
+                    rebellion_core::manufacturing::BuildableKind::Fighter(transit.class),
+                    &name,
+                    &message_texts,
+                );
+                let (title, text) = match shipped {
+                    Some((title, body)) => (Some(title), body),
+                    None => (None, format!("Squadron arrived at {name}")),
+                };
+                let mut message = GameMessage::at_system(
+                    transit.arrival_tick,
+                    text,
+                    MessageCategory::Mission,
+                    system,
+                );
+                if let Some(title) = title {
+                    message = message.with_title(title);
+                }
                 msg_log.push(filed(
-                    GameMessage::at_system(
-                        transit.arrival_tick,
-                        format!("Squadron arrived at {name}"),
-                        MessageCategory::Mission,
-                        system,
-                    )
+                    message
                     .with_picture_if(alliance.and_then(|alliance| {
                         pictures::arrival(pictures::Arrival::Units, pictures::reader(alliance))
                     }))
@@ -2724,8 +2755,8 @@ async fn main() {
                     transit.origin,
                 ));
             }
-            // The headquarters' trip ends (rebellion_core::headquarters_move).
-            // port: no arrival message is traced for it.
+            // The headquarters' trip ends (rebellion_core::headquarters_move):
+            // Unit Arrival case 4 (FUN_004981c0), to the Alliance.
             if let Some(transit) =
                 rebellion_core::headquarters_move::advance(&mut troop_transport_state, now)
             {
@@ -2733,6 +2764,11 @@ async fn main() {
                     "[interface] headquarters arrived day={}",
                     transit.arrival_tick
                 );
+                if let Some(message) =
+                    headquarters_arrival_message(&world, &transit, &message_texts)
+                {
+                    msg_log.push(message);
+                }
             }
 
             let current_tick = tick_events.last().map_or(0, |event| event.tick);
@@ -2957,7 +2993,7 @@ async fn main() {
             );
             // Member moves and releases come before the results.
             rebellion_core::missions::apply_advance_effects(&mut world, &mission_advance.effects);
-            push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick);
+            push_advance_injuries(&mut msg_log, &world, &mission_advance.effects, current_tick, &message_texts);
             // Notification 0x361 (FUN_0048c9c0): a member learned the traitor.
             for effect in &mission_advance.effects {
                 if let MissionEffect::TraitorIdentified { character, traitor } = effect {
@@ -3319,28 +3355,17 @@ async fn main() {
                     escaped_to_alliance,
                 } = effect
                 {
-                    if let Some(c) = world.characters.get_mut(*character) {
-                        c.is_alliance = *escaped_to_alliance;
-                        c.is_empire = !*escaped_to_alliance;
-                        c.is_captive = false;
-                        c.captured_by = None;
-                        c.capture_tick = None;
-                    }
+                    escape_character(
+                        &mut world,
+                        *character,
+                        *escaped_to_alliance,
+                        current_tick,
+                        &mut msg_log,
+                        &message_texts,
+                    );
                     for (_, fleet) in &mut world.fleets {
                         fleet.characters.retain(|&k| k != *character);
                     }
-                    let name = world
-                        .characters
-                        .get(*character)
-                        .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                    msg_log.push(
-                        GameMessage::new(
-                            current_tick,
-                            format!("{name} has escaped captivity!"),
-                            MessageCategory::Event,
-                        )
-                        .with_picture(pictures::escaped()),
-                    );
                 }
             }
 
@@ -3912,7 +3937,7 @@ async fn main() {
             ) {
                 rebellion_core::healing::apply(&mut world, heal);
                 if heal.injury == 0 {
-                    push_character_health(&mut msg_log, &world, heal.character, heal.tick);
+                    push_character_health(&mut msg_log, &world, heal.character, heal.tick, &message_texts);
                 }
             }
             // A capture's hook (slot +0x34c, FUN_004f1a80) clears the
@@ -4154,7 +4179,7 @@ async fn main() {
                             ..
                         } = loss
                         {
-                            push_character_health(&mut msg_log, &world, *character, tick);
+                            push_character_health(&mut msg_log, &world, *character, tick, &message_texts);
                         }
                     }
                 }
@@ -11328,32 +11353,53 @@ fn push_character_health(
     world: &GameWorld,
     character: rebellion_core::ids::CharacterKey,
     tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
 ) {
+    use rebellion_render::story_messages::CharacterHealth;
     let Some(c) = world.characters.get(character) else {
         return;
     };
-    let (text, picture) = if c.injury != 0 {
+    // FUN_0048fdf0: a destroyed character (+0x50 bit 3) reads Killed over
+    // 0x42e or 0x433 by its side; else Injured or Healed.
+    let (health, picture, fallback) = if c.is_killed {
         (
-            format!("{} Injured: {} has been injured.", c.name, c.name),
+            CharacterHealth::Killed,
+            pictures::killed(pictures::character_side(world, character)),
+            format!("{} has been killed.", c.name),
+        )
+    } else if c.injury != 0 {
+        (
+            CharacterHealth::Injured,
             pictures::injured(),
+            format!("{} Injured: {} has been injured.", c.name, c.name),
         )
     } else {
         (
+            CharacterHealth::Healed,
+            pictures::healed((c.dat_id, c.is_major)),
             format!(
                 "{} Healed: {} has been healed of all injuries.",
                 c.name, c.name
             ),
-            pictures::healed((c.dat_id, c.is_major)),
         )
     };
+    let (title, text) =
+        match rebellion_render::story_messages::character_health_texts(&c.name, health, texts) {
+            Some((title, body)) => (Some(title), body),
+            None => (None, fallback),
+        };
+    let mut message = GameMessage::new(tick, text, MessageCategory::Event)
+        .with_picture_if(Some(picture))
+        // FUN_0048fdf0's speaker map on the character.
+        .with_advisor_event(rebellion_render::story_messages::speaker_event(
+            world,
+            Some(character),
+        ));
+    if let Some(title) = title {
+        message = message.with_title(title);
+    }
     log.push(filed(
-        GameMessage::new(tick, text, MessageCategory::Event)
-            .with_picture_if(Some(picture))
-            // FUN_0048fdf0's speaker map on the character.
-            .with_advisor_event(rebellion_render::story_messages::speaker_event(
-                world,
-                Some(character),
-            )),
+        message,
         MessageRail::Mission,
         character_audience(world, character),
     ));
@@ -11367,11 +11413,12 @@ fn push_advance_injuries(
     world: &GameWorld,
     effects: &[MissionEffect],
     tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
 ) {
     for effect in effects {
         if let MissionEffect::CharacterInjured { character, injury } = effect {
             if *injury > 0 {
-                push_character_health(log, world, *character, tick);
+                push_character_health(log, world, *character, tick, texts);
             }
         }
     }
@@ -11549,6 +11596,82 @@ fn push_personnel_arrivals(
             Some(RailAudience::side(is_alliance)),
         ));
     }
+}
+
+/// A captive escapes to its side: it is freed, and notification `0x1e0`
+/// with the escape flag posts Character Escaped (`FUN_00490340` cases 1
+/// and 2) to each side, naming the system it held the captive at.
+fn escape_character(
+    world: &mut GameWorld,
+    character: CharacterKey,
+    escaped_to_alliance: bool,
+    tick: u64,
+    log: &mut MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    let Some(captive) = world.characters.get(character) else {
+        return;
+    };
+    // The captor: the side that held it, else the other side.
+    let captor_is_alliance = captive
+        .captured_by
+        .map_or(!escaped_to_alliance, |side| side == Faction::Alliance);
+    let place = captive
+        .current_fleet
+        .and_then(|fleet| world.fleets.get(fleet))
+        .map(|fleet| fleet.location)
+        .or(captive.current_system)
+        .and_then(|system| world.systems.get(system))
+        .map_or_else(String::new, |system| system.name.clone());
+    let before = captive.clone();
+    for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+        if let Some(message) = rebellion_render::story_messages::escaped_message(
+            &before,
+            captor_is_alliance,
+            &place,
+            reader,
+            tick,
+            texts,
+        ) {
+            log.push(message);
+        }
+    }
+    if let Some(c) = world.characters.get_mut(character) {
+        c.is_alliance = escaped_to_alliance;
+        c.is_empire = !escaped_to_alliance;
+        c.is_captive = false;
+        c.captured_by = None;
+        c.capture_tick = None;
+    }
+}
+
+/// Unit Arrival case 4 (`FUN_004981c0`): the Headquarters reaching its
+/// new system, to the Alliance's Defense rail (category `0x40`) over
+/// `0x3fe`, advisor event 6.
+fn headquarters_arrival_message(
+    world: &GameWorld,
+    transit: &rebellion_core::headquarters_move::HeadquartersTransit,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let system = world.systems.get(transit.destination)?;
+    let (title, text) =
+        rebellion_render::story_messages::headquarters_arrival_texts(&system.name, texts)?;
+    Some(filed(
+        GameMessage::at_system(
+            transit.arrival_tick,
+            text,
+            MessageCategory::Event,
+            transit.destination,
+        )
+        .with_title(title)
+        .with_picture_if(pictures::arrival(
+            pictures::Arrival::Headquarters,
+            CockpitFaction::Alliance,
+        ))
+        .with_advisor_event(6),
+        MessageRail::Defense,
+        Some(RailAudience::Alliance),
+    ))
 }
 
 /// Notification `0x362` for each Force discovery (timer `0x389`), built as
@@ -11849,17 +11972,14 @@ fn apply_mission_result(
                     target,
                     rebellion_core::missions::MissionTarget::DeathStar(_)
                 ) {
-                    // Notification 0x23, Death Star Sabotaged.
-                    log.push(filed(
-                        GameMessage::new(
-                            result.tick,
-                            "The Death Star has been sabotaged.".to_string(),
-                            MessageCategory::Mission,
-                        ),
-                        MessageRail::Mission,
-                        Some(RailAudience::side(
-                            result.faction == MissionFaction::Alliance,
-                        )),
+                    // Notification 0x23, Death Star Sabotaged
+                    // (FUN_0048d470): a story movie only (kind 6, queued
+                    // with the effect), no Message Index row. port: the
+                    // line stays in the log, off the index.
+                    log.push(GameMessage::new(
+                        result.tick,
+                        "The Death Star has been sabotaged.".to_string(),
+                        MessageCategory::Mission,
                     ));
                 }
             }
@@ -11899,7 +12019,7 @@ fn apply_mission_result(
                     c.injure(*injury);
                 }
                 if *injury > 0 {
-                    push_character_health(log, world, *character, result.tick);
+                    push_character_health(log, world, *character, result.tick, message_texts);
                 }
             }
             // The detection's Force gains come with the advance
@@ -11980,24 +12100,13 @@ fn apply_mission_result(
                 character,
                 escaped_to_alliance,
             } => {
-                if let Some(c) = world.characters.get_mut(*character) {
-                    c.is_alliance = *escaped_to_alliance;
-                    c.is_empire = !*escaped_to_alliance;
-                    c.is_captive = false;
-                    c.captured_by = None;
-                    c.capture_tick = None;
-                }
-                let name = world
-                    .characters
-                    .get(*character)
-                    .map_or_else(|| "Unknown".into(), |c| c.name.clone());
-                log.push(
-                    GameMessage::new(
-                        result.tick,
-                        format!("{name} has escaped captivity!"),
-                        MessageCategory::Event,
-                    )
-                    .with_picture(pictures::escaped()),
+                escape_character(
+                    world,
+                    *character,
+                    *escaped_to_alliance,
+                    result.tick,
+                    log,
+                    message_texts,
                 );
             }
             MissionEffect::UprisingSubdued {
@@ -12143,14 +12252,13 @@ fn log_bombardment(
         .destroyed
         .contains(&rebellion_core::bombardment::Target::Headquarters)
     {
-        log.push(filed(
-            GameMessage::new(
-                tick,
-                format!("Alliance headquarters destroyed at {name}"),
-                MessageCategory::Combat,
-            ),
-            MessageRail::Resource,
-            Some(RailAudience::Both),
+        // Notification 0x128 bit 0, Alliance Headquarters Destroyed
+        // (FUN_0048e5a0): a story movie only (kind 6, from the victory
+        // word), no Message Index row. port: the line stays in the log.
+        log.push(GameMessage::new(
+            tick,
+            format!("Alliance headquarters destroyed at {name}"),
+            MessageCategory::Combat,
         ));
     }
 }
@@ -12261,21 +12369,8 @@ fn destroy_planet(
     );
     for effect in cleanup_effects.drain(..) {
         if let rebellion_core::effects::GameEffect::CharacterKilled { character } = effect {
-            if let Some(c) = world.characters.get(character) {
-                // Notification 0x1a, Character Health.
-                msg_log.push(filed(
-                    GameMessage::new(
-                        tick,
-                        format!("{} has been killed.", c.name),
-                        MessageCategory::Event,
-                    )
-                    .with_picture_if(Some(pictures::killed(
-                        pictures::character_side(world, character),
-                    ))),
-                    MessageRail::Mission,
-                    character_audience(world, character),
-                ));
-            }
+            // Notification 0x106, Character Health (FUN_0048fdf0).
+            push_character_health(msg_log, world, character, tick, message_texts);
         }
     }
     // Notification 0x182, System Destroyed by the Death Star
@@ -13835,9 +13930,9 @@ mod character_health_tests {
             ..rebellion_core::world::Character::default()
         });
         let mut log = MessageLog::new();
-        push_character_health(&mut log, &world, character, 3);
+        push_character_health(&mut log, &world, character, 3, &Default::default());
         world.characters[character].injury = 0;
-        push_character_health(&mut log, &world, character, 9);
+        push_character_health(&mut log, &world, character, 9, &Default::default());
         let messages = log.messages();
         assert_eq!(messages.len(), 2);
         assert_eq!(
@@ -13860,7 +13955,7 @@ mod character_health_tests {
             is_major: true,
             ..rebellion_core::world::Character::default()
         });
-        push_character_health(&mut log, &world, vader, 10);
+        push_character_health(&mut log, &world, vader, 10, &Default::default());
         let portrait = log.messages()[2].picture.and_then(|p| p.foreground);
         assert!(portrait.is_some());
         assert_eq!(
@@ -13870,6 +13965,36 @@ mod character_health_tests {
                 true
             )
         );
+    }
+
+    #[test]
+    fn character_health_reads_its_textstra_title_and_body_and_a_death() {
+        // FUN_0048fdf0: 0x7160 / 0x7161 as title and body; a destroyed
+        // character (+0x50 bit 3) reads 0x7164 / 0x7365 over 0x42e (side 1)
+        // or 0x433.
+        let mut world = GameWorld::default();
+        let han = world.characters.insert(rebellion_core::world::Character {
+            name: "Han Solo".into(),
+            is_alliance: true,
+            injury: 7,
+            ..rebellion_core::world::Character::default()
+        });
+        let texts = std::collections::HashMap::from([
+            (0x7160, "{1:1} Injured".to_owned()),
+            (0x7161, "{1:1} has been injured.".to_owned()),
+            (0x7164, "{1:1} Killed".to_owned()),
+            (0x7365, "{1:1} has been killed.".to_owned()),
+        ]);
+        let mut log = MessageLog::new();
+        push_character_health(&mut log, &world, han, 3, &texts);
+        world.characters[han].mark_killed();
+        push_character_health(&mut log, &world, han, 4, &texts);
+        let messages = log.messages();
+        assert_eq!(messages[0].title.as_deref(), Some("Han Solo Injured"));
+        assert_eq!(messages[0].text, "Han Solo has been injured.");
+        assert_eq!(messages[1].title.as_deref(), Some("Han Solo Killed"));
+        assert_eq!(messages[1].text, "Han Solo has been killed.");
+        assert_eq!(messages[1].picture.map(|p| p.background), Some(0x42e));
     }
 
     #[test]
@@ -13899,7 +14024,7 @@ mod character_health_tests {
         ];
         rebellion_core::missions::apply_advance_effects(&mut world, &effects);
         let mut log = MessageLog::new();
-        push_advance_injuries(&mut log, &world, &effects, 5);
+        push_advance_injuries(&mut log, &world, &effects, 5, &Default::default());
         assert_eq!(world.characters[han].injury, 4);
         assert_eq!(log.messages().len(), 1);
         assert_eq!(
@@ -14039,6 +14164,98 @@ mod character_health_tests {
             "The following personnel have arrived at Klatooine.\n\nAfyon"
         );
         assert_eq!(messages[1].advisor_event, [0x15, 0x15]);
+    }
+
+    #[test]
+    fn the_headquarters_arrival_goes_to_the_alliances_defense_rail() {
+        // FUN_004981c0 case 4: 0x707c / 0x707d, category 0x40, 0x3fe,
+        // event 6, the Alliance only.
+        let mut world = GameWorld::default();
+        let dantooine = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(2),
+            name: "Dantooine".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: true,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let texts = std::collections::HashMap::from([
+            (0x707c, "Headquarters Arrives".to_owned()),
+            (0x707d, "The Alliance Headquarters has arrived at {2:1}".to_owned()),
+        ]);
+        let transit = rebellion_core::headquarters_move::HeadquartersTransit {
+            origin: dantooine,
+            destination: dantooine,
+            arrival_tick: 30,
+        };
+        let message = headquarters_arrival_message(&world, &transit, &texts).unwrap();
+        assert_eq!(message.title.as_deref(), Some("Headquarters Arrives"));
+        assert_eq!(message.text, "The Alliance Headquarters has arrived at Dantooine");
+        assert_eq!(message.audience, RailAudience::Alliance);
+        assert_eq!(message.rail, Some(MessageRail::Defense));
+        assert_eq!(message.picture.map(|p| p.background), Some(0x3fe));
+        assert_eq!(message.advisor_event, [6, 6]);
+        assert_eq!(message.system, Some(dantooine));
+        assert!(headquarters_arrival_message(&world, &transit, &Default::default()).is_none());
+    }
+
+    #[test]
+    fn an_escape_frees_the_captive_and_tells_both_sides() {
+        // FUN_00490340 cases 1 and 2: the captor reads 0x715c / 0x715d,
+        // the escapee's side 0x715e / 0x715f.
+        let mut world = GameWorld::default();
+        let leia = world.characters.insert(rebellion_core::world::Character {
+            name: "Leia Organa".into(),
+            is_alliance: false,
+            is_empire: true,
+            is_captive: true,
+            captured_by: Some(Faction::Empire),
+            ..rebellion_core::world::Character::default()
+        });
+        let texts = std::collections::HashMap::from([
+            (0x715c, "{1:1} Escaped".to_owned()),
+            (0x715d, "{1:1} escaped from the {3:1} at {2:1}.".to_owned()),
+            (0x715e, "{1:1} Escaped".to_owned()),
+            (0x715f, "{1:1} has escaped from imprisonment at {2:1}.".to_owned()),
+        ]);
+        let mut log = MessageLog::new();
+        escape_character(&mut world, leia, true, 4, &mut log, &texts);
+        let c = &world.characters[leia];
+        assert!(c.is_alliance && !c.is_empire && !c.is_captive && c.captured_by.is_none());
+        let messages = log.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].audience, RailAudience::Alliance);
+        assert!(messages[0].text.contains("has escaped from imprisonment"), "{}", messages[0].text);
+        assert_eq!(messages[1].audience, RailAudience::Empire);
+        assert!(messages[1].text.contains("escaped from the"), "{}", messages[1].text);
+        assert_eq!(messages[1].picture.map(|p| p.background), Some(0x405));
+        // With no captor recorded, the captor is the side it escaped from.
+        let wedge = world.characters.insert(rebellion_core::world::Character {
+            name: "Wedge".into(),
+            is_captive: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let mut log = MessageLog::new();
+        escape_character(&mut world, wedge, true, 5, &mut log, &texts);
+        assert_eq!(log.messages()[1].audience, RailAudience::Empire);
+        assert!(log.messages()[1].text.contains("escaped from the"), "{}", log.messages()[1].text);
     }
 
     #[test]

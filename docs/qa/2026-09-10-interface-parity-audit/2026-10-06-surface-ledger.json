@@ -8058,9 +8058,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "Maintenance Shortfall reads its TEXTSTRA texts (maintenance_texts); not checked in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "Maintenance Shortfall reads its TEXTSTRA texts (maintenance_texts). A0 (DS_flip_allian, day 163, maintenance-shortfall/alliance-view-coruscant-day163.png, sha256 a31c0bc3...) shows \"Maintenance Shortfall\" over \"The following units have been destroyed at Coruscant due to a maintenance shortfall:\\nTIE Fighter\"; the port's texts match it word for word (story_messages test), and its picture is STRATEGY 1014, the losing Empire's picture, which the port gives the owner's message. Open: A0 showed this Imperial message to the Alliance player too, while the port files it only for the owner (ghidra/notes/message-pictures.md); not checked in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8072,9 +8073,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-arrival/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-fleet-arrival/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-personnel-arrive/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-personnel-arrive/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "Deployed (0x107) and arrival (0x105) messages go to the unit family's rail; delivery seen in the browser (delivery-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a fleet's arrival now takes FUN_004981c0's TEXTSTRA 0x7078/0x7079 ('Fleet Arrives at {system}', '{fleet} has arrived at {system}.') as A0 message-rail/fleet-arrives-averam; the port had its own untitled English. Personnel Arrive (0x200, Class_0065b798_vt14: 0x70c0..0x70c5) is not posted by the port. 2026-11-06 f12781c6: Personnel Arrive (FUN_004955b0, 0x70c0..0x70c5) now posts for Move/Return/Adrift landings; message-display.mjs reads Mon Mothma's arrival at Klatooine; A0 day 914 shows only the title.",
+          "note": "Deployed (0x107) and arrival (0x105) messages go to the unit family's rail; delivery seen in the browser (delivery-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a fleet's arrival now takes FUN_004981c0's TEXTSTRA 0x7078/0x7079 ('Fleet Arrives at {system}', '{fleet} has arrived at {system}.') as A0 message-rail/fleet-arrives-averam; the port had its own untitled English. Personnel Arrive (0x200, Class_0065b798_vt14: 0x70c0..0x70c5) is not posted by the port. 2026-11-06 f12781c6: Personnel Arrive (FUN_004955b0, 0x70c0..0x70c5) now posts for Move/Return/Adrift landings; message-display.mjs reads Mon Mothma's arrival at Klatooine; A0 day 914 shows only the title. 2026-11-06 (later): Headquarters Arrives (FUN_004981c0 case 4, 0x707c/0x707d, Defense rail, Alliance only) now posts when the headquarters' trip ends, and regiments and squadrons travelling alone take 'Units Arrive at {system}' (0x707a/0x707b); fleet-window.mjs travel checks the regiment's title in the browser (Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8131,9 +8133,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-speaker-events/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-capture-message/",
             "tools/interface-parity/message-display.mjs",
-            "crates/rebellion-render/src/story_messages.rs"
+            "crates/rebellion-render/src/story_messages.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "A mission capture posts Character Captured (FUN_00490340 cases 3/4, notification 0x1e0) to each side: TEXTSTRA 0x7158/0x7159 with the captor's side for the captive's enemy, 0x715a/0x715b for its own side (hyp, see the evidence), on (captive side != 1) + 0x418, the captive's speaker. A0 messages-day633 (the Alliance, day 633): 'Emperor Palpatine Captured', 'Emperor Palpatine was captured by the Alliance at Corfai.' over STRATEGY 1049. message-display.mjs (Linux, both sides) files the same capture and shows the same title and text and the picture at A0's (74, 82), every pixel exact against the bitmap and A0. Open: escapes post no message.",
+          "note": "A mission capture posts Character Captured (FUN_00490340 cases 3/4, notification 0x1e0) to each side: TEXTSTRA 0x7158/0x7159 with the captor's side for the captive's enemy, 0x715a/0x715b for its own side (hyp, see the evidence), on (captive side != 1) + 0x418, the captive's speaker. A0 messages-day633 (the Alliance, day 633): 'Emperor Palpatine Captured', 'Emperor Palpatine was captured by the Alliance at Corfai.' over STRATEGY 1049. message-display.mjs (Linux, both sides) files the same capture and shows the same title and text and the picture at A0's (74, 82), every pixel exact against the bitmap and A0. Open: escapes post no message. 2026-11-06: Character Escaped (FUN_00490340 cases 1/2) now takes TEXTSTRA 0x715c/0x715d for the captor's side and 0x715e/0x715f for the escapee's, picture 0x405 and the escapee's speaker (escaped_message, escape_character); the port's 'has escaped captivity!' line is gone. No A0 capture of an escape.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -8144,9 +8147,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-injury-messages/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-character-injury/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "Character Injured messages (timer 0x388) and the injured damage mark; the messages were not seen in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "Character Injured messages (timer 0x388) and the injured damage mark; the messages were not seen in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: the Injured message takes FUN_0048fdf0's TEXTSTRA title and body (0x7160/0x7161, character_health_texts); unit tests only.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8155,9 +8159,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-injury-messages/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-injury-messages/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "Character Healed message posts with the injury timer; unit tests only. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "Character Healed message posts with the injury timer; unit tests only. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: the Healed message takes 0x7162/0x7163 (character_health_texts); unit tests only.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8191,9 +8196,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-death-by-injury/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-destroyed-messages/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-destroyed-messages/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "Death by injury and Killed by Imperial Assassins messages; the assassins fixture was seen in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "Death by injury and Killed by Imperial Assassins messages; the assassins fixture was seen in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a destroyed character, including the Death Star's victims, reads Killed (0x7164/0x7365, character_health_texts); unit tests only.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

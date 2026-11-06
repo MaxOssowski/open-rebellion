@@ -1524,8 +1524,9 @@ const cases = [
       const arrived = await until(page, "the regiment arrives at the target",
         (o, target) => !o.regiment_travelling && o.troop_system_dat_id === target,
         setup.target_dat_id, 90_000);
-      // Notification 0xd, Unit Arrival (main.rs).
-      assert.equal(arrived.last_regiment_message, `Regiment arrived at ${setup.target_name}`);
+      // Notification 0xd, Unit Arrival (FUN_004981c0 case 3: TEXTSTRA
+      // 0x707a "Units Arrive at {2:1}").
+      assert.equal(arrived.last_regiment_message, `Units Arrive at ${setup.target_name}`);
       return { menu, departed, speed, arrived };
     },
   },

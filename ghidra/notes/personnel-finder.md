@@ -315,6 +315,16 @@ port: the port lists recruited characters of the tab's side. It has no
 per-side views of an object, so it shows an enemy character's true place
 where the original shows what the player's side holds of it.
 
+A0 (2026-11-06, `.artifacts/a0-vm/personnel-other-side/alliance-day162-imperial-tab`,
+the `DS_flip_allian` save at day 162, an Alliance game): the Imperial tab
+lists one row, "Needa - Location Unknown". The Empire's other characters
+(Vader, the Emperor, Piett …), all alive, are not listed. So the other
+side's tab shows only the characters the player's side holds a view of,
+and a view without a known container reads "Location Unknown" (`0x1895`).
+The port lists every recruited enemy character with its true place: a
+visible difference. Open: what creates a side's view of an enemy
+character (seen at a system, captured, a mission's report …).
+
 ## Open
 
 - The `+0x6c` field on each row item and its purpose.

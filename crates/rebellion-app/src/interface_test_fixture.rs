@@ -5125,8 +5125,16 @@ fn fleet_load_observation(
                     .audience
                     .includes(request.faction == CockpitFaction::Alliance)
             })
-            .find(|message| message.text.starts_with("Regiment "))
-            .map(|message| message.text.clone()),
+            // FUN_004981c0 case 3 titles it "Units Arrive at {system}";
+            // without the texts the port's line stays.
+            .find(|message| {
+                message.text.starts_with("Regiment ")
+                    || message
+                        .title
+                        .as_deref()
+                        .is_some_and(|title| title.starts_with("Units Arrive"))
+            })
+            .map(|message| message.title.clone().unwrap_or_else(|| message.text.clone())),
         planet_squadrons: rebellion_core::squadrons::on_planet(
             world,
             primary,
