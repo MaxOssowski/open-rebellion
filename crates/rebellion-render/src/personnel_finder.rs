@@ -21,7 +21,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::fleet_window::paint_native;
 use crate::mission_dialog::{button, galaxy_centered_rect};
-use crate::system_window::{fleet_label, logical_rect, rect_contains};
+use crate::system_window::{fleet_label, logical_rect, opposing_contents_visible, rect_contains};
 
 pub const PERSONNEL_FINDER_WIDTH: f32 = 470.0;
 pub const PERSONNEL_FINDER_HEIGHT: f32 = 330.0;
@@ -434,13 +434,21 @@ pub fn character_rows(
 
 /// [`character_rows`], naming each travelling character's destination.
 #[must_use]
+///
+/// The list holds the player's side's views (`FUN_004f3d50`, `+0x50` bit
+/// 1). A0 personnel-other-side/test-day8-imperial-tab-empty (an unedited
+/// Alliance game, day 8) lists no Imperial character. hyp: the port has no
+/// per-side views, so it lists the other side's character where the
+/// player sees the other side's objects (`opposing_contents_visible`, as
+/// the Fleet Finder does) and drops it when the view is lost.
 pub fn character_rows_travelling(
     world: &GameWorld,
-    _fog: &FogState,
-    _player: Faction,
+    fog: &FogState,
+    player: Faction,
     tab: PersonnelTab,
     destinations: &[(rebellion_core::ids::CharacterKey, rebellion_core::ids::SystemKey)],
 ) -> Vec<PersonnelFinderRow> {
+    let player_is_alliance = player == Faction::Alliance;
     let mut rows = Vec::new();
     for (key, character) in &world.characters {
         if !character.recruited {
@@ -449,7 +457,19 @@ pub fn character_rows_travelling(
         if !tab.lists(character.is_alliance) {
             continue;
         }
-        // hyp: fog gating for opposing side's characters.
+        if character.is_alliance != player_is_alliance
+            && !character
+                .current_system
+                .or_else(|| {
+                    character
+                        .current_fleet
+                        .and_then(|fleet| world.fleets.get(fleet))
+                        .map(|fleet| fleet.location)
+                })
+                .is_some_and(|system| opposing_contents_visible(world, fog, player, system))
+        {
+            continue;
+        }
         let location = character
             .current_system
             .and_then(|sys| world.systems.get(sys))
@@ -662,6 +682,18 @@ fn sf_cell_colours(tab: PersonnelTab, all_usable: bool) -> (egui::Color32, egui:
 }
 
 impl PersonnelFinderState {
+    /// The open window's side tab and the centre of each side tab's button
+    /// on the screen, for the interface fixtures.
+    #[must_use]
+    pub fn shown_side_tabs(&self, layout: CockpitLayout) -> Option<(bool, [egui::Pos2; 2])> {
+        let window = self.window.as_ref()?;
+        let frame = window_rect(layout);
+        Some((
+            window.tab == PersonnelTab::Alliance,
+            SIDE_TABS.map(|control| at(frame, layout.scale, control.rect).center()),
+        ))
+    }
+
     /// The open window's Characters rows as shown, for the interface
     /// fixtures; `None` when closed or on the SpecForces view.
     #[must_use]
@@ -1523,9 +1555,24 @@ mod tests {
         assert_eq!(alliance.len(), 1);
         assert!(alliance[0].display_name().starts_with("Luke Skywalker"));
 
+        // A0 personnel-other-side/test-day8-imperial-tab-empty: the other
+        // side's character is listed only where the player sees it.
+        world.systems[yavin].control = ControlKind::Uncontrolled;
+        let imperial = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial);
+        assert!(imperial.is_empty());
+        world.systems[yavin].control = ControlKind::Controlled(Faction::Alliance);
         let imperial = character_rows(&world, &fog, Faction::Alliance, PersonnelTab::Imperial);
         assert_eq!(imperial.len(), 1);
         assert!(imperial[0].display_name().starts_with("Darth Vader"));
+        // The Empire sees its own characters wherever they are.
+        world.systems[yavin].control = ControlKind::Uncontrolled;
+        let own = character_rows(
+            &world,
+            &FogState::new(Faction::Empire),
+            Faction::Empire,
+            PersonnelTab::Imperial,
+        );
+        assert_eq!(own.len(), 1);
     }
 
     #[test]
@@ -2043,6 +2090,20 @@ mod tests {
         assert!(state.is_open());
         state.close();
         assert!(!state.is_open());
+    }
+
+    #[test]
+    fn the_shown_side_tabs_report_the_tab_and_each_buttons_centre() {
+        let mut state = PersonnelFinderState::default();
+        assert_eq!(state.shown_side_tabs(layout()), None);
+        state.open(CockpitFaction::Alliance);
+        let frame = window_rect(layout());
+        let (alliance, tabs) = state.shown_side_tabs(layout()).unwrap();
+        assert!(alliance);
+        assert_eq!(tabs[0] - frame.min, egui::vec2(36.0 + 24.5, 72.0 + 20.5));
+        assert_eq!(tabs[1] - frame.min, egui::vec2(88.0 + 24.5, 72.0 + 20.5));
+        state.set_tab(PersonnelTab::Imperial);
+        assert!(!state.shown_side_tabs(layout()).unwrap().0);
     }
 
     #[test]

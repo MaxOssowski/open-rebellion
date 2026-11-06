@@ -194,7 +194,46 @@ async function run(browser, base, faction) {
     await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = null; window.__openRebellionInterfacePersonnelFinder = null; });
     await frames(page, 4);
     assert.equal(await page.evaluate(() => window.__openRebellionInterfaceObjectMenu), null, "the menu stayed open");
-    await until(page, "the Finder stays open after the menu's Escape", (o) => o.rows.length > 0);
+    const stays = await until(page, "the Finder stays open after the menu's Escape", (o) => o.rows.length > 0);
+
+    // The other side's tab lists only the characters the player's side
+    // sees (FUN_004f3d50 views; A0 personnel-other-side/test-day8-imperial-
+    // tab-empty, an unedited Alliance game, lists no Imperial character).
+    // This galaxy shows none of the other side's objects, as the Fleet
+    // Finder's other tab below finds.
+    const ownTab = faction.name === "alliance" ? "alliance" : "imperial";
+    const otherTabName = faction.name === "alliance" ? "imperial" : "alliance";
+    assert.equal(stays.tab, ownTab, JSON.stringify(stays));
+    await page.mouse.move(...stays.tabs[faction.name === "alliance" ? 1 : 0]);
+    await frames(page);
+    await page.mouse.down();
+    await frames(page);
+    await page.mouse.up();
+    await frames(page, 3);
+    await page.mouse.move(2, 2);
+    const otherCharacters = await until(page, "the other side's Personnel tab shows",
+      (o) => o.tab === otherTabName);
+    assert.deepEqual(otherCharacters.rows, [], JSON.stringify(otherCharacters.rows));
+    await frames(page, 3);
+    await shot("characters-other-side");
+    if (faction.name === "alliance") {
+      // The empty list (99..449, 185..353) and the side tabs against A0,
+      // pixel for pixel; the header's text is the accepted deviation.
+      const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/personnel-other-side/test-day8-imperial-tab-empty.png")));
+      const port = PNG.sync.read(await page.screenshot());
+      const differing = (x0, y0, x1, y1) => {
+        let count = 0;
+        for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+          const i = (y * a0.width + x) * 4;
+          const j = (y * port.width + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) count += 1;
+        }
+        return count;
+      };
+      const otherSideA0 = { list: differing(99, 185, 449, 353), tabs: differing(98, 122, 200, 163) };
+      assert.deepEqual(otherSideA0, { list: 0, tabs: 0 }, JSON.stringify(otherSideA0));
+    }
 
     // The Fleet Finder's tab of the other side, whose fleets this galaxy
     // does not show, lists nothing and has no bar (A0

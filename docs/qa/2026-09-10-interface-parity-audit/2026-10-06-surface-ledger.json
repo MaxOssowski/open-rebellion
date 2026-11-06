@@ -3239,7 +3239,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-popular-support-list/",
             "tools/interface-parity/message-display.mjs"
           ],
-          "note": "Pass (2026-11-06): A0 message-index/category-1-day228 lists 'Commenor Joins Enemy' over 'Corellia Joins Enemy' under Popular Support Messages; message-display.mjs (Linux) files the same through the app's system_joins_message (FUN_00499760, 0x7039) and the rows' heads differ from A0 in 0 pixels."
+          "note": "Pass (2026-11-06): A0 message-index/category-1-day228 lists 'Commenor Joins Enemy' over 'Corellia Joins Enemy' under Popular Support Messages; message-display.mjs (Linux) files the same through the app's system_joins_message (FUN_00499760, 0x7039) and the rows' heads differ from A0 in 0 pixels. Caveat (2026-11-06): the A0 capture is from DS_flip_allian, whose messages are built for the Empire behind an Alliance cockpit, so Commenor and Corellia joined the Alliance there; the fixture's Alliance reader with systems joining the Empire takes the same 0x7039 title, so the compared rows hold."
         },
         {
           "id": "CMD-08-C009",
@@ -4915,9 +4915,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-personnel-troop-finder-text/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-occupation-and-finder-sides/"
           ],
-          "note": "The Finder opens on the Characters view (value 3, FUN_00464e10) as the A0 F5 capture shows; fonts, label and rows compared in the Linux browser.",
+          "note": "The Finder opens on the Characters view (value 3, FUN_00464e10) as the A0 F5 capture shows; fonts, label and rows compared in the Linux browser. 2026-11-06: A0 in the unedited 'test' save (Alliance, day 8) lists no Imperial character (personnel-other-side/test-day8-imperial-tab-empty); the port now lists the other side's characters only where opposing_contents_visible holds (hyp: the original's per-side views are not ported).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -8034,9 +8035,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-system-joins-message/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-battle/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-battle/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-occupation-and-finder-sides/"
           ],
-          "note": "A system moved by support joins a side or declares neutrality (0x100, control_change_texts); unit tests only, not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "A system moved by support joins a side or declares neutrality (0x100, control_change_texts); unit tests only, not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a planet taken by regiments alone posts no message (FUN_00510d70 leaves bit 0x2000 clear, so FUN_00499760 is silent; 0x31b has no message in FUN_00488de0); the port's 'X occupied by Y' left the index. A0 (DS_flip_allian, day 306) shows 'Ghorman Joins Enemy' over 0x703c; that save builds its messages for the Empire.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8061,7 +8063,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
           ],
-          "note": "Maintenance Shortfall reads its TEXTSTRA texts (maintenance_texts). A0 (DS_flip_allian, day 163, maintenance-shortfall/alliance-view-coruscant-day163.png, sha256 a31c0bc3...) shows \"Maintenance Shortfall\" over \"The following units have been destroyed at Coruscant due to a maintenance shortfall:\\nTIE Fighter\"; the port's texts match it word for word (story_messages test), and its picture is STRATEGY 1014, the losing Empire's picture, which the port gives the owner's message. Open: A0 showed this Imperial message to the Alliance player too, while the port files it only for the owner (ghidra/notes/message-pictures.md); not checked in the browser.",
+          "note": "Maintenance Shortfall reads its TEXTSTRA texts (maintenance_texts). A0 (DS_flip_allian, day 163, maintenance-shortfall/alliance-view-coruscant-day163.png, sha256 a31c0bc3...) shows \"Maintenance Shortfall\" over \"The following units have been destroyed at Coruscant due to a maintenance shortfall:\\nTIE Fighter\"; the port's texts match it word for word (story_messages test). Its picture is STRATEGY 1014 (0x3f6), pixel for pixel, as FUN_0048bbf0 gives the Empire's own message and the port does. That host-edited save builds its messages for the Empire behind an Alliance cockpit (Ghorman Joins Enemy, day 306; see ghidra/notes/message-pictures.md), so this is the owner's message, not one shown to the other side. Not checked in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

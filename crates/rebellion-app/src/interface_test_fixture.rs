@@ -2096,14 +2096,24 @@ pub fn emit_personnel_finder(
     let Some(rows) = finder.shown_character_rows(world, fog) else {
         return;
     };
+    let layout = CockpitState::new(request.faction).layout_for(640.0, 480.0);
+    let Some((alliance_tab, tabs)) = finder.shown_side_tabs(layout) else {
+        return;
+    };
     #[derive(Serialize)]
     struct Report {
         status: &'static str,
         rows: Vec<String>,
+        /// The side tab shown, and each side tab's centre (Alliance,
+        /// Imperial).
+        tab: &'static str,
+        tabs: [(f32, f32); 2],
     }
     let bytes = serde_json::to_vec(&Report {
         status: "personnel-finder",
         rows,
+        tab: if alliance_tab { "alliance" } else { "imperial" },
+        tabs: tabs.map(|point| (point.x, point.y)),
     })
     .expect("serialize the personnel finder report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
