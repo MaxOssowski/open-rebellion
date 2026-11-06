@@ -3233,10 +3233,13 @@
         {
           "id": "CMD-08-C008",
           "requirement": "diplomacy",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No A0 comparison of diplomacy messages yet."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-popular-support-list/",
+            "tools/interface-parity/message-display.mjs"
+          ],
+          "note": "Pass (2026-11-06): A0 message-index/category-1-day228 lists 'Commenor Joins Enemy' over 'Corellia Joins Enemy' under Popular Support Messages; message-display.mjs (Linux) files the same through the app's system_joins_message (FUN_00499760, 0x7039) and the rows' heads differ from A0 in 0 pixels."
         },
         {
           "id": "CMD-08-C009",
@@ -5718,13 +5721,14 @@
         {
           "id": "OBJ-06-C002",
           "requirement": "damaged",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-ship-status-hits/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-damaged-ship-status/"
           ],
-          "note": "Damaged values (ship_condition.rs, FUN_00500f60 etc.) are unit-tested and the damage mark shows in the browser; no A0 damaged ship.",
+          "note": "Pass (2026-11-06): compared with A0 fleet2/05-medium-transport-1-status (Ship Damaged Yes, Hyperdrive 0:100, Hull 317:360, two regiments aboard) and 06-corellian-corvette-1-status (Yes, 80:80, 240:500): a_damaged_medium_transports_status_reads_as_a0 (rebellion-app, --ignored on the original data/base) reads the same rows; the damaged fleet's marks match A0 in fleet-window.mjs a0-umgul (Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

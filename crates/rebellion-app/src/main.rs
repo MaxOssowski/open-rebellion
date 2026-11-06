@@ -1667,6 +1667,28 @@ async fn main() {
             &interface_test_fixture::personnel_arrivals(request, &world),
             &message_texts,
         );
+        // A0 message-index/category-1-day228: Corellia, then Commenor, joins
+        // the Empire, as the Alliance reads it.
+        for (name, tick) in interface_test_fixture::systems_joining_the_empire(request) {
+            if let Some(system) = world
+                .systems
+                .iter()
+                .find(|(_, system)| system.name == name)
+                .map(|(key, _)| key)
+            {
+                if let Some(message) = system_joins_message(
+                    &world,
+                    system,
+                    Some(Faction::Alliance),
+                    Some(Faction::Empire),
+                    player_faction == MissionFaction::Alliance,
+                    tick,
+                    &message_texts,
+                ) {
+                    msg_log.push(message);
+                }
+            }
+        }
         for result in interface_test_fixture::mission_results(request, &world) {
             apply_mission_result(
                 &result,
@@ -2288,36 +2310,21 @@ async fn main() {
                         // Neutrality (FUN_00499760), while the support
                         // alone moved it. port: no regiment at the system
                         // stands for bit 0x2000 (FUN_00510d70).
-                        if let Some(sys) = world.systems.get(*system) {
-                            if sys.ground_units.is_empty() {
-                                if let Some((title, text)) =
-                                    rebellion_render::story_messages::control_change_texts(
-                                        &sys.name,
-                                        previous,
-                                        new_control.faction(),
-                                        player_faction == MissionFaction::Alliance,
-                                        &message_texts,
-                                    )
-                                {
-                                    msg_log.push(filed(
-                                        GameMessage::at_system(
-                                            tick_events.last().map_or(0, |event| event.tick),
-                                            text,
-                                            MessageCategory::Diplomacy,
-                                            *system,
-                                        )
-                                        .with_title(title)
-                                        .with_picture_if(Some(pictures::loyalty_change()))
-                                        .with_advisor_events(
-                                            joins_event(new_control.faction(), Faction::Alliance),
-                                            joins_event(new_control.faction(), Faction::Empire),
-                                        ),
-                                        MessageRail::PopularSupport,
-                                        Some(RailAudience::side(
-                                            player_faction == MissionFaction::Alliance,
-                                        )),
-                                    ));
-                                }
+                        if world
+                            .systems
+                            .get(*system)
+                            .is_some_and(|sys| sys.ground_units.is_empty())
+                        {
+                            if let Some(message) = system_joins_message(
+                                &world,
+                                *system,
+                                previous,
+                                new_control.faction(),
+                                player_faction == MissionFaction::Alliance,
+                                tick_events.last().map_or(0, |event| event.tick),
+                                &message_texts,
+                            ) {
+                                msg_log.push(message);
                             }
                         }
                     }
@@ -11331,6 +11338,39 @@ fn push_advance_injuries(
             }
         }
     }
+}
+
+/// Notification `0x100`, System Joins / Joins Enemy / Declares Neutrality
+/// (`FUN_00499760`): `system` changing from `previous` to `holder`, on the
+/// viewer's Popular Support rail.
+pub(crate) fn system_joins_message(
+    world: &GameWorld,
+    system: rebellion_core::ids::SystemKey,
+    previous: Option<Faction>,
+    holder: Option<Faction>,
+    viewer_is_alliance: bool,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<rebellion_render::message_log::GameMessage> {
+    let sys = world.systems.get(system)?;
+    let (title, text) = rebellion_render::story_messages::control_change_texts(
+        &sys.name,
+        previous,
+        holder,
+        viewer_is_alliance,
+        texts,
+    )?;
+    Some(filed(
+        GameMessage::at_system(tick, text, MessageCategory::Diplomacy, system)
+            .with_title(title)
+            .with_picture_if(Some(pictures::loyalty_change()))
+            .with_advisor_events(
+                joins_event(holder, Faction::Alliance),
+                joins_event(holder, Faction::Empire),
+            ),
+        MessageRail::PopularSupport,
+        Some(RailAudience::side(viewer_is_alliance)),
+    ))
 }
 
 /// Notification `0x1f1` (`FUN_00491500`): the opponent of a foiled

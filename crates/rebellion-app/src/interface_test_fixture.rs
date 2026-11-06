@@ -2916,6 +2916,33 @@ fn place_loading_fleet(
                 world.fleets[fleet].capital_ships.push(ship.clone());
             }
         }
+        // The other side's general rides along as the fleet's captive, as
+        // A0 messages-day633/assault-coruscant-alliance-tab4 lists Veers
+        // under the Alliance's Captured (FUN_00496770, +0x90).
+        let captive_name = if player_is_alliance { "Veers" } else { "Jan Dodonna" };
+        if let Some(captive) = world
+            .characters
+            .iter()
+            .find(|(_, character)| character.name == captive_name)
+            .map(|(key, _)| key)
+        {
+            let character = &mut world.characters[captive];
+            character.is_captive = true;
+            // Hurt, as A0's Veers shows the damage mark.
+            character.injury = character.injury.max(1);
+            character.captured_by = Some(if player_is_alliance {
+                Faction::Alliance
+            } else {
+                Faction::Empire
+            });
+            character.current_system = None;
+            character.current_fleet = Some(fleet);
+            character.on_mission = false;
+            for other in world.fleets.values_mut() {
+                other.characters.retain(|&key| key != captive);
+            }
+            world.fleets[fleet].characters.push(captive);
+        }
         let more: Vec<_> = (0..5).map(|_| world.troops.insert(regiment())).collect();
         world.systems[primary].ground_units.extend(&more);
         let _ = troop_transport.embark(world, fleet, &more);
@@ -3833,6 +3860,16 @@ pub fn post_conflict_report(request: FixtureRequest, log: &mut rebellion_render:
             ),
         );
     }
+}
+
+/// The event-message scenario's systems joining the Empire, in the order
+/// they join, each with its day: Corellia, then Commenor, as A0
+/// message-index/category-1-day228 lists them, newest first.
+pub fn systems_joining_the_empire(request: FixtureRequest) -> Vec<(&'static str, u64)> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    vec![("Corellia", 0), ("Commenor", 0)]
 }
 
 /// The event-message scenario's Personnel Arrive: Mon Mothma's Move landing
@@ -5936,6 +5973,142 @@ mod tests {
         .map(|(label, value)| (label.to_owned(), value.to_owned()))
         .collect();
         assert_eq!(rows, a0);
+    }
+
+    // A0 fleet2/05-medium-transport-1-status (day 714, after the battle at
+    // Umgul): Medium Transport 1 in Fleet 1, two regiments aboard, Ship
+    // Damaged Yes, Hyperdrive Rating 0:100 (both hyperdrives gone) and
+    // Hull Value 317:360 (FUN_00446fd0's rows; ship_condition's
+    // FUN_00500f60, FUN_00501780, FUN_00501820).
+    #[test]
+    #[ignore = "requires original data/base DAT files"]
+    fn a_damaged_medium_transports_status_reads_as_a0() {
+        use rebellion_core::world::Subsystem;
+        let data = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        let mut world = rebellion_data::load_game_data(&data).expect("load original game data");
+        let class = world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, class)| class.name == "Medium Transport")
+            .map(|(key, _)| key)
+            .expect("CAPSHPSD lists the Medium Transport");
+        let here = world.systems.keys().next().unwrap();
+        let mut ship = ShipInstance::new(class, 317, true);
+        ship.set_hits(Subsystem::PrimaryHyperdrive, 1);
+        ship.set_hits(Subsystem::BackupHyperdrive, 1);
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: here,
+            capital_ships: vec![ship],
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.rename_fleet(fleet, "Fleet 1");
+        let regiment_class = world
+            .buildable_classes
+            .keys()
+            .copied()
+            .find(|id| id.family() == 0x10)
+            .expect("TROOPSD lists a regiment");
+        let regiments: Vec<_> = (0..2)
+            .map(|_| {
+                let key = world.troops.insert(rebellion_core::world::TroopUnit {
+                    class_dat_id: regiment_class,
+                    is_alliance: true,
+                    regiment_strength: 1,
+                });
+                world.systems[here].ground_units.push(key);
+                key
+            })
+            .collect();
+        let mut transport = TroopTransportState::default();
+        transport
+            .embark(&mut world, fleet, &regiments)
+            .expect("the transport carries two regiments");
+        let missions = MissionState::default();
+        let movement = MovementState::default();
+        let manufacturing = ManufacturingState::default();
+        let sources = rebellion_render::status_rows::StatusSources {
+            world: &world,
+            missions: &missions,
+            movement: &movement,
+            transport: &transport,
+            manufacturing: &manufacturing,
+            today: 714,
+            objectives: rebellion_render::status_rows::ObjectiveSource {
+                alliance: true,
+                conditions_word: 0,
+                standard: true,
+            },
+        };
+        let rows: Vec<(String, String)> = rebellion_render::status_rows::ship_rows(sources, fleet, 0)
+            .expect("rows")
+            .into_iter()
+            .map(|row| (row.label, row.value))
+            .take(14)
+            .collect();
+        let a0: Vec<(String, String)> = [
+            ("Class:", "Medium Transport"),
+            ("Fleet:", "Fleet 1"),
+            ("Status:", "Awaiting Orders"),
+            ("Maintenance Cost:", "12"),
+            ("Capacity:", ""),
+            ("Fighter Squadrons:", "0"),
+            ("Trooper Regiments:", "2"),
+            ("Embarked:", ""),
+            ("Fighter Squadrons:", "0"),
+            ("Trooper Regiments:", "2"),
+            ("Personnel:", "0"),
+            ("Ship Damaged:", "Yes"),
+            ("Hyperdrive Rating:", "0:100"),
+            ("Hull Value:", "317:360"),
+        ]
+        .into_iter()
+        .map(|(label, value)| (label.to_owned(), value.to_owned()))
+        .collect();
+        assert_eq!(rows, a0);
+
+        // A0 fleet2/06-corellian-corvette-1-status (day 728): a hull hit
+        // alone reads Ship Damaged Yes, Hyperdrive 80:80, Hull 240:500.
+        let corvette = world
+            .capital_ship_classes
+            .iter()
+            .find(|(_, class)| class.name == "Corellian Corvette")
+            .map(|(key, _)| key)
+            .expect("CAPSHPSD lists the Corellian Corvette");
+        world.fleets[fleet]
+            .capital_ships
+            .push(ShipInstance::new(corvette, 240, true));
+        let sources = rebellion_render::status_rows::StatusSources {
+            world: &world,
+            missions: &missions,
+            movement: &movement,
+            transport: &transport,
+            manufacturing: &manufacturing,
+            today: 728,
+            objectives: rebellion_render::status_rows::ObjectiveSource {
+                alliance: true,
+                conditions_word: 0,
+                standard: true,
+            },
+        };
+        let rows: Vec<(String, String)> = rebellion_render::status_rows::ship_rows(sources, fleet, 1)
+            .expect("rows")
+            .into_iter()
+            .map(|row| (row.label, row.value))
+            .skip(11)
+            .take(3)
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("Ship Damaged:".to_owned(), "Yes".to_owned()),
+                ("Hyperdrive Rating:".to_owned(), "80:80".to_owned()),
+                ("Hull Value:".to_owned(), "240:500".to_owned()),
+            ]
+        );
     }
 
     #[test]

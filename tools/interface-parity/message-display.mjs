@@ -500,6 +500,39 @@ async function run(browser, base, faction) {
       assert.ok(rowChecks.icon_port === 0 && (rowChecks.icon_a0 ?? 0) === 0 && (rowChecks.row_head_a0 ?? 0) === 0,
         JSON.stringify(rowChecks));
 
+      // The Popular Support list (A0 message-index/category-1-day228, the
+      // Alliance's day 228): "Commenor Joins Enemy" chosen above "Corellia
+      // Joins Enemy" (FUN_00499760, 0x7039), filed by the app's
+      // system_joins_message; each row's head (x 0..32) every pixel A0's.
+      const supportTab = [missionList.window_left + 140 - 62, missionList.window_top + 113 - 49];
+      await click(page, supportTab);
+      const supportList = await waitReport(page, (value) => value.mode === "list"
+        && value.rows[0] === "Commenor Joins Enemy", "the Popular Support list");
+      assert.equal(supportList.rows[1], "Corellia Joins Enemy", JSON.stringify(supportList.rows));
+      await click(page, row(0));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("popular-support-list");
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/message-index/category-1-day228.png")));
+        const screen = PNG.sync.read(await page.screenshot());
+        const heads = [0, 1].map((index) => {
+          let differ = 0;
+          for (let y = 0; y < 17; y += 1) {
+            for (let x = 0; x < 32; x += 1) {
+              const i = ((supportList.window_top + 108 + 21 * index + y) * 640 + supportList.window_left + 25 + x) * 4;
+              const j = ((49 + 108 + 21 * index + y) * 640 + 62 + 25 + x) * 4;
+              if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        });
+        rowChecks.support_heads_a0 = heads;
+      } catch {
+        rowChecks.support_heads_a0 = null;
+      }
+      assert.deepEqual(rowChecks.support_heads_a0 ?? [0, 0], [0, 0], JSON.stringify(rowChecks));
+
       // The Conflict list's row (A0 messages-day633/index-tab7: "Assault on
       // Coruscant" chosen): STRATEGY 0x2ad7 at the row's (1, 1), keyed on
       // index 0, and the row's head (x 0..32) every pixel A0's.
