@@ -8605,13 +8605,14 @@
         {
           "id": "EVT-03-C013",
           "requirement": "operational",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-assault-captured/"
           ],
-          "note": "Operational column filled from the report's units; browser shows it. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-05: A0 messages-day633 lists the Alliance's regiments under Operational; the port's empty column now reads 'None' / 'No Casualties' in font 6 (FUN_0044edb0), matching A0's ink boxes; the rows' pictures are not compared.",
+          "note": "Operational column filled from the report's units; browser shows it. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-05: A0 messages-day633 lists the Alliance's regiments under Operational; the port's empty column now reads 'None' / 'No Casualties' in font 6 (FUN_0044edb0), matching A0's ink boxes; the rows' pictures are not compared. 2026-11-06 (e2a484fb, gate after b99): a row's picture is centred in its cell (FUN_0044edb0); fleet-window.mjs assault-taken --a0 finds the Attackers' second regiment row (Alliance Army Regiment on 11514) 0 px off A0 assault-coruscant-alliance-regiments. Pass.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

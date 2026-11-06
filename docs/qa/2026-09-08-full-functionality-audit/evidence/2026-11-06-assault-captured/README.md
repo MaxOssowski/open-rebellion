@@ -52,3 +52,7 @@ CAPSHPSD's and FIGHTSD's class ids carry no family byte either (`status_rows::sh
 **A0.** `assault-coruscant-alliance-tab0` lists Haste and Agile under the Alliance's Capital Ships.
 
 **Browser.** `fleet-window.mjs` `assault-taken` now checks that the Attackers' Capital Ships lists the fleet's ships. The run lists five Mon Calamari Cruisers; the fixture's copies are added after load, before the first day numbers them.
+
+## A regiment row against A0 (after b99)
+
+`fleet-window.mjs` `assault-taken` (run with `--a0`) compares the Attackers' Trooper Regiments page with A0 `assault-coruscant-alliance-regiments`. The second row's picture, an Alliance Army Regiment on backdrop 11514 centred in its 165 by 70 cell (window 48..188, 213..263), differs from A0 in **0 pixels**. Before the centring fix it sat 6 px high. This settles EVT-03-C013.

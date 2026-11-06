@@ -1217,6 +1217,19 @@ const cases = [
         }
         checks[`${page_}-scroll-bar`] = scroll;
         assert.equal(scroll, 0, `${page_} scroll bar differs from A0 in ${scroll} pixels`);
+        // The second row's regiment, an Alliance Army Regiment on its
+        // backdrop 11514, centred in its 165 by 70 cell (FUN_0044edb0):
+        // every pixel A0's (its name below is text).
+        if (page_ === "Attackers") {
+          let row = 0;
+          for (let y = 213; y < 263; y += 1) for (let x = 48; x < 188; x += 1) {
+            const i = ((49 + y) * a0.width + 62 + x) * 4;
+            const j = ((oy + y) * portShot.width + ox + x) * 4;
+            if ([0, 1, 2].some((c) => a0.data[i + c] !== portShot.data[j + c])) row += 1;
+          }
+          checks[`${page_}-second-row`] = row;
+          assert.equal(row, 0, `${page_} second row's picture differs from A0 in ${row} pixels`);
+        }
         for (const [name, region, test] of [...labels, ...extra]) {
           const a = ink(a0, [62, 49], region, test);
           const p = ink(portShot, [ox, oy], region, test);
