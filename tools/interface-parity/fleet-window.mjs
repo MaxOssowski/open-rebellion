@@ -1226,6 +1226,37 @@ const cases = [
             `${page_} ${name}: ${JSON.stringify(checks[`${page_}-${name}`])}`);
         }
       }
+      // Personnel (the sixth category button): the fleet's captive under
+      // the attacker's Captured (FUN_00496770 +0x90; A0
+      // assault-coruscant-alliance-tab4: Veers, Survivors "None").
+      await click(page, railButton(1));
+      await until(page, "the Attackers page again", (o) => o.assault_summary?.page === "Attackers");
+      await click(page, point([ox + 36 + 312 + 24, oy + 59 + 20]));
+      const personnel = await until(page, "the Personnel category shows",
+        (o) => o.assault_summary?.category === "Personnel");
+      checks.personnel_columns = personnel.assault_summary.columns;
+      assert.deepEqual(personnel.assault_summary.columns[0], [], JSON.stringify(personnel.assault_summary));
+      assert.deepEqual(personnel.assault_summary.columns[1],
+        [faction.name === "alliance" ? "Veers" : "Jan Dodonna"], JSON.stringify(personnel.assault_summary));
+      await page.mouse.move(2, 2);
+      await frames(page, 3);
+      const personnelShot = await shot(page, directory, "assault-taken-personnel");
+      if (alliance) {
+        const a0 = read("assault-coruscant-alliance-tab4.png");
+        const portShot = PNG.sync.read(personnelShot.bytes);
+        // Veers's mini under Captured, every pixel A0's: centred in the
+        // 110 by 50 cell at (147, 136), rows 145..173 (FUN_0044edb0), on
+        // its backdrop and damage mark, behind the captive's bars
+        // (FUN_0042c3b0). The name below is text (the accepted deviation).
+        let mini = 0;
+        for (let y = 145; y < 174; y += 1) for (let x = 168; x < 236; x += 1) {
+          const i = ((49 + y) * a0.width + 62 + x) * 4;
+          const j = ((oy + y) * portShot.width + ox + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== portShot.data[j + c])) mini += 1;
+        }
+        checks.captured_mini = mini;
+        assert.equal(mini, 0, `the captive's mini differs from A0 in ${mini} pixels`);
+      }
       await press(page, "Escape");
       await until(page, "Escape closes the Assault Summary", (o) => o.assault_summary === null);
       return { summary, checks };

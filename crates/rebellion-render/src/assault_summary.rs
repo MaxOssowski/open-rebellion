@@ -68,7 +68,9 @@ const CATEGORY_SIZE: (f32, f32) = (49.0, 41.0);
 const LIST: (f32, f32, f32, f32) = (37.0, 136.0, 347.0, 166.0);
 /// `FUN_0044e500`'s cells: 165 by 70 in two columns, 110 by 50 in three.
 const CELLS: [(f32, f32); 2] = [(165.0, 70.0), (110.0, 50.0)];
-/// The column heads' x (y 117), 165 wide.
+/// The column heads' x (y 117), each as wide as its column: 165, or 110
+/// for Personnel's three (A0 messages-day633/assault-coruscant-alliance-
+/// tab4: "Captured" centred at 220).
 /// "Operational" `0x1932`, "Destroyed" `0x1933`; "Survivors" `0x1934`,
 /// "Captured" `0x1935`, "Killed" `0x1936`.
 const HEADS_TWO: [(f32, &str); 2] = [(38.0, "Operational"), (204.0, "Destroyed")];
@@ -451,6 +453,30 @@ fn unit_backdrop(unit: &ReportUnit) -> Option<(DllSource, u32)> {
     }
 }
 
+/// What `FUN_0042c3b0` lays for a row's picture, bottom to top: the
+/// backdrop, a hurt character's damage mark (STRATEGY 11502, its `+0x200`
+/// bit; A0 assault-coruscant-alliance-tab4's left monitor beside Veers),
+/// the picture, then the captive mark.
+fn unit_layers(unit: &ReportUnit, picture: u32) -> Vec<(DllSource, u32)> {
+    let damaged = (unit.injured && unit.category == ReportCategory::Personnel).then(|| {
+        crate::fleet_window::damage_mark(crate::fleet_window::MiniObject::Character, picture)
+    });
+    unit_backdrop(unit)
+        .into_iter()
+        .chain(damaged)
+        .chain(std::iter::once((DllSource::Gokres, picture)))
+        .chain(unit_captive_mark(unit, picture))
+        .collect()
+}
+
+/// The captive mark `FUN_0042c3b0(.., 0, 1)` blits over a captive's mini
+/// after it (`fleet_window::captive_mark`; A0 messages-day633/assault-
+/// coruscant-alliance-tab4: Veers behind bars under Captured).
+fn unit_captive_mark(unit: &ReportUnit, mini: u32) -> Option<(DllSource, u32)> {
+    (unit.captive && unit.category == ReportCategory::Personnel)
+        .then(|| crate::fleet_window::captive_mark(mini))
+}
+
 #[derive(Default)]
 struct DrawResult {
     close: bool,
@@ -703,8 +729,9 @@ fn draw_window(
                             result.category = Some(category);
                         }
                     }
+                    let head_width = CELLS[usize::from(personnel)].0;
                     for &(x, label) in heads(window.category) {
-                        gdi_text(label, x, 117.0, 165.0, 4, egui::Color32::WHITE);
+                        gdi_text(label, x, 117.0, head_width, 4, egui::Color32::WHITE);
                     }
                     if let Some(forces) = shown_forces(window) {
                         let columns = shown_columns(forces, window.category);
@@ -771,9 +798,12 @@ fn draw_window(
                             for (row, unit) in shown.enumerate() {
                                 let (x, y) = cell_origin(window.category, column, row);
                                 let cell = logical_rect(local, scale, x, y, cell_w, cell_h);
-                                // The item's picture centred over its name
-                                // (`FUN_0044edb0`, item `+0x34`).
-                                let picture_box = logical_rect(
+                                // FUN_0044edb0 centres the item's picture
+                                // in the whole cell and sets its name's
+                                // top (+0x34) to the picture's bottom (A0
+                                // assault-coruscant-alliance-tab4: Veers's
+                                // mini 11 below the list's top).
+                                let mut picture_box = logical_rect(
                                     local,
                                     scale,
                                     x,
@@ -782,19 +812,21 @@ fn draw_window(
                                     cell_h - NAME_HEIGHT,
                                 );
                                 if let Some(picture) = unit_picture(unit) {
-                                    for (source, id) in unit_backdrop(unit)
-                                        .into_iter()
-                                        .chain(std::iter::once((DllSource::Gokres, picture)))
-                                    {
-                                        paint_centered(
+                                    let mut painted = None;
+                                    for (source, id) in unit_layers(unit, picture) {
+                                        painted = paint_centered(
                                             &list_painter,
                                             ctx,
                                             cache,
                                             source,
                                             id,
-                                            picture_box,
+                                            cell,
                                             scale,
-                                        );
+                                        )
+                                        .or(painted);
+                                    }
+                                    if let Some(painted) = painted {
+                                        picture_box = painted;
                                     }
                                 }
                                 let galley = list_painter.layout(
@@ -1570,6 +1602,11 @@ mod tests {
         for head in ["Survivors", "Captured", "Killed"] {
             assert!(has(&frame, head).is_some(), "{head}");
         }
+        // Each head centred in its 110-wide column, not in 165.
+        let survivors = has(&frame, "Survivors").unwrap().0.x;
+        let killed = has(&frame, "Killed").unwrap().0.x;
+        assert!(survivors < at(38.0 + 55.0, 0.0).x, "{survivors}");
+        assert!(killed < at(275.0 + 55.0, 0.0).x, "{killed}");
         assert_eq!(painted(&frame, FORCES_THREE_COLUMNS), [at(12.0, 13.0)]);
         // The arrows do nothing on the Summary page.
         state.show_page(SummaryPage::Summary);
@@ -1658,6 +1695,58 @@ mod tests {
         assert!(!state.contains_screen_point(layout(), (rect.max.x, rect.max.y)));
         state.clear();
         assert!(!state.contains_screen_point(layout(), inside));
+    }
+
+    #[test]
+    fn a_hurt_captive_lies_on_its_backdrop_and_damage_mark_behind_bars() {
+        // FUN_0042c3b0: backdrop 11500, damage mark 11502, the mini, then
+        // the captive mark (GOKRES mini + 0x3000).
+        let mut veers = ReportUnit::new(
+            ReportCategory::Personnel,
+            rebellion_core::ids::DatId::new(0x2a5),
+            "Veers".into(),
+            false,
+        );
+        assert_eq!(
+            unit_layers(&veers, 19_008),
+            [(DllSource::Strategy, 11_500), (DllSource::Gokres, 19_008)]
+        );
+        veers.captive = true;
+        veers.injured = true;
+        assert_eq!(
+            unit_layers(&veers, 19_008),
+            [
+                (DllSource::Strategy, 11_500),
+                (DllSource::Strategy, 11_502),
+                (DllSource::Gokres, 19_008),
+                (DllSource::Gokres, 19_008 + 0x3000)
+            ]
+        );
+    }
+
+    #[test]
+    fn only_a_captive_character_takes_the_captive_mark() {
+        // FUN_0042c3b0(.., 0, 1): GOKRES mini + 0x3000 over a captive.
+        let mut veers = ReportUnit::new(
+            ReportCategory::Personnel,
+            rebellion_core::ids::DatId::new(0x2a5),
+            "Veers".into(),
+            false,
+        );
+        assert_eq!(unit_captive_mark(&veers, 19_008), None);
+        veers.captive = true;
+        assert_eq!(
+            unit_captive_mark(&veers, 19_008),
+            Some((DllSource::Gokres, 19_008 + 0x3000))
+        );
+        let mut troop = ReportUnit::new(
+            ReportCategory::Troops,
+            rebellion_core::ids::DatId::new(0x1000_0001),
+            "Regiment".into(),
+            false,
+        );
+        troop.captive = true;
+        assert_eq!(unit_captive_mark(&troop, 19_008), None);
     }
 
     #[test]

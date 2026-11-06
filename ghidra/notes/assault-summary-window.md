@@ -168,8 +168,7 @@ The picture is `0x2b9b` when the system lost units (`+0x80`), else
 on Capital Ships (`+0x180` `0x97`). A bombarding ship the batteries end
 is filed under the attacker's Destroyed.
 
-Open: the exact y of each rail button; how `+0x90`/`+0x98` are filled for
-system personnel; the row widget `FUN_0044edb0`; `+0x28`'s use.
+Open: the exact y of each rail button; `+0x28`'s use.
 
 ## The empty column and A0 (read 2026-11-05)
 
@@ -194,3 +193,12 @@ Alliance's Assault on Coruscant, the window at (62, 49).
   column's font and place, and (2026-11-05) the list's scroll bar,
   `FUN_0060a490(.., 7, 0x29fc, ..)`. Its thumb stands one column right of
   its arrows (`list_scroll_bar.rs`, hyp). Open: the captures.
+
+## Captured and the rows (read 2026-11-06, from the disassembly)
+
+- **`+0x90`.** `FUN_00496770` (`0x182`/`0x183`) walks each attacking ship's children. A child of family `0x30..0x3b` with `+0xac` bit 0 (a captive) goes to `+0x90`. Every other child goes to the forces list (`0x4969b8`). So the attacker's Captured lists the captives its fleets carry: Veers in A0.
+- **`+0x98`.** `FUN_00496f50` (`0x150`) files a captive on the planet under `+0x90` when its own side (`FUN_004edc80`, the object's `+0x2c` record) is the system's (`+0x68`), and under `+0x98` otherwise (`0x497140`). A bombardment (`0x14f`) files every captive under `+0x98` (`0x4972f6`).
+- **The row widget.** `FUN_0044edb0` composes the object's picture through `FUN_0042c3b0`: the backdrop, the marks, the mini, and the captive mark last. It centres the picture in the whole cell (`(+0xcc - w) / 2`, `(+0xd0 - h) / 2`). The name's text item takes its top from the picture's bottom (`+0x34`).
+- **The heads.** They are as wide as the columns: 165, or 110 for Personnel.
+
+Ported 2026-11-06 (`assault_report::gather`, `assault_summary::unit_layers`). The port's characters keep their record ids (`0x240`), which carry no family byte. Until this change no character was listed at all.

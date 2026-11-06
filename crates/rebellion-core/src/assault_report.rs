@@ -68,6 +68,10 @@ pub struct ReportUnit {
     pub name: String,
     /// A major character (its picture's table, `pictures.rs`).
     pub major: bool,
+    /// A captive (`+0xac` bit 0), whose mini takes the captive mark.
+    pub captive: bool,
+    /// A hurt character (`+0x94`), whose mini takes the damage mark.
+    pub injured: bool,
     /// The object an assault or a bombardment can destroy; `None` for
     /// squadrons and personnel.
     target: Option<Loss>,
@@ -82,6 +86,8 @@ impl ReportUnit {
             dat_id,
             name,
             major,
+            captive: false,
+            injured: false,
             target: None,
         }
     }
@@ -165,6 +171,13 @@ impl AssaultReport {
     /// port: the system's units are its regiments, special forces,
     /// facilities, squadrons and the characters on its planet; the
     /// fleets' cargo is their regiments (the port keeps them per fleet).
+    ///
+    /// Personnel held captive (`+0xac` bit 0) go under Captured: a captive
+    /// aboard the fleets under the attacker's (`+0x90`, `FUN_00496770` at
+    /// `0x4969b8`; A0 messages-day633/assault-coruscant-alliance-tab4: Veers
+    /// under the Alliance's Captured); one on the planet under the
+    /// attacker's when its own side (`FUN_004edc80`) is the system's, else
+    /// under the system's (`+0x98`, `FUN_00496f50` at `0x497140`).
     #[must_use]
     pub fn start(
         world: &GameWorld,
@@ -173,8 +186,23 @@ impl AssaultReport {
         fleets: &[FleetKey],
         system: SystemKey,
     ) -> Option<Self> {
+        Self::gather(world, transport, side, fleets, system, true)
+    }
+
+    fn gather(
+        world: &GameWorld,
+        transport: &TroopTransportState,
+        side: Faction,
+        fleets: &[FleetKey],
+        system: SystemKey,
+        assault: bool,
+    ) -> Option<Self> {
         let sys = world.systems.get(system)?;
+        let defender =
+            GameWorld::facility_holder(sys.control).filter(|&side| side != Faction::Neutral);
         let mut attackers = Vec::new();
+        let mut attackers_captured = Vec::new();
+        let mut system_captured = Vec::new();
         for &key in fleets {
             let Some(fleet) = world.fleets.get(key) else {
                 continue;
@@ -194,7 +222,12 @@ impl AssaultReport {
             }
             for &character in &fleet.characters {
                 if let Some(value) = world.characters.get(character) {
-                    push_character(&mut attackers, value);
+                    let list = if value.is_captive {
+                        &mut attackers_captured
+                    } else {
+                        &mut attackers
+                    };
+                    push_character(list, value);
                 }
             }
         }
@@ -245,23 +278,36 @@ impl AssaultReport {
         };
         for (key, character) in &world.characters {
             if !character.is_killed && character.current_system == Some(system) && !aboard(key) {
-                push_character(&mut forces, character);
+                let own = if character.is_alliance {
+                    Faction::Alliance
+                } else {
+                    Faction::Empire
+                };
+                // FUN_00496f50: a bombardment (0x14f) files every captive
+                // on the planet under +0x98.
+                let list = match (character.is_captive, assault && Some(own) == defender) {
+                    (false, _) => &mut forces,
+                    (true, true) => &mut attackers_captured,
+                    (true, false) => &mut system_captured,
+                };
+                push_character(list, character);
             }
         }
 
         Some(Self {
             system,
-            assault: true,
+            assault,
             attacker: side,
-            defender: GameWorld::facility_holder(sys.control)
-                .filter(|&side| side != Faction::Neutral),
+            defender,
             taken: false,
             attackers: ReportForces {
                 operational: attackers,
+                captured: attackers_captured,
                 ..ReportForces::default()
             },
             system_forces: ReportForces {
                 operational: forces,
+                captured: system_captured,
                 ..ReportForces::default()
             },
         })
@@ -272,7 +318,6 @@ impl AssaultReport {
     /// 2), from `world` after the assault.
     ///
     /// hyp: Operational lists the units that survive the assault.
-    /// port: the assault captures no personnel, so Captured stays empty.
     pub fn finish(&mut self, world: &GameWorld, outcome: &AssaultOutcome) {
         self.attackers.file_losses(|loss| {
             matches!(loss, Loss::Ground(Target::Troop(troop)) if outcome.lost_attackers.contains(&troop))
@@ -297,10 +342,7 @@ impl AssaultReport {
         fleets: &[FleetKey],
         system: SystemKey,
     ) -> Option<Self> {
-        Self::start(world, transport, side, fleets, system).map(|report| Self {
-            assault: false,
-            ..report
-        })
+        Self::gather(world, transport, side, fleets, system, false)
     }
 
     /// File a bombardment's losses (`0x302`, `FUN_00497380`): the
@@ -396,20 +438,27 @@ fn push_unit(units: &mut Vec<ReportUnit>, dat_id: DatId, name: String, target: O
             dat_id,
             name,
             major: false,
+            captive: false,
+            injured: false,
             target,
         });
     }
 }
 
+/// A character is Personnel (its object family `0x30..0x3b`). port: the
+/// world keeps its MJCHARSD / MNCHARSD record id (`0x240`, Mon Mothma),
+/// which carries no family byte, so the category is not read from it.
 fn push_character(units: &mut Vec<ReportUnit>, character: &crate::world::Character) {
-    if let Some(category) = ReportCategory::of_family(character.dat_id.family()) {
-        units.push(ReportUnit::new(
-            category,
+    units.push(ReportUnit {
+        captive: character.is_captive,
+        injured: character.injury > 0,
+        ..ReportUnit::new(
+            ReportCategory::Personnel,
             character.dat_id,
             character.name.clone(),
             character.is_major,
-        ));
-    }
+        )
+    });
 }
 
 fn class_name(world: &GameWorld, class: DatId) -> String {
@@ -638,6 +687,62 @@ mod tests {
         assert!(leia[0].major);
         let [vader, ..] = report.attackers.columns(ReportCategory::Personnel);
         assert!(!vader[0].major);
+    }
+
+    #[test]
+    fn captives_go_under_captured_by_who_holds_them() {
+        // FUN_00496770 (0x4969b8): a captive aboard the attacking fleet goes
+        // under the attacker's Captured (+0x90; A0 assault-coruscant-
+        // alliance-tab4: Veers). FUN_00496f50 (0x497140): a captive on the
+        // planet of the system's own side goes under +0x90, any other under
+        // +0x98; a bombardment files every one under +0x98.
+        let mut fx = fixture(ControlKind::Controlled(Faction::Alliance));
+        let mut character = |name: &str, alliance: bool| {
+            fx.world.characters.insert(Character {
+                // MNCHARSD's record id, as the world keeps it.
+                dat_id: DatId::new(0x2a5),
+                name: name.into(),
+                current_system: Some(fx.system),
+                is_alliance: alliance,
+                is_empire: !alliance,
+                is_captive: name != "Leia",
+                ..Character::default()
+            })
+        };
+        let veers = character("Veers", false);
+        character("Leia", true);
+        character("Wedge", true);
+        character("Piett", false);
+        fx.world.fleets[fx.fleet].characters.push(veers);
+        fx.world.characters[veers].injury = 2;
+        let report = start(&fx);
+        let column = |forces: &ReportForces, at: usize| {
+            names(&forces.columns(ReportCategory::Personnel)[at])
+        };
+        assert_eq!(column(&report.attackers, 1), ["Veers", "Wedge"]);
+        let [_, captured, _] = report.attackers.columns(ReportCategory::Personnel);
+        assert!(captured.iter().all(|unit| unit.captive));
+        assert_eq!(
+            captured.iter().map(|unit| unit.injured).collect::<Vec<_>>(),
+            [true, false]
+        );
+        let [operational, ..] = report.system_forces.columns(ReportCategory::Personnel);
+        assert!(!operational[0].captive);
+        assert!(!operational[0].injured);
+        assert_eq!(column(&report.system_forces, 0), ["Leia"]);
+        assert_eq!(column(&report.system_forces, 1), ["Piett"]);
+        assert!(column(&report.attackers, 0).is_empty());
+        let bombardment = AssaultReport::start_bombardment(
+            &fx.world,
+            &fx.transport,
+            Faction::Empire,
+            &[fx.fleet],
+            fx.system,
+        )
+        .unwrap();
+        assert!(!bombardment.assault);
+        assert_eq!(column(&bombardment.attackers, 1), ["Veers"]);
+        assert_eq!(column(&bombardment.system_forces, 1), ["Wedge", "Piett"]);
     }
 
     #[test]
