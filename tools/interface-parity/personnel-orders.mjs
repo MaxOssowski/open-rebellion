@@ -410,10 +410,32 @@ const cases = [
       await choose(page, running, running.abort_row, "Abort");
       const asked = await log.logged("the Abort validates", /command=0x250 missions=\[\d+\]$/);
       await shot(page, directory, "confirmation");
+      const confirmation = await page.screenshot({ animations: "disabled" });
+      // A0 mission-reports/abort-question-day277 (the Empire game, Thrawn's
+      // Diplomacy at Chandrila): the question's picture and its two buttons
+      // every pixel A0's; the question's text is the accepted deviation.
+      let question = null;
+      const a0File = path.join(root, ".artifacts/a0-vm/mission-reports/abort-question-day277.png");
+      if (faction.name === "empire" && fs.existsSync(a0File)) {
+        const a0 = PNG.sync.read(fs.readFileSync(a0File));
+        const port = PNG.sync.read(confirmation);
+        const differ = ([left, top, right, bottom]) => {
+          let count = 0;
+          for (let y = top; y < bottom; y += 1) {
+            for (let x = left; x < right; x += 1) {
+              const i = (y * 640 + x) * 4;
+              if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) count += 1;
+            }
+          }
+          return count;
+        };
+        question = { picture: differ([165, 70, 555, 280]), buttons: differ([500, 293, 552, 367]) };
+        assert.deepEqual(question, { picture: 0, buttons: 0 }, JSON.stringify(question));
+      }
       await click(page, confirmationCheckmark(faction));
       const aborted = await log.logged("the checkmark aborts the mission",
         /command=0x250 destination=abort mission=\d+ result=true$/);
-      return { before, refused, running, asked, aborted, alert, medium_day_seconds: spacing };
+      return { before, refused, running, asked, aborted, alert, question, medium_day_seconds: spacing };
     },
   },
 ];
