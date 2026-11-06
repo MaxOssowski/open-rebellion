@@ -1661,6 +1661,12 @@ async fn main() {
             &interface_test_fixture::foiled_missions(request, &world),
             &message_texts,
         );
+        push_personnel_arrivals(
+            &mut msg_log,
+            &world,
+            &interface_test_fixture::personnel_arrivals(request, &world),
+            &message_texts,
+        );
         for result in interface_test_fixture::mission_results(request, &world) {
             apply_mission_result(
                 &result,
@@ -2965,6 +2971,7 @@ async fn main() {
                 }
             }
             push_foiled_missions(&mut msg_log, &world, &mission_advance.ended, &message_texts);
+            push_personnel_arrivals(&mut msg_log, &world, &mission_advance.arrivals, &message_texts);
             // The encounter class (vtable 0x65b408): Force detection and the
             // confrontation's 0x360 and Luke's 0x211.
             for message in rebellion_render::story_messages::EncounterNotes::gather(
@@ -11404,6 +11411,69 @@ fn push_foiled_missions(
     }
 }
 
+/// Notification `0x200` (`FUN_004955b0`): the side of a Move, Return or
+/// Adrift reads Personnel Arrive on its Mission rail, over its own
+/// background (`0x412` / `0x413`) with the leader's portrait; a major
+/// leader speaks (the speaker map), anyone else is `0x15`.
+fn push_personnel_arrivals(
+    log: &mut MessageLog,
+    world: &GameWorld,
+    arrivals: &[rebellion_core::missions::PersonnelArrival],
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    use rebellion_core::missions::MissionMember;
+    for arrival in arrivals {
+        let Some(system) = world.systems.get(arrival.system) else {
+            continue;
+        };
+        let named: Vec<(MissionMember, String, bool)> = arrival
+            .members
+            .iter()
+            .filter_map(|&member| match member {
+                MissionMember::Character(key) => world
+                    .characters
+                    .get(key)
+                    .map(|c| (member, c.name.clone(), c.is_major)),
+                MissionMember::SpecialForce(key) => world
+                    .special_forces
+                    .get(key)
+                    .and_then(|unit| world.buildable_classes.get(&unit.class_dat_id))
+                    .map(|class| (member, class.name.clone(), false)),
+            })
+            .collect();
+        let names: Vec<(&str, bool)> = named
+            .iter()
+            .map(|(_, name, major)| (name.as_str(), *major))
+            .collect();
+        let Some((title, text)) =
+            rebellion_render::story_messages::personnel_arrive_texts(&names, &system.name, texts)
+        else {
+            continue;
+        };
+        let leader = match named.first() {
+            Some((MissionMember::Character(key), _, _)) => Some(*key),
+            _ => None,
+        };
+        let major = named.first().is_some_and(|(_, _, major)| *major);
+        let is_alliance = arrival.faction == MissionFaction::Alliance;
+        log.push(filed(
+            GameMessage::at_system(arrival.tick, text, MessageCategory::Mission, arrival.system)
+                .with_title(title)
+                .with_picture(pictures::side(
+                    pictures::reader(is_alliance),
+                    leader.and_then(|key| pictures::portrait_key(world, key)),
+                ))
+                .with_advisor_event(if major {
+                    rebellion_render::story_messages::speaker_event(world, leader)
+                } else {
+                    0x15
+                }),
+            MessageRail::Mission,
+            Some(RailAudience::side(is_alliance)),
+        ));
+    }
+}
+
 /// Notification `0x362` for each Force discovery (timer `0x389`), built as
 /// `FUN_0048f1e0` (`story_messages::force_user_discovered`).
 fn push_force_discoveries(
@@ -13801,6 +13871,96 @@ mod character_health_tests {
         assert_eq!(messages[0].title.as_deref(), Some("Future Jedi Discovered"));
         assert!(messages[0].text.starts_with("I have detected that Klev"));
         assert_eq!(messages[0].audience, RailAudience::Empire);
+    }
+
+    #[test]
+    fn a_move_posts_personnel_arrive_to_its_side() {
+        // FUN_004955b0 (notification 0x200): 0x70c1 / 0x70c4 for a major
+        // leader with company, on the side's Mission rail, background 0x412.
+        use rebellion_core::missions::{MissionMember, PersonnelArrival};
+        let mut world = GameWorld::default();
+        let klatooine = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(2),
+            name: "Klatooine".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let mut add = |name: &str, is_major, dat_id| {
+            world.characters.insert(rebellion_core::world::Character {
+                dat_id: rebellion_core::ids::DatId::new(dat_id),
+                name: name.into(),
+                is_alliance: true,
+                is_major,
+                ..rebellion_core::world::Character::default()
+            })
+        };
+        // MJCHARSD 0x240 is Mon Mothma, the speaker map's 0x17.
+        let mothma = add("Mon Mothma", true, 0x240);
+        let afyon = add("Afyon", false, 0x3000_0001);
+        let texts = std::collections::HashMap::from([
+            (0x70c0, "Personnel Arrive at {2:1}".to_owned()),
+            (0x70c1, "{1:1} Arrives at {2:1}".to_owned()),
+            (0x70c2, "\n{1:1}".to_owned()),
+            (0x70c3, "The following personnel have arrived at {2:1}.\n".to_owned()),
+            (
+                0x70c4,
+                "I have arrived at {2:1}.  The following personnel have arrived with me:".to_owned(),
+            ),
+        ]);
+        let arrival = |members: Vec<MissionMember>| PersonnelArrival {
+            mission_id: 1,
+            faction: MissionFaction::Alliance,
+            system: klatooine,
+            members,
+            tick: 7,
+        };
+        let mut log = MessageLog::new();
+        push_personnel_arrivals(
+            &mut log,
+            &world,
+            &[
+                arrival(vec![MissionMember::Character(mothma), MissionMember::Character(afyon)]),
+                arrival(vec![MissionMember::Character(afyon)]),
+            ],
+            &texts,
+        );
+        let messages = log.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].title.as_deref(), Some("Mon Mothma Arrives at Klatooine"));
+        assert_eq!(
+            messages[0].text,
+            "I have arrived at Klatooine.  The following personnel have arrived with me:\nAfyon"
+        );
+        assert_eq!(messages[0].audience, RailAudience::Alliance);
+        assert_eq!(messages[0].rail, Some(MessageRail::Mission));
+        assert_eq!(messages[0].picture.map(|p| p.background), Some(0x412));
+        assert_eq!(messages[0].advisor_event, [0x17, 0x17]);
+        assert!(messages[0].picture.and_then(|p| p.foreground).is_some());
+        assert_eq!(messages[1].title.as_deref(), Some("Personnel Arrive at Klatooine"));
+        assert_eq!(
+            messages[1].text,
+            "The following personnel have arrived at Klatooine.\n\nAfyon"
+        );
+        assert_eq!(messages[1].advisor_event, [0x15, 0x15]);
     }
 
     #[test]

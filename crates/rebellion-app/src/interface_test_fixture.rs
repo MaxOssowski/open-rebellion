@@ -3804,6 +3804,39 @@ pub fn post_conflict_report(request: FixtureRequest, log: &mut rebellion_render:
     }
 }
 
+/// The event-message scenario's Personnel Arrive: Mon Mothma's Move landing
+/// at Klatooine, as A0 mission-reports/index-day914-top lists "Mon Mothma
+/// Arrives at Klatooine". The app posts it through
+/// `push_personnel_arrivals`.
+pub fn personnel_arrivals(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Vec<rebellion_core::missions::PersonnelArrival> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    let klatooine = world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Klatooine")
+        .map(|(key, _)| key);
+    let mothma = world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name == "Mon Mothma")
+        .map(|(key, _)| key);
+    let (Some(system), Some(mothma)) = (klatooine, mothma) else {
+        return Vec::new();
+    };
+    vec![rebellion_core::missions::PersonnelArrival {
+        mission_id: u64::MAX - 3,
+        faction: MissionFaction::Alliance,
+        system,
+        members: vec![MissionMember::Character(mothma)],
+        tick: 0,
+    }]
+}
+
 /// The event-message scenario's mission results: the Emperor recruits
 /// Thrawn at Coruscant, then fails his Espionage at Chandrila, his team
 /// going home to Coruscant, as A0 mission-reports/ reports them to the

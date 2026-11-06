@@ -189,7 +189,10 @@ set none; the others have no recovered class.
 - **Otherwise.** The title is `0x70c0` "Personnel Arrive at {2:1}", the body `0x70c3` "The following personnel have arrived at {2:1}.\n", speaker 0x15. Each arrival adds a line `0x70c2` to `+0x68`.
 - **The picture.** Its default is `0x412` / `0x413` by the reader, at `+0x2e`; `+0x30` is `0x47c` / `0x47d`.
 
-The port posts no Personnel Arrive message (2026-11-06).
+- **Which moves report.** The notification's `+0x2c` names the mission that moved the object (`local_44`); posting needs its family in `0x40..0x4f` (Move `0x41`, Return `0x42`, Adrift `0x44`), so a mission team landing at its target reports nothing. A0 agrees: no arrival message followed the Emperor's or Thrawn's mission trips (mission-reports/, Empire game), while "Mon Mothma Arrives at Klatooine" stood in the day-914 index.
+- **The list.** The notification for the leading object (`+0x30` set) writes the title and body; every other one, and the leader too unless it is a major character, adds a `0x70c2` line.
+
+Ported 2026-11-06: `MissionAdvance::arrivals` (`missions::note_arrival`), `story_messages::personnel_arrive_texts`, the app's `push_personnel_arrivals`.
 
 ## Mission Foiled in detail (read 2026-11-06)
 

@@ -3190,6 +3190,66 @@ pub struct MissionAdvance {
     pub effects: Vec<MissionEffect>,
     /// Missions that ended, in the order they ended.
     pub ended: Vec<MissionEnded>,
+    /// Members a Move, Return or Adrift landed at a system (notification
+    /// `0x200`), one entry per mission and place and day, in landing order.
+    pub arrivals: Vec<PersonnelArrival>,
+}
+
+/// Members one Move, Return or Adrift (families `0x40..0x4f`) landed at a
+/// system: `Class_0065b798_vt14` (`FUN_004955b0`) reports them to their
+/// side as Personnel Arrive. A mission of another family, an abode, or
+/// the special force `0x3c000009` reports nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersonnelArrival {
+    pub mission_id: u64,
+    pub faction: MissionFaction,
+    pub system: SystemKey,
+    pub members: Vec<MissionMember>,
+    pub tick: u64,
+}
+
+/// The special force class `FUN_004955b0` keeps silent.
+const SILENT_ARRIVAL_CLASS: u32 = 0x3c00_0009;
+
+/// Notes `member` landing at `to` for `mission` in `out.arrivals` when
+/// `FUN_004955b0` would report it (see [`PersonnelArrival`]).
+fn note_arrival(
+    out: &mut MissionAdvance,
+    world: &GameWorld,
+    mission: Option<&ActiveMission>,
+    member: MissionMember,
+    to: SystemKey,
+    abode: Option<crate::ids::AbodeKey>,
+    now: u64,
+) {
+    let Some(mission) = mission else {
+        return;
+    };
+    let family = mission.kind.record_id().map(|id| id.raw() >> 24);
+    if abode.is_some() || !matches!(family, Some(0x40..=0x4f)) {
+        return;
+    }
+    if let MissionMember::SpecialForce(unit) = member {
+        if world
+            .special_forces
+            .get(unit)
+            .is_some_and(|unit| unit.class_dat_id.raw() == SILENT_ARRIVAL_CLASS)
+        {
+            return;
+        }
+    }
+    match out.arrivals.iter_mut().find(|arrival| {
+        arrival.mission_id == mission.id && arrival.system == to && arrival.tick == now
+    }) {
+        Some(arrival) => arrival.members.push(member),
+        None => out.arrivals.push(PersonnelArrival {
+            mission_id: mission.id,
+            faction: mission.faction,
+            system: to,
+            members: vec![member],
+            tick: now,
+        }),
+    }
 }
 
 /// What a phase step reads besides the mission.
@@ -3245,7 +3305,22 @@ impl MissionSystem {
                     state.en_route.push(leg);
                     continue;
                 }
-                out.effects.extend(landing(world, mission, transit.member, transit.to, transit.abode));
+                note_arrival(
+                    &mut out,
+                    world,
+                    mission,
+                    transit.member,
+                    transit.to,
+                    transit.abode,
+                    now,
+                );
+                out.effects.extend(landing(
+                    world,
+                    mission,
+                    transit.member,
+                    transit.to,
+                    transit.abode,
+                ));
             }
 
             let mut orders = Self::send_adrift(world, state, &mut out, now);
@@ -3902,6 +3977,7 @@ impl MissionSystem {
                 mission.speed,
             );
             if days == 0 {
+                note_arrival(out, world, Some(mission), member, to, None, now);
                 out.effects
                     .extend(landing(world, Some(mission), member, to, None));
             } else {
@@ -7979,6 +8055,17 @@ mod tests {
                 to: Some(to)
             }]
         );
+        // FUN_004955b0: a Move's landing is reported (notification 0x200).
+        assert_eq!(
+            advance.arrivals,
+            vec![PersonnelArrival {
+                mission_id: state.missions()[0].id,
+                faction: MissionFaction::Alliance,
+                system: to,
+                members: vec![MissionMember::Character(traveller)],
+                tick: 20,
+            }]
+        );
         // FUN_00586130 makes the 0-day timer at least one tick.
         assert_eq!(state.missions()[0].timer_due, Some(21));
 
@@ -7989,6 +8076,84 @@ mod tests {
         assert!(advance.effects.contains(&MissionEffect::MemberAvailable {
             member: MissionMember::Character(traveller)
         }));
+    }
+
+    #[test]
+    fn only_a_move_return_or_adrift_landing_is_reported_and_landings_group() {
+        // FUN_004955b0 posts for missions of families 0x40..0x4f only, never
+        // into an abode, and keeps special force 0x3c000009 silent; one
+        // message gathers a mission's members landing together.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let first = MissionMember::Character(agent_at(&mut world, here, true));
+        let second = MissionMember::Character(agent_at(&mut world, here, true));
+        let mission =
+            |kind| ActiveMission::timed(3, kind, MissionFaction::Alliance, vec![first], here, 1);
+        let mut out = MissionAdvance::default();
+        note_arrival(
+            &mut out,
+            &world,
+            Some(&mission(MissionKind::Diplomacy)),
+            first,
+            here,
+            None,
+            5,
+        );
+        note_arrival(&mut out, &world, None, first, here, None, 5);
+        assert!(out.arrivals.is_empty());
+        let abode = crate::ids::AbodeKey::default();
+        note_arrival(
+            &mut out,
+            &world,
+            Some(&mission(MissionKind::Return)),
+            first,
+            here,
+            Some(abode),
+            5,
+        );
+        assert!(out.arrivals.is_empty());
+        for kind in [MissionKind::Move, MissionKind::Return, MissionKind::Adrift] {
+            let mut out = MissionAdvance::default();
+            note_arrival(&mut out, &world, Some(&mission(kind)), first, here, None, 5);
+            note_arrival(
+                &mut out,
+                &world,
+                Some(&mission(kind)),
+                second,
+                here,
+                None,
+                5,
+            );
+            note_arrival(
+                &mut out,
+                &world,
+                Some(&mission(kind)),
+                second,
+                here,
+                None,
+                6,
+            );
+            assert_eq!(out.arrivals.len(), 2, "{kind:?}");
+            assert_eq!(out.arrivals[0].members, vec![first, second], "{kind:?}");
+            assert_eq!(out.arrivals[1].tick, 6, "{kind:?}");
+        }
+        let silent = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(SILENT_ARRIVAL_CLASS),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        let mut out = MissionAdvance::default();
+        note_arrival(
+            &mut out,
+            &world,
+            Some(&mission(MissionKind::Move)),
+            MissionMember::SpecialForce(silent),
+            here,
+            None,
+            5,
+        );
+        assert!(out.arrivals.is_empty());
     }
 
     /// A Move of an Alliance agent at x 0 to an Alliance fleet at the

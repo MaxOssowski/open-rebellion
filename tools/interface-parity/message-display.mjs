@@ -774,6 +774,24 @@ async function run(browser, base, faction) {
         assert.equal(rowChecks.foiled_picture_a0 ?? 0, 0, JSON.stringify(rowChecks));
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Mission list after the foiled mission");
+
+        // Personnel Arrive (FUN_004955b0, 0x200): Mon Mothma's Move to
+        // Klatooine, titled as A0 mission-reports/index-day914-top lists it.
+        const arrivedList = await report(page);
+        const arrivedRow = arrivedList.rows.findIndex((text) => text === "Mon Mothma Arrives at Klatooine");
+        assert.ok(arrivedRow >= 0 && arrivedRow < 9, JSON.stringify(arrivedList.rows));
+        await click(page, row(arrivedRow));
+        await click(page, showMessage);
+        const arrived = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Mon Mothma Arrives at Klatooine", "Display Message shows the arrival");
+        rowChecks.arrival_text = arrived.viewing_text;
+        assert.equal(arrived.viewing_text, "I have arrived at Klatooine.  ", JSON.stringify(rowChecks));
+        assert.equal(arrived.viewing_background, 0x412, JSON.stringify(rowChecks));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("personnel-arrive");
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Mission list after the arrival message");
       }
 
       // Messages clear themselves after 300 sub-ticks, 25 days at Medium

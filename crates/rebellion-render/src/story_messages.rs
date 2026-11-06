@@ -1453,6 +1453,45 @@ pub const fn foils_the_mission(code: u8) -> bool {
     code >= 3
 }
 
+/// Personnel Arrive (`FUN_004955b0`, notification `0x200`): `arrivals`
+/// lists the members' names in landing order, each with its major flag.
+/// The first one leads:
+/// - a major character titles it `0x70c1` "{1:1} Arrives at {2:1}" over
+///   `0x70c5` "I have arrived at {2:1}.  " alone, or `0x70c4` "… The
+///   following personnel have arrived with me:" with the others, each on
+///   a `0x70c2` line;
+/// - otherwise `0x70c0` "Personnel Arrive at {2:1}" over `0x70c3` "The
+///   following personnel have arrived at {2:1}.\n" and a `0x70c2` line for
+///   every member.
+///
+/// Returns the title and body.
+#[must_use]
+pub fn personnel_arrive_texts(
+    arrivals: &[(&str, bool)],
+    system: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let &(first, major) = arrivals.first()?;
+    let parameters = [
+        MessageParameter::Named { name: first },
+        MessageParameter::Named { name: system },
+    ];
+    let (title, body, listed) = if major {
+        let body = if arrivals.len() < 2 { 0x70c5 } else { 0x70c4 };
+        (0x70c1, body, &arrivals[1..])
+    } else {
+        (0x70c0, 0x70c3, arrivals)
+    };
+    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    for &(name, _) in listed {
+        text.push_str(&fill_message_text(
+            texts.get(&0x70c2)?,
+            &[MessageParameter::Named { name }],
+        ));
+    }
+    Some((fill_message_text(texts.get(&title)?, &parameters), text))
+}
+
 /// A foiled mission's report to its own side (`FUN_00491500`, codes
 /// 3..5), from its leader: a major character (family `0x30..0x37`) titles
 /// it `0x7148` "{1:1} Mission Foiled" over `0x7149` "My {2:1} mission to
@@ -2936,6 +2975,63 @@ mod tests {
                 "The assassination mission to Averam is complete.  Jan Dodonna has not been eliminated.\n"
                     .into()
             )
+        );
+    }
+
+    // FUN_004955b0 (notification 0x200): TEXTSTRA 0x70c0..0x70c5 as
+    // shipped; A0 mission-reports/index-day914-top lists "Mon Mothma
+    // Arrives at Klatooine".
+    #[test]
+    fn personnel_arrive_speaks_through_a_major_leader_and_lists_the_others() {
+        let texts: HashMap<u16, String> = [
+            (0x70c0, "Personnel Arrive at {2:1}"),
+            (0x70c1, "{1:1} Arrives at {2:1}"),
+            (0x70c2, "\n{1:1}"),
+            (0x70c3, "The following personnel have arrived at {2:1}.\n"),
+            (
+                0x70c4,
+                "I have arrived at {2:1}.  The following personnel have arrived with me:",
+            ),
+            (0x70c5, "I have arrived at {2:1}.  "),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            personnel_arrive_texts(&[("Mon Mothma", true)], "Klatooine", &texts),
+            Some((
+                "Mon Mothma Arrives at Klatooine".into(),
+                "I have arrived at Klatooine.  ".into()
+            ))
+        );
+        assert_eq!(
+            personnel_arrive_texts(
+                &[("Mon Mothma", true), ("Afyon", false), ("Bria Tharen", false)],
+                "Klatooine",
+                &texts
+            ),
+            Some((
+                "Mon Mothma Arrives at Klatooine".into(),
+                "I have arrived at Klatooine.  The following personnel have arrived with me:\nAfyon\nBria Tharen"
+                    .into()
+            ))
+        );
+        assert_eq!(
+            personnel_arrive_texts(&[("Afyon", false), ("Mon Mothma", true)], "Drall", &texts),
+            Some((
+                "Personnel Arrive at Drall".into(),
+                "The following personnel have arrived at Drall.\n\nAfyon\nMon Mothma".into()
+            ))
+        );
+        assert_eq!(
+            personnel_arrive_texts(&[("Mon Mothma", true), ("Afyon", false)], "Klatooine", &texts)
+                .map(|(_, body)| body),
+            Some("I have arrived at Klatooine.  The following personnel have arrived with me:\nAfyon".into())
+        );
+        assert_eq!(personnel_arrive_texts(&[], "Drall", &texts), None);
+        assert_eq!(
+            personnel_arrive_texts(&[("Afyon", false)], "Drall", &HashMap::new()),
+            None
         );
     }
 
