@@ -76,7 +76,7 @@ pub const SAVE_MAGIC: &[u8; 8] = b"OPENREB\0";
 
 /// Current save format version. Increment when `SaveState` layout changes;
 /// saves of any other version are rejected.
-pub const SAVE_VERSION: u32 = 112;
+pub const SAVE_VERSION: u32 = 113;
 
 /// Current state-fingerprint algorithm version.
 ///

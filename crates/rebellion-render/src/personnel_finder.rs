@@ -360,7 +360,11 @@ pub fn character_target(character: &rebellion_core::world::Character) -> Charact
 ///   none), the state word, then the command word, each in " ( " and " ) "
 ///   (`DAT_006a8790`, `DAT_006a878c`).
 ///
-/// port: a character aboard names its fleet, not its ship.
+/// A character aboard names the ship it rides (`Character::ship`), as its
+/// container (A0 mission-reports/ Empire game day 4: "Darth Vader -
+/// Carrack Light Cruiser 1", "Piett - Galleon 1"; personnel-captured/
+/// finder-day628: "Jan Dodonna - Punisher ( Captured )").
+/// port: one not yet seated names its fleet.
 fn character_text(
     world: &GameWorld,
     character: &rebellion_core::world::Character,
@@ -382,7 +386,19 @@ fn character_text(
     }
     let location = character
         .current_fleet
-        .and_then(|fleet| fleet_label(world, fleet))
+        .and_then(|fleet| {
+            let ship = character.ship.and_then(|id| {
+                let index = world
+                    .fleets
+                    .get(fleet)?
+                    .capital_ships
+                    .iter()
+                    .position(|ship| ship.id == id)?;
+                world.ship_name(fleet, index)
+            });
+            ship.map(str::to_owned)
+                .or_else(|| fleet_label(world, fleet))
+        })
         .or_else(|| {
             character
                 .current_system
@@ -1675,6 +1691,65 @@ mod tests {
                 "Leia - Yavin ( Captured ) ",
                 "Wedge - Location Unknown"
             ]
+        );
+    }
+
+    #[test]
+    fn a_character_aboard_names_its_ship_and_one_unseated_its_fleet() {
+        // FUN_00465bb0 names the container, the ship a character rides
+        // (A0: "Jan Dodonna - Punisher ( Captured )").
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        let class = world
+            .capital_ship_classes
+            .insert(rebellion_core::world::CapitalShipClass {
+                name: "Galleon".into(),
+                ..rebellion_core::world::CapitalShipClass::default()
+            });
+        let mut first = rebellion_core::world::ShipInstance::new(class, 10, false);
+        first.id = 7;
+        let mut second = rebellion_core::world::ShipInstance::new(class, 10, false);
+        second.id = 8;
+        second.name = Some("Punisher".into());
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: yavin,
+            capital_ships: vec![first, second],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        let mut dodonna = default_character();
+        dodonna.name = "Jan Dodonna".into();
+        dodonna.current_fleet = Some(fleet);
+        dodonna.ship = Some(8);
+        dodonna.is_captive = true;
+        let dodonna = world.characters.insert(dodonna);
+        assert_eq!(
+            character_text(&world, &world.characters[dodonna], None),
+            "Jan Dodonna - Punisher ( Captured ) "
+        );
+        world.characters[dodonna].ship = Some(7);
+        assert_eq!(
+            character_text(&world, &world.characters[dodonna], None),
+            "Jan Dodonna - Galleon ( Captured ) "
+        );
+        world.characters[dodonna].ship = None;
+        assert_eq!(
+            character_text(&world, &world.characters[dodonna], None),
+            format!(
+                "Jan Dodonna - {} ( Captured ) ",
+                crate::system_window::fleet_label(&world, fleet).unwrap()
+            )
+        );
+        world.characters[dodonna].ship = Some(9);
+        assert_eq!(
+            character_text(&world, &world.characters[dodonna], None),
+            format!(
+                "Jan Dodonna - {} ( Captured ) ",
+                crate::system_window::fleet_label(&world, fleet).unwrap()
+            )
         );
     }
 

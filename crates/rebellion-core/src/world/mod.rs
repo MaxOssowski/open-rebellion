@@ -1864,6 +1864,9 @@ pub struct FleetNames {
     /// slotmap key does not keep once a freed slot is reused.
     serials: slotmap::SecondaryMap<FleetKey, u64>,
     last_serial: u64,
+    /// Per side and capital ship class: the last number a ship took (the
+    /// same counter list keyed by the ship's record; save v113).
+    ship_numbers: Vec<(bool, DatId, u32)>,
 }
 
 /// port: a save written before the difficulty was stored loads at column 2,
@@ -2033,6 +2036,17 @@ impl GameWorld {
     /// no living ship of it (`crate::squadrons::seat_squadrons`): a
     /// squadron's container is a capital ship (`FUN_00500b40`), which needs
     /// its id.
+    ///
+    /// `FUN_00517760` (event `0x300`, and `FUN_0051b7f0` over every object
+    /// at load) names an unnamed capital ship "{class} {N}", N its side's
+    /// count of that class plus one, through the name setter, so the name
+    /// stays (A0 fleet2/umgul-fleet1-ships: "Corellian Corvette 1", "Medium
+    /// Transport 1"; mission-reports/: "Carrack Light Cruiser 2"). Squadrons
+    /// stay unnumbered (A0 selonia-fleet4-fighters: "X-wing") and so does
+    /// the Death Star (A0 personnel-states/27: "Death Star").
+    ///
+    /// hyp: the classes slot `+0x48` answers are the capital ships but the
+    /// Death Star; the order of a new game's ships is the port's seeding.
     pub fn number_ships(&mut self) {
         let mut last = self.last_ship_id;
         for fleet in self.fleets.values_mut() {
@@ -2042,6 +2056,30 @@ impl GameWorld {
             }
         }
         self.last_ship_id = last;
+        let classes = &self.capital_ship_classes;
+        let numbers = &mut self.fleet_names.ship_numbers;
+        for fleet in self.fleets.values_mut() {
+            let side = fleet.is_alliance;
+            for ship in fleet.capital_ships.iter_mut().filter(|s| s.name.is_none()) {
+                let Some(class) = classes.get(ship.class).filter(|c| !c.is_death_star()) else {
+                    continue;
+                };
+                let number = match numbers
+                    .iter_mut()
+                    .find(|(s, id, _)| *s == side && *id == class.dat_id)
+                {
+                    Some((_, _, number)) => {
+                        *number += 1;
+                        *number
+                    }
+                    None => {
+                        numbers.push((side, class.dat_id, 1));
+                        1
+                    }
+                };
+                ship.name = Some(format!("{} {number}", class.name));
+            }
+        }
         let fleets = self.fleets.keys().collect::<Vec<_>>();
         for fleet in fleets {
             crate::squadrons::seat_squadrons(self, fleet);
@@ -3137,6 +3175,88 @@ mod tests {
         world.number_ships();
         assert_eq!(world.characters[seated].ship, Some(ids[2]));
         assert_eq!(world.characters[loose].ship, Some(ids[1]));
+    }
+
+    #[test]
+    fn number_ships_names_each_unnamed_capital_ship_by_its_sides_class_count() {
+        // FUN_00517760: "{class} {N}" per side and class (A0: "Carrack Light
+        // Cruiser 1", "Carrack Light Cruiser 2", "Galleon 1"); a named ship
+        // and the Death Star keep their names, and a number is never
+        // given twice.
+        let mut world = GameWorld::default();
+        let mut class = |name: &str, dat_id| {
+            world.capital_ship_classes.insert(CapitalShipClass {
+                dat_id: DatId::new(dat_id),
+                name: name.into(),
+                ..CapitalShipClass::default()
+            })
+        };
+        let carrack = class("Carrack Light Cruiser", 0x2a);
+        let galleon = class("Galleon", 0x2b);
+        let death_star = class("Death Star", DEATH_STAR_CLASS_ID);
+        let mut named = ShipInstance::new(carrack, 1, false);
+        named.name = Some("Punisher".into());
+        let mut fleet = |ships: Vec<ShipInstance>, is_alliance| {
+            world.fleets.insert(Fleet {
+                location: SystemKey::default(),
+                capital_ships: ships,
+                fighters: vec![],
+                characters: vec![],
+                is_alliance,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            })
+        };
+        let first = fleet(
+            vec![
+                ShipInstance::new(carrack, 1, false),
+                named,
+                ShipInstance::new(galleon, 1, false),
+            ],
+            false,
+        );
+        let second = fleet(
+            vec![
+                ShipInstance::new(carrack, 1, false),
+                ShipInstance::new(death_star, 1, false),
+            ],
+            false,
+        );
+        let rebels = fleet(vec![ShipInstance::new(carrack, 1, true)], true);
+        world.number_ships();
+        let names = |world: &GameWorld, fleet: FleetKey| -> Vec<Option<String>> {
+            world.fleets[fleet]
+                .capital_ships
+                .iter()
+                .map(|s| s.name.clone())
+                .collect()
+        };
+        assert_eq!(
+            names(&world, first),
+            [
+                Some("Carrack Light Cruiser 1".into()),
+                Some("Punisher".into()),
+                Some("Galleon 1".into())
+            ]
+        );
+        assert_eq!(
+            names(&world, second),
+            [Some("Carrack Light Cruiser 2".into()), None]
+        );
+        assert_eq!(
+            names(&world, rebels),
+            [Some("Carrack Light Cruiser 1".into())]
+        );
+        // A later ship takes the next number, after its class's lost ones.
+        world.fleets[second].capital_ships.clear();
+        world.fleets[first]
+            .capital_ships
+            .push(ShipInstance::new(carrack, 1, false));
+        world.number_ships();
+        assert_eq!(
+            world.fleets[first].capital_ships[3].name.as_deref(),
+            Some("Carrack Light Cruiser 3")
+        );
     }
 
     #[test]
