@@ -8066,9 +8066,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-recruitment-planner/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-recruitment-planner/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-targets/"
           ],
-          "note": "Recruitment results post as a generic port mission report (\"{side} {kind} mission at {system} {outcome}\", main.rs) with the FUN_004927c0 picture; the original's report text is not used and nothing is compared. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "A major character's recruitment reports with TEXTSTRA 0x711b \"{leader} Recruits {recruit}\" / 0x7119, or 0x7118 / 0x711a on failure (FUN_004927c0 case 0x55; 7701bd3c). No A0 report body captured.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8079,9 +8080,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-report-slots/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-texts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-texts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-targets/"
           ],
-          "note": "Mission Reports of Diplomacy, Espionage, Subdue Uprising and Jedi Training read FUN_004927c0's TEXTSTRA texts (first person for a major leader; c9c287ac). Other kinds keep the port's line; no A0 report body captured.",
+          "note": "Mission Reports read FUN_004927c0's TEXTSTRA texts for Diplomacy, Espionage, Subdue Uprising, Jedi Training (c9c287ac), Recruitment, Rescue, Abduction, Assassination and Sabotage (7701bd3c); Recon, Incite and research keep the port's line; the 0x70e6 returning line is left out. No A0 report body captured.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
