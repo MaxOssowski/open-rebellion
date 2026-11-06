@@ -1879,6 +1879,28 @@ pub fn maintenance_texts(
     Some((fill_message_text(texts.get(&0x7080)?, &[]), body))
 }
 
+/// Saboteurs Strike (`FUN_0048b9a0`): notification `0x305` for an object
+/// a sabotage destroyed (reason 6) other than the Death Star, to the
+/// object's side. The title `0x7083` and the body `0x7084` name the system
+/// found up the object's containers (their third substitution), and each
+/// unit adds a line `0x7085`. Returns the title and body.
+#[must_use]
+pub fn saboteurs_texts(
+    system: &str,
+    unit: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let unit = MessageParameter::Named { name: unit };
+    let named = [
+        unit,
+        MessageParameter::Named { name: "" },
+        MessageParameter::Named { name: system },
+    ];
+    let mut body = fill_message_text(texts.get(&0x7084)?, &named);
+    body.push_str(&fill_message_text(texts.get(&0x7085)?, &[unit]));
+    Some((fill_message_text(texts.get(&0x7083)?, &named), body))
+}
+
 /// Near Uprising (`FUN_00498cb0`): notification `0x148`, the system's
 /// troop surplus going from `previous` to `surplus` (`FUN_00511fd0`). Only
 /// the holder's side hears it, and only for a garrisoned system (`+0x88`
@@ -3885,6 +3907,34 @@ mod tests {
             maintenance_texts(None, "Mine", &texts).map(|(_, body)| body),
             Some("The following units have been destroyed at  due to a maintenance shortfall:\nMine\n".into())
         );
+    }
+
+    #[test]
+    fn saboteurs_strike_names_the_system_and_each_unit() {
+        // FUN_0048b9a0: TEXTSTRA 0x7083..0x7085 as shipped. A0
+        // saboteurs-clean/test-day651-saboteurs-yavin (an unedited Alliance
+        // game): "Saboteurs Strike at Yavin" over "The following units were
+        // destroyed by saboteurs at Yavin:" and "Alliance Army Regiment".
+        let texts: HashMap<u16, String> = [
+            (0x7083, "Saboteurs Strike at {3:1}"),
+            (
+                0x7084,
+                "The following units were destroyed by saboteurs at {3:1}:\n",
+            ),
+            (0x7085, "{1:1}\n"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            saboteurs_texts("Yavin", "Alliance Army Regiment", &texts),
+            Some((
+                "Saboteurs Strike at Yavin".into(),
+                "The following units were destroyed by saboteurs at Yavin:\nAlliance Army Regiment\n"
+                    .into()
+            ))
+        );
+        assert_eq!(saboteurs_texts("Yavin", "Mine", &HashMap::new()), None);
     }
 
     // FUN_0048e940 (notification 0x155): TEXTSTRA 0x7194..0x719a as shipped.

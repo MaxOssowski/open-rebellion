@@ -3840,6 +3840,37 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's sabotaged regiment: the first Alliance
+/// regiment on a planet and its system. The app posts Saboteurs Strike
+/// (`FUN_0048b9a0`) for it before the battle reports, so it lists last on
+/// the Alliance's Conflict rail (A0 saboteurs-clean/test-day651-saboteurs-
+/// yavin, an unedited Alliance game).
+#[must_use]
+pub fn sabotaged_regiment(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<(
+    rebellion_core::ids::SystemKey,
+    rebellion_core::ids::TroopKey,
+)> {
+    if request.scenario != Scenario::EventMessages {
+        return None;
+    }
+    world.systems.iter().find_map(|(key, system)| {
+        system
+            .ground_units
+            .iter()
+            .copied()
+            .find(|&troop| {
+                world
+                    .troops
+                    .get(troop)
+                    .is_some_and(|troop| troop.is_alliance)
+            })
+            .map(|troop| (key, troop))
+    })
+}
+
 /// The event-message scenario's battle reports on its reader's Conflict rail
 /// (`FUN_0048bc60`, category `0x100`), as A0 messages-day633/index-tab7's
 /// "Assault on Coruscant" over the older "Assault on Umgul", and a

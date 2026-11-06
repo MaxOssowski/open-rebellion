@@ -1652,6 +1652,15 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        if let Some((at, troop)) = interface_test_fixture::sabotaged_regiment(request, &world) {
+            let victim = rebellion_core::missions::sabotage_victim(
+                &world,
+                rebellion_core::missions::MissionTarget::Troop(troop),
+            );
+            if let Some(message) = saboteurs_strike_message(&world, victim, at, 0, &message_texts) {
+                msg_log.push(message);
+            }
+        }
         interface_test_fixture::post_conflict_report(request, &mut msg_log);
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_event_messages(request, &mut world, &mut mission_state, &mut msg_log);
@@ -11765,6 +11774,36 @@ fn report_title_and_text(
     (title, text)
 }
 
+/// Notification `0x305`, Saboteurs Strike (`FUN_0048b9a0`), for an object
+/// a sabotage destroyed: to the object's side (`+0x40`, `FUN_0048bbf0`),
+/// on the Conflict rail (`+0x34` = `0x100`), picture `0x3f5` / `0x3f6` by
+/// the reader, advisor event `0xc`. `victim` is the object's side and name,
+/// read before it was destroyed; a neutral object posts nothing.
+fn saboteurs_strike_message(
+    world: &GameWorld,
+    victim: Option<(Faction, String)>,
+    system: rebellion_core::ids::SystemKey,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let (side, name) = victim?;
+    let alliance = match side {
+        Faction::Alliance => true,
+        Faction::Empire => false,
+        Faction::Neutral => return None,
+    };
+    let place = world.systems.get(system).map_or("", |s| s.name.as_str());
+    let (title, body) = rebellion_render::story_messages::saboteurs_texts(place, &name, texts)?;
+    Some(filed(
+        GameMessage::at_system(tick, body, MessageCategory::Combat, system)
+            .with_title(title)
+            .with_picture_if(Some(pictures::units_destroyed(pictures::reader(alliance))))
+            .with_advisor_event(0xc),
+        MessageRail::Conflict,
+        Some(RailAudience::side(alliance)),
+    ))
+}
+
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     continuing: bool,
@@ -11967,12 +12006,19 @@ fn apply_mission_result(
                 *faction,
                 *pool_emptied,
             ),
-            MissionEffect::TargetSabotaged { target, .. } => {
+            MissionEffect::TargetSabotaged { target, system } => {
+                let victim = rebellion_core::missions::sabotage_victim(world, *target);
                 rebellion_core::missions::destroy_target(world, *target);
-                if matches!(
+                if !matches!(
                     target,
                     rebellion_core::missions::MissionTarget::DeathStar(_)
                 ) {
+                    if let Some(message) =
+                        saboteurs_strike_message(world, victim, *system, result.tick, message_texts)
+                    {
+                        log.push(message);
+                    }
+                } else {
                     // Notification 0x23, Death Star Sabotaged
                     // (FUN_0048d470): a story movie only (kind 6, queued
                     // with the effect), no Message Index row. port: the
@@ -14165,6 +14211,70 @@ mod character_health_tests {
             "The following personnel have arrived at Klatooine.\n\nAfyon"
         );
         assert_eq!(messages[1].advisor_event, [0x15, 0x15]);
+    }
+
+    #[test]
+    fn saboteurs_strike_goes_to_the_victims_side_on_the_conflict_rail() {
+        // FUN_0048b9a0: 0x7083..0x7085, category 0x100, event 0xc, the
+        // picture by the reader (FUN_0048bbf0). A0 saboteurs-clean/
+        // test-day651-saboteurs-yavin (an unedited Alliance game): the
+        // Alliance's regiment at Yavin, "Saboteurs Strike at Yavin" on the
+        // Conflict list, picture STRATEGY 1013 (0x3f5) to the pixel.
+        let mut world = GameWorld::default();
+        let yavin = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(2),
+            name: "Yavin".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Controlled(Faction::Alliance),
+        });
+        let texts = std::collections::HashMap::from([
+            (0x7083, "Saboteurs Strike at {3:1}".to_owned()),
+            (
+                0x7084,
+                "The following units were destroyed by saboteurs at {3:1}:\n".to_owned(),
+            ),
+            (0x7085, "{1:1}\n".to_owned()),
+        ]);
+        let victim = Some((Faction::Alliance, "Alliance Army Regiment".to_owned()));
+        let message = saboteurs_strike_message(&world, victim, yavin, 651, &texts).unwrap();
+        assert_eq!(message.title.as_deref(), Some("Saboteurs Strike at Yavin"));
+        assert_eq!(
+            message.text,
+            "The following units were destroyed by saboteurs at Yavin:\nAlliance Army Regiment\n"
+        );
+        assert_eq!(message.audience, RailAudience::Alliance);
+        assert_eq!(message.rail, Some(MessageRail::Conflict));
+        assert_eq!(message.picture.map(|p| p.background), Some(0x3f5));
+        assert_eq!(message.advisor_event, [0xc, 0xc]);
+        assert_eq!(message.system, Some(yavin));
+        // The Empire's unit goes to the Empire with 0x3f6; a neutral one
+        // posts nothing, nor does a gone one.
+        let imperial = Some((Faction::Empire, "Stormtrooper Regiment".to_owned()));
+        let message = saboteurs_strike_message(&world, imperial, yavin, 651, &texts).unwrap();
+        assert_eq!(message.audience, RailAudience::Empire);
+        assert_eq!(message.picture.map(|p| p.background), Some(0x3f6));
+        let neutral = Some((Faction::Neutral, "Mine".to_owned()));
+        assert!(saboteurs_strike_message(&world, neutral, yavin, 651, &texts).is_none());
+        assert!(saboteurs_strike_message(&world, None, yavin, 651, &texts).is_none());
     }
 
     #[test]

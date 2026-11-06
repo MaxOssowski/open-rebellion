@@ -692,6 +692,54 @@ async function run(browser, base, faction) {
         && (rowChecks.conflict_text_x_a0 === undefined
           || rowChecks.conflict_text_x.every((x, i) => Math.abs(x - rowChecks.conflict_text_x_a0[i]) <= 1)),
         JSON.stringify(rowChecks));
+      // Saboteurs Strike (FUN_0048b9a0, A0 saboteurs-clean/test-day651-
+      // saboteurs-yavin, an unedited Alliance game): the fixture's oldest
+      // Conflict row names the Alliance regiment the Empire's saboteurs
+      // destroyed, "The following units were destroyed by saboteurs at
+      // {system}:" over the unit (0x7084, 0x7085), on picture 0x3f5
+      // (STRATEGY 1013) at the window's (12, 33), every pixel A0's.
+      const sabotageRow = conflictList.rows.findIndex((text) => text.startsWith("Saboteurs Strike at "));
+      assert.equal(sabotageRow, 2, JSON.stringify(conflictList.rows));
+      await click(page, row(sabotageRow));
+      await click(page, showMessage);
+      const sabotage = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title?.startsWith("Saboteurs Strike at "), "Display Message shows Saboteurs Strike");
+      const sabotagedAt = sabotage.viewing_title.slice("Saboteurs Strike at ".length);
+      assert.match(sabotage.viewing_text,
+        new RegExp(`^The following units were destroyed by saboteurs at ${sabotagedAt}:\\n.+\\n?$`),
+        JSON.stringify(sabotage));
+      assert.equal(sabotage.viewing_background, 0x3f5, JSON.stringify(sabotage));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("saboteurs-strike");
+      const sabotageScreen = PNG.sync.read(await page.screenshot());
+      const sabotagePicture = await bitmap(1013);
+      const sabotageChecks = { port: differing(sabotageScreen,
+        [Math.round(sabotage.window_left) + 12, Math.round(sabotage.window_top) + 33], sabotagePicture) };
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/saboteurs-clean/test-day651-saboteurs-yavin.png")));
+        sabotageChecks.a0 = differing(a0, [74, 82], sabotagePicture);
+        // The title's item image at the window's (15, 16), 15 by 16.
+        const [left, top] = [Math.round(sabotage.window_left), Math.round(sabotage.window_top)];
+        let differ = 0;
+        for (let y = 0; y < 16; y += 1) {
+          for (let x = 0; x < 15; x += 1) {
+            const i = ((top + 16 + y) * 640 + left + 15 + x) * 4;
+            const j = ((49 + 16 + y) * 640 + 62 + 15 + x) * 4;
+            if ([0, 1, 2].some((c) => sabotageScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        sabotageChecks.title_image_a0 = differ;
+      } catch {
+        sabotageChecks.a0 = null;
+      }
+      rowChecks.saboteurs = sabotageChecks;
+      assert.ok(sabotageChecks.port === 0 && (sabotageChecks.a0 ?? 0) === 0
+        && (sabotageChecks.title_image_a0 ?? 0) === 0, JSON.stringify(sabotageChecks));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Conflict list after Saboteurs Strike");
+
       // The Manufacturing list (A0 manufacturing-messages/q01, a new
       // Alliance game, day 39 on: "Construction Yard Idle on Womrik"
       // chosen): STRATEGY 0x2a9c at the row's (1, 1), keyed on index 0, and

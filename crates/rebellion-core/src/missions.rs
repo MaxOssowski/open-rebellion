@@ -623,6 +623,58 @@ impl MissionTarget {
     }
 }
 
+/// The side holding a sabotage target and its name, read before it is
+/// destroyed: what Saboteurs Strike (`FUN_0048b9a0`) lists with TEXTSTRA
+/// `0x7085`, the object's `+0x30`: a ship's own name, else its class's
+/// (`FUN_004f6270`). `None` once the target is gone.
+#[must_use]
+pub fn sabotage_victim(
+    world: &GameWorld,
+    target: MissionTarget,
+) -> Option<(crate::dat::Faction, String)> {
+    let side = target.state(world)?.side;
+    let class_name = |id: crate::ids::DatId| {
+        world
+            .buildable_classes
+            .get(&id)
+            .map(|class| class.name.clone())
+    };
+    let ship = |fleet: crate::ids::FleetKey,
+                found: &dyn Fn(&crate::world::ShipInstance) -> bool| {
+        let index = world
+            .fleets
+            .get(fleet)?
+            .capital_ships
+            .iter()
+            .position(|ship| ship.alive && found(ship))?;
+        world.ship_name(fleet, index).map(str::to_owned)
+    };
+    let name = match target {
+        MissionTarget::DefenseFacility(key) => {
+            class_name(world.defense_facilities.get(key)?.class_dat_id)?
+        }
+        MissionTarget::ManufacturingFacility(key) => {
+            class_name(world.manufacturing_facilities.get(key)?.class_dat_id)?
+        }
+        MissionTarget::ProductionFacility(key) => {
+            class_name(world.production_facilities.get(key)?.class_dat_id)?
+        }
+        MissionTarget::Troop(key) => class_name(world.troops.get(key)?.class_dat_id)?,
+        MissionTarget::SpecialForce(key) => {
+            class_name(world.special_forces.get(key)?.class_dat_id)?
+        }
+        MissionTarget::DeathStar(fleet) => ship(fleet, &|ship| {
+            world
+                .capital_ship_classes
+                .get(ship.class)
+                .is_some_and(crate::world::CapitalShipClass::is_death_star)
+        })?,
+        MissionTarget::CapitalShip { fleet, class } => ship(fleet, &|ship| ship.class == class)?,
+        MissionTarget::Fighter { class, .. } => world.fighter_classes.get(class)?.name.clone(),
+    };
+    Some((side, name))
+}
+
 /// Destroy a sabotaged target (slot `+0xac(6)`, `FUN_005746e0`).
 ///
 /// A capital ship or the Death Star is destroyed with the squadrons docked
@@ -9254,16 +9306,41 @@ mod tests {
         });
         world.systems[here].special_forces.push(unit);
 
-        for target in [
-            MissionTarget::ManufacturingFacility(yard),
-            MissionTarget::DefenseFacility(turret),
-            MissionTarget::ProductionFacility(mine),
-            MissionTarget::Troop(regiment),
-            MissionTarget::SpecialForce(unit),
+        // Saboteurs Strike (FUN_0048b9a0) lists each by its +0x30, the
+        // class's name, with the object's side, read before it goes.
+        for (id, name) in [
+            (0x2800_0001, "Orbital Shipyard"),
+            (0x2200_0001, "LNR Series I"),
+            (0x2c00_0001, "Mine"),
+            (0x1000_0001, "Stormtrooper Regiment"),
+            (0x3c00_0001, "Commandos"),
+        ] {
+            world.buildable_classes.insert(
+                crate::ids::DatId::new(id),
+                crate::world::BuildableClass {
+                    name: name.into(),
+                    ..crate::world::BuildableClass::default()
+                },
+            );
+        }
+        for (target, name) in [
+            (
+                MissionTarget::ManufacturingFacility(yard),
+                "Orbital Shipyard",
+            ),
+            (MissionTarget::DefenseFacility(turret), "LNR Series I"),
+            (MissionTarget::ProductionFacility(mine), "Mine"),
+            (MissionTarget::Troop(regiment), "Stormtrooper Regiment"),
+            (MissionTarget::SpecialForce(unit), "Commandos"),
         ] {
             assert!(target.state(&world).is_some(), "{target:?} stands");
+            assert_eq!(
+                sabotage_victim(&world, target),
+                Some((crate::dat::Faction::Empire, name.to_owned()))
+            );
             destroy_target(&mut world, target);
             assert!(target.state(&world).is_none(), "{target:?} is gone");
+            assert_eq!(sabotage_victim(&world, target), None);
         }
         let sys = &world.systems[here];
         assert!(sys.manufacturing_facilities.is_empty());
@@ -9291,6 +9368,44 @@ mod tests {
         assert_eq!(fleet.capital_ships.len(), 1);
         assert!(!world.capital_ship_classes[fleet.capital_ships[0].class].is_death_star());
         assert!(target.state(&world).is_none());
+    }
+
+    #[test]
+    fn a_sabotaged_ship_is_named_by_its_own_name_else_its_class() {
+        // Saboteurs Strike (FUN_0048b9a0) lists the object's +0x30: a ship's
+        // own name, else its class's (FUN_004f6270); the order's class picks
+        // the hull, a lost one skipped.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        let fleet = death_star_fleet(&mut world, here);
+        let destroyer = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[destroyer].name = "Victory-class Star Destroyer".into();
+        let mut lost = crate::world::ShipInstance::new(destroyer, 100, false);
+        lost.alive = false;
+        lost.name = Some("Lost".into());
+        world.fleets[fleet].capital_ships.insert(0, lost);
+        let ship = MissionTarget::CapitalShip {
+            fleet,
+            class: destroyer,
+        };
+        assert_eq!(
+            sabotage_victim(&world, ship),
+            Some((
+                crate::dat::Faction::Empire,
+                "Victory-class Star Destroyer".to_owned()
+            ))
+        );
+        world.fleets[fleet].capital_ships[1].name = Some("Dominator".into());
+        assert_eq!(
+            sabotage_victim(&world, ship).map(|(_, name)| name),
+            Some("Dominator".to_owned())
+        );
+        let death_star = world.fleets[fleet].capital_ships[2].class;
+        world.capital_ship_classes[death_star].name = "Death Star".into();
+        assert_eq!(
+            sabotage_victim(&world, MissionTarget::DeathStar(fleet)).map(|(_, name)| name),
+            Some("Death Star".to_owned())
+        );
     }
 
     #[test]
