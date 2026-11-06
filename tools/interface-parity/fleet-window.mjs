@@ -914,8 +914,22 @@ const cases = [
       if (after.enemy_regiments < 2) assert.equal(summary.picture, 0x2b9b);
       await frames(page, 3);
       await shot(page, directory, "bombardment-summary");
-      await press(page, "Escape");
-      const closed = await until(page, "Escape closes the summary", (o) => o.assault_summary === null);
+      // Display (0x68) shows the two destinations (FUN_0044c630); 0xc,
+      // "Fleet" at (226, 182), 169 by 96, goes to the system and opens its
+      // Fleet window (FUN_0045c8e0, kind 4), and the summary closes
+      // (FUN_0044df90).
+      assert.equal(before.window_open, false, JSON.stringify(before));
+      const rail = faction.name === "alliance"
+        ? { x: 418, ys: [88, 141, 196, 250], width: 41 }
+        : { x: 426, ys: [89, 148, 207, 266], width: 44 };
+      const [ox, oy] = summary.origin;
+      await click(page, point([ox + rail.x + rail.width / 2, oy + rail.ys[3] + 20]));
+      await until(page, "Display shows the destinations", (o) => o.assault_summary?.page === "Display");
+      await frames(page, 3);
+      await shot(page, directory, "bombardment-display");
+      await click(page, point([ox + 226 + 84, oy + 182 + 48]));
+      const closed = await until(page, "Fleet closes the summary and opens the system's Fleet window",
+        (o) => o.assault_summary === null && o.window_open);
       await shot(page, directory, "bombardment-done");
       return { before, menu, waited, sub, after, closed };
     },
@@ -1338,10 +1352,17 @@ const cases = [
         assaultTips[`category-${index}`] = await tipShows(page, point([ox + 36 + x + 24, oy + 59 + 20]));
       }
       assert.ok(Object.values(assaultTips).every(Boolean), JSON.stringify(assaultTips));
-      // FUN_0044e180: Escape closes the window.
-      await press(page, "Escape");
-      const closed = await until(page, "Escape closes the Assault Summary",
+      // Display (0x68): 0xb at (29, 182), 169 by 96, names the system and
+      // goes to it (FUN_00429ce0) without the Fleet window; the summary
+      // closes (FUN_0044df90).
+      await click(page, railButton(3));
+      await until(page, "Display shows the destinations", (o) => o.assault_summary?.page === "Display");
+      await frames(page, 3);
+      await shot(page, directory, "assault-display");
+      await click(page, point([ox + 29 + 84, oy + 182 + 48]));
+      const closed = await until(page, "the system button closes the Assault Summary",
         (o) => o.assault_summary === null);
+      assert.equal(closed.window_open, false, "the system button opens no Fleet window");
       await shot(page, directory, "assault-done");
       return { before, menu, after, attackers, defenders, assaultTips, closed };
     },
