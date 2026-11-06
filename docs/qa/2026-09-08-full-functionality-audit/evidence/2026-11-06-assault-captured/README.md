@@ -42,3 +42,13 @@ There were three faults:
 - The Alliance's Personnel page lists Veers under Captured; the Empire's lists Jan Dodonna.
 - Veers's mini (rows 145..173, x 168..235 of the window) differs from A0 in **0 pixels**.
 - The name below is text, the accepted text deviation.
+
+## Capital ships and squadrons (later the same day)
+
+CAPSHPSD's and FIGHTSD's class ids carry no family byte either (`status_rows::ship_family`). Because of that, the report dropped every capital ship and squadron in a real game, the same fault as the characters'.
+
+**Fix.** `push_as` now files them under Capital Ships and Fighter Squadrons by their source, not by their id. The unit test fixture now uses record ids (0x01, 0x05) without the family byte. With the old squadron push, `the_report_lists_the_fleets_ships_squadrons_and_cargo_as_the_attackers` fails.
+
+**A0.** `assault-coruscant-alliance-tab0` lists Haste and Agile under the Alliance's Capital Ships.
+
+**Browser.** `fleet-window.mjs` `assault-taken` now checks that the Attackers' Capital Ships lists the fleet's ships. The run lists five Mon Calamari Cruisers; the fixture's copies are added after load, before the first day numbers them.

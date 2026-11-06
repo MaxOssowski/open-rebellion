@@ -1257,6 +1257,13 @@ const cases = [
         checks.captured_mini = mini;
         assert.equal(mini, 0, `the captive's mini differs from A0 in ${mini} pixels`);
       }
+      // Capital Ships (the first category button): the fleet's ships under
+      // Operational (A0 assault-coruscant-alliance-tab0: Haste and Agile).
+      await click(page, point([ox + 36 + 24, oy + 59 + 20]));
+      const ships = await until(page, "the Capital Ships category shows",
+        (o) => o.assault_summary?.category === "CapitalShips");
+      checks.ship_columns = ships.assault_summary.columns;
+      assert.ok(ships.assault_summary.columns[0].length > 0, JSON.stringify(ships.assault_summary));
       await press(page, "Escape");
       await until(page, "Escape closes the Assault Summary", (o) => o.assault_summary === null);
       return { summary, checks };

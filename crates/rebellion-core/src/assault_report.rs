@@ -211,7 +211,13 @@ impl AssaultReport {
                 if let Some(class) = world.capital_ship_classes.get(ship.class) {
                     let name = world.ship_name(key, index).unwrap_or(&class.name);
                     let ship = Some(Loss::Ship(key, index));
-                    push_unit(&mut attackers, class.dat_id, name.to_owned(), ship);
+                    push_as(
+                        &mut attackers,
+                        ReportCategory::CapitalShips,
+                        class.dat_id,
+                        name.to_owned(),
+                        ship,
+                    );
                 }
             }
             for entry in &fleet.fighters {
@@ -480,9 +486,31 @@ fn troop_unit(world: &GameWorld, troop: crate::ids::TroopKey, units: &mut Vec<Re
 fn squadrons(world: &GameWorld, entry: &crate::world::FighterEntry, units: &mut Vec<ReportUnit>) {
     if let Some(class) = world.fighter_classes.get(entry.class) {
         for _ in 0..entry.count {
-            push(units, class.dat_id, class.name.clone(), None);
+            push_as(units, ReportCategory::Fighters, class.dat_id, class.name.clone(), None);
         }
     }
+}
+
+/// A capital ship or a squadron under its category. port: CAPSHPSD's and
+/// FIGHTSD's class ids carry no family byte (`status_rows::ship_family`),
+/// so the category is the caller's (A0 assault-coruscant-alliance-tab0:
+/// Haste and Agile under Capital Ships).
+fn push_as(
+    units: &mut Vec<ReportUnit>,
+    category: ReportCategory,
+    dat_id: DatId,
+    name: String,
+    target: Option<Loss>,
+) {
+    units.push(ReportUnit {
+        category,
+        dat_id,
+        name,
+        major: false,
+        captive: false,
+        injured: false,
+        target,
+    });
 }
 
 #[cfg(test)]
@@ -555,7 +583,8 @@ mod tests {
             control,
         });
         let ship_class = world.capital_ship_classes.insert(CapitalShipClass {
-            dat_id: DatId::new(0x1400_0001),
+            // CAPSHPSD record ids carry no family byte.
+            dat_id: DatId::new(0x01),
             name: "Star Destroyer".into(),
             is_empire: true,
             hull: 100,
@@ -563,7 +592,8 @@ mod tests {
             ..CapitalShipClass::default()
         });
         let fighter = world.fighter_classes.insert(FighterClass {
-            dat_id: DatId::new(0x1c00_0005),
+            // FIGHTSD record ids carry no family byte.
+            dat_id: DatId::new(0x05),
             name: "TIE Fighter".into(),
             ..FighterClass::default()
         });
