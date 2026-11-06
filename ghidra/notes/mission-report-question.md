@@ -12,7 +12,7 @@ The manual (pp. 1633, 4022) says the agent asks whether the mission should conti
 | `0x52` | Espionage | 3 | none |
 | `0x53` | the design researches | 5 | always (`0x70db`) |
 | `0x55` | | 3 | none |
-| `0x56` | Incite Uprising | 5, set to 3 on one branch | no `0x70db` (open) |
+| `0x56` | Incite Uprising | 5, set to 3 on a success | `0x70db` on outcome 2 (the failure jumps to `LAB_004941d6`, the append); a success has none |
 | `0x57` | Subdue Uprising | 5 | `0x70db` on outcome 2 only (`param_3 + 0x28`); outcome 3 has none |
 
 The texts live in TEXTSTRA's `RT_RCDATA`: `0x70db` reads "Do you wish the mission to continue?". The string 12364 "Continue" is no order record in STRATEGY's RCDATA (Abort's is at `0x96f46e`: `0x250`, sort 2003, 12362), and REBEXE never names it.
@@ -36,7 +36,7 @@ Both answers then clear `+0x90` and run `0x65`, back to the list.
 ## Ported (2026-11-04)
 
 Each piece of the port:
-- **The rule.** `story_messages::mission_report_asks_to_continue` asks for Diplomacy, the three design researches and Subdue Uprising, and only while the mission goes on after the report. port: that stands in for case `0x57`'s outcome 2. A report of a mission that has ended asks nothing, since its X would find no mission.
+- **The rule.** `story_messages::mission_report_asks_to_continue` asks for Diplomacy, the three design researches, Incite Uprising (added 2026-11-06) and Subdue Uprising, and only while the mission goes on after the report. port: that stands in for case `0x57`'s outcome 2. A report of a mission that has ended asks nothing, since its X would find no mission.
 - **The report.** It appends `0x70db` and carries `GameMessage::continue_question`, the mission's id.
 - **The window.** `message_index::question_button_specs` draws the two answers, and the text narrows to 320.
 - **The checkmark.** It answers `ContinueMission`.
@@ -44,6 +44,5 @@ Each piece of the port:
 - **Both answers.** The question is dropped (`MessageLog::answer_continue_question`) and the list returns.
 
 Open:
-- case `0x56`'s kind-5 branch;
 - the advisor's reaction to a refused X;
 - the tips of `0x98` and `0x99`.

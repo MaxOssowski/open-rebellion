@@ -3077,6 +3077,7 @@ async fn main() {
                 apply_mission_result(
                     result,
                     continuing,
+                    uprising_state.is_uprising(result.target_system),
                     &mut world,
                     &mut research_state,
                     &mut msg_log,
@@ -11422,6 +11423,7 @@ fn report_title_and_text(
 fn apply_mission_result(
     result: &rebellion_core::missions::MissionResult,
     continuing: bool,
+    revolting: bool,
     world: &mut GameWorld,
     research_state: &mut ResearchState,
     log: &mut MessageLog,
@@ -11807,6 +11809,7 @@ fn apply_mission_result(
             target: target.as_deref(),
             target_killed,
             recruit: recruit.as_deref(),
+            revolting,
         },
         message_texts,
     );

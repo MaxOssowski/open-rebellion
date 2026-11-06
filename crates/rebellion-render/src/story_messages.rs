@@ -1076,12 +1076,13 @@ pub fn unit_message_rail(
 
 /// Whether a Mission Report asks to continue its mission (`FUN_004927c0`
 /// on the mission's family `+0x80`): Diplomacy (`0x51`), the three design
-/// researches (`0x53`) and Subdue Uprising (`0x57`, on outcome 2 only)
-/// append TEXTSTRA `0x70db` "Do you wish the mission to continue?" and are
-/// kind 5 (`+0x84`), holding an Abort order (`0x250`) for the X. port: it
-/// asks while the mission goes on after the report, which is what outcome
-/// 2 is for Subdue Uprising; a report of a mission that has ended asks
-/// nothing, since the X would find no mission (`Class_0065b710_vt3c`).
+/// researches (`0x53`), Incite Uprising (`0x56`) and Subdue Uprising
+/// (`0x57`), the last two on outcome 2 only, append TEXTSTRA `0x70db` "Do
+/// you wish the mission to continue?" and are kind 5 (`+0x84`), holding an
+/// Abort order (`0x250`) for the X. port: it asks while the mission goes on
+/// after the report, which is what outcome 2 is for the uprisings; a
+/// report of a mission that has ended asks nothing, since the X would find
+/// no mission (`Class_0065b710_vt3c`).
 #[must_use]
 pub fn mission_report_asks_to_continue(
     kind: rebellion_core::missions::MissionKind,
@@ -1095,6 +1096,7 @@ pub fn mission_report_asks_to_continue(
                 | MissionKind::ShipDesignResearch
                 | MissionKind::FacilityDesignResearch
                 | MissionKind::TroopTrainingResearch
+                | MissionKind::InciteUprising
                 | MissionKind::SubdueUprising
         )
 }
@@ -1116,6 +1118,8 @@ pub struct ReportFacts<'a> {
     pub target_killed: bool,
     /// The recruited character (`+0xa8`).
     pub recruit: Option<&'a str>,
+    /// Whether the target system is in uprising (`+0x88` bit 2).
+    pub revolting: bool,
 }
 
 /// A Mission Report's title and body (`FUN_004927c0`, notification
@@ -1128,8 +1132,13 @@ pub struct ReportFacts<'a> {
 ///   side: `0x70d9` the Alliance, `0x70d8` the Empire, `0x70da` neither;
 /// - Espionage (`0x52`): `0x7108` / `0x710b`, then `0x7109` / `0x710c` or
 ///   `0x710a` / `0x710d`;
+/// - Recon (`0x54`), with a leader only and in the third person:
+///   `0x70e8` over `0x70e9` or `0x70ea`;
 /// - Recruitment (`0x55`), first person only: `0x711b` "{1:1} Recruits
 ///   {3:1}" over `0x7119`, or `0x7118` over `0x711a`;
+/// - Incite Uprising (`0x56`): `0x7100` / `0x7103`, then `0x7101` /
+///   `0x7104`, or on a failure `0x7102` / `0x7105` while the system is
+///   calm and `0x7107` / `0x7106` while it revolts (`+0x88` bit 2);
 /// - Subdue Uprising (`0x57`): `0x7110` / `0x7113`, then `0x7111` /
 ///   `0x7114` or `0x7112` / `0x7115`;
 /// - Jedi Training (`0x58`): `0x71c0` / `0x71c3`, then `0x71c1` / `0x71c4`
@@ -1163,7 +1172,7 @@ pub fn mission_report_texts(
     let success = facts.success;
     let speaker = facts
         .leader
-        .filter(|&(_, major)| major)
+        .filter(|&(_, major)| major && kind != MissionKind::Reconnaissance)
         .map(|(name, _)| name);
     let target = facts.target.unwrap_or_default();
     let killed = facts.target_killed;
@@ -1186,6 +1195,15 @@ pub fn mission_report_texts(
             };
             (pair, pair)
         }
+        MissionKind::Reconnaissance if facts.leader.is_some() => {
+            let pair = (0x70e8, if success { 0x70e9 } else { 0x70ea });
+            (pair, pair)
+        }
+        MissionKind::InciteUprising => match (success, facts.revolting) {
+            (true, _) => ((0x7100, 0x7101), (0x7103, 0x7104)),
+            (false, false) => ((0x7100, 0x7102), (0x7103, 0x7105)),
+            (false, true) => ((0x7100, 0x7107), (0x7103, 0x7106)),
+        },
         MissionKind::SubdueUprising => (
             (0x7110, if success { 0x7111 } else { 0x7112 }),
             (0x7113, if success { 0x7114 } else { 0x7115 }),
@@ -2153,15 +2171,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn diplomacy_research_and_subdue_reports_ask_to_continue_while_the_mission_goes_on() {
-        // FUN_004927c0 cases 0x51, 0x53 and 0x57 (outcome 2) append 0x70db
-        // and are kind 5; the others (0x52 Espionage, 0x55 ...) are kind 3.
+    fn diplomacy_research_and_uprising_reports_ask_to_continue_while_the_mission_goes_on() {
+        // FUN_004927c0 cases 0x51, 0x53, 0x56 and 0x57 (outcome 2) append
+        // 0x70db and are kind 5 (case 0x56's failure jumps to the 0x70db
+        // append, LAB_004941d6); the others (0x52 Espionage, 0x55 ...) are
+        // kind 3.
         use rebellion_core::missions::MissionKind;
         for kind in [
             MissionKind::Diplomacy,
             MissionKind::ShipDesignResearch,
             MissionKind::FacilityDesignResearch,
             MissionKind::TroopTrainingResearch,
+            MissionKind::InciteUprising,
             MissionKind::SubdueUprising,
         ] {
             assert!(mission_report_asks_to_continue(kind, true), "{kind:?}");
@@ -2398,7 +2419,7 @@ mod tests {
                 "My Jedi Training mission on Averam was a success.".into()
             ))
         );
-        assert_eq!(report(MissionKind::Reconnaissance, true, None, None), None);
+        assert_eq!(report(MissionKind::Autoscrap, true, None, None), None);
         assert_eq!(
             mission_report_texts(
                 MissionKind::Espionage,
@@ -2410,6 +2431,86 @@ mod tests {
                 &HashMap::new()
             ),
             None
+        );
+    }
+
+    // FUN_004927c0 cases 0x54 and 0x56: the shipped recon and incite texts.
+    #[test]
+    fn recon_reports_in_the_third_person_and_incite_tells_a_revolt() {
+        use rebellion_core::missions::MissionKind;
+        let texts: HashMap<u16, String> = [
+            (0x70e8, "Recon Mission Report"),
+            (0x70e9, "The reconnaissance mission to {1:1} was successful.\n"),
+            (0x70ea, "The reconnaissance mission to {1:1} failed.\n"),
+            (0x7100, "{1:1} Mission Report"),
+            (0x7101, "My Incite Uprising mission to {2:1} was successful.  The system has gone into uprising."),
+            (0x7102, "My Incite Uprising mission to {2:1} has not produced results.\n"),
+            (0x7103, "Incite Uprising Mission Report"),
+            (0x7104, "The Incite Uprising mission to {1:1} was successful.  "),
+            (0x7105, "My Incite Uprising mission to {1:1} has not produced results.\n"),
+            (0x7106, "My Incite Uprising mission to {1:1} has inflamed the uprising there, but the enemy is still in control.\n"),
+            (0x7107, "My Incite Uprising mission to {2:1} has not yet overthrown the government, but the system is in uprising.\n"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let report = |kind, success, leader, revolting| {
+            let facts = ReportFacts {
+                success,
+                leader,
+                system: "Averam",
+                revolting,
+                ..ReportFacts::default()
+            };
+            mission_report_texts(kind, &facts, &texts)
+        };
+        let leia = Some(("Leia Organa", true));
+        let agent = Some(("Agent", false));
+        let pair = |title: &str, body: &str| Some((title.to_owned(), body.to_owned()));
+        assert_eq!(
+            report(MissionKind::Reconnaissance, true, leia, false),
+            pair(
+                "Recon Mission Report",
+                "The reconnaissance mission to Averam was successful.\n"
+            )
+        );
+        assert_eq!(
+            report(MissionKind::Reconnaissance, false, agent, false),
+            pair(
+                "Recon Mission Report",
+                "The reconnaissance mission to Averam failed.\n"
+            )
+        );
+        assert_eq!(report(MissionKind::Reconnaissance, true, None, false), None);
+        assert_eq!(
+            report(MissionKind::InciteUprising, true, leia, true),
+            pair(
+                "Leia Organa Mission Report",
+                "My Incite Uprising mission to Averam was successful.  The system has gone into uprising."
+            )
+        );
+        assert_eq!(
+            report(MissionKind::InciteUprising, false, leia, false).map(|(_, body)| body),
+            Some("My Incite Uprising mission to Averam has not produced results.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::InciteUprising, false, leia, true).map(|(_, body)| body),
+            Some("My Incite Uprising mission to Averam has not yet overthrown the government, but the system is in uprising.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::InciteUprising, true, agent, false),
+            pair(
+                "Incite Uprising Mission Report",
+                "The Incite Uprising mission to Averam was successful.  "
+            )
+        );
+        assert_eq!(
+            report(MissionKind::InciteUprising, false, agent, false).map(|(_, body)| body),
+            Some("My Incite Uprising mission to Averam has not produced results.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::InciteUprising, false, agent, true).map(|(_, body)| body),
+            Some("My Incite Uprising mission to Averam has inflamed the uprising there, but the enemy is still in control.\n".into())
         );
     }
 
