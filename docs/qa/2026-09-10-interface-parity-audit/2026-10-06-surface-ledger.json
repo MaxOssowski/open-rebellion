@@ -3275,9 +3275,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-encounter-messages/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-conflict-list/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-conflict-list/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/"
           ],
-          "note": "Battle reports open their Assault Summary from the index. 2026-11-05: the Conflict list compared with A0 messages-day633/index-tab7 (message-display.mjs, Linux): chosen and unchosen rows' icon 0x2ad7 and 32x17 heads 0 differing; the unchosen row's icon loses its last column and row (FUN_00468ab0, A0). The title's TTF smoothing is the accepted text deviation (extent x 32..136 vs A0 33..136).",
+          "note": "Battle reports open their Assault Summary from the index. 2026-11-05: the Conflict list compared with A0 messages-day633/index-tab7 (message-display.mjs, Linux): chosen and unchosen rows' icon 0x2ad7 and 32x17 heads 0 differing; the unchosen row's icon loses its last column and row (FUN_00468ab0, A0). The title's TTF smoothing is the accepted text deviation (extent x 32..136 vs A0 33..136). 2026-11-06: Saboteurs Strike also posts on the Conflict rail (+0x34 0x100), compared with A0 saboteurs-clean/ in message-display.mjs.",
           "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3308,9 +3309,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-message-display/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-display-sector/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-report-display/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-report-display/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/"
           ],
-          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0. 2026-11-05: A0 (message-rail/display-sesswenna) confirms a system's message opens its sector window and closes the index; message-display.mjs compares the window's frame with A0, 0 differing, after the switch-side button 10210 was keyed. Still partial: non-system objects and kind 4's Encyclopedia target have no A0 capture. 2026-11-06: a Mission Report's Display opens its mission's Missions window as A0 (report-display-missions-window-day235).",
+          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0. 2026-11-05: A0 (message-rail/display-sesswenna) confirms a system's message opens its sector window and closes the index; message-display.mjs compares the window's frame with A0, 0 differing, after the switch-side button 10210 was keyed. Still partial: non-system objects and kind 4's Encyclopedia target have no A0 capture. 2026-11-06: a Mission Report's Display opens its mission's Missions window as A0 (report-display-missions-window-day235). 2026-11-06: A0 unedited 'test' save: Display on a chosen Enemy Mission Foiled row closes the index and opens the sector of the mission's target (display-clean/), as the port's message at_system(target_system) does. Kind 4's Encyclopedia target is still open.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7230,9 +7232,10 @@
             "ghidra/notes/mission-lifecycle.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-reports-a0/",
-            "tools/interface-parity/message-display.mjs"
+            "tools/interface-parity/message-display.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/"
           ],
-          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared.",
+          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared. 2026-11-06: a sabotage's victim now reads Saboteurs Strike (FUN_0048b9a0, 0x7083..0x7085) on its Conflict rail; A0 unedited 'test' save shows 'Saboteurs Strike at Yavin' over 'Alliance Army Regiment', and message-display.mjs (Linux, Alliance) finds the port's picture 1013 and title image 0 pixels from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8386,9 +8389,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-enemy-panel-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-squadron-parent-after-battle-vm/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-alert-simulate/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-alert-simulate/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "A0 shows the simulated result (results-summary-sim.png, mc-sim-results.png); the browser checks only the Simulate button's rest art, not its route from the alert. 2026-11-05: run.mjs --battle (production-battle-alert-entry, letterboxed, both sides) presses Simulate on the alert: the battle is routed (no tactical entry) and the Battle Results window shows over the strategy view, as A0 message-rail/battle-averam-result.",
+          "note": "A0 shows the simulated result (results-summary-sim.png, mc-sim-results.png); the browser checks only the Simulate button's rest art, not its route from the alert. 2026-11-05: run.mjs --battle (production-battle-alert-entry, letterboxed, both sides) presses Simulate on the alert: the battle is routed (no tactical entry) and the Battle Results window shows over the strategy view, as A0 message-rail/battle-averam-result. 2026-11-06: the controls' art had the sides swapped (the Alliance drew the Empire's 10716/10719/10971); FUN_0044f860 gives side 1 0x29e2/0x29e5/0x2ade, as A0 TAC-01-C010 and the unedited Alliance game show (0 differing pixels each). Fixed in b107; run.mjs now checks each control against its side's A0 capture.",
           "scope": "Verified against A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8398,9 +8402,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-windows-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-layout/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-layout/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "Take Command enters the paused tactical battle as in A0 TAC-01-C010 -> TAC-01-C003; browser battle-alert-take-command probe (production-battle-alert-entry) passes on Linux Chromium.",
+          "note": "Take Command enters the paused tactical battle as in A0 TAC-01-C010 -> TAC-01-C003; browser battle-alert-take-command probe (production-battle-alert-entry) passes on Linux Chromium. 2026-11-06: the controls' art had the sides swapped (the Alliance drew the Empire's 10716/10719/10971); FUN_0044f860 gives side 1 0x29e2/0x29e5/0x2ade, as A0 TAC-01-C010 and the unedited Alliance game show (0 differing pixels each). Fixed in b107; run.mjs now checks each control against its side's A0 capture.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -8409,9 +8414,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "Retreat disabled by an enemy gravity well (FUN_00516730) is unit-tested only; the browser fixture keeps Retreat enabled and no A0 shows the disabled art.",
+          "note": "Retreat disabled by an enemy gravity well (FUN_00516730) is unit-tested only; the browser fixture keeps Retreat enabled and no A0 shows the disabled art. 2026-11-06: A0 battle-clean/20 (an unedited Alliance game, Battle at Umgul) shows Retreat disabled with 10976, the Alliance's disabled art after the b107 fix; the cause there is not shown, so the rule is not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8421,9 +8427,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-windows-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-layout/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-layout/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "Per-side window origin (62,49)/(125,52), frames 10710/10711 and red/green text match the Alliance and Imperial A0 alerts; both sides pass in the browser.",
+          "note": "Per-side window origin (62,49)/(125,52), frames 10710/10711 and red/green text match the Alliance and Imperial A0 alerts; both sides pass in the browser. 2026-11-06: the controls' art had the sides swapped (the Alliance drew the Empire's 10716/10719/10971); FUN_0044f860 gives side 1 0x29e2/0x29e5/0x2ade, as A0 TAC-01-C010 and the unedited Alliance game show (0 differing pixels each). Fixed in b107; run.mjs now checks each control against its side's A0 capture.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         }
       ]
@@ -10108,9 +10115,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal. 2026-11-06 (later): an unedited Alliance game (A0 battle-clean/, day 650, the Empire's Battle at Yavin) reads 'The Alliance fleet is defeated.' over 'Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.', and its Display page 'The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul.' (0x7011 with +0x48) with both buttons; the_alliances_withdrawal_from_its_own_system_reads_as_a0 gets the same lines.",
+          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal. 2026-11-06 (later): an unedited Alliance game (A0 battle-clean/, day 650, the Empire's Battle at Yavin) reads 'The Alliance fleet is defeated.' over 'Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.', and its Display page 'The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul.' (0x7011 with +0x48) with both buttons; the_alliances_withdrawal_from_its_own_system_reads_as_a0 gets the same lines. Day 672 (Averam defended): 'Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn.' and Display 0x7012; the_alliances_defence_of_its_own_system_reads_as_a0. Day 718 (Umgul, fleet destroyed): 0x700b and the Display page's 0x7010 / 0x7014 with one button; the_alliances_destroyed_fleet_reads_as_a0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

@@ -12155,6 +12155,110 @@ mod tests {
     }
 
     #[test]
+    fn the_alliances_defence_of_its_own_system_reads_as_a0() {
+        // A0 battle-clean/11-summary-defended-averam and 12-display (an
+        // unedited Alliance game, day 672, the Empire's Battle at Averam,
+        // Simulate Results): "The Alliance fleet is victorious." over
+        // "Averam has been successfully defended from Imperial forces. The
+        // Imperial fleet has withdrawn." (FUN_0049b4d0: 0x7002, 0x7005,
+        // 0x700c); the Display page reads 0x7012, "The Alliance fleet is
+        // victorious. The world Averam is now under Alliance blockade.",
+        // its own system as any won one, over 0x7013 with both buttons.
+        let mut texts = battle_texts();
+        for (id, text) in [
+            (
+                0x7012,
+                "The {1:4} fleet is victorious. The world {2:1} is now under {1:4} blockade. ",
+            ),
+            (
+                0x7013,
+                "Select one of the following buttons to close this display and go directly to... ",
+            ),
+        ] {
+            texts.insert(id, text.to_owned());
+        }
+        let report = BattleReport {
+            system_name: "Averam",
+            viewer_alliance: true,
+            winner_alliance: Some(true),
+            withdrawn: Some(false),
+            destination: None,
+            last_arrival: Some(false),
+            system_side: Some(true),
+        };
+        assert_eq!(
+            battle_report_lines(&texts, &report),
+            [
+                "The Alliance fleet is victorious.",
+                "Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn."
+            ]
+        );
+        assert_eq!(
+            battle_display_lines(&texts, &report),
+            (
+                [
+                    "The Alliance fleet is victorious. The world Averam is now under Alliance blockade."
+                        .to_owned(),
+                    "Select one of the following buttons to close this display and go directly to..."
+                        .to_owned()
+                ],
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn the_alliances_destroyed_fleet_reads_as_a0() {
+        // A0 battle-clean/23-summary-destroyed-umgul and 24-display (an
+        // unedited Alliance game, day 718, the Empire's Battle at Umgul,
+        // Simulate Results): "The Alliance fleet is defeated." over "Umgul
+        // is now under blockade by Imperial forces. The Alliance fleet has
+        // been completely destroyed." (FUN_0049b4d0: 0x7003, 0x7006,
+        // 0x700b); the Display page reads 0x7010, "The Alliance fleet was
+        // defeated at Umgul. Your fleet has been destroyed.", over 0x7014
+        // with the system's button alone.
+        let mut texts = battle_texts();
+        for (id, text) in [
+            (
+                0x7010,
+                "The {1:4} fleet was defeated at {2:1}. Your fleet has been destroyed. ",
+            ),
+            (
+                0x7014,
+                "Select the following button to close this display and go directly to... ",
+            ),
+        ] {
+            texts.insert(id, text.to_owned());
+        }
+        let report = BattleReport {
+            system_name: "Umgul",
+            viewer_alliance: true,
+            winner_alliance: Some(false),
+            withdrawn: None,
+            destination: None,
+            last_arrival: Some(false),
+            system_side: Some(true),
+        };
+        assert_eq!(
+            battle_report_lines(&texts, &report),
+            [
+                "The Alliance fleet is defeated.",
+                "Umgul is now under blockade by Imperial forces. The Alliance fleet has been completely destroyed."
+            ]
+        );
+        assert_eq!(
+            battle_display_lines(&texts, &report),
+            (
+                [
+                    "The Alliance fleet was defeated at Umgul. Your fleet has been destroyed.".to_owned(),
+                    "Select the following button to close this display and go directly to...".to_owned()
+                ],
+                false
+            )
+        );
+    }
+
+    #[test]
     fn the_empires_withdrawal_from_a_blockade_reads_as_a0() {
         // A0 battle-alert-empire/04-result (the Empire game's Battle at
         // Tralus, Simulate Results): "The Imperial fleet is defeated." over
@@ -18448,8 +18552,13 @@ mod tests {
         assert_eq!(alliance.rail, 10_820);
         assert_eq!(alliance.tabs[0], [10_728, 10_729]);
         assert_eq!(alliance.tabs[3], [10_734, 10_735]);
-        assert_eq!(alliance.buttons[0], [10_971, 10_972, 10_973]);
-        assert_eq!(alliance.buttons[2], [10_719, 10_720, 10_721]);
+        // FUN_0044f860: side 1's controls are 0x2ade.., 0x29e2.., 0x29e5..
+        // (A0 TAC-01-C010 and battle-clean/10-alert-averam, Alliance:
+        // 10974, 10722, 10725; battle-alert-empire/00, Empire: 10971,
+        // 10716, 10719).
+        assert_eq!(alliance.buttons[0], [10_974, 10_975, 10_976]);
+        assert_eq!(alliance.buttons[1], [10_722, 10_723, 10_724]);
+        assert_eq!(alliance.buttons[2], [10_725, 10_726, 10_727]);
         assert_eq!(
             alliance.tab_rects,
             [
@@ -18478,8 +18587,9 @@ mod tests {
         assert_eq!(empire.rail, 10_821);
         assert_eq!(empire.tabs[0], [10_738, 10_739]);
         assert_eq!(empire.tabs[3], [10_744, 10_745]);
-        assert_eq!(empire.buttons[0], [10_974, 10_975, 10_976]);
-        assert_eq!(empire.buttons[2], [10_725, 10_726, 10_727]);
+        assert_eq!(empire.buttons[0], [10_971, 10_972, 10_973]);
+        assert_eq!(empire.buttons[1], [10_716, 10_717, 10_718]);
+        assert_eq!(empire.buttons[2], [10_719, 10_720, 10_721]);
         assert_eq!(
             empire.tab_rects,
             [

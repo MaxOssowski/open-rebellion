@@ -3763,18 +3763,20 @@ async function probeTacticalBattleAlertEntry(
     listScene: 10714,
     rail: 10820,
     tabs: [10729, 10731, 10733, 10735],
-    retreat: [10971, 10972],
-    simulate: [10716, 10717],
-    command: [10719, 10720],
+    // FUN_0044f860: side 1 takes 0x2ade, 0x29e2 and 0x29e5 (A0
+    // TAC-01-C010, battle-clean/10-alert-averam).
+    retreat: [10974, 10975],
+    simulate: [10722, 10723],
+    command: [10725, 10726],
   } : {
     frame: 10711,
     scene: 10713,
     listScene: 10715,
     rail: 10821,
     tabs: [10739, 10741, 10743, 10745],
-    retreat: [10974, 10975],
-    simulate: [10722, 10723],
-    command: [10725, 10726],
+    retreat: [10971, 10972],
+    simulate: [10716, 10717],
+    command: [10719, 10720],
   };
   const probes = [{
     type: "battle-alert-frame",
@@ -3810,6 +3812,20 @@ async function probeTacticalBattleAlertEntry(
     type: "battle-alert-command-rest",
     ...verifyStrategyBitmap(viewport, stable.bytes, resources.command[0], 345 + dx, 350 + dy),
   }];
+  // The three controls at rest against A0, every pixel but the key: the
+  // Alliance's TAC-01-C010 (Wine) and the Empire's battle-alert-empire/00
+  // (VM), each window at the port's place (FUN_0044f860 picks the art by
+  // side).
+  const controlsA0 = path.join(root, alliance
+    ? ".artifacts/a0-vm/battle-clean/10-alert-averam-day672.png"
+    : ".artifacts/a0-vm/battle-alert-empire/00-alert-tralus-day300.png");
+  if (fs.existsSync(controlsA0)) {
+    const a0 = fs.readFileSync(controlsA0);
+    probes.push(...[["retreat", 77], ["simulate", 211], ["command", 345]].map(([name, x]) => ({
+      type: `battle-alert-${name}-a0`,
+      ...verifyStrategyBitmap(viewport, a0, resources[name][0], x + dx, 350 + dy),
+    })));
+  }
 
   // The alert holds the command center (A0 2026-11-05: with the Battle at
   // Umgul alert up, two clicks on the Popular Support rail opened no

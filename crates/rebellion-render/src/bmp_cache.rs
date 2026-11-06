@@ -715,26 +715,33 @@ pub mod resources {
         pub const BATTLE_ALERT_SCENE_ALLIANCE_DISABLED: u32 = 10714;
         pub const BATTLE_ALERT_SCENE_EMPIRE_DISABLED: u32 = 10715;
         /// Simulate Battle controls: normal, pressed, and disabled.
-        pub const BATTLE_ALERT_SIMULATE_ALLIANCE_NORMAL: u32 = 10716;
-        pub const BATTLE_ALERT_SIMULATE_ALLIANCE_PRESSED: u32 = 10717;
-        pub const BATTLE_ALERT_SIMULATE_ALLIANCE_DISABLED: u32 = 10718;
-        pub const BATTLE_ALERT_SIMULATE_EMPIRE_NORMAL: u32 = 10722;
-        pub const BATTLE_ALERT_SIMULATE_EMPIRE_PRESSED: u32 = 10723;
-        pub const BATTLE_ALERT_SIMULATE_EMPIRE_DISABLED: u32 = 10724;
-        /// Take Command controls: normal, pressed, and disabled.
-        pub const BATTLE_ALERT_COMMAND_ALLIANCE_NORMAL: u32 = 10719;
-        pub const BATTLE_ALERT_COMMAND_ALLIANCE_PRESSED: u32 = 10720;
-        pub const BATTLE_ALERT_COMMAND_ALLIANCE_DISABLED: u32 = 10721;
-        pub const BATTLE_ALERT_COMMAND_EMPIRE_NORMAL: u32 = 10725;
-        pub const BATTLE_ALERT_COMMAND_EMPIRE_PRESSED: u32 = 10726;
-        pub const BATTLE_ALERT_COMMAND_EMPIRE_DISABLED: u32 = 10727;
-        /// Retreat controls: normal, pressed, and disabled.
-        pub const BATTLE_ALERT_RETREAT_ALLIANCE_NORMAL: u32 = 10971;
-        pub const BATTLE_ALERT_RETREAT_ALLIANCE_PRESSED: u32 = 10972;
-        pub const BATTLE_ALERT_RETREAT_ALLIANCE_DISABLED: u32 = 10973;
-        pub const BATTLE_ALERT_RETREAT_EMPIRE_NORMAL: u32 = 10974;
-        pub const BATTLE_ALERT_RETREAT_EMPIRE_PRESSED: u32 = 10975;
-        pub const BATTLE_ALERT_RETREAT_EMPIRE_DISABLED: u32 = 10976;
+        /// `FUN_0044f860` gives side 1 (the Alliance) `0x29e2..0x29e4`,
+        /// otherwise `0x29dc..0x29de`; A0 TAC-01-C010 and battle-clean/
+        /// (Alliance) show 10722, battle-alert-empire/ (Empire) 10716.
+        pub const BATTLE_ALERT_SIMULATE_ALLIANCE_NORMAL: u32 = 10722;
+        pub const BATTLE_ALERT_SIMULATE_ALLIANCE_PRESSED: u32 = 10723;
+        pub const BATTLE_ALERT_SIMULATE_ALLIANCE_DISABLED: u32 = 10724;
+        pub const BATTLE_ALERT_SIMULATE_EMPIRE_NORMAL: u32 = 10716;
+        pub const BATTLE_ALERT_SIMULATE_EMPIRE_PRESSED: u32 = 10717;
+        pub const BATTLE_ALERT_SIMULATE_EMPIRE_DISABLED: u32 = 10718;
+        /// Take Command controls: normal, pressed, and disabled
+        /// (`FUN_0044f860`: side 1 `0x29e5..0x29e7`, otherwise
+        /// `0x29df..0x29e1`).
+        pub const BATTLE_ALERT_COMMAND_ALLIANCE_NORMAL: u32 = 10725;
+        pub const BATTLE_ALERT_COMMAND_ALLIANCE_PRESSED: u32 = 10726;
+        pub const BATTLE_ALERT_COMMAND_ALLIANCE_DISABLED: u32 = 10727;
+        pub const BATTLE_ALERT_COMMAND_EMPIRE_NORMAL: u32 = 10719;
+        pub const BATTLE_ALERT_COMMAND_EMPIRE_PRESSED: u32 = 10720;
+        pub const BATTLE_ALERT_COMMAND_EMPIRE_DISABLED: u32 = 10721;
+        /// Retreat controls: normal, pressed, and disabled
+        /// (`FUN_0044f860`: side 1 `0x2ade..0x2ae0`, otherwise
+        /// `0x2adb..0x2add`).
+        pub const BATTLE_ALERT_RETREAT_ALLIANCE_NORMAL: u32 = 10974;
+        pub const BATTLE_ALERT_RETREAT_ALLIANCE_PRESSED: u32 = 10975;
+        pub const BATTLE_ALERT_RETREAT_ALLIANCE_DISABLED: u32 = 10976;
+        pub const BATTLE_ALERT_RETREAT_EMPIRE_NORMAL: u32 = 10971;
+        pub const BATTLE_ALERT_RETREAT_EMPIRE_PRESSED: u32 = 10972;
+        pub const BATTLE_ALERT_RETREAT_EMPIRE_DISABLED: u32 = 10973;
         /// Two-column force-detail mask used by the battle window.
         pub const BATTLE_FORCE_DETAIL_TWO_COLUMN: u32 = 10761;
         /// Three-column operational/damaged/destroyed force-detail mask.
