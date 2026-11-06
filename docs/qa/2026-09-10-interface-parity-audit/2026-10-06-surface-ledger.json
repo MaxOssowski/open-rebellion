@@ -10088,9 +10088,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/"
           ],
-          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text.",
+          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

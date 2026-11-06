@@ -12075,6 +12075,35 @@ mod tests {
     }
 
     #[test]
+    fn the_empires_withdrawal_from_a_blockade_reads_as_a0() {
+        // A0 battle-alert-empire/04-result (the Empire game's Battle at
+        // Tralus, Simulate Results): "The Imperial fleet is defeated." over
+        // "Tralus is now under blockade by Alliance forces. The Imperial
+        // fleet has withdrawn to Coruscant." (FUN_0049b4d0: 0x7003, 0x7006,
+        // 0x700d).
+        let texts = battle_texts();
+        let lines = battle_report_lines(
+            &texts,
+            &BattleReport {
+                system_name: "Tralus",
+                viewer_alliance: false,
+                winner_alliance: Some(true),
+                withdrawn: Some(false),
+                destination: Some("Coruscant"),
+                last_arrival: Some(true),
+                system_side: Some(false),
+            },
+        );
+        assert_eq!(
+            lines,
+            [
+                "The Imperial fleet is defeated.",
+                "Tralus is now under blockade by Alliance forces. The Imperial fleet has withdrawn to Coruscant."
+            ]
+        );
+    }
+
+    #[test]
     fn the_report_finds_the_viewers_withdrawal_destination_in_the_world() {
         // FUN_0049b720 sets +0x48 from the viewer's withdrawn fleet; the
         // port asks withdraw_loser's search (FUN_005545e0): the nearest

@@ -28,3 +28,9 @@ The A0 run is the Empire game in the Win10 VM, day 300, with the Battle at Tralu
 - The rail's right edge: A0 shows a sector window's dotted border behind the alert there.
 
 The batch does not run this scenario, so it was run on its own.
+
+## The result (later the same day)
+
+A0 `battle-alert-empire/04-result`: after Simulate Results the Empire reads "The Imperial fleet is defeated." over "Tralus is now under blockade by Alliance forces. The Imperial fleet has withdrawn to Coruscant." These are `FUN_0049b4d0`'s `0x7003`, `0x7006` and `0x700d`.
+
+The unit test `the_empires_withdrawal_from_a_blockade_reads_as_a0` builds the same report with the shipped texts and gets A0's two lines word for word. This is the viewer's own withdrawal text that TAC-07-C004's note lacked an A0 for.
