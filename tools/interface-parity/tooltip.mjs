@@ -318,6 +318,26 @@ async function run(browser, base, faction) {
       await page.mouse.up();
       await frames(page, 6);
       await probe("mi-message-index", [573, 160], "90-mi-msg-r2.png");
+      // A shown message with a target enables Display (0x67), whose tip is
+      // "Display" (A0 tooltip/409: the Empire's Diplomacy report, the
+      // pointer at (575, 268)).
+      // The message arrows (523, 72) step to the fixture's Fleet Arrives,
+      // which names its system.
+      if (faction.name === "empire") {
+        for (let step = 0; step < 20; step += 1) {
+          const shown = await page.evaluate(() => window.__openRebellionInterfaceReady?.viewing_title ?? null);
+          if (shown?.startsWith("Fleet Arrives")) break;
+          await page.mouse.move(523, 72, { steps: 4 });
+          await frames(page, 3);
+          await page.mouse.down();
+          await frames(page, 3);
+          await page.mouse.up();
+          await frames(page, 6);
+        }
+        const title = await page.evaluate(() => window.__openRebellionInterfaceReady?.viewing_title ?? null);
+        assert.ok(title?.startsWith("Fleet Arrives"), `the arrows never reached Fleet Arrives: ${title}`);
+        await probe("mi-display-enabled", [575, 268], "409-mi-display-enabled.png");
+      }
       await page.goto(`${base}?fixture-code=${FLEET_FINDER | (faction.byte << 8)}`);
       await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
         null, { timeout: 15_000 });
