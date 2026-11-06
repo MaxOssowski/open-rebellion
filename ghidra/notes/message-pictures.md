@@ -202,17 +202,24 @@ Ported 2026-11-06: `MissionAdvance::arrivals` (`missions::note_arrival`), `story
 
 The port detects and captures teams (`mission_detection.rs`) but posts no 0x1f1 message, and its Mission Report bodies are its own English, not TEXTSTRA (2026-11-06).
 
-### A0: Maintenance Shortfall seen by the other side (2026-11-06)
+### A0: Maintenance Shortfall (2026-11-06, corrected the same day)
 
 A0 `maintenance-shortfall/alliance-view-coruscant-day163.png` (DS_flip_allian,
-Alliance player, day 163) shows "Maintenance Shortfall" for TIE Fighters lost
-at Imperial Coruscant. Its picture matches STRATEGY 1014 (`0x3f6`) pixel for
-pixel at screen (74, 82). The reader is the Alliance, but the system is the
-Empire's, so `FUN_00498970` leaves `+0x40` at 0 and `FUN_0048bbf0` does not set
-the picture for this copy. The `0x3f6` seen is most likely carried over from
-the Empire's original through `FUN_004c4b50` in the clone constructor
-`FUN_004988f0` (not traced). In effect the picture follows the side that lost
-the units, which the port already gives to the owner's message. The difference
-is the audience: the port files the message only for the owner
-(`RailAudience::side`), while A0 also showed it to the Alliance. When the
-other side receives it (always, or only with a view of the system) is open.
+day 163) shows "Maintenance Shortfall" for TIE Fighters lost at Imperial
+Coruscant. Its picture matches STRATEGY 1014 (`0x3f6`) pixel for pixel at
+screen (74, 82).
+
+DS_flip_allian is a host-edited save. Its cockpit is the Alliance's, but its
+messages are built for the Empire (`+0x20` = 2). Two later messages in the same
+game show this:
+- day 306, `battle-display/joins-ghorman-day306.png`: "Ghorman Joins Enemy"
+  over "Popular dissent ... join the Alliance." (`0x7039` / `0x703c`, which
+  `FUN_00499760` writes when the reader is not the new side);
+- day 297, `battle-display/`: the Battle Summary for Yavin uses the winner's
+  text `0x7012` and both buttons, although the Alliance fleet was destroyed.
+
+So this capture is the Empire's own message at its own system. That is the case
+`FUN_00498970` and `FUN_0048bbf0` handle: `+0x40` stays 1, and the reader 2
+takes `0x3f6`. The port gives the owner's message the same picture and
+audience. The earlier reading of this capture as a message shown to the other
+side was wrong.

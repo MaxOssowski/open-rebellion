@@ -7,8 +7,7 @@ use rebellion_core::ids::{FleetKey, SystemKey};
 use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::{ControlKind, GameWorld};
 use rebellion_render::{
-    BattleSession, CombatWinner, GameMessage, MessageCategory, MessageLog, MessageRail,
-    RailAudience, TacticalState,
+    BattleSession, CombatWinner, GameMessage, MessageCategory, MessageLog, TacticalState,
 };
 
 use crate::GameMode;
@@ -411,15 +410,16 @@ pub(crate) fn apply_system_occupation(
             .systems
             .get(system)
             .map_or("unknown", |value| value.name.as_str());
-        log.push(
-            GameMessage::at_system(
-                tick,
-                format!("{name} occupied by {winner:?}"),
-                MessageCategory::Combat,
-                system,
-            )
-            .on_rail(MessageRail::PopularSupport, RailAudience::Both),
-        );
+        // port: a log line only. Regiments taking the planet set its
+        // control bits 0x30, so FUN_00510d70 leaves bit 0x2000 clear and
+        // System Joins (FUN_00499760) stays silent; notification 0x31b has
+        // no message (FUN_00488de0).
+        log.push(GameMessage::at_system(
+            tick,
+            format!("{name} occupied by {winner:?}"),
+            MessageCategory::Combat,
+            system,
+        ));
     }
 
     for (_, character) in &mut world.characters {
@@ -676,9 +676,11 @@ mod tests {
             world.systems[system].control,
             ControlKind::Controlled(Faction::Alliance)
         );
+        // FUN_00510d70 leaves bit 0x2000 clear for a planet its regiments
+        // took, so System Joins (FUN_00499760) posts nothing, and 0x31b
+        // has no message (FUN_00488de0): the line stays off the index.
         assert!(messages.messages().iter().any(|message| {
-            message.rail == Some(MessageRail::PopularSupport)
-                && message.text.contains("occupied by Alliance")
+            message.rail.is_none() && message.text.contains("occupied by Alliance")
         }));
         // The Empire's regiment alone on an Alliance planet takes it, the
         // Alliance's still aboard not counting.

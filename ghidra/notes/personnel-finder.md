@@ -325,6 +325,12 @@ The port lists every recruited enemy character with its true place: a
 visible difference. Open: what creates a side's view of an enemy
 character (seen at a system, captured, a mission's report …).
 
+Correction (2026-11-06, later): DS_flip_allian is a host-edited save whose
+messages are built for the Empire while its cockpit is the Alliance's (see
+`message-pictures.md`, "A0: Maintenance Shortfall"). Its sides are mixed, so
+this capture does not settle which characters the other side's tab lists.
+It needs an unedited game.
+
 ## Open
 
 - The `+0x6c` field on each row item and its purpose.

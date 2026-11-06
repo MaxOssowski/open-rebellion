@@ -26,7 +26,7 @@ The VM's DS_flip_allian game (Alliance) ran on to day 297 and raised "Battle at 
 - the labels sit under the buttons;
 - the title and the outcome line stay at the top.
 
-All of this matches `ghidra/notes/battle-summary-window.md` and the port's `battle_display_page`. The Assault Summary (`FUN_0044c630`) places the Fleet button at x 226 and centres each label in its button.
+That save builds its messages for the Empire behind an Alliance cockpit: the page shows the winner's text `0x7012` and both buttons, although the Alliance fleet was destroyed. All of this matches `ghidra/notes/battle-summary-window.md` and the port's `battle_display_page`. The Assault Summary (`FUN_0044c630`) places the Fleet button at x 226 and centres each label in its button.
 
 ## Screenshots (sha256)
 

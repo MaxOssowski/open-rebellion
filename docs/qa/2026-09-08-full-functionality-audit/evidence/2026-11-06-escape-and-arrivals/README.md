@@ -67,11 +67,18 @@ No A0 capture of these messages exists.
 
 - A0: `.artifacts/a0-vm/maintenance-shortfall/alliance-view-coruscant-day163.png`
   (sha256 `a31c0bc3bacb7446f17c97edac61494edee2ca19456161c1a96139c7acd1eded`),
-  DS_flip_allian, Alliance player, day 163.
+  DS_flip_allian, day 163.
 - Texts: "Maintenance Shortfall" and "The following units have been destroyed
   at Coruscant due to a maintenance shortfall:" followed by "TIE Fighter". The
   `maintenance_texts` test now asserts this case.
 - Picture: STRATEGY 1014 (`0x3f6`) matches at screen (74, 82) with no differing
-  sampled pixel. That is the picture the port gives the Empire's own message.
-- Difference left open: A0 showed the Empire's message to the Alliance player.
-  The port files it only for the owner. See `ghidra/notes/message-pictures.md`.
+  sampled pixel.
+- Correction (same day): DS_flip_allian is a host-edited save. It builds its
+  messages for the Empire behind an Alliance cockpit: on day 306 it shows
+  "Ghorman Joins Enemy" over "...join the Alliance."
+  (`.artifacts/a0-vm/battle-display/joins-ghorman-day306.png`, sha256
+  `953b9464bcd498e769c2f7ccdb5c3992b39b7ef4b20bbb717463498897ec08ef`).
+- So this capture is the Empire's own message, with the picture
+  `FUN_0048bbf0` gives reader 2, as in the port. The first reading, the
+  message shown to the other side, was wrong, and there is no audience
+  difference.
