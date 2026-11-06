@@ -3876,6 +3876,30 @@ async function probeTacticalBattleAlertEntry(
         { x: 400, y: 0, width: 10, height: 280 },
       ]),
     });
+    // The Empire's System Assets (index 3) against A0
+    // battle-alert-empire/01-system-assets (the Battle at Tralus): the
+    // fixture's system holds Tralus's five facilities, and the rows' minis
+    // and the scene beside them are every pixel A0's. The bar is not
+    // compared: A0's list ran on past its fifth row.
+    const assetsA0 = path.join(root, ".artifacts/a0-vm/battle-alert-empire/01-system-assets.png");
+    if (index === 3 && !alliance && viewport.width === 640 && viewport.height === 480
+      && viewport.device_scale_factor === 1 && fs.existsSync(assetsA0)) {
+      const a0 = PNG.sync.read(fs.readFileSync(assetsA0));
+      const port = PNG.sync.read(capture);
+      const differ = ([left, top, right, bottom]) => {
+        let count = 0;
+        for (let y = top; y < bottom; y++) {
+          for (let x = left; x < right; x++) {
+            const i = (y * 640 + x) * 4;
+            if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) count++;
+          }
+        }
+        return count;
+      };
+      const assets = { minis: differ([220, 120, 272, 320]), scene: differ([140, 120, 215, 330]) };
+      assert.deepEqual(assets, { minis: 0, scene: 0 }, `${faction}: System Assets vs A0 ${JSON.stringify(assets)}`);
+      probes.push({ type: "battle-alert-system-assets-a0", ...assets });
+    }
     probes.push({
       type: "battle-alert-tab",
       tab: ["alliance-forces", "imperial-forces", "system-summary"][index - 1],

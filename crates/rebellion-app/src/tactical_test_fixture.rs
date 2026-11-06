@@ -647,6 +647,45 @@ pub(crate) fn apply(
         world.characters[character].current_system = None;
     }
     world.systems[system].fleets.extend([attacker, defender]);
+    // The Empire's alert system holds Tralus's assets as A0
+    // battle-alert-empire/01-system-assets lists them: GenCore Level I,
+    // Orbital Shipyard, Construction Yard and two mines, nothing else.
+    #[cfg(feature = "interface-test-fixtures")]
+    if request.battle_alert_presentation && request.faction == CockpitFaction::Empire {
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{
+            DefenseFacilityInstance, ManufacturingFacilityInstance, ProductionFacilityInstance,
+        };
+        let gencore = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: rebellion_core::ids::DatId::new(0x2300_0003),
+            side: Faction::Empire,
+        });
+        let yards = [(0x2800_0001, true), (0x2a00_0003, false)].map(|(id, is_shipyard)| {
+            world.manufacturing_facilities.insert(ManufacturingFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(id),
+                side: Faction::Empire,
+                is_shipyard,
+            })
+        });
+        let mines = [0, 1].map(|_| {
+            world.production_facilities.insert(ProductionFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2c00_0001),
+                side: Faction::Empire,
+                is_mine: true,
+            })
+        });
+        let place = &mut world.systems[system];
+        place.defense_facilities = vec![gencore];
+        place.manufacturing_facilities = yards.to_vec();
+        place.production_facilities = mines.to_vec();
+        place.ground_units.clear();
+        place.special_forces.clear();
+        for character in world.characters.values_mut() {
+            if character.current_system == Some(system) {
+                character.current_system = None;
+            }
+        }
+    }
 
     let player_is_attacker = request.faction == CockpitFaction::Alliance;
     tactical_flow::begin_player_battle(

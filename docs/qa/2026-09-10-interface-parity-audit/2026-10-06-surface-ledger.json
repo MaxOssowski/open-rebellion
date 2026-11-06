@@ -8314,12 +8314,14 @@
         {
           "id": "EVT-02-C002",
           "requirement": "system assets",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-lists/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-lists/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/",
+            "tools/interface-parity/run.mjs"
           ],
-          "note": "System Assets tab implemented from FUN_00450770; the browser fixture system has no assets (heading only) and no A0 capture of this tab exists.",
+          "note": "Pass (2026-11-06): A0 battle-alert-empire/01-system-assets (Battle at Tralus) lists GenCore Level I, Orbital Shipyard, Construction Yard, Mine, Mine; the Empire's alert fixture holds the same facilities and run.mjs --battle (production-battle-alert-entry, Linux, 640x480) finds the rows' minis and scene 0 px off A0; the unit test the_battle_alert_lists_a_systems_facilities_by_kind_as_a0 gets A0's list.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

@@ -12380,6 +12380,63 @@ mod tests {
     }
 
     #[test]
+    fn the_battle_alert_lists_a_systems_facilities_by_kind_as_a0() {
+        // A0 battle-alert-empire/01-system-assets (the Battle at Tralus, day
+        // 300): GenCore Level I, Orbital Shipyard, Construction Yard, Mine,
+        // Mine (FUN_00539d70: defenses, then yards, then mines).
+        use rebellion_core::dat::Faction;
+        use rebellion_core::world::{
+            ControlKind, DefenseFacilityInstance, ManufacturingFacilityInstance,
+            ProductionFacilityInstance,
+        };
+        let mut world = GameWorld::default();
+        let system = test_system(&mut world, ControlKind::Controlled(Faction::Empire), None);
+        let yard = |world: &mut GameWorld, id, is_shipyard| {
+            world.manufacturing_facilities.insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(id),
+                side: Faction::Empire,
+                is_shipyard,
+            })
+        };
+        let construction = yard(&mut world, 0x2a00_0003, false);
+        let shipyard = yard(&mut world, 0x2800_0001, true);
+        let mine = |world: &mut GameWorld| {
+            world.production_facilities.insert(ProductionFacilityInstance {
+                class_dat_id: DatId::new(0x2c00_0001),
+                side: Faction::Empire,
+                is_mine: true,
+            })
+        };
+        let mines = [mine(&mut world), mine(&mut world)];
+        let gencore = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2300_0003),
+            side: Faction::Empire,
+        });
+        world.systems[system].manufacturing_facilities = vec![shipyard, construction];
+        world.systems[system].production_facilities = mines.to_vec();
+        world.systems[system].defense_facilities = vec![gencore];
+        let rows = battle_alert_rows(
+            &world,
+            &TroopTransportState::default(),
+            system,
+            BattleAlertList::SystemAssets,
+        );
+        let texts: Vec<&str> = rows.iter().map(|row| row.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "System Assets",
+                "GenCore Level I",
+                "Orbital Shipyard",
+                "Construction Yard",
+                "Mine",
+                "Mine"
+            ]
+        );
+        assert!(rows[1..].iter().all(|row| !row.picture.is_empty()));
+    }
+
+    #[test]
     fn the_battle_alert_lists_the_system_assets() {
         // FUN_00450770(0): the heading 0x1925, the facilities
         // (FUN_00539d70), the regiments (FUN_00504c40) and the personnel
