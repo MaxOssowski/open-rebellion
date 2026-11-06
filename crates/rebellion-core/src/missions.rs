@@ -3124,6 +3124,9 @@ pub struct MissionEnded {
     pub mission_id: u64,
     pub kind: MissionKind,
     pub faction: MissionFaction,
+    /// The mission's target system, named by its end messages
+    /// (`FUN_00491500`, `0x713f`).
+    pub target_system: SystemKey,
     /// The end code (`+0x64`): 1 for a mission that ran its course, else
     /// the validator's reason.
     pub end_code: u8,
@@ -3387,6 +3390,7 @@ impl MissionSystem {
             mission_id: mission.id,
             kind: mission.kind,
             faction: mission.faction,
+            target_system: mission.target_system,
             end_code: mission.end_code,
             tick: now,
         });
@@ -9567,6 +9571,7 @@ mod tests {
 
         assert!(advance.results.is_empty());
         assert_eq!(advance.ended[0].end_code, 5);
+        assert_eq!(advance.ended[0].target_system, here);
     }
 
     #[test]

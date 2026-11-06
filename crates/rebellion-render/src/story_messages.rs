@@ -1099,6 +1099,75 @@ pub fn mission_report_asks_to_continue(
         )
 }
 
+/// A Mission Report's title and body (`FUN_004927c0`, notification
+/// `0x1f0`) for the kinds ported so far; `None` for the others. A leader
+/// (`+0x74`) that is a major character (family `0x30..0x37`) reports in
+/// the first person, its name the first substitution; otherwise the report
+/// names the mission's kind and leaves the leader out. `success` is outcome
+/// 3, a failure outcome 2 (`param_3 + 0x28`). The texts:
+/// - Diplomacy (`0x51`): `0x70d0` / `0x70d4`, then `0x70d1` / `0x70d5`
+///   (support rose) or `0x70d2` / `0x70d6` (no effect), then the support
+///   side (`+0x84` bits 2..3): `0x70d9` the Alliance, `0x70d8` the Empire,
+///   `0x70da` neither;
+/// - Espionage (`0x52`): `0x7108` / `0x710b`, then `0x7109` / `0x710c` or
+///   `0x710a` / `0x710d`;
+/// - Subdue Uprising (`0x57`): `0x7110` / `0x7113`, then `0x7111` /
+///   `0x7114` or `0x7112` / `0x7115`;
+/// - Jedi Training (`0x58`): `0x71c0` / `0x71c3`, then `0x71c1` / `0x71c4`
+///   or `0x71c2` / `0x71c5`.
+///
+/// port: a diplomacy failure reads "no effect" (outcome 2); the port's
+/// result does not tell a fall in support (outcome 1, `0x70d3`). An
+/// espionage report lists no further systems (`FUN_00494df0`, `0x710e`),
+/// as the port's espionage reveals only its target.
+#[must_use]
+pub fn mission_report_texts(
+    kind: rebellion_core::missions::MissionKind,
+    success: bool,
+    leader: Option<(&str, bool)>,
+    target: &str,
+    support: Option<rebellion_core::dat::Faction>,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    use rebellion_core::dat::Faction;
+    use rebellion_core::missions::MissionKind;
+    // (first-person title, success, failure; third-person title, success,
+    // failure).
+    let ids: [u16; 6] = match kind {
+        MissionKind::Diplomacy => [0x70d0, 0x70d1, 0x70d2, 0x70d4, 0x70d5, 0x70d6],
+        MissionKind::Espionage => [0x7108, 0x7109, 0x710a, 0x710b, 0x710c, 0x710d],
+        MissionKind::SubdueUprising => [0x7110, 0x7111, 0x7112, 0x7113, 0x7114, 0x7115],
+        MissionKind::JediTraining => [0x71c0, 0x71c1, 0x71c2, 0x71c3, 0x71c4, 0x71c5],
+        _ => return None,
+    };
+    let speaker = leader.filter(|&(_, major)| major).map(|(name, _)| name);
+    let (title, body, parameters) = match speaker {
+        Some(name) => (
+            ids[0],
+            if success { ids[1] } else { ids[2] },
+            vec![
+                MessageParameter::Named { name },
+                MessageParameter::Named { name: target },
+            ],
+        ),
+        None => (
+            ids[3],
+            if success { ids[4] } else { ids[5] },
+            vec![MessageParameter::Named { name: target }],
+        ),
+    };
+    let mut text = fill_message_text(texts.get(&body)?, &parameters);
+    if kind == MissionKind::Diplomacy {
+        let line = match support {
+            Some(Faction::Alliance) => 0x70d9,
+            Some(Faction::Empire) => 0x70d8,
+            _ => 0x70da,
+        };
+        text.push_str(&fill_message_text(texts.get(&line)?, &[]));
+    }
+    Some((fill_message_text(texts.get(&title)?, &parameters), text))
+}
+
 /// The advisor event a message names its speaker by (`FUN_0048db30`, and
 /// the same switch in the mission report `FUN_004927c0` on its `+0x74`):
 /// the major characters' own codes, Mon Mothma `0x17`, Leia `0x18`, Luke
@@ -1217,6 +1286,42 @@ pub fn fleet_arrival_texts(
     Some((
         fill_message_text(texts.get(&0x7078)?, &parameters),
         fill_message_text(texts.get(&0x7079)?, &parameters),
+    ))
+}
+
+/// Whether a mission's end `code` tells its opponent it was foiled.
+/// `FUN_00491500` posts `0x713e` to any reader that is not the mission's
+/// side, whatever the code; its own side reads nothing for codes 0..2.
+/// A0 message-rail/battle-averam-result: a battle that ends an enemy team
+/// files Enemy Mission Foiled.
+///
+/// hyp: `0x1f1` is sent for every end but a run course (1) and an abort
+/// (2), as the opponent would otherwise read "foiled" for a success; its
+/// sender `FUN_00525070` is reached through a vtable and not traced.
+#[must_use]
+pub const fn foils_the_mission(code: u8) -> bool {
+    code >= 3
+}
+
+/// An enemy mission foiled (`FUN_00491500`, notification `0x1f1`):
+/// TEXTSTRA `0x713e` "Enemy Mission Foiled" and `0x713f` "An enemy {1:1}
+/// mission to {2:1} has been foiled by our forces.", the mission the first
+/// substitution and its target the second (A0
+/// message-rail/display-mission-chosen: the title on the Mission rail).
+/// Returns the title and body.
+#[must_use]
+pub fn enemy_mission_foiled_texts(
+    mission: &str,
+    target: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let parameters = [
+        MessageParameter::Named { name: mission },
+        MessageParameter::Named { name: target },
+    ];
+    Some((
+        fill_message_text(texts.get(&0x713e)?, &parameters),
+        fill_message_text(texts.get(&0x713f)?, &parameters),
     ))
 }
 
@@ -2108,6 +2213,144 @@ mod tests {
             fleet_arrival_texts("Fleet 3", "Averam", &HashMap::new()),
             None
         );
+    }
+
+    // FUN_004927c0 (notification 0x1f0): the shipped TEXTSTRA reports.
+    #[test]
+    fn a_mission_report_speaks_through_a_major_leader_and_names_the_kind_otherwise() {
+        use rebellion_core::dat::Faction;
+        use rebellion_core::missions::MissionKind;
+        let texts: HashMap<u16, String> = [
+            (0x70d0, "{1:1} Mission Report"),
+            (0x70d1, "My diplomacy mission to {2:1} has increased popular support on that system.  "),
+            (0x70d2, "My diplomacy mission to {2:1} had no effect on popular support in that system.  "),
+            (0x70d4, "Diplomacy Mission Report"),
+            (0x70d5, "The diplomacy mission to {1:1} has increased popular support on that system.  "),
+            (0x70d6, "The diplomacy mission to {1:1} had no effect on our popular support on that system.  "),
+            (0x70d8, "The population supports the Empire.\n"),
+            (0x70d9, "The population supports the Alliance.\n"),
+            (0x70da, "The population does not strongly support either side.\n"),
+            (0x7108, "{1:1} Mission Report"),
+            (0x710a, "My espionage mission to {2:1} was not successful."),
+            (0x710b, "Espionage Mission Report"),
+            (0x710c, "The espionage mission to {1:1} was successful.  "),
+            (0x7113, "Subdue Uprising Mission Report"),
+            (0x7115, "The Subdue Uprising mission to {1:1} failed.  The populace is still in a state of uprising.\n"),
+            (0x71c0, "{1:1} Mission Report"),
+            (0x71c1, "My Jedi Training mission on {2:1} was a success."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let report = |kind, success, leader, support| {
+            mission_report_texts(kind, success, leader, "Averam", support, &texts)
+        };
+        assert_eq!(
+            report(MissionKind::Diplomacy, true, Some(("Leia Organa", true)), Some(Faction::Alliance)),
+            Some((
+                "Leia Organa Mission Report".into(),
+                "My diplomacy mission to Averam has increased popular support on that system.  The population supports the Alliance.\n".into()
+            ))
+        );
+        assert_eq!(
+            report(MissionKind::Diplomacy, false, Some(("Jan Dodonna", false)), Some(Faction::Empire)),
+            Some((
+                "Diplomacy Mission Report".into(),
+                "The diplomacy mission to Averam had no effect on our popular support on that system.  The population supports the Empire.\n".into()
+            ))
+        );
+        assert_eq!(
+            report(MissionKind::Diplomacy, true, None, None).map(|(_, body)| body),
+            Some("The diplomacy mission to Averam has increased popular support on that system.  The population does not strongly support either side.\n".into())
+        );
+        assert_eq!(
+            report(MissionKind::Diplomacy, false, Some(("Leia Organa", true)), None).map(|(_, body)| body),
+            Some("My diplomacy mission to Averam had no effect on popular support in that system.  The population does not strongly support either side.\n".into())
+        );
+        assert_eq!(
+            report(
+                MissionKind::Espionage,
+                false,
+                Some(("Han Solo", true)),
+                None
+            ),
+            Some((
+                "Han Solo Mission Report".into(),
+                "My espionage mission to Averam was not successful.".into()
+            ))
+        );
+        assert_eq!(
+            report(MissionKind::Espionage, true, None, None),
+            Some((
+                "Espionage Mission Report".into(),
+                "The espionage mission to Averam was successful.  ".into()
+            ))
+        );
+        assert_eq!(
+            report(MissionKind::SubdueUprising, false, None, None).map(|(title, _)| title),
+            Some("Subdue Uprising Mission Report".into())
+        );
+        assert_eq!(
+            report(
+                MissionKind::JediTraining,
+                true,
+                Some(("Luke Skywalker", true)),
+                None
+            ),
+            Some((
+                "Luke Skywalker Mission Report".into(),
+                "My Jedi Training mission on Averam was a success.".into()
+            ))
+        );
+        assert_eq!(report(MissionKind::Sabotage, true, None, None), None);
+        assert_eq!(
+            mission_report_texts(
+                MissionKind::Espionage,
+                true,
+                None,
+                "Averam",
+                None,
+                &HashMap::new()
+            ),
+            None
+        );
+    }
+
+    // FUN_00491500 (notification 0x1f1): TEXTSTRA 0x713e / 0x713f as shipped.
+    #[test]
+    fn a_foiled_enemy_mission_names_the_mission_and_its_target() {
+        let texts: HashMap<u16, String> = [
+            (0x713e, "Enemy Mission Foiled"),
+            (
+                0x713f,
+                "An enemy {1:1} mission to {2:1} has been foiled by our forces.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            enemy_mission_foiled_texts("Espionage", "Averam", &texts),
+            Some((
+                "Enemy Mission Foiled".into(),
+                "An enemy Espionage mission to Averam has been foiled by our forces.".into()
+            ))
+        );
+        assert_eq!(
+            enemy_mission_foiled_texts("Espionage", "Averam", &HashMap::new()),
+            None
+        );
+    }
+
+    // FUN_00491500: the opponent reads 0x713e whatever the code; a run
+    // course (1) and an abort (2) are not foiled.
+    #[test]
+    fn every_end_but_a_run_course_or_an_abort_foils_a_mission() {
+        assert!(!foils_the_mission(1));
+        assert!(!foils_the_mission(2));
+        assert!(foils_the_mission(3));
+        assert!(foils_the_mission(5));
+        assert!(foils_the_mission(7));
     }
 
     // FUN_00497690 (event 0x303): TEXTSTRA 0x70b0 / 0x70b1 as shipped, for a

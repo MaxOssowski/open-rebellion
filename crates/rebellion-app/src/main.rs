@@ -2943,6 +2943,7 @@ async fn main() {
                     }
                 }
             }
+            push_foiled_missions(&mut msg_log, &world, &mission_advance.ended, &message_texts);
             // The encounter class (vtable 0x65b408): Force detection and the
             // confrontation's 0x360 and Luke's 0x211.
             for message in rebellion_render::story_messages::EncounterNotes::gather(
@@ -11303,6 +11304,46 @@ fn push_advance_injuries(
     }
 }
 
+/// Notification `0x1f1` (`FUN_00491500`): the opponent of a foiled
+/// mission reads Enemy Mission Foiled on its Mission rail.
+fn push_foiled_missions(
+    log: &mut MessageLog,
+    world: &GameWorld,
+    ended: &[rebellion_core::missions::MissionEnded],
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    for ended in ended {
+        if !rebellion_render::story_messages::foils_the_mission(ended.end_code) {
+            continue;
+        }
+        let Some(target) = world.systems.get(ended.target_system) else {
+            continue;
+        };
+        let Some((title, text)) = rebellion_render::story_messages::enemy_mission_foiled_texts(
+            rebellion_render::mission_dialog::kind_name(ended.kind),
+            &target.name,
+            texts,
+        ) else {
+            continue;
+        };
+        let opponent_is_alliance = ended.faction == MissionFaction::Empire;
+        log.push(filed(
+            GameMessage::at_system(
+                ended.tick,
+                text,
+                MessageCategory::Mission,
+                ended.target_system,
+            )
+            .with_title(title)
+            .with_picture(pictures::enemy_mission_foiled(pictures::reader(
+                opponent_is_alliance,
+            ))),
+            MessageRail::Mission,
+            Some(RailAudience::side(opponent_is_alliance)),
+        ));
+    }
+}
+
 /// Notification `0x362` for each Force discovery (timer `0x389`), built as
 /// `FUN_0048f1e0` (`story_messages::force_user_discovered`).
 fn push_force_discoveries(
@@ -11322,6 +11363,28 @@ fn push_force_discoveries(
             log.push(message);
         }
     }
+}
+
+/// A Mission Report's title and text: the shipped report when there is
+/// one, else the port's `fallback` line, then the continue `question`.
+/// The shipped body runs straight on into the question (`FUN_004927c0`
+/// appends `0x70db` to the same text); the fallback takes a space.
+fn report_title_and_text(
+    shipped: Option<(String, String)>,
+    fallback: String,
+    question: Option<&str>,
+) -> (Option<String>, String) {
+    let (title, mut text) = match shipped {
+        Some((title, body)) => (Some(title), body),
+        None => (None, fallback),
+    };
+    if let Some(question) = question {
+        if title.is_none() {
+            text.push(' ');
+        }
+        text.push_str(question);
+    }
+    (title, text)
 }
 
 fn apply_mission_result(
@@ -11415,38 +11478,11 @@ fn apply_mission_result(
                 .and_then(|character| pictures::portrait_key(world, character)),
         )
     };
-    // Notifications 0x16 and 0x17, Mission Report and Mission Failed.
-    // FUN_004927c0: Diplomacy, research and Subdue Uprising end on TEXTSTRA
-    // 0x70db and ask (kind 5).
-    let asks = rebellion_render::story_messages::mission_report_asks_to_continue(
-        result.kind,
-        continuing,
-    );
-    let mut text = format!("{faction_name} {kind_name} mission at {sys_name} {outcome_str}");
-    if asks {
-        if let Some(question) = message_texts.get(&0x70db) {
-            let question = rebellion_render::story_messages::fill_message_text(question, &[]);
-            text = format!("{text} {question}");
-        }
-    }
-    let mut report = GameMessage::at_system(result.tick, text, category, result.target_system)
-        .with_picture(picture);
-    if asks {
-        report = report.with_continue_question(result.mission_id);
-    }
-    log.push(filed(
-        report
-        // FUN_004927c0's speaker map on the report's leader (+0x74).
-        .with_advisor_event(rebellion_render::story_messages::speaker_event(
-            world,
-            result.character,
-        )),
-        MessageRail::Mission,
-        Some(RailAudience::side(
-            result.faction == MissionFaction::Alliance,
-        )),
-    ));
-
+    // The report's leader (+0x74), read before the effects.
+    let leader = result
+        .character
+        .and_then(|character| world.characters.get(character))
+        .map(|character| (character.name.clone(), character.is_major));
     // SFX + voice lines for mission outcomes
     #[cfg(not(target_arch = "wasm32"))]
     if result.outcome == rebellion_core::missions::MissionOutcome::Success {
@@ -11721,6 +11757,54 @@ fn apply_mission_result(
             }
         }
     }
+    // Notifications 0x16 and 0x17, Mission Report and Mission Failed.
+    // FUN_004927c0: Diplomacy, research and Subdue Uprising end on TEXTSTRA
+    // 0x70db and ask (kind 5).
+    let asks =
+        rebellion_render::story_messages::mission_report_asks_to_continue(result.kind, continuing);
+    // FUN_004927c0's TEXTSTRA report, read after the effects as the
+    // notification arrives after them (Diplomacy names the new support
+    // side); the port's own line for the kinds not yet ported.
+    let support = world.systems.get(result.target_system).and_then(|system| {
+        rebellion_core::economy::support_side(system, &world.gnprtb, world.difficulty_index)
+    });
+    let shipped = rebellion_render::story_messages::mission_report_texts(
+        result.kind,
+        result.outcome == rebellion_core::missions::MissionOutcome::Success,
+        leader.as_ref().map(|(name, major)| (name.as_str(), *major)),
+        &sys_name,
+        support,
+        message_texts,
+    );
+    let question = message_texts
+        .get(&0x70db)
+        .filter(|_| asks)
+        .map(|question| rebellion_render::story_messages::fill_message_text(question, &[]));
+    let (title, text) = report_title_and_text(
+        shipped,
+        format!("{faction_name} {kind_name} mission at {sys_name} {outcome_str}"),
+        question.as_deref(),
+    );
+    let mut report = GameMessage::at_system(result.tick, text, category, result.target_system)
+        .with_picture(picture);
+    if let Some(title) = title {
+        report = report.with_title(title);
+    }
+    if asks {
+        report = report.with_continue_question(result.mission_id);
+    }
+    log.push(filed(
+        report
+            // FUN_004927c0's speaker map on the report's leader (+0x74).
+            .with_advisor_event(rebellion_render::story_messages::speaker_event(
+                world,
+                result.character,
+            )),
+        MessageRail::Mission,
+        Some(RailAudience::side(
+            result.faction == MissionFaction::Alliance,
+        )),
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -13597,5 +13681,113 @@ mod character_health_tests {
         assert_eq!(messages[0].title.as_deref(), Some("Future Jedi Discovered"));
         assert!(messages[0].text.starts_with("I have detected that Klev"));
         assert_eq!(messages[0].audience, RailAudience::Empire);
+    }
+
+    #[test]
+    fn a_shipped_report_runs_into_its_question_and_the_port_line_takes_a_space() {
+        // FUN_004927c0 appends 0x70db to the body it has built.
+        let question = Some("Do you wish the mission to continue?");
+        assert_eq!(
+            report_title_and_text(
+                Some((
+                    "Diplomacy Mission Report".into(),
+                    "The population supports the Alliance.\n".into()
+                )),
+                "port".into(),
+                question
+            ),
+            (
+                Some("Diplomacy Mission Report".into()),
+                "The population supports the Alliance.\nDo you wish the mission to continue?"
+                    .into()
+            )
+        );
+        assert_eq!(
+            report_title_and_text(
+                None,
+                "Alliance Sabotage mission at Averam failed".into(),
+                question
+            ),
+            (
+                None,
+                "Alliance Sabotage mission at Averam failed Do you wish the mission to continue?"
+                    .into()
+            )
+        );
+        assert_eq!(
+            report_title_and_text(None, "line".into(), None),
+            (None, "line".into())
+        );
+    }
+
+    #[test]
+    fn a_foiled_mission_posts_enemy_mission_foiled_to_its_opponent() {
+        // FUN_00491500 (notification 0x1f1): 0x713e / 0x713f to the reader
+        // that is not the mission's side, picture 0x431 / 0x432 by reader.
+        use rebellion_core::missions::MissionEnded;
+        let mut world = GameWorld::default();
+        let averam = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(2),
+            name: "Averam".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        let texts = std::collections::HashMap::from([
+            (0x713e, "Enemy Mission Foiled".to_owned()),
+            (
+                0x713f,
+                "An enemy {1:1} mission to {2:1} has been foiled by our forces.".to_owned(),
+            ),
+        ]);
+        let ended = |faction, end_code| MissionEnded {
+            mission_id: 1,
+            kind: MissionKind::Espionage,
+            faction,
+            target_system: averam,
+            end_code,
+            tick: 43,
+        };
+        let mut log = MessageLog::new();
+        push_foiled_missions(
+            &mut log,
+            &world,
+            &[
+                ended(MissionFaction::Alliance, 3),
+                ended(MissionFaction::Empire, 1),
+                ended(MissionFaction::Empire, 4),
+            ],
+            &texts,
+        );
+        let messages = log.messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].title.as_deref(), Some("Enemy Mission Foiled"));
+        assert_eq!(
+            messages[0].text,
+            "An enemy Espionage mission to Averam has been foiled by our forces."
+        );
+        assert_eq!(messages[0].audience, RailAudience::Empire);
+        assert_eq!(messages[0].picture.map(|p| p.background), Some(0x432));
+        assert_eq!(messages[0].rail, Some(MessageRail::Mission));
+        assert_eq!(messages[1].audience, RailAudience::Alliance);
+        assert_eq!(messages[1].picture.map(|p| p.background), Some(0x431));
     }
 }
