@@ -7210,34 +7210,40 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-lifecycle.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-reports-a0/",
+            "tools/interface-parity/message-display.mjs"
           ],
-          "note": "Mission completion posts its report messages (mission-event-cookbook, advisor speaker events); unit tests and Message Index gates only. No A0 capture of this state.",
+          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-12-C004",
           "requirement": "success",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-lifecycle.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-object-targeting/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-reports-a0/",
+            "tools/interface-parity/message-display.mjs"
           ],
-          "note": "Success outcomes post their messages; diplomacy/recon success seen in Chromium 153 runs. No A0 report capture.",
+          "note": "Pass (5c4f869e): a successful mission's report matches A0 mission-reports/emperor-recruits-thrawn-day43 in the Linux browser (message-display.mjs files it through apply_mission_result: text equal, picture 0 px off A0).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-12-C005",
           "requirement": "failure",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-lifecycle.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-reports-a0/",
+            "tools/interface-parity/message-display.mjs"
           ],
-          "note": "Failure reports exist as messages (unit tests); No A0 capture of this state.",
+          "note": "Pass (5c4f869e): a failed mission's report matches A0 mission-reports/emperor-espionage-chandrila-day129 in the Linux browser (\"My espionage mission to Chandrila was not successful.\\nPersonnel are returning to Coruscant.\", picture 0 px off A0).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
