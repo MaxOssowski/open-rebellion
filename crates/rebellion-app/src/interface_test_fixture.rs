@@ -3121,7 +3121,18 @@ fn place_quadrant_contents(
             .collect::<Vec<_>>()
             .into_iter()
     };
-    let mut own = agents(player_is_alliance);
+    let mut own: Vec<_> = agents(player_is_alliance).collect();
+    // The Empire's traveller is Jerjerrod, as A0 mission-reports/missions-
+    // window-enroute-day276 shows him in hyperspace to Chandrila.
+    if let Some(at) = own
+        .iter()
+        .position(|&key| world.characters[key].name == "Jerjerrod")
+        .filter(|_| !player_is_alliance && own.len() > 1)
+    {
+        let jerjerrod = own.remove(at);
+        own.insert(1, jerjerrod);
+    }
+    let mut own = own.into_iter();
     let mut theirs = agents(!player_is_alliance);
     let placements = [
         (own.next(), primary, player_is_alliance),

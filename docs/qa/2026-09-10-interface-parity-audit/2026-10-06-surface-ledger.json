@@ -7190,14 +7190,15 @@
         {
           "id": "OBJ-12-C001",
           "requirement": "hyperspace",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
             "ghidra/notes/status-window.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-enroute-and-question/"
           ],
-          "note": "Commit c60881b3 adds the static hyperspace mark to travelling minis in the Missions window (GOKRES class variants); browser only via the GID/status gates on Arch Chromium. No A0 capture of this state. 2026-11-04: sector-quadrants.mjs 'missions-en-route' (Linux, both sides): a Diplomacy agent in hyperspace to its target is listed there on 11500, 11501 and its mini, 1525 pixels exact (FUN_0042c3b0); its mission now lights the target's icon (FUN_00556390 puts it in the target container). A0 still lacks a mission member in hyperspace.",
+          "note": "Pass (2026-11-06): A0 mission-reports/missions-window-enroute-day276 shows Jerjerrod in hyperspace to Chandrila on the en route mark; sector-quadrants.mjs missions-en-route (Linux, Empire: Jerjerrod) finds the composed mini (11500, 11501, his mini) in A0 with 0 differing pixels.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7319,15 +7320,16 @@
         {
           "id": "OBJ-12-C011",
           "requirement": "continue",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-report-question.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-mission-report-question/",
             "tools/interface-parity/message-display.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-uprising-recon/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-uprising-recon/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-enroute-and-question/"
           ],
-          "note": "The Mission Report of Diplomacy, the design researches and Subdue Uprising (outcome 2) ends on TEXTSTRA 0x70db 'Do you wish the mission to continue?' and is kind 5, holding an Abort order (FUN_004927c0). In the Message Index's mode 2 the text narrows to 0x140 and the checkmark 0x98 (0x2aae) and X 0x99 (0x2ab1) stand at (355, 244) and (355, 281) (FUN_004665f0, FUN_00469de0); the checkmark keeps the mission (vt38), the X sends the Abort with force 1 (vt3c -> FUN_0041ce20), which the validator refuses outside phase 8. Ported 2026-11-04; message-display.mjs (Linux, both sides): both buttons 0 pixels off, the X logs the refused Abort and the report asks no more. No A0 capture of a report's question yet. 0231c545: Incite Uprising's failure also asks (case 0x56 -> LAB_004941d6).",
+          "note": "The Mission Report of Diplomacy, the design researches and Subdue Uprising (outcome 2) ends on TEXTSTRA 0x70db 'Do you wish the mission to continue?' and is kind 5, holding an Abort order (FUN_004927c0). In the Message Index's mode 2 the text narrows to 0x140 and the checkmark 0x98 (0x2aae) and X 0x99 (0x2ab1) stand at (355, 244) and (355, 281) (FUN_004665f0, FUN_00469de0); the checkmark keeps the mission (vt38), the X sends the Abort with force 1 (vt3c -> FUN_0041ce20), which the validator refuses outside phase 8. Ported 2026-11-04; message-display.mjs (Linux, both sides): both buttons 0 pixels off, the X logs the refused Abort and the report asks no more. No A0 capture of a report's question yet. 0231c545: Incite Uprising's failure also asks (case 0x56 -> LAB_004941d6). 2026-11-06: A0 mission-reports/report-before-display-day234 (Thrawn's Diplomacy asking to continue): message-display.mjs (Empire) finds the check and X cells 0 px off A0. Pass.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7365,13 +7367,14 @@
         {
           "id": "OBJ-12-C015",
           "requirement": "mission hyperspace moving-star indicator",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-missions-rail-arrivals/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-enroute-and-question/"
           ],
-          "note": "The mark is the still bitmap 11501 (FUN_0042c3b0); the Missions window sets no timer, and the manual's 'moving starfield' (Figs. 2.35, 3.51) is its streaks. sector-quadrants.mjs 'missions-en-route' (Linux, both sides) finds the same 1525 pixels 1.5 s apart. No A0 capture of a mission member in hyperspace (2026-11-04).",
+          "note": "Pass (2026-11-06): the mark is the still bitmap 11501 (FUN_0042c3b0); A0 missions-window-enroute-day276's mini equals the port's composite, 0 px (sector-quadrants.mjs, Linux), and the port's mark does not change 1.5 s later.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

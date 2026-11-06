@@ -1242,7 +1242,35 @@ const cases = [
       const later = await stableScreen(page, directory, "en-route-later");
       const still = compareIcon(later, place, composite, "en-route-mini-later", directory);
       assert.equal(still.different_pixels, 0, `the mark moved: ${JSON.stringify(still)}`);
-      return { at, window, checks, still };
+      // A0 mission-reports/missions-window-enroute-day276 (the Empire's
+      // "Mission at Chandrila", Jerjerrod in hyperspace): the Empire's
+      // traveller is Jerjerrod, and his composed mini is found in A0's
+      // team list with every pixel A0's.
+      let a0 = null;
+      const a0File = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..",
+        ".artifacts/a0-vm/mission-reports/missions-window-enroute-day276.png");
+      if (faction.name === "empire" && fs.existsSync(a0File)) {
+        const shot = PNG.sync.read(fs.readFileSync(a0File));
+        let best = null;
+        for (let top = 225; top < 275; top += 1) {
+          for (let left = 260; left < 340; left += 1) {
+            let differ = 0;
+            for (let y = 0; y < composite.height && (best === null || differ < best.differ); y += 1) {
+              for (let x = 0; x < composite.width; x += 1) {
+                const i = ((top + y) * shot.width + left + x) * 4;
+                const j = (y * composite.width + x) * 4;
+                // The backdrop's key pixel shows the window through it.
+                if (blueKey(composite.data, j)) continue;
+                if ([0, 1, 2].some((c) => shot.data[i + c] !== composite.data[j + c])) differ += 1;
+              }
+            }
+            if (best === null || differ < best.differ) best = { left, top, differ };
+          }
+        }
+        a0 = best;
+        assert.equal(best.differ, 0, `Jerjerrod's en route mini differs from A0: ${JSON.stringify(best)}`);
+      }
+      return { at, window, checks, still, a0 };
     },
   },
   {

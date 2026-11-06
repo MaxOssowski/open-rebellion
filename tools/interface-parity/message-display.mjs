@@ -266,6 +266,31 @@ async function run(browser, base, faction) {
       cross: differing(screen, cross, await bitmap(10929)),
     };
     assert.deepEqual(answers, { check: 0, cross: 0 }, JSON.stringify(answers));
+    // A0 mission-reports/report-before-display-day234 (the Empire's index
+    // at (125, 52), Thrawn's Diplomacy report asking to continue): each
+    // button's 51 by 35 cell every pixel A0's.
+    if (faction.byte !== 1) {
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/mission-reports/report-before-display-day234.png")));
+        const cell = ([left, top]) => {
+          let differ = 0;
+          for (let y = 0; y < 35; y += 1) {
+            for (let x = 0; x < 51; x += 1) {
+              const i = ((top + y) * 640 + left + x) * 4;
+              const j = ((top + y - again.window_top + 52) * 640 + left + x - again.window_left + 125) * 4;
+              if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        answers.check_a0 = cell(check);
+        answers.cross_a0 = cell(cross);
+      } catch {
+        answers.check_a0 = null;
+      }
+      assert.ok((answers.check_a0 ?? 0) === 0 && (answers.cross_a0 ?? 0) === 0, JSON.stringify(answers));
+    }
     await click(page, [cross[0] + 25, cross[1] + 17]);
     const answered = await waitReport(page, (value) => value.mode === "list", "the X goes back to the list");
     const aborts = log.filter((line) => line.includes("[interface] message_index answer=abort"));
