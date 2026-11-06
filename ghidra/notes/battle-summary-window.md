@@ -129,5 +129,5 @@ white, font 4: the system's name, and "Fleet" (string `0x1942`).
 
 Ported in `tactical_view.rs` (`battle_display_lines`,
 `battle_display_page`). port: the withdrawn fleet's destination is
-decided after the report, so `0x7011` drops " to {3:1}". The fleet
+decided after the report, so `0x7011` drops " to {3:1}". Corrected 2026-11-06: `battle_report` asks `withdrawal_destination` first and names it, as A0 battle-clean/02 ("Your fleet has withdrawn to Umgul.") shows; only with no destination found is " to {3:1}" dropped. The fleet
 button follows the text: it shows when the viewer won or withdrew.

@@ -12102,6 +12102,59 @@ mod tests {
     }
 
     #[test]
+    fn the_alliances_withdrawal_from_its_own_system_reads_as_a0() {
+        // A0 battle-clean/01-summary-withdrawn-umgul and 02-display (an
+        // unedited Alliance game, day 650, the Empire's Battle at Yavin,
+        // Simulate Results): "The Alliance fleet is defeated." over "Yavin
+        // is now under blockade by Imperial forces. The Alliance fleet has
+        // withdrawn to Umgul." (FUN_0049b4d0: 0x7003, 0x7006, 0x700d); the
+        // Display page reads "The Alliance fleet was defeated at Yavin.
+        // Your fleet has withdrawn to Umgul." (0x7011 with +0x48) over
+        // 0x7013, with both buttons.
+        let mut texts = battle_texts();
+        for (id, text) in [
+            (
+                0x7011,
+                "The {1:4} fleet was defeated at {2:1}. Your fleet has withdrawn to {3:1}. ",
+            ),
+            (
+                0x7013,
+                "Select one of the following buttons to close this display and go directly to... ",
+            ),
+        ] {
+            texts.insert(id, text.to_owned());
+        }
+        let report = BattleReport {
+            system_name: "Yavin",
+            viewer_alliance: true,
+            winner_alliance: Some(false),
+            withdrawn: Some(true),
+            destination: Some("Umgul"),
+            last_arrival: Some(false),
+            system_side: Some(true),
+        };
+        assert_eq!(
+            battle_report_lines(&texts, &report),
+            [
+                "The Alliance fleet is defeated.",
+                "Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul."
+            ]
+        );
+        assert_eq!(
+            battle_display_lines(&texts, &report),
+            (
+                [
+                    "The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul."
+                        .to_owned(),
+                    "Select one of the following buttons to close this display and go directly to..."
+                        .to_owned()
+                ],
+                true
+            )
+        );
+    }
+
+    #[test]
     fn the_empires_withdrawal_from_a_blockade_reads_as_a0() {
         // A0 battle-alert-empire/04-result (the Empire game's Battle at
         // Tralus, Simulate Results): "The Imperial fleet is defeated." over

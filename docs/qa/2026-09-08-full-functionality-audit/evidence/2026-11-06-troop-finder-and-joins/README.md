@@ -58,3 +58,14 @@ A clean Enemy Mission Foiled for the Alliance (`.artifacts/a0-vm/foiled-clean/te
 - The gate now accepts either state: the first row chosen, as A0 `troop-finder-first-row/alliance-tab` shows, or no row at all (every row band under 100, the list's background).
 - A row shown but not chosen (grey, about 117) still fails.
 - The rerun passed.
+
+## A Battle Summary in an unedited Alliance game (TAC-07-C004)
+
+**A0** (`.artifacts/a0-vm/battle-clean/`, the "test" save, day 650): the Empire attacked Yavin, and the result came from Simulate Results.
+- `00-alert-yavin-day650.png` (sha256 `b553d4ec71dd8f65afe8ca54bec65587cdc0b5fbdd6311d74fa22b43ba42ed7e`).
+- `01-summary-withdrawn-umgul.png` (sha256 `23b5ec2b1ffaae9c63af5cdd510c0225c333bce61b6f69a6ee432b6052838bca`): "The Alliance fleet is defeated." over "Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.".
+- `02-display-withdrawn-umgul.png` (sha256 `4a85078d1f52395b87fe1e4e1abffeb365e2f853ac81af45a5cfbd57d0915bea`): "The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul." over `0x7013`, with the Yavin and Fleet buttons.
+
+**Port.** The unit test `the_alliances_withdrawal_from_its_own_system_reads_as_a0` builds both pages' lines from the shipped templates and gets A0's text word for word.
+
+`ghidra/notes/battle-summary-window.md` had said that the port drops " to {3:1}". That is out of date: `battle_report` finds the destination before the report (`withdrawal_destination`), and the line names it.
