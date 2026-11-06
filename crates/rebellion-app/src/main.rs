@@ -5380,16 +5380,53 @@ async fn main() {
                         // message's object; port: its system's sector window
                         // opens with the system chosen.
                         for action in &actions {
-                            if let MessageIndexAction::Display(system) = *action {
+                            if let MessageIndexAction::Display { system, mission } = *action {
                                 sector_window_state.open_for_system(
                                     &world,
                                     system,
                                     cockpit_state.faction,
                                 );
                                 map_state.selected_system = Some(system);
+                                // A Mission Report's running mission: its
+                                // Missions window (A0 mission-reports/report-
+                                // display-missions-window-day235). port: an
+                                // ended mission's report goes to its system.
+                                let member = mission.and_then(|id| {
+                                    mission_state
+                                        .missions()
+                                        .iter()
+                                        .find(|value| value.id == id)
+                                        .and_then(|value| value.members().next())
+                                });
+                                let mut shown = false;
+                                if let (Some(member), Some(point)) = (
+                                    member,
+                                    sector_window_state.quadrant_window_point(
+                                        &world,
+                                        cockpit_layout,
+                                        system,
+                                        rebellion_render::quadrant_icons::Quadrant::Missions,
+                                    ),
+                                ) {
+                                    missions_window_state.open(
+                                        &world,
+                                        fog_state,
+                                        &mission_state,
+                                        system,
+                                        point,
+                                        cockpit_state.faction,
+                                        cockpit_layout,
+                                    );
+                                    shown = missions_window_state.show_member(
+                                        &mission_state,
+                                        system,
+                                        member,
+                                    );
+                                }
                                 macroquad::logging::info!(
-                                    "[interface] message_index display system={:?}",
-                                    world.systems.get(system).map(|value| value.name.as_str())
+                                    "[interface] message_index display system={:?} missions_window={}",
+                                    world.systems.get(system).map(|value| value.name.as_str()),
+                                    shown
                                 );
                             }
                         }
@@ -10162,7 +10199,7 @@ fn apply_message_index_actions(
             MessageIndexAction::DeleteSelected(ids) => log.delete_by_ids(&ids),
             MessageIndexAction::MessageDisplayed(id) => log.mark_message_read(id),
             // The caller opened the object's window.
-            MessageIndexAction::Display(_) => {}
+            MessageIndexAction::Display { .. } => {}
             // Either answer drops the held Abort (vt +0x38 / +0x3c); the
             // caller sent it for the X.
             MessageIndexAction::ContinueMission { message }
@@ -12016,7 +12053,8 @@ fn apply_mission_result(
         question.as_deref(),
     );
     let mut report = GameMessage::at_system(result.tick, text, category, result.target_system)
-        .with_picture(picture);
+        .with_picture(picture)
+        .with_mission(result.mission_id);
     if let Some(title) = title {
         report = report.with_title(title);
     }

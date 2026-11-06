@@ -228,6 +228,10 @@ pub struct GameMessage {
     /// player answers in the Message Index.
     #[serde(skip)]
     pub continue_question: Option<u64>,
+    /// The mission a Mission Report names (its object, `+0x78`), which
+    /// Display goes to while it runs.
+    #[serde(skip)]
+    pub mission: Option<u64>,
     /// When the message expires (its class's slot `+0x30`).
     #[serde(skip)]
     pub lifetime: MessageLifetime,
@@ -284,6 +288,7 @@ impl GameMessage {
             assault_report: None,
             advisor_event: [0; 2],
             continue_question: None,
+            mission: None,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
@@ -311,6 +316,7 @@ impl GameMessage {
             assault_report: None,
             advisor_event: [0; 2],
             continue_question: None,
+            mission: None,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
@@ -364,6 +370,13 @@ impl GameMessage {
     #[must_use]
     pub fn with_continue_question(mut self, mission: u64) -> Self {
         self.continue_question = Some(mission);
+        self
+    }
+
+    /// Name the mission a Mission Report is about.
+    #[must_use]
+    pub fn with_mission(mut self, mission: u64) -> Self {
+        self.mission = Some(mission);
         self
     }
 

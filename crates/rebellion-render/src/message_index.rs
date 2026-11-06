@@ -803,9 +803,14 @@ pub enum MessageIndexAction {
     /// [`MessageIndexState::close`] and drops the window.
     Close,
     /// Display (`0x67`, `FUN_00467f10`): the app goes to the chosen
-    /// message's object (`FUN_00429440`). port: a message carries its
-    /// system, whose sector window opens with the system chosen.
-    Display(SystemKey),
+    /// message's object (`FUN_00429440`): a Mission Report's mission while
+    /// it runs (A0 mission-reports/report-display-missions-window-day235:
+    /// the Missions window "Mission at Chandrila"), else its system, whose
+    /// sector window opens with the system chosen.
+    Display {
+        system: SystemKey,
+        mission: Option<u64>,
+    },
     /// A Mission Report's checkmark (`0x98`): the mission continues and
     /// the message asks no more.
     ContinueMission { message: MessageId },
@@ -1125,7 +1130,10 @@ pub const fn posting_mask(command: u16) -> Option<u16> {
 /// (`FUN_004ece60`). port: a message with a system stands for those;
 /// kind 4's Encyclopedia target is not carried.
 #[must_use]
-pub fn display_target(rows: &[&GameMessage], state: &MessageIndexState) -> Option<SystemKey> {
+pub fn display_target(
+    rows: &[&GameMessage],
+    state: &MessageIndexState,
+) -> Option<(SystemKey, Option<u64>)> {
     let message = match state.mode {
         IndexMode::List => rows
             .iter()
@@ -1134,7 +1142,7 @@ pub fn display_target(rows: &[&GameMessage], state: &MessageIndexState) -> Optio
             .iter()
             .find(|message| state.viewing == Some(message.id)),
     }?;
-    message.system
+    Some((message.system?, message.mission))
 }
 
 /// The viewed message's open question and the mission it names, in mode 2.
@@ -1360,8 +1368,8 @@ pub fn draw_message_index(
         Some(0x67) => {
             // FUN_00467f10: go to the object (FUN_00429440), then close
             // (0x28).
-            if let Some(system) = target {
-                actions.push(MessageIndexAction::Display(system));
+            if let Some((system, mission)) = target {
+                actions.push(MessageIndexAction::Display { system, mission });
                 actions.push(MessageIndexAction::Close);
             }
         }
@@ -2519,14 +2527,25 @@ mod tests {
         state.selected.insert(rows[1].id);
         assert_eq!(display_target(&rows, &state), None);
         state.selected.insert(rows[0].id);
-        assert_eq!(display_target(&rows, &state), Some(system));
+        assert_eq!(display_target(&rows, &state), Some((system, None)));
         state.selected.clear();
         state.selected.insert(rows[0].id);
         state.mode = IndexMode::SingleMessage;
         state.viewing = Some(rows[1].id);
         assert_eq!(display_target(&rows, &state), None);
         state.viewing = Some(rows[0].id);
-        assert_eq!(display_target(&rows, &state), Some(system));
+        assert_eq!(display_target(&rows, &state), Some((system, None)));
+        // A Mission Report names its mission (A0 report-display-missions-
+        // window-day235).
+        let mut reports = MessageLog::new();
+        reports.push(
+            GameMessage::at_system(3, "Report", MessageCategory::Mission, system)
+                .with_mission(7)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        let report_rows = filtered_messages(&reports, 0x7b, true);
+        state.viewing = Some(report_rows[0].id);
+        assert_eq!(display_target(&report_rows, &state), Some((system, Some(7))));
 
         // Enabled art and the click (Alliance: 0x67 at (0x1a7, 0xc9)).
         let display = window_button_specs(
@@ -2558,7 +2577,10 @@ mod tests {
         assert!(
             result
                 .actions
-                .contains(&MessageIndexAction::Display(system))
+                .contains(&MessageIndexAction::Display {
+                    system,
+                    mission: None
+                })
         );
         assert!(result.actions.contains(&MessageIndexAction::Close));
     }

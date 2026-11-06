@@ -4118,8 +4118,20 @@ pub fn post_event_messages(
                 rebellion_render::MessageCategory::Event,
             ),
         };
+        // The report names its mission at the first system, which Display
+        // goes to (A0 mission-reports/report-display-missions-window-day235).
         let message = match asked.filter(|_| title == "Mission Report") {
-            Some(id) => message.with_continue_question(id),
+            Some(id) => match arrival_system {
+                Some(system) => rebellion_render::GameMessage::at_system(
+                    0,
+                    format!("{title}."),
+                    rebellion_render::MessageCategory::Event,
+                    system,
+                ),
+                None => message,
+            }
+            .with_continue_question(id)
+            .with_mission(id),
             None => message,
         };
         log.push(

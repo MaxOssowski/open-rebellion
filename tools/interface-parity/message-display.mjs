@@ -875,6 +875,31 @@ async function run(browser, base, faction) {
         JSON.stringify(rowChecks.expiry));
     }
 
+    // A Mission Report's Display goes to its running mission: the
+    // Missions window over its system (A0 mission-reports/report-display-
+    // missions-window-day235: "Mission at Chandrila", Thrawn's Diplomacy).
+    // The Alliance's run leaves the clock past the report's life.
+    if (faction.byte !== 1) {
+      // The recruitment report is still shown: Display Message goes back
+      // to the list.
+      const current = await report(page);
+      if (!current.index_open) await click(page, [ready.rail_x, ready.rail_y]);
+      else if (current.mode === "single") await click(page, showMessage);
+      const reports = await waitReport(page, (value) => value.index_open && value.mode === "list"
+        && value.rows.length > 0, "the Mission list for Display");
+      const asking = reports.rows.findIndex((text) => text.startsWith("Mission Report"));
+      assert.ok(asking >= 0, JSON.stringify(reports.rows));
+      const before = displays().length;
+      await click(page, await shown(asking));
+      await click(page, display);
+      await waitReport(page, (value) => !value.index_open, "Display closes the index");
+      assert.equal(displays().length, before + 1, JSON.stringify(log.slice(-6)));
+      assert.match(displays().at(-1), /missions_window=true$/);
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("report-display-missions-window");
+    }
+
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
       question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, shots };

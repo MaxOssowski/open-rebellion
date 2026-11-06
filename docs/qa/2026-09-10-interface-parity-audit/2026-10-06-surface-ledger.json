@@ -3306,9 +3306,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-message-display/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-display-sector/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-display-sector/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-report-display/"
           ],
-          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0. 2026-11-05: A0 (message-rail/display-sesswenna) confirms a system's message opens its sector window and closes the index; message-display.mjs compares the window's frame with A0, 0 differing, after the switch-side button 10210 was keyed. Still partial: non-system objects and kind 4's Encyclopedia target have no A0 capture.",
+          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0. 2026-11-05: A0 (message-rail/display-sesswenna) confirms a system's message opens its sector window and closes the index; message-display.mjs compares the window's frame with A0, 0 differing, after the switch-side button 10210 was keyed. Still partial: non-system objects and kind 4's Encyclopedia target have no A0 capture. 2026-11-06: a Mission Report's Display opens its mission's Missions window as A0 (report-display-missions-window-day235).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4297,13 +4298,15 @@
         {
           "id": "CMD-11-C025",
           "requirement": "Mission dialog",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
-            "crates/rebellion-render/src/mission_dialog.rs"
+            "crates/rebellion-render/src/mission_dialog.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-dialog-tips/",
+            "tools/interface-parity/tooltip.mjs"
           ],
-          "note": "FUN_0046a9c0's tips (0x8520 mission box, 0x8510 Missions, 0x8503 Cancel, 0x8502 Begin Mission, 0x8031, 0x8505, 0x8506) are registered; no A0 capture and no browser check yet.",
+          "note": "Pass (2026-11-06): A0 mission-dialog-tips/ (Empire game) shows Selected Mission, Missions, Encyclopedia, Begin Mission and Cancel tipped, the target and tabs not; tooltip.mjs --a0 (Linux) probes the same points in the mission fixture: positions, heights and presence equal A0, widths within the accepted text deviation.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7350,12 +7353,13 @@
         {
           "id": "OBJ-12-C014",
           "requirement": "navigate to target",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "ghidra/notes/status-window.md"
+            "ghidra/notes/status-window.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-report-display/"
           ],
-          "note": "Status Display routes by mission (commit bd948409) and Finder Display opens the target window; no browser case or A0 for a mission report's navigation.",
+          "note": "Pass (2026-11-06): A0 mission-reports/report-display-missions-window-day235: a Mission Report's Display opens the Missions window 'Mission at Chandrila'; the port carries the report's mission (GameMessage::mission) and opens its Missions window while it runs; message-display.mjs (Linux, Empire) logs missions_window=true.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

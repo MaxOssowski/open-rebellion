@@ -379,6 +379,27 @@ async function run(browser, base, faction) {
         await probe(label, point, capture);
       }
 
+      // The Create Mission dialog (FUN_0046a9c0) of the mission fixture
+      // (code 43), the Empire's at (230, 40) as A0's (mission-dialog-tips/,
+      // the Empire game, Jerjerrod at Ghorman): the mission box 0x8520
+      // "Selected Mission", Missions 0x8510, Encyclopedia 0x8031, Begin
+      // Mission 0x8502 and Cancel 0x8503 tipped; the target and the two
+      // page tabs not (A0 tooltip/401..408).
+      if (faction.name === "empire") {
+        await page.goto(`${base}?fixture-code=${43 | (faction.byte << 8)}`);
+        await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status === "ready", null,
+          { timeout: 30_000 });
+        await page.locator("#glcanvas").focus();
+        await frames(page, 10);
+        for (const [label, point, capture, none] of [["md-kind", [361, 150], "401-md-kind.png"],
+          ["md-missions", [362, 219], "402-md-missions.png"], ["md-target", [362, 290], "403-md-target.png", true],
+          ["md-encyclopedia", [297, 373], "404-md-encyclopedia.png"], ["md-begin", [365, 373], "405-md-begin.png"],
+          ["md-cancel", [431, 373], "406-md-cancel.png"], ["md-tab0", [295, 75], "407-md-tab0.png", true],
+          ["md-tab1", [425, 75], "408-md-tab1.png", true]]) {
+          await probe(label, point, capture, none);
+        }
+      }
+
       // The GID legend button (FUN_004286b0, command 0x134, TEXTSTRA
       // 0x173c "Legend") at (55, 50) for the Alliance, in the Popular
       // Support fixture (code 5, no window over it): A0 tooltip/360 (a new
