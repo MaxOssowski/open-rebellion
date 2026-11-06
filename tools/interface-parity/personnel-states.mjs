@@ -156,6 +156,16 @@ async function run(browser, base, faction) {
     if (faction.name === "alliance") assert.ok(available.length > 0, JSON.stringify(shown.rows));
     // The traveller names its destination, not where it left from.
     assert.ok(!travelling[0].includes("Location Unknown"), travelling[0]);
+    // A captive aboard names the ship it rides, numbered by its class, and
+    // " ( Captured ) " (A0 personnel-captured/finder-day628: "Jan Dodonna -
+    // Punisher ( Captured )"; fleet2/umgul-fleet1-ships: "Corellian
+    // Corvette 1"). The Empire's fixture has no fourth character.
+    const captured = shown.rows.filter((row) => / - .+ \( Captured \) $/.test(row));
+    if (faction.name === "alliance") {
+      assert.equal(captured.length, 1, JSON.stringify(shown.rows));
+      assert.match(captured[0], / - [A-Za-z][A-Za-z -]* \d+ \( Captured \) $/, captured[0]);
+      assert.ok(!/ - Fleet \d+ /.test(captured[0]), captured[0]);
+    }
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("characters");

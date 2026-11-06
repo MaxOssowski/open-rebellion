@@ -4986,14 +4986,17 @@
         {
           "id": "OBJ-03-C009",
           "requirement": "captured",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-personnel-finder-views/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-injured-character-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-captive-character-mark/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-personnel-captured-row/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-ship-names/",
+            "tools/interface-parity/personnel-states.mjs"
           ],
-          "note": "The 'captured' row text follows FUN_00465bb0 (state words 0x8798/0x8799/0x8747, abodes) in unit tests; no A0 capture of a character in this state and no browser case for it.",
+          "note": "Pass (b95): A0 personnel-captured/finder-day628 reads \"Jan Dodonna - Punisher ( Captured )\"; the Linux browser's Characters view reads \"Han Solo - Imperial Star Destroyer 1 ( Captured )\" (personnel-states.mjs): the ship it rides, numbered as A0 numbers ships, then the state word (FUN_00465bb0).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

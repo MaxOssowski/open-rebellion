@@ -1065,9 +1065,40 @@ pub fn apply(
             .iter()
             .filter(|(_, character)| character.is_alliance == player_is_alliance && character.recruited)
             .map(|(key, _)| key)
-            .take(3)
+            .take(4)
             .collect();
-        if let [busy, travelling, commander] = own[..] {
+        // A fourth character, where the side has one, is a captive aboard
+        // a ship of the player's first fleet (A0 personnel-captured/
+        // finder-day628: "Jan Dodonna - Punisher ( Captured )").
+        if let (Some(&captive), Some(fleet)) = (
+            own.get(3),
+            world
+                .fleets
+                .iter()
+                .find(|(_, fleet)| {
+                    fleet.is_alliance == player_is_alliance && !fleet.capital_ships.is_empty()
+                })
+                .map(|(key, _)| key),
+        ) {
+            let character = &mut world.characters[captive];
+            character.current_system = None;
+            character.current_fleet = Some(fleet);
+            character.ship = None;
+            character.on_mission = false;
+            character.is_captive = true;
+            character.captured_by = Some(if player_is_alliance {
+                Faction::Empire
+            } else {
+                Faction::Alliance
+            });
+            character.command = rebellion_core::character_command::CommandKind::None;
+            for other in world.fleets.values_mut() {
+                other.characters.retain(|&key| key != captive);
+            }
+            world.fleets[fleet].characters.push(captive);
+            world.number_ships();
+        }
+        if let [busy, travelling, commander, ..] = own[..] {
             let busy_character = &mut world.characters[busy];
             busy_character.current_system = Some(primary);
             busy_character.current_fleet = None;
