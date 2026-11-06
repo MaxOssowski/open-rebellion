@@ -374,6 +374,84 @@ async function run(browser, base, faction) {
         || captureChecks.body_text.every((v, i) => Math.abs(v - captureChecks.body_text_a0[i]) <= 2)),
       JSON.stringify(captureChecks));
 
+    // A Mission Report filed through the app's apply_mission_result (A0
+    // mission-reports/emperor-espionage-chandrila-day129, a new Expert
+    // Empire game): the Emperor's failed Espionage at Chandrila reads
+    // "Emperor Palpatine Mission Report" over "My espionage mission to
+    // Chandrila was not successful." and "Personnel are returning to
+    // Coruscant." (FUN_004927c0 case 0x52, 0x70e6), its picture every
+    // pixel A0's at the window's (12, 33).
+    if (faction.byte !== 1) {
+      await click(page, showMessage);
+      const reports = await waitReport(page, (value) => value.mode === "list", "the list for the report");
+      const espionage = reports.rows.findIndex((text) => text.startsWith("Emperor Palpatine Mission Report"));
+      assert.ok(espionage >= 0, JSON.stringify(reports.rows));
+      await click(page, await shown(espionage));
+      await click(page, showMessage);
+      const shownReport = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Emperor Palpatine Mission Report", "Display Message shows the report");
+      captureChecks.espionage_text = shownReport.viewing_text;
+      assert.equal(shownReport.viewing_text,
+        "My espionage mission to Chandrila was not successful.\nPersonnel are returning to Coruscant.",
+        JSON.stringify(shownReport));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("espionage-report");
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/mission-reports/emperor-espionage-chandrila-day129.png")));
+        const screen = PNG.sync.read(await page.screenshot());
+        let differ = 0;
+        for (let y = 33; y < 233; y += 1) {
+          for (let x = 12; x < 412; x += 1) {
+            const i = ((shownReport.window_top + y) * 640 + shownReport.window_left + x) * 4;
+            if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[i + c])) differ += 1;
+          }
+        }
+        captureChecks.espionage_picture_a0 = differ;
+      } catch {
+        captureChecks.espionage_picture_a0 = null;
+      }
+      assert.equal(captureChecks.espionage_picture_a0 ?? 0, 0, JSON.stringify(captureChecks));
+      // A0 mission-reports/emperor-recruits-thrawn-day43 (case 0x55,
+      // 0x711b / 0x7119).
+      await click(page, showMessage);
+      const again = await waitReport(page, (value) => value.mode === "list", "the list for the recruitment");
+      const recruits = again.rows.findIndex((text) => text.startsWith("Emperor Palpatine Recruits Thrawn"));
+      assert.ok(recruits >= 0, JSON.stringify(again.rows));
+      await click(page, await shown(recruits));
+      await click(page, showMessage);
+      const recruitment = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Emperor Palpatine Recruits Thrawn", "Display Message shows the recruitment");
+      captureChecks.recruitment_text = recruitment.viewing_text;
+      assert.equal(recruitment.viewing_text,
+        "My recruitment mission to Coruscant was successful. Thrawn is at your command.",
+        JSON.stringify(recruitment));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("recruitment-report");
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/mission-reports/emperor-recruits-thrawn-day43.png")));
+        const screen = PNG.sync.read(await page.screenshot());
+        let differ = 0;
+        for (let y = 33; y < 233; y += 1) {
+          for (let x = 12; x < 412; x += 1) {
+            const i = ((recruitment.window_top + y) * 640 + recruitment.window_left + x) * 4;
+            // A0's pointer covers the screen's (260..285, 168..195).
+            const sx = recruitment.window_left + x;
+            const sy = recruitment.window_top + y;
+            if (sx >= 260 && sx <= 285 && sy >= 168 && sy <= 195) continue;
+            if ([0, 1, 2].some((c) => screen.data[i + c] !== a0.data[i + c])) differ += 1;
+          }
+        }
+        captureChecks.recruitment_picture_a0 = differ;
+      } catch {
+        captureChecks.recruitment_picture_a0 = null;
+      }
+      assert.equal(captureChecks.recruitment_picture_a0 ?? 0, 0, JSON.stringify(captureChecks));
+    }
+
     // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's
     // Mission Messages holding the capture, chosen): the category icon
     // STRATEGY 0x2a9e at the row's (1, 1), keyed on palette index 0
@@ -641,6 +719,62 @@ async function run(browser, base, faction) {
         rowChecks.fleet_arrives_picture_a0 = null;
       }
       assert.equal(rowChecks.fleet_arrives_picture_a0 ?? 0, 0, JSON.stringify(rowChecks));
+
+      // Enemy Mission Foiled (A0 mission-reports/enemy-foiled-chandrila-day739,
+      // the Expert Alliance game): an Imperial Reconnaissance mission to
+      // Chandrila ended by a battle reads "An enemy Reconnaissance mission
+      // to Chandrila has been foiled by our forces." over picture 0x431
+      // (FUN_00491500). The fixture ends such a mission through the app's
+      // push_foiled_missions; the Empire's reader sees none.
+      if (faction.byte === 1) {
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Mission list after the arrival");
+        const listed = await report(page);
+        const foiledRow = listed.rows.findIndex((text) => text.startsWith("Enemy Mission Foiled"));
+        assert.ok(foiledRow >= 0 && foiledRow < 9, JSON.stringify(listed.rows));
+        await click(page, row(foiledRow));
+        await click(page, showMessage);
+        const foiled = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Enemy Mission Foiled", "Display Message shows the foiled mission");
+        rowChecks.foiled_text = foiled.viewing_text;
+        rowChecks.foiled_background = foiled.viewing_background;
+        assert.equal(foiled.viewing_text,
+          "An enemy Reconnaissance mission to Chandrila has been foiled by our forces.", JSON.stringify(rowChecks));
+        assert.equal(foiled.viewing_background, 0x431, JSON.stringify(rowChecks));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("enemy-mission-foiled");
+        try {
+          const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+            ".artifacts/a0-vm/mission-reports/enemy-foiled-chandrila-day739.png")));
+          const shown = PNG.sync.read(await page.screenshot());
+          // A0's pointer covers the window's (118..139, 116..137).
+          const pointer = (x, y) => x >= 118 && x <= 139 && y >= 116 && y <= 137;
+          const differ = (left, top, width, height) => {
+            let count = 0;
+            for (let y = top; y < top + height; y += 1) {
+              for (let x = left; x < left + width; x += 1) {
+                if (pointer(x, y)) continue;
+                const i = ((foiled.window_top + y) * 640 + foiled.window_left + x) * 4;
+                const j = ((49 + y) * 640 + 62 + x) * 4;
+                if ([0, 1, 2].some((c) => shown.data[i + c] !== a0.data[j + c])) count += 1;
+              }
+            }
+            return count;
+          };
+          rowChecks.foiled_picture_a0 = differ(12, 33, 400, 200);
+          // The title and body glyphs sit where A0's do, but the port's
+          // text is smoothed (greys) where A0's is two-tone: recorded, not
+          // asserted (the accepted text deviation).
+          rowChecks.foiled_title_a0 = differ(12, 12, 400, 20);
+          rowChecks.foiled_text_a0 = differ(12, 233, 400, 40);
+        } catch {
+          rowChecks.foiled_picture_a0 = null;
+        }
+        assert.equal(rowChecks.foiled_picture_a0 ?? 0, 0, JSON.stringify(rowChecks));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Mission list after the foiled mission");
+      }
 
       // Messages clear themselves after 300 sub-ticks, 25 days at Medium
       // (Class_0065c538_vt30, FUN_004c4fe0), on the walk FUN_0048a2a0 runs

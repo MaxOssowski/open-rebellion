@@ -3297,6 +3297,7 @@ mod tests {
                 target_system: system,
                 target_character: None,
                 target_object: None,
+                returning_to: None,
                 outcome: MissionOutcome::Success,
                 effects: vec![MissionEffect::UprisingSubdued {
                     system,
@@ -3345,6 +3346,7 @@ mod tests {
             target_system: system,
             target_character: None,
             target_object: None,
+            returning_to: None,
             outcome: MissionOutcome::Success,
             effects: vec![MissionEffect::UprisingSubdued {
                 system,
@@ -3395,6 +3397,7 @@ mod tests {
             target_system: system,
             target_character: None,
             target_object: None,
+            returning_to: None,
             outcome: MissionOutcome::Success,
             effects: vec![MissionEffect::ResearchPoints {
                 faction: MissionFaction::Empire,

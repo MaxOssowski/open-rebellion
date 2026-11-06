@@ -3804,6 +3804,102 @@ pub fn post_conflict_report(request: FixtureRequest, log: &mut rebellion_render:
     }
 }
 
+/// The event-message scenario's mission results: the Emperor recruits
+/// Thrawn at Coruscant, then fails his Espionage at Chandrila, his team
+/// going home to Coruscant, as A0 mission-reports/ reports them to the
+/// Empire. The app files it through `apply_mission_result`.
+pub fn mission_results(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Vec<rebellion_core::missions::MissionResult> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    let system = |name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == name)
+            .map(|(key, _)| key)
+    };
+    let emperor = world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name == "Emperor Palpatine")
+        .map(|(key, _)| key);
+    let thrawn = world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name == "Thrawn")
+        .map(|(key, _)| key);
+    let (Some(chandrila), Some(coruscant), Some(emperor), Some(thrawn)) =
+        (system("Chandrila"), system("Coruscant"), emperor, thrawn)
+    else {
+        return Vec::new();
+    };
+    // A0 mission-reports/emperor-recruits-thrawn-day43: "Emperor Palpatine
+    // Recruits Thrawn".
+    let recruited = rebellion_core::missions::MissionResult {
+        mission_id: u64::MAX - 2,
+        tick: 0,
+        kind: MissionKind::Recruitment,
+        faction: MissionFaction::Empire,
+        character: Some(emperor),
+        target_system: coruscant,
+        target_character: None,
+        target_object: None,
+        returning_to: None,
+        outcome: rebellion_core::missions::MissionOutcome::Success,
+        effects: vec![rebellion_core::missions::MissionEffect::CharacterRecruited {
+            character: thrawn,
+            system: coruscant,
+            faction: MissionFaction::Empire,
+            pool_emptied: false,
+        }],
+    };
+    vec![recruited, rebellion_core::missions::MissionResult {
+        mission_id: u64::MAX - 1,
+        tick: 0,
+        kind: MissionKind::Espionage,
+        faction: MissionFaction::Empire,
+        character: Some(emperor),
+        target_system: chandrila,
+        target_character: None,
+        target_object: None,
+        returning_to: Some(rebellion_core::missions::ReturnPlace::System(coruscant)),
+        outcome: rebellion_core::missions::MissionOutcome::Failure,
+        effects: Vec::new(),
+    }]
+}
+
+/// The event-message scenario's foiled mission: an Imperial Reconnaissance
+/// mission to Chandrila ended by a battle (code 7), as A0
+/// mission-reports/enemy-foiled-chandrila-day739 reports it to the
+/// Alliance. The app posts it through `push_foiled_missions`.
+pub fn foiled_missions(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Vec<rebellion_core::missions::MissionEnded> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Chandrila")
+        .map(|(system, _)| rebellion_core::missions::MissionEnded {
+            mission_id: u64::MAX,
+            kind: MissionKind::Reconnaissance,
+            faction: MissionFaction::Empire,
+            character: None,
+            target_system: system,
+            end_code: 7,
+            tick: 0,
+        })
+        .into_iter()
+        .collect()
+}
+
 /// The event-message scenario's messages: one per report class whose
 /// picture the port attaches (`message_pictures`), titled by its class and
 /// filed under the Mission rail so one category lists them all.

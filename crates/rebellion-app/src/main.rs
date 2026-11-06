@@ -1655,6 +1655,27 @@ async fn main() {
         interface_test_fixture::post_conflict_report(request, &mut msg_log);
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_event_messages(request, &mut world, &mut mission_state, &mut msg_log);
+        push_foiled_missions(
+            &mut msg_log,
+            &world,
+            &interface_test_fixture::foiled_missions(request, &world),
+            &message_texts,
+        );
+        for result in interface_test_fixture::mission_results(request, &world) {
+            apply_mission_result(
+                &result,
+                false,
+                false,
+                &mut world,
+                &mut research_state,
+                &mut msg_log,
+                &message_texts,
+                #[cfg(not(target_arch = "wasm32"))]
+                &mut audio_engine,
+                #[cfg(not(target_arch = "wasm32"))]
+                &audio_vol,
+            );
+        }
         interface_test_fixture::post_capture_message(request, &world, &mut msg_log, &message_texts);
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {
@@ -11404,6 +11425,21 @@ fn push_force_discoveries(
     }
 }
 
+/// The name `0x70e6` gives a return place: a system's, or a fleet's label.
+fn return_place_name(
+    world: &GameWorld,
+    place: rebellion_core::missions::ReturnPlace,
+) -> Option<String> {
+    match place {
+        rebellion_core::missions::ReturnPlace::System(system) => {
+            world.systems.get(system).map(|system| system.name.clone())
+        }
+        rebellion_core::missions::ReturnPlace::Fleet(fleet) => {
+            rebellion_render::system_window::fleet_label(world, fleet)
+        }
+    }
+}
+
 /// The names a Mission Report gives (`FUN_004927c0`): its leader (`+0x74`)
 /// with its major flag, target object or character (`+0x70`) and recruit
 /// (`+0xa8`), read
@@ -11552,6 +11588,9 @@ fn apply_mission_result(
     };
     // The report's names, read before the effects.
     let (leader, target, recruit, target_killed) = report_names(world, result);
+    let returning = result
+        .returning_to
+        .and_then(|place| return_place_name(world, place));
     // SFX + voice lines for mission outcomes
     #[cfg(not(target_arch = "wasm32"))]
     if result.outcome == rebellion_core::missions::MissionOutcome::Success {
@@ -11853,6 +11892,7 @@ fn apply_mission_result(
             recruit: recruit.as_deref(),
             revolting,
             valuable,
+            returning: returning.as_deref(),
         },
         message_texts,
     );
@@ -13764,6 +13804,46 @@ mod character_health_tests {
     }
 
     #[test]
+    fn a_return_place_is_named_by_its_system() {
+        // FUN_004927c0's 0x70e6 names the container's name (+0x30).
+        use rebellion_core::missions::ReturnPlace;
+        let mut world = GameWorld::default();
+        let coruscant = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(2),
+            name: "Coruscant".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Uncontrolled,
+        });
+        assert_eq!(
+            return_place_name(&world, ReturnPlace::System(coruscant)),
+            Some("Coruscant".into())
+        );
+        assert_eq!(
+            return_place_name(&world, ReturnPlace::System(Default::default())),
+            None
+        );
+    }
+
+    #[test]
     fn a_report_names_its_leader_target_and_recruit_and_sees_the_target_killed() {
         // FUN_004927c0 reads +0x74, +0x70 and +0xa8; +0x50 bit 3 is a
         // destroyed target.
@@ -13789,6 +13869,7 @@ mod character_health_tests {
             target_system: Default::default(),
             target_character: Some(dodonna),
             target_object: None,
+            returning_to: None,
             outcome: MissionOutcome::Success,
             effects: vec![
                 MissionEffect::CharacterKilled {

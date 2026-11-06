@@ -2587,6 +2587,8 @@ pub struct MissionResult {
     pub target_character: Option<CharacterKey>,
     /// The target object (`+0x70`) of a sabotage.
     pub target_object: Option<MissionTarget>,
+    /// Where the team returns, named by the report's `0x70e6`.
+    pub returning_to: Option<ReturnPlace>,
     pub outcome: MissionOutcome,
     /// World-state changes to apply, in the order the members acted.
     pub effects: Vec<MissionEffect>,
@@ -2791,6 +2793,42 @@ fn member_abode(world: &GameWorld, member: MissionMember) -> Option<crate::ids::
             .find(|(_, abode)| abode.special_forces.contains(&key))
             .map(|(abode, _)| abode),
     }
+}
+
+/// The place a Mission Report says its personnel return to
+/// (`FUN_004927c0`, TEXTSTRA `0x70e6` "Personnel are returning to
+/// {1:1}."): a fleet or a system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReturnPlace {
+    System(SystemKey),
+    Fleet(crate::ids::FleetKey),
+}
+
+/// `FUN_004927c0`'s walk over the team (`+0x18`): the first member that is
+/// neither destroyed (`+0x50` bit 3) nor a captive (`+0xac` bit 0) names
+/// the fleet or system that holds it; a member sent home already sits under
+/// its destination. A0 mission-reports/emperor-espionage-chandrila-day129:
+/// the Emperor's espionage from Coruscant to Chandrila reads "Personnel
+/// are returning to Coruscant."; espionage-coruscant-failed-day75, at home,
+/// names Coruscant too.
+///
+/// port: the Return destination is [`return_destination`], read at the
+/// report.
+fn returning_to(mission: &ActiveMission, world: &GameWorld) -> Option<ReturnPlace> {
+    mission.members().find_map(|member| {
+        let state = member_state(world, member)?;
+        if state.prisoner || mission.captured.contains(&member) {
+            return None;
+        }
+        if let Some(home) = return_destination(mission, world, member) {
+            return Some(ReturnPlace::System(home));
+        }
+        match state.location {
+            MemberLocation::Fleet(fleet) => Some(ReturnPlace::Fleet(fleet)),
+            MemberLocation::System(system) => Some(ReturnPlace::System(system)),
+            MemberLocation::Nowhere => None,
+        }
+    })
 }
 
 fn member_location(world: &GameWorld, member: MissionMember) -> Option<SystemKey> {
@@ -4448,6 +4486,7 @@ impl MissionSystem {
             target_system: target,
             target_character: mission.target_character,
             target_object: mission.target_object,
+            returning_to: returning_to(&mission, world),
             outcome: if result == 3 {
                 MissionOutcome::Success
             } else {
@@ -6742,6 +6781,45 @@ mod tests {
 
         assert_eq!(result.target_character, Some(target));
         assert_eq!(result.target_object, None);
+    }
+
+    #[test]
+    fn a_report_names_where_its_first_free_member_returns() {
+        // FUN_004927c0's member walk (A0 mission-reports/espionage-coruscant-
+        // failed-day75): an agent at its own side's system stays there and
+        // the report names that system; a killed first member is skipped.
+        let mut world = minimal_world();
+        let here = system_at(&mut world, 0);
+        held_by(&mut world, here, crate::dat::Faction::Alliance);
+        let there = system_at(&mut world, 30);
+        held_by(&mut world, there, crate::dat::Faction::Alliance);
+        let fallen = agent_at(&mut world, here, true);
+        let agent = agent_at(&mut world, there, true);
+        let mut mission = ActiveMission::timed(
+            0,
+            MissionKind::Espionage,
+            MissionFaction::Alliance,
+            vec![
+                MissionMember::Character(fallen),
+                MissionMember::Character(agent),
+            ],
+            here,
+            1,
+        );
+        assert_eq!(
+            returning_to(&mission, &world),
+            Some(ReturnPlace::System(here))
+        );
+        world.characters[fallen].mark_killed();
+        assert_eq!(
+            returning_to(&mission, &world),
+            Some(ReturnPlace::System(there))
+        );
+        world.characters[agent].is_captive = true;
+        assert_eq!(returning_to(&mission, &world), None);
+        world.characters[agent].is_captive = false;
+        mission.captured.push(MissionMember::Character(agent));
+        assert_eq!(returning_to(&mission, &world), None);
     }
 
     #[test]

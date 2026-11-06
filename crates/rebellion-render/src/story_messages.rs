@@ -1122,6 +1122,8 @@ pub struct ReportFacts<'a> {
     pub revolting: bool,
     /// Whether a research produced valuable results (`+0xac`).
     pub valuable: bool,
+    /// Where the personnel return (`0x70e6`), a fleet or system name.
+    pub returning: Option<&'a str>,
 }
 
 /// A Mission Report's title and body (`FUN_004927c0`, notification
@@ -1159,15 +1161,17 @@ pub struct ReportFacts<'a> {
 ///   for one that lives, or `0x70fa` / `0x70fd`; the first person's
 ///   success that leaves the target alive has a title and no body.
 ///
+/// Recon, Espionage, Rescue, Abduction, Assassination and Sabotage then
+/// add `0x70e6` "\nPersonnel are returning to {1:1}." when the walk finds
+/// a member (`ReportFacts::returning`).
+///
 /// port: a diplomacy failure reads "no effect" (outcome 2); the port's
 /// result does not tell a fall in support (outcome 1, `0x70d3`). An
 /// espionage report lists no further systems (`FUN_00494df0`, `0x710e`).
 /// A failed assassination reads `0x70fa`; the `0x70ff` of a target with
 /// `+0x50` bit 9 is no shipped text. hyp: a research's `+0xac` is a level
-/// it reached, and its name the kind's TEXTSTRA name, as "An enemy {1:1}
-/// mission" names a mission by its kind (`FUN_00491500`). The returning line `0x70e6` of
-/// Sabotage, Rescue, Abduction and Assassination is left out: its place (the first
-/// member's fleet or system) is not settled against A0.
+/// it reached. Its name is the kind's TEXTSTRA name, as A0 names missions
+/// by kind ("An enemy Reconnaissance mission", mission-reports/).
 #[must_use]
 pub fn mission_report_texts(
     kind: rebellion_core::missions::MissionKind,
@@ -1284,6 +1288,24 @@ pub fn mission_report_texts(
     if kind == MissionKind::Sabotage {
         let line = if success { 0x70e4 } else { 0x70e5 };
         text.push_str(&fill_message_text(texts.get(&line)?, &[]));
+    }
+    // Recon, Espionage, Rescue, Abduction, Assassination and Sabotage end on
+    // where the personnel return (A0 mission-reports/emperor-espionage-
+    // chandrila-day129: "Personnel are returning to Coruscant.").
+    if let (
+        MissionKind::Reconnaissance
+        | MissionKind::Espionage
+        | MissionKind::Rescue
+        | MissionKind::Abduction
+        | MissionKind::Assassination
+        | MissionKind::Sabotage,
+        Some(place),
+    ) = (kind, facts.returning)
+    {
+        text.push_str(&fill_message_text(
+            texts.get(&0x70e6)?,
+            &[MessageParameter::Named { name: place }],
+        ));
     }
     if kind == MissionKind::Diplomacy {
         let line = match facts.support {
@@ -2482,6 +2504,74 @@ mod tests {
                 &HashMap::new()
             ),
             None
+        );
+    }
+
+    // A0 mission-reports/emperor-espionage-chandrila-day129 and
+    // espionage-coruscant-failed-day75: the reports read, word for word,
+    // "My espionage mission to Chandrila was not successful.\nPersonnel are
+    // returning to Coruscant." and "The espionage mission to Coruscant was
+    // not successful.\nPersonnel are returning to Coruscant.".
+    #[test]
+    fn an_espionage_report_ends_on_where_its_personnel_return_as_a0() {
+        use rebellion_core::missions::MissionKind;
+        let texts: HashMap<u16, String> = [
+            (0x70e6, "\nPersonnel are returning to {1:1}."),
+            (0x7108, "{1:1} Mission Report"),
+            (0x710a, "My espionage mission to {2:1} was not successful."),
+            (0x710b, "Espionage Mission Report"),
+            (0x710d, "The espionage mission to {1:1} was not successful."),
+            (0x7118, "{1:1} Mission Report"),
+            (
+                0x711a,
+                "My recruitment mission to {2:1} is complete.  I have failed to recruit anyone.",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let report = |kind, leader, system, returning| {
+            let facts = ReportFacts {
+                leader,
+                system,
+                returning,
+                ..ReportFacts::default()
+            };
+            mission_report_texts(kind, &facts, &texts)
+        };
+        assert_eq!(
+            report(MissionKind::Espionage, Some(("Emperor Palpatine", true)), "Chandrila", Some("Coruscant")),
+            Some((
+                "Emperor Palpatine Mission Report".into(),
+                "My espionage mission to Chandrila was not successful.\nPersonnel are returning to Coruscant."
+                    .into()
+            ))
+        );
+        assert_eq!(
+            report(MissionKind::Espionage, Some(("Thrawn", false)), "Coruscant", Some("Coruscant")),
+            Some((
+                "Espionage Mission Report".into(),
+                "The espionage mission to Coruscant was not successful.\nPersonnel are returning to Coruscant."
+                    .into()
+            ))
+        );
+        assert_eq!(
+            report(MissionKind::Espionage, None, "Coruscant", None).map(|(_, body)| body),
+            Some("The espionage mission to Coruscant was not successful.".into())
+        );
+        // Recruitment has no returning line.
+        assert_eq!(
+            report(
+                MissionKind::Recruitment,
+                Some(("Leia Organa", true)),
+                "Averam",
+                Some("Yavin")
+            )
+            .map(|(_, body)| body),
+            Some(
+                "My recruitment mission to Averam is complete.  I have failed to recruit anyone."
+                    .into()
+            )
         );
     }
 

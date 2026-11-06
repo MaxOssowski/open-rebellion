@@ -10148,6 +10148,7 @@ mod tests {
             target_system: SystemKey::default(),
             target_character: None,
             target_object: None,
+            returning_to: None,
             outcome,
             effects: vec![],
         }
