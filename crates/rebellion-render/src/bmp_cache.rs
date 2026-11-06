@@ -2153,6 +2153,11 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // box (FUN_00602d30): A0 message-rail/display-sesswenna
                 // shows the frame under its green first pixel at (264, 50).
                 | 10_210..=10_211
+                // The Display pages' system and Alliance fleet buttons
+                // (0x2a0c, 0x2a0d, FUN_00602150 strobe buttons), whose first
+                // stored pixel is black: A0 assault-clean/04-display and
+                // battle-clean/02 show the page's stars and flare there.
+                | 10_764..=10_765
                 | 10_168
                 | 10_240
                 | 10_592..=10_597
@@ -2917,6 +2922,23 @@ pub(crate) mod tests {
             );
         }
         assert!(!uses_blue_screen_transparency(DllSource::Strategy, 10759));
+    }
+
+    #[test]
+    fn the_display_pages_destination_buttons_are_keyed_on_their_first_pixel() {
+        // FUN_0044c630 / FUN_0046f360: 0x2a0c and 0x2a0d (10764, 10765)
+        // store black first; A0 assault-clean/04-display (the Assault on
+        // Yavin read by the Alliance) and battle-clean/02 show the page
+        // under their black, the 1771 black pixels of 10765 over the
+        // flare non-black there. The pressed 10767 has no capture.
+        for id in [10_764, 10_765] {
+            assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+            assert!(
+                !uses_blue_screen_transparency(DllSource::Strategy, id),
+                "{id}"
+            );
+        }
+        assert!(!uses_first_pixel_key(DllSource::Strategy, 10_767));
     }
 
     #[test]

@@ -8642,25 +8642,27 @@
         {
           "id": "EVT-03-C014",
           "requirement": "go to system",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-assault-display/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-assault-display/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-display-buttons-keyed/"
           ],
-          "note": "Display page system button (0xb) is implemented and unit-tested; the browser case closes with Escape and never presses it. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-06: pressed in the browser (fleet-window.mjs assault, Linux, both sides): Display, then 0xb at (29, 182) closes the summary and opens no Fleet window. Not compared with A0: the A0 Display page captured (battle-display/, day 297) belongs to the Battle Summary (FUN_0046f360), a different window.",
+          "note": "Display page system button (0xb) is implemented and unit-tested; the browser case closes with Escape and never presses it. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-06: pressed in the browser (fleet-window.mjs assault, Linux, both sides): Display, then 0xb at (29, 182) closes the summary and opens no Fleet window. Not compared with A0: the A0 Display page captured (battle-display/, day 297) belongs to the Battle Summary (FUN_0046f360), a different window. 2026-11-07: compared with A0 assault-clean/04-display (the Alliance reading the Assault on Yavin in an unedited game): the system button, now keyed on its black first pixel, matches A0 in 0 pixels above its label, and the label now sits at the button's 76 as A0 shows (fleet-window.mjs, Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "EVT-03-C015",
           "requirement": "go to fleet",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-assault-display/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-assault-display/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-display-buttons-keyed/"
           ],
-          "note": "Display page fleet button implemented and unit-tested; not pressed in the browser and not compared with A0. 2026-11-06: pressed in the browser (fleet-window.mjs bombardment, Linux, both sides): Display, then 0xc 'Fleet' at (226, 182) closes the summary and opens the system's Fleet window, none being open before. Not compared with A0 (no Assault Summary Display capture).",
+          "note": "Display page fleet button implemented and unit-tested; not pressed in the browser and not compared with A0. 2026-11-06: pressed in the browser (fleet-window.mjs bombardment, Linux, both sides): Display, then 0xc 'Fleet' at (226, 182) closes the summary and opens the system's Fleet window, none being open before. Not compared with A0 (no Assault Summary Display capture). 2026-11-07: compared with A0 assault-clean/04-display: the Fleet button at (226, 182), keyed on black, 0 differing pixels above its label; the label's ink ends on A0's row (fleet-window.mjs, Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -10221,9 +10223,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-display-page-bold-line/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-display-page-bold-line/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-display-buttons-keyed/"
           ],
-          "note": "Display page title, bold second line (font 7, FUN_0046f360) and system button match A0 TAC-07-C013; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28).",
+          "note": "Display page title, bold second line (font 7, FUN_0046f360) and system button match A0 TAC-07-C013; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-07: the destination buttons are keyed on their black first pixel, as A0 battle-clean/02 shows the flare through 10765; run.mjs's battle-results-destinations-a0 finds both buttons 0 pixels from A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {

@@ -1358,7 +1358,41 @@ const cases = [
       await click(page, railButton(3));
       await until(page, "Display shows the destinations", (o) => o.assault_summary?.page === "Display");
       await frames(page, 3);
-      await shot(page, directory, "assault-display");
+      const displayShot = await shot(page, directory, "assault-display");
+      if (faction.name === "alliance") {
+        // Against A0 assault-clean/04-display (the Alliance reading the
+        // Assault on Yavin, the window at (62, 49)): each button, keyed on
+        // its black first pixel (0x2a0c, 0x2a0d), every pixel A0's above
+        // its label's line (76); each label's ink ends on A0's row 88
+        // (its text is the accepted deviation).
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/assault-clean/04-display.png")));
+        const portShot = PNG.sync.read(displayShot.bytes);
+        const at = (png, left, top, x, y) => ((top + y) * png.width + left + x) * 4;
+        const buttons = {};
+        for (const [name, bx] of [["system", 29], ["fleet", 226]]) {
+          let differ = 0;
+          let a0Last = 0;
+          let portLast = 0;
+          for (let y = 182; y < 182 + 96; y += 1) {
+            let a0White = 0;
+            let portWhite = 0;
+            for (let x = bx; x < bx + 169; x += 1) {
+              const i = at(a0, 62, 49, x, y);
+              const j = at(portShot, ox, oy, x, y);
+              if (y < 182 + 76 && [0, 1, 2].some((c) => a0.data[i + c] !== portShot.data[j + c])) differ += 1;
+              if (x >= bx + 40 && x < bx + 130) {
+                if (Math.min(a0.data[i], a0.data[i + 1], a0.data[i + 2]) > 235) a0White += 1;
+                if (Math.min(portShot.data[j], portShot.data[j + 1], portShot.data[j + 2]) > 235) portWhite += 1;
+              }
+            }
+            if (y >= 182 + 76 && a0White >= 3) a0Last = y - 182;
+            if (y >= 182 + 76 && portWhite >= 3) portLast = y - 182;
+          }
+          buttons[name] = { differ, a0Last, portLast };
+        }
+        assert.ok(Object.values(buttons).every((b) => b.differ === 0 && b.a0Last === b.portLast && b.a0Last > 0),
+          JSON.stringify(buttons));
+      }
       await click(page, point([ox + 29 + 84, oy + 182 + 48]));
       const closed = await until(page, "the system button closes the Assault Summary",
         (o) => o.assault_summary === null);

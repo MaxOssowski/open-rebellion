@@ -1046,7 +1046,7 @@ function verifyTacticalGreenBeam(viewport, beforeBytes, beamBytes) {
   return { status: "visible", changed_green_pixels: changedGreenPixels };
 }
 
-function verifyStrategyBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRects = []) {
+function verifyStrategyBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRects = [], keyBlack = false) {
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
     return { status: "non-native-scale", pixels_checked: 0 };
   }
@@ -1061,6 +1061,9 @@ function verifyStrategyBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRect
         && x < rect.x + rect.width && y < rect.y + rect.height)) continue;
       const color = source.pixel(x, y);
       if (color[0] < 32 && color[1] < 32 && color[2] > 192) continue;
+      // Art keyed on its first stored pixel, black (the Display pages'
+      // destination buttons 10764, 10765): the page shows there.
+      if (keyBlack && color[0] === 0 && color[1] === 0 && color[2] === 0) continue;
       const actualOffset = ((y0 + y) * screenshot.width + x0 + x) * 4;
       assert.deepEqual(
         Array.from(screenshot.data.subarray(actualOffset, actualOffset + 3)), color,
@@ -3695,11 +3698,37 @@ async function probeTacticalBattleResultsPresentation(
     ]),
   }, {
     type: "battle-results-system-destination",
-    ...verifyStrategyBitmap(viewport, capture, 10764, 114 + dx, 256 + dy),
+    ...verifyStrategyBitmap(viewport, capture, 10764, 114 + dx, 256 + dy, [], true),
   }, {
     type: "battle-results-fleet-destination",
-    ...verifyStrategyBitmap(viewport, capture, resources.fleet, 314 + dx, 256 + dy),
+    ...verifyStrategyBitmap(viewport, capture, resources.fleet, 314 + dx, 256 + dy, [], true),
   });
+  // The destination buttons against A0 battle-clean/02 (the Alliance's
+  // Battle at Yavin, the window at (62, 49)): keyed on black, the page's
+  // stars and flare show through; every pixel of each button but the
+  // label rows (the port's labels' text is the accepted deviation).
+  const destinationA0 = path.join(root, ".artifacts/a0-vm/battle-clean/02-display-withdrawn-umgul.png");
+  if (alliance && viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1
+    && fs.existsSync(destinationA0)) {
+    const a0 = PNG.sync.read(fs.readFileSync(destinationA0));
+    const port = PNG.sync.read(capture);
+    // The port's window corner, (85, 74) as measured, moved by (dx, dy).
+    const [left, top] = [85 + dx, 74 + dy];
+    const differ = (bx) => {
+      let count = 0;
+      for (let y = 182; y < 182 + 96; y++) {
+        for (let x = bx; x < bx + 169; x++) {
+          const i = ((49 + y) * 640 + 62 + x) * 4;
+          const j = ((top + y) * 640 + left + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) count++;
+        }
+      }
+      return count;
+    };
+    const buttonsA0 = { system: differ(29), fleet: differ(229) };
+    probes.push({ type: "battle-results-destinations-a0", ...buttonsA0 });
+    assert.deepEqual(buttonsA0, { system: 0, fleet: 0 }, JSON.stringify(buttonsA0));
+  }
 
   const destination = alliance ? point(198.5 + dx, 304 + dy) : point(398.5 + dx, 304 + dy);
   await page.mouse.click(destination.x, destination.y);

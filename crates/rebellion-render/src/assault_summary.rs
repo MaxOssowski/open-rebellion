@@ -80,6 +80,12 @@ const HEADS_THREE: [(f32, &str); 3] = [(38.0, "Survivors"), (165.0, "Captured"),
 const GOTO_SYSTEM: (f32, f32) = (29.0, 182.0);
 const GOTO_FLEET: (f32, f32) = (226.0, 182.0);
 const GOTO_SIZE: (f32, f32) = (169.0, 96.0);
+/// The Display buttons' label line, 76 below the button's top: A0
+/// assault-clean/04-display (the Alliance reading the Assault on Yavin)
+/// has the labels' ink from row 79, three below the line's top as the
+/// Battle Summary's labels at 96 (ink from 99, battle-clean/02). hyp:
+/// FUN_006027e0's `+0x34 / 2 - 12` with `+0x34` 176.
+const GOTO_LABEL_TOP: f32 = 76.0;
 
 /// The rail's pages (`FUN_0044e3d0`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -877,15 +883,17 @@ fn draw_window(
                         if held(rect) {
                             paint(cache, DllSource::Strategy, selected, x, y);
                         }
-                        // The label, white, at the button's half height
-                        // less 12 (FUN_006027e0).
-                        text(
+                        // The label, white, font 4, centred, its line's top
+                        // GOTO_LABEL_TOP below the button's (FUN_006027e0
+                        // with the control's +0x34 / 2 - 12).
+                        crate::theme::paint_gdi_text(
+                            &painter,
+                            logical_rect(local, scale, x, y + GOTO_LABEL_TOP, GOTO_SIZE.0, 16.0),
+                            scale,
+                            4,
                             &label,
-                            x,
-                            y + GOTO_SIZE.1 / 2.0 - 12.0,
-                            GOTO_SIZE.0,
-                            12.0,
                             egui::Color32::WHITE,
+                            (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                         );
                         if exact_clicked(&response, rect) {
                             result.action = Some(if index == 0 {
@@ -1310,6 +1318,8 @@ mod tests {
         /// Each text's font size, its size and its wrap width.
         metrics: Vec<(String, f32, egui::Vec2, f32)>,
         painted: Vec<(u32, egui::Pos2)>,
+        /// The GDI-drawn lines (`theme::paint_gdi_text`), glyphs joined.
+        lines: Vec<crate::theme::TestLine>,
     }
 
     /// The 640 by 480 canvas at twice its size.
@@ -1328,6 +1338,7 @@ mod tests {
             texts: Vec::new(),
             metrics: Vec::new(),
             painted: Vec::new(),
+            lines: Vec::new(),
         };
         // egui hides a new area for its first frame.
         let frames = [vec![], vec![]].into_iter().chain(frames);
@@ -1354,6 +1365,7 @@ mod tests {
             frame.painted = PAINTED.with(|painted| painted.take());
             frame.texts.clear();
             frame.metrics.clear();
+            frame.lines = crate::theme::test_lines(&output.shapes);
             for clipped in output.shapes {
                 if let egui::Shape::Text(text) = clipped.shape {
                     let format = &text.galley.job.sections[0].format;
@@ -1621,11 +1633,17 @@ mod tests {
         let (mut state, system) = opened(1);
         let frame = run(&mut state, click(at(438.0, 270.0)));
         assert_eq!(state.report().unwrap().page, SummaryPage::Display);
-        assert_eq!(
-            has(&frame, "Hoth").unwrap().0.y,
-            at(0.0, 182.0 + 48.0 - 12.0).y
-        );
-        assert!(has(&frame, "Fleet").is_some());
+        // A0 assault-clean/04-display: each label's line at the button's
+        // 76, centred in 169, its pen at font 4's ascent below.
+        let line = |text: &str| frame.lines.iter().find(|line| line.text == text).unwrap();
+        for (label, x) in [("Hoth", 29.0), ("Fleet", 226.0)] {
+            let (_, width) = crate::theme::gdi_pen_positions(4, label).unwrap();
+            assert_eq!(
+                line(label).pen,
+                at(x + ((169.0 - width) / 2.0).floor(), 182.0 + 76.0 + 13.0),
+                "{label}"
+            );
+        }
         // Held, a destination draws its selected frame over it; a hover
         // alone leaves Close up.
         let hold = at(100.0, 230.0);
