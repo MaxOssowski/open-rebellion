@@ -12075,6 +12075,33 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_alliance_attack_reads_as_a0() {
+        // A0 TAC-01-C006 and TAC-06-C004 (Wine, the Alliance's simulated
+        // Battle at Coruscant): "The Alliance fleet is defeated." over "The
+        // Alliance attack on Coruscant has failed. The Alliance fleet has
+        // withdrawn to Averam." (FUN_0049b4d0: 0x7003, 0x7009, 0x700d).
+        let lines = battle_report_lines(
+            &battle_texts(),
+            &BattleReport {
+                system_name: "Coruscant",
+                viewer_alliance: true,
+                winner_alliance: Some(false),
+                withdrawn: Some(true),
+                destination: Some("Averam"),
+                last_arrival: None,
+                system_side: Some(false),
+            },
+        );
+        assert_eq!(
+            lines,
+            [
+                "The Alliance fleet is defeated.",
+                "The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam."
+            ]
+        );
+    }
+
+    #[test]
     fn the_empires_withdrawal_from_a_blockade_reads_as_a0() {
         // A0 battle-alert-empire/04-result (the Empire game's Battle at
         // Tralus, Simulate Results): "The Imperial fleet is defeated." over

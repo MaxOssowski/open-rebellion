@@ -8766,9 +8766,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-enemy-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/"
           ],
-          "note": "Get Immediate Result routes to results in the browser (battle-options-simulate-route); A0 TAC-01-C006 is captured but no recorded comparison of the simulated result.",
+          "note": "Get Immediate Result routes to results in the browser (battle-options-simulate-route); A0 TAC-01-C006 is captured but no recorded comparison of the simulated result. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9944,9 +9945,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/"
           ],
-          "note": "Get Immediate Result routes to the results (battle-options-simulate-route); A0 TAC-06-C004's result text is not recorded as compared.",
+          "note": "Get Immediate Result routes to the results (battle-options-simulate-route); A0 TAC-06-C004's result text is not recorded as compared. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
