@@ -3129,6 +3129,9 @@ pub struct MissionEnded {
     pub mission_id: u64,
     pub kind: MissionKind,
     pub faction: MissionFaction,
+    /// The leading character at the end (`+0x7c`), who reports a foiled
+    /// mission (`FUN_00491500`).
+    pub character: Option<CharacterKey>,
     /// The mission's target system, named by its end messages
     /// (`FUN_00491500`, `0x713f`).
     pub target_system: SystemKey,
@@ -3395,6 +3398,7 @@ impl MissionSystem {
             mission_id: mission.id,
             kind: mission.kind,
             faction: mission.faction,
+            character: mission.lead_character(),
             target_system: mission.target_system,
             end_code: mission.end_code,
             tick: now,
@@ -9599,6 +9603,8 @@ mod tests {
         assert!(advance.results.is_empty());
         assert_eq!(advance.ended[0].end_code, 5);
         assert_eq!(advance.ended[0].target_system, here);
+        // The killed envoy is still the team's first member.
+        assert_eq!(advance.ended[0].character, Some(envoy));
     }
 
     #[test]

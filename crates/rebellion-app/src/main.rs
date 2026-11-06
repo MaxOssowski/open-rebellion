@@ -11306,7 +11306,8 @@ fn push_advance_injuries(
 }
 
 /// Notification `0x1f1` (`FUN_00491500`): the opponent of a foiled
-/// mission reads Enemy Mission Foiled on its Mission rail.
+/// mission reads Enemy Mission Foiled on its Mission rail, and its own
+/// side Mission Foiled from its leader for codes 3..5.
 fn push_foiled_missions(
     log: &mut MessageLog,
     world: &GameWorld,
@@ -11320,14 +11321,51 @@ fn push_foiled_missions(
         let Some(target) = world.systems.get(ended.target_system) else {
             continue;
         };
-        let Some((title, text)) = rebellion_render::story_messages::enemy_mission_foiled_texts(
-            rebellion_render::mission_dialog::kind_name(ended.kind),
-            &target.name,
-            texts,
-        ) else {
+        let mission = rebellion_render::mission_dialog::kind_name(ended.kind);
+        let own_is_alliance = ended.faction == MissionFaction::Alliance;
+        // Codes 3..5: the mission's own side reads Mission Foiled from its
+        // leader; with none it reads nothing. hyp: a killed leader no
+        // longer resolves (FUN_004f2d10 on a deleted object).
+        let leader = ended
+            .character
+            .and_then(|character| world.characters.get(character))
+            .filter(|leader| !leader.is_killed);
+        if let (true, Some(leader)) = (matches!(ended.end_code, 3..=5), leader) {
+            if let Some((title, text)) = rebellion_render::story_messages::mission_foiled_texts(
+                (&leader.name, leader.is_major),
+                mission,
+                &target.name,
+                texts,
+            ) {
+                log.push(filed(
+                    GameMessage::at_system(
+                        ended.tick,
+                        text,
+                        MessageCategory::Mission,
+                        ended.target_system,
+                    )
+                    .with_title(title)
+                    .with_picture(pictures::mission_foiled(
+                        pictures::reader(own_is_alliance),
+                        ended
+                            .character
+                            .and_then(|character| pictures::portrait_key(world, character)),
+                    ))
+                    .with_advisor_event(rebellion_render::story_messages::speaker_event(
+                        world,
+                        ended.character,
+                    )),
+                    MessageRail::Mission,
+                    Some(RailAudience::side(own_is_alliance)),
+                ));
+            }
+        }
+        let Some((title, text)) =
+            rebellion_render::story_messages::enemy_mission_foiled_texts(mission, &target.name, texts)
+        else {
             continue;
         };
-        let opponent_is_alliance = ended.faction == MissionFaction::Empire;
+        let opponent_is_alliance = !own_is_alliance;
         log.push(filed(
             GameMessage::at_system(
                 ended.tick,
@@ -13866,6 +13904,7 @@ mod character_health_tests {
             mission_id: 1,
             kind: MissionKind::Espionage,
             faction,
+            character: None,
             target_system: averam,
             end_code,
             tick: 43,
@@ -13893,5 +13932,46 @@ mod character_health_tests {
         assert_eq!(messages[0].rail, Some(MessageRail::Mission));
         assert_eq!(messages[1].audience, RailAudience::Alliance);
         assert_eq!(messages[1].picture.map(|p| p.background), Some(0x431));
+
+        // With a leader, codes 3..5 also report to the mission's own side
+        // (0x714a / 0x714b for a minor character, background 0x416 / 0x417);
+        // code 7 does not.
+        let texts = {
+            let mut texts = texts;
+            texts.insert(0x714a, "{2:1} Mission Foiled".to_owned());
+            texts.insert(
+                0x714b,
+                "The {2:1} mission to {3:1} has been foiled by opposing forces.  ".to_owned(),
+            );
+            texts
+        };
+        let agent = world.characters.insert(rebellion_core::world::Character {
+            name: "Agent".into(),
+            is_alliance: true,
+            ..rebellion_core::world::Character::default()
+        });
+        let led = |end_code| MissionEnded {
+            character: Some(agent),
+            ..ended(MissionFaction::Alliance, end_code)
+        };
+        let mut log = MessageLog::new();
+        push_foiled_missions(&mut log, &world, &[led(4), led(7)], &texts);
+        let messages = log.messages();
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].title.as_deref(), Some("Espionage Mission Foiled"));
+        assert_eq!(
+            messages[0].text,
+            "The Espionage mission to Averam has been foiled by opposing forces.  "
+        );
+        assert_eq!(messages[0].audience, RailAudience::Alliance);
+        assert_eq!(messages[0].picture.map(|p| p.background), Some(0x416));
+        assert_eq!(messages[1].title.as_deref(), Some("Enemy Mission Foiled"));
+        assert_eq!(messages[1].audience, RailAudience::Empire);
+        assert_eq!(messages[2].title.as_deref(), Some("Enemy Mission Foiled"));
+        world.characters[agent].mark_killed();
+        let mut log = MessageLog::new();
+        push_foiled_missions(&mut log, &world, &[led(4)], &texts);
+        assert_eq!(log.messages().len(), 1);
+        assert_eq!(log.messages()[0].audience, RailAudience::Empire);
     }
 }

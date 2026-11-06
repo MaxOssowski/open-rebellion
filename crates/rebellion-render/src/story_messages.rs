@@ -1431,6 +1431,36 @@ pub const fn foils_the_mission(code: u8) -> bool {
     code >= 3
 }
 
+/// A foiled mission's report to its own side (`FUN_00491500`, codes
+/// 3..5), from its leader: a major character (family `0x30..0x37`) titles
+/// it `0x7148` "{1:1} Mission Foiled" over `0x7149` "My {2:1} mission to
+/// {3:1} has been foiled by opposing forces.", any other `0x714a` "{2:1}
+/// Mission Foiled" over `0x714b`; the leader, the mission and its target
+/// substitute in that order. Returns the title and body.
+#[must_use]
+pub fn mission_foiled_texts(
+    leader: (&str, bool),
+    mission: &str,
+    target: &str,
+    texts: &HashMap<u16, String>,
+) -> Option<(String, String)> {
+    let (name, major) = leader;
+    let parameters = [
+        MessageParameter::Named { name },
+        MessageParameter::Named { name: mission },
+        MessageParameter::Named { name: target },
+    ];
+    let (title, body) = if major {
+        (0x7148, 0x7149)
+    } else {
+        (0x714a, 0x714b)
+    };
+    Some((
+        fill_message_text(texts.get(&title)?, &parameters),
+        fill_message_text(texts.get(&body)?, &parameters),
+    ))
+}
+
 /// An enemy mission foiled (`FUN_00491500`, notification `0x1f1`):
 /// TEXTSTRA `0x713e` "Enemy Mission Foiled" and `0x713f` "An enemy {1:1}
 /// mission to {2:1} has been foiled by our forces.", the mission the first
@@ -2816,6 +2846,44 @@ mod tests {
                 "The assassination mission to Averam is complete.  Jan Dodonna has not been eliminated.\n"
                     .into()
             )
+        );
+    }
+
+    // FUN_00491500 codes 3..5: TEXTSTRA 0x7148..0x714b as shipped.
+    #[test]
+    fn a_foiled_mission_reports_to_its_side_through_its_leader() {
+        let texts: HashMap<u16, String> = [
+            (0x7148, "{1:1} Mission Foiled"),
+            (
+                0x7149,
+                "My {2:1} mission to {3:1} has been foiled by opposing forces.  ",
+            ),
+            (0x714a, "{2:1} Mission Foiled"),
+            (
+                0x714b,
+                "The {2:1} mission to {3:1} has been foiled by opposing forces.  ",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        assert_eq!(
+            mission_foiled_texts(("Han Solo", true), "Espionage", "Averam", &texts),
+            Some((
+                "Han Solo Mission Foiled".into(),
+                "My Espionage mission to Averam has been foiled by opposing forces.  ".into()
+            ))
+        );
+        assert_eq!(
+            mission_foiled_texts(("Agent", false), "Espionage", "Averam", &texts),
+            Some((
+                "Espionage Mission Foiled".into(),
+                "The Espionage mission to Averam has been foiled by opposing forces.  ".into()
+            ))
+        );
+        assert_eq!(
+            mission_foiled_texts(("Agent", false), "Espionage", "Averam", &HashMap::new()),
+            None
         );
     }
 

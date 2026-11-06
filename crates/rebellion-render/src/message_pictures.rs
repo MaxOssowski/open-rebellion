@@ -273,6 +273,17 @@ pub const fn escaped() -> MessagePicture {
     background(0x405)
 }
 
+/// A mission of the reader's own side foiled (`FUN_00491500`, codes
+/// 3..5): background `0x416` / `0x417` by the reader (the character branch
+/// leaves its local 0), the leader's portrait on it.
+#[must_use]
+pub fn mission_foiled(reader: CockpitFaction, character: Option<(DatId, bool)>) -> MessagePicture {
+    MessagePicture {
+        foreground: character.and_then(|(dat_id, major)| character_portrait(dat_id, major)),
+        ..by_reader(reader, 0x416)
+    }
+}
+
 /// An enemy mission foiled (`FUN_00491500`, notification `0x1f1`).
 #[must_use]
 pub const fn enemy_mission_foiled(reader: CockpitFaction) -> MessagePicture {
@@ -572,6 +583,9 @@ mod tests {
         let han = Some((DatId::new(579), true));
         assert_eq!(ids(side(Alliance, han)), (1042, Some(6211)));
         assert_eq!(ids(side(Empire, None)), (1043, None));
+        // FUN_00491500 codes 3..5: (side != 1) + 0x416 under the leader.
+        assert_eq!(ids(mission_foiled(Alliance, han)), (1046, Some(6211)));
+        assert_eq!(ids(mission_foiled(Empire, None)), (1047, None));
     }
 
     #[test]
