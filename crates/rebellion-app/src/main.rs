@@ -11522,6 +11522,9 @@ fn apply_mission_result(
         audio_engine.play_sfx(SfxKind::MissionFail, audio_vol);
     }
 
+    // A research level reached by this result (FUN_004927c0 reads the
+    // mission's +0xac as "valuable results").
+    let mut valuable = false;
     for effect in &result.effects {
         match effect {
             MissionEffect::SupportGained {
@@ -11547,6 +11550,7 @@ fn apply_mission_result(
                 };
                 let was_done = research_state.progress(is_alliance, *tech).done;
                 for level in research_state.add_points(world, is_alliance, *tech, *points) {
+                    valuable = true;
                     // Notifications 0x125..0x127, Research Complete
                     // (FUN_00499aa0): the class the level opens.
                     let (title, text) = match rebellion_render::story_messages::research_complete_texts(
@@ -11810,6 +11814,7 @@ fn apply_mission_result(
             target_killed,
             recruit: recruit.as_deref(),
             revolting,
+            valuable,
         },
         message_texts,
     );

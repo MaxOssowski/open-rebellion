@@ -1120,6 +1120,8 @@ pub struct ReportFacts<'a> {
     pub recruit: Option<&'a str>,
     /// Whether the target system is in uprising (`+0x88` bit 2).
     pub revolting: bool,
+    /// Whether a research produced valuable results (`+0xac`).
+    pub valuable: bool,
 }
 
 /// A Mission Report's title and body (`FUN_004927c0`, notification
@@ -1143,6 +1145,9 @@ pub struct ReportFacts<'a> {
 ///   `0x7114` or `0x7112` / `0x7115`;
 /// - Jedi Training (`0x58`): `0x71c0` / `0x71c3`, then `0x71c1` / `0x71c4`
 ///   or `0x71c2` / `0x71c5`;
+/// - the design researches (`0x53`): `0x7120` / `0x7124`, then `0x7121` /
+///   `0x7125` (progress) or `0x7122` / `0x7126` (valuable results,
+///   `+0xac`), or `0x7123` / `0x7127`, the mission's name (`+0x30`) last;
 /// - Sabotage (`0x69`): `0x70e0` / `0x70e1` over `0x70e3` / `0x70e2`, the
 ///   target object last, then `0x70e4` (destroyed) or `0x70e5`;
 /// - Rescue (`0x61`): `0x7130` / `0x7133`, then `0x7131` / `0x7134` or
@@ -1158,7 +1163,9 @@ pub struct ReportFacts<'a> {
 /// result does not tell a fall in support (outcome 1, `0x70d3`). An
 /// espionage report lists no further systems (`FUN_00494df0`, `0x710e`).
 /// A failed assassination reads `0x70fa`; the `0x70ff` of a target with
-/// `+0x50` bit 9 is no shipped text. The returning line `0x70e6` of
+/// `+0x50` bit 9 is no shipped text. hyp: a research's `+0xac` is a level
+/// it reached, and its name the kind's TEXTSTRA name, as "An enemy {1:1}
+/// mission" names a mission by its kind (`FUN_00491500`). The returning line `0x70e6` of
 /// Sabotage, Rescue, Abduction and Assassination is left out: its place (the first
 /// member's fleet or system) is not settled against A0.
 #[must_use]
@@ -1174,7 +1181,14 @@ pub fn mission_report_texts(
         .leader
         .filter(|&(_, major)| major && kind != MissionKind::Reconnaissance)
         .map(|(name, _)| name);
-    let target = facts.target.unwrap_or_default();
+    // A research report names the mission (`+0x30`) where others name the
+    // target.
+    let target = match kind {
+        MissionKind::ShipDesignResearch
+        | MissionKind::FacilityDesignResearch
+        | MissionKind::TroopTrainingResearch => crate::mission_dialog::kind_name(kind),
+        _ => facts.target.unwrap_or_default(),
+    };
     let killed = facts.target_killed;
     // (title, body) for the first person, then for the third; a body of 0
     // is none.
@@ -1217,6 +1231,13 @@ pub fn mission_report_texts(
             (0x7133, if success { 0x7134 } else { 0x7135 }),
         ),
         MissionKind::Sabotage => ((0x70e0, 0x70e3), (0x70e1, 0x70e2)),
+        MissionKind::ShipDesignResearch
+        | MissionKind::FacilityDesignResearch
+        | MissionKind::TroopTrainingResearch => match (success, facts.valuable) {
+            (true, false) => ((0x7120, 0x7121), (0x7124, 0x7125)),
+            (true, true) => ((0x7120, 0x7122), (0x7124, 0x7126)),
+            (false, _) => ((0x7120, 0x7123), (0x7124, 0x7127)),
+        },
         MissionKind::Abduction => match (success, killed) {
             (true, false) => ((0x70f0, 0x70f1), (0x70f3, 0x70f4)),
             (true, true) => ((0x70f0, 0x70f6), (0x70f3, 0x70f7)),
@@ -2431,6 +2452,75 @@ mod tests {
                 &HashMap::new()
             ),
             None
+        );
+    }
+
+    // FUN_004927c0 case 0x53: the shipped research texts.
+    #[test]
+    fn a_research_report_names_the_research_and_tells_progress_from_results() {
+        use rebellion_core::missions::MissionKind;
+        let texts: HashMap<u16, String> = [
+            (0x7120, "{1:1} Mission Report"),
+            (
+                0x7122,
+                "My {3:1} Research mission at {2:1} has produced valuable results.  ",
+            ),
+            (
+                0x7123,
+                "My {3:1} Research mission at {2:1} has not produced new information.  ",
+            ),
+            (0x7124, "{2:1} Mission Report"),
+            (0x7125, "The {2:1} Mission at {1:1} is making progress.  "),
+            (
+                0x7126,
+                "The {2:1} Mission at {1:1} has produced valuable results.  ",
+            ),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let report = |kind, success, leader, valuable| {
+            let facts = ReportFacts {
+                success,
+                leader,
+                system: "Yavin",
+                valuable,
+                ..ReportFacts::default()
+            };
+            mission_report_texts(kind, &facts, &texts)
+        };
+        let pair = |title: &str, body: &str| Some((title.to_owned(), body.to_owned()));
+        assert_eq!(
+            report(MissionKind::ShipDesignResearch, true, None, false),
+            pair(
+                "Ship Design Research Mission Report",
+                "The Ship Design Research Mission at Yavin is making progress.  "
+            )
+        );
+        assert_eq!(
+            report(
+                MissionKind::TroopTrainingResearch,
+                true,
+                Some(("Agent", false)),
+                true
+            )
+            .map(|(_, body)| body),
+            Some(
+                "The Troop Training Research Mission at Yavin has produced valuable results.  "
+                    .into()
+            )
+        );
+        assert_eq!(
+            report(MissionKind::FacilityDesignResearch, false, Some(("Mon Mothma", true)), false),
+            pair(
+                "Mon Mothma Mission Report",
+                "My Facility Design Research Research mission at Yavin has not produced new information.  "
+            )
+        );
+        assert_eq!(
+            report(MissionKind::ShipDesignResearch, true, Some(("Mon Mothma", true)), true)
+                .map(|(_, body)| body),
+            Some("My Ship Design Research Research mission at Yavin has produced valuable results.  ".into())
         );
     }
 
