@@ -8083,9 +8083,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-report-slots/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-texts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-targets/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-uprising-recon/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-uprising-recon/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-report-research/"
           ],
-          "note": "Mission Reports read FUN_004927c0's TEXTSTRA texts for Diplomacy, Espionage, Subdue Uprising, Jedi Training (c9c287ac), Recruitment, Rescue, Abduction, Assassination, Sabotage (7701bd3c), Recon and Incite Uprising (0231c545); research keeps the port's line; the 0x70e6 returning line is left out. No A0 report body captured.",
+          "note": "Every Mission Report kind reads FUN_004927c0's TEXTSTRA texts: Diplomacy, Espionage, Subdue Uprising, Jedi Training (c9c287ac), Recruitment, Rescue, Abduction, Assassination, Sabotage (7701bd3c), Recon, Incite Uprising (0231c545) and the design researches (5c3a5a72, name and +0xac hyp). The 0x70e6 returning line is left out. No A0 report body captured.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
