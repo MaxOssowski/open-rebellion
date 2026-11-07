@@ -166,6 +166,23 @@ async function run(browser, base, faction) {
       "the Mission rail opens the index");
     const row = (index) => [opened.window_left + 25 + 60, opened.window_top + 108 + 21 * index + 10];
     const display = [opened.window_left + faction.display[0], opened.window_top + faction.display[1]];
+    // The list shows nine rows; a row below them needs a wheel notch for
+    // each row past the ninth, from the top.
+    const shown = async (index) => {
+      const [x, y] = row(4);
+      await page.mouse.move(x, y);
+      // Back to the top first: the list keeps its scroll (a notch a row).
+      for (let notch = 0; notch < 12; notch += 1) {
+        await page.mouse.wheel(0, -120);
+        await frames(page, 6);
+      }
+      if (index < 9) return row(index);
+      for (let notch = 8; notch < index; notch += 1) {
+        await page.mouse.wheel(0, 120);
+        await frames(page, 6);
+      }
+      return row(8);
+    };
     const displays = () => log.filter((line) => line.includes("[interface] message_index display"));
     // The index is modal (A0 a0-vm/modal2/18-msg-gid.png): the GID control
     // opens nothing and the index stays.
@@ -186,7 +203,7 @@ async function run(browser, base, faction) {
     // The arrival: Display goes to its system and closes the index.
     const arrival = opened.rows.findIndex((text) => text.startsWith("Fleet Arrives"));
     assert.ok(arrival >= 0, JSON.stringify(opened.rows));
-    await click(page, row(arrival));
+    await click(page, await shown(arrival));
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("display-enabled");
@@ -233,23 +250,6 @@ async function run(browser, base, faction) {
     assert.ok(asking >= 0, JSON.stringify(again.rows));
     const showMessage = [again.window_left + (faction.byte === 1 ? 0x1a7 + 16 : 0x1aa + 22),
       again.window_top + (faction.byte === 1 ? 0x5d + 15 : 0x59 + 20)];
-    // The list shows nine rows; a row below them needs a wheel notch for
-    // each row past the ninth, from the top.
-    const shown = async (index) => {
-      const [x, y] = row(4);
-      await page.mouse.move(x, y);
-      // Back to the top first: the list keeps its scroll.
-      for (let notch = 0; notch < 4; notch += 1) {
-        await page.mouse.wheel(0, -120);
-        await frames(page, 6);
-      }
-      if (index < 9) return row(index);
-      for (let notch = 8; notch < index; notch += 1) {
-        await page.mouse.wheel(0, 120);
-        await frames(page, 6);
-      }
-      return row(8);
-    };
     await click(page, await shown(asking));
     await click(page, showMessage);
     const viewing = await waitReport(page, (value) => value.mode === "single",
@@ -486,6 +486,60 @@ async function run(browser, base, faction) {
         captureChecks.recruitment_picture_a0 = null;
       }
       assert.equal(captureChecks.recruitment_picture_a0 ?? 0, 0, JSON.stringify(captureChecks));
+
+      // The Empire's Enemy Mission Foiled (A0 empire-clean/02-day83-enemy-
+      // foiled-chandrila, a new Easy Empire game, the window at (125, 52)):
+      // the Alliance's Espionage at Chandrila reads "An enemy Espionage
+      // mission to Chandrila has been foiled by our forces." over 0x432
+      // (STRATEGY 1074), its picture, title image and rail every pixel A0's.
+      if (faction.byte !== 1) {
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Mission list for the Empire's foiled");
+        const listedE = await report(page);
+        const foiledRowE = listedE.rows.findIndex((text) => text.startsWith("Enemy Mission Foiled"));
+        assert.ok(foiledRowE >= 0 && foiledRowE < 9, JSON.stringify(listedE.rows));
+        await click(page, row(foiledRowE));
+        await click(page, showMessage);
+        const foiledE = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Enemy Mission Foiled", "Display Message shows the Empire's foiled mission");
+        assert.equal(foiledE.viewing_text,
+          "An enemy Espionage mission to Chandrila has been foiled by our forces.", JSON.stringify(foiledE));
+        assert.equal(foiledE.viewing_background, 0x432, JSON.stringify(foiledE));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("enemy-mission-foiled-empire");
+        const shownE = PNG.sync.read(await page.screenshot());
+        const pictureE = await bitmap(1074);
+        const [leftE, topE] = [Math.round(foiledE.window_left), Math.round(foiledE.window_top)];
+        const foiledChecksE = { port: differing(shownE, [leftE + 12, topE + 33], pictureE) };
+        try {
+          const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+            ".artifacts/a0-vm/empire-clean/02-day83-enemy-foiled-chandrila.png")));
+          foiledChecksE.a0 = differing(a0, [125 + 12, 52 + 33], pictureE);
+          const region = (x0, y0, x1, y1) => {
+            let differ = 0;
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                const i = ((topE + y) * 640 + leftE + x) * 4;
+                const j = ((52 + y) * 640 + 125 + x) * 4;
+                if ([0, 1, 2].some((c) => shownE.data[i + c] !== a0.data[j + c])) differ += 1;
+              }
+            }
+            return differ;
+          };
+          foiledChecksE.title_image_a0 = region(15, 16, 30, 32);
+          foiledChecksE.rail_a0 = region(414, 11, 468, 296);
+        } catch {
+          foiledChecksE.a0 = null;
+        }
+        captureChecks.foiled_empire = foiledChecksE;
+        assert.ok(foiledChecksE.port === 0 && (foiledChecksE.a0 ?? 0) === 0
+          && (foiledChecksE.title_image_a0 ?? 0) === 0 && (foiledChecksE.rail_a0 ?? 0) === 0,
+          JSON.stringify(foiledChecksE));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Mission list after the Empire's foiled");
+      }
+
     }
 
     // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's

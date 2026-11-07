@@ -4063,21 +4063,37 @@ pub fn foiled_missions(
     if request.scenario != Scenario::EventMessages {
         return Vec::new();
     }
-    world
+    let Some(chandrila) = world
         .systems
         .iter()
         .find(|(_, system)| system.name == "Chandrila")
-        .map(|(system, _)| rebellion_core::missions::MissionEnded {
+        .map(|(system, _)| system)
+    else {
+        return Vec::new();
+    };
+    vec![
+        rebellion_core::missions::MissionEnded {
             mission_id: u64::MAX,
             kind: MissionKind::Reconnaissance,
             faction: MissionFaction::Empire,
             character: None,
-            target_system: system,
+            target_system: chandrila,
             end_code: 7,
             tick: 0,
-        })
-        .into_iter()
-        .collect()
+        },
+        // A0 empire-clean/02-day83-enemy-foiled-chandrila (a new Easy
+        // Empire game): the Alliance's Espionage at Chandrila, foiled, as
+        // the Empire reads it.
+        rebellion_core::missions::MissionEnded {
+            mission_id: u64::MAX - 4,
+            kind: MissionKind::Espionage,
+            faction: MissionFaction::Alliance,
+            character: None,
+            target_system: chandrila,
+            end_code: 7,
+            tick: 0,
+        },
+    ]
 }
 
 /// The event-message scenario's messages: one per report class whose

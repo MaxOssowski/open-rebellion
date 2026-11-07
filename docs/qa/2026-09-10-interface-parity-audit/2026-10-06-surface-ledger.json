@@ -3225,9 +3225,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-message-index-row/",
-            "tools/interface-parity/message-display.mjs"
+            "tools/interface-parity/message-display.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-foiled/"
           ],
-          "note": "Mission messages post on the Mission rail (category 0x7c, icon STRATEGY 0x2a9e / 0x2a9f). Against A0 messages-day633/index-tab3 (the Alliance's Mission Messages, the capture chosen) message-display.mjs (Linux) lists the capture first and finds the chosen row's icon exact and its head (bar, icon, the list's background under the icon) pixel-identical to A0 (2026-11-05). The row's text and the other categories' lists are not compared.",
+          "note": "Mission messages post on the Mission rail (category 0x7c, icon STRATEGY 0x2a9e / 0x2a9f). Against A0 messages-day633/index-tab3 (the Alliance's Mission Messages, the capture chosen) message-display.mjs (Linux) lists the capture first and finds the chosen row's icon exact and its head (bar, icon, the list's background under the icon) pixel-identical to A0 (2026-11-05). The row's text and the other categories' lists are not compared. 2026-11-07: the Empire's side compared too: A0 empire-clean/02 (a new Easy Empire game) 'An enemy Espionage mission to Chandrila has been foiled by our forces.' over 1074; message-display.mjs (Linux, Empire) finds text, picture, title image and rail 0 pixels from A0.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -7264,9 +7265,10 @@
             "ghidra/notes/mission-lifecycle.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-reports-a0/",
-            "tools/interface-parity/message-display.mjs"
+            "tools/interface-parity/message-display.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-foiled/"
           ],
-          "note": "Pass (5c4f869e): a failed mission's report matches A0 mission-reports/emperor-espionage-chandrila-day129 in the Linux browser (\"My espionage mission to Chandrila was not successful.\\nPersonnel are returning to Coruscant.\", picture 0 px off A0).",
+          "note": "Pass (5c4f869e): a failed mission's report matches A0 mission-reports/emperor-espionage-chandrila-day129 in the Linux browser (\"My espionage mission to Chandrila was not successful.\\nPersonnel are returning to Coruscant.\", picture 0 px off A0). 2026-11-07: the Empire's side compared too: A0 empire-clean/02 (a new Easy Empire game) 'An enemy Espionage mission to Chandrila has been foiled by our forces.' over 1074; message-display.mjs (Linux, Empire) finds text, picture, title image and rail 0 pixels from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
