@@ -2797,7 +2797,32 @@ async function probeTacticalCommandAssignmentPresentation(
     viewport, maneuversOpen, 1117, 593, 160,
   ) });
 
-  await click(508, 170);
+  // A0 TAC-05-C013: Hammer held shows its chosen art 1138 and leaves the
+  // preview as it was (no maneuver chosen yet); the release chooses it.
+  const hammer = point(508, 170);
+  await page.mouse.move(hammer.x, hammer.y);
+  await page.mouse.down();
+  await page.waitForTimeout(80);
+  const hammerHeld = await capture("maneuvers-hammer-held");
+  probes.push({ type: "hammer-held", ...verifyTacticalBitmap(
+    viewport, hammerHeld, 1138, 495, 157,
+  ) });
+  {
+    const open = PNG.sync.read(maneuversOpen);
+    const held = PNG.sync.read(hammerHeld);
+    let differing = 0;
+    for (let y = Math.round(offsetY + 42 * scale); y < Math.round(offsetY + 150 * scale); y++) {
+      for (let x = Math.round(offsetX + 496 * scale); x < Math.round(offsetX + 622 * scale); x++) {
+        const i = (y * open.width + x) * 4;
+        if (open.data[i] !== held.data[i] || open.data[i + 1] !== held.data[i + 1]
+          || open.data[i + 2] !== held.data[i + 2]) differing++;
+      }
+    }
+    assert.equal(differing, 0, "holding Hammer changed the maneuver preview");
+    probes.push({ type: "hammer-held-preview-unchanged", differing });
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(300);
   await click(604, 185);
   const hammerSurround = await capture("maneuvers-hammer-surround");
   probes.push({ type: "hammer-selected", ...verifyTacticalBitmap(
@@ -3152,7 +3177,7 @@ function probeTacticalCommandProgressionPresentation(
   }];
 }
 
-function probeTacticalAttackTargetingPresentation(viewport, folder, stable, ready) {
+function probeTacticalAttackTargetingPresentation(viewport, folder, stable, ready, consoleLines) {
   const playerCapitals = ready.participants.filter((participant) =>
     participant.kind === "capital-ship" && participant.faction === ready.faction);
   const playerFighters = ready.participants.filter((participant) =>
@@ -3194,9 +3219,18 @@ function probeTacticalAttackTargetingPresentation(viewport, folder, stable, read
     [4, "fighter-group", enemyFighterIndex],
   );
   assert.equal(ready.selected_ship?.order_code, 4);
+  // FUN_005e4b40: a held target reads "Attacking" and its name (A0
+  // TAC-02/03 "Attacking Victory Destroyer 1", "Attacking Swift").
+  const ordersLines = consoleLines.map(({ text }) => text.match(/\[tactical_panel\] orders_line=(.*)$/))
+    .filter(Boolean).map((match) => match[1]);
+  assert.match(ordersLines.at(-1) ?? "", /^Attacking \S/,
+    `the targeting ship's order line: ${JSON.stringify(ordersLines)}`);
 
   fs.writeFileSync(path.join(folder, "attack-targeting.png"), stable.bytes);
   return [{
+    type: "attacking-orders-line",
+    orders_line: ordersLines.at(-1),
+  }, {
     type: "source-traced-tactical-attack-targeting",
     executable_functions: [
       "FUN_005ca6d0", "FUN_005d0b10", "FUN_005d0bb0", "FUN_005c91e0",
@@ -4655,6 +4689,25 @@ async function probeTacticalGroupPresentation(
   ) });
   probes.push({ type: "task-force-1-number-at-rest",
     ...verifyTaskForceOneNumber(viewport, taskEightSelected, false) });
+  // A0 TAC-02-C010: Task Force 1 held looks selected (1006, a white '1'),
+  // the same pixels as A0 TAC-02-C011 but the pointer's.
+  const taskOne = point(72, 10);
+  await page.mouse.move(taskOne.x, taskOne.y);
+  await page.mouse.down({ button: "left" });
+  await page.waitForTimeout(80);
+  const taskOneHeld = await capture("task-force-1-held");
+  probes.push({ type: "task-force-1-held", ...verifyTacticalBitmap(
+    viewport, taskOneHeld, 1006, 60, 2, [], labelMask,
+  ) });
+  probes.push({ type: "task-force-1-number-held",
+    ...verifyTaskForceOneNumber(viewport, taskOneHeld, true) });
+  await page.mouse.up({ button: "left" });
+  await page.waitForTimeout(300);
+  await page.mouse.click(taskEight.x, taskEight.y);
+  await page.waitForTimeout(300);
+  probes.push({ type: "task-force-8-reselected", ...verifyTacticalBitmap(
+    viewport, await capture("task-force-8-reselected"), 1006, 263, 2, [], labelMask,
+  ) });
 
   const gold = point(446, 10);
   await page.mouse.move(gold.x, gold.y);
@@ -5020,6 +5073,35 @@ async function probeTacticalNavigationCameraPresentation(
     "navigation journey did not append its second point");
   assert.notEqual(sha256(routeFrame), sha256(stable.bytes),
     "ordered navigation route produced no framebuffer evidence");
+  // FUN_005a0840 / FUN_0059f560: the route's first point turns the yellow
+  // mesh, its second the magenta one (A0 TAC-04-C002, TAC-04-C003), and
+  // the panel reads "Navigating" (FUN_005e4b40, A0 TAC-04-C002).
+  const routePng = PNG.sync.read(routeFrame);
+  const markerPixels = ({ x, y }, test) => {
+    let count = 0;
+    const reach = Math.ceil(8 * scale);
+    for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+      const px = Math.round(x) + dx, py = Math.round(y) + dy;
+      const i = (py * routePng.width + px) * 4;
+      if (test(routePng.data[i], routePng.data[i + 1], routePng.data[i + 2])) count++;
+    }
+    return count;
+  };
+  const yellow = (r, g, b) => r >= 120 && g >= 120 && b <= 40 && Math.abs(r - g) <= 30;
+  const magenta = (r, g, b) => r >= 100 && b >= 100 && g <= 30 && Math.abs(r - b) <= 30;
+  const firstYellow = markerPixels(navigationPoints[0], yellow);
+  const secondMagenta = markerPixels(navigationPoints[1], magenta);
+  assert.ok(firstYellow >= 3, `the route's first point shows ${firstYellow} yellow pixels`);
+  assert.ok(secondMagenta >= 3, `the route's second point shows ${secondMagenta} magenta pixels`);
+  if (Math.hypot(navigationPoints[0].x - navigationPoints[1].x,
+    navigationPoints[0].y - navigationPoints[1].y) > 16 * scale) {
+    assert.equal(markerPixels(navigationPoints[0], magenta), 0, "the first point is not magenta");
+  }
+  const routeOrders = consoleLines.map(({ text }) => text.match(/\[tactical_panel\] orders_line=(.*)$/))
+    .filter(Boolean).map((match) => match[1]);
+  assert.equal(routeOrders.at(-1), "Navigating", JSON.stringify(routeOrders));
+  probes.push({ type: "navigation-route-markers", first_yellow_pixels: firstYellow,
+    second_magenta_pixels: secondMagenta, orders_line: routeOrders.at(-1) });
 
   const participantLine = consoleLines.find(({ text }) =>
     text.includes("[tactical_3d] participant_scene"));
@@ -5242,7 +5324,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           viewport, folder, stable, consoleLines, ready,
         )
         : scenario.attack_targeting_presentation
-        ? probeTacticalAttackTargetingPresentation(viewport, folder, stable, ready)
+        ? probeTacticalAttackTargetingPresentation(viewport, folder, stable, ready, consoleLines)
         : scenario.attack_target_lifecycle_presentation
         ? probeTacticalAttackTargetLifecyclePresentation(viewport, folder, stable, ready)
         : scenario.trench_run_outcome

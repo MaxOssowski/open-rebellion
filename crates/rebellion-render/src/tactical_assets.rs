@@ -2399,6 +2399,44 @@ impl TacticalAssetRenderer {
         Some((start, tip))
     }
 
+    /// The navigation markers (`FUN_005d90b0`): one tetrahedron per point,
+    /// each `(render-space centre, colour)`, depth-tested against the hulls
+    /// drawn before them.
+    pub(crate) fn draw_navigation_markers(
+        &self,
+        aperture: (f32, f32, f32, f32),
+        markers: &[(Vec3, Vec3)],
+    ) {
+        let Some(source_camera) = self.source_camera else {
+            return;
+        };
+        if markers.is_empty() {
+            return;
+        }
+        let (x, y, width, height) = aperture;
+        let pose = source_camera.pose();
+        set_camera(&Camera3D {
+            position: pose.position,
+            target: pose.target,
+            up: pose.up,
+            fovy: pose.fovy_radians,
+            aspect: Some(width / height),
+            viewport: Some((
+                x.round() as i32,
+                (screen_height() - y - height).round() as i32,
+                width.round() as i32,
+                height.round() as i32,
+            )),
+            z_near: pose.near,
+            z_far: pose.far,
+            ..Default::default()
+        });
+        for chunk in markers.chunks(1000) {
+            draw_mesh(&navigation_marker_mesh(chunk));
+        }
+        set_default_camera();
+    }
+
     pub(crate) fn draw_projectiles(
         &mut self,
         aperture: (f32, f32, f32, f32),
@@ -2956,6 +2994,74 @@ impl TacticalAssetRenderer {
         });
         self.family_loads = self.family_loads.saturating_add(1);
         Ok(())
+    }
+}
+
+/// `FUN_005d8c30`'s navigation marker: a regular tetrahedron of edge 1, its
+/// apex up and its base under the centre (the face normals (±0.8165,
+/// 0.3333, 0.4714), (0, 0.3333, -0.9428) and (0, -1, 0)), scaled by its
+/// argument, 1.5 from `FUN_005c1c10`, and drawn solid, lit and flat
+/// (`SetQuality(0x88)`).
+const NAVIGATION_MARKER_VERTICES: [[f32; 3]; 4] = [
+    [0.0, -0.2041, 0.5774],
+    [0.5, -0.2041, -0.2887],
+    [-0.5, -0.2041, -0.2887],
+    [0.0, 0.6124, 0.0],
+];
+const NAVIGATION_MARKER_SCALE: f32 = 1.5;
+
+/// A flat face's colour under the scene's lights: d3dim's ambient 128 and
+/// directional 204 on the face's material colour (as the hulls, with no
+/// texture, emission or specular).
+fn original_flat_face_color(tint: Vec3, normal: Vec3) -> Color {
+    let nl = normal
+        .normalize()
+        .dot(original_surface_to_light_direction())
+        .max(0.0);
+    let lit =
+        ORIGINAL_AMBIENT_LIGHT_BYTE * tint + ORIGINAL_DIRECTIONAL_LIGHT_RGB * 255.0 * tint * nl;
+    let byte = (lit + Vec3::splat(0.5))
+        .floor()
+        .clamp(Vec3::ZERO, Vec3::splat(255.0));
+    Color::from_rgba(byte.x as u8, byte.y as u8, byte.z as u8, 255)
+}
+
+/// The four faces of a marker at `center` (render space), each with its
+/// outward normal's lit colour.
+fn navigation_marker_faces(center: Vec3, tint: Vec3) -> [([Vec3; 3], Color); 4] {
+    let corner = |index: usize| {
+        let [x, y, z] = NAVIGATION_MARKER_VERTICES[index];
+        center + authored_position(vec3(x, y, z)) * NAVIGATION_MARKER_SCALE
+    };
+    [[0, 1, 2], [0, 1, 3], [1, 2, 3], [2, 0, 3]].map(|face| {
+        let corners = face.map(corner);
+        let mut normal = (corners[1] - corners[0]).cross(corners[2] - corners[0]);
+        let middle = (corners[0] + corners[1] + corners[2]) / 3.0;
+        if normal.dot(middle - center) < 0.0 {
+            normal = -normal;
+        }
+        (corners, original_flat_face_color(tint, normal))
+    })
+}
+
+fn navigation_marker_mesh(markers: &[(Vec3, Vec3)]) -> Mesh {
+    let vertices = markers
+        .iter()
+        .flat_map(|&(center, tint)| navigation_marker_faces(center, tint))
+        .flat_map(|(corners, color)| {
+            corners.map(|position| Vertex {
+                position,
+                uv: Vec2::ZERO,
+                color: color.into(),
+                normal: Vec4::ZERO,
+            })
+        })
+        .collect::<Vec<_>>();
+    let indices = (0..vertices.len() as u16).collect();
+    Mesh {
+        vertices,
+        indices,
+        texture: None,
     }
 }
 
@@ -4687,6 +4793,84 @@ mod tests {
         for key in ["MONCAL52.BMP/1033", "STRIKE52.BMP/1033", "5531/1033"] {
             assert!(cache.textures.contains_key(key), "missing texture {key}");
         }
+    }
+
+    // FUN_005d8c30 (scale 1.5, FUN_005c1c10): a regular tetrahedron of
+    // edge 1.5, apex up, centred on its point.
+    #[test]
+    fn a_navigation_marker_is_a_regular_tetrahedron_of_edge_one_and_a_half() {
+        let center = vec3(10.0, 20.0, 30.0);
+        let faces = navigation_marker_faces(center, vec3(1.0, 0.0, 0.0));
+        let mut corners = faces
+            .iter()
+            .flat_map(|(corners, _)| *corners)
+            .collect::<Vec<_>>();
+        corners.sort_by(|a, b| a.to_array().partial_cmp(&b.to_array()).unwrap());
+        corners.dedup_by(|a, b| a.distance(*b) < 1e-4);
+        assert_eq!(corners.len(), 4);
+        for (index, a) in corners.iter().enumerate() {
+            for b in &corners[index + 1..] {
+                assert!((a.distance(*b) - 1.5).abs() < 2e-3, "{a} {b}");
+            }
+        }
+        let top = corners
+            .iter()
+            .map(|corner| corner.y)
+            .fold(f32::MIN, f32::max);
+        assert!((top - (center.y + 0.6124 * 1.5)).abs() < 1e-4);
+        let middle = corners.iter().copied().sum::<Vec3>() / 4.0;
+        assert!(middle.distance(center) < 1e-3);
+    }
+
+    // FUN_005d8c30's face normals, z reflected into render space: each face
+    // takes its own outward normal's light.
+    #[test]
+    fn each_navigation_marker_face_is_lit_by_its_outward_normal() {
+        let center = vec3(4.0, -2.0, 7.0);
+        let tint = vec3(1.0, 1.0, 1.0);
+        let corner = |index: usize| {
+            let [x, y, z] = NAVIGATION_MARKER_VERTICES[index];
+            center + authored_position(vec3(x, y, z)) * NAVIGATION_MARKER_SCALE
+        };
+        // The face opposite each vertex, and its source normal.
+        let normals = [
+            (0, vec3(0.0, 0.3333, -0.9428)),
+            (1, vec3(-0.8165, 0.3333, 0.4714)),
+            (2, vec3(0.8165, 0.3333, 0.4714)),
+            (3, vec3(0.0, -1.0, 0.0)),
+        ];
+        let faces = navigation_marker_faces(center, tint);
+        for (opposite, normal) in normals {
+            let (_, color) = faces
+                .iter()
+                .find(|(corners, _)| corners.iter().all(|c| c.distance(corner(opposite)) > 1e-3))
+                .unwrap();
+            assert_eq!(
+                *color,
+                original_flat_face_color(tint, authored_position(normal)),
+                "the face opposite vertex {opposite}"
+            );
+        }
+        let bytes = faces.map(|(_, color): ([Vec3; 3], Color)| {
+            let rgba: [u8; 4] = color.into();
+            rgba[0]
+        });
+        assert_eq!(bytes.iter().filter(|&&byte| byte == 128).count(), 2, "{bytes:?}");
+        assert!(bytes.contains(&255) && bytes.contains(&203), "{bytes:?}");
+    }
+
+    // d3dim's ambient 128 on the magenta mesh: A0 VM 2026-10-27
+    // (nav-point-left-click.png) draws the selected point (128, 0, 128); the
+    // faces the light reaches are brighter.
+    #[test]
+    fn a_navigation_markers_unlit_face_takes_the_ambient_light_alone() {
+        let faces = navigation_marker_faces(Vec3::ZERO, vec3(1.0, 0.0, 1.0));
+        let colors = faces.map(|(_, color)| -> [u8; 4] { color.into() });
+        assert!(colors.contains(&[128, 0, 128, 255]), "{colors:?}");
+        assert!(colors.iter().any(|color| color[0] > 128), "{colors:?}");
+        assert!(colors
+            .iter()
+            .all(|color| color[1] == 0 && color[0] == color[2]));
     }
 
     // Source: TACTICAL.DLL native LOD family proof keys.

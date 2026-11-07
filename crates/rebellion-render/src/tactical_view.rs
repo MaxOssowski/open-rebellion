@@ -738,6 +738,8 @@ pub struct TacticalState {
     /// Independently visible navigation-point sets 1 through 4.
     navigation_sets_visible: [bool; 4],
     logged_navigation_scene: Option<[bool; 4]>,
+    /// The selected-ship panel's order line last logged.
+    logged_orders_line: Option<String>,
     /// Default and player-memorized camera states for resources 1040–1043.
     default_camera: Option<TacticalCameraBookmark>,
     memorized_camera: Option<TacticalCameraBookmark>,
@@ -773,6 +775,9 @@ pub struct TacticalState {
     battle_options_open: bool,
     /// Captured Battle Options control. Dispatch occurs only on a matching release.
     battle_options_pressed: Option<TacticalBattleOptionsControl>,
+    /// Captured side-panel control, dispatched on a matching release: A0
+    /// TAC-05-C013 holds Hammer down (1138) with the preview unchanged.
+    command_control_pressed: Option<TacticalCommandControl>,
     /// The native withdrawal confirmation replaces the right-hand options panel.
     withdraw_confirmation_open: bool,
     /// Captured confirmation control. Dispatch occurs only on a matching release.
@@ -885,6 +890,7 @@ impl Default for TacticalState {
             zoom: 1.0,
             navigation_sets_visible: [false; 4],
             logged_navigation_scene: None,
+            logged_orders_line: None,
             default_camera: None,
             memorized_camera: None,
             camera_follow: None,
@@ -905,6 +911,7 @@ impl Default for TacticalState {
             strategic_results_applied: false,
             battle_options_open: false,
             battle_options_pressed: None,
+            command_control_pressed: None,
             withdraw_confirmation_open: false,
             withdraw_confirmation_pressed: None,
             player_observing: false,
@@ -974,6 +981,7 @@ impl TacticalState {
         self.zoom = 1.0;
         self.navigation_sets_visible = [false; 4];
         self.logged_navigation_scene = None;
+        self.logged_orders_line = None;
         self.default_camera =
             self.asset_renderer
                 .camera_state()
@@ -997,6 +1005,7 @@ impl TacticalState {
         self.strategic_results_applied = false;
         self.battle_options_open = false;
         self.battle_options_pressed = None;
+        self.command_control_pressed = None;
         self.withdraw_confirmation_open = false;
         self.withdraw_confirmation_pressed = None;
         self.player_observing = false;
@@ -3184,7 +3193,48 @@ struct TacticalGroupHud<'a> {
     selected_fighter_hud: Option<u32>,
     selected_fighter_count: Option<TacticalFighterCount>,
     selected_order: TacticalOrder,
+    /// What the panel ship is doing, ours only (`FUN_005e4b40`).
+    selected_ship_activity: Option<TacticalShipActivity<'a>>,
     selected_tactic: TacticalTactic,
+}
+
+/// The panel's order line beyond the order's word (`FUN_005e4b40` on the
+/// unit's mover, `FUN_005a6460`): "Navigating" (TEXTTACT `0xdd8e`) while
+/// its route (`+0x80`) holds a point, or "Disabled" (`0xdd91`) when its
+/// speed (vt `+0x90`, `FUN_005b17f0`) is 0; else, holding a target
+/// (`+0x98`), "Attacking" (`0xdd8d`) and the target's name after a space
+/// (`FUN_005b1610`, `DAT_006a7f40`). A0 TAC-04-C002 reads "Navigating", A0
+/// TAC-02/03 "Attacking Victory Destroyer 1" and "Attacking Swift".
+/// port: the order's word stays before the name only while the mover's
+/// `+0x68` is 1, which the port never sets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TacticalShipActivity<'a> {
+    Navigating,
+    Disabled,
+    Attacking(&'a str),
+}
+
+impl<'a> TacticalShipActivity<'a> {
+    fn of(session: &'a BattleSession, index: usize) -> Option<Self> {
+        let ship = session.ships.get(index)?;
+        if !ship.navigation_route.is_empty() {
+            let speed = original_tactical_mobility(&session.ships, &session.field_effects, index)
+                .map_or(0.0, |mobility| mobility.effective_engine_power);
+            return Some(if speed == 0.0 {
+                Self::Disabled
+            } else {
+                Self::Navigating
+            });
+        }
+        let name = match ship
+            .attack_target
+            .or_else(|| ship.manual_targets.first().copied())?
+        {
+            TacticalAttackTarget::CapitalShip(target) => &session.ships.get(target)?.name,
+            TacticalAttackTarget::FighterGroup(target) => &session.fighters.get(target)?.name,
+        };
+        Some(Self::Attacking(name))
+    }
 }
 
 impl<'a> TacticalGroupHud<'a> {
@@ -3209,13 +3259,17 @@ impl<'a> TacticalGroupHud<'a> {
     }
 
     /// The panel's order line: ours (`+0x168` the viewer's side) shows its
-    /// order, an enemy's "Orders Unavailable" (`FUN_005e4b40`, TEXTTACT
-    /// `0xddbf`).
-    fn panel_orders_line(&self) -> &'static str {
+    /// order or what it is doing (`TacticalShipActivity`), an enemy's
+    /// "Orders Unavailable" (`FUN_005e4b40`, TEXTTACT `0xddbf`).
+    fn panel_orders_line(&self) -> String {
         if self.selected_enemy {
-            "Orders Unavailable"
-        } else {
-            self.selected_order.label()
+            return "Orders Unavailable".to_owned();
+        }
+        match &self.selected_ship_activity {
+            Some(TacticalShipActivity::Navigating) => "Navigating".to_owned(),
+            Some(TacticalShipActivity::Disabled) => "Disabled".to_owned(),
+            Some(TacticalShipActivity::Attacking(name)) => format!("Attacking {name}"),
+            None => self.selected_order.label().to_owned(),
         }
     }
 
@@ -3292,6 +3346,15 @@ impl<'a> TacticalGroupHud<'a> {
                 || selected_ship.map_or(TacticalOrder::None, |ship| ship.order),
                 |fighter| fighter.order,
             ),
+            selected_ship_activity: selected_ship
+                .filter(|ship| ship.is_attacker == session.player_is_attacker)
+                .and_then(|ship| {
+                    session
+                        .ships
+                        .iter()
+                        .position(|each| std::ptr::eq(each, ship))
+                })
+                .and_then(|index| TacticalShipActivity::of(session, index)),
             selected_tactic: selected_fighter.map_or_else(
                 || selected_ship.map_or(TacticalTactic::StandOff, |ship| ship.tactic),
                 |fighter| fighter.tactic,
@@ -5378,7 +5441,7 @@ fn draw_original_tactical_hud(
             );
             draw_tactical_panel_text(
                 canvas,
-                groups.panel_orders_line(),
+                &groups.panel_orders_line(),
                 497.0,
                 212.0,
                 TACTICAL_FONT_8,
@@ -6030,7 +6093,12 @@ fn handle_original_tactical_controls(
         }
         return TacticalAction::None;
     }
-    if is_mouse_button_pressed(MouseButton::Left) {
+    let pressed = is_mouse_button_pressed(MouseButton::Left);
+    let released = is_mouse_button_released(MouseButton::Left);
+    if !pressed && !released && !is_mouse_button_down(MouseButton::Left) {
+        state.command_control_pressed = None;
+    }
+    if pressed || (released && state.command_control_pressed.is_some()) {
         let (has_selection, selected_fighter, attack_death_star_enabled, player_is_alliance) =
             state
                 .session
@@ -6064,13 +6132,24 @@ fn handle_original_tactical_controls(
                 y,
             )
         };
-        if let Some(control) = command_control {
-            activate_tactical_command(state, control);
-        } else {
-            if let Some(control) = tactical_hud_control_at(cache, x, y) {
+        // A side-panel button acts on its release over it (the original's
+        // buttons notify on WM_LBUTTONUP); the HUD's act on the press.
+        if pressed {
+            if let Some(control) = command_control {
+                state.command_control_pressed = Some(control);
+            } else if let Some(control) = tactical_hud_control_at(cache, x, y) {
                 if let Some(action) = activate_tactical_hud_control(state, control) {
                     return action;
                 }
+            }
+        }
+        if released {
+            if let Some(captured) = state
+                .command_control_pressed
+                .take()
+                .filter(|captured| Some(*captured) == command_control)
+            {
+                activate_tactical_command(state, captured);
             }
         }
     }
@@ -9648,11 +9727,13 @@ fn draw_tactical_frame(
     let player_is_attacker = session.player_is_attacker;
     let combat_tick = session.combat_tick;
     let paused = session.paused;
-    draw_tactical_navigation_points(
-        session,
-        &navigation_projections,
-        canvas.scale,
-        state.selected_navigation_point,
+    state.asset_renderer.draw_navigation_markers(
+        (aperture.x, aperture.y, aperture.width, aperture.height),
+        &tactical_navigation_markers(
+            session,
+            &navigation_projections,
+            state.selected_navigation_point,
+        ),
     );
 
     // 3. Draw deployment zones (placement phase only).
@@ -10152,6 +10233,13 @@ fn draw_tactical_frame(
             .as_ref()
             .is_some_and(|session| session.player_is_attacker == session.attacker_is_alliance);
         let groups = TacticalGroupHud::from_session(state.session.as_ref().unwrap());
+        let orders_line = groups.panel_ship_name().map(|_| groups.panel_orders_line());
+        if state.logged_orders_line != orders_line {
+            if let Some(line) = &orders_line {
+                macroquad::logging::info!("[tactical_panel] orders_line={}", line);
+            }
+            state.logged_orders_line = orders_line;
+        }
         let death_star = state.session.as_ref().and_then(player_death_star);
         let has_selection =
             groups.selected_fighter_group.is_some() || groups.selected_ship_name.is_some();
@@ -10625,20 +10713,20 @@ fn route_selected_ships_as_a_force(session: &mut BattleSession) -> bool {
     true
 }
 
-/// The route points of the player's selected ships and squadrons, drawn
-/// larger on the navigation display.
-fn selected_route_points(session: &BattleSession) -> Vec<TacticalWorldPosition> {
+/// The routes of the player's selected ships and squadrons, which the
+/// navigation display marks.
+fn selected_routes(session: &BattleSession) -> Vec<&[TacticalWorldPosition]> {
     session
         .ships
         .iter()
         .filter(|ship| ship.selected && ship.is_attacker == session.player_is_attacker)
-        .flat_map(|ship| ship.navigation_route.iter().copied())
+        .map(|ship| ship.navigation_route.as_slice())
         .chain(
             session
                 .fighters
                 .iter()
                 .filter(|fighter| fighter.selected && fighter.is_attacker == session.player_is_attacker)
-                .flat_map(|fighter| fighter.navigation_route.iter().copied()),
+                .map(|fighter| fighter.navigation_route.as_slice()),
         )
         .collect()
 }
@@ -10655,68 +10743,66 @@ fn toggle_route_point(route: &mut Vec<TacticalWorldPosition>, point: TacticalWor
     }
 }
 
-/// A navigation point's colour by its grid layer (`FUN_0059f800` stores the
-/// layer, y index + 1, at `+0x54`): A0 VM 2026-10-27 shows the top layer
-/// white, the middle one dark red (148, 6, 0) and the bottom one blue (0,
-/// 46, 178). The layer picks the marker: `FUN_0059fb30` hands each point's
-/// `+0x54` to the display (`FUN_005c10d0` -> `FUN_005c1e80`), whose marker
-/// `FUN_005d90b0` switches on it (`0x5d913b`..`0x5d9179`) among its
-/// variants (`0x5d9230`, `0x5d92d0`, `0x5d9310`).
-fn navigation_layer_color(y: f32) -> Color {
+/// A navigation point's material by its grid layer (`FUN_0059f800` stores the
+/// layer, y index + 1, at `+0x54`, which the marker keeps at `+0x3c`):
+/// `FUN_005d8c30` colours the three layer meshes (1, 0, 0), (1, 1, 1) and
+/// (0, 0.541, 1), and A0 VM 2026-10-27 shows the top layer white, the middle
+/// one red and the bottom one blue.
+fn navigation_layer_tint(y: f32) -> Vec3 {
     if y > 0.0 {
-        WHITE
+        vec3(1.0, 1.0, 1.0)
     } else if y < 0.0 {
-        Color::from_rgba(0, 46, 178, 255)
+        vec3(0.0, 0.541, 1.0)
     } else {
-        Color::from_rgba(148, 6, 0, 255)
+        vec3(1.0, 0.0, 0.0)
     }
 }
 
-/// A0 VM 2026-10-27: the selected point turns purple (128, 0, 128); the
-/// others keep their set's colour.
-fn navigation_point_color(set_color: Color, selected: bool) -> Color {
-    if selected {
-        Color::from_rgba(128, 0, 128, 255)
+/// `FUN_005d8c30`'s yellow (1, 1, 0) and magenta (1, 0, 1) meshes.
+const NAVIGATION_ROUTE_NEXT_TINT: Vec3 = vec3(1.0, 1.0, 0.0);
+const NAVIGATION_ROUTE_LATER_TINT: Vec3 = vec3(1.0, 0.0, 1.0);
+
+/// A point's marker material (`FUN_0059f560`, first match wins): `+0x20`
+/// yellow, which `FUN_005a0840` sets on the first point of the selected
+/// unit's route; `+0x2c` magenta, set on its later points, and on the
+/// selected point (A0 VM 2026-10-27 shows it purple, the magenta face in
+/// ambient light); otherwise the layer's colour. A0 TAC-04-C002 turns the
+/// first point of a route yellow, TAC-04-C003 its second one magenta.
+fn navigation_point_tint(
+    position: TacticalWorldPosition,
+    routes: &[&[TacticalWorldPosition]],
+    selected: bool,
+) -> Vec3 {
+    if routes.iter().any(|route| route.first() == Some(&position)) {
+        NAVIGATION_ROUTE_NEXT_TINT
+    } else if selected || routes.iter().any(|route| route.contains(&position)) {
+        NAVIGATION_ROUTE_LATER_TINT
     } else {
-        set_color
+        navigation_layer_tint(position.y)
     }
 }
 
-fn draw_tactical_navigation_points(
+/// The markers of the shown points (`FUN_0059fb30` -> `FUN_005c1e80`), each
+/// a lit tetrahedron (`FUN_005d90b0`) at the point.
+fn tactical_navigation_markers(
     session: &BattleSession,
     projections: &[TacticalNavigationProjection],
-    canvas_scale: f32,
     selected_point: Option<TacticalWorldPosition>,
-) {
-    let selected_routes = selected_route_points(session);
-    for projection in projections {
-        let assigned = selected_routes.contains(&projection.position);
-        let color = navigation_point_color(
-            navigation_layer_color(projection.position.y),
-            selected_point == Some(projection.position),
-        );
-        let radius = if assigned { 7.0 } else { 5.0 } * canvas_scale;
-        let top = vec2(projection.screen.x, projection.screen.y - radius);
-        let left = vec2(
-            projection.screen.x - radius,
-            projection.screen.y + radius * 0.75,
-        );
-        let right = vec2(
-            projection.screen.x + radius,
-            projection.screen.y + radius * 0.75,
-        );
-        draw_triangle(top, left, right, color);
-        draw_triangle_lines(top, left, right, canvas_scale.max(1.0), WHITE);
-        if assigned {
-            draw_circle_lines(
-                projection.screen.x,
-                projection.screen.y,
-                radius + 2.0 * canvas_scale,
-                canvas_scale.max(1.0),
-                WHITE,
-            );
-        }
-    }
+) -> Vec<(Vec3, Vec3)> {
+    let routes = selected_routes(session);
+    projections
+        .iter()
+        .map(|projection| {
+            (
+                projection.position.rendered(),
+                navigation_point_tint(
+                    projection.position,
+                    &routes,
+                    selected_point == Some(projection.position),
+                ),
+            )
+        })
+        .collect()
 }
 
 fn draw_tactical_attack_target(
@@ -17081,6 +17167,33 @@ mod tests {
         assert_eq!(hud.panel_orders_line(), "Orders Unavailable");
     }
 
+    // FUN_005e4b40: a route reads "Navigating" (0xdd8e), "Disabled" (0xdd91)
+    // with no speed (FUN_005b17f0); a target "Attacking" (0xdd8d) and its
+    // name (A0 TAC-04-C002 "Navigating", A0 TAC-02/03 "Attacking Victory
+    // Destroyer 1", "Attacking Swift").
+    #[test]
+    fn the_panel_orders_line_names_the_route_or_the_target() {
+        let mut ship = test_ship(1, 0, true, true);
+        ship.order = TacticalOrder::AttackCapitalShips;
+        ship.subsystem_capacity.engines = true;
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.name = "Victory Destroyer 1".to_owned();
+        let mut session = test_session(vec![ship, enemy], vec![test_fighter(5, false)], true);
+        session.fighters[0].name = "Red Group".to_owned();
+        select_clicked_ship(&mut session, 0, false);
+        let line =
+            |session: &BattleSession| TacticalGroupHud::from_session(session).panel_orders_line();
+        assert_eq!(line(&session), "Attack Capital Ships");
+        session.ships[0].manual_targets = vec![TacticalAttackTarget::FighterGroup(0)];
+        assert_eq!(line(&session), "Attacking Red Group");
+        session.ships[0].attack_target = Some(TacticalAttackTarget::CapitalShip(1));
+        assert_eq!(line(&session), "Attacking Victory Destroyer 1");
+        session.ships[0].navigation_route = vec![at(1.0, 0.0, 0.0)];
+        assert_eq!(line(&session), "Navigating");
+        session.ships[0].subsystem_capacity.engines = false;
+        assert_eq!(line(&session), "Disabled");
+    }
+
     // FUN_0051c9b0: the panel shows the clicked unit of a selection across
     // two forces.
     #[test]
@@ -17519,7 +17632,7 @@ mod tests {
         resting.navigation_route = vec![d];
         let session =
             test_session(vec![ship, idle, enemy], vec![squadron, enemy_squadron, resting], true);
-        assert_eq!(selected_route_points(&session), vec![a, c]);
+        assert_eq!(selected_routes(&session), vec![&[a][..], &[c][..]]);
     }
 
     // Only the group's flying squadrons take its route.
@@ -18216,12 +18329,13 @@ mod tests {
         assert!(!sets[0].contains(&at(0.0, 0.0, 0.0)));
     }
 
-    // A0 VM 2026-10-27: top layer white, middle dark red, bottom blue.
+    // FUN_005d8c30's layer meshes; A0 VM 2026-10-27: top layer white,
+    // middle red, bottom blue.
     #[test]
     fn a_navigation_points_colour_follows_its_layer() {
-        assert_eq!(navigation_layer_color(1.0), WHITE);
-        assert_eq!(navigation_layer_color(0.0), Color::from_rgba(148, 6, 0, 255));
-        assert_eq!(navigation_layer_color(-1.0), Color::from_rgba(0, 46, 178, 255));
+        assert_eq!(navigation_layer_tint(1.0), vec3(1.0, 1.0, 1.0));
+        assert_eq!(navigation_layer_tint(0.0), vec3(1.0, 0.0, 0.0));
+        assert_eq!(navigation_layer_tint(-1.0), vec3(0.0, 0.541, 1.0));
     }
 
     #[test]
@@ -18232,11 +18346,75 @@ mod tests {
         assert!(!no_unit_under_pointer(None, None, Some(0)));
     }
 
-    // A0 VM 2026-10-27: the selected navigation point is purple.
+    // FUN_0059fb30 -> FUN_005c1e80: one marker per shown point, at the point,
+    // in FUN_0059f560's colour.
+    #[test]
+    fn each_shown_point_gets_a_marker_in_its_state_colour() {
+        let (first, later, picked, idle) =
+            (at(1.0, 0.0, 0.0), at(2.0, 1.0, 0.0), at(3.0, -1.0, 0.0), at(4.0, -1.0, 0.0));
+        let mut ship = test_ship(1, 0, true, true);
+        ship.selected = true;
+        ship.navigation_route = vec![first, later];
+        let session = test_session(vec![ship], Vec::new(), true);
+        let projections = [first, later, picked, idle].map(|position| TacticalNavigationProjection {
+            set: 0,
+            point: 0,
+            position,
+            screen: macroquad::math::Vec2::ZERO,
+        });
+        let markers = tactical_navigation_markers(&session, &projections, Some(picked));
+        assert_eq!(
+            markers,
+            vec![
+                (first.rendered(), vec3(1.0, 1.0, 0.0)),
+                (later.rendered(), vec3(1.0, 0.0, 1.0)),
+                (picked.rendered(), vec3(1.0, 0.0, 1.0)),
+                (idle.rendered(), vec3(0.0, 0.541, 1.0)),
+            ]
+        );
+    }
+
+    // A0 VM 2026-10-27: the selected navigation point is purple, the
+    // magenta mesh (FUN_0059f560's +0x2c).
     #[test]
     fn the_selected_navigation_point_is_purple() {
-        assert_eq!(navigation_point_color(RED, false), RED);
-        assert_eq!(navigation_point_color(RED, true), Color::from_rgba(128, 0, 128, 255));
+        let point = at(0.0, 0.0, 0.0);
+        assert_eq!(
+            navigation_point_tint(point, &[], false),
+            vec3(1.0, 0.0, 0.0)
+        );
+        assert_eq!(navigation_point_tint(point, &[], true), vec3(1.0, 0.0, 1.0));
+    }
+
+    // FUN_005a0840: the selected unit's first route point is yellow (+0x20),
+    // its later ones magenta (+0x2c), and yellow wins (FUN_0059f560). A0
+    // TAC-04-C002 shows the first point yellow, TAC-04-C003 a second one
+    // magenta beside it.
+    #[test]
+    fn a_routes_first_point_is_yellow_and_its_later_ones_magenta() {
+        let (a, b, c) = (at(1.0, 1.0, 0.0), at(2.0, -1.0, 0.0), at(3.0, 0.0, 0.0));
+        let first: &[TacticalWorldPosition] = &[a, b];
+        let second: &[TacticalWorldPosition] = &[b];
+        assert_eq!(
+            navigation_point_tint(a, &[first], false),
+            vec3(1.0, 1.0, 0.0)
+        );
+        assert_eq!(
+            navigation_point_tint(b, &[first], false),
+            vec3(1.0, 0.0, 1.0)
+        );
+        assert_eq!(
+            navigation_point_tint(b, &[first, second], false),
+            vec3(1.0, 1.0, 0.0)
+        );
+        assert_eq!(
+            navigation_point_tint(a, &[first], true),
+            vec3(1.0, 1.0, 0.0)
+        );
+        assert_eq!(
+            navigation_point_tint(c, &[first], false),
+            vec3(1.0, 0.0, 0.0)
+        );
     }
 
     // 0x005a0e10 / FUN_005a0e70 and A0 VM 2026-10-27: a left click on a
