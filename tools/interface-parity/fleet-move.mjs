@@ -8,6 +8,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import { PNG } from "pngjs";
 import { launchBrowser } from "./browser-launch.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -160,11 +161,13 @@ async function settle(page) {
   return latest(page);
 }
 
+// galaxy_centered_rect: the spare width halved and truncated (A0
+// move-confirm/01: the Empire's window at (148, 52)).
 function confirmationOrigin(faction) {
   const { galaxy } = faction;
   return {
-    x: Math.round(galaxy.x + galaxy.width / 2 - confirmation.width / 2),
-    y: Math.round(galaxy.y + galaxy.height / 2 - confirmation.height / 2),
+    x: galaxy.x + Math.trunc((galaxy.width - confirmation.width) / 2),
+    y: galaxy.y + Math.trunc((galaxy.height - confirmation.height) / 2),
   };
 }
 
@@ -296,6 +299,41 @@ async function shot(page, directory, label) {
   return { label, sha256: sha256(bytes) };
 }
 
+// An indexed 8-bit BMP's pixels (the STRATEGY resources).
+function decodeIndexedBmp(bytes) {
+  const dataOffset = bytes.readUInt32LE(10);
+  const headerSize = bytes.readUInt32LE(14);
+  const width = bytes.readInt32LE(18);
+  const height = bytes.readInt32LE(22);
+  const paletteOffset = 14 + headerSize;
+  const stride = (width + 3) & ~3;
+  return {
+    width,
+    height,
+    pixel(x, y) {
+      const index = bytes[dataOffset + (height - 1 - y) * stride + x];
+      const entry = paletteOffset + index * 4;
+      return [bytes[entry + 2], bytes[entry + 1], bytes[entry]];
+    },
+  };
+}
+
+// The pixels of STRATEGY `id` but its blue key that differ from `png` with
+// the bitmap's corner at (x0, y0).
+function differingFromBitmap(png, id, x0, y0) {
+  const bmp = decodeIndexedBmp(fs.readFileSync(path.join(root, `data/base/ui/strategy-dll/BMP/${id}.bmp`)));
+  let count = 0;
+  for (let y = 0; y < bmp.height; y += 1) {
+    for (let x = 0; x < bmp.width; x += 1) {
+      const c = bmp.pixel(x, y);
+      if (c[0] === 0 && c[1] === 0 && c[2] === 255) continue;
+      const i = ((y0 + y) * png.width + x0 + x) * 4;
+      if ([0, 1, 2].some((k) => png.data[i + k] !== c[k])) count += 1;
+    }
+  }
+  return count;
+}
+
 function inTransitTo(setup) {
   return (observed) => observed.in_transit && observed.destination_dat_id === setup.target_dat_id;
 }
@@ -395,6 +433,23 @@ const cases = [
       await page.waitForTimeout(150);
       await frames(page);
       const opened = await shot(page, directory, "confirmation-open");
+      // A0 move-confirm/01-confirm-corsin (a new Easy Empire game, Fleet 1
+      // to Corsin): the window at (148, 52), the checkmark 10926 and the X
+      // 10929 at its (355, 244) and (355, 281), each every pixel but the
+      // key A0's and the port's.
+      const origin0 = confirmationOrigin(faction);
+      const buttons = {};
+      const shown = PNG.sync.read(fs.readFileSync(path.join(directory, "confirmation-open.png")));
+      buttons.port = [differingFromBitmap(shown, 10926, origin0.x + 355, origin0.y + 244),
+        differingFromBitmap(shown, 10929, origin0.x + 355, origin0.y + 281)];
+      if (faction.name === "empire") {
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/move-confirm/01-confirm-corsin.png")));
+        assert.deepEqual([origin0.x, origin0.y], [148, 52], JSON.stringify(origin0));
+        buttons.a0 = [differingFromBitmap(a0, 10926, 148 + 355, 52 + 244),
+          differingFromBitmap(a0, 10929, 148 + 355, 52 + 281)];
+      }
+      assert.ok(buttons.port.every((n) => n === 0) && (buttons.a0 ?? [0, 0]).every((n) => n === 0),
+        JSON.stringify(buttons));
       await click(page, point);
       const blocked = await settle(page);
       assert.equal(blocked.selected_system_dat_id, open.selected_system_dat_id,
@@ -409,7 +464,7 @@ const cases = [
         });
       assert.ok(inTransitTo(setup)(observed));
       const control = await provenBare(page, point);
-      return { menu, probe: control, opened, observed };
+      return { menu, probe: control, opened, observed, buttons };
     },
   },
   {

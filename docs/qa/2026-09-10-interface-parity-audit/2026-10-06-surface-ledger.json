@@ -4293,13 +4293,14 @@
         {
           "id": "CMD-11-C024",
           "requirement": "Move-order confirmation",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-dialogs/",
-            "crates/rebellion-render/src/move_confirmation.rs"
+            "crates/rebellion-render/src/move_confirmation.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-move-confirmation-a0/"
           ],
-          "note": "FUN_0044f180's Yes (0x1300) and No (0x1301) tips are registered; no A0 capture (the VM's targeting click did not register over QMP) and no browser check yet.",
+          "note": "FUN_0044f180's Yes (0x1300) and No (0x1301) tips are registered; no A0 capture (the VM's targeting click did not register over QMP) and no browser check yet. 2026-11-07: A0 (a new Easy Empire game, move-confirm/) shows the confirmation for Fleet 1 to Corsin; its checkmark tip reads 'Yes' and the X's 'No', REBDLOG 0x1300/0x1301 as the port registers; the buttons match A0 in 0 pixels at the window's (355, 244)/(355, 281), and fleet-move.mjs compares them in the browser (Linux, both sides, the Empire's against A0).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
