@@ -1676,6 +1676,34 @@ async fn main() {
             &interface_test_fixture::personnel_arrivals(request, &world),
             &message_texts,
         );
+        // A0 uprising-clean/test-day795-umgul-near-uprising: the reader's
+        // own Umgul near uprising, filed before the joins so it lists
+        // under them.
+        for name in interface_test_fixture::near_uprisings(request) {
+            let Some(at) = world
+                .systems
+                .iter()
+                .find(|(_, system)| system.name == name)
+                .map(|(key, _)| key)
+            else {
+                continue;
+            };
+            let holder = Some(Faction::of_alliance(player_faction == MissionFaction::Alliance));
+            if let Some(message) = rebellion_render::story_messages::near_uprising_message(
+                at,
+                name,
+                holder,
+                player_faction == MissionFaction::Alliance,
+                true,
+                false,
+                1,
+                0,
+                0,
+                &message_texts,
+            ) {
+                msg_log.push(message.with_picture_if(holder.and_then(pictures::near_uprising)));
+            }
+        }
         // A0 message-index/category-1-day228: Corellia, then Commenor, joins
         // the Empire, as the Alliance reads it.
         for (name, tick) in interface_test_fixture::systems_joining_the_empire(request) {
@@ -2369,6 +2397,7 @@ async fn main() {
                             let holder = sys.control.faction();
                             if let Some(message) =
                                 rebellion_render::story_messages::near_uprising_message(
+                                    *system,
                                     &sys.name,
                                     holder,
                                     player_faction == MissionFaction::Alliance,
@@ -3263,6 +3292,7 @@ async fn main() {
                             for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
                                 if let Some(message) =
                                     rebellion_render::story_messages::captured_message(
+                                        Some(*at_system),
                                         captive,
                                         *captured_by == MissionFaction::Alliance,
                                         place,
@@ -11626,16 +11656,17 @@ fn escape_character(
     let captor_is_alliance = captive
         .captured_by
         .map_or(!escaped_to_alliance, |side| side == Faction::Alliance);
-    let place = captive
+    let at = captive
         .current_fleet
         .and_then(|fleet| world.fleets.get(fleet))
         .map(|fleet| fleet.location)
-        .or(captive.current_system)
+        .or(captive.current_system);
+    let place = at
         .and_then(|system| world.systems.get(system))
         .map_or_else(String::new, |system| system.name.clone());
     let before = captive.clone();
     for reader in [CockpitFaction::Alliance, CockpitFaction::Empire] {
-        if let Some(message) = rebellion_render::story_messages::escaped_message(
+        if let Some(mut message) = rebellion_render::story_messages::escaped_message(
             &before,
             captor_is_alliance,
             &place,
@@ -11643,6 +11674,10 @@ fn escape_character(
             tick,
             texts,
         ) {
+            // FUN_00490340's messages have a target, as Character Captured
+            // shows Display lit (A0 messages-day633/capture-palpatine).
+            // port: the system the captive was held at.
+            message.system = at;
             log.push(message);
         }
     }
@@ -14338,6 +14373,7 @@ mod character_health_tests {
             is_empire: true,
             is_captive: true,
             captured_by: Some(Faction::Empire),
+            current_system: Some(rebellion_core::ids::SystemKey::default()),
             ..rebellion_core::world::Character::default()
         });
         let texts = std::collections::HashMap::from([
@@ -14357,6 +14393,10 @@ mod character_health_tests {
         assert_eq!(messages[1].audience, RailAudience::Empire);
         assert!(messages[1].text.contains("escaped from the"), "{}", messages[1].text);
         assert_eq!(messages[1].picture.map(|p| p.background), Some(0x405));
+        // Each names the place it was held at, for Display.
+        assert!(messages
+            .iter()
+            .all(|m| m.system == Some(rebellion_core::ids::SystemKey::default())));
         // With no captor recorded, the captor is the side it escaped from.
         let wedge = world.characters.insert(rebellion_core::world::Character {
             name: "Wedge".into(),

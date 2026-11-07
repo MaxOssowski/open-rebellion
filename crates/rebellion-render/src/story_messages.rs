@@ -497,6 +497,7 @@ pub fn jabba_captures_message(
 /// `+0xb0` bit 2 (no message) is not modelled.
 #[must_use]
 pub fn captured_message(
+    at: Option<rebellion_core::ids::SystemKey>,
     character: &rebellion_core::world::Character,
     captor_is_alliance: bool,
     system: &str,
@@ -522,20 +523,23 @@ pub fn captured_message(
     } else {
         RailAudience::Empire
     };
-    Some(
-        GameMessage::new(
-            tick,
-            fill_message_text(texts.get(&body)?, &parameters),
-            MessageCategory::Event,
-        )
-        .on_rail(STORY_RAIL, audience)
-        .with_title(fill_message_text(texts.get(&title)?, &parameters))
-        .with_picture(MessagePicture {
-            background: if character.is_alliance { 0x418 } else { 0x419 },
-            foreground: None,
-        })
-        .with_advisor_event(captured_event(character)),
+    let mut message = GameMessage::new(
+        tick,
+        fill_message_text(texts.get(&body)?, &parameters),
+        MessageCategory::Event,
     )
+    .on_rail(STORY_RAIL, audience)
+    .with_title(fill_message_text(texts.get(&title)?, &parameters))
+    .with_picture(MessagePicture {
+        background: if character.is_alliance { 0x418 } else { 0x419 },
+        foreground: None,
+    })
+    .with_advisor_event(captured_event(character));
+    // The message has a target, so the index's Display is lit (A0
+    // messages-day633/capture-palpatine). port: it goes to the system the
+    // capture took place at.
+    message.system = at;
+    Some(message)
 }
 
 /// A character's health as Character Health reports it (`FUN_0048fdf0`).
@@ -1907,12 +1911,16 @@ pub fn saboteurs_texts(
 /// bit 8, `FUN_0050ba90`) not in revolt (bit 2) whose surplus has just
 /// fallen to 0: TEXTSTRA `0x7070` / `0x7071` ("Unrest has pushed {1:1}
 /// close to uprising."). The picture is `0x452` / `0x453` by the holder.
+/// The message names the system (`at`), so the index's Display goes to it:
+/// A0 uprising-clean/test-day795-umgul-near-uprising shows Display (0x67)
+/// enabled.
 #[must_use]
 #[expect(
     clippy::too_many_arguments,
     reason = "Mirrors the class's inputs: the system's side, bits and the two values."
 )]
 pub fn near_uprising_message(
+    at: rebellion_core::ids::SystemKey,
     system: &str,
     holder: Option<rebellion_core::dat::Faction>,
     viewer_is_alliance: bool,
@@ -1934,10 +1942,11 @@ pub fn near_uprising_message(
     }
     let parameters = [MessageParameter::Named { name: system }];
     Some(
-        GameMessage::new(
+        GameMessage::at_system(
             tick,
             fill_message_text(texts.get(&0x7071)?, &parameters),
             MessageCategory::Event,
+            at,
         )
         .on_rail(
             crate::message_log::MessageRail::PopularSupport,
@@ -4004,8 +4013,10 @@ mod tests {
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
+        let ord_mantell = rebellion_core::ids::SystemKey::default();
         let say = |holder, viewer_is_alliance, garrisoned, in_uprising, previous, surplus| {
             near_uprising_message(
+                ord_mantell,
                 "Ord Mantell",
                 holder,
                 viewer_is_alliance,
@@ -4025,6 +4036,24 @@ mod tests {
         assert_eq!(
             say(Some(Faction::Alliance), true, true, false, 2, 0),
             warned
+        );
+        // It names its system for Display (A0 uprising-clean/
+        // test-day795-umgul-near-uprising: Display enabled).
+        assert_eq!(
+            near_uprising_message(
+                ord_mantell,
+                "Ord Mantell",
+                Some(Faction::Alliance),
+                true,
+                true,
+                false,
+                2,
+                0,
+                3,
+                &texts
+            )
+            .and_then(|m| m.system),
+            Some(ord_mantell)
         );
         assert_eq!(
             say(Some(Faction::Empire), false, true, false, -1, 0),
@@ -5262,7 +5291,9 @@ mod tests {
         .into_iter()
         .map(|(id, text)| (id, text.to_owned()))
         .collect();
+        let corfai = rebellion_core::ids::SystemKey::default();
         let alliance = captured_message(
+            Some(corfai),
             &emperor,
             true,
             "Corfai",
@@ -5282,8 +5313,17 @@ mod tests {
         assert_eq!(alliance.picture.map(|p| p.background), Some(0x419));
         assert_eq!(alliance.audience, RailAudience::Alliance);
         assert_eq!(alliance.advisor_event, [0x22; 2]);
-        let empire = captured_message(&emperor, true, "Corfai", CockpitFaction::Empire, 7, &texts)
-            .expect("message");
+        assert_eq!(alliance.system, Some(corfai));
+        let empire = captured_message(
+            None,
+            &emperor,
+            true,
+            "Corfai",
+            CockpitFaction::Empire,
+            7,
+            &texts,
+        )
+        .expect("message");
         assert_eq!(empire.text, "Emperor Palpatine was captured at Corfai.");
         assert_eq!(empire.audience, RailAudience::Empire);
         // An Alliance captive takes 0x418, and the Empire as captor.
@@ -5292,11 +5332,20 @@ mod tests {
             is_alliance: true,
             ..Default::default()
         };
-        let taken = captured_message(&leia, false, "Bespin", CockpitFaction::Empire, 7, &texts)
-            .expect("message");
+        let taken = captured_message(
+            None,
+            &leia,
+            false,
+            "Bespin",
+            CockpitFaction::Empire,
+            7,
+            &texts,
+        )
+        .expect("message");
         assert_eq!(taken.text, "Leia was captured by the Empire at Bespin.");
         assert_eq!(taken.picture.map(|p| p.background), Some(0x418));
         assert!(captured_message(
+            None,
             &leia,
             false,
             "Bespin",

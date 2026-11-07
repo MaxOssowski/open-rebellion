@@ -387,12 +387,23 @@ async function run(browser, base, faction) {
         };
         captureChecks.body_text = body(captureScreen, left, top);
         captureChecks.body_text_a0 = body(a0, 62, 49);
+        // The rail (the window's 414..468, 11..296), Display (0x67) lit
+        // as the message has a target: every pixel A0's.
+        let railDiffer = 0;
+        for (let y = 11; y < 296; y += 1) {
+          for (let x = 414; x < 468; x += 1) {
+            const i = ((top + y) * 640 + left + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => captureScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
+          }
+        }
+        captureChecks.rail_a0 = railDiffer;
       } catch {
         captureChecks.title_image_a0 = null;
       }
     }
     assert.ok(captureChecks.port === 0 && (captureChecks.a0 ?? 0) === 0
-      && (captureChecks.title_image_a0 ?? 0) === 0
+      && (captureChecks.title_image_a0 ?? 0) === 0 && (captureChecks.rail_a0 ?? 0) === 0
       && (!captureChecks.title_text_a0
         || captureChecks.title_text.every((v, i) => Math.abs(v - captureChecks.title_text_a0[i]) <= 2))
       && (!captureChecks.body_text_a0
@@ -557,6 +568,60 @@ async function run(browser, base, faction) {
         rowChecks.support_heads_a0 = null;
       }
       assert.deepEqual(rowChecks.support_heads_a0 ?? [0, 0], [0, 0], JSON.stringify(rowChecks));
+
+      // Near Uprising (FUN_00498cb0, A0 uprising-clean/test-day795-umgul-
+      // near-uprising, an unedited Alliance game): "Umgul Near Uprising"
+      // over "Unrest has pushed Umgul close to uprising." (0x7070,
+      // 0x7071), on the holder's picture 0x3f0 (STRATEGY 1008) at the
+      // window's (12, 33) and the title's item image, every pixel A0's.
+      const nearRow = supportList.rows.indexOf("Umgul Near Uprising");
+      assert.ok(nearRow > 1, JSON.stringify(supportList.rows));
+      await click(page, row(nearRow));
+      await click(page, showMessage);
+      const near = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Umgul Near Uprising", "Display Message shows Umgul Near Uprising");
+      assert.equal(near.viewing_text, "Unrest has pushed Umgul close to uprising.", JSON.stringify(near));
+      assert.equal(near.viewing_background, 0x3f0, JSON.stringify(near));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("near-uprising");
+      const nearScreen = PNG.sync.read(await page.screenshot());
+      const nearPicture = await bitmap(1008);
+      const [nearLeft, nearTop] = [Math.round(near.window_left), Math.round(near.window_top)];
+      const nearChecks = { port: differing(nearScreen, [nearLeft + 12, nearTop + 33], nearPicture) };
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/uprising-clean/test-day795-umgul-near-uprising.png")));
+        nearChecks.a0 = differing(a0, [74, 82], nearPicture);
+        let differ = 0;
+        for (let y = 0; y < 16; y += 1) {
+          for (let x = 0; x < 15; x += 1) {
+            const i = ((nearTop + 16 + y) * 640 + nearLeft + 15 + x) * 4;
+            const j = ((49 + 16 + y) * 640 + 62 + 15 + x) * 4;
+            if ([0, 1, 2].some((c) => nearScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        nearChecks.title_image_a0 = differ;
+        // The rail (the window's 414..468, 11..296), Display (0x67)
+        // enabled as the message names its system: every pixel A0's.
+        let railDiffer = 0;
+        for (let y = 11; y < 296; y += 1) {
+          for (let x = 414; x < 468; x += 1) {
+            const i = ((nearTop + y) * 640 + nearLeft + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => nearScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
+          }
+        }
+        nearChecks.rail_a0 = railDiffer;
+      } catch {
+        nearChecks.a0 = null;
+      }
+      rowChecks.near_uprising = nearChecks;
+      assert.ok(nearChecks.port === 0 && (nearChecks.a0 ?? 0) === 0 && (nearChecks.title_image_a0 ?? 0) === 0
+        && (nearChecks.rail_a0 ?? 0) === 0, JSON.stringify(nearChecks));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Popular Support list after Near Uprising");
+      await click(page, row(0));
 
       // The chosen System Joins message shown (A0 joins-clean/test-day215-
       // xyquine-joins-enemy, an unedited Alliance game: "Xyquine Joins

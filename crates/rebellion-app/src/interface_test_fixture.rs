@@ -3828,7 +3828,13 @@ pub fn post_capture_message(
     else {
         return;
     };
+    let corfai = world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Corfai")
+        .map(|(key, _)| key);
     if let Some(message) = rebellion_render::story_messages::captured_message(
+        corfai,
         emperor,
         true,
         "Corfai",
@@ -3922,6 +3928,17 @@ pub fn systems_joining_the_empire(request: FixtureRequest) -> Vec<(&'static str,
         return Vec::new();
     }
     vec![("Corellia", 0), ("Commenor", 0)]
+}
+
+/// The event-message scenario's Near Uprising (`FUN_00498cb0`): the
+/// reader's own Umgul, garrisoned, its troop surplus fallen to 0, as A0
+/// uprising-clean/test-day795-umgul-near-uprising shows it to the
+/// Alliance.
+pub fn near_uprisings(request: FixtureRequest) -> Vec<&'static str> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    vec!["Umgul"]
 }
 
 /// The event-message scenario's Personnel Arrive: Mon Mothma's Move landing
