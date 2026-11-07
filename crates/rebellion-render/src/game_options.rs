@@ -196,7 +196,10 @@ impl GameOptionsState {
             GameOptionsAction::Save { slot, .. } => {
                 self.origin == GameOptionsOrigin::CommandCenter && *slot < self.occupied.len()
             }
-            GameOptionsAction::Load { slot } | GameOptionsAction::Delete { slot } => {
+            // A0 TAC-06-C007: a battle's Game Options shows each occupied
+            // slot's Load lit (10049) beside its grey Save (10048).
+            GameOptionsAction::Load { slot } => self.occupied.get(*slot).copied().unwrap_or(false),
+            GameOptionsAction::Delete { slot } => {
                 self.origin != GameOptionsOrigin::TacticalBattle
                     && self.occupied.get(*slot).copied().unwrap_or(false)
             }
@@ -379,7 +382,7 @@ fn control_at(origin: GameOptionsOrigin, x: f32, y: f32) -> Option<GameOptionsCo
         if origin == GameOptionsOrigin::CommandCenter && save_rect(slot).contains(x, y) {
             return Some(GameOptionsControl::Save(slot));
         }
-        if origin != GameOptionsOrigin::TacticalBattle && load_rect(slot).contains(x, y) {
+        if load_rect(slot).contains(x, y) {
             return Some(GameOptionsControl::Load(slot));
         }
     }
@@ -925,14 +928,13 @@ pub fn draw_game_options(
         } else {
             resources::common::OPTIONS_SAVE_NORMAL
         };
-        let load_resource =
-            if occupied.is_none() || state.origin == GameOptionsOrigin::TacticalBattle {
-                resources::common::OPTIONS_LOAD_DISABLED
-            } else if held == Some(GameOptionsControl::Load(slot)) {
-                resources::common::OPTIONS_LOAD_PRESSED
-            } else {
-                resources::common::OPTIONS_LOAD_NORMAL
-            };
+        let load_resource = if occupied.is_none() {
+            resources::common::OPTIONS_LOAD_DISABLED
+        } else if held == Some(GameOptionsControl::Load(slot)) {
+            resources::common::OPTIONS_LOAD_PRESSED
+        } else {
+            resources::common::OPTIONS_LOAD_NORMAL
+        };
         let save_bounds = save_rect(slot);
         let load_bounds = load_rect(slot);
         draw_bitmap(cache, canvas, save_resource, save_bounds.x, save_bounds.y);
@@ -1294,8 +1296,9 @@ mod tests {
     }
 
     #[test]
-    fn tactical_options_reject_save_load_and_delete_but_ask_restart() {
-        // FUN_00407180: states 20–23 disable campaign save and load controls.
+    fn tactical_options_reject_save_and_delete_but_ask_load_and_restart() {
+        // A0 TAC-06-C007 (a battle's Game Options): every Save grey (10048),
+        // each occupied slot's Load lit (10049). Delete is the port's.
         let mut state = GameOptionsState::new(GameOptionsOrigin::TacticalBattle);
         state.occupied[0] = true;
         for action in [
@@ -1303,12 +1306,23 @@ mod tests {
                 slot: 0,
                 name: "Battle".into(),
             },
-            GameOptionsAction::Load { slot: 0 },
             GameOptionsAction::Delete { slot: 0 },
+            GameOptionsAction::Load { slot: 1 },
         ] {
             assert_eq!(state.request(action), GameOptionsAction::None);
             assert!(state.pending.is_none());
         }
+        // An occupied slot's Load asks first, the game being in progress.
+        assert_eq!(
+            state.request(GameOptionsAction::Load { slot: 0 }),
+            GameOptionsAction::None
+        );
+        assert_eq!(state.pending, Some(GameOptionsAction::Load { slot: 0 }));
+        state.confirm(false);
+        assert_eq!(
+            control_at(GameOptionsOrigin::TacticalBattle, 300.0, 90.0),
+            Some(GameOptionsControl::Load(0))
+        );
         // A0 TAC-06-C007: Restart is lit in a battle; with the game in
         // progress and nothing saved it asks 0x476 first (FUN_00406b80).
         assert_eq!(
