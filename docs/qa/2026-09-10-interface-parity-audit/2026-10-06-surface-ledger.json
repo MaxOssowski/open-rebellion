@@ -10590,7 +10590,7 @@
             "crates/rebellion-render/src/video_player.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "Native routes a successful trench run to 201 and the browser now plays it through the page's <video> (video_player.rs web, 2026-10-30); not run in a browser case or compared with A0.",
+          "note": "Native routes a successful trench run to 201 and the browser now plays it through the page's <video> (video_player.rs web, 2026-10-30); not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-success (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 201.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-24-614Z-3417942). No A0 capture of a trench run.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10603,7 +10603,7 @@
             "crates/rebellion-render/src/video_player.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-browser-cutscenes/"
           ],
-          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0.",
+          "note": "As the successful run, with 202; the browser plays it since 2026-10-30; not run in a browser case or compared with A0. 2026-11-07: run.mjs --battle production-trench-run-failure (Linux, both sides, 640x480 and letterboxed) routes the resolved run through 202.webm in the browser, with the recovered chatter order (4 of 4, .artifacts/interface-parity/2026-11-07T10-03-40-880Z-3418826). No A0 capture of a trench run.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
