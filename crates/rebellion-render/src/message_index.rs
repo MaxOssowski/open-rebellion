@@ -1134,15 +1134,35 @@ pub fn display_target(
     rows: &[&GameMessage],
     state: &MessageIndexState,
 ) -> Option<(SystemKey, Option<u64>)> {
-    let message = match state.mode {
+    let message = display_message(rows, state)?;
+    Some((message.system?, message.mission))
+}
+
+/// Whether Display (0x67) is lit: the message has a target
+/// (`FUN_004697b0`, `FUN_004ece60`), placed or not. An unplaced one's press
+/// does nothing ([`GameMessage::unplaced_target`]).
+#[must_use]
+pub fn display_lit(rows: &[&GameMessage], state: &MessageIndexState) -> bool {
+    display_message(rows, state)
+        .is_some_and(|message| message.system.is_some() || message.unplaced_target)
+}
+
+/// The message Display acts on: the first chosen row's in mode 1, the
+/// viewed message's in mode 2 (`FUN_00467f10`).
+fn display_message<'a>(
+    rows: &[&'a GameMessage],
+    state: &MessageIndexState,
+) -> Option<&'a GameMessage> {
+    match state.mode {
         IndexMode::List => rows
             .iter()
-            .find(|message| state.selected.contains(&message.id)),
+            .find(|message| state.selected.contains(&message.id))
+            .copied(),
         IndexMode::SingleMessage => rows
             .iter()
-            .find(|message| state.viewing == Some(message.id)),
-    }?;
-    Some((message.system?, message.mission))
+            .find(|message| state.viewing == Some(message.id))
+            .copied(),
+    }
 }
 
 /// The viewed message's open question and the mission it names, in mode 2.
@@ -1337,6 +1357,7 @@ pub fn draw_message_index(
     let posting = posting_mask(state.category);
     let silent = posting_silent(log, state.category);
     let target = display_target(&rows, state);
+    let lit = display_lit(&rows, state);
     let question = viewed_question(&rows, state);
     match draw_window_buttons(
         ctx,
@@ -1347,7 +1368,7 @@ pub fn draw_message_index(
         state.mode,
         silent,
         rows.is_empty(),
-        target.is_some(),
+        lit,
         question.is_some(),
     ) {
         // FUN_00467f10 in mode 2: the checkmark keeps the mission going
@@ -2583,6 +2604,47 @@ mod tests {
                 })
         );
         assert!(result.actions.contains(&MessageIndexAction::Close));
+    }
+
+    #[test]
+    fn display_is_lit_for_an_unplaced_target_and_its_press_does_nothing() {
+        // A0 maintenance-shortfall/test-day1224-corvette-no-system: a
+        // corvette lost in transit names no system, yet Display is lit
+        // (FUN_004697b0 asks only for a target) and its press leaves the
+        // index as it was (FUN_00467f10: FUN_004f2d10 finds no system).
+        let mut log = MessageLog::new();
+        log.push(
+            GameMessage::new(1, "Corellian Corvette 2", MessageCategory::Event)
+                .with_unplaced_target()
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.push(
+            GameMessage::new(2, "No target", MessageCategory::Event)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        let rows = filtered_messages(&log, 0x7b, true);
+        let mut state = MessageIndexState::new();
+        state.set_category(0x7b);
+        state.selected.insert(rows[1].id);
+        assert!(display_lit(&rows, &state));
+        assert_eq!(display_target(&rows, &state), None);
+        state.selected.clear();
+        state.selected.insert(rows[0].id);
+        assert!(!display_lit(&rows, &state));
+        // The press: no action, the index stays open.
+        let mut chosen = MessageIndexState::new();
+        chosen.set_category(0x7b);
+        let post = egui::pos2(f32::from(0x1a7_u16) + 16.0, f32::from(0xc9_u16) + 15.0);
+        drive(&log, &mut chosen, click_at(row_center(1)));
+        let result = drive(&log, &mut chosen, click_at(post));
+        assert!(
+            !result.actions.iter().any(|action| matches!(
+                action,
+                MessageIndexAction::Display { .. } | MessageIndexAction::Close
+            )),
+            "{:?}",
+            result.actions
+        );
     }
 
     #[test]

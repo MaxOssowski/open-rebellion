@@ -151,7 +151,13 @@ fn candidates(world: &GameWorld, transport: &TroopTransportState, side: Faction)
             if ship.alive && class.maintenance_cost > 0 {
                 found.push(Candidate {
                     target: AutoscrapTarget::Ship { fleet: key, index },
-                    unit: class.name.clone(),
+                    // The object's +0x30: a ship's own name, else its
+                    // class's (FUN_004f6270); A0 maintenance-shortfall/
+                    // test-day1224-corvette-no-system lists "Corellian
+                    // Corvette 2".
+                    unit: world
+                        .ship_name(key, index)
+                        .map_or_else(|| class.name.clone(), str::to_owned),
                     refined_cost: class.refined_material_cost,
                     system: Some(fleet.location),
                 });
@@ -667,6 +673,18 @@ mod tests {
                 AutoscrapTarget::SpecialForce(unit),
             ]
         );
+        // A ship is listed by its own name, else its class's (FUN_004f6270;
+        // A0 maintenance-shortfall/test-day1224-corvette-no-system:
+        // "Corellian Corvette 2").
+        let ship_unit = |world: &GameWorld| {
+            candidates(world, &TroopTransportState::default(), Faction::Alliance)
+                .into_iter()
+                .find(|candidate| candidate.target == AutoscrapTarget::Ship { fleet, index: 0 })
+                .map(|candidate| candidate.unit)
+        };
+        assert_eq!(ship_unit(&f.world).as_deref(), Some("Corvette"));
+        f.world.fleets[fleet].capital_ships[0].name = Some("Corvette 2".into());
+        assert_eq!(ship_unit(&f.world).as_deref(), Some("Corvette 2"));
         // Without the mine and refinery the side has no capacity.
         f.world.production_facilities.clear();
         f.world.systems[f.here].production_facilities.clear();

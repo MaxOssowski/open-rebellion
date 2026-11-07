@@ -232,6 +232,13 @@ pub struct GameMessage {
     /// Display goes to while it runs.
     #[serde(skip)]
     pub mission: Option<u64>,
+    /// Whether the message has an object without a system the viewer
+    /// knows (`FUN_004ece60`): Display (0x67) is lit but goes nowhere
+    /// (`FUN_00467f10` asks `FUN_004f2d10` first). A0 maintenance-
+    /// shortfall/test-day1224-corvette-no-system: a corvette lost in
+    /// transit, Display lit, its press doing nothing.
+    #[serde(skip)]
+    pub unplaced_target: bool,
     /// When the message expires (its class's slot `+0x30`).
     #[serde(skip)]
     pub lifetime: MessageLifetime,
@@ -289,6 +296,7 @@ impl GameMessage {
             advisor_event: [0; 2],
             continue_question: None,
             mission: None,
+            unplaced_target: false,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
@@ -317,9 +325,18 @@ impl GameMessage {
             advisor_event: [0; 2],
             continue_question: None,
             mission: None,
+            unplaced_target: false,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
+    }
+
+    /// Name an object with no system the viewer knows: Display is lit and
+    /// does nothing ([`GameMessage::unplaced_target`]).
+    #[must_use]
+    pub fn with_unplaced_target(mut self) -> Self {
+        self.unplaced_target = true;
+        self
     }
 
     /// Give the message its class's lifetime (slot `+0x30`).

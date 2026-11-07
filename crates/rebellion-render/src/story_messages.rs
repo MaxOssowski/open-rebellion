@@ -1794,8 +1794,9 @@ pub fn control_change_texts(
 /// "Fleet Initiates Blockade of {1:1}" and `0x70a1` "{3:1} has initiated a
 /// blockade of {2:1}.", naming the fleet. Returns the title and body.
 ///
-/// port: the class is also silent while the system's `+0x88` bit `0x4000`
-/// is set; the port keeps no such bit.
+/// The class is also silent while the system's `+0x88` bit `0x4000` is
+/// set, a blockade a battle left; the app decides that
+/// (`blockade_started_message`).
 #[must_use]
 pub fn blockade_texts(
     system: &str,

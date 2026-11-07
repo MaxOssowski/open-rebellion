@@ -1252,6 +1252,11 @@ async fn main() {
     FogSystem::seed(&mut fog_empire_state, &world);
     // The planet squadrons up for the player's battle, landed when it ends.
     let mut battle_sorties: Vec<rebellion_core::squadrons::Sortie> = Vec::new();
+    // The systems a battle was resolved at since the last blockade pass:
+    // a blockade that starts there sets +0x88 bit 0x4000 (FUN_0050a9e0,
+    // the battle bit changed in the same pass) and FUN_004960f0 is silent.
+    let mut battled_systems: std::collections::HashSet<rebellion_core::ids::SystemKey> =
+        std::collections::HashSet::new();
     let mut combat_cooldowns: std::collections::HashMap<rebellion_core::ids::SystemKey, u64> =
         std::collections::HashMap::new();
     let mut blockade_state = BlockadeState::new();
@@ -2957,6 +2962,7 @@ async fn main() {
                 troop_transport_state.destroy_untransportable_cargo(&mut world);
                 // Record combat cooldown to prevent infinite re-trigger on draws.
                 combat_cooldowns.insert(sys_key, current_tick);
+                battled_systems.insert(sys_key);
 
                 let winner_str = match space_result.winner {
                     CombatSide::Attacker => "Alliance victory",
@@ -3636,62 +3642,16 @@ async fn main() {
             for evt in &blockade_events {
                 match evt {
                     rebellion_core::blockade::BlockadeEvent::BlockadeStarted { system, tick } => {
-                        let name = world
-                            .systems
-                            .get(*system)
-                            .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                        // Notification 0x14e, Blockade (FUN_004960f0): the
-                        // holder and the blockader each read their own text;
-                        // it needs a fleet at the system (FUN_004ffdd0).
-                        let holder = world.systems.get(*system).and_then(|s| s.control.faction());
-                        let fleet = world
-                            .systems
-                            .get(*system)
-                            .and_then(|s| s.fleets.first())
-                            .and_then(|&fleet| world.fleet_name(fleet))
-                            .map(str::to_owned);
-                        let original = fleet.as_deref().and_then(|fleet| {
-                            rebellion_render::story_messages::blockade_texts(
-                                &name,
-                                holder,
-                                fleet,
-                                player_faction == MissionFaction::Alliance,
-                                &message_texts,
-                            )
-                        });
-                        let (title, text, audience) = match original {
-                            Some((title, body)) => (
-                                Some(title),
-                                body,
-                                Some(RailAudience::side(
-                                    player_faction == MissionFaction::Alliance,
-                                )),
-                            ),
-                            None if message_texts.is_empty() => (
-                                None,
-                                format!("Blockade established at {name}"),
-                                Some(RailAudience::Both),
-                            ),
-                            None => continue,
-                        };
-                        let mut message = GameMessage::at_system(
-                            *tick,
-                            text,
-                            MessageCategory::Combat,
+                        if let Some(message) = blockade_started_message(
+                            &world,
                             *system,
-                        )
-                        .with_picture_if(pictures::blockade(pictures::system_side(
-                            &world, *system,
-                        )))
-                        // FUN_004960f0: 0xe for the holder, 0xd for the other side.
-                        .with_advisor_events(
-                            blockade_event(holder, Faction::Alliance),
-                            blockade_event(holder, Faction::Empire),
-                        );
-                        if let Some(title) = title {
-                            message = message.with_title(title);
+                            battled_systems.contains(system),
+                            player_faction == MissionFaction::Alliance,
+                            *tick,
+                            &message_texts,
+                        ) {
+                            msg_log.push(message);
                         }
-                        msg_log.push(filed(message, MessageRail::Conflict, audience));
                     }
                     rebellion_core::blockade::BlockadeEvent::BlockadeEnded { system, tick } => {
                         let name = world
@@ -3774,6 +3734,11 @@ async fn main() {
                         msg_log.push(filed(message, MessageRail::Conflict, Some(audience)));
                     }
                 }
+            }
+            // Bit 0x4000 holds for one pass (FUN_0050a9e0): the battles
+            // recorded since the last blockade pass are spent.
+            if !tick_events.is_empty() {
+                battled_systems.clear();
             }
 
             // ── Mines, refineries and the side stockpiles ───────────────────
@@ -3893,44 +3858,31 @@ async fn main() {
                 &autoscrap_rolls,
             );
             for scrap in &autoscraps {
+                // A fleet in hyperspace stands at no system its units can
+                // be found at (FUN_00498970 walks up the containers).
+                let in_transit = match scrap.target {
+                    rebellion_core::autoscrap::AutoscrapTarget::Ship { fleet, .. }
+                    | rebellion_core::autoscrap::AutoscrapTarget::FleetFighter { fleet, .. } => {
+                        movement_state.is_in_transit(fleet)
+                    }
+                    _ => false,
+                };
                 rebellion_core::autoscrap::apply(
                     &mut world,
                     &mut production_state,
                     &mut troop_transport_state,
                     scrap,
                 );
-                let alliance = scrap.side == Faction::Alliance;
-                let name = scrap
-                    .system
-                    .and_then(|system| world.systems.get(system))
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                // Notification 0x304 (GameObjDestroyedAutoscrap), Maintenance
-                // Shortfall (FUN_00498970): TEXTSTRA 0x7080-0x7082.
-                let system_name = scrap.system.map(|_| name.as_str());
-                let Some((title, text)) = rebellion_render::story_messages::maintenance_texts(
-                    system_name,
+                if let Some(message) = maintenance_message(
+                    &world,
+                    scrap.system.filter(|_| !in_transit),
                     &scrap.unit,
+                    scrap.side == Faction::Alliance,
+                    scrap.tick,
                     &message_texts,
-                ) else {
-                    continue;
-                };
-                let message = match scrap.system {
-                    Some(system) => {
-                        GameMessage::at_system(scrap.tick, text, MessageCategory::Event, system)
-                    }
-                    None => GameMessage::new(scrap.tick, text, MessageCategory::Event),
-                };
-                msg_log.push(filed(
-                    message
-                        .with_title(title)
-                        .with_picture_if(Some(pictures::units_destroyed(pictures::reader(
-                            alliance,
-                        ))))
-                        // FUN_00498970 writes 0xc.
-                        .with_advisor_event(0xc),
-                    MessageRail::Manufacturing,
-                    Some(RailAudience::side(alliance)),
-                ));
+                ) {
+                    msg_log.push(message);
+                }
             }
 
             // ── Repair ──────────────────────────────────────────────────────
@@ -8350,6 +8302,9 @@ async fn main() {
                         let strategic_results_applied = tactical_state.strategic_results_applied();
                         // Apply combat results from tactical session to GameWorld.
                         if let Some(session) = tactical_state.end_battle() {
+                            // A blockade the battle leaves is silent (bit
+                            // 0x4000, blockade_started_message).
+                            battled_systems.insert(session.system);
                             let battle_return = if strategic_results_applied {
                                 tactical_flow::summarize_results(&session)
                             } else {
@@ -11809,6 +11764,99 @@ fn report_title_and_text(
     (title, text)
 }
 
+/// Notification `0x304`, Maintenance Shortfall (`FUN_00498970`), for an
+/// autoscrapped unit: TEXTSTRA `0x7080`..`0x7082` naming the system its
+/// containers stand at, to the unit's side on the Manufacturing rail,
+/// picture `0x3f5` / `0x3f6` by the reader, advisor event `0xc`. A unit at
+/// no system (a fleet in hyperspace, a regiment travelling) leaves the
+/// system's name empty, and the message still has its target: A0
+/// maintenance-shortfall/test-day1224-corvette-no-system reads "destroyed
+/// at  due to" with Display lit.
+fn maintenance_message(
+    world: &GameWorld,
+    system: Option<rebellion_core::ids::SystemKey>,
+    unit: &str,
+    alliance: bool,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let name = system.and_then(|system| world.systems.get(system)).map(|s| s.name.as_str());
+    let (title, text) = rebellion_render::story_messages::maintenance_texts(name, unit, texts)?;
+    let message = match system {
+        Some(system) => GameMessage::at_system(tick, text, MessageCategory::Event, system),
+        None => GameMessage::new(tick, text, MessageCategory::Event).with_unplaced_target(),
+    };
+    Some(filed(
+        message
+            .with_title(title)
+            .with_picture_if(Some(pictures::units_destroyed(pictures::reader(alliance))))
+            // FUN_00498970 writes 0xc.
+            .with_advisor_event(0xc),
+        MessageRail::Manufacturing,
+        Some(RailAudience::side(alliance)),
+    ))
+}
+
+/// Notification `0x14e`, Blockade (`FUN_004960f0`), as a blockade starts:
+/// the holder and the blockader each read their own text, and it needs a
+/// fleet at the system (`FUN_004ffdd0`). The class is silent while the
+/// system's `+0x88` bit `0x4000` is set, which `FUN_0050a9e0` sets when the
+/// blockade bit changes in the pass the battle bit does: a blockade left by
+/// a battle (`after_battle`). A0's unedited Alliance game listed no
+/// Blockade after the battles at Yavin (day 650) and Umgul (day 718) left
+/// those systems blockaded. port: without the texts, the port's line.
+fn blockade_started_message(
+    world: &GameWorld,
+    system: rebellion_core::ids::SystemKey,
+    after_battle: bool,
+    viewer_is_alliance: bool,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let name = world
+        .systems
+        .get(system)
+        .map_or_else(|| "unknown".into(), |s| s.name.clone());
+    if after_battle {
+        return Some(GameMessage::at_system(
+            tick,
+            format!("Blockade established at {name}"),
+            MessageCategory::Combat,
+            system,
+        ));
+    }
+    let holder = world.systems.get(system).and_then(|s| s.control.faction());
+    let fleet = world
+        .systems
+        .get(system)
+        .and_then(|s| s.fleets.first())
+        .and_then(|&fleet| world.fleet_name(fleet))
+        .map(str::to_owned);
+    let original = fleet.as_deref().and_then(|fleet| {
+        rebellion_render::story_messages::blockade_texts(&name, holder, fleet, viewer_is_alliance, texts)
+    });
+    let (title, text, audience) = match original {
+        Some((title, body)) => (Some(title), body, Some(RailAudience::side(viewer_is_alliance))),
+        None if texts.is_empty() => (
+            None,
+            format!("Blockade established at {name}"),
+            Some(RailAudience::Both),
+        ),
+        None => return None,
+    };
+    let mut message = GameMessage::at_system(tick, text, MessageCategory::Combat, system)
+        .with_picture_if(pictures::blockade(pictures::system_side(world, system)))
+        // FUN_004960f0: 0xe for the holder, 0xd for the other side.
+        .with_advisor_events(
+            blockade_event(holder, Faction::Alliance),
+            blockade_event(holder, Faction::Empire),
+        );
+    if let Some(title) = title {
+        message = message.with_title(title);
+    }
+    Some(filed(message, MessageRail::Conflict, audience))
+}
+
 /// Notification `0x305`, Saboteurs Strike (`FUN_0048b9a0`), for an object
 /// a sabotage destroyed: to the object's side (`+0x40`, `FUN_0048bbf0`),
 /// on the Conflict rail (`+0x34` = `0x100`), picture `0x3f5` / `0x3f6` by
@@ -14246,6 +14294,119 @@ mod character_health_tests {
             "The following personnel have arrived at Klatooine.\n\nAfyon"
         );
         assert_eq!(messages[1].advisor_event, [0x15, 0x15]);
+    }
+
+    #[test]
+    fn a_maintenance_shortfall_in_transit_names_no_system_but_keeps_its_target() {
+        // A0 maintenance-shortfall/test-day1224-corvette-no-system (an
+        // unedited Alliance game): "The following units have been destroyed
+        // at  due to a maintenance shortfall:" over "Corellian Corvette 2",
+        // picture 1013, Display lit; FUN_00498970 finds no system up a
+        // fleet in hyperspace.
+        let world = GameWorld::default();
+        let texts = std::collections::HashMap::from([
+            (0x7080, "Maintenance Shortfall".to_owned()),
+            (
+                0x7081,
+                "The following units have been destroyed at {3:1} due to a maintenance shortfall:\n"
+                    .to_owned(),
+            ),
+            (0x7082, "{1:1}\n".to_owned()),
+        ]);
+        let lost = maintenance_message(&world, None, "Corellian Corvette 2", true, 9, &texts).unwrap();
+        assert_eq!(
+            lost.text,
+            "The following units have been destroyed at  due to a maintenance shortfall:\nCorellian Corvette 2\n"
+        );
+        assert_eq!(lost.system, None);
+        assert!(lost.unplaced_target);
+        assert_eq!(lost.rail, Some(MessageRail::Manufacturing));
+        assert_eq!(lost.audience, RailAudience::Alliance);
+        assert_eq!(lost.picture.map(|p| p.background), Some(0x3f5));
+        assert_eq!(lost.advisor_event, [0xc, 0xc]);
+        let placed = maintenance_message(
+            &world,
+            Some(rebellion_core::ids::SystemKey::default()),
+            "TIE Fighter",
+            false,
+            9,
+            &texts,
+        )
+        .unwrap();
+        assert_eq!(placed.system, Some(rebellion_core::ids::SystemKey::default()));
+        assert!(!placed.unplaced_target);
+        assert_eq!(placed.picture.map(|p| p.background), Some(0x3f6));
+    }
+
+    #[test]
+    fn a_blockade_a_battle_leaves_posts_no_blockade_message() {
+        // FUN_004960f0 is silent while +0x88 bit 0x4000 is set, which
+        // FUN_0050a9e0 sets as the blockade begins in the pass the battle
+        // bit changes (A0 battle-clean/, an unedited Alliance game: no
+        // Blockade listed after the battles at Yavin and Umgul). Without a
+        // battle the holder reads 0x70a2 / 0x70a3 on the Conflict rail.
+        let mut world = GameWorld::default();
+        let umgul = world.systems.insert(rebellion_core::world::System {
+            last_arrival: None,
+            dat_id: rebellion_core::ids::DatId::new(2),
+            name: "Umgul".into(),
+            sector: rebellion_core::ids::SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: rebellion_core::dat::ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: rebellion_core::world::ControlKind::Controlled(Faction::Alliance),
+        });
+        let fleet = world.fleets.insert(rebellion_core::world::Fleet {
+            location: umgul,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[umgul].fleets.push(fleet);
+        let texts = std::collections::HashMap::from([
+            (0x70a2, "{1:1} Under Blockade".to_owned()),
+            (
+                0x70a3,
+                "{1:4} ships have been detected at {2:1}.  The world is under enemy blockade.".to_owned(),
+            ),
+            (0x4d70, "Alliance".to_owned()),
+            (0x4d71, "Imperial".to_owned()),
+        ]);
+        let message = blockade_started_message(&world, umgul, false, true, 5, &texts).unwrap();
+        assert_eq!(message.title.as_deref(), Some("Umgul Under Blockade"));
+        assert_eq!(message.rail, Some(MessageRail::Conflict));
+        assert_eq!(message.audience, RailAudience::Alliance);
+        assert_eq!(message.system, Some(umgul));
+        let quiet = blockade_started_message(&world, umgul, true, true, 5, &texts).unwrap();
+        assert_eq!(quiet.rail, None);
+        assert_eq!(quiet.title, None);
+        assert_eq!(quiet.text, "Blockade established at Umgul");
+        // Without the texts, the port's line on both sides' Conflict rail;
+        // with them, a neutral holder's class is silent.
+        let bare = blockade_started_message(&world, umgul, false, true, 5, &Default::default()).unwrap();
+        assert_eq!(bare.title, None);
+        assert_eq!(bare.audience, RailAudience::Both);
+        assert_eq!(bare.rail, Some(MessageRail::Conflict));
+        world.systems[umgul].control = rebellion_core::world::ControlKind::Uncontrolled;
+        assert!(blockade_started_message(&world, umgul, false, true, 5, &texts).is_none());
     }
 
     #[test]
