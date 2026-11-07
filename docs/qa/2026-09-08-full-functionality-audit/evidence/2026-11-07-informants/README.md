@@ -22,3 +22,11 @@ The EventMessages fixture files Selonia's informants first, so they list last on
 - the rail, Display lit.
 
 Screenshot: `.artifacts/interface-parity/message-display-2026-11-07T02-38-59-576Z/alliance/informants.png` (sha256 `9dce2e5ed7608ea7049a6967978913c90bb82b26860b18d80de5a7ba5b234a24`).
+
+## The Empire's side
+
+A new Easy Empire game (day 188) shows "Informants Provide Information" over "Informants have provided us with information about Uvena." on the same STRATEGY 1000, exact at (137, 85). The captures are in `.artifacts/a0-vm/empire-clean/`:
+- `03-day187-support-list` (sha256 `8d51c5ab43421499cd2cd93e2994a4ca79a04f59d74388d776cf1b101da25c88`);
+- `04-day188-informants-uvena` (sha256 `c39394bc9b1e463add3ea3a9b1b4850a04bf751d31090304c94ef65a01a4e772`).
+
+The fixture files Uvena's report for the Empire's reader. `message-display.mjs` (Linux, Empire) opens it from Popular Support. The text, background `0x3e8`, picture, title image and rail are each 0 pixels from A0. Screenshot `message-display-2026-11-07T04-28-21-924Z/empire/informants-empire.png`, sha256 `73f5dd60ebdb573693bd32e58ff086f6a8d7240fbc5e9552037df69aaf81c6de`.

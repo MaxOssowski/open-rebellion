@@ -3932,12 +3932,17 @@ pub fn systems_joining_the_empire(request: FixtureRequest) -> Vec<(&'static str,
 
 /// The event-message scenario's Informants Provide Information
 /// (`FUN_00491060`): Selonia, as A0 informants-clean/test-day1457-selonia
-/// shows it to the Alliance.
+/// shows it to the Alliance, and Uvena, as A0 empire-clean/
+/// 04-day188-informants-uvena shows it to the Empire.
 pub fn informant_reports(request: FixtureRequest) -> Vec<&'static str> {
     if request.scenario != Scenario::EventMessages {
         return Vec::new();
     }
-    vec!["Selonia"]
+    if request.faction == CockpitFaction::Alliance {
+        vec!["Selonia"]
+    } else {
+        vec!["Uvena"]
+    }
 }
 
 /// The event-message scenario's Near Uprising (`FUN_00498cb0`): the
@@ -7375,7 +7380,7 @@ mod tests {
     }
 
     // FUN_00490340: the EventMessages scenario files the Emperor's capture
-    // at Corfai for its reader (A0 messages-day633).
+    // at Corfai for its reader (A0 messages-day633, read by the Empire).
     #[test]
     fn the_event_messages_scenario_files_the_emperors_capture() {
         let texts: std::collections::HashMap<u16, String> = [
@@ -7404,10 +7409,9 @@ mod tests {
             panic!("{:?}", log.messages());
         };
         assert_eq!(message.title.as_deref(), Some("Emperor Palpatine Captured"));
-        assert_eq!(
-            message.text,
-            "Emperor Palpatine was captured by the Alliance at Corfai."
-        );
+        // The Alliance reads the enemy's captive by case 4 (A0
+        // empire-clean/31-needa-captured gives the own side case 3).
+        assert_eq!(message.text, "Emperor Palpatine was captured at Corfai.");
         let mut none = rebellion_render::MessageLog::new();
         post_capture_message(
             super::tests::request(Scenario::StoryMessages, CockpitFaction::Alliance),

@@ -12256,6 +12256,30 @@ mod tests {
                 false
             )
         );
+        // The Empire's side (A0 empire-clean/11-summary-destroyed-umgul and
+        // 12-display, a new Easy Empire game, day 253): "The Imperial fleet
+        // is defeated." over "Umgul is now under blockade by Alliance
+        // forces. The Imperial fleet has been completely destroyed.", and
+        // "The Imperial fleet was defeated at Umgul. Your fleet has been
+        // destroyed." with the system's button alone.
+        let imperial = BattleReport {
+            viewer_alliance: false,
+            winner_alliance: Some(true),
+            last_arrival: Some(true),
+            system_side: Some(false),
+            ..report
+        };
+        assert_eq!(
+            battle_report_lines(&texts, &imperial),
+            [
+                "The Imperial fleet is defeated.",
+                "Umgul is now under blockade by Alliance forces. The Imperial fleet has been completely destroyed."
+            ]
+        );
+        assert_eq!(
+            battle_display_lines(&texts, &imperial).0[0],
+            "The Imperial fleet was defeated at Umgul. Your fleet has been destroyed."
+        );
     }
 
     #[test]

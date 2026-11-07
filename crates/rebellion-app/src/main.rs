@@ -14606,10 +14606,12 @@ mod character_health_tests {
         assert!(c.is_alliance && !c.is_empire && !c.is_captive && c.captured_by.is_none());
         let messages = log.messages();
         assert_eq!(messages.len(), 2);
+        // The escapee's side reads case 1, the captor's case 2 (A0
+        // empire-clean/31-needa-captured settles the side test).
         assert_eq!(messages[0].audience, RailAudience::Alliance);
-        assert!(messages[0].text.contains("has escaped from imprisonment"), "{}", messages[0].text);
+        assert!(messages[0].text.contains("escaped from the"), "{}", messages[0].text);
         assert_eq!(messages[1].audience, RailAudience::Empire);
-        assert!(messages[1].text.contains("escaped from the"), "{}", messages[1].text);
+        assert!(messages[1].text.contains("has escaped from imprisonment"), "{}", messages[1].text);
         assert_eq!(messages[1].picture.map(|p| p.background), Some(0x405));
         // Each names the place it was held at, for Display.
         assert!(messages
@@ -14624,7 +14626,11 @@ mod character_health_tests {
         let mut log = MessageLog::new();
         escape_character(&mut world, wedge, true, 5, &mut log, &texts);
         assert_eq!(log.messages()[1].audience, RailAudience::Empire);
-        assert!(log.messages()[1].text.contains("escaped from the"), "{}", log.messages()[1].text);
+        assert!(
+            log.messages()[1].text.contains("has escaped from imprisonment"),
+            "{}",
+            log.messages()[1].text
+        );
     }
 
     #[test]

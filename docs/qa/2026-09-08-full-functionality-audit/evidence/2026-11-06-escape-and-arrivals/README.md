@@ -82,3 +82,7 @@ No A0 capture of these messages exists.
   `FUN_0048bbf0` gives reader 2, as in the port. The first reading, the
   message shown to the other side, was wrong, and there is no audience
   difference.
+
+## Correction (2026-11-07)
+
+Which side reads which escape text was the wrong way round. The escapee's own side reads `0x715c` / `0x715d`, and the captor's side reads `0x715e` / `0x715f`. See `../2026-11-07-capture-side-corrected/`.

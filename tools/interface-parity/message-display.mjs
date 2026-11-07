@@ -307,10 +307,11 @@ async function run(browser, base, faction) {
     assert.ok(differing(plain, check, await bitmap(10926)) > 0, "the answered report still shows its checkmark");
 
     // Character Captured (FUN_00490340, 0x1e0): the Emperor taken by the
-    // Alliance at Corfai. A0 messages-day633/capture-palpatine (the
-    // Alliance): TEXTSTRA 0x7158 / 0x7159 over STRATEGY 1049 (0x419, a
-    // captive of side 2) at (74, 82), every pixel exact. The Empire reads
-    // 0x715a / 0x715b (hyp: its own captive's).
+    // Alliance at Corfai, over STRATEGY 1049 (0x419, a captive of side 2)
+    // at (74, 82), every pixel A0's (messages-day633/capture-palpatine, an
+    // Alliance cockpit with the Empire's messages). The captive's own side,
+    // the Empire, reads 0x7158 / 0x7159 "by the Alliance" (A0 empire-clean/
+    // 31-needa-captured); the Alliance reads 0x715a / 0x715b.
     await click(page, showMessage);
     const list = await waitReport(page, (value) => value.mode === "list", "Display Message goes back to the list");
     const captured = list.rows.findIndex((text) => text.startsWith("Emperor Palpatine Captured"));
@@ -320,8 +321,8 @@ async function run(browser, base, faction) {
     const capture = await waitReport(page, (value) => value.mode === "single"
       && value.viewing_title === "Emperor Palpatine Captured", "Display Message shows the capture");
     assert.equal(capture.viewing_text, faction.byte === 1
-      ? "Emperor Palpatine was captured by the Alliance at Corfai."
-      : "Emperor Palpatine was captured at Corfai.", JSON.stringify(capture));
+      ? "Emperor Palpatine was captured at Corfai."
+      : "Emperor Palpatine was captured by the Alliance at Corfai.", JSON.stringify(capture));
     assert.equal(capture.viewing_background, 0x419, JSON.stringify(capture));
     await page.mouse.move(2, 2);
     await frames(page);
@@ -371,8 +372,28 @@ async function run(browser, base, faction) {
         };
         captureChecks.title_text = extent(captureScreen, left, top);
         captureChecks.title_text_a0 = extent(a0, 62, 49);
-        // The body: the text control's font 4 at (17, 234), its ink box
-        // (x 16..410, y 234..300) within two pixels of A0's.
+        // The rail (the window's 414..468, 11..296), Display (0x67) lit
+        // as the message has a target: every pixel A0's.
+        let railDiffer = 0;
+        for (let y = 11; y < 296; y += 1) {
+          for (let x = 414; x < 468; x += 1) {
+            const i = ((top + y) * 640 + left + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => captureScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
+          }
+        }
+        captureChecks.rail_a0 = railDiffer;
+      } catch {
+        captureChecks.title_image_a0 = null;
+      }
+    }
+    // The body against A0's: capture-palpatine's text is the Empire's case
+    // 3 (that save builds its messages for the Empire), so the Empire's
+    // body's ink box, relative to its window, within two pixels of A0's.
+    if (faction.byte !== 1) {
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(a0File));
+        const [left, top] = [Math.round(capture.window_left), Math.round(capture.window_top)];
         const body = (png, x0, y0) => {
           let box = null;
           for (let y = y0 + 234; y < y0 + 300; y += 1) {
@@ -387,19 +408,8 @@ async function run(browser, base, faction) {
         };
         captureChecks.body_text = body(captureScreen, left, top);
         captureChecks.body_text_a0 = body(a0, 62, 49);
-        // The rail (the window's 414..468, 11..296), Display (0x67) lit
-        // as the message has a target: every pixel A0's.
-        let railDiffer = 0;
-        for (let y = 11; y < 296; y += 1) {
-          for (let x = 414; x < 468; x += 1) {
-            const i = ((top + y) * 640 + left + x) * 4;
-            const j = ((49 + y) * 640 + 62 + x) * 4;
-            if ([0, 1, 2].some((c) => captureScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
-          }
-        }
-        captureChecks.rail_a0 = railDiffer;
       } catch {
-        captureChecks.title_image_a0 = null;
+        captureChecks.body_text_a0 = null;
       }
     }
     assert.ok(captureChecks.port === 0 && (captureChecks.a0 ?? 0) === 0
@@ -538,6 +548,61 @@ async function run(browser, base, faction) {
           JSON.stringify(foiledChecksE));
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Mission list after the Empire's foiled");
+
+        // The Empire's Informants Provide Information (A0 empire-clean/
+        // 04-day188-informants-uvena, the window at (125, 52)): "Informants
+        // have provided us with information about Uvena." over 0x3e8
+        // (STRATEGY 1000), filed on Popular Support (the window's first
+        // category after All, 0x7a); picture, title image and rail every
+        // pixel A0's.
+        await click(page, [listedE.window_left + 78 + 8, listedE.window_top + 64 + 4]);
+        const supportE = await waitReport(page, (value) => value.mode === "list"
+          && value.rows.includes("Informants Provide Information"), "the Empire's Popular Support list");
+        await click(page, row(supportE.rows.indexOf("Informants Provide Information")));
+        await click(page, showMessage);
+        const informE = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Informants Provide Information", "Display Message shows the Empire's informants");
+        assert.equal(informE.viewing_text, "Informants have provided us with information about Uvena.",
+          JSON.stringify(informE));
+        assert.equal(informE.viewing_background, 0x3e8, JSON.stringify(informE));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("informants-empire");
+        const informShotE = PNG.sync.read(await page.screenshot());
+        const informPictureE = await bitmap(1000);
+        const [ileft, itop] = [Math.round(informE.window_left), Math.round(informE.window_top)];
+        const informChecksE = { port: differing(informShotE, [ileft + 12, itop + 33], informPictureE) };
+        try {
+          const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+            ".artifacts/a0-vm/empire-clean/04-day188-informants-uvena.png")));
+          informChecksE.a0 = differing(a0, [125 + 12, 52 + 33], informPictureE);
+          const region = (x0, y0, x1, y1) => {
+            let differ = 0;
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                const i = ((itop + y) * 640 + ileft + x) * 4;
+                const j = ((52 + y) * 640 + 125 + x) * 4;
+                if ([0, 1, 2].some((c) => informShotE.data[i + c] !== a0.data[j + c])) differ += 1;
+              }
+            }
+            return differ;
+          };
+          informChecksE.title_image_a0 = region(15, 16, 30, 32);
+          informChecksE.rail_a0 = region(414, 11, 468, 296);
+        } catch {
+          informChecksE.a0 = null;
+        }
+        captureChecks.informants_empire = informChecksE;
+        assert.ok(informChecksE.port === 0 && (informChecksE.a0 ?? 0) === 0
+          && (informChecksE.title_image_a0 ?? 0) === 0 && (informChecksE.rail_a0 ?? 0) === 0,
+          JSON.stringify(informChecksE));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Popular Support list after the Empire's informants");
+        // Back to Mission Messages (0x7c at the window's (150, 64)) for the
+        // report's Display below.
+        await click(page, [listedE.window_left + 150 + 8, listedE.window_top + 64 + 4]);
+        await waitReport(page, (value) => value.mode === "list"
+          && value.rows[0]?.startsWith("Emperor Palpatine Captured"), "the Empire's Mission list again");
       }
 
     }

@@ -481,20 +481,20 @@ pub fn jabba_captures_message(
 }
 
 /// Character Captured (`FUN_00490340` cases 3 and 4): notification `0x1e0`
-/// for a character a side takes captive at `system`. A captive of the
-/// reader's enemy reads TEXTSTRA `0x7158` "{1} Captured" / `0x7159` "{1}
-/// was captured by the {3} at {2}." with the captor's side; one of the
-/// reader's own reads `0x715a` / `0x715b` "{1} was captured at {2}.". The
-/// background is `0x418` for a captive of side 1, else `0x419`, and the
-/// speaker is the captive's ([`captured_event`]). A0 messages-day633: the
-/// Alliance reads "Emperor Palpatine was captured by the Alliance at
-/// Corfai." over `0x419`.
+/// for a character a side takes captive at `system`. The class tests the
+/// captive's side (`FUN_004edc80`) against the reader (`+0x20`): the
+/// reader's own captive is case 3, TEXTSTRA `0x7158` "{1} Captured" /
+/// `0x7159` "{1} was captured by the {3} at {2}." with the captor's side;
+/// the enemy's captive is case 4, `0x715a` / `0x715b` "{1} was captured at
+/// {2}.". The background is `0x418` for a captive of side 1, else `0x419`,
+/// and the speaker is the captive's ([`captured_event`]).
 ///
-/// hyp: which side's message takes case 3 is read from A0's one capture,
-/// as the class's side test (`+0x20`, `FUN_004edc80`) does not settle it;
-/// the reader's own captive taking case 4 follows from it. port: the
-/// Jabba case 5 is [`jabba_captures_message`]; Han's capture with
-/// `+0xb0` bit 2 (no message) is not modelled.
+/// A0 empire-clean/31-needa-captured (a new Easy Empire game): the Empire
+/// reads "Needa was captured by the Alliance at Umgul." over `0x419`.
+/// messages-day633/capture-palpatine reads the same case for the Emperor;
+/// that save builds its messages for the Empire behind an Alliance
+/// cockpit. port: the Jabba case 5 is [`jabba_captures_message`]; Han's
+/// capture with `+0xb0` bit 2 (no message) is not modelled.
 #[must_use]
 pub fn captured_message(
     at: Option<rebellion_core::ids::SystemKey>,
@@ -507,9 +507,9 @@ pub fn captured_message(
 ) -> Option<GameMessage> {
     let reader_is_alliance = reader == CockpitFaction::Alliance;
     let (title, body) = if character.is_alliance == reader_is_alliance {
-        (0x715a, 0x715b)
-    } else {
         (0x7158, 0x7159)
+    } else {
+        (0x715a, 0x715b)
     };
     let parameters = [
         MessageParameter::Named {
@@ -575,17 +575,18 @@ pub fn character_health_texts(
 
 /// Character Escaped (`FUN_00490340` cases 1 and 2): notification `0x1e0`
 /// with the character's escape flag (`+0x98`) set, for a captive leaving
-/// its captor at `system`. As with a capture (case 3 to the captor, A0
-/// messages-day633), the captor's side reads TEXTSTRA `0x715c` "{1}
-/// Escaped" / `0x715d` "{1} escaped from the {3} at {2}." with its own
-/// name; the escapee's side reads `0x715e` / `0x715f` "{1} has escaped from
-/// imprisonment at {2}.". Both stand on background `0x405`. A major
-/// escapee speaks: Mon Mothma `0x26`, Leia `0x18`, Luke `0x25`, Han `0x19`,
-/// the Emperor `0x27`, Vader `0x28`; any other `0x24` on its own side.
+/// its captor at `system`. The class makes the same side test as for a
+/// capture: the escapee's own side reads case 1, TEXTSTRA `0x715c` "{1}
+/// Escaped" / `0x715d` "{1} escaped from the {3} at {2}." with the captor's
+/// side; the captor's side reads case 2, `0x715e` / `0x715f` "{1} has
+/// escaped from imprisonment at {2}.". Both stand on background `0x405`. A
+/// major escapee speaks: Mon Mothma `0x26`, Leia `0x18`, Luke `0x25`, Han
+/// `0x19`, the Emperor `0x27`, Vader `0x28`; any other `0x24` on its own
+/// side.
 ///
-/// hyp: the reader of each case follows the capture's (the class tests the
-/// same `FUN_004edc80` side); a minor escapee's case 1 sets no event
-/// (port: none).
+/// hyp: the side test reads the escapee's side before it changes hands
+/// (A0 empire-clean/31 settles it for a capture); no escape is captured
+/// in A0. A minor escapee's case 2 sets no event (port: none).
 #[must_use]
 pub fn escaped_message(
     character: &rebellion_core::world::Character,
@@ -598,9 +599,9 @@ pub fn escaped_message(
     let reader_is_alliance = reader == CockpitFaction::Alliance;
     let captors = reader_is_alliance == captor_is_alliance;
     let (title, body) = if captors {
-        (0x715c, 0x715d)
-    } else {
         (0x715e, 0x715f)
+    } else {
+        (0x715c, 0x715d)
     };
     let parameters = [
         MessageParameter::Named {
@@ -3218,7 +3219,10 @@ mod tests {
         );
     }
 
-    // FUN_00490340 cases 1 and 2: TEXTSTRA 0x715c..0x715f as shipped.
+    // FUN_00490340 cases 1 and 2: TEXTSTRA 0x715c..0x715f as shipped. The
+    // side test is the capture's: A0 empire-clean/31-needa-captured gives
+    // the captive's own side the "by the {3}" case, so the escapee's side
+    // reads 0x715d and the captor's 0x715f.
     #[test]
     fn an_escape_reads_from_the_captors_side_and_the_escapees() {
         let texts: HashMap<u16, String> = [
@@ -3243,7 +3247,7 @@ mod tests {
         assert_eq!(captors.title.as_deref(), Some("Leia Organa Escaped"));
         assert_eq!(
             captors.text,
-            "Leia Organa escaped from the Empire at Coruscant."
+            "Leia Organa has escaped from imprisonment at Coruscant."
         );
         assert_eq!(captors.audience, RailAudience::Empire);
         assert_eq!(captors.picture.map(|p| p.background), Some(0x405));
@@ -3259,7 +3263,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             own.text,
-            "Leia Organa has escaped from imprisonment at Coruscant."
+            "Leia Organa escaped from the Empire at Coruscant."
         );
         assert_eq!(own.audience, RailAudience::Alliance);
         // FUN_00490340's speaker per major (case 1).
@@ -5268,12 +5272,15 @@ mod tests {
     }
 
     #[test]
-    fn a_capture_reads_the_captor_to_the_other_side_and_the_place_to_its_own() {
-        // FUN_00490340 cases 3 and 4: TEXTSTRA 0x7158 / 0x7159 with the
-        // captor's side (FUN_0052d920 kind 1), or 0x715a / 0x715b; the
-        // background (captive side != 1) + 0x418; Emperor's speaker 0x22.
-        // A0 messages-day633/capture-palpatine: the Alliance reads "Emperor
-        // Palpatine was captured by the Alliance at Corfai." over 0x419.
+    fn a_capture_reads_the_captor_to_its_own_side_and_the_place_to_the_other() {
+        // FUN_00490340 cases 3 and 4: the captive's own side reads TEXTSTRA
+        // 0x7158 / 0x7159 with the captor's side (FUN_0052d920 kind 1), the
+        // other side 0x715a / 0x715b; the background (captive side != 1) +
+        // 0x418; Emperor's speaker 0x22. A0 empire-clean/31-needa-captured
+        // (a new Easy Empire game): the Empire reads "Needa was captured by
+        // the Alliance at Umgul." over 0x419; messages-day633/
+        // capture-palpatine, built for the Empire behind an Alliance
+        // cockpit, reads the Emperor's the same way.
         let emperor = rebellion_core::world::Character {
             name: "Emperor Palpatine".into(),
             dat_id: rebellion_core::ids::DatId::new(0x3000_0280),
@@ -5307,10 +5314,7 @@ mod tests {
             alliance.title.as_deref(),
             Some("Emperor Palpatine Captured")
         );
-        assert_eq!(
-            alliance.text,
-            "Emperor Palpatine was captured by the Alliance at Corfai."
-        );
+        assert_eq!(alliance.text, "Emperor Palpatine was captured at Corfai.");
         assert_eq!(alliance.picture.map(|p| p.background), Some(0x419));
         assert_eq!(alliance.audience, RailAudience::Alliance);
         assert_eq!(alliance.advisor_event, [0x22; 2]);
@@ -5325,7 +5329,10 @@ mod tests {
             &texts,
         )
         .expect("message");
-        assert_eq!(empire.text, "Emperor Palpatine was captured at Corfai.");
+        assert_eq!(
+            empire.text,
+            "Emperor Palpatine was captured by the Alliance at Corfai."
+        );
         assert_eq!(empire.audience, RailAudience::Empire);
         // An Alliance captive takes 0x418, and the Empire as captor.
         let leia = rebellion_core::world::Character {
@@ -5343,7 +5350,7 @@ mod tests {
             &texts,
         )
         .expect("message");
-        assert_eq!(taken.text, "Leia was captured by the Empire at Bespin.");
+        assert_eq!(taken.text, "Leia was captured at Bespin.");
         assert_eq!(taken.picture.map(|p| p.background), Some(0x418));
         assert!(captured_message(
             None,

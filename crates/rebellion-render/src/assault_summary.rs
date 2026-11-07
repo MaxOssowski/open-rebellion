@@ -1106,6 +1106,24 @@ mod tests {
             state.report().unwrap().category,
             ReportCategory::CapitalShips
         );
+        // A0 empire-clean/22-bombardment-umgul-defender (a new Easy Empire
+        // game, the Empire reading the Alliance's strike): "Alliance ships
+        // have conducted an orbital strike on the Imperial system of Umgul"
+        // over 0x2b9b.
+        let (imperial, held) = self::world(ControlKind::Controlled(Faction::Empire));
+        let report = AssaultReport::start_bombardment(
+            &imperial,
+            &TroopTransportState::new(),
+            Faction::Alliance,
+            &[],
+            held,
+        )
+        .unwrap();
+        let (_, body) = summary_texts(&report, &imperial, &texts);
+        assert_eq!(
+            body,
+            "Alliance ships have conducted an orbital strike on the Imperial system of Hoth"
+        );
     }
 
     #[test]

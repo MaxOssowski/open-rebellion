@@ -7236,9 +7236,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-events/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-mission-reports-a0/",
             "tools/interface-parity/message-display.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-conflict/"
           ],
-          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared. 2026-11-06: a sabotage's victim now reads Saboteurs Strike (FUN_0048b9a0, 0x7083..0x7085) on its Conflict rail; A0 unedited 'test' save shows 'Saboteurs Strike at Yavin' over 'Alliance Army Regiment', and message-display.mjs (Linux, Alliance) finds the port's picture 1013 and title image 0 pixels from A0.",
+          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared. 2026-11-06: a sabotage's victim now reads Saboteurs Strike (FUN_0048b9a0, 0x7083..0x7085) on its Conflict rail; A0 unedited 'test' save shows 'Saboteurs Strike at Yavin' over 'Alliance Army Regiment', and message-display.mjs (Linux, Alliance) finds the port's picture 1013 and title image 0 pixels from A0. Empire side: A0 empire-clean/21 'Saboteurs Strike at Denab' over 'KDY-150', picture 1014 0 pixels, as the port's Empire reader gets.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8007,14 +8008,14 @@
         {
           "id": "EVT-01-C001",
           "requirement": "informant",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-informant-incident/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-informants/"
           ],
-          "note": "The informant incident runs on its timer and the Informants message reads TEXTSTRA (informants_texts); the message itself was not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-07: A0 (unedited Alliance game, day 1457) shows 'Informants Provide Information' over 'Informants have provided us with information about Selonia.' on picture 1000; message-display.mjs (Linux, Alliance) opens the fixture's Selonia report and finds the texts, the picture, the title image and the rail (Display lit) 0 pixels from A0.",
+          "note": "The informant incident runs on its timer and the Informants message reads TEXTSTRA (informants_texts); the message itself was not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-07: A0 (unedited Alliance game, day 1457) shows 'Informants Provide Information' over 'Informants have provided us with information about Selonia.' on picture 1000; message-display.mjs (Linux, Alliance) opens the fixture's Selonia report and finds the texts, the picture, the title image and the rail (Display lit) 0 pixels from A0. Empire side too: A0 empire-clean/04 (Uvena) and message-display.mjs (Linux, Empire), 0 pixels.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8154,9 +8155,10 @@
             "tools/interface-parity/message-display.mjs",
             "crates/rebellion-render/src/story_messages.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-near-uprising/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-near-uprising/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-capture-side-corrected/"
           ],
-          "note": "A mission capture posts Character Captured (FUN_00490340 cases 3/4, notification 0x1e0) to each side: TEXTSTRA 0x7158/0x7159 with the captor's side for the captive's enemy, 0x715a/0x715b for its own side (hyp, see the evidence), on (captive side != 1) + 0x418, the captive's speaker. A0 messages-day633 (the Alliance, day 633): 'Emperor Palpatine Captured', 'Emperor Palpatine was captured by the Alliance at Corfai.' over STRATEGY 1049. message-display.mjs (Linux, both sides) files the same capture and shows the same title and text and the picture at A0's (74, 82), every pixel exact against the bitmap and A0. Open: escapes post no message. 2026-11-06: Character Escaped (FUN_00490340 cases 1/2) now takes TEXTSTRA 0x715c/0x715d for the captor's side and 0x715e/0x715f for the escapee's, picture 0x405 and the escapee's speaker (escaped_message, escape_character); the port's 'has escaped captivity!' line is gone. No A0 capture of an escape. 2026-11-07: Character Captured (and Escaped, same class) now name a system, so Display is lit as in A0 capture-palpatine; message-display.mjs compares the capture's rail with A0, 0 pixels. port: Display goes to that system.",
+          "note": "A mission capture posts Character Captured (FUN_00490340 cases 3/4, notification 0x1e0) to each side: TEXTSTRA 0x7158/0x7159 with the captor's side for the captive's enemy, 0x715a/0x715b for its own side (hyp, see the evidence), on (captive side != 1) + 0x418, the captive's speaker. A0 messages-day633 (the Alliance, day 633): 'Emperor Palpatine Captured', 'Emperor Palpatine was captured by the Alliance at Corfai.' over STRATEGY 1049. message-display.mjs (Linux, both sides) files the same capture and shows the same title and text and the picture at A0's (74, 82), every pixel exact against the bitmap and A0. Open: escapes post no message. 2026-11-06: Character Escaped (FUN_00490340 cases 1/2) now takes TEXTSTRA 0x715c/0x715d for the captor's side and 0x715e/0x715f for the escapee's, picture 0x405 and the escapee's speaker (escaped_message, escape_character); the port's 'has escaped captivity!' line is gone. No A0 capture of an escape. 2026-11-07: Character Captured (and Escaped, same class) now name a system, so Display is lit as in A0 capture-palpatine; message-display.mjs compares the capture's rail with A0, 0 pixels. port: Display goes to that system. Correction 2026-11-07: A0 in a new Easy Empire game reads its own officer's capture 'Needa was captured by the Alliance at Umgul.' (empire-clean/31); FUN_00490340 tests the captive's side against the reader, so the own side reads 0x7158/0x7159 and the other side 0x715a/0x715b (escapes alike: own 0x715c/0x715d). The day-633 capture was the Empire's message in DS_flip_allian. The port's cases are swapped accordingly; message-display.mjs compares the Empire's body with A0 (1 pixel).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -8439,7 +8441,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-layout/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "Per-side window origin (62,49)/(125,52), frames 10710/10711 and red/green text match the Alliance and Imperial A0 alerts; both sides pass in the browser. 2026-11-06: the controls' art had the sides swapped (the Alliance drew the Empire's 10716/10719/10971); FUN_0044f860 gives side 1 0x29e2/0x29e5/0x2ade, as A0 TAC-01-C010 and the unedited Alliance game show (0 differing pixels each). Fixed in b107; run.mjs now checks each control against its side's A0 capture.",
+          "note": "Per-side window origin (62,49)/(125,52), frames 10710/10711 and red/green text match the Alliance and Imperial A0 alerts; both sides pass in the browser. 2026-11-06: the controls' art had the sides swapped (the Alliance drew the Empire's 10716/10719/10971); FUN_0044f860 gives side 1 0x29e2/0x29e5/0x2ade, as A0 TAC-01-C010 and the unedited Alliance game show (0 differing pixels each). Fixed in b107; run.mjs now checks each control against its side's A0 capture. 2026-11-07: Empire side in a new Easy Empire game (empire-clean/10..12): controls 10973/10716/10719 0 pixels, the destroyed fleet's summary and Display lines word for word (unit test).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         }
       ]
@@ -8523,9 +8525,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-bombardment-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-bombardment-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-conflict/"
           ],
-          "note": "General Bombardment (0x222) runs from the fleet menu and opens the summary (0x7098) in the browser fleet-window gate on Arch Chromium 155. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "General Bombardment (0x222) runs from the fleet menu and opens the summary (0x7098) in the browser fleet-window gate on Arch Chromium 155. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-07: the defender's side in A0 (a new Easy Empire game): 'Orbital bombardment of Umgul' over 'Alliance ships have conducted an orbital strike on the Imperial system of Umgul', picture 0x2b9b; the unit test builds the same body.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10129,7 +10132,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
           ],
-          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal. 2026-11-06 (later): an unedited Alliance game (A0 battle-clean/, day 650, the Empire's Battle at Yavin) reads 'The Alliance fleet is defeated.' over 'Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.', and its Display page 'The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul.' (0x7011 with +0x48) with both buttons; the_alliances_withdrawal_from_its_own_system_reads_as_a0 gets the same lines. Day 672 (Averam defended): 'Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn.' and Display 0x7012; the_alliances_defence_of_its_own_system_reads_as_a0. Day 718 (Umgul, fleet destroyed): 0x700b and the Display page's 0x7010 / 0x7014 with one button; the_alliances_destroyed_fleet_reads_as_a0.",
+          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal. 2026-11-06 (later): an unedited Alliance game (A0 battle-clean/, day 650, the Empire's Battle at Yavin) reads 'The Alliance fleet is defeated.' over 'Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.', and its Display page 'The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul.' (0x7011 with +0x48) with both buttons; the_alliances_withdrawal_from_its_own_system_reads_as_a0 gets the same lines. Day 672 (Averam defended): 'Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn.' and Display 0x7012; the_alliances_defence_of_its_own_system_reads_as_a0. Day 718 (Umgul, fleet destroyed): 0x700b and the Display page's 0x7010 / 0x7014 with one button; the_alliances_destroyed_fleet_reads_as_a0. 2026-11-07: Empire side in a new Easy Empire game (empire-clean/10..12): controls 10973/10716/10719 0 pixels, the destroyed fleet's summary and Display lines word for word (unit test).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

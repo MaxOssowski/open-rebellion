@@ -442,5 +442,15 @@ A0 (Windows 10 VM, day 633, `.artifacts/a0-vm/messages-day633/`):
   say which reader takes which case; the port gives the captive's own side
   case 4.
 
+**Correction (2026-11-07).** The day-633 game is DS_flip_allian. Its cockpit is the Alliance's, but its messages are built for the Empire. So the capture above is the Empire, the captive's own side, reading case 3.
+
+A new Easy Empire game confirms it (`.artifacts/a0-vm/empire-clean/31-needa-captured`): the Empire reads "Needa was captured by the Alliance at Umgul." over `0x419`.
+
+The side test is `bVar8 = (FUN_004edc80() == 1)`, inverted for reader 2. With the captive's side, it gives:
+- the captive's own side: case 3, or case 1 for an escape;
+- the other side: case 4, or case 2 for an escape.
+
+The port follows this since 2026-11-07.
+
 Ported (`story_messages::captured_message`, 2026-11-04): each side's message
 on a mission capture, posted in `main.rs`. port: escapes post no message.

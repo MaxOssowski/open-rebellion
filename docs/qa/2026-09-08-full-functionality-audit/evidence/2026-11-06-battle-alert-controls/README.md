@@ -57,3 +57,15 @@ node run.mjs --battle --all --no-build --scenario=production-battle-alert-entry
 - Run `2026-11-06T21-28-46-857Z-1886782`: 4 of 4 passed, both sides at 640×480 and in the letterbox.
 - At 640×480 the probes `battle-alert-{retreat,simulate,command}-a0` are `source-bitmap-exact`. For the Alliance's Simulate, that is 10722 over 3617 pixels.
 - In the letterbox they report `non-native-scale`, as every bitmap probe there does.
+
+## The Empire's side in a new Easy Empire game (2026-11-07)
+
+`.artifacts/a0-vm/empire-clean/` (day 253, the Alliance attacking Umgul):
+
+| Capture | What it shows | sha256 |
+|---|---|---|
+| `10-alert-umgul-day253` | Retreat disabled 10973, Simulate 10716, Take Command 10719, each 0 differing pixels with the key skipped | `bae075ae9d27d8f72deeb1eec484a2344a13ddea4f25e0da0af8e48b22b20227` |
+| `11-summary-destroyed-umgul` | "The Imperial fleet is defeated." / "Umgul is now under blockade by Alliance forces. The Imperial fleet has been completely destroyed." | `86f9f6516680c1029c6442f9cfac8adcb52d8bbf934889c1b3fe141dc585f963` |
+| `12-display-destroyed-umgul` | "The Imperial fleet was defeated at Umgul. Your fleet has been destroyed." and the system's button alone; 10764 matches with its black keyed | `7cac5857da47478bb90135dfa6a1d2bca3c93af4c5393cf02eda7b7023cef540` |
+
+`the_alliances_destroyed_fleet_reads_as_a0` now also builds the Empire's lines and matches them word for word.
