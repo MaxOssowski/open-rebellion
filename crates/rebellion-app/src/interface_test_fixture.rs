@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 97;
+const SCENARIO_COUNT: u8 = 99;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
