@@ -3139,6 +3139,17 @@ impl BattleOptionsGates {
     }
 }
 
+/// The side highlight around a capital ship (FUN_0059f380): pure red for
+/// the Alliance (A0 TAC-04-C006), pure green for the Empire (TAC-04-C007),
+/// while that side's toggle is on.
+fn tactical_highlight_color(is_alliance: bool, (alliance, empire): (bool, bool)) -> Option<Color> {
+    match (is_alliance, alliance, empire) {
+        (true, true, _) => Some(Color::new(1.0, 0.0, 0.0, 1.0)),
+        (false, _, true) => Some(Color::new(0.0, 1.0, 0.0, 1.0)),
+        _ => None,
+    }
+}
+
 /// A0 VM 2026-10-27: an enemy's selection frame is red (255, 0, 0); ours
 /// keeps the yellow one (`None`).
 fn enemy_selection_frame_color(session: &BattleSession, ship: &TacticalShip) -> Option<Color> {
@@ -9408,6 +9419,10 @@ fn draw_tactical_frame(
                             axes: original_hull_axes(macroquad::math::vec3(
                                 forward.x, forward.y, forward.z,
                             )),
+                            highlight: tactical_highlight_color(
+                                ship.is_attacker == session.attacker_is_alliance,
+                                (state.highlight_alliance, state.highlight_empire),
+                            ),
                         })
                     })
                     .collect::<Vec<_>>();
@@ -18448,6 +18463,50 @@ mod tests {
         assert_eq!(TASK_FORCE_BUTTONS[7].x, 263.0);
         assert_eq!(FIGHTER_GROUP_BUTTONS[0].x, 347.0);
         assert_eq!(FIGHTER_GROUP_BUTTONS[3].x, 434.0);
+    }
+
+    #[test]
+    fn a_lit_side_draws_its_ships_boxes_red_or_green() {
+        // FUN_0059f380 flags the lit side's units; A0 TAC-04-C006 shows a
+        // pure red box around the Alliance ship, TAC-04-C007 and the Corsin
+        // battle (a0-vm/research-display/32) pure green ones for the Empire.
+        assert_eq!(tactical_highlight_color(true, (false, false)), None);
+        assert_eq!(
+            tactical_highlight_color(true, (true, false)),
+            Some(Color::new(1.0, 0.0, 0.0, 1.0))
+        );
+        assert_eq!(tactical_highlight_color(false, (true, false)), None);
+        assert_eq!(
+            tactical_highlight_color(false, (false, true)),
+            Some(Color::new(0.0, 1.0, 0.0, 1.0))
+        );
+        assert_eq!(tactical_highlight_color(true, (false, true)), None);
+        let edges = crate::tactical_assets::highlight_box_edges(
+            [
+                vec3(-1.0, 0.0, 2.0),
+                vec3(3.0, -2.0, 4.0),
+                vec3(0.0, 1.0, 3.0),
+            ]
+            .into_iter(),
+        )
+        .unwrap();
+        // Twelve edges of the box (-1..3, -2..1, 2..4), each along one axis.
+        for (from, to) in edges {
+            let delta = (to - from).abs();
+            assert_eq!(
+                [delta.x > 0.0, delta.y > 0.0, delta.z > 0.0]
+                    .iter()
+                    .filter(|moved| **moved)
+                    .count(),
+                1
+            );
+            for corner in [from, to] {
+                assert!([-1.0, 3.0].contains(&corner.x));
+                assert!([-2.0, 1.0].contains(&corner.y));
+                assert!([2.0, 4.0].contains(&corner.z));
+            }
+        }
+        assert!(crate::tactical_assets::highlight_box_edges(std::iter::empty()).is_none());
     }
 
     #[test]

@@ -1998,6 +1998,43 @@ async function probeTacticalProductionParticipants(
     selected_sha256: sha256(selected),
     targeted_sha256: sha256(targeted),
   });
+
+  // The side highlights (FUN_0059f380): A0 TAC-04-C006 boxes each Alliance
+  // ship in pure red, TAC-04-C007 and a0-vm/research-display/32 each
+  // Imperial ship in pure green, one pixel wide. Toggle both, count the
+  // pure pixels in the battle view, toggle both back.
+  const highlightPixels = (bytes) => {
+    const png = PNG.sync.read(bytes);
+    const counts = { red: 0, green: 0 };
+    for (let y = Math.round(offsetY + 30 * scale); y < Math.round(offsetY + 468 * scale); y++) {
+      for (let x = Math.round(offsetX + 16 * scale); x < Math.round(offsetX + 466 * scale); x++) {
+        const i = (y * png.width + x) * 4;
+        const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+        if (r === 255 && g === 0 && b === 0) counts.red++;
+        if (r === 0 && g === 255 && b === 0) counts.green++;
+      }
+    }
+    return counts;
+  };
+  const before = highlightPixels(targeted);
+  const alliance = point(530, 318);
+  const empire = point(498, 318);
+  await page.mouse.click(alliance.x, alliance.y);
+  await page.waitForTimeout(300);
+  await page.mouse.click(empire.x, empire.y);
+  await page.waitForTimeout(300);
+  await page.mouse.move(point(470, 200).x, point(470, 200).y);
+  const lit = await stableInteractionFrame(page, folder, "production-highlights-on");
+  const after = highlightPixels(lit);
+  if (scale === 1) {
+    assert.ok(after.red > before.red + 20 && after.green > before.green + 20,
+      `the highlights draw red and green boxes: ${JSON.stringify({ before, after })}`);
+  }
+  await page.mouse.click(alliance.x, alliance.y);
+  await page.waitForTimeout(300);
+  await page.mouse.click(empire.x, empire.y);
+  await page.waitForTimeout(300);
+  probes.push({ type: "side-highlight-boxes", before, after });
   return probes;
 }
 

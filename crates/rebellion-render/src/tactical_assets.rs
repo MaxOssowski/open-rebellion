@@ -1005,6 +1005,45 @@ pub(crate) struct TacticalRenderObject {
     /// Render-space images of the hull's local x, y and z axes
     /// (`original_hull_axes`).
     pub axes: [Vec3; 3],
+    /// The side highlight's colour while its toggle is on: A0 TAC-04-C006
+    /// draws a pure red box around each Alliance ship, TAC-04-C007 and the
+    /// Empire game's Corsin battle (a0-vm/research-display/32) a pure
+    /// green one around each Imperial ship, 1 pixel, its edges hidden
+    /// where the hull stands in front (FUN_0059f380 flags each unit of a
+    /// lit side, `+0x100`).
+    pub highlight: Option<Color>,
+}
+
+/// The box a highlight draws around a hull: the local bounds of `vertices`,
+/// as its twelve edges between the eight corners.
+pub(crate) fn highlight_box_edges(
+    vertices: impl Iterator<Item = Vec3>,
+) -> Option<[(Vec3, Vec3); 12]> {
+    let mut bounds: Option<(Vec3, Vec3)> = None;
+    for vertex in vertices {
+        bounds = Some(bounds.map_or((vertex, vertex), |(min, max)| {
+            (min.min(vertex), max.max(vertex))
+        }));
+    }
+    let (min, max) = bounds?;
+    let corner = |i: u8| {
+        vec3(
+            if i & 1 == 0 { min.x } else { max.x },
+            if i & 2 == 0 { min.y } else { max.y },
+            if i & 4 == 0 { min.z } else { max.z },
+        )
+    };
+    let mut edges = [(Vec3::ZERO, Vec3::ZERO); 12];
+    let mut next = 0;
+    for a in 0..8_u8 {
+        for bit in [1_u8, 2, 4] {
+            if a & bit == 0 {
+                edges[next] = (corner(a), corner(a | bit));
+                next += 1;
+            }
+        }
+    }
+    Some(edges)
 }
 
 /// The axes of an unturned hull.
@@ -1850,6 +1889,29 @@ impl TacticalAssetRenderer {
                 );
                 material.set_uniform("MaterialSpecular", chunk.specular);
                 draw_mesh(&chunk.mesh);
+            }
+            // The side highlight: the hull's box in lines, depth-tested
+            // with the hulls drawn so far.
+            if let Some(color) = object.highlight {
+                if let Some(edges) = highlight_box_edges(
+                    asset
+                        .meshes
+                        .iter()
+                        .flat_map(|chunk| &chunk.mesh.vertices)
+                        .map(|vertex| vertex.position),
+                ) {
+                    gl_use_default_material();
+                    let place = |local: Vec3| {
+                        object.axes[0] * local.x
+                            + object.axes[1] * local.y
+                            + object.axes[2] * local.z
+                            + object.position
+                    };
+                    for (from, to) in edges {
+                        draw_line_3d(place(from), place(to), color);
+                    }
+                    gl_use_material(material);
+                }
             }
             report.rendered_object_ids.push(object.object_id);
             if let Some(screen) = project_world_position(camera_matrix, object.position, aperture) {
