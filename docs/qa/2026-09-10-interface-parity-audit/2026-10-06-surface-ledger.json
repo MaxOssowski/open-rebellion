@@ -655,9 +655,10 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-game-options-empty-space.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Disabled states for shuttle/tactical contexts follow FUN_00407180 (test shuttle_and_tactical_contexts_disable_original_controls) and the P58-B12 in-battle journey; no A0 capture. Browser run on macOS only; rerun on Linux. 2026-10-31: the shuttle-cockpit context against A0 main-menu-states/12: Restart on (FUN_00407180 never disables it; the port had it off), Return off, Save off, each pixel-identical on Linux (main-menu-states.mjs). The battle context has no A0.",
+          "note": "Disabled states for shuttle/tactical contexts follow FUN_00407180 (test shuttle_and_tactical_contexts_disable_original_controls) and the P58-B12 in-battle journey; no A0 capture. Browser run on macOS only; rerun on Linux. 2026-10-31: the shuttle-cockpit context against A0 main-menu-states/12: Restart on (FUN_00407180 never disables it; the port had it off), Return off, Save off, each pixel-identical on Linux (main-menu-states.mjs). The battle context has no A0. 2026-11-07: the battle context against A0 TAC-06-C007: Restart lit (fixed in b121), Return 10026 and Exit 0 pixels from A0. Open: A0's occupied save slots show their coloured load art in a battle, and the port's battle fixture has no saves, so Save and Load in a battle are not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -727,7 +728,7 @@
         {
           "id": "PRE-03-C011",
           "requirement": "tactical options",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
@@ -738,10 +739,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/p58-b12-tactical-game-options-empty-space/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
-            "ghidra/notes/game-options-text.md"
+            "ghidra/notes/game-options-text.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Five display switches (masks per FUN_004082b0) default on and are disabled in battle; P58-B12 browser journey 2/2; A0 tactical captures exist but not for this screen. Browser run on macOS only; rerun on Linux. 2026-10-31: the five switches (on = pressed art 10044) and their labels and On/Off match A0 in a galaxy context (bitmaps pixel-identical, text ink within 1 px). The battle context (grey 0x505050, 10045) has no A0 capture. The switches persist like the registry's DisplayOpts (rebellion_data::settings, unit test settings_tests).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Five display switches (masks per FUN_004082b0) default on and are disabled in battle; P58-B12 browser journey 2/2; A0 tactical captures exist but not for this screen. Browser run on macOS only; rerun on Linux. 2026-10-31: the five switches (on = pressed art 10044) and their labels and On/Off match A0 in a galaxy context (bitmaps pixel-identical, text ink within 1 px). The battle context (grey 0x505050, 10045) has no A0 capture. The switches persist like the registry's DisplayOpts (rebellion_data::settings, unit test settings_tests). 2026-11-07: the battle context against A0 TAC-06-C007 (Game Options from a battle): the five lamps 10045 are 0 pixels from A0 and the labels and On/Off are the system grey (128, 128, 128), which the port drew (80, 80, 80) before b121 (0x2505050 is a PALETTERGB); run.mjs --battle checks the lamp at (357, 311) and the grey on Linux.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "PRE-03-C012",
@@ -3313,9 +3315,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-report-display/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-near-uprising/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-shortfall-in-transit/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-shortfall-in-transit/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-research-display-encyclopedia/"
           ],
-          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0. 2026-11-05: A0 (message-rail/display-sesswenna) confirms a system's message opens its sector window and closes the index; message-display.mjs compares the window's frame with A0, 0 differing, after the switch-side button 10210 was keyed. Still partial: non-system objects and kind 4's Encyclopedia target have no A0 capture. 2026-11-06: a Mission Report's Display opens its mission's Missions window as A0 (report-display-missions-window-day235). 2026-11-06: A0 unedited 'test' save: Display on a chosen Enemy Mission Foiled row closes the index and opens the sector of the mission's target (display-clean/), as the port's message at_system(target_system) does. Kind 4's Encyclopedia target is still open. 2026-11-07: Character Captured (and Escaped, same class) now name a system, so Display is lit as in A0 capture-palpatine; message-display.mjs compares the capture's rail with A0, 0 pixels. port: Display goes to that system. 2026-11-07: A0 lights Display for a target with no known system and its press does nothing (Maintenance Shortfall in transit); the port now does the same (GameMessage::unplaced_target, display_lit).",
+          "note": "Display (0x67) goes to a chosen message's system and closes the index (message-display.mjs). port: a non-system object is taken as its system; kind 4's Encyclopedia target is not carried; not compared in A0. 2026-11-05: A0 (message-rail/display-sesswenna) confirms a system's message opens its sector window and closes the index; message-display.mjs compares the window's frame with A0, 0 differing, after the switch-side button 10210 was keyed. Still partial: non-system objects and kind 4's Encyclopedia target have no A0 capture. 2026-11-06: a Mission Report's Display opens its mission's Missions window as A0 (report-display-missions-window-day235). 2026-11-06: A0 unedited 'test' save: Display on a chosen Enemy Mission Foiled row closes the index and opens the sector of the mission's target (display-clean/), as the port's message at_system(target_system) does. Kind 4's Encyclopedia target is still open. 2026-11-07: Character Captured (and Escaped, same class) now name a system, so Display is lit as in A0 capture-palpatine; message-display.mjs compares the capture's rail with A0, 0 pixels. port: Display goes to that system. 2026-11-07: A0 lights Display for a target with no known system and its press does nothing (Maintenance Shortfall in transit); the port now does the same (GameMessage::unplaced_target, display_lit). 2026-11-07: kind 4 ported: of the message classes only Research Complete (vtable 0x65bb40, slot +0x10 returns 4) has it; its Display opens the Encyclopedia at the researched class (FUN_00467f10 -> FUN_0041d6b0) and closes the index. message-display.mjs (Linux, both sides) presses it and finds the class's topic (0x14000043, 0x1c000007). Not compared in A0: no Research Complete message was reached in the VM.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4137,9 +4140,10 @@
             "crates/rebellion-render/src/message_index.rs",
             "crates/rebellion-render/src/win_tooltip.rs",
             "tools/interface-parity/tooltip.mjs",
-            "tools/interface-parity/tooltip.mjs"
+            "tools/interface-parity/tooltip.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-research-display-encyclopedia/"
           ],
-          "note": "FUN_004665f0's tips: the ten categories (0x8010..0x8018, 0x8032), Close, Display Message (0x8020; 0x8019 Message Index in message mode, FUN_00468fb0), the posting toggle (0x8005/0x8006 by the category's silent bit, FUN_004697b0), Select All and Delete match A0 tooltip/71..85 and 90 in tooltip.mjs (Empire, Linux); disabled controls show none (A0 86..89, 91). 2026-11-06: the enabled Display (0x67) tip 'Display' matches A0 tooltip/409 (the Empire's report, tooltip.mjs --a0, Linux). Open: the 0x8031 'Encylopedia' variant needs the type-4 Display target the port does not offer.",
+          "note": "FUN_004665f0's tips: the ten categories (0x8010..0x8018, 0x8032), Close, Display Message (0x8020; 0x8019 Message Index in message mode, FUN_00468fb0), the posting toggle (0x8005/0x8006 by the category's silent bit, FUN_004697b0), Select All and Delete match A0 tooltip/71..85 and 90 in tooltip.mjs (Empire, Linux); disabled controls show none (A0 86..89, 91). 2026-11-06: the enabled Display (0x67) tip 'Display' matches A0 tooltip/409 (the Empire's report, tooltip.mjs --a0, Linux). Open: the 0x8031 'Encylopedia' variant needs the type-4 Display target the port does not offer. 2026-11-07: the 0x8031 'Encylopedia' variant is ported for Research Complete (kind 4, Display art 0x2d20 / 0x2d47, display_button_string); not compared in A0, which has no Research Complete capture yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10051,11 +10055,13 @@
         {
           "id": "TAC-06-C008",
           "requirement": "close",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Close returns to the previous panel in the browser journey; A0 TAC-06-C008 not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
+          ],
+          "note": "Close returns to the previous panel in the browser journey; A0 TAC-06-C008 not recorded as compared. 2026-11-07: A0 TAC-06-C008 shows Close bringing back the selection's display panel with its order buttons 1107 and 1105 at (494, 238) and (562, 238); run.mjs's battle options case checks both after Close (Linux Arch Chromium 155, run 2026-11-07T15-26-22-319Z-285663). A0's selection there is a squadron, the port's a capital ship; both panels carry the same buttons.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-06-C009",
