@@ -7752,9 +7752,10 @@
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-band-menus-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-checked-menu-width/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-game-over-orders-a0/"
           ],
-          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-04 open: A0 pending-facility/33 (Pzob, its ships band building) greys Build, Stop, Destination, Rename and Reserved, where the port leaves them white; the cause is not traced.",
+          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-04 open: A0 pending-facility/33 (Pzob, its ships band building) greys Build, Stop, Destination, Rename and Reserved, where the port leaves them white; the cause is not traced. 2026-11-07: the grey band menu of A0 pending-facility/33 and 36 is the end of the game: FUN_0051d990 asks FUN_0051de80 for every order, bit 0x10000000 of the victory conditions word (FUN_005180e0), and the Alliance had lost that game (its clock stopped). OrderGates::orders_stopped now greys every order and keeps Encyclopedia and Status (unit tests). Still open: no agent reads Reserved, the facility icon's Reserved is not ported.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9026,13 +9027,14 @@
         {
           "id": "TAC-02-C008",
           "requirement": "rest",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Slot positions compared; the rest art of A0 TAC-02-C008 is not separately recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Slot positions compared; the rest art of A0 TAC-02-C008 is not separately recorded as compared. 2026-11-07: A0 TAC-02-C008's Task Force 1 at rest is 1005 keyed on its first pixel over the backdrop, with a black '1' over x 70..72, rows 5..14. The port now draws the number in the panel's Arial, 10 rows tall; run.mjs 'task-force-1-number-at-rest' finds its box within a pixel of A0's (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-02-C009",
@@ -9058,22 +9060,25 @@
         {
           "id": "TAC-02-C011",
           "requirement": "selected",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Selected slot 1007 matched at its slot positions, but the selected art of A0 TAC-02-C011 is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Selected slot 1007 matched at its slot positions, but the selected art of A0 TAC-02-C011 is not recorded as compared. 2026-11-07: A0 TAC-02-C011 and TAC-03-C001 draw the selected Task Force 1 as 1006 with a white '1' (FUN_0059be80 sets state 4's text to 0x2ffffff); the port drew it black. run.mjs 'task-force-1-number-selected' finds the white box within a pixel of A0's (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-02-C012",
           "requirement": "disabled",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Disabled squadron buttons exist (P58E); A0 TAC-02-C012 (all four disabled) is captured but not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
+          ],
+          "note": "Disabled squadron buttons exist (P58E); A0 TAC-02-C012 (all four disabled) is captured but not compared. 2026-11-07: A0 TAC-02-C012's four disabled squadron buttons are 1020 cut to 25x15 (FUN_0059c030), with the backdrop 1000 under its first-pixel grey (FUN_005fd170) and in its last two rows; the port drew 25x17 and the grey. run.mjs verifySquadronButton checks both (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-02-C013",
@@ -9210,62 +9215,67 @@
         {
           "id": "TAC-03-C007",
           "requirement": "engines",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the engines icon's damaged state in A0 TAC-03-C007 is captured but not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the engines icon's damaged state in A0 TAC-03-C007 is captured but not recorded as compared. 2026-11-07: A0 TAC-03-C007 (engines 1216 dark after hits) shows the five icons at (492 + 27k, 131), keyed on black, in the battle palette: entries 140 and 146 are (230, 0, 0) and (255, 230, 60) (TACTICAL 5531..5557), not the icons' own pure red and yellow; the port now draws them so (bmp_cache::battle_palette_entries). The engines icon's band follows FUN_005e45f0's five bands (unit tests); run.mjs checks the icons' art and colours at A0's places in the live damage and field cases (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C008",
           "requirement": "hyperdrive",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the hyperdrive icon's damaged state in A0 TAC-03-C008 is captured but not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the hyperdrive icon's damaged state in A0 TAC-03-C008 is captured but not recorded as compared. 2026-11-07: A0 TAC-03-C008 (hyperdrive 1221 dark) shows the five icons at (492 + 27k, 131), keyed on black, in the battle palette: entries 140 and 146 are (230, 0, 0) and (255, 230, 60) (TACTICAL 5531..5557), not the icons' own pure red and yellow; the port now draws them so (bmp_cache::battle_palette_entries). The hyperdrive icon's band follows FUN_005e45f0's five bands (unit tests); run.mjs checks the icons' art and colours at A0's places in the live damage and field cases (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C009",
           "requirement": "tractor",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-panel-text-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-tractor-beams/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-tractor-beams/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "A0 TAC-03-C009 (Imperial ISD, tractor icon lit) used for panel text and meter colours; the tractor icon state itself is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A0 TAC-03-C009 (Imperial ISD, tractor icon lit) used for panel text and meter colours; the tractor icon state itself is not recorded as compared. 2026-11-07: A0 TAC-03-C009 (Imperial Star Destroyer, tractor 1215 lit) shows the five icons at (492 + 27k, 131), keyed on black, in the battle palette: entries 140 and 146 are (230, 0, 0) and (255, 230, 60) (TACTICAL 5531..5557), not the icons' own pure red and yellow; the port now draws them so (bmp_cache::battle_palette_entries). The tractor icon's band follows FUN_005e45f0's five bands (unit tests); run.mjs checks the icons' art and colours at A0's places in the live damage and field cases (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C010",
           "requirement": "weapons",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the weapons icon's damaged state in A0 TAC-03-C010 is captured but not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the weapons icon's damaged state in A0 TAC-03-C010 is captured but not recorded as compared. 2026-11-07: A0 TAC-03-C010 (weapons 1208) shows the five icons at (492 + 27k, 131), keyed on black, in the battle palette: entries 140 and 146 are (230, 0, 0) and (255, 230, 60) (TACTICAL 5531..5557), not the icons' own pure red and yellow; the port now draws them so (bmp_cache::battle_palette_entries). The weapons icon's band follows FUN_005e45f0's five bands (unit tests); run.mjs checks the icons' art and colours at A0's places in the live damage and field cases (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C011",
           "requirement": "shield generator",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-subsystem-hits-queue/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the shield generator icon's damaged state in A0 TAC-03-C011 is captured but not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Subsystem icons 1201-1225 moved to the A0 panel origin; the shield generator icon's damaged state in A0 TAC-03-C011 is captured but not recorded as compared. 2026-11-07: A0 TAC-03-C011 (shields 1201 dark) shows the five icons at (492 + 27k, 131), keyed on black, in the battle palette: entries 140 and 146 are (230, 0, 0) and (255, 230, 60) (TACTICAL 5531..5557), not the icons' own pure red and yellow; the port now draws them so (bmp_cache::battle_palette_entries). The shield generator icon's band follows FUN_005e45f0's five bands (unit tests); run.mjs checks the icons' art and colours at A0's places in the live damage and field cases (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C012",
@@ -9293,26 +9303,28 @@
         {
           "id": "TAC-03-C014",
           "requirement": "previous",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-battle-tab/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Previous button 1101 placed at the A0 panel origin and Tab/0xdd03 traced; A0 TAC-03-C014 behaviour is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Previous button 1101 placed at the A0 panel origin and Tab/0xdd03 traced; A0 TAC-03-C014 behaviour is not recorded as compared. 2026-11-07: A0 TAC-03-C014 shows Previous after Next bringing the panel back to the Imperial Star Destroyer; run.mjs presses Previous (1102 held) and asserts it reverses Next's move, then wraps (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C015",
           "requirement": "next",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-battle-tab/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Next button 1103 placed at the A0 panel origin (0xdd04); A0 TAC-03-C015 behaviour is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Next button 1103 placed at the A0 panel origin (0xdd04); A0 TAC-03-C015 behaviour is not recorded as compared. 2026-11-07: A0 TAC-03-C015 (Imperial, Yavin) shows Next Capital Ship moving the panel from the Imperial Star Destroyer to Victory Destroyer 2, still 'Task Force # 1'; run.mjs's selected-navigation case presses Next (1104 held, keyed on its first pixel) and logs the move within task force 1 (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-03-C016",
@@ -9645,96 +9657,104 @@
         {
           "id": "TAC-05-C001",
           "requirement": "hook",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Left Hook state and preview of A0 TAC-05-C001 are not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Left Hook state and preview of A0 TAC-05-C001 are not recorded as compared. 2026-11-07: A0 TAC-05-C001 shows Left Hook chosen as 1134 at (495, 187) and the preview 2101 at (496, 42); run.mjs 'left-hook-selected' and 'left-hook-graphic' check the same art at the same places (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C002",
           "requirement": "hammer",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Hammer state and preview of A0 TAC-05-C002 are not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Hammer state and preview of A0 TAC-05-C002 are not recorded as compared. 2026-11-07: A0 TAC-05-C002 shows Hammer chosen as 1138 at (495, 157) and the preview 2103 at (496, 42), animated; run.mjs 'hammer-selected' and 'hammer-graphic' check the same art at the same places (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C003",
           "requirement": "anvil",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Anvil state and preview of A0 TAC-05-C003 are not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Anvil state and preview of A0 TAC-05-C003 are not recorded as compared. 2026-11-07: A0 TAC-05-C003 shows Anvil chosen after Hammer as 1140 at (525, 157), Hammer back to 1137, and the preview 2104; run.mjs 'anvil-selected' and 'anvil-graphic' check the same (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C004",
           "requirement": "hold",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Stop/Hold state and preview of A0 TAC-05-C004 are not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Maneuver buttons 1133-1141 at the A0 panel origin (TAC-05-C012); the chosen Stop/Hold state and preview of A0 TAC-05-C004 are not recorded as compared. 2026-11-07: A0 TAC-05-C004 shows Stop chosen as 1142 at (557, 172) and the preview 2105 at (496, 42); run.mjs 'hold-selected', 'left-hook-released' and 'hold-graphic' choose it after Left Hook (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C005",
           "requirement": "surround",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-surround-formation/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-25-surround-formation/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Surround/Stand Off toggle 1117 placed at the A0 origin; the lit Surround lamp of A0 TAC-05-C005 is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Surround/Stand Off toggle 1117 placed at the A0 origin; the lit Surround lamp of A0 TAC-05-C005 is not recorded as compared. 2026-11-07: A0 TAC-05-C005 shows the toggle on Surround as 1118 at (593, 160), keyed on its first pixel; run.mjs 'surround-selected' checks it (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C006",
           "requirement": "standoff",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-ctrl-clicks-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-ctrl-clicks-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Stand Off lamp placement compared; A0 TAC-05-C006 state not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Stand Off lamp placement compared; A0 TAC-05-C006 state not recorded as compared. 2026-11-07: A0 TAC-05-C006 shows the toggle back on Stand Off as 1117 at (593, 160); run.mjs 'stand-off-default' and 'stand-off-selected' check it (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C007",
           "requirement": "attack capital ships",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Missions panel (1105) opens as in A0 TAC-05-C015; the chosen Attack Capital Ships state of A0 TAC-05-C007 is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Missions panel (1105) opens as in A0 TAC-05-C015; the chosen Attack Capital Ships state of A0 TAC-05-C007 is not recorded as compared. 2026-11-07: A0 TAC-05-C007 shows Attack Capital Ships chosen as 1180 at (500, 157) and the animated preview 2151, with the disabled Recover 1172 (an X-wing) at (568, 157). The port drew the Empire's TIE art 1175 there: the Recover constants were swapped (fixed). run.mjs 'attack-capital-selected' and 'capital-recover-disabled' check the art (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C008",
           "requirement": "attack fighters",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Attack Fighters exists; the TIE preview of A0 TAC-05-C008 is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Attack Fighters exists; the TIE preview of A0 TAC-05-C008 is not recorded as compared. 2026-11-07: A0 TAC-05-C008 shows Attack Fighters chosen after Attack Capital Ships as 1192 (the TIE target) at (500, 187) and Attack Capital Ships back to 1179; run.mjs 'attack-fighters-selected' and 'attack-capital-released' choose it the same way (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C009",
@@ -9751,13 +9771,14 @@
         {
           "id": "TAC-05-C010",
           "requirement": "recover",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-recovery-executor/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-recovery-executor/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Recover (FUN_005cf980) implemented; A0 TAC-05-C010 (Recover chosen, mission button disabled) is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Recover (FUN_005cf980) implemented; A0 TAC-05-C010 (Recover chosen, mission button disabled) is not recorded as compared. 2026-11-07: A0 TAC-05-C010 (Alliance, Recover chosen) shows 1171 at (568, 157), the preview 2153 and the disabled Attack Death Star 1178; the port drew 1174, the Empire's (Recover constants swapped, fixed). run.mjs 'recover-selected' and 'recover-graphic' check 1171 and 2153 (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C011",
@@ -9796,14 +9817,15 @@
         {
           "id": "TAC-05-C014",
           "requirement": "selected",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-maneuver-cancel/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Selected art and the second-click cancel (FUN_005dd3a0) exist; A0 TAC-05-C014 not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Selected art and the second-click cancel (FUN_005dd3a0) exist; A0 TAC-05-C014 not recorded as compared. 2026-11-07: A0 TAC-05-C014 shows the selected Hammer as 1138 at (495, 157), as run.mjs 'hammer-selected' checks (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C015",
@@ -9819,13 +9841,14 @@
         {
           "id": "TAC-05-C016",
           "requirement": "both factions",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Panels share one origin for both sides, but the Imperial Maneuvers panel of A0 TAC-05-C016 is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Panels share one origin for both sides, but the Imperial Maneuvers panel of A0 TAC-05-C016 is not recorded as compared. 2026-11-07: A0 TAC-05-C016 (Imperial maneuvers at Umgul) shows the panel 1309 and the buttons 1133..1141 where TAC-05-C012 shows them for the Alliance; the gate's maneuvers probes run for both sides (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C017",
@@ -10005,22 +10028,25 @@
         {
           "id": "TAC-06-C006",
           "requirement": "take command",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-observe-battle/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-observe-battle/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Take Command flips the commander back; A0 TAC-06-C006 is captured but not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Take Command flips the commander back; A0 TAC-06-C006 is captured but not recorded as compared. 2026-11-07: A0 TAC-06-C006 shows Take Command as 1153 at (569, 121) after the second press; run.mjs 'battle-options-take-command' checks 1153 there (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-06-C007",
           "requirement": "game options",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Game Options opens COMMON 20002 with greyed controls (P58-B12, before the A0 captures); A0 TAC-06-C007 not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
+          ],
+          "note": "Game Options opens COMMON 20002 with greyed controls (P58-B12, before the A0 captures); A0 TAC-06-C007 not compared. 2026-11-07: A0 TAC-06-C007 (Game Options from a battle) shows Restart lit (10035; FUN_00407180 never disables it) and the display options in the system grey 128 (0x2505050 as a PALETTERGB). The port greyed Restart and drew (80, 80, 80); both fixed. The lamps 10045, Return 10026 and Exit are 0 pixels from A0. run.mjs 'game-options-restart-lit', 'game-options-display-options-grey' and the lamp at (357, 311) (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-06-C008",
@@ -10034,11 +10060,13 @@
         {
           "id": "TAC-06-C009",
           "requirement": "disabled",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Disabled options after withdrawal (P58-B13) are browser-checked; A0 TAC-06-C009's blank disabled buttons not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
+          ],
+          "note": "Disabled options after withdrawal (P58-B13) are browser-checked; A0 TAC-06-C009's blank disabled buttons not recorded as compared. 2026-11-07: A0 TAC-06-C009 shows Withdraw, Get Immediate Result and Observe / Take Command blank (0 pixels from the panel 1306) after a confirmed withdrawal: FUN_005dab90 hides the last two once a side withdraws (FUN_005adde0). The port kept them; BattleOptionsGates now hides them, and run.mjs 'battle-options-withdraw-disabled' compares the panel there (Linux Arch Chromium 155: tactical matrix run 2026-11-07T12-40-28-275Z-3690805 (144/148; its four failures were two gate checks fixed since) and the targeted reruns 2026-11-07T12-56..13-08 (group 13-06-39-863Z, battle options 13-07-33-387Z, withdrawal 12-58-21-691Z, command assignment 12-56-56-634Z, navigation 12-58-01-337Z, live subsystem damage 13-07-06-508Z, subsystem field 13-07-19-941Z; every execution passed)).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
@@ -10152,14 +10180,15 @@
         {
           "id": "TAC-07-C006",
           "requirement": "fighters",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-results-scroll-bar/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-results-scroll-bar/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Fighters tab and its scroll bar 10653 browser-checked; A0 TAC-07-C006 not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Fighters tab and its scroll bar 10653 browser-checked; A0 TAC-07-C006 not recorded as compared. 2026-11-07: the four filter tabs in the Fighters state are 0 pixels from A0 TAC-07-C006 at rows 108..148; the section and column labels match within the accepted text deviation (production-battle-results-presentation, results-category-2).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-07-C007",
@@ -10167,22 +10196,24 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Troops tab exists; A0 TAC-07-C007 not recorded as compared.",
+          "note": "Troops tab exists; A0 TAC-07-C007 not recorded as compared. 2026-11-07: the tabs in the Troops state are 0 pixels from A0 TAC-07-C007 (rows 108..148), and Trooper Regiments, Operational and Destroyed are A0's. Open: A0's two destroyed Alliance Army Regiment rows (picture and name) are not compared; the port's fixture loses no regiment.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "TAC-07-C008",
           "requirement": "personnel",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-results-personnel-mark/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-results-personnel-mark/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
           ],
-          "note": "Personnel tab with mark 11502 (FUN_004714e0) is unit-tested; A0 TAC-07-C008 not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Personnel tab with mark 11502 (FUN_004714e0) is unit-tested; A0 TAC-07-C008 not recorded as compared. 2026-11-07: the four filter tabs in the Personnel state are 0 pixels from A0 TAC-07-C008 at rows 108..148; Personnel, Survivors, Captured, Killed and the None/No Casualties texts match within the accepted text deviation (results-category-4).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-07-C009",
