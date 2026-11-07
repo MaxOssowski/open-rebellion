@@ -4454,6 +4454,12 @@ async function probeTacticalBattleOptionsPresentation(
   });
   const closed = await stableInteractionFrame(page, folder, "battle-options-closed");
   assert.notEqual(sha256(panel), sha256(closed), "Battle Options close did not restore the display panel");
+  // A0 TAC-06-C008: Close brings back the selection's display panel, its
+  // order buttons 1107 and 1105 at (494, 238) and (562, 238).
+  probes.push({ type: "battle-options-closed-maneuvers-button",
+    ...verifyTacticalBitmap(viewport, closed, 1107, 494, 238) });
+  probes.push({ type: "battle-options-closed-missions-button",
+    ...verifyTacticalBitmap(viewport, closed, 1105, 562, 238) });
 
   await page.mouse.click(openLocation.x, openLocation.y);
   await stableInteractionFrame(page, folder, "battle-options-reopened");
