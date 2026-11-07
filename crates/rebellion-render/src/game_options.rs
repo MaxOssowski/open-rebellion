@@ -24,13 +24,6 @@ impl GameOptionsOrigin {
         !matches!(self, Self::ShuttleCockpit)
     }
 
-    /// `FUN_00407180` never disables Restart; from the shuttle cockpit it
-    /// shows 10035 and returns there at once (A0 main-menu-states/12).
-    /// port: a battle's Restart stays off until an A0 capture shows it.
-    const fn can_restart(self) -> bool {
-        !matches!(self, Self::TacticalBattle)
-    }
-
     const fn tactical_toggles_enabled(self) -> bool {
         !matches!(self, Self::TacticalBattle)
     }
@@ -207,7 +200,11 @@ impl GameOptionsState {
                 self.origin != GameOptionsOrigin::TacticalBattle
                     && self.occupied.get(*slot).copied().unwrap_or(false)
             }
-            GameOptionsAction::Restart => self.origin.can_restart(),
+            // FUN_00407180 never disables Restart: from the shuttle cockpit
+            // it shows 10035 and returns there at once (A0
+            // main-menu-states/12), and a battle shows it lit (A0
+            // TAC-06-C007).
+            GameOptionsAction::Restart => true,
             GameOptionsAction::Return | GameOptionsAction::Exit => true,
             GameOptionsAction::None => false,
         }
@@ -400,7 +397,7 @@ fn control_at(origin: GameOptionsOrigin, x: f32, y: f32) -> Option<GameOptionsCo
             return Some(GameOptionsControl::Tactical(index));
         }
     }
-    if origin.can_restart() && RESTART_RECT.contains(x, y) {
+    if RESTART_RECT.contains(x, y) {
         return Some(GameOptionsControl::Restart);
     }
     if origin.has_live_campaign() && RETURN_RECT.contains(x, y) {
@@ -631,9 +628,12 @@ fn draw_original_text(
 const OPTION_ON: Color = Color::new(0.0, 1.0, 0.0, 1.0);
 /// `COLORREF` 0x2008000, dark green: an option that is off.
 const OPTION_OFF: Color = Color::new(0.0, 128.0 / 255.0, 0.0, 1.0);
-/// `COLORREF` 0x2505050, grey: the display options during a battle
-/// (`FUN_00408bc0`, states 20..23).
-const OPTION_DISABLED: Color = Color::new(80.0 / 255.0, 80.0 / 255.0, 80.0 / 255.0, 1.0);
+/// The display options during a battle (`FUN_00408bc0`, states 20..23):
+/// `COLORREF` 0x2505050, a PALETTERGB, which the text takes as the default
+/// palette's nearest colour, the system grey (128, 128, 128). A0
+/// TAC-06-C007 draws them so; the window's other PALETTERGBs, 0x200ff00 and
+/// 0x2008000, are system colours themselves.
+const OPTION_DISABLED: Color = Color::new(128.0 / 255.0, 128.0 / 255.0, 128.0 / 255.0, 1.0);
 
 /// A TEXTCOMM string, as shipped when the table is not loaded.
 fn textcomm(id: u16, shipped: &str) -> String {
@@ -970,9 +970,7 @@ pub fn draw_game_options(
     draw_bitmap(
         cache,
         canvas,
-        if !state.origin.can_restart() {
-            resources::common::BTN_RESTART_GAME_DISABLED
-        } else if held == Some(GameOptionsControl::Restart) {
+        if held == Some(GameOptionsControl::Restart) {
             resources::common::BTN_RESTART_GAME_PRESSED
         } else {
             resources::common::BTN_RESTART_GAME_NORMAL
@@ -1296,7 +1294,7 @@ mod tests {
     }
 
     #[test]
-    fn tactical_options_reject_save_load_delete_and_restart() {
+    fn tactical_options_reject_save_load_and_delete_but_ask_restart() {
         // FUN_00407180: states 20–23 disable campaign save and load controls.
         let mut state = GameOptionsState::new(GameOptionsOrigin::TacticalBattle);
         state.occupied[0] = true;
@@ -1307,15 +1305,23 @@ mod tests {
             },
             GameOptionsAction::Load { slot: 0 },
             GameOptionsAction::Delete { slot: 0 },
-            GameOptionsAction::Restart,
         ] {
             assert_eq!(state.request(action), GameOptionsAction::None);
             assert!(state.pending.is_none());
         }
-        assert!(!GameOptionsOrigin::TacticalBattle.can_restart());
-        // A0 main-menu-states/12: Restart is on from the shuttle cockpit.
-        assert!(GameOptionsOrigin::ShuttleCockpit.can_restart());
-        assert!(GameOptionsOrigin::CommandCenter.can_restart());
+        // A0 TAC-06-C007: Restart is lit in a battle; with the game in
+        // progress and nothing saved it asks 0x476 first (FUN_00406b80).
+        assert_eq!(
+            state.request(GameOptionsAction::Restart),
+            GameOptionsAction::None
+        );
+        assert_eq!(state.pending, Some(GameOptionsAction::Restart));
+        assert_eq!(
+            control_at(GameOptionsOrigin::TacticalBattle, 80.0, 400.0),
+            Some(GameOptionsControl::Restart)
+        );
+        // The display options' grey (A0 TAC-06-C007).
+        assert_eq!(OPTION_DISABLED, Color::from_rgba(128, 128, 128, 255));
     }
 
     #[test]
