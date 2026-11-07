@@ -9056,11 +9056,13 @@
         {
           "id": "TAC-02-C010",
           "requirement": "pressed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Held state exists (P58E), but A0 TAC-02-C010 (button held) has no recorded comparison.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
+          ],
+          "note": "Held state exists (P58E), but A0 TAC-02-C010 (button held) has no recorded comparison. 2026-11-07 (b125): A0 TAC-02-C010's held Task Force 1 is A0 TAC-02-C011's selected slot pixel for pixel but the pointer's (1006, white '1'); run.mjs 'task-force-1-held' and 'task-force-1-number-held' find the same art and number on the held port button (Linux, both sides). Tactical matrix run 2026-11-07T21-17-16-802Z-1499842.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-02-C011",
@@ -9338,9 +9340,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-panel-text-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-ctrl-clicks-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-ctrl-clicks-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "'Attacking Victory Destroyer 1' and the white target box match A0 TAC-03-C016 and the VM Ctrl-click run; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28).",
+          "note": "'Attacking Victory Destroyer 1' and the white target box match A0 TAC-03-C016 and the VM Ctrl-click run; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-07 (b125): the order line follows FUN_005e4b40: 'Attacking' and the target's name while a target is held, as A0 TAC-03-C016 'Attacking Victory Destroyer 1' (run.mjs 'attacking-orders-line').",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -9349,9 +9352,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-weapon-targets/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-weapon-targets/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "Target loss returns to the mission order in the port; A0 TAC-03-C017 (Swift jumped out) is captured but not compared.",
+          "note": "Target loss returns to the mission order in the port; A0 TAC-03-C017 (Swift jumped out) is captured but not compared. 2026-11-07 (b125): A0 TAC-03-C017 reads 'Attack Capital Ships' (the order's word, no target); the port's line does the same with no target, but its lifecycle fixture retargets a replacement at once, so the state is not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9446,34 +9450,37 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-navigation-grids/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "Four 3x3x3 grids (FUN_0059fbd0) with layer colours from A0 nav-set-1..4-only.png; buttons 1026-1029 at A0 positions; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28).",
+          "note": "Four 3x3x3 grids (FUN_0059fbd0) with layer colours from A0 nav-set-1..4-only.png; buttons 1026-1029 at A0 positions; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-07 (b125): the points are now FUN_005d8c30's lit tetrahedra in the layer meshes' colours (1, 0, 0), (1, 1, 1), (0, 0.541, 1), depth-tested, as A0 TAC-04-C001..C003 show; the white outlines and route rings were the port's.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "TAC-04-C002",
           "requirement": "route ordered",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-nav-point-selection/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-order-voice-conditions/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-order-voice-conditions/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "Route orders are implemented; A0 TAC-04-C002 (point turns yellow, 'Navigating') is captured but the route state is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Route orders are implemented; A0 TAC-04-C002 (point turns yellow, 'Navigating') is captured but the route state is not recorded as compared. 2026-11-07 (b125): A0 TAC-04-C002 draws the route's point as the yellow tetrahedron and the panel reads 'Navigating'. The port drew flat outlined triangles and kept the order's word. Now each point is FUN_005d8c30's tetrahedron (edge 1.5, lit flat), the first point of the selected unit's route yellow (FUN_005a0840 +0x20, FUN_0059f560), and the line follows FUN_005e4b40 (route -> 0xdd8e 'Navigating', no speed -> 0xdd91 'Disabled', target -> 0xdd8d 'Attacking' and its name). run.mjs 'navigation-route-markers' finds the yellow and magenta pixels and 'Navigating' on Linux for both sides. A0 VM (Windows 10, the Empire game's battle at Coruscant, day 676, a0-vm/coruscant-676/08): the ordered point (128, 128, 0) / (255, 255, 0), the port's flat-face values, and 'Navigating'. Tactical matrix run 2026-11-07T21-17-16-802Z-1499842.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-04-C003",
           "requirement": "multiple targets",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-ctrl-clicks-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-fighter-group-routes/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-fighter-group-routes/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "Ctrl target add/drop on ships matched the VM run; the multi-point path of A0 TAC-04-C003 (magenta second point) is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Ctrl target add/drop on ships matched the VM run; the multi-point path of A0 TAC-04-C003 (magenta second point) is not recorded as compared. 2026-11-07 (b125): A0 TAC-04-C003's second route point is the magenta mesh (FUN_005a0840 +0x2c for every later point), the first still yellow; the port now draws both (run.mjs 'navigation-route-markers', Linux, both sides). A0 VM a0-vm/coruscant-676/09: a Ctrl right click adds a magenta point, (128, 0, 128) / (255, 0, 255). Tactical matrix run 2026-11-07T21-17-16-802Z-1499842.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-04-C004",
@@ -9813,13 +9820,14 @@
         {
           "id": "TAC-05-C013",
           "requirement": "pressed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "Pressed art exists; A0 TAC-05-C013 (held Hammer) is not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Pressed art exists; A0 TAC-05-C013 (held Hammer) is not recorded as compared. 2026-11-07 (b125): A0 TAC-05-C013 holds Hammer as 1138 with the preview unchanged; the port chose the maneuver on the press and drew 2103 at once. Side-panel buttons now act on a release over them; run.mjs 'hammer-held' and 'hammer-held-preview-unchanged' (Linux, both sides). Tactical matrix run 2026-11-07T21-17-16-802Z-1499842.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-05-C014",
@@ -9987,14 +9995,15 @@
         {
           "id": "TAC-06-C002",
           "requirement": "withdraw",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-tactical-withdrawal-jump/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-battle-retreat-orders/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-battle-retreat-orders/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
           ],
-          "note": "Withdrawal (FUN_005a0320/FUN_005a0410) implemented; A0 TAC-06-C002 (group bar emptied) and the Coruscant withdrawal frames are captured but not recorded as compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Withdrawal (FUN_005a0320/FUN_005a0410) implemented; A0 TAC-06-C002 (group bar emptied) and the Coruscant withdrawal frames are captured but not recorded as compared. 2026-11-07 (b125): the port's withdrawal frame (run.mjs production-battle-options-withdrawal 'battle-options-withdraw-started', Alliance, 640x480, matrix run 2026-11-07T17-45-20-539Z-731820) against A0 TAC-06-C002: the task-force bar (0..295 x 0..20) 0 of 6,195 pixels off, the emblem panel (478..635 x 24..267) 0 of 38,552, the lower HUD 0 of 34,344; only the fighter bar differs (x 336..429), the fixture keeping an assigned squadron A0's battle did not have. Tactical matrix run 2026-11-07T21-17-16-802Z-1499842.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-06-C003",
