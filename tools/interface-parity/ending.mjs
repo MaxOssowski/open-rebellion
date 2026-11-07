@@ -27,12 +27,16 @@ const args = Object.fromEntries(process.argv.slice(2).map((arg) => {
 }));
 const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parity",
   `ending-${new Date().toISOString().replace(/[:.]/g, "-")}`));
-// Fixture codes are the Scenario index plus one: 97 EndingDefeat.
+// Fixture codes are the Scenario index plus one: 97 EndingDefeat, 98
+// EndingVictory. The win's movie: the Alliance's 105, the Empire's 108.
 const ENDING_DEFEAT = 98;
+const ENDING_VICTORY = 99;
 const FACTIONS = [
-  { name: "alliance", byte: 1, ending: "106", natural: true },
-  { name: "empire", byte: 2, ending: "107" },
-].filter(({ name }) => !args.faction || args.faction === name);
+  { name: "alliance", byte: 1, ending: "106", natural: true, code: ENDING_DEFEAT },
+  { name: "empire", byte: 2, ending: "107", code: ENDING_DEFEAT },
+  { name: "alliance-victory", byte: 1, ending: "105", code: ENDING_VICTORY },
+  { name: "empire-victory", byte: 2, ending: "108", code: ENDING_VICTORY },
+].filter(({ name }) => !args.faction || name.startsWith(args.faction));
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".webm": "video/webm", ".orpk": "application/octet-stream" };
 
@@ -104,7 +108,7 @@ async function run(browser, base, faction) {
     return bytes;
   };
   try {
-    await page.goto(`${base}?fixture-code=${ENDING_DEFEAT | (faction.byte << 8)}`);
+    await page.goto(`${base}?fixture-code=${faction.code | (faction.byte << 8)}`);
     await page.locator("#glcanvas").focus().catch(() => {});
     // The movies in the order they play, until the defeat movie.
     const stems = [];
@@ -137,7 +141,7 @@ async function run(browser, base, faction) {
     // empire-clean/62..64 ran the Empire's so), the Empire's is skipped
     // with Escape, as any key skips a movie; then the main menu, no dialog
     // and no other movie.
-    if (faction.name === "empire") await page.keyboard.press("Escape");
+    if (!faction.natural) await page.keyboard.press("Escape");
     await until(page, "the defeat movie ends", () => !document.querySelector("video"), 200_000);
     await page.waitForTimeout(1500);
     const menu = await shot("after");

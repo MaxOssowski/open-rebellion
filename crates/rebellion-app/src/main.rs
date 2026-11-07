@@ -1584,6 +1584,7 @@ async fn main() {
                 request.scenario,
                 interface_test_fixture::Scenario::StoryMovie
                     | interface_test_fixture::Scenario::EndingDefeat
+                    | interface_test_fixture::Scenario::EndingVictory
             )
         });
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]

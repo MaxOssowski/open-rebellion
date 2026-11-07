@@ -10432,24 +10432,26 @@
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
             "ghidra/notes/victory-conditions.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "An Alliance victory for the Alliance player plays MDATA.105 (FUN_00425c90 state 0x10), then the main menu; the replacement modal is gone (unit test ending_cutscene); not yet compared with A0.",
+          "note": "An Alliance victory for the Alliance player plays MDATA.105 (FUN_00425c90 state 0x10), then the main menu; the replacement modal is gone (unit test ending_cutscene); not yet compared with A0. 2026-11-07 (b119): ending.mjs's EndingVictory cases play 105 in the browser and return to the main menu; no A0 capture of a win.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C002",
           "requirement": "Alliance defeat",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
             "ghidra/notes/victory-conditions.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "The Alliance player's defeat plays MDATA.106 (state 0x11), then the main menu (unit test); not yet compared with A0. 2026-11-07 (b118): ending.mjs (Linux, both sides) ends a game through the EndingDefeat fixture: the Alliance's 106 and the Empire's 107 play through the page's <video>, after the story movies queued ahead (the Empire's 103 first, as A0), the Alliance's 106 runs to its natural end and the Empire's 107 is skipped with Escape, and the main menu follows with no other movie.",
+          "note": "The Alliance player's defeat plays MDATA.106 (state 0x11), then the main menu (unit test); not yet compared with A0. 2026-11-07 (b118): ending.mjs (Linux, both sides) ends a game through the EndingDefeat fixture: the Alliance's 106 and the Empire's 107 play through the page's <video>, after the story movies queued ahead (the Empire's 103 first, as A0), the Alliance's 106 runs to its natural end and the Empire's 107 is skipped with Escape, and the main menu follows with no other movie. 2026-11-07: A0 (the unedited 'test' Alliance game, day 1224) plays the Alliance's defeat movie and crawl 'The Alliance is doomed...' (alliance-defeat/), then the main menu; ending.mjs plays 106 in the browser and returns to the menu.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10461,9 +10463,10 @@
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
             "ghidra/notes/victory-conditions.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "An Imperial victory for the Empire player plays MDATA.108 (state 0x12), then the main menu (unit test); not yet compared with A0.",
+          "note": "An Imperial victory for the Empire player plays MDATA.108 (state 0x12), then the main menu (unit test); not yet compared with A0. 2026-11-07 (b119): ending.mjs's EndingVictory cases play 108 in the browser and return to the main menu; no A0 capture of a win.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10485,28 +10488,30 @@
         {
           "id": "END-01-C005",
           "requirement": "video start",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "crates/rebellion-render/src/video_player.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "The ending movie starts through the page's <video> in the browser (the player as in cutscenes.mjs); no browser case ends a game yet; not yet compared with A0. 2026-11-07 (b118): ending.mjs (Linux, both sides) ends a game through the EndingDefeat fixture: the Alliance's 106 and the Empire's 107 play through the page's <video>, after the story movies queued ahead (the Empire's 103 first, as A0), the Alliance's 106 runs to its natural end and the Empire's 107 is skipped with Escape, and the main menu follows with no other movie.",
+          "note": "The ending movie starts through the page's <video> in the browser (the player as in cutscenes.mjs); no browser case ends a game yet; not yet compared with A0. 2026-11-07 (b118): ending.mjs (Linux, both sides) ends a game through the EndingDefeat fixture: the Alliance's 106 and the Empire's 107 play through the page's <video>, after the story movies queued ahead (the Empire's 103 first, as A0), the Alliance's 106 runs to its natural end and the Empire's 107 is skipped with Escape, and the main menu follows with no other movie. 2026-11-07: A0 (empire-clean/62..64) played the defeat movie and then showed the main menu with no Continue or Restart; ending.mjs shows the same for all four endings in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C006",
           "requirement": "skip",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "An ending movie skips like any other (Escape, click, key); not yet compared with A0. 2026-11-07 (b118): ending.mjs (Linux, both sides) ends a game through the EndingDefeat fixture: the Alliance's 106 and the Empire's 107 play through the page's <video>, after the story movies queued ahead (the Empire's 103 first, as A0), the Alliance's 106 runs to its natural end and the Empire's 107 is skipped with Escape, and the main menu follows with no other movie. ending.mjs skips the Empire's 107 and the story movies ahead of it with Escape.",
+          "note": "An ending movie skips like any other (Escape, click, key); not yet compared with A0. 2026-11-07 (b118): ending.mjs (Linux, both sides) ends a game through the EndingDefeat fixture: the Alliance's 106 and the Empire's 107 play through the page's <video>, after the story movies queued ahead (the Empire's 103 first, as A0), the Alliance's 106 runs to its natural end and the Empire's 107 is skipped with Escape, and the main menu follows with no other movie. ending.mjs skips the Empire's 107 and the story movies ahead of it with Escape. A0 alliance-defeat/02, 03: a click and Escape during the defeat crawl end it at once and the main menu shows, as ending.mjs's Escape does for the Empire's 107.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10526,27 +10531,29 @@
         {
           "id": "END-01-C008",
           "requirement": "continue",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "The original has no continue control after the ending movie (none found in FUN_00425c90's states); the port's replacement Continue button is gone. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
+          "note": "The original has no continue control after the ending movie (none found in FUN_00425c90's states); the port's replacement Continue button is gone. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet. 2026-11-07: A0 (empire-clean/62..64) played the defeat movie and then showed the main menu with no Continue or Restart; ending.mjs shows the same for all four endings in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "END-01-C009",
           "requirement": "restart",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "No restart from the end state was found in the original; the port returns to the main menu as it does. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
+          "note": "No restart from the end state was found in the original; the port returns to the main menu as it does. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet. 2026-11-07: A0 (empire-clean/62..64) played the defeat movie and then showed the main menu with no Continue or Restart; ending.mjs shows the same for all four endings in the browser.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

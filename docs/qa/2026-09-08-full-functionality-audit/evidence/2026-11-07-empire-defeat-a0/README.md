@@ -46,3 +46,25 @@ Run `.artifacts/interface-parity/ending-2026-11-07T09-03-59-669Z` (the b118 batc
 **Batches.** `story-movie` and `ending` now run in each batch after `tooltip`, so a batch has 23 gates.
 
 **Not compared.** The port's main menu keeps its two added controls at the top right, the music toggle and the Fleet Registry; A0's has none.
+
+## Both sides' wins too (b119)
+
+The fixture scenario `EndingVictory` (98, code 99) gives the player's side the win. `ending.mjs` now runs four cases:
+
+| Case | Movies played |
+|---|---|
+| Alliance defeat | 102, 106 |
+| Empire defeat | 102, 103, 107 |
+| Alliance victory | 102, 103, 105 |
+| Empire victory | 102, 108 |
+
+The defeat and victory movies are the four of `FUN_00425c90`, and the main menu follows each. Run `.artifacts/interface-parity/ending-2026-11-07T09-59-19-228Z` (the b119 batch): pass. No A0 capture of a win exists.
+
+## The Alliance's defeat in A0, skipped (2026-11-07)
+
+The unedited "test" save, reloaded, ran on Fast and auto-resolved its battles. The captures are in `.artifacts/a0-vm/alliance-defeat/` (hashes in `a0-sha256.txt`):
+- **Day 1224, `00`.** The galaxy shows no Alliance system left.
+- **`01`, `02`.** The Alliance's defeat movie, then its crawl "The Alliance is doomed. Under your command, the Rebel Alliance has been led to its destruction..." (MDATA.106, state 0x11).
+- **`03`.** A click and Escape during the crawl ended the movie at once. The main menu followed ("Standard Game"), with no dialog.
+
+This is the port's `ending_cutscene(false, true) == 106`, which `ending.mjs`'s Alliance defeat plays, and any key ends an ending movie as it ends any movie. Whether a story movie (102) played before 106 was not captured.

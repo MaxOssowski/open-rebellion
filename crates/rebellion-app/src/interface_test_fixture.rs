@@ -315,6 +315,9 @@ pub enum Scenario {
     /// conditions word (`FUN_005180e0`) ends the game (`FUN_00425c90`),
     /// as A0 empire-clean/60..64 shows for the Empire.
     EndingDefeat = 97,
+    /// As `EndingDefeat` with the sides swapped: the player's side wins on
+    /// the first day (Alliance MDATA.105, Empire MDATA.108).
+    EndingVictory = 98,
 }
 
 impl Scenario {
@@ -418,6 +421,7 @@ impl Scenario {
             95 => Self::BuildSelectionFleetDestination,
             96 => Self::FleetAssaultTaken,
             97 => Self::EndingDefeat,
+            98 => Self::EndingVictory,
             _ => return None,
         })
     }
@@ -1013,7 +1017,10 @@ pub fn apply(
         place_support_flip(request, world, primary);
     }
     if request.scenario == Scenario::EndingDefeat {
-        place_defeat(request, world);
+        place_win(request.faction != CockpitFaction::Alliance, world);
+    }
+    if request.scenario == Scenario::EndingVictory {
+        place_win(request.faction == CockpitFaction::Alliance, world);
     }
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(
@@ -1950,6 +1957,7 @@ pub fn runs_the_clock(request: FixtureRequest) -> bool {
             | Scenario::SupportFlip
             | Scenario::StoryMovie
             | Scenario::EndingDefeat
+            | Scenario::EndingVictory
     )
 }
 
@@ -2609,29 +2617,30 @@ fn place_support_flip(request: FixtureRequest, world: &mut GameWorld, primary: S
     system.popularity_empire = 1.0 - system.popularity_alliance;
 }
 
-/// The `EndingDefeat` scenario: the other side's win conditions hold
-/// (`victory::conditions_word`, game type 0). The Empire's player loses
-/// Coruscant (`0x90000109`) and has the Emperor (`0x280`) and Vader
-/// (`0x281`) captive; the Alliance's has Luke (`0x242`) and Mon Mothma
-/// (`0x240`) captive.
-fn place_defeat(request: FixtureRequest, world: &mut GameWorld) {
-    let player_is_alliance = request.faction == CockpitFaction::Alliance;
-    let captives: [u32; 2] = if player_is_alliance {
-        [0x242, 0x240]
-    } else {
+/// The `EndingDefeat` and `EndingVictory` scenarios: the win conditions of
+/// `alliance_wins`'s side hold (`victory::conditions_word`, game type 0).
+/// An Alliance win: Coruscant (`0x90000109`) the Alliance's, with none of
+/// the Empire's regiments and all support the Alliance's, and the Emperor
+/// (`0x280`) and Vader (`0x281`) captive. An Empire win: Luke (`0x242`) and
+/// Mon Mothma (`0x240`) captive; the fixtures' galaxies hold no Alliance
+/// headquarters.
+fn place_win(alliance_wins: bool, world: &mut GameWorld) {
+    let captives: [u32; 2] = if alliance_wins {
         [0x280, 0x281]
+    } else {
+        [0x242, 0x240]
     };
     for character in world.characters.values_mut() {
         if captives.contains(&character.dat_id.index()) {
             character.is_captive = true;
-            character.captured_by = Some(if player_is_alliance {
-                Faction::Empire
-            } else {
+            character.captured_by = Some(if alliance_wins {
                 Faction::Alliance
+            } else {
+                Faction::Empire
             });
         }
     }
-    if !player_is_alliance {
+    if alliance_wins {
         if let Some(coruscant) = world
             .systems
             .values_mut()
