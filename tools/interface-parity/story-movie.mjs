@@ -127,6 +127,7 @@ async function run(browser, base, faction) {
     // view comes back.
     await page.locator("#glcanvas").focus();
     const stems = ["104"];
+    const captions = {};
     for (;;) {
       await page.keyboard.press("Escape");
       await until(page, `movie ${stems.at(-1)} ends`, () => {
@@ -155,13 +156,39 @@ async function run(browser, base, faction) {
         assert.ok(hq.white > 300, `102's caption shows: ${JSON.stringify(hq)}`);
         assert.ok(log.some((line) => line.includes("[cutscene] story movie=102 caption=The Empire has destroyed the Alliance Headquarters.")));
       }
+      if (next === "103") {
+        // A0 empire-clean/61-movie-coruscant-seized (a new Easy Empire
+        // game, day 800): the caption's ink spans x 4..380, rows 407..419;
+        // the port's within the accepted text deviation (left and top
+        // within 2 pixels, width within 15%).
+        await until(page, "MDATA.103 plays", () => document.querySelector("video")?.currentTime > 1.0);
+        const bytes = await shot("movie-103");
+        assert.ok(log.some((line) => line.includes(
+          "[cutscene] story movie=103 caption=The Alliance has seized the Imperial capital system of Coruscant.")));
+        const png = PNG.sync.read(bytes);
+        let box = null;
+        for (let y = 402; y < 474; y += 1) {
+          for (let x = 0; x < 600; x += 1) {
+            const i = (y * png.width + x) * 4;
+            if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+            box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+              : [x, y, x, y];
+          }
+        }
+        const a0 = [4, 407, 380, 419];
+        const ratio = box ? (box[2] - box[0] + 1) / (a0[2] - a0[0] + 1) : 0;
+        captions.coruscant = { port: box, a0 };
+        assert.ok(box && Math.abs(box[0] - a0[0]) <= 2 && Math.abs(box[1] - a0[1]) <= 2
+          && ratio > 0.85 && ratio < 1.15, `103's caption ${JSON.stringify(captions.coruscant)}`);
+      }
       assert.ok(stems.length < 6, `too many movies: ${stems}`);
     }
     await page.waitForTimeout(500);
     const after = measure(await shot("galaxy"));
     assert.ok(after.outside > 10_000, `the cockpit is back: ${JSON.stringify(after)}`);
     assert.deepEqual(errors, [], errors.join("; "));
-    return { faction: faction.name, status: "pass", stems, playing, after, shots };
+    assert.ok(stems.includes("103"), `MDATA.103 played: ${stems}`);
+    return { faction: faction.name, status: "pass", stems, captions, playing, after, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, status: "fail", error: String(error.stack || error), errors };

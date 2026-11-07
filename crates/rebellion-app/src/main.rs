@@ -1579,12 +1579,21 @@ async fn main() {
     // scenario plays story movies, so no other fixture opens one.
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let plays_story_movies = interface_fixture_request
-        .is_none_or(|request| request.scenario == interface_test_fixture::Scenario::StoryMovie);
+        .is_none_or(|request| {
+            matches!(
+                request.scenario,
+                interface_test_fixture::Scenario::StoryMovie
+                    | interface_test_fixture::Scenario::EndingDefeat
+            )
+        });
     #[cfg(not(all(target_arch = "wasm32", feature = "interface-test-fixtures")))]
     let plays_story_movies = true;
     // A fixture opens straight on its scene: it must not request the intro.
     // The playing story movie's caption (FUN_00421790's caption window).
     let mut story_caption: Option<String> = None;
+    // The ending movie the victory check chose, waiting for the story movies
+    // queued ahead of it.
+    let mut pending_ending: Option<u32> = None;
     let mut cutscene_player = if plays_intro {
         open_cutscene(
             Path::new(INTRO_CUTSCENE),
@@ -4241,25 +4250,13 @@ async fn main() {
                 msg_log.push(GameMessage::new(current_tick, msg, MessageCategory::Event));
 
                 // FUN_00425c90: the end's movie for the winner and the
-                // player's side, then the main menu.
-                let number = ending_cutscene(
+                // player's side, then the main menu. FUN_00422ce0 starts it
+                // once the story movies the same day queued have played
+                // (A0 empire-clean/61, 62: MDATA.103, then the defeat).
+                pending_ending = Some(ending_cutscene(
                     victory_winner_is_alliance(&outcome),
                     player_faction == MissionFaction::Alliance,
-                );
-                game_mode = GameMode::MainMenu;
-                cutscene_player = open_cutscene(
-                    Path::new(&story_cutscene_path(number)),
-                    audio_vol.cutscene_volume(),
-                    &mut msg_log,
-                    current_tick,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    &mut audio_engine,
-                );
-                if cutscene_player.is_some() {
-                    game_mode = GameMode::Cutscene {
-                        kind: CutsceneKind::Ending(number),
-                    };
-                }
+                ));
             }
         }
 
@@ -4317,6 +4314,30 @@ async fn main() {
                         );
                     }
                     _ => eprintln!("[dev-command] refused: the galaxy is not showing"),
+                }
+            }
+        }
+
+        // The game's end, after the story movies ahead of it
+        // (pending_ending).
+        if game_mode == GameMode::Galaxy
+            && cutscene_player.is_none()
+            && (!plays_story_movies || msg_log.queued_story_movies().next().is_none())
+        {
+            if let Some(number) = pending_ending.take() {
+                game_mode = GameMode::MainMenu;
+                cutscene_player = open_cutscene(
+                    Path::new(&story_cutscene_path(number)),
+                    audio_vol.cutscene_volume(),
+                    &mut msg_log,
+                    clock.tick,
+                    #[cfg(not(target_arch = "wasm32"))]
+                    &mut audio_engine,
+                );
+                if cutscene_player.is_some() {
+                    game_mode = GameMode::Cutscene {
+                        kind: CutsceneKind::Ending(number),
+                    };
                 }
             }
         }

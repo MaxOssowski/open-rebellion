@@ -308,6 +308,13 @@ pub enum Scenario {
     /// planet: the assault takes the system, and the Assault Summary reads
     /// TEXTSTRA `0x7091` (A0 messages-day633/assault-coruscant).
     FleetAssaultTaken = 96,
+    /// The player's side has lost: for the Empire, Coruscant is the
+    /// Alliance's and the Emperor and Vader captive; for the Alliance, Luke
+    /// and Mon Mothma captive (the fixtures' galaxies hold no Alliance
+    /// headquarters). The clock runs Fast, so the first day's victory
+    /// conditions word (`FUN_005180e0`) ends the game (`FUN_00425c90`),
+    /// as A0 empire-clean/60..64 shows for the Empire.
+    EndingDefeat = 97,
 }
 
 impl Scenario {
@@ -410,6 +417,7 @@ impl Scenario {
             94 => Self::BuildSelectionDefensesDestination,
             95 => Self::BuildSelectionFleetDestination,
             96 => Self::FleetAssaultTaken,
+            97 => Self::EndingDefeat,
             _ => return None,
         })
     }
@@ -1003,6 +1011,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::SupportFlip {
         place_support_flip(request, world, primary);
+    }
+    if request.scenario == Scenario::EndingDefeat {
+        place_defeat(request, world);
     }
     if request.scenario == Scenario::Quadrants {
         place_quadrant_contents(
@@ -1938,6 +1949,7 @@ pub fn runs_the_clock(request: FixtureRequest) -> bool {
             | Scenario::BlockadeArrival
             | Scenario::SupportFlip
             | Scenario::StoryMovie
+            | Scenario::EndingDefeat
     )
 }
 
@@ -2595,6 +2607,45 @@ fn place_support_flip(request: FixtureRequest, world: &mut GameWorld, primary: S
     let system = &mut world.systems[target];
     system.popularity_alliance = if player_is_alliance { 0.0 } else { 1.0 };
     system.popularity_empire = 1.0 - system.popularity_alliance;
+}
+
+/// The `EndingDefeat` scenario: the other side's win conditions hold
+/// (`victory::conditions_word`, game type 0). The Empire's player loses
+/// Coruscant (`0x90000109`) and has the Emperor (`0x280`) and Vader
+/// (`0x281`) captive; the Alliance's has Luke (`0x242`) and Mon Mothma
+/// (`0x240`) captive.
+fn place_defeat(request: FixtureRequest, world: &mut GameWorld) {
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    let captives: [u32; 2] = if player_is_alliance {
+        [0x242, 0x240]
+    } else {
+        [0x280, 0x281]
+    };
+    for character in world.characters.values_mut() {
+        if captives.contains(&character.dat_id.index()) {
+            character.is_captive = true;
+            character.captured_by = Some(if player_is_alliance {
+                Faction::Empire
+            } else {
+                Faction::Alliance
+            });
+        }
+    }
+    if !player_is_alliance {
+        if let Some(coruscant) = world
+            .systems
+            .values_mut()
+            .find(|system| system.dat_id.index() == 0x109)
+        {
+            // The economy keeps the holder its regiments and support give
+            // (FUN_0050b610): none of the Empire's stay, all support is the
+            // Alliance's.
+            coruscant.control = ControlKind::Controlled(Faction::Alliance);
+            coruscant.ground_units.clear();
+            coruscant.popularity_alliance = 1.0;
+            coruscant.popularity_empire = 0.0;
+        }
+    }
 }
 
 /// The `UprisingIncident` scenario: the primary system revolts against the
@@ -3651,6 +3702,12 @@ pub fn post_story_messages(
         if let Some(movie) =
             rebellion_render::story_messages::death_star_sabotaged_movie("Endor", texts)
         {
+            log.queue_story_movie(movie);
+        }
+        // The victory conditions word's Coruscant bit (0x100, FUN_0048f790):
+        // MDATA.103 under "The Alliance has seized the Imperial capital
+        // system of Coruscant.", as A0 empire-clean/61 shows it.
+        for movie in rebellion_render::story_messages::victory_conditions_movies(0x100, texts) {
             log.queue_story_movie(movie);
         }
         return;

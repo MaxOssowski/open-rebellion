@@ -19,3 +19,30 @@ The defeat movie ran to its end without a key, and then the main menu came. No d
 This matches `ghidra/notes/movie-flow.md` (state 0x13, MDATA.107, then state 3) and the port's `ending_cutscene(true, false) == 107` and its return to the main menu.
 
 **Not settled.** The game was Standard. In the port's reading (`victory::conditions_word`), the Alliance also needs the Emperor and Vader captive. Both stood on Coruscant on day 712, and whether they were taken with it was not observed.
+
+## The port in the browser (b118)
+
+**Before.**
+- No browser case ended a game.
+- The victory check opened the ending movie in the same tick as the victory conditions word. So the word's story movies (MDATA.103 for Coruscant, MDATA.102 for the headquarters) never played ahead of it.
+- In A0, 103 played first and then the defeat movie (`61`, `62`).
+
+**Now.**
+- `main.rs` keeps the chosen ending as `pending_ending`. It opens the movie once the galaxy shows, no cutscene plays, and the story movies queued ahead have played (`FUN_00422ce0` waits on pending animations).
+- The new fixture scenario `EndingDefeat` (97, code 98) sets the other side's win conditions:
+  - for the Empire's player: Coruscant the Alliance's, without the Empire's regiments, all support the Alliance's, and the Emperor and Vader captive;
+  - for the Alliance's player: Luke and Mon Mothma captive.
+- `prepare-site.mjs` stages MDATA.105..108.
+
+**`ending.mjs`** (new, Linux Chromium, both sides) waits for each movie, skips the story movies with Escape, lets the Alliance's defeat movie run to its natural end and skips the Empire's, and then requires:
+- the Empire's 103 before 107, as A0;
+- the defeat movie of the player's side, 106 or 107;
+- the main menu after it, with no other movie.
+
+Run `.artifacts/interface-parity/ending-2026-11-07T09-03-59-669Z` (the b118 batch, the Alliance's 106 to its natural end): pass. The Alliance saw 102, 106; the Empire saw 102, 103, 107. The fixtures' galaxies hold no Alliance headquarters, so the word's HQ bit also queues 102.
+
+**`story-movie.mjs`.** The StoryMovie scenario also queues 103 through `victory_conditions_movies(0x100)`. Its caption's ink is `[5, 407, 379, 419]` against A0's `[4, 407, 380, 419]`, within a pixel. Run `/home/retromax/Games/open-rebellion/.artifacts/interface-parity/story-movie-2026-11-07T08-16-05-589Z`: pass.
+
+**Batches.** `story-movie` and `ending` now run in each batch after `tooltip`, so a batch has 23 gates.
+
+**Not compared.** The port's main menu keeps its two added controls at the top right, the music toggle and the Fleet Registry; A0's has none.

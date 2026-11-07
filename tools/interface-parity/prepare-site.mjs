@@ -102,7 +102,7 @@ for (const [source, destination] of [
 const videos = path.join(web, "data/video");
 if (fs.existsSync(videos)) {
   fs.mkdirSync(path.join(artifacts, "data/video"), { recursive: true });
-  for (const stem of ["000", "001", "101", "102", "103", "104", "201", "202"]) {
+  for (const stem of ["000", "001", "101", "102", "103", "104", "105", "106", "107", "108", "201", "202"]) {
     const source = path.join(videos, `${stem}.webm`);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(artifacts, "data/video", `${stem}.webm`));
   }
