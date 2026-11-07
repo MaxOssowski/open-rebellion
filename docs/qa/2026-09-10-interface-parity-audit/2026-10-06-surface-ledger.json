@@ -8009,9 +8009,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-informant-incident/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-informants/"
           ],
-          "note": "The informant incident runs on its timer and the Informants message reads TEXTSTRA (informants_texts); the message itself was not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "The informant incident runs on its timer and the Informants message reads TEXTSTRA (informants_texts); the message itself was not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-07: A0 (unedited Alliance game, day 1457) shows 'Informants Provide Information' over 'Informants have provided us with information about Selonia.' on picture 1000; message-display.mjs (Linux, Alliance) opens the fixture's Selonia report and finds the texts, the picture, the title image and the rail (Display lit) 0 pixels from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

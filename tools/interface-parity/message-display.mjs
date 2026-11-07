@@ -621,6 +621,54 @@ async function run(browser, base, faction) {
         && (nearChecks.rail_a0 ?? 0) === 0, JSON.stringify(nearChecks));
       await click(page, showMessage);
       await waitReport(page, (value) => value.mode === "list", "the Popular Support list after Near Uprising");
+
+      // Informants Provide Information (FUN_00491060, A0 informants-clean/
+      // test-day1457-selonia, an unedited Alliance game): 0x7150 over
+      // "Informants have provided us with information about Selonia.", on
+      // picture 0x3e8 (STRATEGY 1000), its title image and its rail
+      // (Display lit) every pixel A0's.
+      const informRow = supportList.rows.indexOf("Informants Provide Information");
+      assert.ok(informRow > nearRow, JSON.stringify(supportList.rows));
+      await click(page, row(informRow));
+      await click(page, showMessage);
+      const inform = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Informants Provide Information", "Display Message shows the informants");
+      assert.equal(inform.viewing_text, "Informants have provided us with information about Selonia.",
+        JSON.stringify(inform));
+      assert.equal(inform.viewing_background, 0x3e8, JSON.stringify(inform));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("informants");
+      const informScreen = PNG.sync.read(await page.screenshot());
+      const informPicture = await bitmap(1000);
+      const [informLeft, informTop] = [Math.round(inform.window_left), Math.round(inform.window_top)];
+      const informChecks = { port: differing(informScreen, [informLeft + 12, informTop + 33], informPicture) };
+      try {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/informants-clean/test-day1457-selonia.png")));
+        informChecks.a0 = differing(a0, [74, 82], informPicture);
+        const region = (x0, y0, x1, y1) => {
+          let differ = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((informTop + y) * 640 + informLeft + x) * 4;
+              const j = ((49 + y) * 640 + 62 + x) * 4;
+              if ([0, 1, 2].some((c) => informScreen.data[i + c] !== a0.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        informChecks.title_image_a0 = region(15, 16, 30, 32);
+        informChecks.rail_a0 = region(414, 11, 468, 296);
+      } catch {
+        informChecks.a0 = null;
+      }
+      rowChecks.informants = informChecks;
+      assert.ok(informChecks.port === 0 && (informChecks.a0 ?? 0) === 0
+        && (informChecks.title_image_a0 ?? 0) === 0 && (informChecks.rail_a0 ?? 0) === 0,
+        JSON.stringify(informChecks));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Popular Support list after the informants");
       await click(page, row(0));
 
       // The chosen System Joins message shown (A0 joins-clean/test-day215-

@@ -3930,6 +3930,16 @@ pub fn systems_joining_the_empire(request: FixtureRequest) -> Vec<(&'static str,
     vec![("Corellia", 0), ("Commenor", 0)]
 }
 
+/// The event-message scenario's Informants Provide Information
+/// (`FUN_00491060`): Selonia, as A0 informants-clean/test-day1457-selonia
+/// shows it to the Alliance.
+pub fn informant_reports(request: FixtureRequest) -> Vec<&'static str> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    vec!["Selonia"]
+}
+
 /// The event-message scenario's Near Uprising (`FUN_00498cb0`): the
 /// reader's own Umgul, garrisoned, its troop surplus fallen to 0, as A0
 /// uprising-clean/test-day795-umgul-near-uprising shows it to the

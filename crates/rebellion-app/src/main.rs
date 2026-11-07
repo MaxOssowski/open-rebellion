@@ -1684,6 +1684,26 @@ async fn main() {
         // A0 uprising-clean/test-day795-umgul-near-uprising: the reader's
         // own Umgul near uprising, filed before the joins so it lists
         // under them.
+        // A0 informants-clean/test-day1457-selonia: the reader's informants
+        // tell of Selonia; filed first, it lists under the others.
+        for name in interface_test_fixture::informant_reports(request) {
+            if let Some(message) = world
+                .systems
+                .iter()
+                .find(|(_, system)| system.name == name)
+                .and_then(|(key, _)| {
+                    informants_message(
+                        &world,
+                        key,
+                        player_faction == MissionFaction::Alliance,
+                        0,
+                        &message_texts,
+                    )
+                })
+            {
+                msg_log.push(message);
+            }
+        }
         for name in interface_test_fixture::near_uprisings(request) {
             let Some(at) = world
                 .systems
@@ -3968,29 +3988,15 @@ async fn main() {
                 } else {
                     fog_empire_state.reveal(report.system);
                 }
-                let name = world
-                    .systems
-                    .get(report.system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                // Notification 0x153, Informants Provide Information
-                // (FUN_00491060, TEXTSTRA 0x7150-0x7151).
-                if let Some((title, text)) =
-                    rebellion_render::story_messages::informants_texts(&name, &message_texts)
-                {
-                    msg_log.push(filed(
-                        GameMessage::at_system(
-                            report.tick,
-                            text,
-                            MessageCategory::Event,
-                            report.system,
-                        )
-                        .with_title(title)
-                        .with_picture_if(Some(pictures::informants()))
-                        // FUN_00491060 writes 0x1c.
-                        .with_advisor_event(0x1c),
-                        MessageRail::PopularSupport,
-                        Some(RailAudience::side(recipient_is_alliance)),
-                    ));
+                // Notification 0x153 (FUN_00491060).
+                if let Some(message) = informants_message(
+                    &world,
+                    report.system,
+                    recipient_is_alliance,
+                    report.tick,
+                    &message_texts,
+                ) {
+                    msg_log.push(message);
                 }
             }
             for evt in &uprising_events {
@@ -11764,6 +11770,31 @@ fn report_title_and_text(
     (title, text)
 }
 
+/// Notification `0x153`, Informants Provide Information (`FUN_00491060`):
+/// TEXTSTRA `0x7150` / `0x7151` naming the system, to the side the
+/// informants told, on its Popular Support rail, picture `0x3e8`, advisor
+/// event `0x1c`. A0 informants-clean/test-day1457-selonia (an unedited
+/// Alliance game) shows it with Display lit.
+fn informants_message(
+    world: &GameWorld,
+    system: rebellion_core::ids::SystemKey,
+    recipient_is_alliance: bool,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let name = world.systems.get(system).map_or("unknown", |s| s.name.as_str());
+    let (title, text) = rebellion_render::story_messages::informants_texts(name, texts)?;
+    Some(filed(
+        GameMessage::at_system(tick, text, MessageCategory::Event, system)
+            .with_title(title)
+            .with_picture_if(Some(pictures::informants()))
+            // FUN_00491060 writes 0x1c.
+            .with_advisor_event(0x1c),
+        MessageRail::PopularSupport,
+        Some(RailAudience::side(recipient_is_alliance)),
+    ))
+}
+
 /// Notification `0x304`, Maintenance Shortfall (`FUN_00498970`), for an
 /// autoscrapped unit: TEXTSTRA `0x7080`..`0x7082` naming the system its
 /// containers stand at, to the unit's side on the Manufacturing rail,
@@ -14294,6 +14325,32 @@ mod character_health_tests {
             "The following personnel have arrived at Klatooine.\n\nAfyon"
         );
         assert_eq!(messages[1].advisor_event, [0x15, 0x15]);
+    }
+
+    #[test]
+    fn informants_tell_their_side_of_the_system_on_the_popular_support_rail() {
+        // FUN_00491060 (notification 0x153): 0x7150 / 0x7151, picture
+        // 0x3e8, event 0x1c, Display lit (A0 informants-clean/
+        // test-day1457-selonia, an unedited Alliance game).
+        let world = GameWorld::default();
+        let texts = std::collections::HashMap::from([
+            (0x7150, "Informants Provide Information".to_owned()),
+            (0x7151, "Informants have provided us with information about {1:1}.".to_owned()),
+        ]);
+        let at = rebellion_core::ids::SystemKey::default();
+        let message = informants_message(&world, at, true, 3, &texts).unwrap();
+        assert_eq!(message.title.as_deref(), Some("Informants Provide Information"));
+        assert_eq!(message.text, "Informants have provided us with information about unknown.");
+        assert_eq!(message.rail, Some(MessageRail::PopularSupport));
+        assert_eq!(message.audience, RailAudience::Alliance);
+        assert_eq!(message.picture.map(|p| p.background), Some(0x3e8));
+        assert_eq!(message.advisor_event, [0x1c, 0x1c]);
+        assert_eq!(message.system, Some(at));
+        assert_eq!(
+            informants_message(&world, at, false, 3, &texts).map(|m| m.audience),
+            Some(RailAudience::Empire)
+        );
+        assert!(informants_message(&world, at, true, 3, &Default::default()).is_none());
     }
 
     #[test]
