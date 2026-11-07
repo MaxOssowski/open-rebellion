@@ -191,15 +191,21 @@ async function run(browser, base, faction) {
     assert.equal(log.filter((line) => line.includes("destination=gid_menu status=opened")).length, 0,
       "the GID control opened its menu under the Message Index");
     assert.ok((await report(page)).index_open, "the GID click closed the index");
-    // A message without a system: Display stays disabled.
+    // Research Complete is kind 4 (class 0x0065bb40's slot +0x10 returns
+    // 4): Display is lit in the Encyclopedia art 0x2d20 / 0x2d47
+    // (FUN_004697b0). Its press, which closes the index, comes last.
     const research = opened.rows.findIndex((text) => text.startsWith("Research Complete"));
     assert.ok(research >= 0, JSON.stringify(opened.rows));
     await click(page, row(research));
-    await click(page, display);
-    await page.waitForTimeout(300);
-    assert.equal(displays().length, 0, "Display is disabled without a target");
     await page.mouse.move(2, 2);
-    await shot("display-disabled");
+    await frames(page);
+    await shot("display-encyclopedia");
+    const displayArt = [opened.window_left + (faction.byte === 1 ? 0x1a7 : 0x1aa),
+      opened.window_top + (faction.byte === 1 ? 0xc9 : 0xcf)];
+    const encyclopediaArt = differing(PNG.sync.read(await page.screenshot()), displayArt,
+      await bitmap(faction.byte === 1 ? 0x2d20 : 0x2d47));
+    assert.equal(encyclopediaArt, 0, "Display shows the Encyclopedia art on Research Complete");
+    assert.equal(displays().length, 0, "choosing the row displays nothing");
     // The arrival: Display goes to its system and closes the index.
     const arrival = opened.rows.findIndex((text) => text.startsWith("Fleet Arrives"));
     assert.ok(arrival >= 0, JSON.stringify(opened.rows));
@@ -1246,8 +1252,31 @@ async function run(browser, base, faction) {
       await shot("report-display-missions-window");
     }
 
+    // Research Complete's Display on a fresh fixture (FUN_00467f10 kind 4):
+    // the Encyclopedia opens at the researched class (FUN_0041d6b0, the
+    // message's +0x60) and the index closes.
+    await page.goto(`${base}?fixture-code=${EVENT_MESSAGES | (faction.byte << 8)}`);
+    await waitReport(page, () => true, "the fixture reports again");
+    await click(page, [ready.rail_x, ready.rail_y]);
+    const fresh = await waitReport(page, (value) => value.index_open && value.rows.length > 0,
+      "the Mission rail opens the index for Research Complete");
+    const researchRow = fresh.rows.findIndex((text) => text.startsWith("Research Complete"));
+    assert.ok(researchRow >= 0, JSON.stringify(fresh.rows));
+    await click(page, await shown(researchRow));
+    await click(page, display);
+    await waitReport(page, (value) => !value.index_open, "Display on Research Complete closes the index");
+    const opening = log.filter((line) => line.includes("[interface] message_index encyclopedia object="));
+    assert.equal(opening.length, 1, JSON.stringify(log.slice(-8)));
+    // The class's own topic: a capital ship (CAPSHPSD family 0x14) or a
+    // fighter (FIGHTSD 0x1c), chosen in the Encyclopedia.
+    assert.match(opening[0], /object=0x(14|1c)[0-9a-f]{6} topic=Some\(\d+\)/, opening[0]);
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await shot("research-encyclopedia");
+
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
+      encyclopedia: opening[0],
       question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});

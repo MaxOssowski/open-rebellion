@@ -3842,6 +3842,18 @@ async fn main() {
                     let mut message = GameMessage::new(tick, text, MessageCategory::Event)
                         .with_picture_if(Some(pictures::research()))
                         .with_advisor_event(4);
+                    // Kind 4 (class 0x0065bb40): Display opens the class's
+                    // Encyclopedia entry (FUN_00467f10 -> FUN_0041d6b0).
+                    if let Some(object) =
+                        rebellion_render::story_messages::research_complete_encyclopedia_object(
+                            &world,
+                            tally.faction_is_alliance,
+                            tally.tech,
+                            *level,
+                        )
+                    {
+                        message = message.with_encyclopedia(object);
+                    }
                     if let Some(title) = title {
                         message = message.with_title(title);
                     }
@@ -5420,6 +5432,25 @@ async fn main() {
                             index,
                             player_faction == MissionFaction::Alliance,
                         );
+                        // Display on a kind-4 message (FUN_00467f10 →
+                        // FUN_0041d6b0): the Encyclopedia at its object.
+                        for action in &actions {
+                            if let MessageIndexAction::Encyclopedia(object) = *action {
+                                match original_encyclopedia_catalog.as_ref() {
+                                    Some(catalog) => rebellion_render::open_original_encyclopedia_at(
+                                        &mut enc_state,
+                                        catalog,
+                                        Some(object),
+                                    ),
+                                    None => enc_state.open = true,
+                                }
+                                macroquad::logging::info!(
+                                    "[interface] message_index encyclopedia object=0x{:08x} topic={:?} status=opened",
+                                    object,
+                                    enc_state.original_selected_object_id
+                                );
+                            }
+                        }
                         // Display (0x67, FUN_00467f10 → FUN_00429440): the
                         // message's object; port: its system's sector window
                         // opens with the system chosen.
@@ -10254,8 +10285,8 @@ fn apply_message_index_actions(
             MessageIndexAction::MarkCategoryRead(None) => log.mark_all_read(),
             MessageIndexAction::DeleteSelected(ids) => log.delete_by_ids(&ids),
             MessageIndexAction::MessageDisplayed(id) => log.mark_message_read(id),
-            // The caller opened the object's window.
-            MessageIndexAction::Display { .. } => {}
+            // The caller opened the object's window or the Encyclopedia.
+            MessageIndexAction::Display { .. } | MessageIndexAction::Encyclopedia(_) => {}
             // Either answer drops the held Abort (vt +0x38 / +0x3c); the
             // caller sent it for the X.
             MessageIndexAction::ContinueMission { message }

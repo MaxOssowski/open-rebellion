@@ -1056,17 +1056,7 @@ pub fn research_complete_texts(
     level: u32,
     texts: &HashMap<u16, String>,
 ) -> Option<(String, String)> {
-    use rebellion_core::manufacturing::ProductionArea;
-    use rebellion_core::research::TechType;
-    let area = match tech {
-        TechType::Ship => ProductionArea::Shipyard,
-        TechType::Troop => ProductionArea::TrainingFacility,
-        TechType::Facility => ProductionArea::ConstructionYard,
-    };
-    let class = rebellion_core::build_selection::research_classes(world, area, is_alliance)
-        .into_iter()
-        .find(|class| class.order == level)?
-        .id;
+    let class = research_complete_class(world, is_alliance, tech, level)?;
     let name = world
         .capital_ship_classes
         .values()
@@ -1089,6 +1079,63 @@ pub fn research_complete_texts(
     Some((
         fill_message_text(texts.get(&0x7048)?, &named),
         fill_message_text(texts.get(&0x7049)?, &named),
+    ))
+}
+
+/// The class Research Complete names (`FUN_00567a90`): the first class of
+/// the tree's family whose research order is `level`. The message's
+/// Display opens its Encyclopedia entry (kind 4, `+0x60`).
+#[must_use]
+pub fn research_complete_class(
+    world: &rebellion_core::world::GameWorld,
+    is_alliance: bool,
+    tech: rebellion_core::research::TechType,
+    level: u32,
+) -> Option<rebellion_core::ids::DatId> {
+    use rebellion_core::manufacturing::ProductionArea;
+    use rebellion_core::research::TechType;
+    let area = match tech {
+        TechType::Ship => ProductionArea::Shipyard,
+        TechType::Troop => ProductionArea::TrainingFacility,
+        TechType::Facility => ProductionArea::ConstructionYard,
+    };
+    rebellion_core::build_selection::research_classes(world, area, is_alliance)
+        .into_iter()
+        .find(|class| class.order == level)
+        .map(|class| class.id)
+}
+
+/// The Encyclopedia entry of that class, the message's `+0x60`
+/// ([`crate::encyclopedia::class_entry`]); facility and troop classes
+/// carry their family already.
+#[must_use]
+pub fn research_complete_encyclopedia_object(
+    world: &rebellion_core::world::GameWorld,
+    is_alliance: bool,
+    tech: rebellion_core::research::TechType,
+    level: u32,
+) -> Option<u32> {
+    let class = research_complete_class(world, is_alliance, tech, level)?;
+    if tech != rebellion_core::research::TechType::Ship {
+        return Some(class.raw());
+    }
+    // research_classes lists the capital classes before the fighters.
+    let capital = world.capital_ship_classes.values().any(|value| {
+        value.dat_id == class
+            && value.research_order == level
+            && if is_alliance {
+                value.is_alliance
+            } else {
+                value.is_empire
+            }
+    });
+    Some(crate::encyclopedia::class_entry(
+        class,
+        if capital {
+            crate::encyclopedia::CAPITAL_SHIP_FAMILY
+        } else {
+            crate::encyclopedia::FIGHTER_FAMILY
+        },
     ))
 }
 
@@ -3538,6 +3585,55 @@ mod tests {
         assert_eq!(
             research_complete_texts(&world, true, TechType::Ship, 5, &texts),
             None
+        );
+        // The Encyclopedia entry: the catalog's capital family 0x14 and
+        // fighter family 0x1c over the port's bare record ids.
+        let mut bare = GameWorld::default();
+        bare.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x43),
+            name: "Nebulon-B Frigate".into(),
+            is_alliance: true,
+            research_order: 1,
+            refined_material_cost: 10,
+            ..CapitalShipClass::default()
+        });
+        bare.fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: DatId::new(0x07),
+                name: "TIE Bomber".into(),
+                is_empire: true,
+                research_order: 1,
+                refined_material_cost: 5,
+                ..rebellion_core::world::FighterClass::default()
+            });
+        assert_eq!(
+            research_complete_encyclopedia_object(&bare, true, TechType::Ship, 1),
+            Some(0x1400_0043)
+        );
+        assert_eq!(
+            research_complete_encyclopedia_object(&bare, false, TechType::Ship, 1),
+            Some(0x1c00_0007)
+        );
+        // A capital class sharing the fighter's record id, of another order
+        // or side, does not make it a capital ship.
+        for (order, alliance) in [(2, false), (1, true)] {
+            bare.capital_ship_classes.insert(CapitalShipClass {
+                dat_id: DatId::new(0x07),
+                name: "Other".into(),
+                is_alliance: alliance,
+                is_empire: !alliance,
+                research_order: order,
+                refined_material_cost: 10,
+                ..CapitalShipClass::default()
+            });
+        }
+        assert_eq!(
+            research_complete_encyclopedia_object(&bare, false, TechType::Ship, 1),
+            Some(0x1c00_0007)
+        );
+        assert_eq!(
+            research_complete_encyclopedia_object(&world, true, TechType::Ship, 1),
+            Some(0x1400_0002)
         );
         assert_eq!(
             research_exhausted_texts(TechType::Troop, &texts),

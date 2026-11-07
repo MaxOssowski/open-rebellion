@@ -4300,6 +4300,19 @@ pub fn post_event_messages(
             .with_mission(id),
             None => message,
         };
+        // Research Complete is kind 4: Display opens the Encyclopedia at
+        // the class (class 0x0065bb40, FUN_00467f10 -> FUN_0041d6b0).
+        let message = match rebellion_render::story_messages::research_complete_encyclopedia_object(
+            world,
+            reader == CockpitFaction::Alliance,
+            rebellion_core::research::TechType::Ship,
+            1,
+        )
+        .filter(|_| title == "Research Complete")
+        {
+            Some(object) => message.with_encyclopedia(object),
+            None => message,
+        };
         log.push(
             message
             .with_title(title)

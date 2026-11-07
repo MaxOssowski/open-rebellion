@@ -239,6 +239,12 @@ pub struct GameMessage {
     /// transit, Display lit, its press doing nothing.
     #[serde(skip)]
     pub unplaced_target: bool,
+    /// The object a kind-4 message's Display opens in the Encyclopedia
+    /// (`+0x60`, `FUN_00467f10` -> `FUN_0041d6b0`): Research Complete
+    /// (class `0x0065bb40`, whose slot `+0x10` returns 4) names the class
+    /// it opened.
+    #[serde(skip)]
+    pub encyclopedia: Option<u32>,
     /// When the message expires (its class's slot `+0x30`).
     #[serde(skip)]
     pub lifetime: MessageLifetime,
@@ -297,6 +303,7 @@ impl GameMessage {
             continue_question: None,
             mission: None,
             unplaced_target: false,
+            encyclopedia: None,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
@@ -326,6 +333,7 @@ impl GameMessage {
             continue_question: None,
             mission: None,
             unplaced_target: false,
+            encyclopedia: None,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
@@ -379,6 +387,14 @@ impl GameMessage {
     #[must_use]
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+
+    /// Display opens the Encyclopedia at `object` (kind 4,
+    /// `FUN_00467f10` -> `FUN_0041d6b0`).
+    #[must_use]
+    pub fn with_encyclopedia(mut self, object: u32) -> Self {
+        self.encyclopedia = Some(object);
         self
     }
 

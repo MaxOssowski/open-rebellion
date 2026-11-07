@@ -1037,6 +1037,24 @@ pub fn draw_encyclopedia_index_catalog(
 /// the catalog's compound id. A fleet or a production manager has none.
 /// port: a system icon opens its system.
 #[must_use]
+/// The catalog keys capital ship classes under CAPSHPSD's family `0x14`
+/// and fighter classes under FIGHTSD's `0x1c` (`0x14000043` Nebulon-B
+/// Frigate, `0x1c000007` TIE Bomber); the port's classes keep the bare
+/// record id, which other families share (`0x3c000007` Imperial Commandos).
+pub const CAPITAL_SHIP_FAMILY: u32 = 0x14;
+pub const FIGHTER_FAMILY: u32 = 0x1c;
+
+/// A class's catalog id: its own, or the bare record id under `family`.
+#[must_use]
+pub fn class_entry(class: rebellion_core::ids::DatId, family: u32) -> u32 {
+    let raw = class.raw();
+    if raw >> 24 == 0 {
+        (family << 24) | raw
+    } else {
+        raw
+    }
+}
+
 pub fn original_encyclopedia_object(
     world: &GameWorld,
     object: crate::object_menu::MenuObject,
@@ -1048,14 +1066,23 @@ pub fn original_encyclopedia_object(
         MenuObject::Troop(key) => world.troops.get(key)?.class_dat_id,
         MenuObject::Ship { fleet, index, .. } => {
             let ship = world.fleets.get(fleet)?.capital_ships.get(index)?;
-            world.capital_ship_classes.get(ship.class)?.dat_id
+            return Some(class_entry(
+                world.capital_ship_classes.get(ship.class)?.dat_id,
+                CAPITAL_SHIP_FAMILY,
+            ));
         }
         MenuObject::Fighter { fleet, index } => {
             let entry = world.fleets.get(fleet)?.fighters.get(index)?;
-            world.fighter_classes.get(entry.class)?.dat_id
+            return Some(class_entry(
+                world.fighter_classes.get(entry.class)?.dat_id,
+                FIGHTER_FAMILY,
+            ));
         }
         MenuObject::PlanetFighter { class, .. } | MenuObject::PendingFighter { class, .. } => {
-            world.fighter_classes.get(class)?.dat_id
+            return Some(class_entry(
+                world.fighter_classes.get(class)?.dat_id,
+                FIGHTER_FAMILY,
+            ));
         }
         MenuObject::DefenseFacility(key) => world.defense_facilities.get(key)?.class_dat_id,
         MenuObject::ManufacturingFacility(key) | MenuObject::Headquarters(key) => {
@@ -3186,6 +3213,36 @@ mod tests {
         assert_eq!(
             original_encyclopedia_object(&world, MenuObject::Fleet(Default::default())),
             None
+        );
+        // A squadron's class keeps its bare FIGHTSD id (TIE Bomber 0x07);
+        // the catalog's entry is 0x1c000007, not Imperial Commandos'
+        // 0x3c000007.
+        let bomber = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass {
+                dat_id: rebellion_core::ids::DatId::new(0x07),
+                ..Default::default()
+            });
+        assert_eq!(
+            original_encyclopedia_object(
+                &world,
+                MenuObject::PlanetFighter {
+                    system: Default::default(),
+                    class: bomber
+                }
+            ),
+            Some(0x1c00_0007)
+        );
+        assert_eq!(
+            class_entry(rebellion_core::ids::DatId::new(0x43), CAPITAL_SHIP_FAMILY),
+            0x1400_0043
+        );
+        assert_eq!(
+            class_entry(
+                rebellion_core::ids::DatId::new(0x2200_0001),
+                CAPITAL_SHIP_FAMILY
+            ),
+            0x2200_0001
         );
 
         let mut state = EncyclopediaState {

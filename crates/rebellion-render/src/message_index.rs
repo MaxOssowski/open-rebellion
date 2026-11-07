@@ -277,7 +277,7 @@ pub fn window_button_specs(
     mode: IndexMode,
     silent: bool,
     list_empty: bool,
-    display_enabled: bool,
+    display_kind: Option<DisplayKind>,
 ) -> Vec<WindowButtonSpec> {
     let (x, size, close, display, post_y, post) = match faction {
         CockpitFaction::Alliance => (
@@ -338,12 +338,15 @@ pub fn window_button_specs(
         pressed_resource: post.1,
         ..rail(0x66, (0, 0))
     });
-    if display_enabled {
+    if let Some(kind) = display_kind {
         // FUN_004697b0: Display for a message of kind 3 or 5 with a target
-        // (0x2916 / 0x2918, label 0x8030).
-        let (y, art) = match faction {
-            CockpitFaction::Alliance => (0xc9, 0x2916),
-            CockpitFaction::Empire => (0xcf, 0x2918),
+        // (0x2916 / 0x2918, label 0x8030); kind 4's Encyclopedia shows
+        // 0x2d20 / 0x2d47 (label 0x8031).
+        let (y, art) = match (faction, kind) {
+            (CockpitFaction::Alliance, DisplayKind::Object) => (0xc9, 0x2916),
+            (CockpitFaction::Empire, DisplayKind::Object) => (0xcf, 0x2918),
+            (CockpitFaction::Alliance, DisplayKind::Encyclopedia) => (0xc9, 0x2d20),
+            (CockpitFaction::Empire, DisplayKind::Encyclopedia) => (0xcf, 0x2d47),
         };
         buttons.push(WindowButtonSpec {
             y,
@@ -480,7 +483,7 @@ fn draw_window_buttons(
     mode: IndexMode,
     silent: bool,
     list_empty: bool,
-    display: bool,
+    display: Option<DisplayKind>,
     question: bool,
 ) -> Option<u16> {
     let mut clicked = None;
@@ -499,7 +502,7 @@ fn draw_window_buttons(
                 )
             });
             for (x, y, width, height, resource) in
-                disabled_rail_controls(faction, mode, list_empty, display)
+                disabled_rail_controls(faction, mode, list_empty, display.is_some())
             {
                 paint_strategy_resource(
                     ui.painter(),
@@ -533,7 +536,12 @@ fn draw_window_buttons(
                     ui.id().with(("message-index-button", button.command_id)),
                     egui::Sense::click(),
                 );
-                if let Some(string) = button_tooltip_string(button.command_id, mode, silent) {
+                let string = if button.command_id == 0x67 {
+                    Some(display_button_string(display))
+                } else {
+                    button_tooltip_string(button.command_id, mode, silent)
+                };
+                if let Some(string) = string {
                     crate::win_tooltip::response_tool(&response, rect, string);
                 }
                 let pressed = primary_down
@@ -811,6 +819,9 @@ pub enum MessageIndexAction {
         system: SystemKey,
         mission: Option<u64>,
     },
+    /// Display on a kind-4 message (`FUN_00467f10` -> `FUN_0041d6b0`): the
+    /// app opens the Encyclopedia at the object.
+    Encyclopedia(u32),
     /// A Mission Report's checkmark (`0x98`): the mission continues and
     /// the message asks no more.
     ContinueMission { message: MessageId },
@@ -1139,12 +1150,45 @@ pub fn display_target(
 }
 
 /// Whether Display (0x67) is lit: the message has a target
-/// (`FUN_004697b0`, `FUN_004ece60`), placed or not. An unplaced one's press
-/// does nothing ([`GameMessage::unplaced_target`]).
+/// (`FUN_004697b0`, `FUN_004ece60`), placed or not, or is of kind 4, an
+/// Encyclopedia entry. An unplaced one's press does nothing
+/// ([`GameMessage::unplaced_target`]).
 #[must_use]
 pub fn display_lit(rows: &[&GameMessage], state: &MessageIndexState) -> bool {
-    display_message(rows, state)
-        .is_some_and(|message| message.system.is_some() || message.unplaced_target)
+    display_kind(rows, state).is_some()
+}
+
+/// What Display shows for the chosen or viewed message: kind 4's
+/// Encyclopedia (`FUN_004697b0`, `FUN_00469de0`), or the object of a kind
+/// 3 or 5 message with a target.
+#[must_use]
+pub fn display_kind(rows: &[&GameMessage], state: &MessageIndexState) -> Option<DisplayKind> {
+    let message = display_message(rows, state)?;
+    if message.encyclopedia.is_some() {
+        Some(DisplayKind::Encyclopedia)
+    } else if message.system.is_some() || message.unplaced_target {
+        Some(DisplayKind::Object)
+    } else {
+        None
+    }
+}
+
+/// Display's two faces (`FUN_004697b0`): go to the message's object
+/// (kinds 3 and 5), or open the Encyclopedia (kind 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayKind {
+    Object,
+    Encyclopedia,
+}
+
+/// Display's tooltip: 0x8030 "Display", or 0x8031 "Encylopedia" (sic) on
+/// a kind-4 message (`FUN_004697b0`, `FUN_00469de0`).
+#[must_use]
+pub const fn display_button_string(display: Option<DisplayKind>) -> u16 {
+    match display {
+        Some(DisplayKind::Encyclopedia) => 0x8031,
+        _ => 0x8030,
+    }
 }
 
 /// The message Display acts on: the first chosen row's in mode 1, the
@@ -1357,7 +1401,8 @@ pub fn draw_message_index(
     let posting = posting_mask(state.category);
     let silent = posting_silent(log, state.category);
     let target = display_target(&rows, state);
-    let lit = display_lit(&rows, state);
+    let kind = display_kind(&rows, state);
+    let encyclopedia = display_message(&rows, state).and_then(|message| message.encyclopedia);
     let question = viewed_question(&rows, state);
     match draw_window_buttons(
         ctx,
@@ -1368,7 +1413,7 @@ pub fn draw_message_index(
         state.mode,
         silent,
         rows.is_empty(),
-        lit,
+        kind,
         question.is_some(),
     ) {
         // FUN_00467f10 in mode 2: the checkmark keeps the mission going
@@ -1387,9 +1432,13 @@ pub fn draw_message_index(
         }
         Some(0x66) => actions.push(MessageIndexAction::ToggleSilent(posting)),
         Some(0x67) => {
-            // FUN_00467f10: go to the object (FUN_00429440), then close
-            // (0x28).
-            if let Some((system, mission)) = target {
+            // FUN_00467f10: kind 4 opens the Encyclopedia on +0x60
+            // (FUN_0041d6b0); kinds 3 and 5 go to the object
+            // (FUN_00429440); then close (0x28).
+            if let Some(object) = encyclopedia {
+                actions.push(MessageIndexAction::Encyclopedia(object));
+                actions.push(MessageIndexAction::Close);
+            } else if let Some((system, mission)) = target {
                 actions.push(MessageIndexAction::Display { system, mission });
                 actions.push(MessageIndexAction::Close);
             }
@@ -2358,7 +2407,7 @@ mod tests {
         // FUN_004697b0 / FUN_00467f10: 0x2a78 / 0x2a7a while the category
         // alerts, 0x2ac7 / 0x2ac9 while it is silent; All reads the default.
         let post = |faction, silent| {
-            window_button_specs(faction, IndexMode::List, silent, false, false)
+            window_button_specs(faction, IndexMode::List, silent, false, None)
                 .into_iter()
                 .find(|button| button.command_id == 0x66)
                 .map(|button| (button.y, button.normal_resource, button.pressed_resource))
@@ -2450,24 +2499,22 @@ mod tests {
                 IndexMode::List,
                 false,
                 empty,
-                false,
+                None,
             )
             .iter()
             .any(|button| button.command_id == 0x65)
         };
         assert!(clickable(false));
         assert!(!clickable(true));
-        assert!(
-            window_button_specs(
-                CockpitFaction::Empire,
-                IndexMode::SingleMessage,
-                false,
-                true,
-                false
-            )
-            .iter()
-            .any(|button| button.command_id == 0x65 && button.normal_resource == 0x288a)
-        );
+        assert!(window_button_specs(
+            CockpitFaction::Empire,
+            IndexMode::SingleMessage,
+            false,
+            true,
+            None
+        )
+        .iter()
+        .any(|button| button.command_id == 0x65 && button.normal_resource == 0x288a));
     }
 
     #[test]
@@ -2574,17 +2621,22 @@ mod tests {
             IndexMode::List,
             false,
             false,
-            true,
+            Some(DisplayKind::Object),
         )
         .into_iter()
         .find(|button| button.command_id == 0x67)
         .map(|button| (button.y, button.normal_resource, button.pressed_resource));
         assert_eq!(display, Some((0xc9, 0x2916, 0x2917)));
-        let empire =
-            window_button_specs(CockpitFaction::Empire, IndexMode::List, false, false, true)
-                .into_iter()
-                .find(|button| button.command_id == 0x67)
-                .map(|button| (button.y, button.normal_resource));
+        let empire = window_button_specs(
+            CockpitFaction::Empire,
+            IndexMode::List,
+            false,
+            false,
+            Some(DisplayKind::Object),
+        )
+        .into_iter()
+        .find(|button| button.command_id == 0x67)
+        .map(|button| (button.y, button.normal_resource));
         assert_eq!(empire, Some((0xcf, 0x2918)));
         assert_eq!(
             disabled_rail_controls(CockpitFaction::Alliance, IndexMode::List, false, true),
@@ -2602,6 +2654,63 @@ mod tests {
                     system,
                     mission: None
                 })
+        );
+        assert!(result.actions.contains(&MessageIndexAction::Close));
+    }
+
+    #[test]
+    fn research_complete_displays_its_class_in_the_encyclopedia() {
+        // Class 0x0065bb40 (Research Complete) answers slot +0x10 with 4:
+        // FUN_004697b0 lights Display in 0x2d20 / 0x2d47 with 0x8031, and
+        // FUN_00467f10 opens the Encyclopedia on +0x60 (FUN_0041d6b0), then
+        // closes the index.
+        let mut log = MessageLog::new();
+        log.push(
+            GameMessage::new(
+                1,
+                "Nebulon-B Frigate Research Complete",
+                MessageCategory::Event,
+            )
+            .with_encyclopedia(0x1400_0002)
+            .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        let rows = filtered_messages(&log, 0x7b, true);
+        let mut state = MessageIndexState::new();
+        state.set_category(0x7b);
+        state.selected.insert(rows[0].id);
+        assert_eq!(display_kind(&rows, &state), Some(DisplayKind::Encyclopedia));
+        assert!(display_lit(&rows, &state));
+        assert_eq!(display_target(&rows, &state), None);
+        let art = |faction| {
+            window_button_specs(
+                faction,
+                IndexMode::List,
+                false,
+                false,
+                Some(DisplayKind::Encyclopedia),
+            )
+            .into_iter()
+            .find(|button| button.command_id == 0x67)
+            .map(|button| (button.y, button.normal_resource, button.pressed_resource))
+        };
+        assert_eq!(art(CockpitFaction::Alliance), Some((0xc9, 0x2d20, 0x2d21)));
+        assert_eq!(art(CockpitFaction::Empire), Some((0xcf, 0x2d47, 0x2d48)));
+        assert_eq!(
+            display_button_string(Some(DisplayKind::Encyclopedia)),
+            0x8031
+        );
+        assert_eq!(display_button_string(Some(DisplayKind::Object)), 0x8030);
+        let mut chosen = MessageIndexState::new();
+        chosen.set_category(0x7b);
+        let post = egui::pos2(f32::from(0x1a7_u16) + 16.0, f32::from(0xc9_u16) + 15.0);
+        drive(&log, &mut chosen, click_at(row_center(0)));
+        let result = drive(&log, &mut chosen, click_at(post));
+        assert!(
+            result
+                .actions
+                .contains(&MessageIndexAction::Encyclopedia(0x1400_0002)),
+            "{:?}",
+            result.actions
         );
         assert!(result.actions.contains(&MessageIndexAction::Close));
     }
@@ -3213,7 +3322,7 @@ mod tests {
             IndexMode::List,
             false,
             false,
-            false,
+            None,
         );
         assert_eq!(
             list.iter()
@@ -3239,7 +3348,7 @@ mod tests {
             IndexMode::SingleMessage,
             true,
             true,
-            false,
+            None,
         );
         assert_eq!(
             empire
