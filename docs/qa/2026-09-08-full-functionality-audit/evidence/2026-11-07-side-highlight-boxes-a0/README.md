@@ -47,3 +47,8 @@ in a real battle, showed nothing.
   comparisons, which give the same box when swapped; the render loop's
   arithmetic, which only the browser sees; and the side test that picks the
   colour (`draw_tactical_frame`), which the pixel count does not tell apart.
+
+## Runs
+
+Batch b123 (23 of 23 gates), then the whole tactical matrix: 148 of 148
+on Linux Arch Chromium 155 (run `2026-11-07T16-37-47-906Z-577170`).

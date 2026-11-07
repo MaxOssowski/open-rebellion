@@ -656,9 +656,10 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-23-tactical-game-options-empty-space.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-main-menu-states-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-battle-game-options-load-a0/"
           ],
-          "note": "Disabled states for shuttle/tactical contexts follow FUN_00407180 (test shuttle_and_tactical_contexts_disable_original_controls) and the P58-B12 in-battle journey; no A0 capture. Browser run on macOS only; rerun on Linux. 2026-10-31: the shuttle-cockpit context against A0 main-menu-states/12: Restart on (FUN_00407180 never disables it; the port had it off), Return off, Save off, each pixel-identical on Linux (main-menu-states.mjs). The battle context has no A0. 2026-11-07: the battle context against A0 TAC-06-C007: Restart lit (fixed in b121), Return 10026 and Exit 0 pixels from A0. Open: A0's occupied save slots show their coloured load art in a battle, and the port's battle fixture has no saves, so Save and Load in a battle are not compared.",
+          "note": "Disabled states for shuttle/tactical contexts follow FUN_00407180 (test shuttle_and_tactical_contexts_disable_original_controls) and the P58-B12 in-battle journey; no A0 capture. Browser run on macOS only; rerun on Linux. 2026-10-31: the shuttle-cockpit context against A0 main-menu-states/12: Restart on (FUN_00407180 never disables it; the port had it off), Return off, Save off, each pixel-identical on Linux (main-menu-states.mjs). The battle context has no A0. 2026-11-07: the battle context against A0 TAC-06-C007: Restart lit (fixed in b121), Return 10026 and Exit 0 pixels from A0. Open: A0's occupied save slots show their coloured load art in a battle, and the port's battle fixture has no saves, so Save and Load in a battle are not compared. 2026-11-07: A0 TAC-06-C007 and the Empire game's Corsin battle (research-display/34) keep each occupied slot's Load lit (10049) in a battle; the port disabled it and now offers it, asking 0x121c / 0x121d first (unit test). Restart in a battle asks 0x121a / 0x121b in A0 too (research-display/35), as the port does. Still partial: no browser case has saves in a battle.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9506,9 +9507,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-status-text-highlights/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-side-highlight-boxes-a0/"
           ],
-          "note": "Highlight buttons 1034 placement and off-at-start match A0; the red brackets of A0 TAC-04-C006 are not recorded as compared.",
+          "note": "Highlight buttons 1034 placement and off-at-start match A0; the red brackets of A0 TAC-04-C006 are not recorded as compared. 2026-11-07: A0's highlight is the hull's 3D box in pure red, one pixel, hidden behind hulls; the port lit only its 2D fallback markers, so a real battle showed nothing. Ships drawn from meshes now get the box (draw_line_3d in the depth-tested pass); run.mjs production-participants counts the pure red and green pixels on Linux. Still partial: the box is the drawn level of detail's bounds (port:), the original's box source is untraced.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9518,9 +9520,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-status-text-highlights/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-side-highlight-boxes-a0/"
           ],
-          "note": "Button 1036 placement and blue key match A0; the green brackets of A0 TAC-04-C007 are not recorded as compared.",
+          "note": "Button 1036 placement and blue key match A0; the green brackets of A0 TAC-04-C007 are not recorded as compared. 2026-11-07: as TAC-04-C006 in pure green; A0 also from the Empire game's battle at Corsin (a0-vm/research-display/32). Still partial for the box source.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
