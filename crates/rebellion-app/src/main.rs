@@ -5890,6 +5890,7 @@ async fn main() {
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
+                                    victory_state.conditions_word,
                                 );
                                 gates.abort = !abort_missions(
                                     &world,
@@ -6071,6 +6072,7 @@ async fn main() {
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
+                                    victory_state.conditions_word,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
@@ -6129,6 +6131,7 @@ async fn main() {
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
+                                    victory_state.conditions_word,
                                 );
                                 object_menu =
                                     Some(ObjectMenuState::new(Some(selection), gates, point));
@@ -6407,6 +6410,7 @@ async fn main() {
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
+                                    victory_state.conditions_word,
                                 );
                                 object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
@@ -6487,6 +6491,7 @@ async fn main() {
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
+                                    victory_state.conditions_word,
                                 );
                                 gates.abort = !abort_missions(
                                     &world,
@@ -9894,6 +9899,7 @@ fn order_gates(
     manufacturing: &ManufacturingState,
     research: &rebellion_core::research::ResearchState,
     player_faction: MissionFaction,
+    conditions_word: u32,
 ) -> OrderGates {
     let is_alliance = player_faction == MissionFaction::Alliance;
     let side = if is_alliance {
@@ -10129,6 +10135,8 @@ fn order_gates(
                         .is_ok()
                 })
         }),
+        // FUN_0051de80: the game is over (the victory conditions word).
+        orders_stopped: conditions_word & rebellion_core::victory::WORD_GAME_OVER != 0,
     }
 }
 
@@ -13862,6 +13870,7 @@ mod fleet_move_tests {
                     manufacturing,
                     &rebellion_core::research::ResearchState::new(),
                     player,
+                    0,
                 )
             };
             // Build's validation (FUN_00527d00) wants a usable yard: A0
@@ -13905,6 +13914,21 @@ mod fleet_move_tests {
             );
             let building = gates(&world, &manufacturing, holder);
             assert!(building.destination && building.stop);
+            assert!(!building.orders_stopped);
+            // FUN_0051de80: the game over bit of the victory conditions word
+            // stops every order (A0 pending-facility/33, day 633).
+            let over = order_gates(
+                band,
+                &world,
+                &MissionState::new(),
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                &manufacturing,
+                &rebellion_core::research::ResearchState::new(),
+                holder,
+                rebellion_core::victory::WORD_GAME_OVER | rebellion_core::victory::WORD_EMPIRE_WINS,
+            );
+            assert!(over.orders_stopped && over.stop);
             let foreign = gates(&world, &manufacturing, other);
             assert!(!foreign.destination && !foreign.build && !foreign.stop && !foreign.reserved);
             // With nothing its side may build, Build stays off.
@@ -13932,6 +13956,7 @@ mod fleet_move_tests {
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
+                0,
             )
             .fleet_move
         };
@@ -13962,6 +13987,7 @@ mod fleet_move_tests {
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 player,
+                0,
             )
             .scrap
         };
@@ -14006,6 +14032,7 @@ mod fleet_move_tests {
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
+                0,
             )
             .fleet_move
         };
@@ -14038,6 +14065,7 @@ mod fleet_move_tests {
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 player,
+                0,
             )
         };
         let gates = |world: &GameWorld, movement: &MovementState, selection| {

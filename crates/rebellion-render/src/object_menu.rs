@@ -720,6 +720,18 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             },
         })
         .collect();
+    // FUN_0051d990 enables an order only while the global gate
+    // FUN_0051de80 is clear; Encyclopedia and Status skip it.
+    if gates.orders_stopped {
+        for row in &mut rows {
+            if !matches!(
+                row.item.command,
+                ObjectMenuCommand::Encyclopedia | ObjectMenuCommand::Status
+            ) {
+                row.enabled = false;
+            }
+        }
+    }
     rows.sort_by_key(|row| row.item.sort_key);
     rows
 }
@@ -742,7 +754,7 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
             .zip(gates.command)
             .map(|(&item, enabled)| ObjectMenuRow {
                 item,
-                enabled,
+                enabled: enabled && !gates.orders_stopped,
                 checked: false,
             })
             .collect();
@@ -767,7 +779,7 @@ pub fn object_submenu_rows(selection: Option<MenuObject>, gates: OrderGates) -> 
         .zip(gates.bombard)
         .map(|(&item, enabled)| ObjectMenuRow {
             item,
-            enabled,
+            enabled: enabled && !gates.orders_stopped,
             checked: false,
         })
         .collect()
@@ -830,6 +842,12 @@ pub struct OrderGates {
     /// Scrap (`0x200`): the object passes its slot `+0x5c` check, the
     /// player's and not a headquarters (`rebellion_core::scrap::check`).
     pub scrap: bool,
+    /// The global gate `FUN_0051de80`: the victory conditions word's bit
+    /// `0x10000000` (the game is over, `FUN_005180e0`) greys every order.
+    /// A0 pending-facility/33 and 36 (day 633 of a game the Alliance had
+    /// lost, its clock stopped) grey a band's Build, Stop, Destination,
+    /// Rename and Reserved and leave Encyclopedia and Status white.
+    pub orders_stopped: bool,
 }
 
 /// An open object pop-up menu.
@@ -1061,6 +1079,7 @@ mod tests {
         command: [false; 4],
         retire: false,
         scrap: false,
+        orders_stopped: false,
         abort: false,
     };
 
@@ -1293,6 +1312,7 @@ mod tests {
             command: [false; 4],
             retire: false,
             scrap: false,
+            orders_stopped: false,
             abort: false,
         };
         assert_eq!(
@@ -1411,6 +1431,62 @@ mod tests {
             OrderGates::default()
         ))
         .contains(&"Destination"));
+    }
+
+    #[test]
+    fn the_end_of_the_game_greys_every_order() {
+        // FUN_0051d990 asks FUN_0051de80 for each order: the victory
+        // conditions word's bit 0x10000000. A0 pending-facility/33 (day
+        // 633, the game over) greys the ships band's Build, Stop,
+        // Destination, Rename and Reserved and keeps Encyclopedia and Status.
+        let band = Some(MenuObject::Producer {
+            system: SystemKey::default(),
+            area: ProductionArea::Shipyard,
+        });
+        let open = OrderGates {
+            destination: true,
+            stop: true,
+            build: true,
+            reserved: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(band, open)),
+            ["Build", "Stop", "Destination", "Encyclopedia", "Status", "Reserved"]
+        );
+        let stopped = OrderGates {
+            orders_stopped: true,
+            ..open
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(band, stopped)),
+            ["Encyclopedia", "Status"]
+        );
+        // The submenus' rows too.
+        let fleet = Some(MenuObject::Fleet(FleetKey::default()));
+        let bombard = OrderGates {
+            bombard: [true; 4],
+            ..OrderGates::default()
+        };
+        assert!(object_submenu_rows(fleet, bombard).iter().all(|row| row.enabled));
+        assert!(
+            object_submenu_rows(
+                fleet,
+                OrderGates {
+                    orders_stopped: true,
+                    ..bombard
+                }
+            )
+            .iter()
+            .all(|row| !row.enabled)
+        );
+        let character = Some(MenuObject::Character(CharacterKey::default()));
+        let command = OrderGates {
+            command: [true; 4],
+            orders_stopped: true,
+            ..OrderGates::default()
+        };
+        assert!(object_submenu_rows(character, command).iter().all(|row| !row.enabled));
     }
 
     #[test]
@@ -1650,6 +1726,7 @@ mod tests {
             command: [false; 4],
             retire: false,
             scrap: false,
+            orders_stopped: false,
             abort: false,
         };
         assert_eq!(
