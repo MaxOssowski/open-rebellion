@@ -12152,6 +12152,29 @@ mod tests {
                 true
             )
         );
+        // The Empire's side (A0 empire-clean/41-summary-withdrawn-chandrila
+        // and 42-display, a new Easy Empire game, day 689): "Chandrila is
+        // now under blockade by Alliance forces. The Imperial fleet has
+        // withdrawn to Coruscant." and "The Imperial fleet was defeated at
+        // Chandrila. Your fleet has withdrawn to Coruscant."; the Empire's
+        // Fleet button 10766 keyed on its blue (0 of 16055 pixels off).
+        let imperial = BattleReport {
+            system_name: "Chandrila",
+            viewer_alliance: false,
+            winner_alliance: Some(true),
+            withdrawn: Some(false),
+            destination: Some("Coruscant"),
+            last_arrival: Some(true),
+            system_side: Some(false),
+        };
+        assert_eq!(
+            battle_report_lines(&texts, &imperial)[1],
+            "Chandrila is now under blockade by Alliance forces. The Imperial fleet has withdrawn to Coruscant."
+        );
+        assert_eq!(
+            battle_display_lines(&texts, &imperial).0[0],
+            "The Imperial fleet was defeated at Chandrila. Your fleet has withdrawn to Coruscant."
+        );
     }
 
     #[test]
@@ -12198,6 +12221,40 @@ mod tests {
             (
                 [
                     "The Alliance fleet is victorious. The world Averam is now under Alliance blockade."
+                        .to_owned(),
+                    "Select one of the following buttons to close this display and go directly to..."
+                        .to_owned()
+                ],
+                true
+            )
+        );
+        // The Empire's side (A0 empire-clean/51-summary-defended-coruscant
+        // and 52-display, a new Easy Empire game, day 728): "The Imperial
+        // fleet is victorious." over "Coruscant has been successfully
+        // defended from Alliance forces. The Alliance fleet has withdrawn.",
+        // and 0x7012 "... The world Coruscant is now under Imperial
+        // blockade." with both buttons.
+        let imperial = BattleReport {
+            system_name: "Coruscant",
+            viewer_alliance: false,
+            winner_alliance: Some(false),
+            withdrawn: Some(true),
+            destination: None,
+            last_arrival: Some(true),
+            system_side: Some(false),
+        };
+        assert_eq!(
+            battle_report_lines(&texts, &imperial),
+            [
+                "The Imperial fleet is victorious.",
+                "Coruscant has been successfully defended from Alliance forces. The Alliance fleet has withdrawn."
+            ]
+        );
+        assert_eq!(
+            battle_display_lines(&texts, &imperial),
+            (
+                [
+                    "The Imperial fleet is victorious. The world Coruscant is now under Imperial blockade."
                         .to_owned(),
                     "Select one of the following buttons to close this display and go directly to..."
                         .to_owned()

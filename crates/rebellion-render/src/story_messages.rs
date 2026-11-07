@@ -5105,7 +5105,10 @@ mod tests {
     fn a_victory_conditions_change_queues_the_hq_and_coruscant_movies() {
         // FUN_0048e5a0 on bit 0x1 (+0x5c 0x73, MDATA.102), FUN_0048f790
         // while Coruscant is the Alliance's (bit 0x100; 0x74, MDATA.103);
-        // their kind 6 (0x48d640) files them only as movies (0x48a149).
+        // their kind 6 (0x48d640) files them only as movies (0x48a149). A0
+        // empire-clean/61-movie-coruscant-seized (a new Easy Empire game,
+        // day 800): the movie captioned "The Alliance has seized the
+        // Imperial capital system of Coruscant." after the battle there.
         let texts: HashMap<u16, String> = [
             (0x7188, "Alliance Headquarters Destroyed"),
             (

@@ -34,3 +34,17 @@ The Training Facility's list (regiments and special forces, C004) and the defens
 ## The enabled Done's tip (CMD-11-C023)
 
 A0 `build-selection3/d4` (Build Facilities on Chandrila, a new Alliance game, Done enabled) shows "Done" under the pointer. The pointer's tip is at (274, 315); the box's grey top runs from x 274 to 307, 21 below. `build-selection.mjs` now holds Done to that box: left and top exact, width within 15%. It passes on Linux.
+
+## The Empire's facilities (2026-11-07)
+
+**A0.** A new Easy Empire game, day 694, Coruscant's Facilities band, Build. The captures are in `.artifacts/a0-vm/build-selection-empire/`, with the sha256 of each:
+- `00-opened-coruscant-day694` (`4347c4ec1f34477895ae01972c559efecc7984791c79a7428f07f69b45b40e03`);
+- `blist01` (`b590e0db5d97c0ee2c4e5db1136ee42a166d6def384520f98095ff8650c9017a`);
+- `blist07` (`ed2748dbf5b6ca337d4a653fc20b2792ae953dfcc08e573e60bbdda3f6be26d1`);
+- `blist31` (`2d945299141b3a162299fc31512b7a1c493a2a7af8207b914819f8e1a1222159`);
+- `blist49` (`a760a587ff14303187b3039539b50438a1044b042d4244e6eeb88b54b5ccb55e`);
+- `blist73` (`81bbbea402c7704052ea2be8aae26986158beb42d76850a789d25970c2856d1b`).
+
+The drop-down list reads, scrolled through: Advanced Training Facility, Construction Yard, GenCore Level I, KDY-150, LNR Series I, Mine, Orbital Shipyard, Refinery, Training Facility. That is name order, as `in_list_order` sorts.
+
+**Open.** The window opened on Construction Yard, the second row, not on the first. The player had confirmed no facility order in this game. `FUN_00437f80` reopens on the class last confirmed by the same kind of manager (`DAT_006b289c`); the port does so for the player's own confirmations. Who set it here is not traced (hyp: the AI's or the agent's orders, through the same global).

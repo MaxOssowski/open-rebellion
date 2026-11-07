@@ -7551,9 +7551,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-coruscant-hq/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-unfinished-facility/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-unfinished-facility/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "Coruscant changing side shifts loyalty (FUN_00561670); unit tests only, no browser or A0. 2026-11-04 A0 (VM, day 562): the Alliance's capture of Coruscant plays MDATA.103 with the caption 'The Alliance has seized the Imperial capital system of Coruscant.', the text the port queues (victory_conditions_movies, unit test); no browser case of 103.",
+          "note": "Coruscant changing side shifts loyalty (FUN_00561670); unit tests only, no browser or A0. 2026-11-04 A0 (VM, day 562): the Alliance's capture of Coruscant plays MDATA.103 with the caption 'The Alliance has seized the Imperial capital system of Coruscant.', the text the port queues (victory_conditions_movies, unit test); no browser case of 103. 2026-11-07: an unedited Empire game shows the same movie and caption (empire-clean/61).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -10473,9 +10474,10 @@
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-victory-contract.md",
             "ghidra/notes/victory-conditions.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "The Empire player's defeat plays MDATA.107 (state 0x13), then the main menu (unit test); not yet compared with A0.",
+          "note": "The Empire player's defeat plays MDATA.107 (state 0x13), then the main menu (unit test). 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10510,9 +10512,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "An ending movie's end leads to the main menu (state 3, game reset); not yet compared with A0.",
+          "note": "An ending movie's end leads to the main menu (state 3, game reset). 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10522,9 +10525,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "The original has no continue control after the ending movie (none found in FUN_00425c90's states); the port's replacement Continue button is gone; not yet compared with A0.",
+          "note": "The original has no continue control after the ending movie (none found in FUN_00425c90's states); the port's replacement Continue button is gone. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10534,9 +10538,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "No restart from the end state was found in the original; the port returns to the main menu as it does; not yet compared with A0.",
+          "note": "No restart from the end state was found in the original; the port returns to the main menu as it does. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10546,9 +10551,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-movie-flow/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-defeat-a0/"
           ],
-          "note": "After the ending movie the main menu shows (state 3), as in the port since 2026-10-30; not yet compared with A0.",
+          "note": "After the ending movie the main menu shows (state 3), as in the port since 2026-10-30. 2026-11-07: A0 (a new Easy Empire game, day 800) after Coruscant's capture plays MDATA.103, then the Empire's defeat movie and crawl ('The Emperor and Lord Vader are lost...') to its end, then the main menu with no dialog (empire-clean/60..64), as the port does; no browser case ends a game yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

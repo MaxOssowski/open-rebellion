@@ -69,3 +69,22 @@ node run.mjs --battle --all --no-build --scenario=production-battle-alert-entry
 | `12-display-destroyed-umgul` | "The Imperial fleet was defeated at Umgul. Your fleet has been destroyed." and the system's button alone; 10764 matches with its black keyed | `7cac5857da47478bb90135dfa6a1d2bca3c93af4c5393cf02eda7b7023cef540` |
 
 `the_alliances_destroyed_fleet_reads_as_a0` now also builds the Empire's lines and matches them word for word.
+
+## Two more Empire results (2026-11-07, morning)
+
+| Day, battle | A0 | Summary lines | Display page |
+|---|---|---|---|
+| 689, Chandrila | `empire-clean/40..42`, sha256 `e84cadfb…`, `b66085df…`, `5eee12fa…` | "The Imperial fleet is defeated." / "Chandrila is now under blockade by Alliance forces. The Imperial fleet has withdrawn to Coruscant." | "The Imperial fleet was defeated at Chandrila. Your fleet has withdrawn to Coruscant." |
+| 728, Coruscant | `empire-clean/50..52`, sha256 `7d67c444…`, `c4ccd61c…`, `a2a0f771…` | "The Imperial fleet is victorious." / "Coruscant has been successfully defended from Alliance forces. The Alliance fleet has withdrawn." | `0x7012`, "The Imperial fleet is victorious. The world Coruscant is now under Imperial blockade." |
+
+The Chandrila alert had Retreat enabled. On the Chandrila Display page, the Empire's Fleet button 10766 matches A0 with its blue keyed: 0 of 16,055 pixels differ.
+
+The unit tests `the_alliances_withdrawal_from_its_own_system_reads_as_a0` and `the_alliances_defence_of_its_own_system_reads_as_a0` now also build the Empire's lines, and both match A0.
+
+## Mission kinds an Empire character is offered (2026-11-07)
+
+`.artifacts/a0-vm/kinds-empire/` (hashes in `a0-sha256.txt`), Ozzel at Coruscant, day 717..728:
+- **Released on the Empire's own Chandrila** (`00`..`02`): Diplomacy above Espionage.
+- **Released on his own Coruscant** (`10`, `11`): Espionage alone. The click on the Facilities band targets the system.
+
+Coruscant's support is full for the Empire. Diplomacy ends there with code `0xf` (`diplomacy_ends_with_code_0xf_once_its_side_holds_full_support`), and `available_kinds` drops a kind whose validator ends it. Recruitment is absent at both systems, which is consistent with an emptied pool by day 717. None of these targets offered a research kind.

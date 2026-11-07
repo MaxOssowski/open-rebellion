@@ -53,3 +53,15 @@ Screenshots: `.artifacts/interface-parity/personnel-states-2026-11-06T17-27-35-1
 The day-306 capture `.artifacts/a0-vm/battle-display/joins-ghorman-day306.png` (sha256 `953b9464bcd498e769c2f7ccdb5c3992b39b7ef4b20bbb717463498897ec08ef`) shows "Ghorman Joins Enemy" over "Popular dissent on Ghorman has caused that world to join the Alliance.". That is `0x7039` / `0x703c`, which `FUN_00499760` writes when the reader is not the new side. The Battle Summary at Yavin also used the winner's text, although the Alliance fleet was destroyed.
 
 So this host-edited save shows the Alliance's cockpit but builds its messages for the Empire. Its captures settle layout and pixels, not side-dependent rules. The notes on Maintenance Shortfall (`message-pictures.md`) and the other side's Finder tab (`personnel-finder.md`) are corrected. The Maintenance Shortfall capture is the Empire's own message, as the port posts it.
+
+## The Empire's view of the other side (2026-11-07)
+
+A new Easy Empire game, day 713 (`.artifacts/a0-vm/personnel-other-side/`):
+- **`empire-day712-own-tab`** (sha256 `873ef3c7271c7bd91d3f1bedda73c9e4ceefc6e0c960dfe5baff426230274edc`) shows the Empire's own eight characters. Griff, Jerjerrod and Needa are Captured.
+- **`empire-day713-alliance-tab`** (sha256 `fd9e31ccc6c092d59e2ad73ecda66c9bcda1a38c5c924957e1778964a411b637`) shows the Alliance tab with seven rows:
+  - Chewbacca, Han Solo, Jan Dodonna, Leia Organa, Luke Skywalker and Wedge Antilles, each "- Yavin";
+  - "Afyon - Location Unknown".
+
+The Empire sees most Alliance characters by this day: it holds views of Yavin's.
+
+**Afyon** is a view whose container the Empire does not know (`0x1895`). The port has no per-side views, so it cannot show such a row. It lists an enemy character only where `opposing_contents_visible` holds now. This difference stays open (hyp: a view is kept after the character leaves sight).
