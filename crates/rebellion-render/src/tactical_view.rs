@@ -778,6 +778,9 @@ pub struct TacticalState {
     /// Captured side-panel control, dispatched on a matching release: A0
     /// TAC-05-C013 holds Hammer down (1138) with the preview unchanged.
     command_control_pressed: Option<TacticalCommandControl>,
+    /// The contents list's scroll, in pixels, and the ship it belongs to:
+    /// another ship's list starts at its first unit.
+    contents_scroll: (Option<usize>, f32),
     /// The native withdrawal confirmation replaces the right-hand options panel.
     withdraw_confirmation_open: bool,
     /// Captured confirmation control. Dispatch occurs only on a matching release.
@@ -912,6 +915,7 @@ impl Default for TacticalState {
             battle_options_open: false,
             battle_options_pressed: None,
             command_control_pressed: None,
+            contents_scroll: (None, 0.0),
             withdraw_confirmation_open: false,
             withdraw_confirmation_pressed: None,
             player_observing: false,
@@ -944,6 +948,26 @@ impl TacticalState {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Seat each hull's units for its contents list (`FUN_0040b0e0` hands
+    /// the battle a ship's characters, then its special forces
+    /// (`FUN_00504040`), then its regiments (`FUN_00504c40`)), where the
+    /// Fleet window seats them ([`crate::fleet_window::ship_cargo`]).
+    pub fn board_contents(&mut self, world: &GameWorld, transport: &TroopTransportState) {
+        let Some(session) = self.session.as_mut() else {
+            return;
+        };
+        let mut fleets = HashMap::new();
+        for ship in &mut session.ships {
+            let cargo = fleets
+                .entry(ship.fleet)
+                .or_insert_with(|| crate::fleet_window::ship_cargo(world, transport, ship.fleet));
+            ship.contents = cargo
+                .get(ship.fleet_ship_index)
+                .map(|cargo| ship_contents_of(world, cargo))
+                .unwrap_or_default();
+        }
     }
 
     /// Begin a new battle — sets session and resets UI state.
@@ -1006,6 +1030,7 @@ impl TacticalState {
         self.battle_options_open = false;
         self.battle_options_pressed = None;
         self.command_control_pressed = None;
+        self.contents_scroll = (None, 0.0);
         self.withdraw_confirmation_open = false;
         self.withdraw_confirmation_pressed = None;
         self.player_observing = false;
@@ -3195,6 +3220,10 @@ struct TacticalGroupHud<'a> {
     selected_order: TacticalOrder,
     /// What the panel ship is doing, ours only (`FUN_005e4b40`).
     selected_ship_activity: Option<TacticalShipActivity<'a>>,
+    /// The panel ship's index in the session.
+    selected_ship_index: Option<usize>,
+    /// What the panel's squadron is doing (`FUN_005e16a0`).
+    selected_fighter_activity: Option<TacticalShipActivity<'a>>,
     selected_tactic: TacticalTactic,
 }
 
@@ -3203,18 +3232,46 @@ struct TacticalGroupHud<'a> {
 /// its route (`+0x80`) holds a point, or "Disabled" (`0xdd91`) when its
 /// speed (vt `+0x90`, `FUN_005b17f0`) is 0; else, holding a target
 /// (`+0x98`), "Attacking" (`0xdd8d`) and the target's name after a space
-/// (`FUN_005b1610`, `DAT_006a7f40`). A0 TAC-04-C002 reads "Navigating", A0
-/// TAC-02/03 "Attacking Victory Destroyer 1" and "Attacking Swift".
-/// port: the order's word stays before the name only while the mover's
-/// `+0x68` is 1, which the port never sets.
+/// (`FUN_005b1610`, `DAT_006a7f40`), except for an escort: the mover's
+/// order code (`+0x68`, which the fighter panel `FUN_005e16a0` switches
+/// on) 1 keeps "Escort" (`0xdde1`) before the escorted ship's name. A0
+/// TAC-04-C002 reads "Navigating", A0 TAC-02/03 "Attacking Victory
+/// Destroyer 1" and "Attacking Swift". The fighter panel (`FUN_005e16a0`)
+/// writes the same line without the speed test.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalShipActivity<'a> {
     Navigating,
     Disabled,
     Attacking(&'a str),
+    Escorting(&'a str),
 }
 
 impl<'a> TacticalShipActivity<'a> {
+    fn line(self) -> String {
+        match self {
+            Self::Navigating => "Navigating".to_owned(),
+            Self::Disabled => "Disabled".to_owned(),
+            Self::Attacking(name) => format!("Attacking {name}"),
+            Self::Escorting(name) => format!("Escort {name}"),
+        }
+    }
+
+    fn of_fighter(session: &'a BattleSession, index: usize) -> Option<Self> {
+        let fighter = session.fighters.get(index)?;
+        if !fighter.navigation_route.is_empty() {
+            return Some(Self::Navigating);
+        }
+        if fighter.order == TacticalOrder::Escort {
+            return Some(Self::Escorting(
+                &session.ships.get(fighter.escort_target?)?.name,
+            ));
+        }
+        Some(Self::Attacking(attack_target_name(
+            session,
+            fighter.attack_target?,
+        )?))
+    }
+
     fn of(session: &'a BattleSession, index: usize) -> Option<Self> {
         let ship = session.ships.get(index)?;
         if !ship.navigation_route.is_empty() {
@@ -3226,14 +3283,22 @@ impl<'a> TacticalShipActivity<'a> {
                 Self::Navigating
             });
         }
-        let name = match ship
+        if ship.order == TacticalOrder::Escort {
+            return Some(Self::Escorting(
+                &session.ships.get(ship.escort_target?)?.name,
+            ));
+        }
+        let target = ship
             .attack_target
-            .or_else(|| ship.manual_targets.first().copied())?
-        {
-            TacticalAttackTarget::CapitalShip(target) => &session.ships.get(target)?.name,
-            TacticalAttackTarget::FighterGroup(target) => &session.fighters.get(target)?.name,
-        };
-        Some(Self::Attacking(name))
+            .or_else(|| ship.manual_targets.first().copied())?;
+        Some(Self::Attacking(attack_target_name(session, target)?))
+    }
+}
+
+fn attack_target_name(session: &BattleSession, target: TacticalAttackTarget) -> Option<&str> {
+    match target {
+        TacticalAttackTarget::CapitalShip(target) => Some(&session.ships.get(target)?.name),
+        TacticalAttackTarget::FighterGroup(target) => Some(&session.fighters.get(target)?.name),
     }
 }
 
@@ -3265,12 +3330,18 @@ impl<'a> TacticalGroupHud<'a> {
         if self.selected_enemy {
             return "Orders Unavailable".to_owned();
         }
-        match &self.selected_ship_activity {
-            Some(TacticalShipActivity::Navigating) => "Navigating".to_owned(),
-            Some(TacticalShipActivity::Disabled) => "Disabled".to_owned(),
-            Some(TacticalShipActivity::Attacking(name)) => format!("Attacking {name}"),
-            None => self.selected_order.label().to_owned(),
-        }
+        self.selected_ship_activity.map_or_else(
+            || self.selected_order.label().to_owned(),
+            TacticalShipActivity::line,
+        )
+    }
+
+    /// The fighter panel's order line (`FUN_005e16a0`).
+    fn fighter_orders_line(&self) -> String {
+        self.selected_fighter_activity.map_or_else(
+            || self.selected_order.label().to_owned(),
+            TacticalShipActivity::line,
+        )
     }
 
     fn from_session(session: &'a BattleSession) -> Self {
@@ -3346,6 +3417,12 @@ impl<'a> TacticalGroupHud<'a> {
                 || selected_ship.map_or(TacticalOrder::None, |ship| ship.order),
                 |fighter| fighter.order,
             ),
+            selected_ship_index: selected_ship.and_then(|ship| {
+                session
+                    .ships
+                    .iter()
+                    .position(|each| std::ptr::eq(each, ship))
+            }),
             selected_ship_activity: selected_ship
                 .filter(|ship| ship.is_attacker == session.player_is_attacker)
                 .and_then(|ship| {
@@ -3355,6 +3432,14 @@ impl<'a> TacticalGroupHud<'a> {
                         .position(|each| std::ptr::eq(each, ship))
                 })
                 .and_then(|index| TacticalShipActivity::of(session, index)),
+            selected_fighter_activity: selected_fighter
+                .and_then(|fighter| {
+                    session
+                        .fighters
+                        .iter()
+                        .position(|each| std::ptr::eq(each, fighter))
+                })
+                .and_then(|index| TacticalShipActivity::of_fighter(session, index)),
             selected_tactic: selected_fighter.map_or_else(
                 || selected_ship.map_or(TacticalTactic::StandOff, |ship| ship.tactic),
                 |fighter| fighter.tactic,
@@ -3369,6 +3454,256 @@ fn tactical_meter_fraction(current: i32, maximum: i32) -> f32 {
     } else {
         (current as f32 / maximum as f32).clamp(0.0, 1.0)
     }
+}
+
+/// `FUN_00597610`'s contents icons, as (key, TACTICAL bitmap): the key is
+/// a unit's TEXTSTRA name id less `0x2000` (`FUN_005975d0`), which is its
+/// STRATEGY mini's id less `0x4000` (the Alliance Army Regiment, name
+/// `0x2441`, mini 17473, takes 2301: A0 TAC-03-C012).
+const TACTICAL_CONTENT_ICONS: [(u16, u32); 79] = [
+    (0x840, 2234),
+    (0x841, 2241),
+    (0x842, 2230),
+    (0x843, 2255),
+    (0x850, 2229),
+    (0x880, 2214),
+    (0x881, 2260),
+    (0xa40, 2201),
+    (0xa41, 2204),
+    (0xa42, 2205),
+    (0xa43, 2206),
+    (0xa44, 2210),
+    (0xa45, 2231),
+    (0xa46, 2250),
+    (0xa47, 2202),
+    (0xa48, 2212),
+    (0xa49, 2217),
+    (0xa4a, 2249),
+    (0xa4b, 2209),
+    (0xa4c, 2220),
+    (0xa4d, 2225),
+    (0xa4e, 2235),
+    (0xa4f, 2237),
+    (0xa50, 2245),
+    (0xa51, 2254),
+    (0xa52, 2256),
+    (0xa53, 2263),
+    (0xa54, 2264),
+    (0xa55, 2223),
+    (0xa56, 2203),
+    (0xa57, 2248),
+    (0xa58, 2243),
+    (0xa59, 2232),
+    (0xa80, 2222),
+    (0xa81, 2244),
+    (0xa82, 2247),
+    (0xa83, 2261),
+    (0xa84, 2266),
+    (0xa85, 2207),
+    (0xa86, 2211),
+    (0xa87, 2215),
+    (0xa88, 2216),
+    (0xa89, 2219),
+    (0xa8a, 2218),
+    (0xa8b, 2226),
+    (0xa8c, 2236),
+    (0xa8d, 2239),
+    (0xa8e, 2242),
+    (0xa8f, 2246),
+    (0xa90, 2253),
+    (0xa91, 2258),
+    (0xa92, 2265),
+    (0xa93, 2208),
+    (0xa94, 2257),
+    (0xa95, 2228),
+    (0xa96, 2251),
+    (0xa97, 2240),
+    (0xa98, 2221),
+    (0xa99, 2233),
+    (0xa9a, 2227),
+    (0xa9b, 2262),
+    (0x540, 2308),
+    (0x541, 2309),
+    (0x542, 2318),
+    (0x543, 2302),
+    (0x580, 2313),
+    (0x581, 2305),
+    (0x582, 2303),
+    (0x583, 2312),
+    (0x441, 2301),
+    (0x440, 2310),
+    (0x442, 2314),
+    (0x443, 2316),
+    (0x444, 2311),
+    (0x480, 2317),
+    (0x481, 2307),
+    (0x482, 2306),
+    (0x483, 2315),
+    (0x484, 2304),
+];
+
+/// The contents list's icon for a unit with STRATEGY mini `mini`.
+#[must_use]
+pub fn tactical_content_icon(mini: u32) -> Option<u32> {
+    let key = u16::try_from(mini.checked_sub(0x4000)?).ok()?;
+    TACTICAL_CONTENT_ICONS
+        .iter()
+        .find(|(each, _)| *each == key)
+        .map(|&(_, icon)| icon)
+}
+
+/// The selected ship's contents list (`FUN_005e4a30`): 124 by 45 at panel
+/// (13, 126), 32-pixel cells (A0 VM a0-vm/coruscant-676/05: icons from
+/// (495, 154) every 32 pixels, the fourth clipped at x 619).
+const CONTENTS_LIST: NativeRect = NativeRect::new(495.0, 154.0, 124.0, 45.0);
+const CONTENTS_CELL: f32 = 32.0;
+/// Its scroll bar's row (`FUN_0060a560` with TACTICAL 1350's set): the
+/// arrows 1351 / 1352 at x 495 and 1353 / 1354 at x 599, 20 wide, the
+/// thumb 1355, 1356 and 1357 on the track between (A0 VM coruscant-676/05).
+const CONTENTS_BAR_Y: f32 = 189.0;
+const CONTENTS_BAR: NativeRect = NativeRect::new(495.0, 187.0, 124.0, 12.0);
+const CONTENTS_LEFT_ARROW: NativeRect = NativeRect::new(495.0, 189.0, 20.0, 8.0);
+const CONTENTS_RIGHT_ARROW: NativeRect = NativeRect::new(599.0, 189.0, 20.0, 8.0);
+const CONTENTS_TRACK: (f32, f32) = (515.0, 84.0);
+
+/// The list's content width and how far it scrolls.
+fn contents_extent(count: usize) -> (f32, f32) {
+    let content = count as f32 * CONTENTS_CELL;
+    (content, (content - CONTENTS_LIST.width).max(0.0))
+}
+
+/// The thumb's left edge and width: the track times the shown share of the
+/// list (A0 VM coruscant-676/05: four icons, 128 wide, give 81 of 84).
+fn contents_thumb(count: usize, scroll: f32) -> Option<(f32, f32)> {
+    let (content, range) = contents_extent(count);
+    if range <= 0.0 {
+        return None;
+    }
+    let (track_x, track) = CONTENTS_TRACK;
+    let width = (track * CONTENTS_LIST.width / content).floor();
+    Some((track_x + ((track - width) * scroll / range).round(), width))
+}
+
+/// One ship's contents list, in `FUN_0040b0e0`'s order, each unit with
+/// its STRATEGY mini.
+fn ship_contents_of(
+    world: &GameWorld,
+    cargo: &crate::fleet_window::ShipCargo,
+) -> Vec<TacticalShipContent> {
+    let characters = cargo.characters.iter().filter_map(|&key| {
+        let character = world
+            .characters
+            .get(key)
+            .filter(|character| !character.is_killed)?;
+        Some(TacticalShipContent {
+            label: character.name.clone(),
+            resource_id: tactical_character_content_resource(character.dat_id, character.is_major)?,
+        })
+    });
+    let special_forces = cargo.special_forces.iter().filter_map(|&key| {
+        let (resource_id, label) =
+            crate::system_window::special_force_mini(world.special_forces.get(key)?.class_dat_id)?;
+        Some(TacticalShipContent {
+            label: label.to_owned(),
+            resource_id,
+        })
+    });
+    let regiments = cargo.regiments.iter().filter_map(|&key| {
+        let (resource_id, label) =
+            crate::system_window::troop_mini(world.troops.get(key)?.class_dat_id)?;
+        Some(TacticalShipContent {
+            label: label.to_owned(),
+            resource_id,
+        })
+    });
+    characters.chain(special_forces).chain(regiments).collect()
+}
+
+/// The scroll of `ship`'s list: its stored one, or 0 for another ship's.
+fn contents_scroll_of((ship_of, scroll): (Option<usize>, f32), ship: Option<usize>) -> f32 {
+    if ship.is_some() && ship_of == ship {
+        scroll
+    } else {
+        0.0
+    }
+}
+
+/// The list one arrow click away: a cell (`0x20`, the list's step).
+fn scrolled_contents(count: usize, scroll: f32, right: bool) -> f32 {
+    let (_, range) = contents_extent(count);
+    let step = if right { CONTENTS_CELL } else { -CONTENTS_CELL };
+    (scroll + step).clamp(0.0, range)
+}
+
+/// The selected ship's contents list (`FUN_005e4a30`): each unit's icon
+/// in its cell, clipped to the list, and the scroll bar once they
+/// overflow it.
+fn draw_tactical_contents(
+    cache: &mut BmpCache,
+    canvas: TacticalCanvas,
+    contents: &[TacticalShipContent],
+    scroll: f32,
+) {
+    let list = CONTENTS_LIST;
+    let (left, top) = canvas.point(list.x, list.y);
+    set_tactical_aperture_clip(Some(NativeRect::new(
+        left,
+        top,
+        list.width * canvas.scale,
+        CONTENTS_CELL * canvas.scale,
+    )));
+    for (index, content) in contents.iter().enumerate() {
+        if let Some(icon) = tactical_content_icon(content.resource_id) {
+            draw_tactical_bitmap(
+                cache,
+                icon,
+                canvas,
+                list.x + index as f32 * CONTENTS_CELL - scroll,
+                list.y,
+            );
+        }
+    }
+    set_tactical_aperture_clip(None);
+    let Some((thumb_x, thumb_width)) = contents_thumb(contents.len(), scroll) else {
+        return;
+    };
+    // The bar's window is black under its arrows and thumb (A0 VM
+    // coruscant-676/05: rows 187..198 from x 495 to 618, and the track
+    // the thumb leaves).
+    let (bar_x, bar_y) = canvas.point(CONTENTS_BAR.x, CONTENTS_BAR.y);
+    draw_rectangle(
+        bar_x,
+        bar_y,
+        CONTENTS_BAR.width * canvas.scale,
+        CONTENTS_BAR.height * canvas.scale,
+        BLACK,
+    );
+    let (mouse_x, mouse_y) = mouse_position();
+    let (x, y) = canvas.logical_pointer(mouse_x, mouse_y);
+    let held = |arrow: NativeRect| is_mouse_button_down(MouseButton::Left) && arrow.contains(x, y);
+    for (arrow, normal) in [(CONTENTS_LEFT_ARROW, 1351), (CONTENTS_RIGHT_ARROW, 1353)] {
+        let id = if held(arrow) { normal + 1 } else { normal };
+        draw_tactical_bitmap(cache, id, canvas, arrow.x, arrow.y);
+    }
+    // The thumb: its left cap, the middle tiled from 4 pixels in, and the
+    // right cap on its last 5 (A0 VM coruscant-676/05: 1355 at 515, 1356
+    // from 519, 1357 at 591 for an 81-wide thumb).
+    let right_cap = thumb_x + thumb_width - 5.0;
+    let (clip_x, clip_y) = canvas.point(thumb_x + 4.0, CONTENTS_BAR_Y);
+    set_tactical_aperture_clip(Some(NativeRect::new(
+        clip_x,
+        clip_y,
+        (right_cap - thumb_x - 4.0).max(0.0) * canvas.scale,
+        8.0 * canvas.scale,
+    )));
+    let mut tile = thumb_x + 4.0;
+    while tile < right_cap {
+        draw_tactical_bitmap(cache, 1356, canvas, tile, CONTENTS_BAR_Y);
+        tile += 10.0;
+    }
+    set_tactical_aperture_clip(None);
+    draw_tactical_bitmap(cache, 1355, canvas, thumb_x, CONTENTS_BAR_Y);
+    draw_tactical_bitmap(cache, 1357, canvas, right_cap, CONTENTS_BAR_Y);
 }
 
 /// Right-hand panel while the display (not an order panel) is up: the
@@ -4500,8 +4835,21 @@ fn prewarm_tactical_font_atlas(
         (18.0 * canvas.scale) as u16,
     ]);
     sizes.sort_unstable();
+    // The battle windows' texts raster at their own sizes in both faces
+    // (`battle_window_text_params`); key them apart from the others.
+    let window_sizes = [
+        BATTLE_WINDOW_FONT_B,
+        BATTLE_WINDOW_FONT_6,
+        BATTLE_WINDOW_FONT_4,
+        BATTLE_RESULT_NAME_FONT,
+    ]
+    .map(|em| battle_window_text_params(canvas, em, WHITE).font_size);
+    let window_key = |size: u16| u16::MAX / 2 + size;
     if sizes.iter().all(|size| warmed_sizes.contains(size))
         && warmed_sizes.contains(&(u16::MAX - tactical_text_font_size(canvas)))
+        && window_sizes
+            .iter()
+            .all(|&size| warmed_sizes.contains(&window_key(size)))
     {
         return;
     }
@@ -4551,6 +4899,13 @@ fn prewarm_tactical_font_atlas(
                 panel_size,
                 em / TACTICAL_FONT_RASTER,
             );
+        }
+    }
+    for size in window_sizes {
+        if warmed_sizes.insert(window_key(size)) {
+            for font in [tactical_arial(), tactical_arial_bold()] {
+                measure_text(&sample, font.as_ref(), size, 1.0);
+            }
         }
     }
 }
@@ -5202,6 +5557,7 @@ fn draw_original_tactical_hud(
     death_star: Option<TacticalDeathStar>,
     death_star_laser_pressed: bool,
     death_star_targeting: bool,
+    contents_scroll: f32,
 ) {
     use resources::tactical as art;
 
@@ -5415,20 +5771,12 @@ fn draw_original_tactical_hud(
                     );
                 }
             }
-            // TACTICAL 1302 reserves the two blue apertures below the hull
-            // portrait for the selected capital ship's personnel and troops.
-            // GOKRES supplies the original compact 61x25 assignment images.
-            for (index, content) in groups.selected_ship_contents.iter().take(2).enumerate() {
-                draw_original_bitmap(
-                    cache,
-                    DllSource::Gokres,
-                    content.resource_id,
-                    canvas,
-                    492.0 + index as f32 * 63.0,
-                    156.0,
-                    None,
-                );
-            }
+            draw_tactical_contents(
+                cache,
+                canvas,
+                groups.selected_ship_contents,
+                contents_scroll,
+            );
             // A0 TAC-03-C016: capitals from row 37 at x 508, the caption
             // from row 82, the orders from rows 212 and 223 at x 497.
             draw_tactical_panel_text(canvas, name, 508.0, 37.0, TACTICAL_FONT_8);
@@ -5475,7 +5823,7 @@ fn draw_original_tactical_hud(
             );
             draw_tactical_panel_text(
                 canvas,
-                groups.selected_order.label(),
+                &groups.fighter_orders_line(),
                 503.0,
                 50.0,
                 TACTICAL_FONT_8,
@@ -6134,6 +6482,24 @@ fn handle_original_tactical_controls(
         };
         // A side-panel button acts on its release over it (the original's
         // buttons notify on WM_LBUTTONUP); the HUD's act on the press.
+        if pressed && state.command_panel == TacticalCommandPanel::Display {
+            if let Some(session) = state.session.as_ref() {
+                let hud = TacticalGroupHud::from_session(session);
+                let count = hud.selected_ship_contents.len();
+                let scroll = contents_scroll_of(state.contents_scroll, hud.selected_ship_index);
+                let arrow = [(CONTENTS_LEFT_ARROW, false), (CONTENTS_RIGHT_ARROW, true)]
+                    .into_iter()
+                    .find(|(rect, _)| rect.contains(x, y))
+                    .map(|(_, right)| right);
+                if let (Some(right), Some(_)) = (arrow, contents_thumb(count, scroll)) {
+                    state.contents_scroll = (
+                        hud.selected_ship_index,
+                        scrolled_contents(count, scroll, right),
+                    );
+                    return TacticalAction::None;
+                }
+            }
+        }
         if pressed {
             if let Some(control) = command_control {
                 state.command_control_pressed = Some(control);
@@ -7061,10 +7427,13 @@ fn battle_window_text_params(
     size: f32,
     color: Color,
 ) -> TextParams<'static> {
+    // Rastered at its own size: a 10 px raster scaled up blurred the
+    // windows' texts and dimmed their pure colour (A0 TAC-07-C012 draws
+    // the destination page's lines in solid (255, 0, 0)).
     TextParams {
         font: None,
-        font_size: tactical_text_font_size(canvas),
-        font_scale: size / TACTICAL_FONT_RASTER,
+        font_size: (size * canvas.scale).round().max(1.0) as u16,
+        font_scale: 1.0,
         font_scale_aspect: TACTICAL_STATUS_ASPECT,
         color,
         ..Default::default()
@@ -10294,6 +10663,7 @@ fn draw_tactical_frame(
             death_star,
             state.death_star_laser_pressed,
             state.death_star_targeting,
+            contents_scroll_of(state.contents_scroll, groups.selected_ship_index),
         );
         // A0 TAC-01-C003/C002: "Battle Paused", capitals from row 33 at
         // x 22, pure red for the Alliance and pure green for the Empire;
@@ -17192,6 +17562,166 @@ mod tests {
         assert_eq!(line(&session), "Navigating");
         session.ships[0].subsystem_capacity.engines = false;
         assert_eq!(line(&session), "Disabled");
+    }
+
+    // FUN_005e4b40 / FUN_005e16a0: order code 1 (the mover's +0x68) keeps
+    // "Escort" before the escorted ship's name; a squadron's line follows
+    // its route and target as a ship's does, with no speed test.
+    #[test]
+    fn an_escort_names_its_ship_and_a_squadron_its_route_or_target() {
+        let mut escort = test_ship(1, 0, true, true);
+        escort.order = TacticalOrder::Escort;
+        escort.escort_target = Some(1);
+        let mut carrier = test_ship(3, 0, true, true);
+        carrier.name = "Nebulon-B Frigate 1".to_owned();
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.name = "Swift".to_owned();
+        let mut session = test_session(
+            vec![escort, carrier, enemy],
+            vec![test_fighter(5, true)],
+            true,
+        );
+        select_clicked_ship(&mut session, 0, false);
+        assert_eq!(
+            TacticalGroupHud::from_session(&session).panel_orders_line(),
+            "Escort Nebulon-B Frigate 1"
+        );
+        fn fighter(session: &BattleSession) -> Option<TacticalShipActivity<'_>> {
+            TacticalShipActivity::of_fighter(session, 0)
+        }
+        assert_eq!(fighter(&session), None);
+        session.fighters[0].attack_target = Some(TacticalAttackTarget::CapitalShip(2));
+        assert_eq!(
+            fighter(&session).map(TacticalShipActivity::line).as_deref(),
+            Some("Attacking Swift")
+        );
+        session.fighters[0].order = TacticalOrder::Escort;
+        session.fighters[0].escort_target = Some(1);
+        assert_eq!(
+            fighter(&session).map(TacticalShipActivity::line).as_deref(),
+            Some("Escort Nebulon-B Frigate 1")
+        );
+        session.fighters[0].navigation_route = vec![at(1.0, 0.0, 0.0)];
+        session.fighters[0].sublight_engine_power = 0.0;
+        assert_eq!(fighter(&session), Some(TacticalShipActivity::Navigating));
+    }
+
+    // FUN_00597610 / FUN_005975d0: the icon of a unit's name id less 0x2000,
+    // its mini less 0x4000. A0 TAC-03-C012: the Alliance Army Regiment
+    // (mini 17473) is 2301; A0 VM coruscant-676/05: the Stormtrooper
+    // Regiment (17536) 2317 and the character with icon 2240 (key 0xa97).
+    #[test]
+    fn a_units_contents_icon_follows_its_mini() {
+        assert_eq!(tactical_content_icon(17_473), Some(2301));
+        assert_eq!(tactical_content_icon(17_536), Some(2317));
+        assert_eq!(tactical_content_icon(0x4000 + 0xa97), Some(2240));
+        assert_eq!(tactical_content_icon(0x4000 + 0x840), Some(2234));
+        assert_eq!(tactical_content_icon(0x4000 + 0x445), None);
+        assert_eq!(tactical_content_icon(0x3fff), None);
+        assert_eq!(TACTICAL_CONTENT_ICONS.len(), 79);
+    }
+
+    // FUN_0040b0e0: a ship's characters, then its special forces, then its
+    // regiments (A0 VM coruscant-676/05: the character before the
+    // Stormtroopers); a killed character is not aboard.
+    #[test]
+    fn a_ships_contents_list_its_characters_then_forces_then_regiments() {
+        use rebellion_core::world::{Character, SpecialForceUnit, TroopUnit};
+        let mut world = GameWorld::default();
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: DatId::new(0x1000_0002),
+            is_alliance: true,
+            regiment_strength: 1,
+        });
+        let force = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        let mothma = world.characters.insert(Character {
+            name: "Mon Mothma".into(),
+            dat_id: DatId::new(0x240),
+            is_major: true,
+            ..Default::default()
+        });
+        let dead = world.characters.insert(Character {
+            name: "Gone".into(),
+            dat_id: DatId::new(0x241),
+            is_major: true,
+            is_killed: true,
+            ..Default::default()
+        });
+        let cargo = crate::fleet_window::ShipCargo {
+            characters: vec![dead, mothma],
+            special_forces: vec![force],
+            regiments: vec![troop],
+            squadrons: 0,
+        };
+        let contents = ship_contents_of(&world, &cargo);
+        assert_eq!(
+            contents
+                .iter()
+                .map(|content| (content.label.as_str(), content.resource_id))
+                .collect::<Vec<_>>(),
+            [
+                ("Mon Mothma", 0x4840),
+                ("Guerrillas", 17_728),
+                ("Alliance Army Regiment", 17_473),
+            ]
+        );
+        assert_eq!(
+            contents
+                .iter()
+                .map(|content| tactical_content_icon(content.resource_id))
+                .collect::<Vec<_>>(),
+            [Some(2234), Some(2308), Some(2301)]
+        );
+    }
+
+    // A0 VM coruscant-676/05: three icons fit the 124-wide list, four
+    // overflow it, and the 84-wide track's thumb is then 81 wide at 515; a
+    // click moves a cell, clamped to the 4 pixels the list overflows.
+    #[test]
+    fn the_contents_bar_shows_once_the_icons_overflow_the_list() {
+        assert_eq!(contents_thumb(3, 0.0), None);
+        assert_eq!(contents_thumb(4, 0.0), Some((515.0, 81.0)));
+        assert_eq!(contents_thumb(4, 4.0), Some((518.0, 81.0)));
+        assert_eq!(contents_thumb(8, 0.0), Some((515.0, 40.0)));
+        assert_eq!(contents_thumb(8, 132.0), Some((559.0, 40.0)));
+        assert_eq!(scrolled_contents(4, 0.0, true), 4.0);
+        assert_eq!(scrolled_contents(4, 4.0, false), 0.0);
+        assert_eq!(scrolled_contents(8, 32.0, true), 64.0);
+        assert_eq!(scrolled_contents(8, 0.0, false), 0.0);
+        assert_eq!(contents_scroll_of((Some(1), 32.0), Some(1)), 32.0);
+        assert_eq!(contents_scroll_of((Some(1), 32.0), Some(2)), 0.0);
+        assert_eq!(contents_scroll_of((None, 32.0), None), 0.0);
+    }
+
+    // FUN_005e16a0: the fighter panel's line names the squadron's target.
+    #[test]
+    fn the_fighter_panel_line_names_the_squadrons_target() {
+        let mut enemy = test_ship(2, 0, false, true);
+        enemy.name = "Swift".to_owned();
+        let mut session = test_session(vec![enemy], vec![test_fighter(5, true)], true);
+        session.fighters[0].selected = true;
+        session.fighters[0].fighter_group = 0;
+        session.fighters[0].order = TacticalOrder::AttackCapitalShips;
+        session.selected_fighter_group = Some(0);
+        let line = |session: &BattleSession| TacticalGroupHud::from_session(session).fighter_orders_line();
+        assert_eq!(line(&session), "Attack Capital Ships");
+        session.fighters[0].attack_target = Some(TacticalAttackTarget::CapitalShip(0));
+        assert_eq!(line(&session), "Attacking Swift");
+    }
+
+    // Each battle-window text rasters at its own size on the canvas.
+    #[test]
+    fn a_battle_window_text_rasters_at_its_size() {
+        let canvas = TacticalCanvas { x: 0.0, y: 0.0, scale: 2.0 };
+        let params = battle_window_text_params(canvas, BATTLE_WINDOW_FONT_6, RED);
+        assert_eq!((params.font_size, params.font_scale), (33, 1.0));
+        assert_eq!(params.font_scale_aspect, TACTICAL_STATUS_ASPECT);
+        assert_eq!(params.color, RED);
     }
 
     // FUN_0051c9b0: the panel shows the clicked unit of a selection across

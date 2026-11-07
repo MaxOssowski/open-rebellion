@@ -956,7 +956,8 @@ const TACTICAL_FIRST_PIXEL_KEYED = new Set([1001, 1004, 1005, 1006, 1007, 1008, 
   ...Array.from({ length: 12 }, (_, i) => 1012 + i), 1034, 1035, 1058,
   ...Array.from({ length: 8 }, (_, i) => 1101 + i), ...Array.from({ length: 6 }, (_, i) => 1113 + i),
   ...Array.from({ length: 10 }, (_, i) => 1133 + i), ...Array.from({ length: 10 }, (_, i) => 1149 + i),
-  ...Array.from({ length: 26 }, (_, i) => 1170 + i), ...Array.from({ length: 25 }, (_, i) => 1201 + i)]);
+  ...Array.from({ length: 26 }, (_, i) => 1170 + i), ...Array.from({ length: 25 }, (_, i) => 1201 + i),
+  1351, 1352, 1353, 1354, ...Array.from({ length: 118 }, (_, i) => 2201 + i)]);
 const TACTICAL_BACKDROP_UNDER_KEY = (id) => id >= 1001 && id <= 1020;
 // The subsystem icons 1201..1225 show in the battle's palette (TACTICAL
 // 5531..5557): entries 140 and 146 are (230, 0, 0) and (255, 230, 60) there,
@@ -2206,10 +2207,63 @@ async function probeTacticalDetailEscortPresentation(
   assert.ok(selected, "detail fixture omitted its selected command hull");
   assert.ok(selected.contents.length > 0,
     "selected command hull omitted its assigned personnel contents");
+  // FUN_005e4a30's list: each unit's FUN_00597610 icon from (495, 154)
+  // every 32 pixels, the character first, then its regiments
+  // (FUN_0040b0e0); four overflow the 124-wide list into its bar (A0 VM
+  // a0-vm/coruscant-676/05: arrows 1351 at 495 and 1353 at 599, the thumb
+  // 1355 at 515 and 1357 at 591).
   const content = selected.contents[0];
-  const contentProof = verifyGokresBitmap(
-    viewport, stable.bytes, content.resource_id, 492, 156,
-  );
+  assert.equal(selected.contents.length, 4, JSON.stringify(selected.contents));
+  assert.ok(selected.contents.every(({ icon_id: icon }) => icon), JSON.stringify(selected.contents));
+  const contentProof = selected.contents.slice(0, 3).map((each, index) =>
+    verifyTacticalBitmap(viewport, stable.bytes, each.icon_id, 495 + index * 32, 154));
+  const barProof = [[1351, 495], [1353, 599], [1355, 515], [1357, 591]].map(([id, x]) =>
+    verifyTacticalBitmap(viewport, stable.bytes, id, x, 189));
+  // Against the VM's Imperial Star Destroyer (a0-vm/coruscant-676/05),
+  // whose list holds a character and Stormtrooper Regiments like the
+  // Empire fixture's: the three regiment cells and the bar, every pixel.
+  const contentsA0 = path.join(root, ".artifacts/a0-vm/coruscant-676/05-tf1-selected.png");
+  if (ready.faction === "empire" && viewport.width === 640 && viewport.height === 480
+    && viewport.device_scale_factor === 1 && fs.existsSync(contentsA0)) {
+    const a0 = PNG.sync.read(fs.readFileSync(contentsA0));
+    const port = PNG.sync.read(stable.bytes);
+    const differ = (x0, y0, x1, y1) => {
+      let count = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * 640 + x) * 4;
+        // The icons' entries 160..245 are (238, 142, 142) in their own
+        // palette. The VM's 8-bit screen shows the Stormtroopers' entry 199
+        // as (194, 158, 149), the nearest colour in 23 of the 27 battle
+        // palettes (their entry 112): the list's icons are colour-matched
+        // to the battle palette, not copied by index as the HUD's buttons
+        // are. Wine (A0 TAC-03-C012) keeps the bitmap's own colour; the
+        // port does too.
+        if (port.data[i] === 238 && port.data[i + 1] === 142 && port.data[i + 2] === 142) continue;
+        if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) count++;
+      }
+      return count;
+    };
+    const offA0 = { regiments: differ(527, 154, 619, 186), bar: differ(495, 186, 620, 199) };
+    barProof.push({ type: "contents-a0", ...offA0 });
+    assert.deepEqual(offA0, { regiments: 0, bar: 0 }, JSON.stringify(offA0));
+  }
+  // The right arrow scrolls a cell, here the 4 pixels the list overflows:
+  // the icons move 4 left and the thumb to 518.
+  {
+    const scale = Math.min(viewport.width / 640, viewport.height / 480);
+    const left = (viewport.width - 640 * scale) / 2;
+    const top = (viewport.height - 480 * scale) / 2;
+    await page.mouse.click(left + 609 * scale, top + 193 * scale);
+    await page.waitForTimeout(300);
+    const scrolled = await stableInteractionFrame(page, folder, "contents-scrolled");
+    barProof.push(verifyTacticalBitmap(viewport, scrolled, 1355, 518, 189));
+    contentProof.push(verifyTacticalBitmap(
+      viewport, scrolled, selected.contents[1].icon_id, 523, 154));
+    await page.mouse.click(left + 505 * scale, top + 193 * scale);
+    await page.waitForTimeout(300);
+    barProof.push(verifyTacticalBitmap(
+      viewport, await stableInteractionFrame(page, folder, "contents-scrolled-back"), 1355, 515, 189));
+  }
 
   const destroyed = ready.effects.find(({ resource_base: resourceBase }) => resourceBase === 3360);
   assert.ok(destroyed, "detail fixture omitted the source destroyed sequence");
@@ -2266,6 +2320,11 @@ async function probeTacticalDetailEscortPresentation(
     "direct friendly right-click did not enter source order code 1");
   assert.notEqual(sha256(assigned), sha256(stable.bytes),
     "Escort assignment produced no stable framebuffer transition");
+  // FUN_005e4b40: order code 1 keeps "Escort" before the escorted ship's
+  // name (the mover's +0x68, as FUN_005e16a0 switches on it).
+  const escortOrders = consoleLines.map(({ text }) => text.match(/\[tactical_panel\] orders_line=(.*)$/))
+    .filter(Boolean).map((match) => match[1]);
+  assert.match(escortOrders.at(-1) ?? "", /^Escort \S/, JSON.stringify(escortOrders));
 
   const before = PNG.sync.read(stable.bytes);
   const after = PNG.sync.read(assigned);
@@ -2293,10 +2352,14 @@ async function probeTacticalDetailEscortPresentation(
     effect: destroyed,
     screenshot_sha256: sha256(stable.bytes),
   }, {
+    type: "escort-orders-line",
+    orders_line: escortOrders.at(-1),
+  }, {
     type: "source-bitmap-selected-hull-contents",
     panel_resource: 1302,
     label: content.label,
     bitmap: contentProof,
+    bar: barProof,
   }, {
     type: "source-order-escort",
     executable_functions: ["FUN_005ca6d0", "FUN_005d0af0", "FUN_005cf910"],
@@ -3926,6 +3989,24 @@ async function probeTacticalBattleResultsPresentation(
     const buttonsA0 = { system: differ(29), fleet: differ(229) };
     probes.push({ type: "battle-results-destinations-a0", ...buttonsA0 });
     assert.deepEqual(buttonsA0, { system: 0, fleet: 0 }, JSON.stringify(buttonsA0));
+  }
+
+  // The page's texts are solid in the viewer's colour (FUN_0044f860: 0xff
+  // or 0xff00): A0 TAC-07-C012 draws 2,162 pure (255, 0, 0) pixels in its
+  // instruction lines. A 10 px raster scaled up blurred them to at most 191.
+  if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1) {
+    const port = PNG.sync.read(capture);
+    const pure = alliance ? [255, 0, 0] : [0, 255, 0];
+    const [left, top] = [85 + dx, 74 + dy];
+    let solid = 0;
+    for (let y = top + 130; y < top + 175; y++) {
+      for (let x = left + 24; x < left + 352; x++) {
+        const i = (y * 640 + x) * 4;
+        if (port.data[i] === pure[0] && port.data[i + 1] === pure[1] && port.data[i + 2] === pure[2]) solid++;
+      }
+    }
+    probes.push({ type: "battle-results-instruction-solid", solid });
+    assert.ok(solid >= 200, `the instruction lines hold ${solid} solid pixels`);
   }
 
   const destination = alliance ? point(198.5 + dx, 304 + dy) : point(398.5 + dx, 304 + dy);
@@ -6017,7 +6098,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           if (!scenario.battle_results_presentation && !scenario.tactical_audio_presentation
             && !simulatedRoute) {
           // A0 TAC-01-C003's battle has a Medium Transport and a Victory.
-          const participantFamilies = scenario.hull_scale_presentation ? [2070, 2550] : [2010, 2510];
+          // The contents fixture takes each side's first class with room for
+          // three regiments (CAPSHPSD 7 and 20).
+          const participantFamilies = scenario.hull_scale_presentation ? [2070, 2550]
+            : scenario.detail_escort_presentation ? [2080, 2560] : [2010, 2510];
           assert.equal(participantFamilyLogs.length, 2,
             "production participants did not load exactly two source families");
           assert.deepEqual(participantFamilyLogs.map(({ text }) => {

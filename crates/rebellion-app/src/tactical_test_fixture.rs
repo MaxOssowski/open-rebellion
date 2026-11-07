@@ -2,9 +2,11 @@
 
 use rebellion_core::ids::{CapitalShipKey, FighterKey, SystemKey};
 use rebellion_core::missions::MissionFaction;
+use rebellion_core::troop_transport::TroopTransportState;
 use rebellion_core::world::{FighterEntry, Fleet, GameWorld, ShipInstance};
 use rebellion_render::tactical_view::{
-    tactical_character_content_resource, TacticalAttackTarget, TacticalUnitRef, WeaponKind,
+    tactical_character_content_resource, tactical_content_icon, TacticalAttackTarget,
+    TacticalUnitRef, WeaponKind,
 };
 #[cfg(feature = "interface-test-fixtures")]
 use rebellion_render::TacticalLodView;
@@ -437,6 +439,7 @@ pub(crate) fn requested() -> Option<TacticalFixtureRequest> {
 pub(crate) fn apply(
     request: TacticalFixtureRequest,
     world: &mut GameWorld,
+    troop_transport: &mut TroopTransportState,
     tactical: &mut TacticalState,
     cooldowns: &mut std::collections::HashMap<SystemKey, u64>,
     messages: &mut MessageLog,
@@ -482,6 +485,7 @@ pub(crate) fn apply(
                 && !class.is_empire
                 && class.hull > 0
                 && (!request.hull_scale_presentation || class.name.contains("Medium Transport"))
+                && (!request.detail_escort_presentation || class.troop_capacity >= 3)
                 && (!request.battle_options_presentation || class.hyperdrive > 0)
                 && (!(request.command_execution_presentation
                     || request.command_progression_presentation
@@ -499,6 +503,7 @@ pub(crate) fn apply(
                 && !class.is_alliance
                 && class.hull > 0
                 && (!request.hull_scale_presentation || class.name.contains("Victory"))
+                && (!request.detail_escort_presentation || class.troop_capacity >= 3)
                 && (!request.battle_options_presentation || class.hyperdrive > 0)
                 && (!(request.command_execution_presentation
                     || request.command_progression_presentation
@@ -642,9 +647,35 @@ pub(crate) fn apply(
             })
             .map(|(key, _)| key)
             .ok_or("no unassigned faction character for tactical contents fixture")?;
+        // Number the player's hulls as the game does (`last_ship_id`): the
+        // character rides on the first numbered one (`ship_cargo`).
+        for index in 0..world.fleets[player_fleet].capital_ships.len() {
+            world.last_ship_id += 1;
+            world.fleets[player_fleet].capital_ships[index].id = world.last_ship_id;
+        }
         world.fleets[player_fleet].characters.push(character);
         world.characters[character].current_fleet = Some(player_fleet);
         world.characters[character].current_system = None;
+        // Three of the side's regiments aboard, as A0 TAC-03-C012's
+        // transport carries Alliance Army Regiments and the Empire's
+        // Coruscant battle (a0-vm/coruscant-676/05) a character and three
+        // Stormtrooper Regiments, which overflow the list into its bar.
+        let class = rebellion_core::ids::DatId::new(if player_is_alliance {
+            0x1000_0002
+        } else {
+            0x1000_0006
+        });
+        let troops = [0, 1, 2].map(|_| {
+            world.troops.insert(rebellion_core::world::TroopUnit {
+                class_dat_id: class,
+                is_alliance: player_is_alliance,
+                regiment_strength: 1,
+            })
+        });
+        world.systems[system].ground_units.extend(troops);
+        troop_transport
+            .embark(world, player_fleet, &troops)
+            .map_err(|error| format!("contents fixture regiments: {error}"))?;
     }
     world.systems[system].fleets.extend([attacker, defender]);
     // The Empire's alert system holds Tralus's assets as A0
@@ -690,6 +721,7 @@ pub(crate) fn apply(
     let player_is_attacker = request.faction == CockpitFaction::Alliance;
     tactical_flow::begin_player_battle(
         world,
+        troop_transport,
         BattleEntry {
             system,
             attacker,
@@ -952,6 +984,7 @@ struct FixtureSelectedShip<'a> {
 struct FixtureShipContent<'a> {
     label: &'a str,
     resource_id: u32,
+    icon_id: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -1314,6 +1347,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
                 .map(|content| FixtureShipContent {
                     label: content.label.as_str(),
                     resource_id: content.resource_id,
+                    icon_id: tactical_content_icon(content.resource_id),
                 })
                 .collect(),
         })

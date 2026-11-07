@@ -2153,6 +2153,13 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 1149..=1158
                 | 1170..=1195
                 | 1201..=1225
+                // The contents list's bar arrows, keyed on their grey 66
+                // (A0 VM coruscant-676/05 shows the bar's black there),
+                // and its icons (FUN_00597610), keyed on their blue first
+                // pixel: the same capture shows panel 1302's grid through
+                // them.
+                | 1351..=1354
+                | 2201..=2318
         );
     }
     // The command centre's controls (FUN_00427270 makes each a

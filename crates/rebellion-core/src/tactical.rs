@@ -755,16 +755,16 @@ pub struct OriginalTacticalCollisionEnvelope {
     pub planar_diameter: f32,
 }
 
-/// One compact GOKRES-backed entry in the selected ship's contents monitor.
+/// One unit aboard a capital ship, for the selected ship's contents list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TacticalShipContent {
     pub label: String,
+    /// The unit's STRATEGY mini, which keys its contents icon (`FUN_00597610`).
     pub resource_id: u32,
 }
 
-/// Resolve the compact 61x25 GOKRES assignment image used by original system
-/// and tactical contents windows. These are separate from the 80x80 officer
-/// portraits and preserve the executable's major/minor resource bands.
+/// A character's STRATEGY mini, in the executable's major and minor bands;
+/// it keys the character's contents icon.
 #[must_use]
 pub fn tactical_character_content_resource(dat_id: DatId, is_major: bool) -> Option<u32> {
     crate::pictures::character_mini_resource_id(dat_id, is_major)
@@ -5459,7 +5459,6 @@ impl BattleSession {
         fighters: &mut Vec<TacticalFighter>,
     ) {
         let fleet = &world.fleets[fleet_key];
-        let first_fleet_ship = ships.len();
         // Each strategic ship's id and its tactical index, for the squadrons
         // aboard it.
         let mut carried_by = Vec::new();
@@ -5608,27 +5607,9 @@ impl BattleSession {
             });
         }
 
-        // The strategic model currently retains personnel at fleet granularity.
-        // Bind those entries to the fleet's first surviving capital hull, the
-        // deterministic command-ship slot, so the original 1302 contents
-        // monitor never invents a separate replacement panel.
-        if let Some(command_ship) = ships.get_mut(first_fleet_ship) {
-            command_ship
-                .contents
-                .extend(fleet.characters.iter().filter_map(|key| {
-                    let character = world.characters.get(*key)?;
-                    if character.is_killed {
-                        return None;
-                    }
-                    let resource_id =
-                        tactical_character_content_resource(character.dat_id, character.is_major)?;
-                    Some(TacticalShipContent {
-                        label: character.name.clone(),
-                        resource_id,
-                    })
-                }));
-        }
-
+        // The contents lists are seated by the caller from the strategic
+        // cargo (`TacticalState::board_contents`), where the Fleet window
+        // seats them.
         for (fighter_idx, entry) in fleet.fighters.iter().enumerate() {
             let class = &world.fighter_classes[entry.class];
             for squadron_index in 0..entry.count {

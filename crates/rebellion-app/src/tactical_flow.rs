@@ -108,6 +108,7 @@ pub(crate) fn summarize_results(session: &BattleSession) -> BattleReturn {
 /// No state is changed when the request is invalid.
 pub(crate) fn begin_player_battle(
     world: &GameWorld,
+    troop_transport: &TroopTransportState,
     entry: BattleEntry,
     tactical: &mut TacticalState,
     cooldowns: &mut HashMap<SystemKey, u64>,
@@ -152,6 +153,7 @@ pub(crate) fn begin_player_battle(
         entry.tick,
         entry.rng_seed,
     );
+    tactical.board_contents(world, troop_transport);
     cooldowns.insert(entry.system, entry.tick);
     messages.push(GameMessage::at_system(
         entry.tick,
@@ -720,6 +722,7 @@ mod tests {
             let mut mode = GameMode::Galaxy;
             begin_player_battle(
                 &world,
+                &TroopTransportState::default(),
                 BattleEntry {
                     system,
                     attacker,
@@ -768,6 +771,7 @@ mod tests {
         let mut tactical = TacticalState::default();
         begin_player_battle(
             &world,
+            &TroopTransportState::default(),
             BattleEntry {
                 system,
                 attacker,
@@ -1061,6 +1065,7 @@ mod tests {
         let mut mode = GameMode::Galaxy;
         let result = begin_player_battle(
             &world,
+            &TroopTransportState::default(),
             BattleEntry {
                 system,
                 attacker,
@@ -1092,6 +1097,7 @@ mod tests {
 
         let result = begin_player_battle(
             &world,
+            &TroopTransportState::default(),
             BattleEntry {
                 system,
                 attacker,

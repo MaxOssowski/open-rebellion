@@ -13,7 +13,7 @@ use egui_macroquad::egui;
 use rebellion_core::dat::{ExplorationStatus, Faction};
 use rebellion_core::fleet_join;
 use rebellion_core::fog::FogState;
-use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SystemKey, TroopKey};
+use rebellion_core::ids::{CharacterKey, DatId, FleetKey, SpecialForceKey, SystemKey, TroopKey};
 use rebellion_core::missions::{MissionTarget, MissionTargetPick};
 use rebellion_core::movement::MovementState;
 use rebellion_core::troop_transport::TroopTransportState;
@@ -137,54 +137,86 @@ const CONTENT_INDICATORS: [(u8, u32, f32); 3] = [
 /// `fleet2/vjun-fleet5-admiral-ships`: Garm Bel Iblis aboard Fleet 5 marks
 /// Corellian Corvette 2.
 fn ship_contents(world: &GameWorld, transport: &TroopTransportState, fleet: FleetKey) -> Vec<u8> {
+    ship_cargo(world, transport, fleet)
+        .iter()
+        .map(|cargo| {
+            let mut flags = 0;
+            if cargo.squadrons > 0 {
+                flags |= CONTENT_SQUADRONS;
+            }
+            if !cargo.regiments.is_empty() {
+                flags |= CONTENT_REGIMENTS;
+            }
+            if !cargo.characters.is_empty() || !cargo.special_forces.is_empty() {
+                flags |= CONTENT_PERSONNEL;
+            }
+            flags
+        })
+        .collect()
+}
+
+/// What one capital ship carries (see [`ship_contents`] for where the port
+/// seats each unit).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ShipCargo {
+    pub characters: Vec<CharacterKey>,
+    pub special_forces: Vec<SpecialForceKey>,
+    pub regiments: Vec<TroopKey>,
+    pub squadrons: usize,
+}
+
+/// Each capital ship's cargo, by index in `fleet`, seated as
+/// [`ship_contents`] describes.
+pub(crate) fn ship_cargo(
+    world: &GameWorld,
+    transport: &TroopTransportState,
+    fleet: FleetKey,
+) -> Vec<ShipCargo> {
     let Some(value) = world.fleets.get(fleet) else {
         return Vec::new();
     };
-    let mut regiments = transport.carried_count(fleet);
+    let mut regiments = transport.cargo(fleet).iter().copied();
     let mut squadrons: usize = value.fighters.iter().map(|entry| entry.count as usize).sum();
-    let mut contents = value
+    let mut cargo = value
         .capital_ships
         .iter()
         .map(|ship| {
             let Some(class) = world.capital_ship_classes.get(ship.class).filter(|_| ship.alive) else {
-                return 0;
+                return ShipCargo::default();
             };
-            let mut flags = 0;
-            for (left, capacity, flag) in [
-                (&mut regiments, class.troop_capacity, CONTENT_REGIMENTS),
-                (&mut squadrons, class.fighter_capacity, CONTENT_SQUADRONS),
-            ] {
-                let aboard = (*left).min(capacity as usize);
-                if aboard > 0 {
-                    *left -= aboard;
-                    flags |= flag;
-                }
+            let aboard = squadrons.min(class.fighter_capacity as usize);
+            squadrons -= aboard;
+            ShipCargo {
+                regiments: regiments
+                    .by_ref()
+                    .take(class.troop_capacity as usize)
+                    .collect(),
+                squadrons: aboard,
+                ..ShipCargo::default()
             }
-            flags
         })
-        .collect::<Vec<u8>>();
+        .collect::<Vec<_>>();
     let first = value
         .capital_ships
         .iter()
         .position(|ship| ship.id != 0 && ship.alive);
-    let seats = value
-        .characters
-        .iter()
-        .map(|&key| {
-            world
-                .characters
-                .get(key)
-                .and_then(|c| c.ship)
-                .and_then(|id| value.capital_ships.iter().position(|ship| ship.id == id))
-                .or(first)
-        })
-        .chain(value.special_forces.iter().map(|_| first));
-    for index in seats.flatten() {
-        if let Some(flags) = contents.get_mut(index) {
-            *flags |= CONTENT_PERSONNEL;
+    for &key in &value.characters {
+        let seat = world
+            .characters
+            .get(key)
+            .and_then(|c| c.ship)
+            .and_then(|id| value.capital_ships.iter().position(|ship| ship.id == id))
+            .or(first);
+        if let Some(each) = seat.and_then(|index| cargo.get_mut(index)) {
+            each.characters.push(key);
         }
     }
-    contents
+    for &key in &value.special_forces {
+        if let Some(each) = first.and_then(|index| cargo.get_mut(index)) {
+            each.special_forces.push(key);
+        }
+    }
+    cargo
 }
 
 /// Paint `flags`' content indicators into `item` at height `y`.
@@ -4488,6 +4520,42 @@ pub(crate) mod tests {
         );
         world.fleets[fleet].capital_ships[1].alive = false;
         assert_eq!(ship_contents(&world, &transport, fleet), [0, 0, CONTENT_REGIMENTS]);
+    }
+
+    // hyp (as the regiments): squadrons fill the live ships' fighter
+    // capacities in fleet order.
+    #[test]
+    fn squadrons_fill_the_ships_fighter_capacities_in_fleet_order() {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 3);
+        let ship = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.extend([ship.clone(), ship]);
+        for index in 0..3 {
+            let mut class =
+                world.capital_ship_classes[world.fleets[fleet].capital_ships[index].class].clone();
+            class.troop_capacity = 0;
+            class.fighter_capacity = 1;
+            let key = world.capital_ship_classes.insert(class);
+            world.fleets[fleet].capital_ships[index].class = key;
+        }
+        let fighter = world
+            .fighter_classes
+            .insert(rebellion_core::world::FighterClass::default());
+        world.fleets[fleet].fighters = vec![rebellion_core::world::FighterEntry {
+            class: fighter,
+            count: 2,
+            carrier: None,
+        }];
+        let transport = TroopTransportState::default();
+        let squadrons = ship_cargo(&world, &transport, fleet)
+            .iter()
+            .map(|cargo| cargo.squadrons)
+            .collect::<Vec<_>>();
+        assert_eq!(squadrons, [1, 1, 0]);
+        assert_eq!(
+            ship_contents(&world, &transport, fleet),
+            [CONTENT_SQUADRONS, CONTENT_SQUADRONS, 0]
+        );
     }
 
     #[test]

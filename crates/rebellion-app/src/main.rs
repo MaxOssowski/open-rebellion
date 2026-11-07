@@ -1802,6 +1802,7 @@ async fn main() {
         match tactical_test_fixture::apply(
             request,
             &mut world,
+            &mut troop_transport_state,
             &mut tactical_state,
             &mut combat_cooldowns,
             &mut msg_log,
@@ -2906,6 +2907,7 @@ async fn main() {
                     };
                     if let Err(error) = tactical_flow::begin_player_battle(
                         &world,
+                        &troop_transport_state,
                         tactical_flow::BattleEntry {
                             system: sys_key,
                             attacker: atk_fleet,
