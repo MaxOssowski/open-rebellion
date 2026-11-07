@@ -9503,28 +9503,28 @@
         {
           "id": "TAC-04-C006",
           "requirement": "Alliance highlight",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-status-text-highlights/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-side-highlight-boxes-a0/"
           ],
-          "note": "Highlight buttons 1034 placement and off-at-start match A0; the red brackets of A0 TAC-04-C006 are not recorded as compared. 2026-11-07: A0's highlight is the hull's 3D box in pure red, one pixel, hidden behind hulls; the port lit only its 2D fallback markers, so a real battle showed nothing. Ships drawn from meshes now get the box (draw_line_3d in the depth-tested pass); run.mjs production-participants counts the pure red and green pixels on Linux. Still partial: the box is the drawn level of detail's bounds (port:), the original's box source is untraced.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Highlight buttons 1034 placement and off-at-start match A0; the red brackets of A0 TAC-04-C006 are not recorded as compared. 2026-11-07: A0's highlight is the hull's 3D box in pure red, one pixel, hidden behind hulls; the port lit only its 2D fallback markers, so a real battle showed nothing. Ships drawn from meshes now get the box (draw_line_3d in the depth-tested pass); run.mjs production-participants counts the pure red and green pixels on Linux. Still partial: the box is the drawn level of detail's bounds (port:), the original's box source is untraced. 2026-11-07 (b124): the box's source is traced: FUN_005d26c0 builds a wireframe box from GetBox of the family's base + 1 member, red unless side 1, and FUN_0059f4d0 shows it (vt +0xc) for each unit FUN_0059f380 flags; the port boxes the same member's bounds, depth-tested. run.mjs production-participants finds the pure red and green pixels; tactical matrix run 2026-11-07T17-45-20-539Z-731820: 147 of 148, the one failure the trench run's movie request (flaky: it failed before b121 too, and two reruns of that case passed 4 of 4).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-04-C007",
           "requirement": "Empire highlight",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-status-text-highlights/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-lower-hud-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-side-highlight-boxes-a0/"
           ],
-          "note": "Button 1036 placement and blue key match A0; the green brackets of A0 TAC-04-C007 are not recorded as compared. 2026-11-07: as TAC-04-C006 in pure green; A0 also from the Empire game's battle at Corsin (a0-vm/research-display/32). Still partial for the box source.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Button 1036 placement and blue key match A0; the green brackets of A0 TAC-04-C007 are not recorded as compared. 2026-11-07: as TAC-04-C006 in pure green; A0 also from the Empire game's battle at Corsin (a0-vm/research-display/32). Still partial for the box source. 2026-11-07 (b124): as TAC-04-C006, green (0, 1, 0) for side 1; A0 TAC-04-C007 and the Corsin battle (a0-vm/research-display/32) show it; tactical matrix run 2026-11-07T17-45-20-539Z-731820: 147 of 148, the one failure the trench run's movie request (flaky: it failed before b121 too, and two reruns of that case passed 4 of 4).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-04-C008",
