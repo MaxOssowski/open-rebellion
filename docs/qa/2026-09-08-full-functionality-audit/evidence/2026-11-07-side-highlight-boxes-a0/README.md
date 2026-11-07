@@ -14,10 +14,23 @@ Date: 2026-11-07. Cells TAC-04-C006 (Alliance highlight) and TAC-04-C007
   box's edges behind the hull are hidden by it.
 
 The boxes are the hull's 3D box drawn as lines, not 2D brackets.
-`FUN_0059f380` sets `+0x100` on every unit of a lit side each frame
-(`+0x10c` for the Alliance toggle, `+0x110` for the Empire's, which
-`FUN_0059ef40` and `FUN_0059ef20` flip on commands `0x14` and `0x15`). The
-function that draws the box from that flag is not traced.
+
+- `FUN_0059f380` sets `+0x100` on every unit of a lit side each frame:
+  `+0x10c` for the Alliance toggle, `+0x110` for the Empire's.
+  `FUN_0059ef40` and `FUN_0059ef20` flip those on commands `0x14` and
+  `0x15`.
+- `FUN_0059f4d0` then calls `FUN_005c1240`, the hull object's vt `+0xc`
+  (`Class_0066d198_vtc`). That puts the object in state 3 and adds its
+  visual `[0x15]` to its frame.
+- `FUN_005d26c0` builds `[0x15]` when the hull loads. It takes `GetBox`
+  (`+0x40`) of the family's base + 1 member (`[0x12]`, the member the
+  collision envelope comes from) and fills a mesh builder with that box's
+  eight corners. The builder is wireframe (`SetQuality(0x40)`), scaled to
+  max − min and centred on (min + max) × 0.5. `[0x15]` is a mesh made from
+  it, coloured (0, 1, 0) for side 1 (the Empire) and (1, 0, 0) otherwise.
+- The same builder, coloured (1, 1, 0), and a white mesh `[0x16]` serve the
+  object's other states (vt `+0x10`, `+0x14`). They are not compared
+  here.
 
 ## The port
 
@@ -32,8 +45,9 @@ in a real battle, showed nothing.
   drawn mesh's local bounds (`highlight_box_edges`) with `draw_line_3d`.
   The lines come right after the hull, in the same 3D pass, so the depth
   test hides the edges behind hulls drawn before them.
-- port: the box is the drawn level of detail's bounds. The original's box
-  source is untraced.
+- The box is the bounds of the family's base + 1 member's meshes, the same
+  member `FUN_005d26c0` boxes (`family.get(1)`, as the collision envelope).
+  The first build of this change took the drawn level of detail's bounds.
 
 ## Tests
 
@@ -51,4 +65,5 @@ in a real battle, showed nothing.
 ## Runs
 
 Batch b123 (23 of 23 gates), then the whole tactical matrix: 148 of 148
-on Linux Arch Chromium 155 (run `2026-11-07T16-37-47-906Z-577170`).
+on Linux Arch Chromium 155 (run `2026-11-07T16-37-47-906Z-577170`). The
+base + 1 bounds came in b124.

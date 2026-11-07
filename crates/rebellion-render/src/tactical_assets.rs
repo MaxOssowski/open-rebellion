@@ -1010,7 +1010,8 @@ pub(crate) struct TacticalRenderObject {
     /// Empire game's Corsin battle (a0-vm/research-display/32) a pure
     /// green one around each Imperial ship, 1 pixel, its edges hidden
     /// where the hull stands in front (FUN_0059f380 flags each unit of a
-    /// lit side, `+0x100`).
+    /// lit side, `+0x100`; FUN_0059f4d0 then calls the hull's vt `+0xc`,
+    /// which shows the box FUN_005d26c0 built).
     pub highlight: Option<Color>,
 }
 
@@ -1890,11 +1891,15 @@ impl TacticalAssetRenderer {
                 material.set_uniform("MaterialSpecular", chunk.specular);
                 draw_mesh(&chunk.mesh);
             }
-            // The side highlight: the hull's box in lines, depth-tested
-            // with the hulls drawn so far.
+            // The side highlight: FUN_005d26c0 builds a wireframe (0x40)
+            // box from GetBox of the family's base + 1 member (as the
+            // collision envelope), scaled and centred on those bounds, red,
+            // or green for side 1; state 3 (vt +0xc) adds it to the hull's
+            // frame. Lines here, depth-tested with the hulls drawn so far.
             if let Some(color) = object.highlight {
+                let boxed = family.get(1).or_else(|| family.first()).unwrap_or(asset);
                 if let Some(edges) = highlight_box_edges(
-                    asset
+                    boxed
                         .meshes
                         .iter()
                         .flat_map(|chunk| &chunk.mesh.vertices)
