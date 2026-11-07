@@ -891,6 +891,78 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   return probes;
 }
 
+// A squadron button: FUN_0059c030 makes it 25x15, so its bitmap's first 15
+// rows show and the backdrop 1000 fills the last two (A0 TAC-02-C012).
+// Task Force 1's number on its button: A0 TAC-02-C008 (at rest, black) and
+// TAC-03-C001 (selected, white) draw the "1" over rows 5..14 with its stem
+// at x 72. The ink is what differs from the button's bitmap (1005, or 1006
+// selected) by more than 30 in luminance, lighter when selected. The
+// port's face is Liberation Sans, whose "1" has a foot that Arial's lacks
+// and whose stem straddles two columns: the rows within a pixel and the
+// stem (the column with the most ink) within a pixel (the accepted text
+// deviation).
+function verifyTaskForceOneNumber(viewport, screenshotBytes, selected) {
+  if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
+    return { status: "non-native-scale" };
+  }
+  const screenshot = PNG.sync.read(screenshotBytes);
+  const button = decodeIndexedBmp(fs.readFileSync(path.join(
+    root, `data/base/ui/tactical-dll/BMP/${selected ? 1006 : 1005}.bmp`,
+  )));
+  const luminance = ([r, g, b]) => (r * 299 + g * 587 + b * 114) / 1000;
+  let box = null;
+  const columns = new Map();
+  for (let y = 3; y < 18; y++) {
+    for (let x = 64; x < 81; x++) {
+      const offset = (y * screenshot.width + x) * 4;
+      const shown = luminance(Array.from(screenshot.data.subarray(offset, offset + 3)));
+      const under = luminance(button.pixel(x - 60, y - 2));
+      const ink = selected ? shown - under : under - shown;
+      if (ink <= 30) continue;
+      if (y >= 8 && y <= 12) columns.set(x, (columns.get(x) ?? 0) + ink);
+      box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+        : [x, y, x, y];
+    }
+  }
+  const stem = [...columns.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const a0 = { rows: [5, 14], stem: 72 };
+  const ok = box && Math.abs(box[1] - a0.rows[0]) <= 1 && Math.abs(box[3] - a0.rows[1]) <= 1
+    && Math.abs(stem - a0.stem) <= 1;
+  assert.ok(ok, `Task Force 1's ${selected ? "white" : "black"} number ${JSON.stringify({ box, stem })} against A0 ${JSON.stringify(a0)}`);
+  return { status: "a0-rows-and-stem-within-a-pixel", port: { box, stem }, a0 };
+}
+
+function verifySquadronButton(viewport, screenshotBytes, id, x0, y0) {
+  const button = verifyTacticalBitmap(viewport, screenshotBytes, id, x0, y0, [],
+    [{ x: 0, y: 15, width: 25, height: 2 }]);
+  if (button.status === "non-native-scale") return button;
+  const screenshot = PNG.sync.read(screenshotBytes);
+  const backdrop = decodeIndexedBmp(fs.readFileSync(path.join(root, "data/base/ui/tactical-dll/BMP/1000.bmp")));
+  for (let y = y0 + 15; y < y0 + 17; y++) {
+    for (let x = x0; x < x0 + 25; x++) {
+      const offset = (y * screenshot.width + x) * 4;
+      assert.deepEqual(Array.from(screenshot.data.subarray(offset, offset + 3)), backdrop.pixel(x, y),
+        `squadron button ${id} row ${y - y0} shows the backdrop at (${x}, ${y})`);
+    }
+  }
+  return { ...button, backdrop_rows_checked: 50 };
+}
+
+// TACTICAL bitmaps keyed on their first DIB pixel's index (FUN_005fd170;
+// bmp_cache::uses_first_pixel_key): A0 TAC-02-C012, TAC-01-C002 and
+// TAC-05-C017 show the backdrop 1000 under the group bar's key pixels; the
+// panel's buttons show the panel there.
+const TACTICAL_FIRST_PIXEL_KEYED = new Set([1001, 1004, 1005, 1006, 1007, 1008, 1010,
+  ...Array.from({ length: 12 }, (_, i) => 1012 + i), 1034, 1035, 1058,
+  ...Array.from({ length: 8 }, (_, i) => 1101 + i), ...Array.from({ length: 6 }, (_, i) => 1113 + i),
+  ...Array.from({ length: 10 }, (_, i) => 1133 + i), ...Array.from({ length: 10 }, (_, i) => 1149 + i),
+  ...Array.from({ length: 26 }, (_, i) => 1170 + i), ...Array.from({ length: 25 }, (_, i) => 1201 + i)]);
+const TACTICAL_BACKDROP_UNDER_KEY = (id) => id >= 1001 && id <= 1020;
+// The subsystem icons 1201..1225 show in the battle's palette (TACTICAL
+// 5531..5557): entries 140 and 146 are (230, 0, 0) and (255, 230, 60) there,
+// as A0 TAC-03-C001..C011 show (bmp_cache::battle_palette_entries).
+const SUBSYSTEM_ICON_BATTLE_ENTRIES = new Map([[140, [230, 0, 0]], [146, [255, 230, 60]]]);
+
 function verifyTacticalBitmap(
   viewport, screenshotBytes, id, x0, y0, occluders = [], ignoredRects = [],
 ) {
@@ -908,13 +980,25 @@ function verifyTacticalBitmap(
       root, `data/base/ui/tactical-dll/BMP/${overlayId}.bmp`,
     ))),
   }));
+  const key = TACTICAL_FIRST_PIXEL_KEYED.has(id) ? source.index(0, source.height - 1) : null;
+  const backdrop = key !== null && TACTICAL_BACKDROP_UNDER_KEY(id)
+    ? decodeIndexedBmp(fs.readFileSync(path.join(root, "data/base/ui/tactical-dll/BMP/1000.bmp")))
+    : null;
   let pixelsChecked = 0;
+  let keyPixelsChecked = 0;
   for (let y = 0; y < source.height; y++) {
     for (let x = 0; x < source.width; x++) {
       if (ignoredRects.some((rect) => x >= rect.x && y >= rect.y
         && x < rect.x + rect.width && y < rect.y + rect.height)) continue;
-      const color = source.pixel(x, y);
-      if (color[0] < 32 && color[1] < 32 && color[2] > 192) continue;
+      let color = source.pixel(x, y);
+      if (id >= 1201 && id <= 1225 && SUBSYSTEM_ICON_BATTLE_ENTRIES.has(source.index(x, y))) {
+        color = SUBSYSTEM_ICON_BATTLE_ENTRIES.get(source.index(x, y));
+      }
+      if (key !== null && source.index(x, y) === key) {
+        if (!backdrop) continue;
+        color = backdrop.pixel(x0 + x, y0 + y);
+        keyPixelsChecked++;
+      } else if (key === null && color[0] < 32 && color[1] < 32 && color[2] > 192) continue;
       const screenX = x0 + x;
       const screenY = y0 + y;
       const occluded = decodedOccluders.some(({ x: overlayX, y: overlayY, source: overlay }) => {
@@ -935,7 +1019,8 @@ function verifyTacticalBitmap(
       pixelsChecked++;
     }
   }
-  return { status: "source-bitmap-exact", resource_id: id, pixels_checked: pixelsChecked };
+  return { status: "source-bitmap-exact", resource_id: id, pixels_checked: pixelsChecked,
+    key_pixels_on_backdrop: keyPixelsChecked };
 }
 
 function verifyGokresBitmap(viewport, screenshotBytes, id, x0, y0) {
@@ -1083,11 +1168,15 @@ function verifyCommonBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRects 
   const source = decodeIndexedBmp(fs.readFileSync(path.join(
     root, `data/base/ui/common-dll/BMP/${id}.bmp`,
   )));
+  // The Game Options controls 10020..10057 are blitted keyed on their first
+  // DIB pixel (bmp_cache::uses_first_pixel_key; A0 200-options).
+  const key = id >= 10020 && id <= 10057 ? source.index(0, source.height - 1) : null;
   let pixelsChecked = 0;
   for (let y = 0; y < source.height; y++) {
     for (let x = 0; x < source.width; x++) {
       if (ignoredRects.some((rect) => x >= rect.x && y >= rect.y
         && x < rect.x + rect.width && y < rect.y + rect.height)) continue;
+      if (key !== null && source.index(x, y) === key) continue;
       const color = source.pixel(x, y);
       const actualOffset = ((y0 + y) * screenshot.width + x0 + x) * 4;
       assert.deepEqual(
@@ -1824,7 +1913,7 @@ async function probeTacticalProductionParticipants(
     if (assignedFighterGroups.has(index)) continue;
     unassignedFighterGroups.push({
       slot: index + 1,
-      ...verifyTacticalBitmap(viewport, stable.bytes, 1020, 347 + index * 29, 2),
+      ...verifySquadronButton(viewport, stable.bytes, 1020, 347 + index * 29, 2),
     });
   }
   assert.ok(unassignedTaskForces.length > 0 && unassignedFighterGroups.length > 0,
@@ -2714,6 +2803,32 @@ async function probeTacticalCommandAssignmentPresentation(
   await click(560, 241);
   await capture("maneuvers-anvil-stand-off-committed");
 
+  // A0 TAC-05-C001 (Left Hook chosen: 1134 at (495, 187), preview 2101)
+  // and TAC-05-C004 (Stop chosen: 1142 at (557, 172), preview 2105), each
+  // chosen after another maneuver; Cancel leaves both unassigned.
+  await click(522, 248);
+  await click(509, 201);
+  const leftHook = await capture("maneuvers-left-hook");
+  probes.push({ type: "left-hook-selected", ...verifyTacticalBitmap(
+    viewport, leftHook, 1134, 495, 187,
+  ) });
+  probes.push({ type: "left-hook-graphic", ...verifyTacticalTransparentOverlay(
+    viewport, leftHook, 2101, 496, 42,
+  ) });
+  await click(571, 186);
+  const hold = await capture("maneuvers-hold");
+  probes.push({ type: "hold-selected", ...verifyTacticalBitmap(
+    viewport, hold, 1142, 557, 172,
+  ) });
+  probes.push({ type: "left-hook-released", ...verifyTacticalBitmap(
+    viewport, hold, 1133, 495, 187,
+  ) });
+  probes.push({ type: "hold-graphic", ...verifyTacticalTransparentOverlay(
+    viewport, hold, 2105, 496, 42,
+  ) });
+  await click(600, 241);
+  await capture("maneuvers-hold-cancelled");
+
   await click(590, 248);
   const missionsOpen = await capture("missions-open-capital");
   probes.push({ type: "missions-panel", ...verifyTacticalBitmap(
@@ -2724,7 +2839,7 @@ async function probeTacticalCommandAssignmentPresentation(
     ],
   ) });
   probes.push({ type: "capital-recover-disabled", ...verifyTacticalBitmap(
-    viewport, missionsOpen, ready.faction === "alliance" ? 1175 : 1172, 568, 157,
+    viewport, missionsOpen, ready.faction === "alliance" ? 1172 : 1175, 568, 157,
   ) });
   probes.push({ type: "death-star-disabled", ...verifyTacticalBitmap(
     viewport, missionsOpen, 1178, 568, 187,
@@ -2739,22 +2854,34 @@ async function probeTacticalCommandAssignmentPresentation(
   probes.push({ type: "attack-capital-graphic", ...verifyTacticalTransparentOverlay(
     viewport, capitalMission, capitalGraphic, 496, 42,
   ) });
+  // A0 TAC-05-C008 (Alliance): Attack Fighters chosen after Attack Capital
+  // Ships is 1192 at (500, 187), the TIE target, and Attack Capital Ships
+  // goes back to 1179. Then Attack Capital Ships again, for the commit.
+  await click(523, 200);
+  const fighterMission = await capture("missions-attack-fighters-selected");
+  probes.push({ type: "attack-fighters-selected", ...verifyTacticalBitmap(
+    viewport, fighterMission, ready.faction === "alliance" ? 1192 : 1195, 500, 187,
+  ) });
+  probes.push({ type: "attack-capital-released", ...verifyTacticalBitmap(
+    viewport, fighterMission, ready.faction === "alliance" ? 1179 : 1182, 500, 157,
+  ) });
+  await click(522, 169);
   await click(560, 241);
 
   await click(359, 10);
   const fighterSelected = await capture("fighter-group-selected");
-  probes.push({ type: "fighter-group-selected", ...verifyTacticalBitmap(
+  probes.push({ type: "fighter-group-selected", ...verifySquadronButton(
     viewport, fighterSelected, 1016, 347, 2,
   ) });
   await click(590, 248);
   const fighterMissions = await capture("missions-open-fighter");
   probes.push({ type: "fighter-recover-enabled", ...verifyTacticalBitmap(
-    viewport, fighterMissions, ready.faction === "alliance" ? 1173 : 1170, 568, 157,
+    viewport, fighterMissions, ready.faction === "alliance" ? 1170 : 1173, 568, 157,
   ) });
   await click(590, 169);
   const recoverSelected = await capture("missions-recover-selected");
   probes.push({ type: "recover-selected", ...verifyTacticalBitmap(
-    viewport, recoverSelected, ready.faction === "alliance" ? 1174 : 1171, 568, 157,
+    viewport, recoverSelected, ready.faction === "alliance" ? 1171 : 1174, 568, 157,
   ) });
   probes.push({ type: "recover-graphic", ...verifyTacticalTransparentOverlay(
     viewport, recoverSelected, ready.faction === "alliance" ? 2153 : 2157, 496, 42,
@@ -4187,10 +4314,13 @@ async function probeTacticalBattleOptionsPresentation(
     await stableInteractionFrame(page, folder, "battle-options-withdraw-started");
     await page.mouse.click(openLocation.x, openLocation.y);
     panel = await stableInteractionFrame(page, folder, "battle-options-withdraw-disabled");
+    // A0 TAC-06-C009: once a side withdraws, FUN_005dab90 hides Withdraw,
+    // Get Immediate Result and Observe / Take Command; the panel shows
+    // blank there, 0 pixels from 1306.
     probes.push({
       type: "battle-options-withdraw-disabled",
       ...verifyTacticalBitmap(
-        viewport, panel, panelResource, 482, 28, [], ignored(controls.slice(1)),
+        viewport, panel, panelResource, 482, 28, [], ignored(controls.slice(3)),
       ),
     });
     const disabledWithdraw = point(521, 64);
@@ -4275,8 +4405,36 @@ async function probeTacticalBattleOptionsPresentation(
       { x: 22, y: 26, width: 596, height: 440 },
     ]),
   }, {
+    // A0 TAC-06-C007: the first display option's lamp 10045 at (357, 311).
     type: "game-options-tactical-toggle-disabled",
-    ...verifyCommonBitmap(viewport, gameOptionsScreen, 10045, 359, 310),
+    ...verifyCommonBitmap(viewport, gameOptionsScreen, 10045, 357, 311),
+  }, {
+    // A0 TAC-06-C007: a battle's Game Options shows Restart lit (10035;
+    // FUN_00407180 never disables it).
+    type: "game-options-restart-lit",
+    ...verifyCommonBitmap(viewport, gameOptionsScreen, 10035, 76, 381),
+  }, {
+    // A0 TAC-06-C007 draws the display options in the system grey
+    // (128, 128, 128), the default palette's nearest to 0x2505050.
+    type: "game-options-display-options-grey",
+    ...(() => {
+      if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
+        return { status: "non-native-scale" };
+      }
+      const png = PNG.sync.read(gameOptionsScreen);
+      let grey = 0;
+      let other = 0;
+      for (let y = 312; y < 440; y++) {
+        for (let x = 392; x < 610; x++) {
+          const offset = (y * png.width + x) * 4;
+          const [r, g, b] = png.data.subarray(offset, offset + 3);
+          if (r === 128 && g === 128 && b === 128) grey++;
+          else if (r > 100 && Math.abs(r - g) < 8 && Math.abs(g - b) < 8 && (r !== 128)) other++;
+        }
+      }
+      assert.ok(grey > 200, `display options text in grey 128: ${grey} (other light ${other})`);
+      return { status: "a0-colour", grey_pixels: grey };
+    })(),
   });
   assert.ok(consoleLines.some(({ text }) =>
     text.includes("destination=game_options status=opened_original")),
@@ -4418,11 +4576,13 @@ async function probeTacticalGroupPresentation(
       ),
     });
   }
+  probes.push({ type: "task-force-1-number-selected",
+    ...verifyTaskForceOneNumber(viewport, stable.bytes, true) });
   for (const [index, button] of fighterButtons.entries()) {
     probes.push({
       type: "fighter-group-initial",
       slot: index + 1,
-      ...verifyTacticalBitmap(viewport, stable.bytes, button.id, button.x, button.y),
+      ...verifySquadronButton(viewport, stable.bytes, button.id, button.x, button.y),
     });
   }
 
@@ -4450,19 +4610,21 @@ async function probeTacticalGroupPresentation(
   probes.push({ type: "task-force-1-released", ...verifyTacticalBitmap(
     viewport, taskEightSelected, 1005, 60, 2, [], labelMask,
   ) });
+  probes.push({ type: "task-force-1-number-at-rest",
+    ...verifyTaskForceOneNumber(viewport, taskEightSelected, false) });
 
   const gold = point(446, 10);
   await page.mouse.move(gold.x, gold.y);
   await page.mouse.down({ button: "left" });
   await page.waitForTimeout(80);
   const goldHeld = await capture("gold-group-held");
-  probes.push({ type: "gold-group-held", ...verifyTacticalBitmap(
+  probes.push({ type: "gold-group-held", ...verifySquadronButton(
     viewport, goldHeld, 1019, 434, 2,
   ) });
   await page.mouse.up({ button: "left" });
   await page.waitForTimeout(80);
   const goldSelected = await capture("gold-group-selected");
-  probes.push({ type: "gold-group-selected", ...verifyTacticalBitmap(
+  probes.push({ type: "gold-group-selected", ...verifySquadronButton(
     viewport, goldSelected, 1019, 434, 2,
   ) });
   probes.push({ type: "selected-fighter-panel", ...verifyTacticalBitmap(

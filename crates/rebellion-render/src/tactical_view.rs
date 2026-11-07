@@ -264,6 +264,52 @@ fn draw_tactical_panel_text(
     );
 }
 
+/// A task-force button's number: A0 TAC-02-C008 and TAC-03-C001 show
+/// Task Force 1's "1" ten rows tall at rows 5..14, centred on the button,
+/// black at rest and white while the button is down or its task force
+/// selected (`FUN_0059be80` sets state 4's text colour to `0x2ffffff`).
+/// port: the panel's Arial at 14 px gives the A0 glyph's height.
+const TASK_FORCE_NUMBER: (f32, f32) = (14.0, 10.0);
+const TASK_FORCE_NUMBER_CAP_TOP: f32 = 5.0;
+
+fn task_force_number_color(active: bool) -> Color {
+    if active {
+        WHITE
+    } else {
+        BLACK
+    }
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "Font sizes are small positive pixel counts."
+)]
+fn draw_task_force_number(canvas: TacticalCanvas, index: u8, active: bool) {
+    let label = (index + 1).to_string();
+    let (em, caps) = TASK_FORCE_NUMBER;
+    let font = tactical_arial();
+    // Rasterized at the em itself: a 1-pixel stem stays solid.
+    let font_size = (em * canvas.scale).round().max(1.0) as u16;
+    let font_scale = 1.0;
+    let width = measure_text(&label, font.as_ref(), font_size, font_scale).width;
+    let button = TASK_FORCE_BUTTONS[usize::from(index)];
+    let (button_x, baseline) = canvas.point(button.x, TASK_FORCE_NUMBER_CAP_TOP + caps);
+    draw_text_ex(
+        &label,
+        (button_x + (button.width * canvas.scale - width) * 0.5).round(),
+        baseline.round(),
+        TextParams {
+            font: font.as_ref(),
+            font_size,
+            font_scale,
+            font_scale_aspect: 1.0,
+            color: task_force_number_color(active),
+            ..Default::default()
+        },
+    );
+}
+
 const TACTICAL_FONT_8: (f32, f32) = (TACTICAL_FONT_8_EM, TACTICAL_FONT_8_CAPS);
 const TACTICAL_FONT_10: (f32, f32) = (TACTICAL_FONT_10_EM, TACTICAL_FONT_10_CAPS);
 
@@ -2656,11 +2702,14 @@ const TASK_FORCE_BUTTONS: [NativeRect; 8] = [
     NativeRect::new(263.0, 2.0, 25.0, 17.0),
 ];
 
+/// `FUN_0059c030` makes the squadron buttons 25x15 (`0x19`, `0xf`), so the
+/// bottom two rows of their 25x17 bitmaps never show: A0 TAC-02-C012 has the
+/// backdrop 1000 there.
 const FIGHTER_GROUP_BUTTONS: [NativeRect; 4] = [
-    NativeRect::new(347.0, 2.0, 25.0, 17.0),
-    NativeRect::new(376.0, 2.0, 25.0, 17.0),
-    NativeRect::new(405.0, 2.0, 25.0, 17.0),
-    NativeRect::new(434.0, 2.0, 25.0, 17.0),
+    NativeRect::new(347.0, 2.0, 25.0, 15.0),
+    NativeRect::new(376.0, 2.0, 25.0, 15.0),
+    NativeRect::new(405.0, 2.0, 25.0, 15.0),
+    NativeRect::new(434.0, 2.0, 25.0, 15.0),
 ];
 
 const FIGHTER_GROUP_NORMAL_ART: [u32; 4] = [
@@ -2927,12 +2976,12 @@ fn tactical_hud_control_at(cache: &mut BmpCache, x: f32, y: f32) -> Option<Tacti
 
 fn tactical_battle_options_control_at(
     cache: &mut BmpCache,
-    withdraw_enabled: bool,
+    gates: BattleOptionsGates,
     x: f32,
     y: f32,
 ) -> Option<TacticalBattleOptionsControl> {
     TACTICAL_BATTLE_OPTIONS_CONTROLS.iter().find_map(|spec| {
-        if spec.control == TacticalBattleOptionsControl::Withdraw && !withdraw_enabled {
+        if !gates.enabled(spec.control) {
             return None;
         }
         if !spec.rect.contains(x, y) {
@@ -3053,6 +3102,41 @@ fn tactical_withdraw_enabled(session: &BattleSession) -> bool {
                 index,
             )
     })
+}
+
+/// Which Battle Options controls `FUN_005dab90` leaves enabled; it hides
+/// the others, so the panel shows blank there. Withdraw needs a unit that
+/// can jump (`FUN_00596a90`). Get Immediate Result and Observe / Take
+/// Command go once either side has begun to withdraw (`FUN_00596ab0` ->
+/// `FUN_005adde0`: a side commander's `+0x84` set, which `FUN_005ad530`
+/// does): A0 TAC-06-C009 after a confirmed withdrawal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BattleOptionsGates {
+    withdraw: bool,
+    simulate: bool,
+    observe: bool,
+}
+
+impl BattleOptionsGates {
+    fn of(session: Option<&BattleSession>) -> Self {
+        let withdrawing = session.is_some_and(|session| {
+            session.withdrawal_ms.is_some() || session.ai_withdrawal_ms.is_some()
+        });
+        Self {
+            withdraw: session.is_some_and(tactical_withdraw_enabled),
+            simulate: !withdrawing,
+            observe: !withdrawing,
+        }
+    }
+
+    fn enabled(self, control: TacticalBattleOptionsControl) -> bool {
+        match control {
+            TacticalBattleOptionsControl::Withdraw => self.withdraw,
+            TacticalBattleOptionsControl::SimulateRemainder => self.simulate,
+            TacticalBattleOptionsControl::ObserveToggle => self.observe,
+            TacticalBattleOptionsControl::GameOptions | TacticalBattleOptionsControl::Close => true,
+        }
+    }
 }
 
 /// A0 VM 2026-10-27: an enemy's selection frame is red (255, 0, 0); ours
@@ -4218,14 +4302,14 @@ fn pressed_tactical_hud_control(
 fn pressed_tactical_battle_options_control(
     cache: &mut BmpCache,
     canvas: TacticalCanvas,
-    withdraw_enabled: bool,
+    gates: BattleOptionsGates,
 ) -> Option<TacticalBattleOptionsControl> {
     if !is_mouse_button_down(MouseButton::Left) {
         return None;
     }
     let (mouse_x, mouse_y) = mouse_position();
     let (x, y) = canvas.logical_pointer(mouse_x, mouse_y);
-    tactical_battle_options_control_at(cache, withdraw_enabled, x, y)
+    tactical_battle_options_control_at(cache, gates, x, y)
 }
 
 fn pressed_tactical_withdraw_confirmation_control(
@@ -4801,7 +4885,7 @@ fn register_tactical_tooltips(
     battle_options_open: bool,
     withdraw_confirmation_open: bool,
     player_observing: bool,
-    withdraw_enabled: bool,
+    gates: BattleOptionsGates,
 ) {
     use crate::win_tooltip::StringModule::Tactical;
     // The headers (FUN_0059be80, FUN_0059c030).
@@ -4894,11 +4978,12 @@ fn register_tactical_tooltips(
         // FUN_005dab90; Observe / Take Command names the other state.
         for spec in TACTICAL_BATTLE_OPTIONS_CONTROLS {
             let (string, enabled) = match spec.control {
-                TacticalBattleOptionsControl::Withdraw => (0xddba, withdraw_enabled),
-                TacticalBattleOptionsControl::SimulateRemainder => (0xddbb, true),
-                TacticalBattleOptionsControl::ObserveToggle => {
-                    (if player_observing { 0xdded } else { 0xddbc }, true)
-                }
+                TacticalBattleOptionsControl::Withdraw => (0xddba, gates.withdraw),
+                TacticalBattleOptionsControl::SimulateRemainder => (0xddbb, gates.simulate),
+                TacticalBattleOptionsControl::ObserveToggle => (
+                    if player_observing { 0xdded } else { 0xddbc },
+                    gates.observe,
+                ),
                 TacticalBattleOptionsControl::GameOptions => (0xddbd, true),
                 TacticalBattleOptionsControl::Close => (0xddbe, true),
             };
@@ -5037,7 +5122,7 @@ fn draw_original_tactical_hud(
     battle_options_open: bool,
     withdraw_confirmation_open: bool,
     player_observing: bool,
-    withdraw_enabled: bool,
+    gates: BattleOptionsGates,
     pressed_options: Option<TacticalBattleOptionsControl>,
     pressed_withdraw_confirmation: Option<TacticalWithdrawConfirmationControl>,
     death_star: Option<TacticalDeathStar>,
@@ -5056,7 +5141,7 @@ fn draw_original_tactical_hud(
         battle_options_open,
         withdraw_confirmation_open,
         player_observing,
-        withdraw_enabled,
+        gates,
     );
     if let Some(death_star) = death_star {
         draw_tactical_bitmap(
@@ -5130,17 +5215,7 @@ fn draw_original_tactical_hud(
             2.0,
         );
         if assigned {
-            let label = (index + 1).to_string();
-            let font_size = 13.0 * canvas.scale;
-            let width = measure_text(&label, None, font_size as u16, 1.0).width;
-            let (button_x, y) = canvas.point(TASK_FORCE_BUTTONS[usize::from(index)].x, 16.0);
-            draw_text(
-                &label,
-                button_x + (25.0 * canvas.scale - width) * 0.5,
-                y,
-                font_size,
-                BLACK,
-            );
+            draw_task_force_number(canvas, index, active);
         }
     }
     draw_tactical_bitmap(
@@ -5159,8 +5234,10 @@ fn draw_original_tactical_hud(
         let active = assigned
             && (groups.selected_fighter_group == Some(index)
                 || pressed_control == Some(TacticalHudControl::FighterGroup(index)));
-        draw_tactical_bitmap(
+        let button = FIGHTER_GROUP_BUTTONS[usize::from(index)];
+        draw_original_bitmap(
             cache,
+            DllSource::Tactical,
             if active {
                 FIGHTER_GROUP_PRESSED_ART[usize::from(index)]
             } else if assigned {
@@ -5169,8 +5246,9 @@ fn draw_original_tactical_hud(
                 art::SQUADRON_UNASSIGNED
             },
             canvas,
-            FIGHTER_GROUP_BUTTONS[usize::from(index)].x,
-            2.0,
+            button.x,
+            button.y,
+            Some(Rect::new(0.0, 0.0, button.width, button.height)),
         );
     }
 
@@ -5187,7 +5265,7 @@ fn draw_original_tactical_hud(
             TACTICAL_PANEL_Y,
         );
         for spec in TACTICAL_BATTLE_OPTIONS_CONTROLS {
-            if spec.control == TacticalBattleOptionsControl::Withdraw && !withdraw_enabled {
+            if !gates.enabled(spec.control) {
                 continue;
             }
             let selected =
@@ -5926,11 +6004,8 @@ fn handle_original_tactical_controls(
         state.death_star_laser_pressed = false;
     }
     if state.battle_options_open {
-        let withdraw_enabled = state
-            .session
-            .as_ref()
-            .is_some_and(tactical_withdraw_enabled);
-        let hovered = tactical_battle_options_control_at(cache, withdraw_enabled, x, y);
+        let gates = BattleOptionsGates::of(state.session.as_ref());
+        let hovered = tactical_battle_options_control_at(cache, gates, x, y);
         if is_mouse_button_pressed(MouseButton::Left) {
             state.battle_options_pressed = hovered;
         }
@@ -10069,13 +10144,10 @@ fn draw_tactical_frame(
             .session
             .as_ref()
             .is_some_and(attack_death_star_enabled);
-        let withdraw_enabled = state
-            .session
-            .as_ref()
-            .is_some_and(tactical_withdraw_enabled);
+        let gates = BattleOptionsGates::of(state.session.as_ref());
         let pressed_options = state
             .battle_options_open
-            .then(|| pressed_tactical_battle_options_control(bmp_cache, canvas, withdraw_enabled))
+            .then(|| pressed_tactical_battle_options_control(bmp_cache, canvas, gates))
             .flatten()
             .filter(|control| state.battle_options_pressed == Some(*control));
         let pressed_withdraw_confirmation = state
@@ -10111,7 +10183,7 @@ fn draw_tactical_frame(
             state.battle_options_open,
             state.withdraw_confirmation_open,
             state.player_observing,
-            withdraw_enabled,
+            gates,
             pressed_options,
             pressed_withdraw_confirmation
                 .flatten()
@@ -14762,6 +14834,37 @@ mod tests {
     // FUN_005a8a90 -> FUN_005c7e80 asks FUN_005b1b70: Withdraw needs a ship
     // with a hyperdrive and engine power.
     #[test]
+    fn a_withdrawal_takes_get_immediate_result_and_observe_away() {
+        // FUN_005dab90 hides Get Immediate Result and Observe / Take Command
+        // once a side is withdrawing (FUN_005adde0); A0 TAC-06-C009 shows
+        // them blank after a confirmed withdrawal, Game Options and Close
+        // still there.
+        let mut ship = test_ship(64, 0, true, true);
+        ship.subsystem_capacity.hyperdrive = 1;
+        ship.subsystem_condition.hyperdrive = 100;
+        ship.subsystem_capacity.engines = true;
+        ship.subsystem_condition.engines = 100;
+        let mut session = test_session(vec![ship], Vec::new(), true);
+        let gates = BattleOptionsGates::of(Some(&session));
+        assert!(gates.withdraw && gates.simulate && gates.observe);
+        // FUN_005ad530: the side's time starts and its ships head out.
+        session.withdrawal_ms = Some(30_000.0);
+        session.ships[0].retreating = true;
+        let gates = BattleOptionsGates::of(Some(&session));
+        assert!(!gates.simulate && !gates.observe);
+        assert!(!gates.enabled(TacticalBattleOptionsControl::SimulateRemainder));
+        assert!(!gates.enabled(TacticalBattleOptionsControl::ObserveToggle));
+        assert!(!gates.enabled(TacticalBattleOptionsControl::Withdraw));
+        assert!(gates.enabled(TacticalBattleOptionsControl::GameOptions));
+        assert!(gates.enabled(TacticalBattleOptionsControl::Close));
+        session.withdrawal_ms = None;
+        session.ai_withdrawal_ms = Some(30_000.0);
+        assert!(!BattleOptionsGates::of(Some(&session)).observe);
+        let none = BattleOptionsGates::of(None);
+        assert!(!none.withdraw && none.simulate && none.observe);
+    }
+
+    #[test]
     fn withdraw_needs_a_ship_that_can_jump() {
         let mut ship = test_ship(64, 0, true, true);
         ship.subsystem_capacity.hyperdrive = 1;
@@ -18348,6 +18451,59 @@ mod tests {
     }
 
     #[test]
+    fn the_alliance_recovers_with_the_x_wing_art() {
+        // A0 TAC-05-C021 (Alliance) shows 1170, an X-wing, at (568, 157);
+        // TAC-05-C010 the pressed 1171 and TAC-05-C015 the disabled 1172.
+        // 1173..1175 are a TIE.
+        use resources::tactical as art;
+        assert_eq!(
+            tactical_command_spec(TacticalCommandControl::Recover, true).1,
+            1170
+        );
+        assert_eq!(
+            tactical_command_spec(TacticalCommandControl::Recover, false).1,
+            1173
+        );
+        assert_eq!(
+            (
+                art::BTN_RECOVER_ALLIANCE_PRESSED,
+                art::BTN_RECOVER_ALLIANCE_DISABLED
+            ),
+            (1171, 1172)
+        );
+        assert_eq!(
+            (
+                art::BTN_RECOVER_EMPIRE_PRESSED,
+                art::BTN_RECOVER_EMPIRE_DISABLED
+            ),
+            (1174, 1175)
+        );
+    }
+
+    #[test]
+    fn a_task_force_number_turns_white_while_its_button_is_down() {
+        // FUN_0059be80: FUN_00603010(4, 0x2ffffff), white in state 4; A0
+        // TAC-03-C001 (Task Force 1 selected) white, TAC-02-C008 black.
+        assert_eq!(task_force_number_color(true), WHITE);
+        assert_eq!(task_force_number_color(false), BLACK);
+        assert_eq!(TASK_FORCE_NUMBER_CAP_TOP + TASK_FORCE_NUMBER.1, 15.0);
+    }
+
+    #[test]
+    fn squadron_buttons_are_two_rows_shorter_than_their_bitmaps() {
+        // FUN_0059c030 creates them 0x19 x 0xf; A0 TAC-02-C012 shows the
+        // backdrop 1000 in the 1020 bitmap's last two rows.
+        for button in FIGHTER_GROUP_BUTTONS {
+            assert_eq!((button.width, button.height), (25.0, 15.0));
+        }
+        assert!(!FIGHTER_GROUP_BUTTONS[0].contains(350.0, 17.5));
+        assert!(FIGHTER_GROUP_BUTTONS[0].contains(350.0, 16.5));
+        for button in TASK_FORCE_BUTTONS {
+            assert_eq!((button.width, button.height), (25.0, 17.0));
+        }
+    }
+
+    #[test]
     fn camera_memorize_art_is_on_the_right_and_recall_on_the_left() {
         // A0 TAC-04-C005: bitmap 1040 sits at (594, 444) under the tooltip
         // "Remember Camera Position"; 1042 at (486, 444) recalls the view.
@@ -18475,28 +18631,50 @@ mod tests {
             Some(TacticalHudControl::BattleOptions)
         );
 
+        const OPEN_OPTIONS: BattleOptionsGates = BattleOptionsGates {
+            withdraw: true,
+            simulate: true,
+            observe: true,
+        };
+        const NO_WITHDRAW: BattleOptionsGates = BattleOptionsGates {
+            withdraw: false,
+            ..OPEN_OPTIONS
+        };
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 524.0, 64.0),
+            tactical_battle_options_control_at(&mut cache, OPEN_OPTIONS, 524.0, 64.0),
             Some(TacticalBattleOptionsControl::Withdraw)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, false, 524.0, 64.0),
+            tactical_battle_options_control_at(&mut cache, NO_WITHDRAW, 524.0, 64.0),
             None
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 518.0, 133.0),
+            tactical_battle_options_control_at(&mut cache, OPEN_OPTIONS, 518.0, 133.0),
             Some(TacticalBattleOptionsControl::SimulateRemainder)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 591.0, 133.0),
+            tactical_battle_options_control_at(&mut cache, OPEN_OPTIONS, 591.0, 133.0),
             Some(TacticalBattleOptionsControl::ObserveToggle)
         );
+        let withdrawing = BattleOptionsGates {
+            withdraw: false,
+            simulate: false,
+            observe: false,
+        };
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 531.0, 228.0),
+            tactical_battle_options_control_at(&mut cache, withdrawing, 518.0, 133.0),
+            None
+        );
+        assert_eq!(
+            tactical_battle_options_control_at(&mut cache, withdrawing, 591.0, 133.0),
+            None
+        );
+        assert_eq!(
+            tactical_battle_options_control_at(&mut cache, OPEN_OPTIONS, 531.0, 228.0),
             Some(TacticalBattleOptionsControl::GameOptions)
         );
         assert_eq!(
-            tactical_battle_options_control_at(&mut cache, true, 593.0, 228.0),
+            tactical_battle_options_control_at(&mut cache, OPEN_OPTIONS, 593.0, 228.0),
             Some(TacticalBattleOptionsControl::Close)
         );
         assert_eq!(

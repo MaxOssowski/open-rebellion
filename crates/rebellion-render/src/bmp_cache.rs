@@ -1004,18 +1004,21 @@ pub mod resources {
         /// Tactical command button: close Battle Options, pressed state.
         pub const BTN_BATTLE_OPTIONS_CLOSE_PRESSED: u32 = 1158;
 
-        /// Tactical command button: recover, Empire normal state.
-        pub const BTN_RECOVER_EMPIRE_NORMAL: u32 = 1170;
-        /// Tactical command button: recover, Empire pressed state.
-        pub const BTN_RECOVER_EMPIRE_PRESSED: u32 = 1171;
-        /// Tactical command button: recover, Empire disabled state.
-        pub const BTN_RECOVER_EMPIRE_DISABLED: u32 = 1172;
-        /// Tactical command button: recover, Alliance normal state.
-        pub const BTN_RECOVER_ALLIANCE_NORMAL: u32 = 1173;
+        /// Tactical command button: recover, Alliance normal state. Its art
+        /// is an X-wing; A0 TAC-05-C021 (an Alliance battle) shows it at
+        /// (568, 157), TAC-05-C010 the pressed 1171 and TAC-05-C007 and
+        /// TAC-05-C015 the disabled 1172.
+        pub const BTN_RECOVER_ALLIANCE_NORMAL: u32 = 1170;
         /// Tactical command button: recover, Alliance pressed state.
-        pub const BTN_RECOVER_ALLIANCE_PRESSED: u32 = 1174;
+        pub const BTN_RECOVER_ALLIANCE_PRESSED: u32 = 1171;
         /// Tactical command button: recover, Alliance disabled state.
-        pub const BTN_RECOVER_ALLIANCE_DISABLED: u32 = 1175;
+        pub const BTN_RECOVER_ALLIANCE_DISABLED: u32 = 1172;
+        /// Tactical command button: recover, Empire normal state (a TIE).
+        pub const BTN_RECOVER_EMPIRE_NORMAL: u32 = 1173;
+        /// Tactical command button: recover, Empire pressed state.
+        pub const BTN_RECOVER_EMPIRE_PRESSED: u32 = 1174;
+        /// Tactical command button: recover, Empire disabled state.
+        pub const BTN_RECOVER_EMPIRE_DISABLED: u32 = 1175;
 
         /// Tactical command button: attack Death Star, normal state.
         pub const BTN_ATTACK_DEATH_STAR_NORMAL: u32 = 1176;
@@ -2122,6 +2125,36 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
     if source == DllSource::Common {
         return matches!(resource_id, 10_020..=10_057);
     }
+    // The battle screen's controls: the group bar's headers (FUN_0059be80,
+    // FUN_0059c030 make them with FUN_00602150), its task-force and
+    // squadron buttons, the Death Star laser control, the highlight
+    // toggles' magenta corners and the right-hand panel's buttons and
+    // subsystem icons. Each was found by exact match in the A0 TAC captures
+    // with every non-key pixel equal and its first-pixel index showing what
+    // lies under it: the backdrop 1000 under the group bar (grey 24 on
+    // 1001, 17 on 1020; TAC-02-C012, TAC-01-C002), the panel under 1101's
+    // grey 212 (TAC-01-C004), 1117's yellow and 1118's dark red
+    // (TAC-05-C001, C005), the missions buttons' grey 136 or 58
+    // (TAC-05-C007..C010; the Empire's 1193..1195 carry the same keys) and
+    // the options buttons' blue or green corner (TAC-06-C001). The panels
+    // 1301..1310 are not keyed: 1303's and 1304's first-pixel grey shows in
+    // every capture.
+    if source == DllSource::Tactical {
+        return matches!(
+            resource_id,
+            1001 | 1004..=1008
+                | 1010
+                | 1012..=1023
+                | 1034..=1035
+                | 1058
+                | 1101..=1108
+                | 1113..=1118
+                | 1133..=1142
+                | 1149..=1158
+                | 1170..=1195
+                | 1201..=1225
+        );
+    }
     // The command centre's controls (FUN_00427270 makes each a
     // CoolStrobeButton): A0 new-alliance/t18 and controls/globe-held show
     // the background through their magenta corner (10013 at (3, 395)).
@@ -2392,11 +2425,41 @@ fn decode_color_image(
     ))
 }
 
+/// The battle screen draws its HUD in the battle's palette (TACTICAL
+/// 5531..5557), not in each bitmap's own. The subsystem icons 1201..1225
+/// carry a palette of their own whose entries 140 and 146 are pure red and
+/// yellow; every battle palette has (230, 0, 0) and (255, 230, 60) there,
+/// and A0 TAC-03-C001..C011 show the full weapons and engines icons in
+/// those. The icons use no other entry where the palettes differ.
+const SUBSYSTEM_ICON_BATTLE_ENTRIES: [(u8, [u8; 3]); 2] =
+    [(140, [230, 0, 0]), (146, [255, 230, 60])];
+
+fn battle_palette_entries(source: DllSource, resource_id: u32) -> &'static [(u8, [u8; 3])] {
+    if source == DllSource::Tactical && (1201..=1225).contains(&resource_id) {
+        &SUBSYSTEM_ICON_BATTLE_ENTRIES
+    } else {
+        &[]
+    }
+}
+
 fn decode_rgba_image(
     bytes: &[u8],
     source: DllSource,
     resource_id: u32,
 ) -> image::ImageResult<image::RgbaImage> {
+    let entries = battle_palette_entries(source, resource_id);
+    let repaletted;
+    let bytes = if entries.is_empty() {
+        bytes
+    } else {
+        let mut copy = bytes.to_vec();
+        for &(index, rgb) in entries {
+            // A bitmap without the entry keeps its own colours.
+            let _ = set_bmp_palette_entry(&mut copy, index, rgb);
+        }
+        repaletted = copy;
+        &repaletted
+    };
     let mut rgba = image::load_from_memory(bytes)?.to_rgba8();
     if uses_blue_screen_transparency(source, resource_id) {
         // The original keys one exact index, its first DIB pixel's
@@ -3433,6 +3496,55 @@ pub(crate) mod tests {
         }
         bytes.extend([0, 1, 0, 0]);
         bytes
+    }
+
+    #[test]
+    fn the_battle_group_bar_keys_its_first_pixels_grey() {
+        // A0 TAC-02-C012: the backdrop 1000 shows under the squadron
+        // button 1020's index 17 (40, 40, 40), its first DIB pixel
+        // (FUN_005fd170); the same grey elsewhere in the panel 1302 stays.
+        let bytes = indexed_bmp(&[[40, 40, 40], [96, 96, 96]]);
+        for id in [
+            1001, 1004, 1007, 1010, 1012, 1016, 1020, 1021, 1023, 1034, 1101, 1105, 1117, 1118,
+            1133, 1149, 1155, 1170, 1171, 1206,
+        ] {
+            let button = decode_color_image(&bytes, DllSource::Tactical, id).unwrap();
+            assert_eq!(
+                (button.pixels[0].a(), button.pixels[1].a()),
+                (0, 255),
+                "{id}"
+            );
+        }
+        for panel in [1302, 1303, 1304, 1306] {
+            let panel = decode_color_image(&bytes, DllSource::Tactical, panel).unwrap();
+            assert_eq!(panel.pixels[0].a(), 255);
+        }
+    }
+
+    #[test]
+    fn the_subsystem_icons_take_the_battle_palettes_red_and_yellow() {
+        // A0 TAC-03-C001: 1210's fire shows (230, 0, 0) and (255, 230, 60),
+        // the battle palette's entries 140 and 146 (TACTICAL 5531..5557).
+        let mut palette = vec![[0, 0, 0]; 256];
+        palette[0] = [255, 0, 0];
+        palette[1] = [9, 9, 9];
+        palette[140] = [255, 0, 0];
+        palette[146] = [255, 255, 0];
+        let mut bytes = indexed_bmp(&palette);
+        let offset = u32::from_le_bytes(bytes[10..14].try_into().unwrap()) as usize;
+        // The first pixel is the key (index 1); the second shows the entry.
+        bytes[offset] = 1;
+        for (index, battle) in [(140, [230, 0, 0]), (146, [255, 230, 60])] {
+            bytes[offset + 1] = index;
+            let icon = decode_rgba_image(&bytes, DllSource::Tactical, 1210).unwrap();
+            assert_eq!(
+                icon.get_pixel(1, 0).0,
+                [battle[0], battle[1], battle[2], 255]
+            );
+        }
+        bytes[offset + 1] = 140;
+        let panel = decode_rgba_image(&bytes, DllSource::Tactical, 1302).unwrap();
+        assert_eq!(panel.get_pixel(1, 0).0, [255, 0, 0, 255]);
     }
 
     // A keyed marker's blue matte stays transparent when shaded: the sector
