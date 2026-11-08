@@ -913,7 +913,63 @@ const cases = [
       // A lost regiment is a system loss (+0x80): 0x2b9b.
       if (after.enemy_regiments < 2) assert.equal(summary.picture, 0x2b9b);
       await frames(page, 3);
-      await shot(page, directory, "bombardment-summary");
+      const summaryShot = await shot(page, directory, "bombardment-summary");
+      // The Empire's side against A0 alliance-game2/orbital-bombardment-
+      // yavin (an Alliance game: the Empire bombarded Yavin; the
+      // defender's view of the same window at (62, 49)): the body reads
+      // FUN_00496770's 0x7098 text, the title and body are the attacker's
+      // green at A0's place, and picture 0x2b9b (11163, a system loss) is
+      // A0's in every pixel when the port's strike also cost the system.
+      const bombardA0 = path.join(root, ".artifacts/a0-vm/alliance-game2/orbital-bombardment-yavin.png");
+      let bombardChecks = null;
+      if (faction.name === "empire" && fs.existsSync(bombardA0)) {
+        assert.match(summary.body, /^Imperial ships have conducted an orbital strike on the Alliance system of /,
+          JSON.stringify(summary));
+        const a0 = PNG.sync.read(fs.readFileSync(bombardA0));
+        const port = PNG.sync.read(summaryShot.bytes);
+        const [bx, by] = summary.origin.map(Math.round);
+        const green = (data, k) => data[k + 1] > 180 && data[k] < 100 && data[k + 2] < 100;
+        const ink = (png, [x0, y0], [xa, ya, xb, yb]) => {
+          let box = null;
+          for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+            if (!green(png.data, ((y0 + y) * png.width + x0 + x) * 4)) continue;
+            box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+          }
+          return box;
+        };
+        const title = [12, 10, 412, 40];
+        const body = [20, 220, 400, 245];
+        bombardChecks = {
+          title: { a0: ink(a0, [62, 49], title), port: ink(port, [bx, by], title) },
+          body: { a0: ink(a0, [62, 49], body), port: ink(port, [bx, by], body) },
+        };
+        const t = bombardChecks.title;
+        assert.ok(t.a0 && t.port && Math.abs(t.a0[1] - t.port[1]) <= 2 && Math.abs(t.a0[3] - t.port[3]) <= 2
+          && Math.abs((t.a0[0] + t.a0[2]) - (t.port[0] + t.port[2])) <= 6, JSON.stringify(bombardChecks));
+        const b = bombardChecks.body;
+        assert.ok(b.a0 && b.port && Math.abs(b.a0[0] - b.port[0]) <= 2 && Math.abs(b.a0[1] - b.port[1]) <= 2,
+          JSON.stringify(bombardChecks));
+        if (summary.picture === 0x2b9b) {
+          const bytes = fs.readFileSync(path.join(root, "data/base/ui/strategy-dll/BMP/11163.bmp"));
+          const offset = bytes.readUInt32LE(10);
+          const width = bytes.readInt32LE(18);
+          const rows = Math.abs(bytes.readInt32LE(22));
+          const palette = 14 + bytes.readUInt32LE(14);
+          const stride = (width + 3) & ~3;
+          const diff = (png, [x0, y0]) => {
+            let count = 0;
+            for (let y = 25; y < 205; y += 1) for (let x = 0; x < width; x += 1) {
+              const entry = palette + bytes[offset + (rows - 1 - y) * stride + x] * 4;
+              const k = ((y0 + 13 + y) * png.width + x0 + 12 + x) * 4;
+              if (png.data[k] !== bytes[entry + 2] || png.data[k + 1] !== bytes[entry + 1]
+                || png.data[k + 2] !== bytes[entry]) count += 1;
+            }
+            return count;
+          };
+          bombardChecks.picture = { port: diff(port, [bx, by]), a0: diff(a0, [62, 49]) };
+          assert.deepEqual(bombardChecks.picture, { port: 0, a0: 0 }, JSON.stringify(bombardChecks));
+        }
+      }
       // Display (0x68) shows the two destinations (FUN_0044c630); 0xc,
       // "Fleet" at (226, 182), 169 by 96, goes to the system and opens its
       // Fleet window (FUN_0045c8e0, kind 4), and the summary closes
@@ -931,7 +987,7 @@ const cases = [
       const closed = await until(page, "Fleet closes the summary and opens the system's Fleet window",
         (o) => o.assault_summary === null && o.window_open);
       await shot(page, directory, "bombardment-done");
-      return { before, menu, waited, sub, after, closed };
+      return { before, menu, waited, sub, after, closed, bombardChecks };
     },
   },
   {

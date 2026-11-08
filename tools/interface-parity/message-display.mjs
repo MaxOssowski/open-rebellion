@@ -710,6 +710,47 @@ async function run(browser, base, faction) {
       captureChecks.future_jedi_alliance = jediChecks;
       assert.deepEqual(jediChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
         JSON.stringify(jediChecks));
+
+      // Jan Dodonna Killed (FUN_0048fdf0, A0 alliance-game2/jan-dodonna-
+      // killed, a new Alliance game, the window at (62, 49), the pointer
+      // outside): "Jan Dodonna has been killed." (0x7164 / 0x7365) over the
+      // Alliance's coffin 0x42e; the class is kind 3 (Display lit); the
+      // picture, its title image and its rail every pixel A0's.
+      await click(page, showMessage);
+      const listedK = await waitReport(page, (value) => value.mode === "list", "the list for Jan Dodonna Killed");
+      const killedRow = listedK.rows.indexOf("Jan Dodonna Killed");
+      assert.ok(killedRow >= 0, JSON.stringify(listedK.rows));
+      await click(page, await shown(killedRow));
+      await click(page, showMessage);
+      const killed = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Jan Dodonna Killed", "Display Message shows Jan Dodonna Killed");
+      assert.equal(killed.viewing_text, "Jan Dodonna has been killed.", JSON.stringify(killed));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("jan-dodonna-killed");
+      const shownK = PNG.sync.read(await page.screenshot());
+      const a0K = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/alliance-game2/jan-dodonna-killed.png")));
+      const [leftK, topK] = [Math.round(killed.window_left), Math.round(killed.window_top)];
+      const regionK = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topK + y) * 640 + leftK + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownK.data[i + c] !== a0K.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      const killedChecks = {
+        picture_a0: regionK(12, 33, 412, 233),
+        title_image_a0: regionK(15, 16, 30, 32),
+        rail_a0: regionK(414, 11, 468, 296),
+      };
+      captureChecks.jan_dodonna_killed = killedChecks;
+      assert.deepEqual(killedChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(killedChecks));
     }
 
     // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's

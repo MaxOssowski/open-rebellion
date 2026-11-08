@@ -1667,6 +1667,15 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        // Character Killed for the Alliance (FUN_0048fdf0, 0x7164 /
+        // 0x7365): Jan Dodonna, filed first so it lists below the scenario's
+        // other Mission messages. He stays alive in the world, as the
+        // scenario's Future Jedi names him too.
+        if let Some(character) = interface_test_fixture::killed_character(request, &world) {
+            world.characters[character].is_killed = true;
+            push_character_health(&mut msg_log, &world, character, 0, &message_texts);
+            world.characters[character].is_killed = false;
+        }
         // Smuggling Benefits for the Alliance (FUN_00499130, 0x7062 /
         // 0x7066): smuggling begins on an Empire-held Yavin. Filed first, so
         // it lists last on the Popular Support rail.

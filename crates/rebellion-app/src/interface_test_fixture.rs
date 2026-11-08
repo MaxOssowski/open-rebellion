@@ -3947,6 +3947,25 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's Character Killed for the Alliance reader
+/// (`FUN_0048fdf0`, notification `0x106` on a destroyed character): Jan
+/// Dodonna, as A0 alliance-game2/jan-dodonna-killed shows "Jan Dodonna has
+/// been killed." over the Alliance's coffin in an Alliance game.
+#[must_use]
+pub fn killed_character(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<rebellion_core::ids::CharacterKey> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name == "Jan Dodonna")
+        .map(|(key, _)| key)
+}
+
 /// The event-message scenario's smuggling for the Alliance reader
 /// (`FUN_00499130`): Yavin, as A0 alliance-game2/smuggling-benefits shows
 /// "Smugglers from Yavin are providing us with additional resources." in
@@ -7687,6 +7706,40 @@ mod tests {
         );
         assert_eq!(
             arrived_fleet(
+                request(Scenario::StoryMessages, CockpitFaction::Alliance),
+                &world
+            ),
+            None
+        );
+    }
+
+    // FUN_0048fdf0: A0 alliance-game2/jan-dodonna-killed shows the
+    // Alliance's "Jan Dodonna Killed"; the scenario names him for that
+    // reader only.
+    #[test]
+    fn the_event_messages_scenario_reports_jan_dodonna_killed_for_the_alliance() {
+        let mut world = fleet_world();
+        let dodonna = world.characters.insert(rebellion_core::world::Character {
+            name: "Jan Dodonna".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            killed_character(
+                request(Scenario::EventMessages, CockpitFaction::Alliance),
+                &world
+            ),
+            Some(dodonna)
+        );
+        assert_eq!(
+            killed_character(
+                request(Scenario::EventMessages, CockpitFaction::Empire),
+                &world
+            ),
+            None
+        );
+        assert_eq!(
+            killed_character(
                 request(Scenario::StoryMessages, CockpitFaction::Alliance),
                 &world
             ),
