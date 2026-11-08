@@ -846,10 +846,9 @@ pub fn death_star_sabotaged_movie(
 /// (`0x7062`/`0x7066`, `0x7063`/`0x7067`). An Alliance system speaks when
 /// `previous` is at least 0, an Empire system when it is below 1. Its
 /// category mask is `0x001`, Popular Support (`FUN_00499030`,
-/// `FUN_0040f340`); its background is `0x3ec`, the beginning's picture
-/// `0x44f`.
-///
-/// port: the pictures are not drawn.
+/// `FUN_0040f340`); its background is `0x3ec` (STRATEGY 1004, A0
+/// alliance-game2/smuggling-benefits shows it under "Smuggling
+/// Benefits"). The class's `0x44f` is no STRATEGY bitmap.
 #[must_use]
 pub fn smuggling_message(
     system: &str,
@@ -889,7 +888,11 @@ pub fn smuggling_message(
             crate::message_log::MessageRail::PopularSupport,
             RailAudience::side(viewer_is_alliance),
         )
-        .with_title(fill_message_text(texts.get(&title)?, &parameters)),
+        .with_title(fill_message_text(texts.get(&title)?, &parameters))
+        .with_picture(MessagePicture {
+            background: 0x3ec,
+            foreground: None,
+        }),
     )
 }
 
@@ -4369,6 +4372,15 @@ mod tests {
             Some(crate::message_log::MessageRail::PopularSupport)
         );
         assert_eq!(message.audience, RailAudience::Alliance);
+        // Its background 0x3ec (STRATEGY 1004), as A0
+        // alliance-game2/smuggling-benefits shows.
+        assert_eq!(
+            message.picture,
+            Some(MessagePicture {
+                background: 0x3ec,
+                foreground: None
+            })
+        );
     }
 
     fn discovery_texts() -> HashMap<u16, String> {

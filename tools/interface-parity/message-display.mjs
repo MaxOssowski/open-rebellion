@@ -793,6 +793,51 @@ async function run(browser, base, faction) {
       }
       assert.deepEqual(rowChecks.support_heads_a0 ?? [0, 0], [0, 0], JSON.stringify(rowChecks));
 
+      // Smuggling Benefits (FUN_00499130, A0 alliance-game2/smuggling-
+      // benefits, a new Alliance game, the window at (62, 49), the pointer
+      // outside): "Smugglers from Yavin are providing us with additional
+      // resources." (0x7062 / 0x7066) over the background 0x3ec; the
+      // picture, its title image and its rail (Display lit, kind 3) every
+      // pixel A0's.
+      if (faction.byte === 1) {
+        const smugglingRow = supportList.rows.indexOf("Smuggling Benefits");
+        assert.ok(smugglingRow > 1, JSON.stringify(supportList.rows));
+        await click(page, await shown(smugglingRow));
+        await click(page, showMessage);
+        const smuggling = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Smuggling Benefits", "Display Message shows Smuggling Benefits");
+        assert.equal(smuggling.viewing_text, "Smugglers from Yavin are providing us with additional resources.",
+          JSON.stringify(smuggling));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("smuggling-benefits");
+        const shownS = PNG.sync.read(await page.screenshot());
+        const a0S = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/alliance-game2/smuggling-benefits.png")));
+        const [leftS, topS] = [Math.round(smuggling.window_left), Math.round(smuggling.window_top)];
+        const regionS = (x0, y0, x1, y1) => {
+          let differ = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((topS + y) * 640 + leftS + x) * 4;
+              const j = ((49 + y) * 640 + 62 + x) * 4;
+              if ([0, 1, 2].some((c) => shownS.data[i + c] !== a0S.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        const smugglingChecks = {
+          picture_a0: regionS(12, 33, 412, 233),
+          title_image_a0: regionS(15, 16, 30, 32),
+          rail_a0: regionS(414, 11, 468, 296),
+        };
+        rowChecks.smuggling_benefits = smugglingChecks;
+        assert.deepEqual(smugglingChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+          JSON.stringify(smugglingChecks));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Popular Support list after smuggling");
+      }
+
       // Near Uprising (FUN_00498cb0, A0 uprising-clean/test-day795-umgul-
       // near-uprising, an unedited Alliance game): "Umgul Near Uprising"
       // over "Unrest has pushed Umgul close to uprising." (0x7070,

@@ -3947,6 +3947,25 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's smuggling for the Alliance reader
+/// (`FUN_00499130`): Yavin, as A0 alliance-game2/smuggling-benefits shows
+/// "Smugglers from Yavin are providing us with additional resources." in
+/// an Alliance game after the Empire took it.
+#[must_use]
+pub fn smuggled_system(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<rebellion_core::ids::SystemKey> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Yavin")
+        .map(|(key, _)| key)
+}
+
 /// The event-message scenario's Research Complete for the Alliance reader
 /// (`FUN_00499aa0`): the ship tree's level that opens the Nebulon-B
 /// Frigate, as A0 research-complete/01 shows "Nebulon-B Frigate Research
@@ -7668,6 +7687,37 @@ mod tests {
         );
         assert_eq!(
             arrived_fleet(
+                request(Scenario::StoryMessages, CockpitFaction::Alliance),
+                &world
+            ),
+            None
+        );
+    }
+
+    // FUN_00499130: A0 alliance-game2/smuggling-benefits shows the
+    // Alliance's "Smuggling Benefits" from Yavin; the scenario names Yavin
+    // for that reader only.
+    #[test]
+    fn the_event_messages_scenario_smuggles_from_yavin_for_the_alliance() {
+        let mut world = fleet_world();
+        let yavin = world.systems.keys().nth(1).unwrap();
+        world.systems[yavin].name = "Yavin".into();
+        assert_eq!(
+            smuggled_system(
+                request(Scenario::EventMessages, CockpitFaction::Alliance),
+                &world
+            ),
+            Some(yavin)
+        );
+        assert_eq!(
+            smuggled_system(
+                request(Scenario::EventMessages, CockpitFaction::Empire),
+                &world
+            ),
+            None
+        );
+        assert_eq!(
+            smuggled_system(
                 request(Scenario::StoryMessages, CockpitFaction::Alliance),
                 &world
             ),

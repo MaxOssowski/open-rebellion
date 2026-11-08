@@ -1667,6 +1667,22 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        // Smuggling Benefits for the Alliance (FUN_00499130, 0x7062 /
+        // 0x7066): smuggling begins on an Empire-held Yavin. Filed first, so
+        // it lists last on the Popular Support rail.
+        if let Some(system) = interface_test_fixture::smuggled_system(request, &world) {
+            if let Some(message) = rebellion_render::story_messages::smuggling_message(
+                &world.systems[system].name,
+                Some(rebellion_core::dat::Faction::Empire),
+                true,
+                0,
+                5,
+                0,
+                &message_texts,
+            ) {
+                msg_log.push(message);
+            }
+        }
         // Filed first, so it lists last on the Manufacturing rail.
         if let Some((tech, level)) = interface_test_fixture::researched_class(request, &world) {
             if let Some(message) = research_complete_message(&world, true, tech, level, 0, &message_texts) {
