@@ -3897,6 +3897,25 @@ pub fn post_story_messages(
             log.push(message);
         }
     }
+    // Luke's Force Growth (0x1e1, FUN_0048ed80) after Dagobah, under the
+    // Jedi Knight's portrait (A0 alliance-game2/luke-force-growth, day 643).
+    // Filed before Luke Goes to Dagobah, so it lists under it.
+    if request.faction == CockpitFaction::Alliance {
+        if let Some(luke) = named("luke") {
+            let mut trained = world.clone();
+            trained.characters[luke].dagobah_completed = true;
+            log.push(rebellion_render::story_messages::story_message(
+                &trained,
+                rebellion_core::events::EVT_CHARACTER_FORCE,
+                &[],
+                String::new(),
+                0,
+                request.faction,
+                texts,
+                rebellion_render::MessageCategory::Event,
+            ));
+        }
+    }
     // Luke's Dagobah messages (0x221, 0x210), for the Alliance reader.
     if let Some(message) = rebellion_render::story_messages::luke_goes_to_dagobah(0, texts) {
         log.push(message);

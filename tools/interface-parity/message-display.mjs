@@ -1930,6 +1930,47 @@ async function run(browser, base, faction) {
       };
       assert.deepEqual(dagobahChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
         JSON.stringify(dagobahChecks));
+      // Luke Skywalker Force Growth (FUN_0048ed80, 0x7180 / 0x7181; A0
+      // alliance-game2/luke-force-growth, day 643, after Dagobah): the
+      // Alliance's background with the Jedi Knight's portrait 6224
+      // (FUN_004c5000 -> FUN_0056f550); the picture, its title image and its
+      // rail every pixel A0's. The ranking word follows Luke's Force, so
+      // only the body's start is compared.
+      await click(page, showMessage);
+      const listedG = await waitReport(page, (value) => value.mode === "list"
+        && value.rows.includes("Luke Skywalker Force Growth"), "the story list holds Force Growth");
+      await click(page, await shown(listedG.rows.indexOf("Luke Skywalker Force Growth")));
+      await click(page, showMessage);
+      const grown = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Luke Skywalker Force Growth", "Display Message shows Force Growth");
+      assert.ok(grown.viewing_text.startsWith(
+        "My recent experience has given me new insights and I have grown in my skills in the Force."),
+      JSON.stringify(grown));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("luke-force-growth");
+      const shownG = PNG.sync.read(await page.screenshot());
+      const a0G = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/alliance-game2/luke-force-growth.png")));
+      const [leftG, topG] = [Math.round(grown.window_left), Math.round(grown.window_top)];
+      const regionG = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topG + y) * 640 + leftG + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownG.data[i + c] !== a0G.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      dagobahChecks.force_growth = {
+        picture_a0: regionG(12, 33, 412, 233),
+        title_image_a0: regionG(15, 16, 30, 32),
+        rail_a0: regionG(414, 11, 468, 296),
+      };
+      assert.deepEqual(dagobahChecks.force_growth, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(dagobahChecks));
     }
 
     assert.deepEqual(errors, [], errors.join("; "));

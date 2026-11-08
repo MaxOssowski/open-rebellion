@@ -166,12 +166,17 @@ pub fn story_message(
         StoryClass::ForceGrowth | StoryClass::LeiaUsesForce => character_speaker_event(subject),
         StoryClass::JabbaCaptures => subject.map_or(0x15, captured_event),
     };
-    message
-        .with_picture(class.picture(
-            side,
-            subject.map(|character| (character.dat_id, character.is_major)),
-        ))
-        .with_advisor_event(event)
+    let mut picture = class.picture(
+        side,
+        subject.map(|character| (character.dat_id, character.is_major)),
+    );
+    // FUN_004c5000 asks the subject's own picture (vtable +0x30): Luke
+    // after Dagobah is the Jedi Knight's (FUN_0056f550), as A0
+    // alliance-game2/luke-force-growth shows.
+    if picture.foreground.is_some() {
+        picture.foreground = subject.and_then(character_portrait_of);
+    }
+    message.with_picture(picture).with_advisor_event(event)
 }
 
 /// Notification `0x221`, Luke Goes to Dagobah (`FUN_0048d190`): built for
@@ -4786,6 +4791,34 @@ mod tests {
             ("port text", None, None)
         );
         assert_eq!(gate.rail, Some(STORY_RAIL));
+
+        // Luke after Dagobah grows in the Force under the Jedi Knight's
+        // portrait, STRATEGY 6224 (FUN_004c5000 -> FUN_0056f550; A0
+        // alliance-game2/luke-force-growth, day 643).
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(578),
+            name: "Luke Skywalker".into(),
+            is_major: true,
+            dagobah_completed: true,
+            ..Default::default()
+        });
+        let grown = story_message(
+            &world,
+            0x1e1,
+            &[EventAction::CaptureCharacter {
+                character: luke,
+                captor_faction: rebellion_core::dat::Faction::Empire,
+            }],
+            "port text".into(),
+            40,
+            CockpitFaction::Alliance,
+            &texts,
+            MessageCategory::Event,
+        );
+        assert_eq!(
+            grown.picture.and_then(|picture| picture.foreground),
+            Some(6224)
+        );
     }
 
     /// TEXTSTRA 0x71a0..0x71b1, the encounter class's texts.
