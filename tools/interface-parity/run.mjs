@@ -4039,6 +4039,16 @@ async function probeTacticalBattleResultsPresentation(
   const route = alliance ? "system" : "fleet";
   assert.ok(consoleLines.some(({ text }) =>
     text.includes(`[tactical-results] destination=${route}`)), `${faction}: missing route log`);
+  if (route === "fleet") {
+    // The Fleet destination opens the battle fleet's Fleet window with the
+    // fleet chosen (FUN_00429440, as the Fleet Finder does), its roster the
+    // battle's survivors: the fixture keeps two of its three hulls.
+    const opened = consoleLines.map(({ text }) =>
+      text.match(/\[tactical-results\] fleet_window system=(.*) ships=(\d+) selected=fleet/))
+      .filter(Boolean);
+    assert.equal(opened.length, 1, `${faction}: the Fleet window did not open on the fleet`);
+    assert.equal(Number(opened[0][2]), 2, `${faction}: the fleet's roster after the battle`);
+  }
   const persistence = consoleLines.find(({ text }) =>
     text.includes("[tactical_results] strategic_persistence applied=true"));
   assert.ok(persistence, `${faction}: strategic result was not persisted before routing`);

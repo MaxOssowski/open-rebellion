@@ -8510,6 +8510,11 @@ async fn main() {
                                                 fleet,
                                             ),
                                         );
+                                        macroquad::logging::info!(
+                                            "[tactical-results] fleet_window system={} ships={} selected=fleet",
+                                            world.systems.get(system).map_or("", |s| s.name.as_str()),
+                                            value.capital_ships.iter().filter(|ship| ship.alive).count(),
+                                        );
                                     }
                                 }
                             }
