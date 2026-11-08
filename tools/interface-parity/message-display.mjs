@@ -654,6 +654,49 @@ async function run(browser, base, faction) {
           JSON.stringify(informChecksE));
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Popular Support list after the Empire's informants");
+        // The Empire's Maintenance Shortfall (FUN_00498970; A0 empire-game3/
+        // maintenance-shortfall, a new Empire game, day 50, the window at
+        // (125, 52), the pointer outside: a TIE Fighter lost at Coruscant)
+        // under Manufacturing Messages (the window's (225, 64)): picture
+        // 0x3f6 (STRATEGY 1014), its title image and its rail (Display lit)
+        // every pixel A0's; the fixture's text names another unit.
+        {
+          await click(page, [listedE.window_left + 225 + 8, listedE.window_top + 64 + 4]);
+          const mfE = await waitReport(page, (value) => value.mode === "list"
+            && value.rows.includes("Maintenance Shortfall"), "the Empire's Manufacturing list");
+          await click(page, await shown(mfE.rows.indexOf("Maintenance Shortfall")));
+          await click(page, showMessage);
+          const shortE = await waitReport(page, (value) => value.mode === "single"
+            && value.viewing_title === "Maintenance Shortfall", "Display Message shows the Empire's shortfall");
+          await page.mouse.move(2, 2);
+          await frames(page);
+          await shot("maintenance-shortfall-empire");
+          const shownSE = PNG.sync.read(await page.screenshot());
+          const a0SE = PNG.sync.read(await fs.readFile(path.join(ROOT,
+            ".artifacts/a0-vm/empire-game3/maintenance-shortfall.png")));
+          const [leftSE, topSE] = [Math.round(shortE.window_left), Math.round(shortE.window_top)];
+          const regionSE = (x0, y0, x1, y1) => {
+            let differ = 0;
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                const i = ((topSE + y) * 640 + leftSE + x) * 4;
+                const j = ((52 + y) * 640 + 125 + x) * 4;
+                if ([0, 1, 2].some((c) => shownSE.data[i + c] !== a0SE.data[j + c])) differ += 1;
+              }
+            }
+            return differ;
+          };
+          const shortChecksE = {
+            picture_a0: regionSE(12, 33, 412, 233),
+            title_image_a0: regionSE(15, 16, 30, 32),
+            rail_a0: regionSE(414, 11, 468, 296),
+          };
+          captureChecks.maintenance_shortfall_empire = shortChecksE;
+          assert.deepEqual(shortChecksE, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+            JSON.stringify(shortChecksE));
+          await click(page, showMessage);
+          await waitReport(page, (value) => value.mode === "list", "the Empire's Manufacturing list again");
+        }
         // Back to Mission Messages (0x7c at the window's (150, 64)) for the
         // report's Display below.
         await click(page, [listedE.window_left + 150 + 8, listedE.window_top + 64 + 4]);
