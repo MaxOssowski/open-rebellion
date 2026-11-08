@@ -3947,6 +3947,29 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's Research Complete for the Alliance reader
+/// (`FUN_00499aa0`): the ship tree's level that opens the Nebulon-B
+/// Frigate, as A0 research-complete/01 shows "Nebulon-B Frigate Research
+/// Complete" in an Alliance game (day 204).
+#[must_use]
+pub fn researched_class(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<(rebellion_core::research::TechType, u32)> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    let nebulon = world
+        .capital_ship_classes
+        .values()
+        .find(|class| class.is_alliance && class.name == "Nebulon-B Frigate")?;
+    let level = nebulon.research_order;
+    let tech = rebellion_core::research::TechType::Ship;
+    (rebellion_render::story_messages::research_complete_class(world, true, tech, level)
+        == Some(nebulon.dat_id))
+    .then_some((tech, level))
+}
+
 /// The event-message scenario's fleet arrival for the Alliance reader
 /// (`FUN_004981c0`, case 1): the Alliance's Fleet 1 at Sluis Van, as A0
 /// events-day673/04 shows "Fleet Arrives at Sluis Van" in an Alliance game.

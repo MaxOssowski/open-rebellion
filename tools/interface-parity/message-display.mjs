@@ -1280,6 +1280,73 @@ async function run(browser, base, faction) {
       JSON.stringify(shortChecks));
       await click(page, showMessage);
       await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after the shortfall");
+
+      // Nebulon-B Frigate Research Complete (FUN_00499aa0, class 0x0065bb40,
+      // kind 4; A0 research-complete/00..01, an Alliance game, day 204, the
+      // window at (62, 49), the pointer outside): chosen in the list, the
+      // rail shows Display in the Encyclopedia art (FUN_004697b0), every
+      // pixel A0's; shown, "R&D Reports that the Nebulon-B Frigate is now
+      // available for manufacture." with its picture, title image and rail
+      // every pixel A0's. (A0 research-complete/02: Display then opens the
+      // Nebulon-B Frigate's Encyclopedia entry, as the press below on a
+      // fresh fixture does.)
+      if (faction.byte === 1) {
+        const listedR = await report(page);
+        const researchRowR = listedR.rows.indexOf("Nebulon-B Frigate Research Complete");
+        assert.ok(researchRowR >= 0, JSON.stringify(listedR.rows));
+        await click(page, await shown(researchRowR));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("nebulon-research-chosen");
+        const chosenR = PNG.sync.read(await page.screenshot());
+        const railOf = (png, a0, a0Left, a0Top, left, top) => {
+          let differ = 0;
+          for (let y = 11; y < 296; y += 1) {
+            for (let x = 414; x < 468; x += 1) {
+              const i = ((top + y) * 640 + left + x) * 4;
+              const j = ((a0Top + y) * 640 + a0Left + x) * 4;
+              if ([0, 1, 2].some((c) => png.data[i + c] !== a0.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        const a0List = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/research-complete/00-index-nebulon-chosen.png")));
+        const researchChecks = {
+          list_rail_a0: railOf(chosenR, a0List, 62, 49, Math.round(listedR.window_left), Math.round(listedR.window_top)),
+        };
+        await click(page, showMessage);
+        const shownR = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Nebulon-B Frigate Research Complete", "Display Message shows Research Complete");
+        assert.equal(shownR.viewing_text,
+          "R&D Reports that the Nebulon-B Frigate is now available for manufacture.", JSON.stringify(shownR));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("nebulon-research-complete");
+        const viewR = PNG.sync.read(await page.screenshot());
+        const a0View = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/research-complete/01-nebulon-b-research-complete.png")));
+        const [leftR, topR] = [Math.round(shownR.window_left), Math.round(shownR.window_top)];
+        const regionR = (x0, y0, x1, y1) => {
+          let differ = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((topR + y) * 640 + leftR + x) * 4;
+              const j = ((49 + y) * 640 + 62 + x) * 4;
+              if ([0, 1, 2].some((c) => viewR.data[i + c] !== a0View.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        researchChecks.picture_a0 = regionR(12, 33, 412, 233);
+        researchChecks.title_image_a0 = regionR(15, 16, 30, 32);
+        researchChecks.rail_a0 = regionR(414, 11, 468, 296);
+        rowChecks.research_complete_nebulon = researchChecks;
+        assert.deepEqual(researchChecks, { list_rail_a0: 0, picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+          JSON.stringify(researchChecks));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after Research Complete");
+      }
       await click(page, [conflictList.window_left + 365 - 62, conflictList.window_top + 113 - 49]);
       await waitReport(page, (value) => value.mode === "list"
         && value.rows[0]?.startsWith("Assault on Coruscant"), "the Conflict list again");

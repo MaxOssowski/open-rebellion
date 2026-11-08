@@ -1667,6 +1667,12 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        // Filed first, so it lists last on the Manufacturing rail.
+        if let Some((tech, level)) = interface_test_fixture::researched_class(request, &world) {
+            if let Some(message) = research_complete_message(&world, true, tech, level, 0, &message_texts) {
+                msg_log.push(message);
+            }
+        }
         if let Some((fleet, system)) = interface_test_fixture::arrived_fleet(request, &world) {
             msg_log.push(fleet_arrival_message(&world, fleet, system, true, 0, &message_texts));
         }
@@ -3818,58 +3824,18 @@ async fn main() {
                 &tally_rolls,
             );
             for tally in &tallies {
-                let faction_name = if tally.faction_is_alliance {
-                    "Alliance"
-                } else {
-                    "Empire"
-                };
-                let tree_name = match tally.tech {
-                    rebellion_core::research::TechType::Ship => "Ship",
-                    rebellion_core::research::TechType::Troop => "Troop",
-                    rebellion_core::research::TechType::Facility => "Facility",
-                };
                 let tick = tick_events.last().map_or(0, |event| event.tick);
                 for level in &tally.reached {
-                    // Notifications 0x125..0x127, Research Complete
-                    // (FUN_00499aa0): the class the level opens.
-                    let (title, text) = match rebellion_render::story_messages::research_complete_texts(
+                    if let Some(message) = research_complete_message(
                         &world,
                         tally.faction_is_alliance,
                         tally.tech,
                         *level,
+                        tick,
                         &message_texts,
                     ) {
-                        Some((title, body)) => (Some(title), body),
-                        None if message_texts.is_empty() => (
-                            None,
-                            format!("{faction_name} {tree_name} tech advanced to level {level}"),
-                        ),
-                        None => continue,
-                    };
-                    // FUN_00499aa0 writes code 4.
-                    let mut message = GameMessage::new(tick, text, MessageCategory::Event)
-                        .with_picture_if(Some(pictures::research()))
-                        .with_advisor_event(4);
-                    // Kind 4 (class 0x0065bb40): Display opens the class's
-                    // Encyclopedia entry (FUN_00467f10 -> FUN_0041d6b0).
-                    if let Some(object) =
-                        rebellion_render::story_messages::research_complete_encyclopedia_object(
-                            &world,
-                            tally.faction_is_alliance,
-                            tally.tech,
-                            *level,
-                        )
-                    {
-                        message = message.with_encyclopedia(object);
+                        msg_log.push(message);
                     }
-                    if let Some(title) = title {
-                        message = message.with_title(title);
-                    }
-                    msg_log.push(filed(
-                        message,
-                        MessageRail::Manufacturing,
-                        Some(RailAudience::side(tally.faction_is_alliance)),
-                    ));
                 }
             }
             // Notifications 0x129..0x12b, Research Exhausted (FUN_0048abc0).
@@ -11911,6 +11877,48 @@ fn maintenance_message(
 /// a battle (`after_battle`). A0's unedited Alliance game listed no
 /// Blockade after the battles at Yavin (day 650) and Umgul (day 718) left
 /// those systems blockaded. port: without the texts, the port's line.
+/// Notifications `0x125`..`0x127`, Research Complete (`FUN_00499aa0`,
+/// class `0x0065bb40`): the class `level` opens on `tech`'s tree, filed on
+/// the Manufacturing rail for the side. Kind 4: Display opens the class's
+/// Encyclopedia entry (`FUN_00467f10` -> `FUN_0041d6b0`; A0
+/// research-complete/02 opens the Nebulon-B Frigate's).
+fn research_complete_message(
+    world: &GameWorld,
+    is_alliance: bool,
+    tech: rebellion_core::research::TechType,
+    level: u32,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> Option<GameMessage> {
+    let (title, text) =
+        match rebellion_render::story_messages::research_complete_texts(world, is_alliance, tech, level, texts) {
+            Some((title, body)) => (Some(title), body),
+            None if texts.is_empty() => {
+                let faction_name = if is_alliance { "Alliance" } else { "Empire" };
+                let tree_name = match tech {
+                    rebellion_core::research::TechType::Ship => "Ship",
+                    rebellion_core::research::TechType::Troop => "Troop",
+                    rebellion_core::research::TechType::Facility => "Facility",
+                };
+                (None, format!("{faction_name} {tree_name} tech advanced to level {level}"))
+            }
+            None => return None,
+        };
+    // FUN_00499aa0 writes code 4.
+    let mut message = GameMessage::new(tick, text, MessageCategory::Event)
+        .with_picture_if(Some(pictures::research()))
+        .with_advisor_event(4);
+    if let Some(object) =
+        rebellion_render::story_messages::research_complete_encyclopedia_object(world, is_alliance, tech, level)
+    {
+        message = message.with_encyclopedia(object);
+    }
+    if let Some(title) = title {
+        message = message.with_title(title);
+    }
+    Some(filed(message, MessageRail::Manufacturing, Some(RailAudience::side(is_alliance))))
+}
+
 /// Notification `0xd`, Unit Arrival (`FUN_004981c0`, case 1): TEXTSTRA
 /// `0x7078` / `0x7079` name the fleet and the system, filed on the Fleet
 /// rail for the fleet's side.
@@ -12153,42 +12161,21 @@ fn apply_mission_result(
                 points,
             } => {
                 let is_alliance = *faction == MissionFaction::Alliance;
-                let tree_name = match tech {
-                    rebellion_core::research::TechType::Ship => "Ship",
-                    rebellion_core::research::TechType::Troop => "Troop",
-                    rebellion_core::research::TechType::Facility => "Facility",
-                };
                 let was_done = research_state.progress(is_alliance, *tech).done;
                 for level in research_state.add_points(world, is_alliance, *tech, *points) {
                     valuable = true;
-                    // Notifications 0x125..0x127, Research Complete
-                    // (FUN_00499aa0): the class the level opens.
-                    let (title, text) = match rebellion_render::story_messages::research_complete_texts(
+                    // The same class as the economy's (kind 4): Display
+                    // opens the class's Encyclopedia entry here too.
+                    if let Some(message) = research_complete_message(
                         world,
                         is_alliance,
                         *tech,
                         level,
+                        result.tick,
                         message_texts,
                     ) {
-                        Some((title, body)) => (Some(title), body),
-                        None if message_texts.is_empty() => (
-                            None,
-                            format!("{faction_name} {tree_name} tech advanced to level {level}"),
-                        ),
-                        None => continue,
-                    };
-                    // FUN_00499aa0 writes code 4.
-                    let mut message = GameMessage::new(result.tick, text, MessageCategory::Event)
-                        .with_picture_if(Some(pictures::research()))
-                        .with_advisor_event(4);
-                    if let Some(title) = title {
-                        message = message.with_title(title);
+                        log.push(message);
                     }
-                    log.push(filed(
-                        message,
-                        MessageRail::Manufacturing,
-                        Some(RailAudience::side(is_alliance)),
-                    ));
                 }
                 // Notifications 0x129..0x12b, Research Exhausted
                 // (FUN_0048abc0): the tree was just marked Done.
@@ -14523,6 +14510,40 @@ mod character_health_tests {
         assert_eq!(placed.system, Some(rebellion_core::ids::SystemKey::default()));
         assert!(!placed.unplaced_target);
         assert_eq!(placed.picture.map(|p| p.background), Some(0x3f6));
+    }
+
+    #[test]
+    fn a_research_complete_opens_its_class_in_the_encyclopedia_wherever_it_comes_from() {
+        // FUN_00499aa0's class 0x0065bb40 is kind 4 (vtable +0x10 0x5a6700):
+        // Display opens the class's Encyclopedia entry (FUN_00467f10 ->
+        // FUN_0041d6b0), as A0 research-complete/02 does for the Nebulon-B
+        // Frigate. Research missions and the economy share this builder.
+        use rebellion_core::ids::DatId;
+        use rebellion_core::research::TechType;
+        use rebellion_core::world::CapitalShipClass;
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x7048, "{1:1} Research Complete"),
+            (0x7049, "R&D Reports that the {1:1} is now available for manufacture."),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        let mut world = GameWorld::default();
+        world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0002),
+            name: "Nebulon-B Frigate".into(),
+            is_alliance: true,
+            research_order: 1,
+            refined_material_cost: 10,
+            ..CapitalShipClass::default()
+        });
+        let message = research_complete_message(&world, true, TechType::Ship, 1, 7, &texts).unwrap();
+        assert_eq!(message.title.as_deref(), Some("Nebulon-B Frigate Research Complete"));
+        assert_eq!(message.text, "R&D Reports that the Nebulon-B Frigate is now available for manufacture.");
+        assert_eq!(message.encyclopedia, Some(0x1400_0002));
+        assert_eq!(message.rail, Some(MessageRail::Manufacturing));
+        assert_eq!(message.audience, RailAudience::Alliance);
+        assert!(research_complete_message(&world, true, TechType::Ship, 2, 7, &texts).is_none());
     }
 
     #[test]
