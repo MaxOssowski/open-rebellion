@@ -3947,6 +3947,26 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's blockade for the Alliance reader
+/// (`FUN_004960f0`, notification `0x14e` with no battle there): Yavin, held
+/// by the Alliance with a fleet there, as A0 events-day673/02 shows "Yavin
+/// Under Blockade" in an Alliance game. The app files it before Saboteurs
+/// Strike, so it lists last on the Conflict rail.
+#[must_use]
+pub fn blockaded_system(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<rebellion_core::ids::SystemKey> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Yavin")
+        .map(|(key, _)| key)
+}
+
 /// The event-message scenario's sabotaged regiment: the first Alliance
 /// regiment on a planet and its system. The app posts Saboteurs Strike
 /// (`FUN_0048b9a0`) for it before the battle reports, so it lists last on
@@ -7565,6 +7585,27 @@ mod tests {
             post_conflict_report(request(Scenario::StoryMessages, faction), &mut none);
             assert!(none.messages().is_empty());
         }
+    }
+
+    // FUN_004960f0: A0 events-day673/02 shows the Alliance "Yavin Under
+    // Blockade"; the scenario blockades Yavin for that reader only.
+    #[test]
+    fn the_event_messages_scenario_blockades_yavin_for_the_alliance() {
+        let mut world = fleet_world();
+        let yavin = world.systems.keys().nth(1).unwrap();
+        world.systems[yavin].name = "Yavin".into();
+        assert_eq!(
+            blockaded_system(request(Scenario::EventMessages, CockpitFaction::Alliance), &world),
+            Some(yavin)
+        );
+        assert_eq!(
+            blockaded_system(request(Scenario::EventMessages, CockpitFaction::Empire), &world),
+            None
+        );
+        assert_eq!(
+            blockaded_system(request(Scenario::StoryMessages, CockpitFaction::Alliance), &world),
+            None
+        );
     }
 
     // FUN_0048f1e0 (timer 0x389): A0 research-display/08-future-jedi shows

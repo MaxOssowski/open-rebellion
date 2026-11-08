@@ -1667,6 +1667,13 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        if let Some(system) = interface_test_fixture::blockaded_system(request, &world) {
+            let message = blockade_started_message(&world, system, false, true, 0, &message_texts);
+            macroquad::logging::info!("[fixture] blockade at {:?}: {}", system, message.is_some());
+            if let Some(message) = message {
+                msg_log.push(message);
+            }
+        }
         if let Some((at, troop)) = interface_test_fixture::sabotaged_regiment(request, &world) {
             let victim = rebellion_core::missions::sabotage_victim(
                 &world,

@@ -1076,6 +1076,50 @@ async function run(browser, base, faction) {
       await click(page, showMessage);
       await waitReport(page, (value) => value.mode === "list", "the Conflict list after Saboteurs Strike");
 
+      // Yavin Under Blockade (FUN_004960f0, A0 events-day673/02-yavin-under-
+      // blockade, an Alliance game, the window at (62, 49), the pointer
+      // outside): the holder reads 0x70a2 / 0x70a3, "Imperial ships have
+      // been detected at Yavin.  The world is under enemy blockade."; the
+      // picture, its title image and its rail (Display lit) every pixel A0's.
+      {
+        const blockadeRow = conflictList.rows.findIndex((text) => text === "Yavin Under Blockade");
+        assert.equal(blockadeRow, 3, JSON.stringify(conflictList.rows));
+        await click(page, row(blockadeRow));
+        await click(page, showMessage);
+        const blockade = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Yavin Under Blockade", "Display Message shows the blockade");
+        assert.equal(blockade.viewing_text,
+          "Imperial ships have been detected at Yavin.  The world is under enemy blockade.", JSON.stringify(blockade));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("yavin-under-blockade");
+        const shownB = PNG.sync.read(await page.screenshot());
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/events-day673/02-yavin-under-blockade.png")));
+        const [leftB, topB] = [Math.round(blockade.window_left), Math.round(blockade.window_top)];
+        const region = (x0, y0, x1, y1) => {
+          let differ = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((topB + y) * 640 + leftB + x) * 4;
+              const j = ((49 + y) * 640 + 62 + x) * 4;
+              if ([0, 1, 2].some((c) => shownB.data[i + c] !== a0.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        const blockadeChecks = {
+          picture_a0: region(12, 33, 412, 233),
+          title_image_a0: region(15, 16, 30, 32),
+          rail_a0: region(414, 11, 468, 296),
+        };
+        rowChecks.blockade_yavin = blockadeChecks;
+        assert.deepEqual(blockadeChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+          JSON.stringify(blockadeChecks));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Conflict list after the blockade");
+      }
+
       // The Manufacturing list (A0 manufacturing-messages/q01, a new
       // Alliance game, day 39 on: "Construction Yard Idle on Womrik"
       // chosen): STRATEGY 0x2a9c at the row's (1, 1), keyed on index 0, and
