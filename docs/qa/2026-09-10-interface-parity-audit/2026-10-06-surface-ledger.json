@@ -8206,14 +8206,15 @@
         {
           "id": "EVT-01-C014",
           "requirement": "Force discovery",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery-message/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-force-discovery/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-future-jedi-empire-a0/"
           ],
-          "note": "Future Jedi Discovered and Leia Uses Force messages seen in the browser Mission list (agent-browser). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Future Jedi Discovered and Leia Uses Force messages seen in the browser Mission list (agent-browser). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-08 (b131): compared with A0 research-display/08-future-jedi (a new Easy Empire game, day 107): Vader's 'Future Jedi Discovered' about Ozzel (FUN_0048f1e0, 0x7178/0x7179). message-display.mjs (Linux, Empire) files the same through story_messages::force_user_discovered and finds the exact text and the picture (the Empire's background with Vader's portrait), the title image and the rail 0 pixels from A0, apart from A0's pointer. Display (0x67) shows lit as in A0: the class is kind 3 (vtable +0x10 = 0x5a6730), so FUN_004697b0 lights it, and FUN_0048f1e0 sets no object, so a press goes nowhere; the port had it grey before b131. Leia Uses Force has no A0 capture. Batch b131: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C015",
