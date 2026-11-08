@@ -8252,13 +8252,14 @@
         {
           "id": "EVT-01-C017",
           "requirement": "Dagobah",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-dagobah/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-dagobah/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-luke-goes-to-dagobah-a0/"
           ],
-          "note": "Luke Goes to / Leaves Dagobah messages (luke_goes_to_dagobah) seen in the browser (luke-goes-to-dagobah.png). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Luke Goes to / Leaves Dagobah messages (luke_goes_to_dagobah) seen in the browser (luke-goes-to-dagobah.png). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-08 (b138): A0 alliance-game2/luke-goes-to-dagobah (a new Alliance game): 'Luke has been sent to Dagobah to be trained by Yoda.' (FUN_0048d190, 0x71b8/0x71b9, picture 0x421), Display grey (kind 8, also with the row chosen, index-dagobah-chosen-day454). message-display.mjs (Linux, Alliance) opens the story fixture's message and finds the text exact and picture, title image and rail 0 pixels from A0. Luke Leaves Dagobah has no A0 capture. Batch b138: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C018",
