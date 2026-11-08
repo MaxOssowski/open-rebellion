@@ -4130,14 +4130,25 @@ pub fn post_conflict_report(request: FixtureRequest, log: &mut rebellion_render:
     }
 }
 
-/// The event-message scenario's systems joining the Empire, in the order
-/// they join, each with its day: Corellia, then Commenor, as A0
-/// message-index/category-1-day228 lists them, newest first.
+/// The event-message scenario's systems joining the Empire, for the
+/// Alliance reader, in the order they join, each with its day: Corellia,
+/// then Commenor, as A0 message-index/category-1-day228 lists them, newest
+/// first.
 pub fn systems_joining_the_empire(request: FixtureRequest) -> Vec<(&'static str, u64)> {
-    if request.scenario != Scenario::EventMessages {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
         return Vec::new();
     }
     vec![("Corellia", 0), ("Commenor", 0)]
+}
+
+/// The event-message scenario's systems joining the Alliance, for the
+/// Empire reader: Commenor, as A0 empire-game3/joins-enemy shows
+/// "Commenor Joins Enemy" in a new Empire game (day 220).
+pub fn systems_joining_the_alliance(request: FixtureRequest) -> Vec<(&'static str, u64)> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Empire {
+        return Vec::new();
+    }
+    vec![("Commenor", 0)]
 }
 
 /// The event-message scenario's Informants Provide Information
@@ -7711,6 +7722,27 @@ mod tests {
             ),
             None
         );
+    }
+
+    // FUN_00499760: A0 message-index/category-1-day228 lists the Alliance's
+    // systems joining the Empire; A0 empire-game3/joins-enemy shows the
+    // Empire's Commenor joining the Alliance. Each reader gets its own.
+    #[test]
+    fn the_event_messages_scenario_joins_systems_to_the_readers_enemy() {
+        let alliance = request(Scenario::EventMessages, CockpitFaction::Alliance);
+        let empire = request(Scenario::EventMessages, CockpitFaction::Empire);
+        assert_eq!(
+            systems_joining_the_empire(alliance),
+            vec![("Corellia", 0), ("Commenor", 0)]
+        );
+        assert!(systems_joining_the_empire(empire).is_empty());
+        assert_eq!(systems_joining_the_alliance(empire), vec![("Commenor", 0)]);
+        assert!(systems_joining_the_alliance(alliance).is_empty());
+        assert!(systems_joining_the_alliance(request(
+            Scenario::StoryMessages,
+            CockpitFaction::Empire
+        ))
+        .is_empty());
     }
 
     // FUN_0048fdf0: A0 alliance-game2/jan-dodonna-killed shows the

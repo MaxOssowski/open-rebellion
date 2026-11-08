@@ -654,6 +654,51 @@ async function run(browser, base, faction) {
           JSON.stringify(informChecksE));
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Popular Support list after the Empire's informants");
+        // The Empire's Commenor Joins Enemy (FUN_00499760; A0 empire-game3/
+        // joins-enemy, a new Empire game, day 220, the window at (125, 52),
+        // the pointer outside): "Popular dissent on Commenor has caused that
+        // world to join the Alliance." (0x7039 / 0x703c) over 0x3ed (STRATEGY
+        // 1005); the picture, its title image and its rail (Display lit)
+        // every pixel A0's.
+        {
+          const supportJ = await report(page);
+          const joinsRowE = supportJ.rows.indexOf("Commenor Joins Enemy");
+          assert.ok(joinsRowE >= 0, JSON.stringify(supportJ.rows));
+          await click(page, await shown(joinsRowE));
+          await click(page, showMessage);
+          const joinsE = await waitReport(page, (value) => value.mode === "single"
+            && value.viewing_title === "Commenor Joins Enemy", "Display Message shows the Empire's Commenor Joins Enemy");
+          assert.equal(joinsE.viewing_text,
+            "Popular dissent on Commenor has caused that world to join the Alliance.", JSON.stringify(joinsE));
+          await page.mouse.move(2, 2);
+          await frames(page);
+          await shot("joins-enemy-empire");
+          const shownJE = PNG.sync.read(await page.screenshot());
+          const a0JE = PNG.sync.read(await fs.readFile(path.join(ROOT,
+            ".artifacts/a0-vm/empire-game3/joins-enemy.png")));
+          const [leftJE, topJE] = [Math.round(joinsE.window_left), Math.round(joinsE.window_top)];
+          const regionJE = (x0, y0, x1, y1) => {
+            let differ = 0;
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                const i = ((topJE + y) * 640 + leftJE + x) * 4;
+                const j = ((52 + y) * 640 + 125 + x) * 4;
+                if ([0, 1, 2].some((c) => shownJE.data[i + c] !== a0JE.data[j + c])) differ += 1;
+              }
+            }
+            return differ;
+          };
+          const joinsChecksE = {
+            picture_a0: regionJE(12, 33, 412, 233),
+            title_image_a0: regionJE(15, 16, 30, 32),
+            rail_a0: regionJE(414, 11, 468, 296),
+          };
+          captureChecks.joins_enemy_empire = joinsChecksE;
+          assert.deepEqual(joinsChecksE, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+            JSON.stringify(joinsChecksE));
+          await click(page, showMessage);
+          await waitReport(page, (value) => value.mode === "list", "the Empire's Popular Support list after joins");
+        }
         // The Empire's Maintenance Shortfall (FUN_00498970; A0 empire-game3/
         // maintenance-shortfall, a new Empire game, day 50, the window at
         // (125, 52), the pointer outside: a TIE Fighter lost at Coruscant)

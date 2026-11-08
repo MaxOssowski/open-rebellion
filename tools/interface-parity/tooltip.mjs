@@ -337,6 +337,24 @@ async function run(browser, base, faction) {
         const title = await page.evaluate(() => window.__openRebellionInterfaceReady?.viewing_title ?? null);
         assert.ok(title?.startsWith("Fleet Arrives"), `the arrows never reached Fleet Arrives: ${title}`);
         await probe("mi-display-enabled", [575, 268], "409-mi-display-enabled.png");
+        // Research Complete is kind 4: Display's tip is 0x8031
+        // "Encylopedia" (FUN_004697b0; A0 tooltip/531, from
+        // empire-game3/display-encyclopedia-tooltip: Advanced Training
+        // Facility Research Complete chosen, the pointer at (575, 289)).
+        // The other arrow (500, 72) steps the other way, towards it.
+        for (let step = 0; step < 30; step += 1) {
+          const shown = await page.evaluate(() => window.__openRebellionInterfaceReady?.viewing_title ?? null);
+          if (shown?.startsWith("Research Complete")) break;
+          await page.mouse.move(500, 72, { steps: 4 });
+          await frames(page, 3);
+          await page.mouse.down();
+          await frames(page, 3);
+          await page.mouse.up();
+          await frames(page, 6);
+        }
+        const research = await page.evaluate(() => window.__openRebellionInterfaceReady?.viewing_title ?? null);
+        assert.ok(research?.startsWith("Research Complete"), `the arrows never reached Research Complete: ${research}`);
+        await probe("mi-display-encyclopedia", [575, 289], "531-mi-display-encyclopedia.png");
       }
       await page.goto(`${base}?fixture-code=${FLEET_FINDER | (faction.byte << 8)}`);
       await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,

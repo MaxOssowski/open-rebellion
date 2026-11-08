@@ -1827,6 +1827,28 @@ async fn main() {
                 }
             }
         }
+        // A0 empire-game3/joins-enemy: Commenor joins the Alliance, as the
+        // Empire reads it.
+        for (name, tick) in interface_test_fixture::systems_joining_the_alliance(request) {
+            if let Some(system) = world
+                .systems
+                .iter()
+                .find(|(_, system)| system.name == name)
+                .map(|(key, _)| key)
+            {
+                if let Some(message) = system_joins_message(
+                    &world,
+                    system,
+                    Some(Faction::Empire),
+                    Some(Faction::Alliance),
+                    player_faction == MissionFaction::Alliance,
+                    tick,
+                    &message_texts,
+                ) {
+                    msg_log.push(message);
+                }
+            }
+        }
         for result in interface_test_fixture::mission_results(request, &world) {
             apply_mission_result(
                 &result,
