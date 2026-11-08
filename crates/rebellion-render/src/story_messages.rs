@@ -300,7 +300,12 @@ pub fn force_user_discovered(
             .with_advisor_event(character_speaker_event(Some(speaker)))
             // Class 0x0065b520's slot +0x30 is FUN_006158b0: it never
             // expires.
-            .with_lifetime(crate::message_log::MessageLifetime::Kept),
+            .with_lifetime(crate::message_log::MessageLifetime::Kept)
+            // Its slot +0x10 is the generic 0x5a6730 (kind 3), so
+            // FUN_004697b0 lights Display; FUN_0048f1e0 sets no object
+            // (+0x5c), so FUN_00467f10's press goes nowhere. A0
+            // research-display/08-future-jedi shows it lit.
+            .with_unplaced_target(),
     )
 }
 
@@ -4466,6 +4471,9 @@ mod tests {
         assert!(message.text.contains("We should consider allowing me"));
         // Class 0x0065b520's slot +0x30 is FUN_006158b0: never expired.
         assert!(!message.expired(5_000, &|_, _| true));
+        // Kind 3 without an object: Display lit, its press going nowhere
+        // (FUN_004697b0, FUN_00467f10; A0 research-display/08).
+        assert!(message.unplaced_target && message.system.is_none());
         // Below 100: "Once I reach the rank of Jedi Knight".
         let (world, vader, klev, _) = discovery_world(99);
         let message = force_user_discovered(&world, vader, klev, 9, &discovery_texts()).unwrap();

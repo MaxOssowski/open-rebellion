@@ -555,6 +555,55 @@ async function run(browser, base, faction) {
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Mission list after the Empire's foiled");
 
+        // The Empire's Future Jedi Discovered (FUN_0048f1e0; A0
+        // research-display/08-future-jedi, a new Easy Empire game, day 107,
+        // the window at (125, 52)): Vader tells of Ozzel's Force (0x7179,
+        // he trains at once) over the Empire's background with his
+        // portrait; the picture, its title image and its rail every pixel
+        // A0's but under A0's pointer.
+        {
+          const listedJ = await report(page);
+          const jediRow = listedJ.rows.findIndex((text) => text.startsWith("Future Jedi Discovered"));
+          assert.ok(jediRow >= 0, JSON.stringify(listedJ.rows));
+          await click(page, await shown(jediRow));
+          await click(page, showMessage);
+          const jedi = await waitReport(page, (value) => value.mode === "single"
+            && value.viewing_title === "Future Jedi Discovered", "Display Message shows Future Jedi Discovered");
+          assert.equal(jedi.viewing_text, "I have detected that Ozzel has the ability to use the Force.  "
+            + "We should consider allowing me to conduct training in the way of the Force.", JSON.stringify(jedi));
+          await page.mouse.move(2, 2);
+          await frames(page);
+          await shot("future-jedi-empire");
+          const shownJ = PNG.sync.read(await page.screenshot());
+          const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+            ".artifacts/a0-vm/research-display/08-future-jedi.png")));
+          const [leftJ, topJ] = [Math.round(jedi.window_left), Math.round(jedi.window_top)];
+          // A0's pointer stands at about (228..252, 228..262).
+          const pointer = (x, y) => x >= 228 && x < 252 && y >= 228 && y < 262;
+          const region = (x0, y0, x1, y1) => {
+            let differ = 0;
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                if (pointer(125 + x, 52 + y)) continue;
+                const i = ((topJ + y) * 640 + leftJ + x) * 4;
+                const j = ((52 + y) * 640 + 125 + x) * 4;
+                if ([0, 1, 2].some((c) => shownJ.data[i + c] !== a0.data[j + c])) differ += 1;
+              }
+            }
+            return differ;
+          };
+          const jediChecks = {
+            picture_a0: region(12, 33, 412, 233),
+            title_image_a0: region(15, 16, 30, 32),
+            rail_a0: region(414, 11, 468, 296),
+          };
+          captureChecks.future_jedi_empire = jediChecks;
+          assert.deepEqual(jediChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+            JSON.stringify(jediChecks));
+          await click(page, showMessage);
+          await waitReport(page, (value) => value.mode === "list", "the Mission list after Future Jedi");
+        }
+
         // The Empire's Informants Provide Information (A0 empire-clean/
         // 04-day188-informants-uvena, the window at (125, 52)): "Informants
         // have provided us with information about Uvena." over 0x3e8

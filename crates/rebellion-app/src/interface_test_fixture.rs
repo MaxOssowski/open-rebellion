@@ -4046,6 +4046,17 @@ pub fn informant_reports(request: FixtureRequest) -> Vec<&'static str> {
     }
 }
 
+/// The event-message scenario's Force discovery for the Empire reader
+/// (`FUN_0048f1e0`, timer `0x389`): Vader finds Ozzel's Force, as A0
+/// research-display/08-future-jedi (a new Easy Empire game, day 107) shows
+/// "Future Jedi Discovered".
+pub fn force_discoveries(request: FixtureRequest) -> Vec<(&'static str, &'static str)> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Empire {
+        return Vec::new();
+    }
+    vec![("Vader", "Ozzel")]
+}
+
 /// The event-message scenario's Maintenance Shortfall (`FUN_00498970`): a
 /// corvette scrapped in hyperspace, so at no system, as A0
 /// maintenance-shortfall/test-day1224-corvette-no-system shows the
@@ -7518,6 +7529,23 @@ mod tests {
             post_conflict_report(request(Scenario::StoryMessages, faction), &mut none);
             assert!(none.messages().is_empty());
         }
+    }
+
+    // FUN_0048f1e0 (timer 0x389): A0 research-display/08-future-jedi shows
+    // the Empire Vader's "Future Jedi Discovered" for Ozzel.
+    #[test]
+    fn the_event_messages_scenario_has_vader_find_ozzels_force_for_the_empire() {
+        assert_eq!(
+            force_discoveries(request(Scenario::EventMessages, CockpitFaction::Empire)),
+            vec![("Vader", "Ozzel")]
+        );
+        assert!(
+            force_discoveries(request(Scenario::EventMessages, CockpitFaction::Alliance))
+                .is_empty()
+        );
+        assert!(
+            force_discoveries(request(Scenario::StoryMessages, CockpitFaction::Empire)).is_empty()
+        );
     }
 
     // FUN_00490340: the EventMessages scenario files the Emperor's capture
