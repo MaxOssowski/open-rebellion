@@ -1015,6 +1015,57 @@ async function run(browser, base, faction) {
       }
       assert.ok(rowChecks.manufacturing_icon_port === 0 && (rowChecks.manufacturing_icon_a0 ?? 0) === 0
         && (rowChecks.manufacturing_head_a0 ?? 0) === 0, JSON.stringify(rowChecks));
+
+      // Maintenance Shortfall for a corvette in hyperspace (FUN_00498970,
+      // A0 maintenance-shortfall/test-day1224-corvette-no-system, an
+      // unedited Alliance game): no system's name, the ship's own name, on
+      // the reader's picture 0x3f5 (STRATEGY 1013), its title image and its
+      // rail (Display lit, the target unplaced) every pixel A0's.
+      const shortfallRow = manufacturing.rows.indexOf("Maintenance Shortfall");
+      assert.ok(shortfallRow > 0, JSON.stringify(manufacturing.rows));
+      await click(page, row(shortfallRow));
+      await click(page, showMessage);
+      const shortfall = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Maintenance Shortfall", "Display Message shows the shortfall");
+      assert.ok(shortfall.viewing_text.startsWith(
+        "The following units have been destroyed at  due to a maintenance shortfall:")
+        && shortfall.viewing_text.includes("Corellian Corvette 2"), JSON.stringify(shortfall));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("maintenance-shortfall");
+      const shortScreen = PNG.sync.read(await page.screenshot());
+      const shortPicture = await bitmap(faction.byte === 1 ? 1013 : 1014);
+      const [shortLeft, shortTop] = [Math.round(shortfall.window_left), Math.round(shortfall.window_top)];
+      const shortChecks = { port: differing(shortScreen, [shortLeft + 12, shortTop + 33], shortPicture) };
+      if (faction.byte === 1) {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/maintenance-shortfall/test-day1224-corvette-no-system.png")));
+        shortChecks.a0 = differing(a0, [74, 82], shortPicture);
+        let titleDiffer = 0;
+        for (let y = 0; y < 16; y += 1) {
+          for (let x = 0; x < 15; x += 1) {
+            const i = ((shortTop + 16 + y) * 640 + shortLeft + 15 + x) * 4;
+            const j = ((49 + 16 + y) * 640 + 62 + 15 + x) * 4;
+            if ([0, 1, 2].some((c) => shortScreen.data[i + c] !== a0.data[j + c])) titleDiffer += 1;
+          }
+        }
+        shortChecks.title_image_a0 = titleDiffer;
+        let railDiffer = 0;
+        for (let y = 11; y < 296; y += 1) {
+          for (let x = 414; x < 468; x += 1) {
+            const i = ((shortTop + y) * 640 + shortLeft + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shortScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
+          }
+        }
+        shortChecks.rail_a0 = railDiffer;
+      }
+      rowChecks.maintenance_shortfall = shortChecks;
+      assert.ok(shortChecks.port === 0 && (shortChecks.a0 ?? 0) === 0
+        && (shortChecks.title_image_a0 ?? 0) === 0 && (shortChecks.rail_a0 ?? 0) === 0,
+      JSON.stringify(shortChecks));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Manufacturing list after the shortfall");
       await click(page, [conflictList.window_left + 365 - 62, conflictList.window_top + 113 - 49]);
       await waitReport(page, (value) => value.mode === "list"
         && value.rows[0]?.startsWith("Assault on Coruscant"), "the Conflict list again");

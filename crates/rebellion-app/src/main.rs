@@ -1676,6 +1676,20 @@ async fn main() {
                 msg_log.push(message);
             }
         }
+        // Filed before the scenario's other Manufacturing reports, so it
+        // lists under them.
+        for unit in interface_test_fixture::maintenance_shortfalls(request) {
+            if let Some(message) = maintenance_message(
+                &world,
+                None,
+                unit,
+                player_faction == MissionFaction::Alliance,
+                0,
+                &message_texts,
+            ) {
+                msg_log.push(message);
+            }
+        }
         interface_test_fixture::post_conflict_report(request, &mut msg_log);
         interface_test_fixture::post_story_messages(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_event_messages(request, &mut world, &mut mission_state, &mut msg_log);

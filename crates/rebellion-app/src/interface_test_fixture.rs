@@ -4046,6 +4046,17 @@ pub fn informant_reports(request: FixtureRequest) -> Vec<&'static str> {
     }
 }
 
+/// The event-message scenario's Maintenance Shortfall (`FUN_00498970`): a
+/// corvette scrapped in hyperspace, so at no system, as A0
+/// maintenance-shortfall/test-day1224-corvette-no-system shows the
+/// Alliance "Corellian Corvette 2".
+pub fn maintenance_shortfalls(request: FixtureRequest) -> Vec<&'static str> {
+    if request.scenario != Scenario::EventMessages {
+        return Vec::new();
+    }
+    vec!["Corellian Corvette 2"]
+}
+
 /// The event-message scenario's Near Uprising (`FUN_00498cb0`): the
 /// reader's own Umgul, garrisoned, its troop surplus fallen to 0, as A0
 /// uprising-clean/test-day795-umgul-near-uprising shows it to the
