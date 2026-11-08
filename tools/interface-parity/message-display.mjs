@@ -747,6 +747,59 @@ async function run(browser, base, faction) {
         await click(page, [listedE.window_left + 150 + 8, listedE.window_top + 64 + 4]);
         await waitReport(page, (value) => value.mode === "list"
           && value.rows[0]?.startsWith("Emperor Palpatine Captured"), "the Empire's Mission list again");
+
+        // The Empire's side of two Alliance comparisons (A0 empire-game3, a
+        // new Empire game, the window at (125, 52), the pointer outside):
+        // Jerjerrod Killed over the Empire's coffin 0x433 (FUN_0048fdf0) on
+        // the Mission list, and Smuggling Benefits from the Alliance's
+        // Coruscant over 0x3ec (FUN_00499130, 0x7062 / 0x7066) on Popular
+        // Support; text exact, and the picture, its title image and its
+        // rail every pixel A0's. Each returns to the list it came from.
+        const compareE = async (title, text, a0File, label) => {
+          const listed = await report(page);
+          const at = listed.rows.indexOf(title);
+          assert.ok(at >= 0, JSON.stringify(listed.rows));
+          await click(page, await shown(at));
+          await click(page, showMessage);
+          const viewed = await waitReport(page, (value) => value.mode === "single"
+            && value.viewing_title === title, `Display Message shows ${title}`);
+          assert.equal(viewed.viewing_text, text, JSON.stringify(viewed));
+          await page.mouse.move(2, 2);
+          await frames(page);
+          await shot(label);
+          const png = PNG.sync.read(await page.screenshot());
+          const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/empire-game3", a0File)));
+          const [left, top] = [Math.round(viewed.window_left), Math.round(viewed.window_top)];
+          const region = (x0, y0, x1, y1) => {
+            let differ = 0;
+            for (let y = y0; y < y1; y += 1) {
+              for (let x = x0; x < x1; x += 1) {
+                const i = ((top + y) * 640 + left + x) * 4;
+                const j = ((52 + y) * 640 + 125 + x) * 4;
+                if ([0, 1, 2].some((c) => png.data[i + c] !== a0.data[j + c])) differ += 1;
+              }
+            }
+            return differ;
+          };
+          const checks = {
+            picture_a0: region(12, 33, 412, 233),
+            title_image_a0: region(15, 16, 30, 32),
+            rail_a0: region(414, 11, 468, 296),
+          };
+          captureChecks[label] = checks;
+          assert.deepEqual(checks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 }, `${label} ${JSON.stringify(checks)}`);
+          await click(page, showMessage);
+          await waitReport(page, (value) => value.mode === "list", `the list after ${title}`);
+        };
+        await compareE("Jerjerrod Killed", "Jerjerrod has been killed.", "jerjerrod-killed.png", "killed_empire");
+        await click(page, [listedE.window_left + 78 + 8, listedE.window_top + 64 + 4]);
+        await waitReport(page, (value) => value.mode === "list"
+          && value.rows.includes("Smuggling Benefits"), "the Empire's Popular Support list for smuggling");
+        await compareE("Smuggling Benefits", "Smugglers from Coruscant are providing us with additional resources.",
+          "smuggling-benefits.png", "smuggling_empire");
+        await click(page, [listedE.window_left + 150 + 8, listedE.window_top + 64 + 4]);
+        await waitReport(page, (value) => value.mode === "list"
+          && value.rows[0]?.startsWith("Emperor Palpatine Captured"), "the Empire's Mission list once more");
       }
 
     }

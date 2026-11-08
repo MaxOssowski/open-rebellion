@@ -3999,13 +3999,19 @@ pub fn killed_character(
     request: FixtureRequest,
     world: &GameWorld,
 ) -> Option<rebellion_core::ids::CharacterKey> {
-    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+    if request.scenario != Scenario::EventMessages {
         return None;
     }
+    // The Empire's reader: Jerjerrod over the Empire's coffin 0x433 (A0
+    // empire-game3/jerjerrod-killed, a new Empire game, day 682).
+    let name = match request.faction {
+        CockpitFaction::Alliance => "Jan Dodonna",
+        CockpitFaction::Empire => "Jerjerrod",
+    };
     world
         .characters
         .iter()
-        .find(|(_, character)| character.name == "Jan Dodonna")
+        .find(|(_, character)| character.name.contains(name))
         .map(|(key, _)| key)
 }
 
@@ -4018,13 +4024,19 @@ pub fn smuggled_system(
     request: FixtureRequest,
     world: &GameWorld,
 ) -> Option<rebellion_core::ids::SystemKey> {
-    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+    if request.scenario != Scenario::EventMessages {
         return None;
     }
+    // The Empire's reader: Coruscant, held by the Alliance (A0
+    // empire-game3/smuggling-benefits, a new Empire game, day 681).
+    let name = match request.faction {
+        CockpitFaction::Alliance => "Yavin",
+        CockpitFaction::Empire => "Coruscant",
+    };
     world
         .systems
         .iter()
-        .find(|(_, system)| system.name == "Yavin")
+        .find(|(_, system)| system.name == name)
         .map(|(key, _)| key)
 }
 
@@ -7863,12 +7875,25 @@ mod tests {
             ),
             Some(dodonna)
         );
+        // The Empire's reader takes Jerjerrod, whom this world lacks.
         assert_eq!(
             killed_character(
                 request(Scenario::EventMessages, CockpitFaction::Empire),
                 &world
             ),
             None
+        );
+        let jerjerrod = world.characters.insert(rebellion_core::world::Character {
+            name: "Jerjerrod".into(),
+            is_empire: true,
+            ..Default::default()
+        });
+        assert_eq!(
+            killed_character(
+                request(Scenario::EventMessages, CockpitFaction::Empire),
+                &world
+            ),
+            Some(jerjerrod)
         );
         assert_eq!(
             killed_character(
@@ -7894,6 +7919,7 @@ mod tests {
             ),
             Some(yavin)
         );
+        // The Empire's reader takes Coruscant, which this world lacks.
         assert_eq!(
             smuggled_system(
                 request(Scenario::EventMessages, CockpitFaction::Empire),

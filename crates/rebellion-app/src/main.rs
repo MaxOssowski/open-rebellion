@@ -1680,10 +1680,17 @@ async fn main() {
         // 0x7066): smuggling begins on an Empire-held Yavin. Filed first, so
         // it lists last on the Popular Support rail.
         if let Some(system) = interface_test_fixture::smuggled_system(request, &world) {
+            // The other side's system: the Empire's for the Alliance reader,
+            // the Alliance's for the Empire's.
+            let alliance_reader = player_faction == MissionFaction::Alliance;
             if let Some(message) = rebellion_render::story_messages::smuggling_message(
                 &world.systems[system].name,
-                Some(rebellion_core::dat::Faction::Empire),
-                true,
+                Some(if alliance_reader {
+                    rebellion_core::dat::Faction::Empire
+                } else {
+                    rebellion_core::dat::Faction::Alliance
+                }),
+                alliance_reader,
                 0,
                 5,
                 0,
