@@ -16,10 +16,10 @@
   ],
   "proof_rule": "Static proof may close resource identity, geometry, predicates, and routing. A surface remains incomplete until all required original-runtime, native, and browser cells pass.",
   "coverage_summary": {
-    "work_packages": 27,
+    "work_packages": 28,
     "required_surface_families": 43,
     "required_surface_families_with_packages": 43,
-    "required_baseline_cells": 627,
+    "required_baseline_cells": 639,
     "space_battle_baseline_cells": 106
   },
   "original_fixture": {
@@ -637,6 +637,18 @@
         "sources": ["owned English original installation"],
         "method": "Drive deterministic fixtures through the unmodified executable and capture lossless 640x480 frames plus input and transition traces for every acceptance cell.",
         "next_proof": "Replace compressed or inferred evidence with A0 captures for every required original surface-state cell."
+      },
+      "runtime_capture_required": true
+    },
+    {
+      "id": "RE-TIP-01",
+      "surface_ids": ["CMD-11"],
+      "title": "The shared tooltip control and every window's registered tools",
+      "status": "runtime-corroborated",
+      "retrieval": {
+        "sources": ["REBEXE.EXE FUN_006008e0 and the windows' tool registrations", "ghidra/notes/tooltips.md", ".artifacts/a0-vm/tooltip"],
+        "method": "Trace FUN_006008e0's tooltips_class32 control and each window's tool rects and string ids, then rest the pointer on every tool in A0 and in the browser and compare the tip's box and text.",
+        "next_proof": "A0 captures for the tools still without one, compared by tooltip.mjs --a0."
       },
       "runtime_capture_required": true
     }

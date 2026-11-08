@@ -12,7 +12,7 @@
       "native",
       "wasm"
     ],
-    "surface_families": 44,
+    "surface_families": 45,
     "retained_reference_images": 370,
     "parity_rule": "Every required surface-state cell must pass. A failed, partial, blocked, or unknown child prevents parent and project acceptance.",
     "extensions_rule": "Approved extensions are excluded from the parity denominator and must not replace, overlap, obscure, or alter an original path."
@@ -53,7 +53,7 @@
     "practical_scope_materially_tackled": "approximately_25_percent_planning_estimate",
     "practical_scope_remaining": "approximately_75_percent_planning_estimate",
     "required_family_status": "0_complete_15_partial_28_fail",
-    "strictly_accepted_required_cells": "0_of_627",
+    "strictly_accepted_required_cells": "496_of_639",
     "current_execution_plan": "docs/plans/2026-09-11-feat-batched-interface-parity-plan.md",
     "main_menu_surface": "partial_complete_state_matrix_open",
     "campaign_interface": "fail",
@@ -63,7 +63,7 @@
     "wasm_advisors": "partial_original_idle_runs_visible_in_scaled_apertures_actions_voice_and_chrome_open",
     "wasm_encyclopedia_art": "partial_original_edata_transport_cache_decode_and_exact_native_size_browser_display_pass_authentic_index_topic_windows_and_obj_01_acceptance_open",
     "tactical_interface": "fail_strict_acceptance_open_p58_b22_bounded_practical_launcher_complete_with_106_of_106_deterministic_A1_cells_source_tactical_rng_power_allocation_completion_destruction_callbacks_timed_trench_producer_and_shared_campaign_return_0_of_106_A0_accepted",
-    "required_baseline_cells": "627_pending_or_open",
+    "required_baseline_cells": "639_pending_or_open",
     "manual_window_cross_check": "present_partial_missing_disabled_matrix_added_for_manual_discoveries_and_keyed_to_stable_surface_cells",
     "known_interface_deviations": "central_register_added_with_approved_temporary_unapproved_and_planned_extension_states",
     "retrieval_package_coverage": "43_of_43_required_surface_families",

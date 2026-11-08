@@ -3986,7 +3986,9 @@
       "manual_pages": [],
       "current_implementation": "win_tooltip.rs ports FUN_006008e0's shared tip (timers, look, placement, modality, no tip on a disabled control). The command center, the four Finders, the Message Index, the Encyclopedia, the Status, system, fleet, defenses and missions windows, the sector tracks, Build Selection, the move confirmation and the mission dialog register their tools; the shell (main menu, setup, Game Options, message boxes), the battle windows and the tactical panels are pending (inventory in ghidra/notes/tooltips.md).",
       "finding_ids": [],
-      "reverse_engineering_package_ids": [],
+      "reverse_engineering_package_ids": [
+        "RE-TIP-01"
+      ],
       "acceptance_cells": [
         {
           "id": "CMD-11-C001",
@@ -10897,11 +10899,11 @@
     }
   },
   "acceptance_summary": {
-    "surface_families": 44,
-    "required_surface_families": 42,
-    "baseline_cells": 633,
-    "required_baseline_cells": 609,
-    "excluded_baseline_cells": 24,
+    "surface_families": 45,
+    "required_surface_families": 43,
+    "baseline_cells": 664,
+    "required_baseline_cells": 639,
+    "excluded_baseline_cells": 25,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."

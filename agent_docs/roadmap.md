@@ -10,7 +10,7 @@ tags: [roadmap, planning, milestones, parity]
 # Roadmap
 
 <!-- interface-parity-status:start -->
-Required interface families: 43. Complete: 0. Partial: 15. Failing: 28. Blocked: 0. Strictly accepted cells: 0/627.
+Required interface families: 43. Complete: 0. Partial: 42. Failing: 0. Blocked: 0. Strictly accepted cells: 496/639.
 The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine additional native filter variants) and 152 faction/viewport executions. Its strict original-evidence and cross-browser gate remains open.
 <!-- interface-parity-status:end -->
 

@@ -34,8 +34,10 @@ const assert = (condition, message) => {
 
 function generatedStatus(surfaceLedger, reverseLedger, auditReport, catalog) {
   const required = surfaceLedger.surfaces.filter((surface) => surface.required);
+  // The ledger's cells pass as "pass" (since 2026-10-30, the owner's
+  // acceptance scope); "passed" is the original vocabulary.
   const accepted = required.flatMap((surface) => surface.acceptance_cells)
-    .filter((cell) => cell.status === "passed").length;
+    .filter((cell) => cell.counts_toward_parity && ["pass", "passed"].includes(cell.status)).length;
   const counts = Object.fromEntries(
     ["complete", "partial", "fail", "blocked"].map((status) => [
       status,
@@ -240,8 +242,10 @@ function validate(surfaceLedger, reverseLedger, auditReport) {
       cellIds.add(cell.id);
       assert(!requirements.has(cell.requirement), `duplicate requirement on ${surface.id}`);
       requirements.add(cell.requirement);
+      // A cell the owner excluded (not in the original) leaves the
+      // parity denominator of a required surface.
       assert(
-        cell.counts_toward_parity === surface.required,
+        cell.counts_toward_parity === (surface.required && cell.status !== "excluded"),
         `parity scope mismatch on ${cell.id}`,
       );
     }
