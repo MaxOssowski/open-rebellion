@@ -3910,6 +3910,49 @@ pub fn post_story_messages(
     }
 }
 
+/// The event-message scenario's capture of the reader's own character
+/// (`FUN_00490340`, 0x7158 / 0x7159), filed before the Emperor's so it
+/// lists below: Han Solo taken by the Empire at Yavin for the Alliance (A0
+/// alliance-game2/han-solo-captured), Ozzel taken by the Alliance at Tralus
+/// for the Empire (A0 empire-game3/ozzel-captured).
+pub fn post_own_capture_message(
+    request: FixtureRequest,
+    world: &GameWorld,
+    log: &mut rebellion_render::MessageLog,
+    texts: &std::collections::HashMap<u16, String>,
+) {
+    if request.scenario != Scenario::EventMessages {
+        return;
+    }
+    let (name, system, captor_is_alliance) = match request.faction {
+        CockpitFaction::Alliance => ("Han Solo", "Yavin", false),
+        CockpitFaction::Empire => ("Ozzel", "Tralus", true),
+    };
+    let Some(character) = world
+        .characters
+        .values()
+        .find(|character| character.name == name)
+    else {
+        return;
+    };
+    let at = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == system)
+        .map(|(key, _)| key);
+    if let Some(message) = rebellion_render::story_messages::captured_message(
+        at,
+        character,
+        captor_is_alliance,
+        system,
+        request.faction,
+        0,
+        texts,
+    ) {
+        log.push(message);
+    }
+}
+
 /// The EventMessages scenario's Character Captured message (`FUN_00490340`,
 /// notification `0x1e0`): the Emperor taken by the Alliance at Corfai, as
 /// A0 messages-day633 shows it, for each side's reader.
@@ -7722,6 +7765,63 @@ mod tests {
             ),
             None
         );
+    }
+
+    // FUN_00490340: A0 alliance-game2/han-solo-captured and
+    // empire-game3/ozzel-captured show each side's own character captured
+    // (0x7158 / 0x7159); the scenario files that for its reader, under the
+    // Emperor's capture.
+    #[test]
+    fn the_event_messages_scenario_files_the_readers_own_capture() {
+        let texts: std::collections::HashMap<u16, String> = [
+            (0x7158, "{1:1} Captured"),
+            (0x7159, "{1:1} was captured by the {3:1} at {2:1}."),
+            (0x715a, "{1:1} Captured"),
+            (0x715b, "{1:1} was captured at {2:1}."),
+            (0x4d50, "Alliance"),
+            (0x4d51, "Empire"),
+        ]
+        .into_iter()
+        .map(|(id, text)| (id, text.to_owned()))
+        .collect();
+        for (faction, name, alliance, text) in [
+            (
+                CockpitFaction::Alliance,
+                "Han Solo",
+                true,
+                "Han Solo was captured by the Empire at Yavin.",
+            ),
+            (
+                CockpitFaction::Empire,
+                "Ozzel",
+                false,
+                "Ozzel was captured by the Alliance at Tralus.",
+            ),
+        ] {
+            let request = request(Scenario::EventMessages, faction);
+            let applied = apply_to_loading_world_with(request, |world| {
+                world.characters.insert(rebellion_core::world::Character {
+                    name: name.into(),
+                    is_alliance: alliance,
+                    is_empire: !alliance,
+                    ..Default::default()
+                });
+            });
+            let mut log = rebellion_render::MessageLog::new();
+            post_own_capture_message(request, &applied.world, &mut log, &texts);
+            let [message] = log.messages() else {
+                panic!("{:?}", log.messages());
+            };
+            assert_eq!(message.text, text);
+            let mut none = rebellion_render::MessageLog::new();
+            post_own_capture_message(
+                super::tests::request(Scenario::StoryMessages, faction),
+                &applied.world,
+                &mut none,
+                &texts,
+            );
+            assert!(none.messages().is_empty());
+        }
     }
 
     // FUN_00499760: A0 message-index/category-1-day228 lists the Alliance's

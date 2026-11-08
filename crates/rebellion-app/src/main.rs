@@ -1864,6 +1864,7 @@ async fn main() {
                 &audio_vol,
             );
         }
+        interface_test_fixture::post_own_capture_message(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_capture_message(request, &world, &mut msg_log, &message_texts);
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {

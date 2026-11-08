@@ -197,7 +197,7 @@ async function run(browser, base, faction) {
     // (FUN_004697b0). Its press, which closes the index, comes last.
     const research = opened.rows.findIndex((text) => text.startsWith("Research Complete"));
     assert.ok(research >= 0, JSON.stringify(opened.rows));
-    await click(page, row(research));
+    await click(page, await shown(research));
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("display-encyclopedia");
@@ -839,6 +839,58 @@ async function run(browser, base, faction) {
       captureChecks.jan_dodonna_killed = killedChecks;
       assert.deepEqual(killedChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
         JSON.stringify(killedChecks));
+    }
+
+
+    // The capture of the reader's own character (FUN_00490340, 0x7158 /
+    // 0x7159), A0 alliance-game2/han-solo-captured (an Alliance game, the
+    // window at (62, 49)) and empire-game3/ozzel-captured (an Empire game,
+    // (125, 52)), the pointer outside: the side's picture (0x418 / 0x419),
+    // its title image and its rail (Display lit) every pixel A0's.
+    {
+      const [ownName, ownText, ownA0, wx, wy] = faction.byte === 1
+        ? ["Han Solo Captured", "Han Solo was captured by the Empire at Yavin.",
+          "alliance-game2/han-solo-captured.png", 62, 49]
+        : ["Ozzel Captured", "Ozzel was captured by the Alliance at Tralus.",
+          "empire-game3/ozzel-captured.png", 125, 52];
+      // Leave the window as found: the steps below expect its mode.
+      const modeBefore = (await report(page)).mode;
+      if (modeBefore === "single") await click(page, showMessage);
+      const listedO = await waitReport(page, (value) => value.mode === "list"
+        && value.rows.includes(ownName), `the list holds ${ownName}`);
+      await click(page, await shown(listedO.rows.indexOf(ownName)));
+      await click(page, showMessage);
+      const own = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === ownName, `Display Message shows ${ownName}`);
+      assert.equal(own.viewing_text, ownText, JSON.stringify(own));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("own-capture");
+      const shownO = PNG.sync.read(await page.screenshot());
+      const a0O = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm", ownA0)));
+      const [leftO, topO] = [Math.round(own.window_left), Math.round(own.window_top)];
+      const regionO = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topO + y) * 640 + leftO + x) * 4;
+            const j = ((wy + y) * 640 + wx + x) * 4;
+            if ([0, 1, 2].some((c) => shownO.data[i + c] !== a0O.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      const ownChecks = {
+        picture_a0: regionO(12, 33, 412, 233),
+        title_image_a0: regionO(15, 16, 30, 32),
+        rail_a0: regionO(414, 11, 468, 296),
+      };
+      captureChecks.own_capture = ownChecks;
+      assert.deepEqual(ownChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 }, JSON.stringify(ownChecks));
+      if (modeBefore !== "single") {
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the list after the own capture");
+      }
     }
 
     // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's
@@ -1588,7 +1640,7 @@ async function run(browser, base, faction) {
       // A0 is the Fleet rail's, while the fixture files it under Mission.
       const arrivalRow = many.rows.findIndex((text) => text.startsWith("Fleet Arrives"));
       assert.ok(arrivalRow >= 0, JSON.stringify(many.rows));
-      await click(page, row(arrivalRow));
+      await click(page, await shown(arrivalRow));
       await click(page, showMessage);
       const arrivalShown = await waitReport(page, (value) => value.mode === "single"
         && value.viewing_title?.startsWith("Fleet Arrives"), "Display Message shows the arrival");
@@ -1624,7 +1676,7 @@ async function run(browser, base, faction) {
         const listed = await report(page);
         const foiledRow = listed.rows.findIndex((text) => text.startsWith("Enemy Mission Foiled"));
         assert.ok(foiledRow >= 0 && foiledRow < 9, JSON.stringify(listed.rows));
-        await click(page, row(foiledRow));
+        await click(page, await shown(foiledRow));
         await click(page, showMessage);
         const foiled = await waitReport(page, (value) => value.mode === "single"
           && value.viewing_title === "Enemy Mission Foiled", "Display Message shows the foiled mission");
@@ -1672,7 +1724,7 @@ async function run(browser, base, faction) {
         const arrivedList = await report(page);
         const arrivedRow = arrivedList.rows.findIndex((text) => text === "Mon Mothma Arrives at Klatooine");
         assert.ok(arrivedRow >= 0 && arrivedRow < 9, JSON.stringify(arrivedList.rows));
-        await click(page, row(arrivedRow));
+        await click(page, await shown(arrivedRow));
         await click(page, showMessage);
         const arrived = await waitReport(page, (value) => value.mode === "single"
           && value.viewing_title === "Mon Mothma Arrives at Klatooine", "Display Message shows the arrival");
