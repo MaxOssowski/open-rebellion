@@ -8052,14 +8052,15 @@
         {
           "id": "EVT-01-C003",
           "requirement": "smuggling",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-smuggling-percent/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-smuggling-message/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-smuggling-message/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-smuggling-benefits-a0/"
           ],
-          "note": "Smuggling message 0x145 speaks when smuggling begins or ends (smuggling_message, unit tests); no browser screenshot of the message. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Smuggling message 0x145 speaks when smuggling begins or ends (smuggling_message, unit tests); no browser screenshot of the message. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-08 (b139): A0 alliance-game2/smuggling-benefits (a new Alliance game, day 642): 'Smuggling Benefits', 'Smugglers from Yavin are providing us with additional resources.' (FUN_00499130, 0x7062/0x7066) over STRATEGY 1004 (0x3ec), which the port did not draw; it does now (unit test). The fixture begins smuggling on an Empire-held Yavin through smuggling_message; message-display.mjs (Linux, Alliance) finds the text exact and picture, title image and rail 0 pixels from A0. The losses and ending variants have no A0 capture. Batch b139: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C004",
