@@ -2091,22 +2091,24 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "No sector-window function reads the blockade bit (+0x88 bit 0x20), so the port draws nothing; settled by code only, no A0.",
+          "note": "No sector-window function reads the blockade bit (+0x88 bit 0x20), so the port draws nothing; settled by code only, no A0. 2026-11-08 (A0 VM, a0-vm/sluis-van-768/05..07): right after 'Sluis Van is now under blockade by Alliance forces', the Sluis sector window draws Sluis Van with its system and defenses icons and its uprising mark only, no blockade mark, as the port (no sector-window function reads +0x88 bit 0x20). No browser case puts a blockaded system in the sector window yet.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-03-C008",
           "requirement": "uprising",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-names-and-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "The uprising mark 905/906 (FUN_0045bbb0) matches pixel for pixel in sector-quadrants.mjs on Arch Chromium 155; no A0 capture of an uprising.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "The uprising mark 905/906 (FUN_0045bbb0) matches pixel for pixel in sector-quadrants.mjs on Arch Chromium 155; no A0 capture of an uprising. 2026-11-08 (A0 VM, the Empire game, day 769, a0-vm/sluis-van-768/07): the Sluis sector window shows the Empire's Sluis Van with the side-2 uprising mark 906 at (538, 82), every pixel of STRATEGY 906, over its planet and beside its system and defenses icons (10779, 10781, exact); sector-quadrants.mjs finds 905 / 906 so on Linux for both sides.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-03-C009",
@@ -8435,9 +8437,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "Retreat disabled by an enemy gravity well (FUN_00516730) is unit-tested only; the browser fixture keeps Retreat enabled and no A0 shows the disabled art. 2026-11-06: A0 battle-clean/20 (an unedited Alliance game, Battle at Umgul) shows Retreat disabled with 10976, the Alliance's disabled art after the b107 fix; the cause there is not shown, so the rule is not compared.",
+          "note": "Retreat disabled by an enemy gravity well (FUN_00516730) is unit-tested only; the browser fixture keeps Retreat enabled and no A0 shows the disabled art. 2026-11-06: A0 battle-clean/20 (an unedited Alliance game, Battle at Umgul) shows Retreat disabled with 10976, the Alliance's disabled art after the b107 fix; the cause there is not shown, so the rule is not compared. 2026-11-08 (A0 VM, the Empire game, day 768, a0-vm/sluis-van-768/01..04): the Empire's Battle at Sluis Van alert shows Retreat disabled as 10973 at (137, 348), the port's BATTLE_ALERT_RETREAT_EMPIRE_DISABLED, every pixel; the Alliance's Fleet 55 (Freedom, X-wing, A-wings) carries no gravity well the forces list shows, so the cause (FUN_00516730: a mover, an autoroute) is still not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9022,14 +9025,15 @@
         {
           "id": "TAC-02-C007",
           "requirement": "unassigned",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "Empty slots are drawn at the A0 positions, and since 2026-10-31 the slot shows its tip 'Unassigned Task Force' (TEXTTACT 0xad92, tactical_view.rs hud_tooltip) as A0 TAC-02-C007 does; the tip's look is the A0 Windows one, not Wine's, and no pixel comparison is made.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Empty slots are drawn at the A0 positions, and since 2026-10-31 the slot shows its tip 'Unassigned Task Force' (TEXTTACT 0xad92, tactical_view.rs hud_tooltip) as A0 TAC-02-C007 does; the tip's look is the A0 Windows one, not Wine's, and no pixel comparison is made. 2026-11-08 (b127): A0 VM a0-vm/coruscant-676/03 (Windows 10, the Empire game's battle at Coruscant) shows 'Unassigned Task Force' at the pointer plus (0, 21), 125 by 19; tooltip.mjs 'tac-unassigned-vm' finds the port's tip on an empty slot at the same offset and height, its width within the accepted text deviation (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-02-C008",
@@ -9046,14 +9050,15 @@
         {
           "id": "TAC-02-C009",
           "requirement": "hover",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-group-bar-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "Since 2026-10-31 hovering an assigned task force shows 'Task Force N' (TEXTTACT 0xad93+i) below the pointer, as A0 TAC-02-C009 (Wine) shows 'Task Force 1'; tooltip.mjs finds the tip on the first slot in the battle fixture. No pixel comparison with the Wine capture (its tip is Wine-styled).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Since 2026-10-31 hovering an assigned task force shows 'Task Force N' (TEXTTACT 0xad93+i) below the pointer, as A0 TAC-02-C009 (Wine) shows 'Task Force 1'; tooltip.mjs finds the tip on the first slot in the battle fixture. No pixel comparison with the Wine capture (its tip is Wine-styled). 2026-11-08 (b127): A0 VM a0-vm/coruscant-676/04 shows 'Task Force 1' at (72, 31), 70 by 19; tooltip.mjs 'tac-task-force-1-vm' finds the port's tip at the same place and height (Linux).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-02-C010",
@@ -10194,9 +10199,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-results-scroll-bar/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-results-scroll-bar/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "Forces page labels and columns (FUN_00471200) match A0 TAC-07-C005; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28).",
+          "note": "Forces page labels and columns (FUN_00471200) match A0 TAC-07-C005; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-08 (b127): every results row now centres its picture in the cell (FUN_004724a0, (cell - height) / 2) with the name from the picture's foot; the capital rows' name baseline is A0's row 255.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -10215,14 +10221,15 @@
         {
           "id": "TAC-07-C007",
           "requirement": "troops",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-summary-pages-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-tactical-first-pixel-key-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
           ],
-          "note": "Troops tab exists; A0 TAC-07-C007 not recorded as compared. 2026-11-07: the tabs in the Troops state are 0 pixels from A0 TAC-07-C007 (rows 108..148), and Trooper Regiments, Operational and Destroyed are A0's. Open: A0's two destroyed Alliance Army Regiment rows (picture and name) are not compared; the port's fixture loses no regiment.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Troops tab exists; A0 TAC-07-C007 not recorded as compared. 2026-11-07: the tabs in the Troops state are 0 pixels from A0 TAC-07-C007 (rows 108..148), and Trooper Regiments, Operational and Destroyed are A0's. Open: A0's two destroyed Alliance Army Regiment rows (picture and name) are not compared; the port's fixture loses no regiment. 2026-11-08 (b127): the battle-results fixture carries three Alliance Army Regiments on three one-regiment hulls, the third dying; the destroyed regiment's picture is now centred in its 70-high cell as FUN_004724a0 does (it stood 7 rows high) and its name hangs from the picture's foot, the baseline on A0's row 255. run.mjs 'battle-results-destroyed-regiment-a0': 0 of 6,100 pixels differ from A0 TAC-07-C007's first destroyed row (Linux, Alliance). Tactical matrix run 2026-11-08T00-36-41-934Z-2214619.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "TAC-07-C008",
