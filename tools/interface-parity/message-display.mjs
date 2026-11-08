@@ -926,12 +926,22 @@ async function run(browser, base, faction) {
           }
         }
         joinsChecks.title_image_a0 = differ;
+        // The rail (Display lit: the system, kind 3) every pixel A0's too.
+        let railDiffer = 0;
+        for (let y = 11; y < 296; y += 1) {
+          for (let x = 414; x < 468; x += 1) {
+            const i = ((joinsTop + y) * 640 + joinsLeft + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => joinsScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
+          }
+        }
+        joinsChecks.rail_a0 = railDiffer;
       } catch {
         joinsChecks.a0 = null;
       }
       rowChecks.joins = joinsChecks;
-      assert.ok(joinsChecks.port === 0 && (joinsChecks.a0 ?? 0) === 0 && (joinsChecks.title_image_a0 ?? 0) === 0,
-        JSON.stringify(joinsChecks));
+      assert.ok(joinsChecks.port === 0 && (joinsChecks.a0 ?? 0) === 0 && (joinsChecks.title_image_a0 ?? 0) === 0
+        && (joinsChecks.rail_a0 ?? 0) === 0, JSON.stringify(joinsChecks));
       await click(page, showMessage);
       await waitReport(page, (value) => value.mode === "list", "the Popular Support list again");
 
@@ -1118,6 +1128,50 @@ async function run(browser, base, faction) {
           JSON.stringify(blockadeChecks));
         await click(page, showMessage);
         await waitReport(page, (value) => value.mode === "list", "the Conflict list after the blockade");
+      }
+
+      // Fleet Arrives at Sluis Van (FUN_004981c0 case 1, A0 events-day673/
+      // 04-fleet-arrives-sluis-van, an Alliance game, the window at (62, 49),
+      // the pointer outside): "Fleet 1 has arrived at Sluis Van." (0x7078 /
+      // 0x7079) under Fleet Messages (the window's (114, 64)); the picture,
+      // its title image (the Fleet rail's) and the rail every pixel A0's.
+      {
+        await click(page, [conflictList.window_left + 114 + 8, conflictList.window_top + 64 + 4]);
+        const fleetList = await waitReport(page, (value) => value.mode === "list"
+          && value.rows.includes("Fleet Arrives at Sluis Van"), "the Fleet list");
+        await click(page, await shown(fleetList.rows.indexOf("Fleet Arrives at Sluis Van")));
+        await click(page, showMessage);
+        const arrived = await waitReport(page, (value) => value.mode === "single"
+          && value.viewing_title === "Fleet Arrives at Sluis Van", "Display Message shows Fleet 1's arrival");
+        assert.equal(arrived.viewing_text, "Fleet 1 has arrived at Sluis Van.", JSON.stringify(arrived));
+        await page.mouse.move(2, 2);
+        await frames(page);
+        await shot("fleet-arrives-sluis-van");
+        const shownF = PNG.sync.read(await page.screenshot());
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/events-day673/04-fleet-arrives-sluis-van.png")));
+        const [leftF, topF] = [Math.round(arrived.window_left), Math.round(arrived.window_top)];
+        const region = (x0, y0, x1, y1) => {
+          let differ = 0;
+          for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+              const i = ((topF + y) * 640 + leftF + x) * 4;
+              const j = ((49 + y) * 640 + 62 + x) * 4;
+              if ([0, 1, 2].some((c) => shownF.data[i + c] !== a0.data[j + c])) differ += 1;
+            }
+          }
+          return differ;
+        };
+        const arrivalChecks = {
+          picture_a0: region(12, 33, 412, 233),
+          title_image_a0: region(15, 16, 30, 32),
+          rail_a0: region(414, 11, 468, 296),
+        };
+        rowChecks.fleet_arrives_sluis_van = arrivalChecks;
+        assert.deepEqual(arrivalChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+          JSON.stringify(arrivalChecks));
+        await click(page, showMessage);
+        await waitReport(page, (value) => value.mode === "list", "the Fleet list after the arrival");
       }
 
       // The Manufacturing list (A0 manufacturing-messages/q01, a new

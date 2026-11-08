@@ -1667,6 +1667,9 @@ async fn main() {
             &mut fog_alliance_state,
             &mut fog_empire_state,
         );
+        if let Some((fleet, system)) = interface_test_fixture::arrived_fleet(request, &world) {
+            msg_log.push(fleet_arrival_message(&world, fleet, system, true, 0, &message_texts));
+        }
         if let Some(system) = interface_test_fixture::blockaded_system(request, &world) {
             let message = blockade_started_message(&world, system, false, true, 0, &message_texts);
             macroquad::logging::info!("[fixture] blockade at {:?}: {}", system, message.is_some());
@@ -2703,42 +2706,13 @@ async fn main() {
                 ) else {
                     continue;
                 };
-                let sys_name = world
-                    .systems
-                    .get(arrival.system)
-                    .map_or_else(|| "unknown".into(), |s| s.name.clone());
-                // Notification 0xd, Unit Arrival (FUN_004981c0, case 1):
-                // TEXTSTRA 0x7078 / 0x7079 name the fleet and the system.
-                let fleet_name = world
-                    .fleet_name(arrival.fleet)
-                    .map(str::to_owned)
-                    .unwrap_or_default();
-                let texts = rebellion_render::story_messages::fleet_arrival_texts(
-                    &fleet_name,
-                    &sys_name,
-                    &message_texts,
-                );
-                let mut message = GameMessage::at_system(
-                    arrival.tick,
-                    texts
-                        .as_ref()
-                        .map_or_else(|| format!("Fleet arrived at {sys_name}"), |(_, body)| body.clone()),
-                    MessageCategory::Mission,
+                msg_log.push(fleet_arrival_message(
+                    &world,
+                    arrival.fleet,
                     arrival.system,
-                )
-                .with_picture_if(pictures::arrival(
-                    pictures::Arrival::Fleet,
-                    pictures::reader(applied.is_alliance),
-                ))
-                // hyp: FUN_004981c0's fleet case (1), code 5.
-                .with_advisor_event(5);
-                if let Some((title, _)) = texts {
-                    message = message.with_title(title);
-                }
-                msg_log.push(filed(
-                    message,
-                    MessageRail::Fleet,
-                    Some(RailAudience::side(applied.is_alliance)),
+                    applied.is_alliance,
+                    arrival.tick,
+                    &message_texts,
                 ));
                 #[cfg(not(target_arch = "wasm32"))]
                 audio_engine.play_sfx(SfxKind::FleetArrival, &audio_vol);
@@ -11937,6 +11911,40 @@ fn maintenance_message(
 /// a battle (`after_battle`). A0's unedited Alliance game listed no
 /// Blockade after the battles at Yavin (day 650) and Umgul (day 718) left
 /// those systems blockaded. port: without the texts, the port's line.
+/// Notification `0xd`, Unit Arrival (`FUN_004981c0`, case 1): TEXTSTRA
+/// `0x7078` / `0x7079` name the fleet and the system, filed on the Fleet
+/// rail for the fleet's side.
+fn fleet_arrival_message(
+    world: &GameWorld,
+    fleet: rebellion_core::ids::FleetKey,
+    system: rebellion_core::ids::SystemKey,
+    is_alliance: bool,
+    tick: u64,
+    texts: &std::collections::HashMap<u16, String>,
+) -> GameMessage {
+    let sys_name = world
+        .systems
+        .get(system)
+        .map_or_else(|| "unknown".into(), |s| s.name.clone());
+    let fleet_name = world.fleet_name(fleet).map(str::to_owned).unwrap_or_default();
+    let texts = rebellion_render::story_messages::fleet_arrival_texts(&fleet_name, &sys_name, texts);
+    let mut message = GameMessage::at_system(
+        tick,
+        texts
+            .as_ref()
+            .map_or_else(|| format!("Fleet arrived at {sys_name}"), |(_, body)| body.clone()),
+        MessageCategory::Mission,
+        system,
+    )
+    .with_picture_if(pictures::arrival(pictures::Arrival::Fleet, pictures::reader(is_alliance)))
+    // hyp: FUN_004981c0's fleet case (1), code 5.
+    .with_advisor_event(5);
+    if let Some((title, _)) = texts {
+        message = message.with_title(title);
+    }
+    filed(message, MessageRail::Fleet, Some(RailAudience::side(is_alliance)))
+}
+
 fn blockade_started_message(
     world: &GameWorld,
     system: rebellion_core::ids::SystemKey,

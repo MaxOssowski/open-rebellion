@@ -3947,6 +3947,34 @@ pub fn post_capture_message(
     }
 }
 
+/// The event-message scenario's fleet arrival for the Alliance reader
+/// (`FUN_004981c0`, case 1): the Alliance's Fleet 1 at Sluis Van, as A0
+/// events-day673/04 shows "Fleet Arrives at Sluis Van" in an Alliance game.
+/// The app files it on the Fleet rail.
+#[must_use]
+pub fn arrived_fleet(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<(
+    rebellion_core::ids::FleetKey,
+    rebellion_core::ids::SystemKey,
+)> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    let fleet = world
+        .fleets
+        .iter()
+        .find(|&(key, fleet)| fleet.is_alliance && world.fleet_name(key) == Some("Fleet 1"))
+        .map(|(key, _)| key)?;
+    let system = world
+        .systems
+        .iter()
+        .find(|(_, system)| system.name == "Sluis Van")
+        .map(|(key, _)| key)?;
+    Some((fleet, system))
+}
+
 /// The event-message scenario's blockade for the Alliance reader
 /// (`FUN_004960f0`, notification `0x14e` with no battle there): Yavin, held
 /// by the Alliance with a fleet there, as A0 events-day673/02 shows "Yavin
@@ -7585,6 +7613,43 @@ mod tests {
             post_conflict_report(request(Scenario::StoryMessages, faction), &mut none);
             assert!(none.messages().is_empty());
         }
+    }
+
+    // FUN_004981c0 case 1: A0 events-day673/04 shows the Alliance "Fleet
+    // Arrives at Sluis Van" for Fleet 1; the scenario names that pair for the
+    // Alliance reader only.
+    #[test]
+    fn the_event_messages_scenario_brings_fleet_1_to_sluis_van_for_the_alliance() {
+        let mut world = fleet_world();
+        let sluis = world.systems.keys().nth(1).unwrap();
+        world.systems[sluis].name = "Sluis Van".into();
+        let alliance = request(Scenario::EventMessages, CockpitFaction::Alliance);
+        assert_eq!(arrived_fleet(alliance, &world), None, "no Fleet 1 yet");
+        let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+            location: sluis,
+            capital_ships: Vec::new(),
+            fighters: Vec::new(),
+            characters: Vec::new(),
+            is_alliance: true,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        assert!(world.rename_fleet(fleet, "Fleet 1"));
+        assert_eq!(arrived_fleet(alliance, &world), Some((fleet, sluis)));
+        assert_eq!(
+            arrived_fleet(
+                request(Scenario::EventMessages, CockpitFaction::Empire),
+                &world
+            ),
+            None
+        );
+        assert_eq!(
+            arrived_fleet(
+                request(Scenario::StoryMessages, CockpitFaction::Alliance),
+                &world
+            ),
+            None
+        );
     }
 
     // FUN_004960f0: A0 events-day673/02 shows the Alliance "Yavin Under
