@@ -38,6 +38,7 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 // Fixture codes are the Scenario index plus one, the side in the next byte
 // (interface_test_fixture.rs): 56 EventMessages.
 const EVENT_MESSAGES = 57;
+const STORY_MESSAGES = 56;
 // Display (0x67) on the rail (FUN_004665f0): Alliance (0x1a7, 0xc9) 32 by
 // 31, Empire (0x1aa, 0xcf) 44 by 41.
 const FACTIONS = [
@@ -1606,9 +1607,55 @@ async function run(browser, base, faction) {
     await frames(page);
     await shot("research-encyclopedia");
 
+    // Luke Goes to Dagobah (FUN_0048d190, class 0x0065b380; A0
+    // alliance-game2/luke-goes-to-dagobah, a new Alliance game, the window
+    // at (62, 49), the pointer outside), on the story fixture: "Luke has
+    // been sent to Dagobah to be trained by Yoda." (0x71b8 / 0x71b9) over
+    // picture 0x421; the class is kind 8, so Display stays grey (A0
+    // alliance-game2/index-dagobah-chosen-day454 too); picture, title image
+    // and rail every pixel A0's.
+    let dagobahChecks = null;
+    if (faction.byte === 1) {
+      await page.goto(`${base}?fixture-code=${STORY_MESSAGES | (faction.byte << 8)}`);
+      await waitReport(page, () => true, "the story fixture reports");
+      await click(page, [ready.rail_x, ready.rail_y]);
+      const story = await waitReport(page, (value) => value.index_open
+        && value.rows.includes("Luke Goes to Dagobah"), "the story fixture's index lists Luke Goes to Dagobah");
+      await click(page, await shown(story.rows.indexOf("Luke Goes to Dagobah")));
+      await click(page, showMessage);
+      const dagobah = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Luke Goes to Dagobah", "Display Message shows Luke Goes to Dagobah");
+      assert.equal(dagobah.viewing_text, "Luke has been sent to Dagobah to be trained by Yoda.", JSON.stringify(dagobah));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("luke-goes-to-dagobah");
+      const shownD = PNG.sync.read(await page.screenshot());
+      const a0D = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/alliance-game2/luke-goes-to-dagobah.png")));
+      const [leftD, topD] = [Math.round(dagobah.window_left), Math.round(dagobah.window_top)];
+      const regionD = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topD + y) * 640 + leftD + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownD.data[i + c] !== a0D.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      dagobahChecks = {
+        picture_a0: regionD(12, 33, 412, 233),
+        title_image_a0: regionD(15, 16, 30, 32),
+        rail_a0: regionD(414, 11, 468, 296),
+      };
+      assert.deepEqual(dagobahChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(dagobahChecks));
+    }
+
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
-      encyclopedia: opening[0],
+      encyclopedia: opening[0], dagobah: dagobahChecks,
       question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});
