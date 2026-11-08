@@ -1125,8 +1125,15 @@ const cases = [
       const [ox, oy] = summary.origin.map(Math.round);
       const a0Dir = path.join(root, ".artifacts/a0-vm/messages-day633");
       const alliance = faction.name === "alliance" && fs.existsSync(path.join(a0Dir, "assault-coruscant.png"));
-      const read = (file) => PNG.sync.read(fs.readFileSync(path.join(a0Dir, file)));
+      // The Empire's side against the unedited A0 assault-clean (an
+      // Alliance game, day 720: the Empire took Yavin; the defender's view
+      // of the same window, the attacker's green, picture 0x2b99).
+      const cleanDir = path.join(root, ".artifacts/a0-vm/assault-clean");
+      const imperial = faction.name === "empire" && fs.existsSync(path.join(cleanDir, "01-summary-yavin.png"));
+      const read = (file) => PNG.sync.read(fs.readFileSync(path.join(imperial ? cleanDir : a0Dir, file)));
       const red = (data, k) => data[k] > 180 && data[k + 1] < 100 && data[k + 2] < 100;
+      const green = (data, k) => data[k + 1] > 180 && data[k] < 100 && data[k + 2] < 100;
+      const sideInk = imperial ? green : red;
       const white = (data, k) => Math.min(data[k], data[k + 1], data[k + 2]) > 190;
       const ink = (png, [x0, y0], [xa, ya, xb, yb], test) => {
         let box = null;
@@ -1140,7 +1147,8 @@ const cases = [
       // The picture, 400 by 310 at (12, 13), between the title's rows and
       // the body's (the bitmap's rows 25..205).
       const bitmap = (() => {
-        const bytes = fs.readFileSync(path.join(root, "data/base/ui/strategy-dll/BMP/11160.bmp"));
+        const bytes = fs.readFileSync(path.join(root,
+          `data/base/ui/strategy-dll/BMP/${faction.name === "alliance" ? 11160 : 11161}.bmp`));
         const offset = bytes.readUInt32LE(10);
         const width = bytes.readInt32LE(18);
         const rows = Math.abs(bytes.readInt32LE(22));
@@ -1161,15 +1169,16 @@ const cases = [
         return count;
       };
       const port = PNG.sync.read(summaryShot.bytes);
-      if (faction.name === "alliance") checks.picture = { port: pictureDiff(port, [ox, oy]) };
-      if (alliance) {
-        const a0 = read("assault-coruscant.png");
+      checks.picture = { port: pictureDiff(port, [ox, oy]) };
+      if (alliance || imperial) {
+        const a0 = read(imperial ? "01-summary-yavin.png" : "assault-coruscant.png");
         checks.picture.a0 = pictureDiff(a0, [62, 49]);
-        // The title (centred, red) and the body's first line (red).
+        // The title (centred, the attacker's colour) and the body's first
+        // line.
         const title = [12, 10, 412, 40];
         const body = [20, 220, 400, 245];
-        checks.title = { a0: ink(a0, [62, 49], title, red), port: ink(port, [ox, oy], title, red) };
-        checks.body = { a0: ink(a0, [62, 49], body, red), port: ink(port, [ox, oy], body, red) };
+        checks.title = { a0: ink(a0, [62, 49], title, sideInk), port: ink(port, [ox, oy], title, sideInk) };
+        checks.body = { a0: ink(a0, [62, 49], body, sideInk), port: ink(port, [ox, oy], body, sideInk) };
         const t = checks.title;
         assert.ok(t.a0 && t.port && Math.abs(t.a0[1] - t.port[1]) <= 2 && Math.abs(t.a0[3] - t.port[3]) <= 2
           && Math.abs((t.a0[0] + t.a0[2]) - (t.port[0] + t.port[2])) <= 6, JSON.stringify(checks));
@@ -1186,7 +1195,7 @@ const cases = [
         : { x: 426, ys: [89, 148, 207, 266], width: 44 };
       const railButton = (index) => point([ox + rail.x + rail.width / 2, oy + rail.ys[index] + 20]);
       const labels = [
-        ["subtitle", [12, 34, 412, 56], red],
+        ["subtitle", [12, 34, 412, 56], sideInk],
         // Below the category bar's line (row 99).
         ["category", [38, 101, 300, 116], white],
         // Inside the column lines (rows 118 and 134, the columns split at
@@ -1195,8 +1204,10 @@ const cases = [
         ["destroyed-head", [206, 119, 367, 134], white],
         ["destroyed", [206, 136, 367, 175], white],
       ];
-      for (const [index, page_, file, extra] of [[1, "Attackers", "assault-coruscant-alliance-regiments.png", []],
-        [2, "SystemForces", "assault-coruscant-system-regiments.png", [["operational", [40, 136, 201, 175], white]]]]) {
+      for (const [index, page_, file, extra] of [
+        [1, "Attackers", imperial ? "02-attackers.png" : "assault-coruscant-alliance-regiments.png", []],
+        [2, "SystemForces", imperial ? "03-system-forces.png" : "assault-coruscant-system-regiments.png",
+          [["operational", [40, 136, 201, 175], white]]]]) {
         await click(page, railButton(index));
         const shown = await until(page, `the ${page_} page shows the regiments`,
           (o, value) => o.assault_summary?.page === value && o.assault_summary.category === "Troops", page_);
@@ -1207,9 +1218,24 @@ const cases = [
         if (page_ === "SystemForces") {
           assert.deepEqual(shown.assault_summary.columns[0], [], JSON.stringify(shown.assault_summary));
         }
-        if (!alliance) continue;
+        if (!alliance && !imperial) continue;
         const a0 = read(file);
         const portShot = PNG.sync.read(forces.bytes);
+        for (const [name, region, test] of [...labels, ...extra]) {
+          // A0 assault-clean's System Forces lost a regiment; the
+          // fixture's lose none, so that column is not compared there.
+          if (imperial && page_ === "SystemForces" && name === "destroyed") continue;
+          const a = ink(a0, [62, 49], region, test);
+          const p = ink(portShot, [ox, oy], region, test);
+          checks[`${page_}-${name}`] = { a0: a, port: p };
+          const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
+          assert.ok(a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2 && ratio > 0.85 && ratio < 1.15,
+            `${page_} ${name}: ${JSON.stringify(checks[`${page_}-${name}`])}`);
+        }
+        // The category buttons are the viewer's side's art (A0
+        // assault-clean is the Alliance's view of the Empire's assault),
+        // so the pixel checks below compare the Alliance's view only.
+        if (!alliance) continue;
         // The category bar (CATEGORY_BAR (36, 59), six 49 by 41 buttons,
         // Trooper Regiments down), every pixel as A0's.
         let bar = 0;
@@ -1243,14 +1269,6 @@ const cases = [
           }
           checks[`${page_}-second-row`] = row;
           assert.equal(row, 0, `${page_} second row's picture differs from A0 in ${row} pixels`);
-        }
-        for (const [name, region, test] of [...labels, ...extra]) {
-          const a = ink(a0, [62, 49], region, test);
-          const p = ink(portShot, [ox, oy], region, test);
-          checks[`${page_}-${name}`] = { a0: a, port: p };
-          const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
-          assert.ok(a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2 && ratio > 0.85 && ratio < 1.15,
-            `${page_} ${name}: ${JSON.stringify(checks[`${page_}-${name}`])}`);
         }
       }
       // Personnel (the sixth category button): the fleet's captive under
