@@ -1313,14 +1313,15 @@
         {
           "id": "CMD-01-C006",
           "requirement": "letterboxed widescreen",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-shell-canvas.md",
-            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/"
+            "docs/qa/2026-09-10-interface-parity-audit/evidence/p60-game-speed/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-shortfall-in-the-browser/"
           ],
-          "note": "Centered uniform scaling at 1280x800 and 960x720 verified by Astra r3-r5 (P46A) and P60; the original only runs at 640x480, so A0 can only confirm the 4:3 content. Browser run on macOS only; rerun on Linux.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Centered uniform scaling at 1280x800 and 960x720 verified by Astra r3-r5 (P46A) and P60; the original only runs at 640x480, so A0 can only confirm the 4:3 content. Browser run on macOS only; rerun on Linux. 2026-11-08 (b129): Linux runs cover it: run.mjs --all (b128, 2026-11-08T01-42-36-919Z-2428737) passes every GID scenario at 1280x800 letterboxed for both sides, and the tactical matrix's letterboxed half passes; their clicks and checks use the centred uniform scale. The original runs at 640x480 only and A0 confirms the 4:3 content; the bars' colour is not asserted on its own.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-01-C007",
@@ -8087,15 +8088,16 @@
         {
           "id": "EVT-01-C006",
           "requirement": "shortfall",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-informant-maintenance-texts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-shortfall-in-transit/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-shortfall-in-transit/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-shortfall-in-the-browser/"
           ],
-          "note": "Maintenance Shortfall reads its TEXTSTRA texts (maintenance_texts). A0 (DS_flip_allian, day 163, maintenance-shortfall/alliance-view-coruscant-day163.png, sha256 a31c0bc3...) shows \"Maintenance Shortfall\" over \"The following units have been destroyed at Coruscant due to a maintenance shortfall:\\nTIE Fighter\"; the port's texts match it word for word (story_messages test). Its picture is STRATEGY 1014 (0x3f6), pixel for pixel, as FUN_0048bbf0 gives the Empire's own message and the port does. That host-edited save builds its messages for the Empire behind an Alliance cockpit (Ghorman Joins Enemy, day 306; see ghidra/notes/message-pictures.md), so this is the owner's message, not one shown to the other side. Not checked in the browser. 2026-11-07: an unedited Alliance game (day 1224) shows a corvette lost in hyperspace: 'destroyed at  due to a maintenance shortfall:' over 'Corellian Corvette 2', picture 1013, Display lit but inert. The port now lists a ship by its own name, leaves the system out for a fleet in transit and keeps the target (unit tests); not yet in the browser.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Maintenance Shortfall reads its TEXTSTRA texts (maintenance_texts). A0 (DS_flip_allian, day 163, maintenance-shortfall/alliance-view-coruscant-day163.png, sha256 a31c0bc3...) shows \"Maintenance Shortfall\" over \"The following units have been destroyed at Coruscant due to a maintenance shortfall:\\nTIE Fighter\"; the port's texts match it word for word (story_messages test). Its picture is STRATEGY 1014 (0x3f6), pixel for pixel, as FUN_0048bbf0 gives the Empire's own message and the port does. That host-edited save builds its messages for the Empire behind an Alliance cockpit (Ghorman Joins Enemy, day 306; see ghidra/notes/message-pictures.md), so this is the owner's message, not one shown to the other side. Not checked in the browser. 2026-11-07: an unedited Alliance game (day 1224) shows a corvette lost in hyperspace: 'destroyed at  due to a maintenance shortfall:' over 'Corellian Corvette 2', picture 1013, Display lit but inert. The port now lists a ship by its own name, leaves the system out for a fleet in transit and keeps the target (unit tests); not yet in the browser. 2026-11-08 (b129): the EventMessages fixture files the shortfall through maintenance_message with no system; message-display.mjs (Linux) opens it from the Manufacturing list and finds A0's text ('destroyed at  due to', 'Corellian Corvette 2') and picture 1013, title image and rail with Display lit 0 pixels from A0 maintenance-shortfall/test-day1224-corvette-no-system (Alliance). Tactical matrix run none.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C007",
@@ -8290,13 +8292,14 @@
         {
           "id": "EVT-01-C021",
           "requirement": "navigate",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-message-display/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-message-display/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-shortfall-in-the-browser/"
           ],
-          "note": "Display (0x67) goes to the chosen message's system and closes the index (FUN_00467f10, message-display.mjs on Arch Chromium); not compared in A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Display (0x67) goes to the chosen message's system and closes the index (FUN_00467f10, message-display.mjs on Arch Chromium); not compared in A0. 2026-11-08: the note's 'not compared in A0' was stale. A0 message-rail/display-sesswenna (an Alliance game): Display closes the index and opens the system's sector window at (56, 36) (FUN_00429440); message-display.mjs (Linux, Alliance) presses Display on a placed message, finds the index closed and the window's left edge, bottom edge and switch-side key 0 pixels from A0, as it has since b111.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         }
       ]
     },
@@ -9354,9 +9357,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-panel-text-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-ctrl-clicks-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-shortfall-in-the-browser/"
           ],
-          "note": "'Attacking Victory Destroyer 1' and the white target box match A0 TAC-03-C016 and the VM Ctrl-click run; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-07 (b125): the order line follows FUN_005e4b40: 'Attacking' and the target's name while a target is held, as A0 TAC-03-C016 'Attacking Victory Destroyer 1' (run.mjs 'attacking-orders-line'). 2026-11-07 (b126): an escort keeps 'Escort' before the escorted ship's name (the mover's +0x68 is the order code, FUN_005e16a0), and the fighter panel's line follows its route and target the same way (run.mjs 'escort-orders-line').",
+          "note": "'Attacking Victory Destroyer 1' and the white target box match A0 TAC-03-C016 and the VM Ctrl-click run; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-07 (b125): the order line follows FUN_005e4b40: 'Attacking' and the target's name while a target is held, as A0 TAC-03-C016 'Attacking Victory Destroyer 1' (run.mjs 'attacking-orders-line'). 2026-11-07 (b126): an escort keeps 'Escort' before the escorted ship's name (the mover's +0x68 is the order code, FUN_005e16a0), and the fighter panel's line follows its route and target the same way (run.mjs 'escort-orders-line'). 2026-11-08: A0 TAC-04-C014 (Wine) shows the fighter panel's line for Red Group as 'Escort Alliance Escort Carrier 1': the escort keeps 'Escort' before the ship's name, as FUN_005e16a0 and the port (b126) write it.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
