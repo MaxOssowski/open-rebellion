@@ -662,6 +662,55 @@ async function run(browser, base, faction) {
 
     }
 
+    // The Alliance's Future Jedi Discovered (FUN_0048f1e0; A0
+    // future-jedi-alliance/01-future-jedi-dodonna-day607, an Alliance game,
+    // the window at (62, 49), the pointer outside it): Luke, not yet a Jedi
+    // Knight, tells of Jan Dodonna's Force (0x717a) over the Alliance's
+    // background with his portrait; the picture, its title image and its
+    // rail (Display lit, kind 3) every pixel A0's.
+    if (faction.byte === 1) {
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the list for the Alliance's Future Jedi");
+      const listedJ = await report(page);
+      await click(page, [listedJ.window_left + 212 - 62, listedJ.window_top + 113 - 49]);
+      const missionJ = await waitReport(page, (value) => value.mode === "list"
+        && value.rows.some((text) => text.startsWith("Future Jedi Discovered")), "the Alliance's Mission list");
+      const jediRow = missionJ.rows.findIndex((text) => text.startsWith("Future Jedi Discovered"));
+      await click(page, await shown(jediRow));
+      await click(page, showMessage);
+      const jedi = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Future Jedi Discovered", "Display Message shows the Alliance's Future Jedi");
+      assert.equal(jedi.viewing_text, "I have detected that Jan Dodonna has the ability to use the Force.  "
+        + "Once I reach the rank of Jedi Knight, I should conduct training in the use of the Force.",
+      JSON.stringify(jedi));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("future-jedi-alliance");
+      const shownJ = PNG.sync.read(await page.screenshot());
+      const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/future-jedi-alliance/01-future-jedi-dodonna-day607.png")));
+      const [leftJ, topJ] = [Math.round(jedi.window_left), Math.round(jedi.window_top)];
+      const region = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topJ + y) * 640 + leftJ + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownJ.data[i + c] !== a0.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      const jediChecks = {
+        picture_a0: region(12, 33, 412, 233),
+        title_image_a0: region(15, 16, 30, 32),
+        rail_a0: region(414, 11, 468, 296),
+      };
+      captureChecks.future_jedi_alliance = jediChecks;
+      assert.deepEqual(jediChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(jediChecks));
+    }
+
     // The Mission list's row (A0 messages-day633/index-tab3: the Alliance's
     // Mission Messages holding the capture, chosen): the category icon
     // STRATEGY 0x2a9e at the row's (1, 1), keyed on palette index 0

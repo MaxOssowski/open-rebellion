@@ -23,7 +23,7 @@ use crate::mission_dialog::{kind_icon, kind_name};
 use crate::status_window::{character_rows, StatusRow};
 use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::system_window::{
-    character_mini_resource_id, defense_facility_mini, fleet_label, manufacturing_facility_mini,
+    character_picture, defense_facility_mini, fleet_label, manufacturing_facility_mini,
     production_facility_mini, special_force_mini, troop_mini,
 };
 
@@ -1353,8 +1353,7 @@ pub fn status_view(sources: StatusSources<'_>, object: StatusObject) -> Option<S
             view(
                 "Character Status",
                 side,
-                character_mini_resource_id(character.dat_id, character.is_major)
-                    .map(|mini| (DllSource::Gokres, mini - 0x4000)),
+                character_picture(character).map(|mini| (DllSource::Gokres, mini - 0x4000)),
                 character.name.clone(),
                 character_rows(world, sources.missions.en_route(), key)?,
             )

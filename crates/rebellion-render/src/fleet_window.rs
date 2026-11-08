@@ -25,7 +25,7 @@ use crate::object_menu::MenuObject;
 use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::quadrant_icons::{quadrant_art, Quadrant};
 use crate::system_window::{
-    canvas_point, character_mini_resource_id, clamp_window_to_galaxy, exact_clicked, fleet_label,
+    canvas_point, character_picture, clamp_window_to_galaxy, exact_clicked, fleet_label,
     logical_rect, opposing_contents_visible, rect_contains, troop_mini,
 };
 use crate::targeting::ReleaseTarget;
@@ -1638,7 +1638,7 @@ fn right_items(
             .iter()
             .filter_map(|&key| Some((key, world.characters.get(key)?)))
             .map(|(key, character)| RightItem {
-                mini: character_mini_resource_id(character.dat_id, character.is_major),
+                mini: character_picture(character),
                 kind: MiniObject::Character,
                 label: character.name.clone(),
                 no_hyperdrive: false,

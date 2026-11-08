@@ -7426,10 +7426,7 @@ fn battle_result_entries(
                     name: character.name.clone(),
                     condition: BattleResultCondition::Operational,
                     // A personnel mini (FUN_004724a0 passes 0) on 11500.
-                    picture: rebellion_core::pictures::character_mini_resource_id(
-                        character.dat_id,
-                        character.is_major,
-                    )
+                    picture: rebellion_core::pictures::character_picture(character)
                     .map(|mini| (DllSource::Gokres, mini)),
                     backdrop: Some((DllSource::Strategy, 11_500)),
                     // FUN_004f7800: an injured character is damaged; its
@@ -8971,7 +8968,7 @@ fn battle_alert_rows(
             character.name.clone(),
             AlertFont::Plain,
             MiniObject::Character,
-            crate::system_window::character_mini_resource_id(character.dat_id, character.is_major),
+            rebellion_core::pictures::character_picture(character),
             // FUN_004f7800: an injured character is damaged.
             character.injury > 0,
             indent,

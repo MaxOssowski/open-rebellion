@@ -4046,15 +4046,51 @@ pub fn informant_reports(request: FixtureRequest) -> Vec<&'static str> {
     }
 }
 
-/// The event-message scenario's Force discovery for the Empire reader
-/// (`FUN_0048f1e0`, timer `0x389`): Vader finds Ozzel's Force, as A0
-/// research-display/08-future-jedi (a new Easy Empire game, day 107) shows
-/// "Future Jedi Discovered".
+/// The event-message scenario's Force discovery (`FUN_0048f1e0`, timer
+/// `0x389`), "Future Jedi Discovered" as A0 shows it: for the Empire Vader
+/// finds Ozzel's Force (research-display/08-future-jedi, a new Easy Empire
+/// game, day 107); for the Alliance Luke, not yet a Jedi Knight, finds Jan
+/// Dodonna's (future-jedi-alliance/01, an Alliance game, day 607).
 pub fn force_discoveries(request: FixtureRequest) -> Vec<(&'static str, &'static str)> {
-    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Empire {
+    if request.scenario != Scenario::EventMessages {
         return Vec::new();
     }
-    vec![("Vader", "Ozzel")]
+    match request.faction {
+        CockpitFaction::Empire => vec![("Vader", "Ozzel")],
+        CockpitFaction::Alliance => vec![("Luke", "Dodonna")],
+    }
+}
+
+/// The trainer and the found character of each of [`force_discoveries`],
+/// found by name in `world`. Luke has finished Dagobah, as in A0's day 607
+/// (his picture the Jedi Knight's, `FUN_0056f550`).
+pub fn place_force_discoveries(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+) -> Vec<(
+    rebellion_core::ids::CharacterKey,
+    rebellion_core::ids::CharacterKey,
+)> {
+    let named = |world: &GameWorld, needle: &str| {
+        world
+            .characters
+            .iter()
+            .find(|(_, character)| character.name.contains(needle))
+            .map(|(key, _)| key)
+    };
+    let mut placed = Vec::new();
+    for (trainer, found) in force_discoveries(request) {
+        if let (Some(trainer), Some(found)) = (named(world, trainer), named(world, found)) {
+            placed.push((trainer, found));
+        }
+    }
+    for &(trainer, _) in &placed {
+        let character = &mut world.characters[trainer];
+        if character.name.contains("Luke") {
+            character.dagobah_completed = true;
+        }
+    }
+    placed
 }
 
 /// The event-message scenario's Maintenance Shortfall (`FUN_00498970`): a
@@ -7532,16 +7568,17 @@ mod tests {
     }
 
     // FUN_0048f1e0 (timer 0x389): A0 research-display/08-future-jedi shows
-    // the Empire Vader's "Future Jedi Discovered" for Ozzel.
+    // the Empire Vader's "Future Jedi Discovered" for Ozzel, and
+    // future-jedi-alliance/01 the Alliance Luke's for Jan Dodonna.
     #[test]
-    fn the_event_messages_scenario_has_vader_find_ozzels_force_for_the_empire() {
+    fn the_event_messages_scenario_has_each_sides_trainer_find_a_force_user() {
         assert_eq!(
             force_discoveries(request(Scenario::EventMessages, CockpitFaction::Empire)),
             vec![("Vader", "Ozzel")]
         );
-        assert!(
-            force_discoveries(request(Scenario::EventMessages, CockpitFaction::Alliance))
-                .is_empty()
+        assert_eq!(
+            force_discoveries(request(Scenario::EventMessages, CockpitFaction::Alliance)),
+            vec![("Luke", "Dodonna")]
         );
         assert!(
             force_discoveries(request(Scenario::StoryMessages, CockpitFaction::Empire)).is_empty()

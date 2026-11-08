@@ -18,7 +18,7 @@ use rebellion_core::fog::FogState;
 use rebellion_core::ids::{DatId, FleetKey, SystemKey};
 use rebellion_core::manufacturing::{ManufacturingState, ProductionArea};
 use rebellion_core::missions::{MissionState, MissionTarget, MissionTargetPick};
-pub(crate) use rebellion_core::pictures::character_mini_resource_id;
+pub(crate) use rebellion_core::pictures::{character_mini_resource_id, character_picture};
 use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};

@@ -30,9 +30,8 @@ use crate::object_menu::MenuObject;
 use crate::minis::fighter_mini_id;
 use crate::quadrant_icons::{mission_keys, system_members};
 use crate::system_window::{
-    canvas_point, character_mini_resource_id, clamp_window_to_galaxy, defense_facility_mini,
-    exact_clicked, logical_rect, opposing_contents_visible, rect_contains, special_force_mini,
-    troop_mini,
+    canvas_point, character_picture, clamp_window_to_galaxy, defense_facility_mini, exact_clicked,
+    logical_rect, opposing_contents_visible, rect_contains, special_force_mini, troop_mini,
 };
 use crate::window_move::{self, MoveAnchor};
 
@@ -884,7 +883,7 @@ fn built_rows(
                         let character = world.characters.get(key)?;
                         Some(DefensesRow {
                             item: DefensesItem::Character(key),
-                            mini: character_mini_resource_id(character.dat_id, character.is_major)?,
+                            mini: character_picture(character)?,
                             label: character.name.clone(),
                         })
                     }

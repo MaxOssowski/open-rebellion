@@ -28,6 +28,25 @@ pub fn planet_picture_id(dat_id: DatId) -> u8 {
         .unwrap_or(1)
 }
 
+/// A character's picture (its vtable `+0x30`) as its compact image: Luke
+/// with `DagobahCompleted` returns `0x850` (`FUN_0056f550`), the Jedi
+/// Knight's 18512 (story portrait STRATEGY 6224, as A0
+/// future-jedi-alliance/01 shows him after Dagobah); any other character
+/// its class's ([`character_mini_resource_id`]).
+#[must_use]
+pub fn character_picture(character: &crate::world::Character) -> Option<u32> {
+    if character.is_major && character.dat_id.index() == LUKE && character.dagobah_completed {
+        return Some(LUKE_JEDI_KNIGHT);
+    }
+    character_mini_resource_id(character.dat_id, character.is_major)
+}
+
+/// Luke's record (`0x32000242`), whose vtable `+0x30` is `FUN_0056f550`.
+const LUKE: u32 = 0x242;
+/// Luke's picture after Dagobah, `0x850` from `FUN_0056f550`, as a compact
+/// image (`0x4850`, GOKRES 18512).
+const LUKE_JEDI_KNIGHT: u32 = 0x4850;
+
 /// Compact 61x25 GOKRES image of a character, used by the system and the
 /// tactical contents windows.
 ///
@@ -39,5 +58,40 @@ pub fn character_mini_resource_id(dat_id: DatId, is_major: bool) -> Option<u32> 
         matches!(index, 576..=579 | 592 | 640..=641).then_some(index + 17_920)
     } else {
         matches!(index, 832..=857 | 896..=923).then_some(index + 18_176)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::world::Character;
+
+    #[test]
+    fn luke_after_dagobah_takes_the_jedi_knights_picture() {
+        // FUN_0056f550 (Luke's vtable +0x30): 0x850 with DagobahCompleted,
+        // else the class's picture; A0 future-jedi-alliance/01 (day 607,
+        // after Dagobah) shows STRATEGY 6224.
+        let mut luke = Character {
+            dat_id: DatId::new(0x3200_0242),
+            is_major: true,
+            ..Character::default()
+        };
+        assert_eq!(character_picture(&luke), Some(18_498));
+        luke.dagobah_completed = true;
+        assert_eq!(character_picture(&luke), Some(0x4850));
+        let vader = Character {
+            dat_id: DatId::new(0x3500_0281),
+            is_major: true,
+            dagobah_completed: true,
+            ..Character::default()
+        };
+        assert_eq!(character_picture(&vader), Some(18_561));
+        let minor = Character {
+            dat_id: DatId::new(0x242),
+            is_major: false,
+            dagobah_completed: true,
+            ..Character::default()
+        };
+        assert_eq!(character_picture(&minor), None);
     }
 }

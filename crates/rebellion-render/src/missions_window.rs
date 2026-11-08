@@ -27,9 +27,9 @@ use crate::minis::capital_ship_mini_id;
 use crate::quadrant_icons::{mission_keys, missions_side, visible_members};
 use crate::sector_window::planet_resource_id;
 use crate::system_window::{
-    character_mini_resource_id, clamp_window_to_galaxy, defense_facility_mini, exact_clicked,
-    logical_rect, manufacturing_facility_mini, production_facility_mini, rect_contains,
-    special_force_mini, troop_mini,
+    character_picture, clamp_window_to_galaxy, defense_facility_mini, exact_clicked, logical_rect,
+    manufacturing_facility_mini, production_facility_mini, rect_contains, special_force_mini,
+    troop_mini,
 };
 use crate::window_move::{self, MoveAnchor};
 
@@ -682,10 +682,7 @@ fn member_mini(world: &GameWorld, member: MissionMember) -> Option<(Option<u32>,
     match member {
         MissionMember::Character(key) => {
             let character = world.characters.get(key)?;
-            Some((
-                character_mini_resource_id(character.dat_id, character.is_major),
-                character.name.clone(),
-            ))
+            Some((character_picture(character), character.name.clone()))
         }
         MissionMember::SpecialForce(key) => {
             let force = world.special_forces.get(key)?;
@@ -747,7 +744,7 @@ fn target_view(world: &GameWorld, target: Target) -> Option<(DllSource, Option<u
             let character = world.characters.get(key)?;
             Some((
                 DllSource::Gokres,
-                character_mini_resource_id(character.dat_id, character.is_major),
+                character_picture(character),
                 character.name.clone(),
             ))
         }

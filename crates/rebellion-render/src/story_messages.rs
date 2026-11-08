@@ -215,7 +215,7 @@ pub fn luke_leaves_dagobah(
             .with_title(title)
             .with_picture(MessagePicture {
                 background: 0x412,
-                foreground: character_portrait(luke.dat_id, luke.is_major),
+                foreground: character_portrait_of(luke),
             })
             // FUN_0048d0f0 writes 0x16.
             .with_advisor_event(0x16),
@@ -298,7 +298,7 @@ pub fn force_user_discovered(
             .with_title(title)
             .with_picture(MessagePicture {
                 background: side_background(side),
-                foreground: character_portrait(speaker.dat_id, speaker.is_major),
+                foreground: character_portrait_of(speaker),
             })
             // FUN_0048f1e0's speaker map on the same character.
             .with_advisor_event(character_speaker_event(Some(speaker)))
@@ -686,7 +686,7 @@ pub fn discovers_traitor_message(
         .with_title(fill_message_text(texts.get(&0x71e8)?, &parameters))
         .with_picture(MessagePicture {
             background: side_background(side),
-            foreground: character_portrait(discoverer.dat_id, discoverer.is_major),
+            foreground: character_portrait_of(discoverer),
         })
         // FUN_0048c9c0's speaker map on the discoverer.
         .with_advisor_event(character_speaker_event(Some(discoverer))),
@@ -722,7 +722,7 @@ pub fn rescue_attempt_message(
         .with_title(fill_message_text(texts.get(&0x71ea)?, &parameters))
         .with_picture(MessagePicture {
             background: side_background(CockpitFaction::Alliance),
-            foreground: character_portrait(rescuer.dat_id, rescuer.is_major),
+            foreground: character_portrait_of(rescuer),
         })
         // FUN_0048c4c0's speaker map on the rescuer (+0x68).
         .with_advisor_event(character_speaker_event(Some(rescuer))),
@@ -2141,7 +2141,7 @@ fn detects_enemy_message(
             .with_title(title)
             .with_picture(MessagePicture {
                 background: side_background(side),
-                foreground: character_portrait(own.dat_id, own.is_major),
+                foreground: character_portrait_of(own),
             }),
     )
 }
@@ -2436,6 +2436,14 @@ const fn side_background(side: CockpitFaction) -> u32 {
 #[must_use]
 pub fn character_portrait(dat_id: DatId, major: bool) -> Option<u32> {
     character_mini_resource_id(dat_id, major).map(|mini| mini - 0x4000 + 0x1000)
+}
+
+/// A character's story portrait from its own picture (`FUN_004c5000` asks
+/// its vtable `+0x30`), so Luke after Dagobah shows as a Jedi Knight
+/// (STRATEGY 6224).
+#[must_use]
+pub fn character_portrait_of(character: &rebellion_core::world::Character) -> Option<u32> {
+    rebellion_core::pictures::character_picture(character).map(|mini| mini - 0x4000 + 0x1000)
 }
 
 #[cfg(test)]
@@ -4496,6 +4504,35 @@ mod tests {
         assert!(message
             .text
             .contains("Once I reach the rank of Jedi Knight"));
+    }
+
+    #[test]
+    fn luke_after_dagobah_speaks_with_the_jedi_knights_portrait() {
+        // FUN_004c5000 asks the trainer's vtable +0x30; Luke's
+        // (FUN_0056f550) is 0x850 after Dagobah, STRATEGY 6224, as A0
+        // future-jedi-alliance/01 (day 607) shows him finding Jan Dodonna.
+        let (mut world, _, _, _) = discovery_world(80);
+        let luke = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x242),
+            name: "Luke Skywalker".into(),
+            is_alliance: true,
+            is_major: true,
+            is_jedi_trainer: true,
+            force_base: 80,
+            dagobah_completed: true,
+            ..Default::default()
+        });
+        let dodonna = world.characters.insert(rebellion_core::world::Character {
+            dat_id: DatId::new(0x340),
+            name: "Jan Dodonna".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        let message = force_user_discovered(&world, luke, dodonna, 9, &discovery_texts()).unwrap();
+        assert_eq!(message.picture.unwrap().foreground, Some(6224));
+        world.characters[luke].dagobah_completed = false;
+        let message = force_user_discovered(&world, luke, dodonna, 9, &discovery_texts()).unwrap();
+        assert_eq!(message.picture.unwrap().foreground, Some(6210));
     }
 
     #[test]

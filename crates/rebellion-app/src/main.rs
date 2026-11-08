@@ -1676,24 +1676,15 @@ async fn main() {
                 msg_log.push(message);
             }
         }
-        for (trainer, found) in interface_test_fixture::force_discoveries(request) {
-            let named = |needle: &str| {
-                world
-                    .characters
-                    .iter()
-                    .find(|(_, character)| character.name.contains(needle))
-                    .map(|(key, _)| key)
-            };
-            if let (Some(trainer), Some(found)) = (named(trainer), named(found)) {
-                if let Some(message) = rebellion_render::story_messages::force_user_discovered(
-                    &world,
-                    trainer,
-                    found,
-                    0,
-                    &message_texts,
-                ) {
-                    msg_log.push(message);
-                }
+        for (trainer, found) in interface_test_fixture::place_force_discoveries(request, &mut world) {
+            if let Some(message) = rebellion_render::story_messages::force_user_discovered(
+                &world,
+                trainer,
+                found,
+                0,
+                &message_texts,
+            ) {
+                msg_log.push(message);
             }
         }
         // Filed before the scenario's other Manufacturing reports, so it

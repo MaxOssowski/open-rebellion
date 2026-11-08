@@ -18,7 +18,7 @@ use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::CockpitLayout;
 use crate::sector_window::planet_resource_id;
 use crate::system_window::{
-    character_mini_resource_id, exact_clicked, logical_rect, rect_contains, special_force_mini,
+    character_picture, exact_clicked, logical_rect, rect_contains, special_force_mini,
 };
 
 pub const MISSION_DIALOG_WIDTH: f32 = 259.0;
@@ -444,10 +444,7 @@ fn member_item(world: &GameWorld, member: MissionMember) -> Option<(Option<u32>,
     match member {
         MissionMember::Character(key) => {
             let character = world.characters.get(key)?;
-            Some((
-                character_mini_resource_id(character.dat_id, character.is_major),
-                character.name.clone(),
-            ))
+            Some((character_picture(character), character.name.clone()))
         }
         MissionMember::SpecialForce(key) => {
             let unit = world.special_forces.get(key)?;
