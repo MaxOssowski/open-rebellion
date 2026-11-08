@@ -509,7 +509,69 @@ const cases = [
       } else {
         assert.ok(headquarters.different_pixels > headquarters.pixels_checked / 2, "the Empire sees no headquarters mark");
       }
-      return { compares, absent, headquarters, uprising };
+      // An explored neutral system (A0 sector-b, the Sesswenna sector):
+      // its name white (FUN_0045bbb0 leaves the item's white for side 0)
+      // and its system icon the neutral art 10787, as A0 shows by
+      // Chandrila, Yaga Minor and five more, every pixel.
+      assert.ok(setup.neutral, JSON.stringify(setup));
+      const [planetRect] = setup.neutral;
+      // The icon's place beside the planet: the first spot near it where
+      // every pixel of 10787 shows (A0 puts it at the planet's left).
+      const icon = resource(source, 10787);
+      let neutral = null;
+      for (let dy = -30; dy <= 40 && !neutral; dy++) {
+        for (let dx = -40; dx <= 40 && !neutral; dx++) {
+          const at = [planetRect[0] + dx, planetRect[1] + dy];
+          let differing = 0;
+          let checked = 0;
+          for (let y = 0; y < icon.height && differing === 0; y++) {
+            for (let x = 0; x < icon.width; x++) {
+              const from = (y * icon.width + x) * 4;
+              if (blueKey(icon.data, from)) continue;
+              const to = ((Math.round(at[1]) + y) * screenshot.width + Math.round(at[0]) + x) * 4;
+              checked++;
+              if ([0, 1, 2].some((c) => icon.data[from + c] !== screenshot.data[to + c])) { differing++; break; }
+            }
+          }
+          if (differing === 0 && checked > 0) neutral = { id: 10787, at, pixels_checked: checked, different_pixels: 0 };
+        }
+      }
+      assert.ok(neutral, "the neutral system shows the neutral icon 10787 beside its planet");
+      const png = screenshot;
+      let white = 0;
+      let sided = 0;
+      // The name stands under the tracks, from 17 rows below the planet.
+      const nameTop = Math.round(planetRect[1] + planetRect[3] + 17 * setup.scale);
+      for (let y = nameTop; y < nameTop + 12 * setup.scale; y++) {
+        for (let x = Math.round(planetRect[0] - 20 * setup.scale); x < Math.round(planetRect[0] + planetRect[2] + 20 * setup.scale); x++) {
+          const i = (y * png.width + x) * 4;
+          const [r, g, b] = png.data.subarray(i, i + 3);
+          if (r > 200 && g > 200 && b > 200) white++;
+          if ((r > 200 && g < 60 && b < 60) || (g > 200 && r < 60 && b < 60)) sided++;
+        }
+      }
+      assert.ok(white > 10 && sided === 0, `the neutral name: ${white} white, ${sided} side-coloured pixels`);
+      // A destroyed system (A0 menus3/05, Averam after the Death Star):
+      // the asteroid field 10240 in place of its planet.
+      assert.ok(setup.destroyed, JSON.stringify(setup));
+      // Keyed on its black first pixel (bmp_cache), so those show the window.
+      const field = resource(source, 10240);
+      const key = field.data.subarray(0, 3);
+      let fieldChecked = 0;
+      let fieldDiffering = 0;
+      for (let y = 0; y < field.height; y++) {
+        for (let x = 0; x < field.width; x++) {
+          const from = (y * field.width + x) * 4;
+          if ([0, 1, 2].every((c) => field.data[from + c] === key[c])) continue;
+          const at = ((Math.round(setup.destroyed[1]) + y) * screenshot.width
+            + Math.round(setup.destroyed[0]) + x) * 4;
+          fieldChecked++;
+          if ([0, 1, 2].some((c) => field.data[from + c] !== screenshot.data[at + c])) fieldDiffering++;
+        }
+      }
+      const destroyed = { id: 10240, pixels_checked: fieldChecked, different_pixels: fieldDiffering };
+      assert.equal(fieldDiffering, 0, `asteroid field: ${fieldDiffering} of ${fieldChecked} differ`);
+      return { compares, absent, headquarters, uprising, neutral: { ...neutral, white }, destroyed };
     },
   },
   {

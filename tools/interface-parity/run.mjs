@@ -965,7 +965,7 @@ const TACTICAL_BACKDROP_UNDER_KEY = (id) => id >= 1001 && id <= 1020;
 const SUBSYSTEM_ICON_BATTLE_ENTRIES = new Map([[140, [230, 0, 0]], [146, [255, 230, 60]]]);
 
 function verifyTacticalBitmap(
-  viewport, screenshotBytes, id, x0, y0, occluders = [], ignoredRects = [],
+  viewport, screenshotBytes, id, x0, y0, occluders = [], ignoredRects = [], skipIndices = null,
 ) {
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
     return { status: "non-native-scale", pixels_checked: 0 };
@@ -991,6 +991,7 @@ function verifyTacticalBitmap(
     for (let x = 0; x < source.width; x++) {
       if (ignoredRects.some((rect) => x >= rect.x && y >= rect.y
         && x < rect.x + rect.width && y < rect.y + rect.height)) continue;
+      if (skipIndices && skipIndices(source.index(x, y))) continue;
       let color = source.pixel(x, y);
       if (id >= 1201 && id <= 1225 && SUBSYSTEM_ICON_BATTLE_ENTRIES.has(source.index(x, y))) {
         color = SUBSYSTEM_ICON_BATTLE_ENTRIES.get(source.index(x, y));
@@ -2215,8 +2216,11 @@ async function probeTacticalDetailEscortPresentation(
   const content = selected.contents[0];
   assert.equal(selected.contents.length, 4, JSON.stringify(selected.contents));
   assert.ok(selected.contents.every(({ icon_id: icon }) => icon), JSON.stringify(selected.contents));
+  // The icons are colour-matched to the battle palette: their entries
+  // 160..245 take its nearest colours (checked against the VM below).
+  const matched = (index) => index >= 160 && index <= 245;
   const contentProof = selected.contents.slice(0, 3).map((each, index) =>
-    verifyTacticalBitmap(viewport, stable.bytes, each.icon_id, 495 + index * 32, 154));
+    verifyTacticalBitmap(viewport, stable.bytes, each.icon_id, 495 + index * 32, 154, [], [], matched));
   const barProof = [[1351, 495], [1353, 599], [1355, 515], [1357, 591]].map(([id, x]) =>
     verifyTacticalBitmap(viewport, stable.bytes, id, x, 189));
   // Against the VM's Imperial Star Destroyer (a0-vm/coruscant-676/05),
@@ -2231,14 +2235,9 @@ async function probeTacticalDetailEscortPresentation(
       let count = 0;
       for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
         const i = (y * 640 + x) * 4;
-        // The icons' entries 160..245 are (238, 142, 142) in their own
-        // palette. The VM's 8-bit screen shows the Stormtroopers' entry 199
-        // as (194, 158, 149), the nearest colour in 23 of the 27 battle
-        // palettes (their entry 112): the list's icons are colour-matched
-        // to the battle palette, not copied by index as the HUD's buttons
-        // are. Wine (A0 TAC-03-C012) keeps the bitmap's own colour; the
-        // port does too.
-        if (port.data[i] === 238 && port.data[i + 1] === 142 && port.data[i + 2] === 142) continue;
+        // The icons are colour-matched to the battle's palette as the
+        // 8-bit screen does: the Stormtroopers' entry 199, (238, 142, 142)
+        // in the bitmap, shows as (194, 158, 149).
         if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) count++;
       }
       return count;
@@ -2258,7 +2257,7 @@ async function probeTacticalDetailEscortPresentation(
     const scrolled = await stableInteractionFrame(page, folder, "contents-scrolled");
     barProof.push(verifyTacticalBitmap(viewport, scrolled, 1355, 518, 189));
     contentProof.push(verifyTacticalBitmap(
-      viewport, scrolled, selected.contents[1].icon_id, 523, 154));
+      viewport, scrolled, selected.contents[1].icon_id, 523, 154, [], [], matched));
     await page.mouse.click(left + 505 * scale, top + 193 * scale);
     await page.waitForTimeout(300);
     barProof.push(verifyTacticalBitmap(
@@ -4587,6 +4586,18 @@ async function probeTacticalBattleOptionsPresentation(
     type: "game-options-restart-lit",
     ...verifyCommonBitmap(viewport, gameOptionsScreen, 10035, 76, 381),
   }, {
+    // A0 TAC-06-C007 and the Corsin battle (a0-vm/research-display/34):
+    // in a battle every Save is grey (10048) and an occupied slot's Load
+    // lit (10049); an empty slot's Load is grey (10051).
+    type: "game-options-battle-save-grey",
+    ...verifyCommonBitmap(viewport, gameOptionsScreen, 10048, 34, 81),
+  }, {
+    type: "game-options-battle-load-lit",
+    ...verifyCommonBitmap(viewport, gameOptionsScreen, 10049, 287, 81),
+  }, {
+    type: "game-options-battle-empty-load-grey",
+    ...verifyCommonBitmap(viewport, gameOptionsScreen, 10051, 287, 123),
+  }, {
     // A0 TAC-06-C007 draws the display options in the system grey
     // (128, 128, 128), the default palette's nearest to 0x2505050.
     type: "game-options-display-options-grey",
@@ -5320,6 +5331,18 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       serviceWorkers: "block",
     });
     page = await context.newPage();
+    if (scenario.battle_options_presentation) {
+      // An occupied first save slot (the build's localStorage keys,
+      // rebellion_data::save::slot_key / meta_key; a body that does not
+      // decode still occupies its slot), so a battle's Game Options can
+      // show its Load lit.
+      const version = fs.readFileSync(path.join(root, "crates/rebellion-data/src/save.rs"), "utf8")
+        .match(/pub const SAVE_VERSION: u32 = (\d+);/)[1];
+      await page.addInitScript((v) => {
+        localStorage.setItem(`rebellion_save_v${v}_0`, "AAAA");
+        localStorage.setItem(`rebellion_meta_v${v}_0`, "{}");
+      }, version);
+    }
     page.on("response", (response) => {
       if (new URL(response.url()).origin === `http://127.0.0.1:${server.address().port}`) {
         requests.push({ url: new URL(response.url()).pathname, status: response.status() });

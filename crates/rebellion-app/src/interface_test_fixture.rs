@@ -3095,7 +3095,7 @@ fn place_quadrant_contents(
     world.systems[second].control = ControlKind::Controlled(enemy);
     // The sector's next two systems: the Alliance's headquarters, and a
     // system of the player's in uprising (the sector window's marks).
-    if let [headquarters, revolt] = mark_systems(world, primary)[..] {
+    if let [headquarters, revolt, ..] = mark_systems(world, primary)[..] {
         for system in [headquarters, revolt] {
             world.systems[system].exploration_status = ExplorationStatus::Explored;
             world.systems[system].is_destroyed = false;
@@ -3114,6 +3114,41 @@ fn place_quadrant_contents(
                 side: Some(player),
             },
         );
+    }
+    // The sector's third such system: explored, held by neither side, with
+    // a mine (FUN_0045cdc0 passes side 0 through; FUN_0045ca80 gives the
+    // neutral art 10787, which A0 sector-b shows by every neutral planet).
+    if let Some(&neutral) = mark_systems(world, primary).get(2) {
+        let value = &mut world.systems[neutral];
+        value.exploration_status = ExplorationStatus::Explored;
+        value.is_destroyed = false;
+        value.is_headquarters = false;
+        value.control = ControlKind::Uncontrolled;
+        value.defense_facilities.clear();
+        value.manufacturing_facilities.clear();
+        // The player's own mine, which the player always sees
+        // (quadrant_icons: a facility of another side needs intel); the
+        // icon takes the system's side either way.
+        let mine =
+            world
+                .production_facilities
+                .insert(rebellion_core::world::ProductionFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(0x2c00_0001),
+                    side: player,
+                    is_mine: true,
+                });
+        world.systems[neutral].production_facilities = vec![mine];
+        uprisings.active_uprisings.remove(&neutral);
+    }
+    // And a fourth, destroyed (FUN_0045bbb0: the asteroid field 10240 in
+    // place of its planet, its name white, no tracks; A0 menus3/05 shows
+    // Averam so after the Death Star).
+    if let Some(&ruin) = mark_systems(world, primary).get(3) {
+        let value = &mut world.systems[ruin];
+        value.exploration_status = ExplorationStatus::Explored;
+        value.is_destroyed = true;
+        value.is_headquarters = false;
+        uprisings.active_uprisings.remove(&ruin);
     }
     for system in [primary, second] {
         let value = &mut world.systems[system];
@@ -4651,6 +4686,13 @@ struct FixtureQuadrantSetup {
     /// player's system in uprising.
     headquarters: Option<[f32; 4]>,
     uprising: Option<[f32; 4]>,
+    /// An explored neutral system with a mine: its planet rect and its
+    /// system icon's rect (A0 sector-b: neutral names white, the icon
+    /// STRATEGY 10787).
+    neutral: Option<[[f32; 4]; 2]>,
+    /// A destroyed system's rect (A0 menus3/05: Averam's asteroid field
+    /// STRATEGY 10240 and its white name).
+    destroyed: Option<[f32; 4]>,
     /// The day readout's centre, which opens the Game Speed menu.
     day_readout: (f32, f32),
 }
@@ -4693,8 +4735,9 @@ fn move_headquarters_object(world: &mut GameWorld, to: SystemKey) {
     world.systems[to].manufacturing_facilities.push(hq);
 }
 
-/// The primary's sector's first two systems other than the primary and the
-/// second system: the headquarters and the system in uprising.
+/// The primary's sector's first four systems other than the primary and
+/// the second system: the headquarters, the system in uprising, a neutral
+/// one and a destroyed one.
 fn mark_systems(world: &GameWorld, primary: SystemKey) -> Vec<SystemKey> {
     let Some(second) = loading_target(world, primary) else {
         return Vec::new();
@@ -4708,7 +4751,7 @@ fn mark_systems(world: &GameWorld, primary: SystemKey) -> Vec<SystemKey> {
                 .iter()
                 .copied()
                 .filter(|&key| key != primary && key != second)
-                .take(2)
+                .take(4)
                 .collect()
         })
         .unwrap_or_default()
@@ -4756,6 +4799,14 @@ fn quadrant_setup(
         quadrants,
         headquarters: planet(marks.first()),
         uprising: planet(marks.get(1)),
+        neutral: marks.get(2).and_then(|&system| {
+            let icon = sectors.quadrant_screen_rect(world, layout, system, Quadrant::System)?;
+            Some([
+                planet(Some(&system))?,
+                [icon.min.x, icon.min.y, icon.width(), icon.height()],
+            ])
+        }),
+        destroyed: planet(marks.get(3)),
         day_readout: day_readout_centre(request.faction, layout),
     })
 }
@@ -9153,6 +9204,16 @@ mod tests {
             }
         }
         assert_eq!(report.quadrants, expected);
+        // The sector's third and fourth systems, when it has them: neutral
+        // with a mine, and destroyed.
+        let marks = mark_systems(world, primary);
+        assert_eq!(report.neutral.is_some(), marks.len() > 2);
+        assert_eq!(report.destroyed.is_some(), marks.len() > 3);
+        if let [_, _, neutral, ruin] = marks[..] {
+            assert_eq!(world.systems[neutral].control, ControlKind::Uncontrolled);
+            assert!(!world.systems[neutral].production_facilities.is_empty());
+            assert!(world.systems[ruin].is_destroyed);
+        }
         assert!(quadrant_setup(
             super::tests::request(Scenario::FleetLoad, CockpitFaction::Empire),
             world,

@@ -1262,6 +1262,16 @@ impl TacticalAssetRenderer {
         }
     }
 
+    /// The battle's palette (TACTICAL `5530 + selector`, an ORTPAL record:
+    /// a 16-byte head, then 256 RGB triples), with its resource id; `None`
+    /// before the runtime pack is installed.
+    pub(crate) fn battle_palette(&self) -> Option<(u32, Vec<[u8; 3]>)> {
+        let resource_id = 5530 + u32::from(self.palette_selector);
+        let cache = TACTICAL_OBJECT_CACHE.lock().ok()?;
+        let bytes = cache.textures.get(&format!("{resource_id}/1033"))?;
+        Some((resource_id, ortpal_rgb(bytes)?))
+    }
+
     pub(crate) fn set_palette_selector(&mut self, selector: u8) {
         let selector = selector.clamp(1, 27);
         if self.palette_selector != selector {
@@ -3065,6 +3075,17 @@ fn navigation_marker_mesh(markers: &[(Vec3, Vec3)]) -> Mesh {
     }
 }
 
+/// An ORTPAL record's 256 colours: after its 16-byte head (`ORTPAL00`, a
+/// version and the resource id), 768 bytes of RGB.
+fn ortpal_rgb(bytes: &[u8]) -> Option<Vec<[u8; 3]>> {
+    let body = bytes.get(16..16 + 768)?;
+    Some(
+        body.chunks_exact(3)
+            .map(|rgb| [rgb[0], rgb[1], rgb[2]])
+            .collect(),
+    )
+}
+
 /// `FUN_005da150`'s `SetColorRGB(0, 1, 0)` for both beam meshes.
 const DEATH_STAR_BEAM_COLOR: Color = Color::new(0.0, 1.0, 0.0, 1.0);
 
@@ -4793,6 +4814,17 @@ mod tests {
         for key in ["MONCAL52.BMP/1033", "STRIKE52.BMP/1033", "5531/1033"] {
             assert!(cache.textures.contains_key(key), "missing texture {key}");
         }
+    }
+
+    #[test]
+    fn an_ortpal_record_gives_its_256_colours_after_its_head() {
+        let mut bytes = b"ORTPAL00\x01\x00\x00\x00\x9b\x15\x00\x00".to_vec();
+        bytes.extend((0..768).map(|i| (i % 251) as u8));
+        let rgb = ortpal_rgb(&bytes).unwrap();
+        assert_eq!(rgb.len(), 256);
+        assert_eq!(rgb[0], [0, 1, 2]);
+        assert_eq!(rgb[112], [85, 86, 87]);
+        assert_eq!(ortpal_rgb(&bytes[..700]), None);
     }
 
     // FUN_005d8c30 (scale 1.5, FUN_005c1c10): a regular tetrahedron of

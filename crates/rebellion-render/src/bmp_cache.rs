@@ -1380,6 +1380,7 @@ pub struct BmpCache {
     /// Original bitmaps in a screen's palette
     /// ([`BmpCache::get_in_screen_palette`]), by the palette's name.
     screen_palette_textures: HashMap<(DllSource, u32, &'static str), Option<TextureHandle>>,
+    screen_palette_macroquad: HashMap<(DllSource, u32, u32), Option<Texture2D>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1475,6 +1476,7 @@ impl BmpCache {
             hit_masks: HashMap::new(),
             shaded_textures: HashMap::new(),
             screen_palette_textures: HashMap::new(),
+            screen_palette_macroquad: HashMap::new(),
         }
     }
 
@@ -1692,6 +1694,34 @@ impl BmpCache {
             self.screen_palette_textures.insert(key, handle);
         }
         self.screen_palette_textures.get(&key)?.as_ref()
+    }
+
+    /// [`Self::get_in_screen_palette`] as a Macroquad texture, the palette
+    /// named by the number `palette_key`.
+    pub fn get_macroquad_in_screen_palette(
+        &mut self,
+        source: DllSource,
+        resource_id: u32,
+        palette_key: u32,
+        palette: &[[u8; 3]],
+    ) -> Option<&Texture2D> {
+        let key = (source, resource_id, palette_key);
+        if !self.screen_palette_macroquad.contains_key(&key) {
+            let texture = self
+                .load_original_bytes(source, resource_id)
+                .and_then(|bytes| decode_rgba_image(&bytes, source, resource_id).ok())
+                .and_then(|rgba| {
+                    let width = u16::try_from(rgba.width()).ok()?;
+                    let height = u16::try_from(rgba.height()).ok()?;
+                    let mut pixels = rgba.into_raw();
+                    map_to_palette(&mut pixels, palette);
+                    let texture = Texture2D::from_rgba8(width, height, &pixels);
+                    texture.set_filter(FilterMode::Nearest);
+                    Some(texture)
+                });
+            self.screen_palette_macroquad.insert(key, texture);
+        }
+        self.screen_palette_macroquad.get(&key)?.as_ref()
     }
 
     /// The original bitmap through the sector window's shading table

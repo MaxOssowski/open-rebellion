@@ -3635,6 +3635,43 @@ fn scrolled_contents(count: usize, scroll: f32, right: bool) -> f32 {
     (scroll + step).clamp(0.0, range)
 }
 
+/// A contents icon as the 8-bit screen shows it: the list paints it with
+/// GDI, which matches each colour to the battle's palette (A0 VM
+/// coruscant-676/05 shows the Stormtroopers' entry 199, (238, 142, 142) in
+/// the bitmap, as the palettes' (194, 158, 149)); the HUD's buttons keep
+/// their indices instead. Without the palette, the bitmap's own colours.
+fn draw_contents_icon(
+    cache: &mut BmpCache,
+    canvas: TacticalCanvas,
+    icon: u32,
+    (x, y): (f32, f32),
+    palette: Option<&(u32, Vec<[u8; 3]>)>,
+) {
+    let Some((key, colours)) = palette else {
+        draw_tactical_bitmap(cache, icon, canvas, x, y);
+        return;
+    };
+    let Some(texture) =
+        cache.get_macroquad_in_screen_palette(DllSource::Tactical, icon, *key, colours)
+    else {
+        return;
+    };
+    let (screen_x, screen_y) = canvas.point(x, y);
+    draw_texture_ex(
+        texture,
+        screen_x,
+        screen_y,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(
+                texture.width() * canvas.scale,
+                texture.height() * canvas.scale,
+            )),
+            ..Default::default()
+        },
+    );
+}
+
 /// The selected ship's contents list (`FUN_005e4a30`): each unit's icon
 /// in its cell, clipped to the list, and the scroll bar once they
 /// overflow it.
@@ -3643,6 +3680,7 @@ fn draw_tactical_contents(
     canvas: TacticalCanvas,
     contents: &[TacticalShipContent],
     scroll: f32,
+    palette: Option<&(u32, Vec<[u8; 3]>)>,
 ) {
     let list = CONTENTS_LIST;
     let (left, top) = canvas.point(list.x, list.y);
@@ -3654,12 +3692,12 @@ fn draw_tactical_contents(
     )));
     for (index, content) in contents.iter().enumerate() {
         if let Some(icon) = tactical_content_icon(content.resource_id) {
-            draw_tactical_bitmap(
+            draw_contents_icon(
                 cache,
-                icon,
                 canvas,
-                list.x + index as f32 * CONTENTS_CELL - scroll,
-                list.y,
+                icon,
+                (list.x + index as f32 * CONTENTS_CELL - scroll, list.y),
+                palette,
             );
         }
     }
@@ -5558,6 +5596,7 @@ fn draw_original_tactical_hud(
     death_star_laser_pressed: bool,
     death_star_targeting: bool,
     contents_scroll: f32,
+    battle_palette: Option<(u32, Vec<[u8; 3]>)>,
 ) {
     use resources::tactical as art;
 
@@ -5776,6 +5815,7 @@ fn draw_original_tactical_hud(
                 canvas,
                 groups.selected_ship_contents,
                 contents_scroll,
+                battle_palette.as_ref(),
             );
             // A0 TAC-03-C016: capitals from row 37 at x 508, the caption
             // from row 82, the orders from rows 212 and 223 at x 497.
@@ -10676,6 +10716,7 @@ fn draw_tactical_frame(
             state.death_star_laser_pressed,
             state.death_star_targeting,
             contents_scroll_of(state.contents_scroll, groups.selected_ship_index),
+            state.asset_renderer.battle_palette(),
         );
         // A0 TAC-01-C003/C002: "Battle Paused", capitals from row 33 at
         // x 22, pure red for the Alliance and pure green for the Empire;
