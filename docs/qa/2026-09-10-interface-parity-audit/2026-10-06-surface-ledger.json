@@ -8240,15 +8240,16 @@
         {
           "id": "EVT-01-C016",
           "requirement": "death",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-death-by-injury/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-destroyed-messages/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-killed-and-bombardment-a0/"
           ],
-          "note": "Death by injury and Killed by Imperial Assassins messages; the assassins fixture was seen in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a destroyed character, including the Death Star's victims, reads Killed (0x7164/0x7365, character_health_texts); unit tests only.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Death by injury and Killed by Imperial Assassins messages; the assassins fixture was seen in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a destroyed character, including the Death Star's victims, reads Killed (0x7164/0x7365, character_health_texts); unit tests only. 2026-11-08 (b140): A0 alliance-game2/jan-dodonna-killed (a new Alliance game): 'Jan Dodonna has been killed.' (FUN_0048fdf0, 0x7164/0x7365) over the coffin 0x42e, Display lit. The fixture reports him killed through the app's push_character_health; message-display.mjs (Linux, Alliance) finds the text exact and picture, title image and rail 0 pixels from A0. Batch b140: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C017",
@@ -8550,15 +8551,16 @@
         {
           "id": "EVT-03-C003",
           "requirement": "general bombardment",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-bombardment-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-conflict/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-conflict/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-killed-and-bombardment-a0/"
           ],
-          "note": "General Bombardment (0x222) runs from the fleet menu and opens the summary (0x7098) in the browser fleet-window gate on Arch Chromium 155. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-07: the defender's side in A0 (a new Easy Empire game): 'Orbital bombardment of Umgul' over 'Alliance ships have conducted an orbital strike on the Imperial system of Umgul', picture 0x2b9b; the unit test builds the same body.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "General Bombardment (0x222) runs from the fleet menu and opens the summary (0x7098) in the browser fleet-window gate on Arch Chromium 155. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-07: the defender's side in A0 (a new Easy Empire game): 'Orbital bombardment of Umgul' over 'Alliance ships have conducted an orbital strike on the Imperial system of Umgul', picture 0x2b9b; the unit test builds the same body. 2026-11-08 (b140): A0 alliance-game2/orbital-bombardment-yavin (the Empire bombarded the Alliance's Yavin, the defender's view): 'Imperial ships have conducted an orbital strike on the Alliance system of Yavin' (0x7098), green, picture 0x2b9b. fleet-window.mjs 'bombardment' (Linux, Empire) reads the same text and finds the title centred and the body placed as A0's (within 3 / 2 px); the picture is compared pixel for pixel when the port's strike also cost the system (the picture follows the losses). Batch b140: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-03-C004",
