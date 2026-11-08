@@ -468,6 +468,31 @@ async function run(browser, base, faction) {
         ["tac-memorize", [615, 456]]]) {
         await probe(label, point, null);
       }
+      // The group bar's tips against the Windows VM (the Empire game's
+      // battle at Coruscant, a0-vm/coruscant-676/03, 04): "Task Force 1"
+      // and an empty slot's "Unassigned Task Force" (TEXTTACT 0xad93,
+      // 0xad92) each at the pointer plus (0, 21), 19 high. The VM pointed
+      // at the third slot, the probe at the eighth: both empty.
+      const vm = path.join(ROOT, ".artifacts/a0-vm/coruscant-676");
+      for (const [label, point, vmPoint, capture, text] of [
+        ["tac-task-force-1-vm", [72, 10], [72, 10], "04-tip-tf1.png", "Task Force 1"],
+        ["tac-unassigned-vm", [275, 10], [130, 10], "03-tip-unassigned.png", "Unassigned Task Force"]]) {
+        const file = path.join(vm, capture);
+        if (!(await fs.stat(file).catch(() => null))) continue;
+        await page.mouse.move(320, 300, { steps: 4 });
+        await frames(page, 4);
+        await page.mouse.move(point[0], point[1], { steps: 4 });
+        await page.waitForTimeout(1000);
+        const got = tipBox(await shot(`${label}-1s`), point);
+        const want = tipBox(PNG.sync.read(await fs.readFile(file)), vmPoint);
+        assert.ok(got && want, `${label}: ${JSON.stringify({ got, want })}`);
+        assert.deepEqual([got.x - point[0], got.y - point[1], got.height],
+          [want.x - vmPoint[0], want.y - vmPoint[1], want.height], label);
+        // The text's width is the accepted Liberation Sans deviation.
+        assert.ok(Math.abs(got.width - want.width) <= Math.ceil(want.width * 0.12),
+          `${label}: width ${got.width} vs ${want.width}`);
+        others.push({ label, text, got, want, a0: `a0-vm/coruscant-676/${capture}` });
+      }
 
       // The system window's six tabs (§7e, FUN_00455060) in the
       // Build Selection fixture (code 55), which opens the first system's

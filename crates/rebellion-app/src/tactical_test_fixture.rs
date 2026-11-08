@@ -677,6 +677,24 @@ pub(crate) fn apply(
             .embark(world, player_fleet, &troops)
             .map_err(|error| format!("contents fixture regiments: {error}"))?;
     }
+    // The Alliance's results carry three Alliance Army Regiments on its
+    // three one-regiment hulls (CAPSHPSD 64, troop capacity 1); the third
+    // hull dies (configure_battle_results_presentation_fixture), so one
+    // regiment is listed destroyed, as A0 TAC-07-C007's Troops page lists
+    // its Alliance Army Regiments.
+    if request.battle_results_presentation && player_is_alliance {
+        let troops = [0, 1, 2].map(|_| {
+            world.troops.insert(rebellion_core::world::TroopUnit {
+                class_dat_id: rebellion_core::ids::DatId::new(0x1000_0002),
+                is_alliance: true,
+                regiment_strength: 1,
+            })
+        });
+        world.systems[system].ground_units.extend(troops);
+        troop_transport
+            .embark(world, attacker, &troops)
+            .map_err(|error| format!("results fixture regiments: {error}"))?;
+    }
     world.systems[system].fleets.extend([attacker, defender]);
     // The Empire's alert system holds Tralus's assets as A0
     // battle-alert-empire/01-system-assets lists them: GenCore Level I,

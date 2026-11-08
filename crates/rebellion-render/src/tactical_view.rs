@@ -8504,8 +8504,15 @@ fn battle_force_page(
             if top + cell_h <= 136.0 || top >= 136.0 + BATTLE_RESULT_LIST_HEIGHT {
                 continue;
             }
-            // FUN_004724a0: the picture centred over the name.
+            // FUN_004724a0: the picture centred in the cell, `(cell -
+            // height) / 2`, and the name's label from the picture's foot
+            // (`+0x34` = its height + its top). A0 TAC-07-C007: the
+            // destroyed regiment's 50-high picture from window row 146 of
+            // its 70-high cell at 136, its name's capitals from row 199
+            // (port: the name's text box stands 3 rows under the foot).
+            let mut name_y = top + cell_h - BATTLE_RESULT_NAME_HEIGHT + 7.0;
             if let Some(picture) = entry.picture {
+                let mut foot = None;
                 for (source, id) in entry
                     .backdrop
                     .into_iter()
@@ -8513,19 +8520,24 @@ fn battle_force_page(
                     .chain(std::iter::once(picture))
                 {
                     if let Some([w, h]) = size_of(source, id) {
+                        let y = top + ((cell_h - h as f32) / 2.0).floor();
+                        foot = foot.or(Some(y + h as f32));
                         ops.push(PageOp::Bitmap {
                             source,
                             id,
                             x: left + ((cell_w - w as f32) / 2.0).floor(),
-                            y: top + ((cell_h - BATTLE_RESULT_NAME_HEIGHT - h as f32) / 2.0).floor(),
+                            y,
                         });
                     }
+                }
+                if let Some(foot) = foot {
+                    name_y = foot + 3.0;
                 }
             }
             ops.push(text(
                 &entry.name,
                 left + cell_w / 2.0,
-                top + cell_h - BATTLE_RESULT_NAME_HEIGHT + 7.0,
+                name_y,
                 BATTLE_RESULT_NAME_FONT,
                 WHITE,
                 true,
@@ -12218,6 +12230,34 @@ mod tests {
         assert_eq!(pictures, 3);
     }
 
+    // A row without a picture keeps its name at the cell's foot strip
+    // (port: FUN_004724a0's text-only branch is not traced).
+    #[test]
+    fn a_row_without_a_picture_keeps_its_name_at_the_cells_foot() {
+        let entries = [BattleResultEntry {
+            name: "Bare".into(),
+            condition: BattleResultCondition::Operational,
+            picture: None,
+            backdrop: None,
+            mark: None,
+        }];
+        let ops = battle_force_page(
+            "Hoth",
+            &entries,
+            false,
+            BattleResultCategory::Troops,
+            0,
+            true,
+            WHITE,
+            |_, _| Some([10, 10]),
+        );
+        let baseline = ops.iter().find_map(|op| match op {
+            PageOp::Text { text, baseline, .. } if text == "Bare" => Some(*baseline),
+            _ => None,
+        });
+        assert_eq!(baseline, Some(136.0 + 70.0 - 14.0 + 7.0 + 8.0));
+    }
+
     #[test]
     fn the_forces_page_draws_the_originals_layout() {
         // FUN_0046f360 / FUN_00471200 / FUN_004714e0 / FUN_004724a0.
@@ -12276,18 +12316,21 @@ mod tests {
         assert_eq!(find("Operational").1, 37.0 + 82.5);
         assert_eq!(find("Destroyed").1, 204.0 + 82.5);
         assert_eq!(find("Destroyed").2, 131.0);
+        // The name hangs from the picture's foot (FUN_004724a0 +0x34):
+        // the 50-high backdrop from row 10 of the 70-high cell ends at 60
+        // (A0 TAC-07-C007), the name's text 3 rows lower.
         assert_eq!(
             find("Kept"),
             (
                 "Kept".into(),
                 37.0 + 82.5,
-                136.0 + 70.0 - 14.0 + 7.0 + 8.0,
+                136.0 + 10.0 + 50.0 + 3.0 + 8.0,
                 11.0,
                 true
             )
         );
         assert_eq!(find("Gone too").1, 202.0 + 82.5);
-        assert_eq!(find("Gone too").2, 206.0 + 70.0 - 14.0 + 7.0 + 8.0);
+        assert_eq!(find("Gone too").2, 206.0 + 10.0 + 50.0 + 3.0 + 8.0);
         let bitmaps: Vec<(u32, f32, f32)> = ops
             .iter()
             .filter_map(|op| match op {
@@ -12299,12 +12342,13 @@ mod tests {
         assert_eq!(bitmaps[0], (10_761, 12.0, 13.0));
         assert!(bitmaps.contains(&(0x286f, 228.0, 59.0)));
         assert!(bitmaps.contains(&(0x286c, 130.0, 59.0)));
-        // The backdrop and the picture centred over the name: (165 - 122)
-        // / 2 = 21, (70 - 14 - 50) / 2 = 3; (165 - 100) / 2 = 32, (56 -
-        // 40) / 2 = 8.
-        assert!(bitmaps.contains(&(11_514, 37.0 + 21.0, 136.0 + 3.0)));
-        assert!(bitmaps.contains(&(0x640, 37.0 + 32.0, 136.0 + 8.0)));
-        assert!(bitmaps.contains(&(0x640, 202.0 + 32.0, 206.0 + 8.0)));
+        // The backdrop and the picture centred in the cell (FUN_004724a0:
+        // `(cell - height) / 2`; A0 TAC-07-C007 puts the 50-high picture
+        // at row 10): (165 - 122) / 2 = 21, (70 - 50) / 2 = 10; (165 -
+        // 100) / 2 = 32, (70 - 40) / 2 = 15.
+        assert!(bitmaps.contains(&(11_514, 37.0 + 21.0, 136.0 + 10.0)));
+        assert!(bitmaps.contains(&(0x640, 37.0 + 32.0, 136.0 + 15.0)));
+        assert!(bitmaps.contains(&(0x640, 202.0 + 32.0, 206.0 + 15.0)));
         // Personnel: three columns and the three-column art.
         let ops = battle_force_page(
             "Hoth",

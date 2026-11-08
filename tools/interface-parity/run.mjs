@@ -3917,6 +3917,27 @@ async function probeTacticalBattleResultsPresentation(
         thumb_top: verifyStrategyBitmap(viewport, stepped, 10689, 85 + dx + 372, 74 + dy + 150, clipped),
       });
     }
+    // A0 TAC-07-C007 (the Alliance's Battle at Mon Calamari, the window at
+    // (62, 49)): the first destroyed regiment's picture, the Alliance Army
+    // Regiment's mini on 11514, at window (223, 146), 122 by 50. The
+    // fixture's third one-regiment hull dies with its regiment.
+    const troopsA0 = path.join(root, ".artifacts/interface-parity/a0/TAC-07-C007/original.png");
+    if (category === 2 && alliance && viewport.width === 640 && viewport.height === 480
+      && viewport.device_scale_factor === 1 && fs.existsSync(troopsA0)) {
+      const a0 = PNG.sync.read(fs.readFileSync(troopsA0));
+      const port = PNG.sync.read(capture);
+      const [left, top] = [85 + dx, 74 + dy];
+      let differing = 0;
+      for (let y = 146; y < 196; y++) {
+        for (let x = 223; x < 345; x++) {
+          const i = ((49 + y) * 640 + 62 + x) * 4;
+          const j = ((top + y) * 640 + left + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) differing++;
+        }
+      }
+      probes.push({ type: "battle-results-destroyed-regiment-a0", differing });
+      assert.equal(differing, 0, `the destroyed regiment's picture differs by ${differing}`);
+    }
     if (category === 3) {
       probes.push({
         type: "battle-results-personnel-detail",
