@@ -4143,7 +4143,7 @@
         {
           "id": "CMD-11-C012",
           "requirement": "Message Index",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-tooltips-message-index/",
@@ -4152,10 +4152,11 @@
             "tools/interface-parity/tooltip.mjs",
             "tools/interface-parity/tooltip.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-research-display-encyclopedia/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-research-complete-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-research-complete-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-empire-joins-and-encylopedia-tip-a0/"
           ],
-          "note": "FUN_004665f0's tips: the ten categories (0x8010..0x8018, 0x8032), Close, Display Message (0x8020; 0x8019 Message Index in message mode, FUN_00468fb0), the posting toggle (0x8005/0x8006 by the category's silent bit, FUN_004697b0), Select All and Delete match A0 tooltip/71..85 and 90 in tooltip.mjs (Empire, Linux); disabled controls show none (A0 86..89, 91). 2026-11-06: the enabled Display (0x67) tip 'Display' matches A0 tooltip/409 (the Empire's report, tooltip.mjs --a0, Linux). Open: the 0x8031 'Encylopedia' variant needs the type-4 Display target the port does not offer. 2026-11-07: the 0x8031 'Encylopedia' variant is ported for Research Complete (kind 4, Display art 0x2d20 / 0x2d47, display_button_string); not compared in A0, which has no Research Complete capture yet. 2026-11-08 (b137): A0 research-complete/00 (an Alliance game, day 204) shows Display in the Encyclopedia art with 'Nebulon-B Frigate Research Complete' chosen; message-display.mjs (Linux, Alliance) chooses the same row (the app's research_complete_message) and finds the rail 0 pixels from A0. The 0x8031 'Encylopedia' tooltip itself still has no A0 capture. Batch b137: 23 of 23 gates.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "FUN_004665f0's tips: the ten categories (0x8010..0x8018, 0x8032), Close, Display Message (0x8020; 0x8019 Message Index in message mode, FUN_00468fb0), the posting toggle (0x8005/0x8006 by the category's silent bit, FUN_004697b0), Select All and Delete match A0 tooltip/71..85 and 90 in tooltip.mjs (Empire, Linux); disabled controls show none (A0 86..89, 91). 2026-11-06: the enabled Display (0x67) tip 'Display' matches A0 tooltip/409 (the Empire's report, tooltip.mjs --a0, Linux). Open: the 0x8031 'Encylopedia' variant needs the type-4 Display target the port does not offer. 2026-11-07: the 0x8031 'Encylopedia' variant is ported for Research Complete (kind 4, Display art 0x2d20 / 0x2d47, display_button_string); not compared in A0, which has no Research Complete capture yet. 2026-11-08 (b137): A0 research-complete/00 (an Alliance game, day 204) shows Display in the Encyclopedia art with 'Nebulon-B Frigate Research Complete' chosen; message-display.mjs (Linux, Alliance) chooses the same row (the app's research_complete_message) and finds the rail 0 pixels from A0. The 0x8031 'Encylopedia' tooltip itself still has no A0 capture. Batch b137: 23 of 23 gates. 2026-11-08 (b142): the last open tip: A0 empire-game3/display-encyclopedia-tooltip (tooltip/531, a new Empire game) shows Display's 0x8031 'Encylopedia' with Research Complete chosen; tooltip.mjs --a0 (Linux, Empire) steps the message arrows to the fixture's Research Complete and finds the tip's box at A0's place. A0 display-tooltip-kind3 shows 'Display' for a kind-3 row, as tooltip/409. Batch b142: 23 of 23 gates; tooltip.mjs --a0 (Empire) passed separately.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "CMD-11-C013",
@@ -8285,9 +8286,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-blockade-messages/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-event-clips/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-speaker-events/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-advisor-speaker-events/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-empire-joins-and-encylopedia-tip-a0/"
           ],
-          "note": "Several messages read differently per side and the second droid plays the side's clip (advisor-events.mjs, Arch Chromium); not compared per event in A0. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser).",
+          "note": "Several messages read differently per side and the second droid plays the side's clip (advisor-events.mjs, Arch Chromium); not compared per event in A0. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-08 (b142): per-side event messages compared in A0 on both sides now: Joins Enemy (Alliance: joins-clean, 'join the Empire'; Empire: empire-game3/joins-enemy, 'join the Alliance', 0 px in message-display.mjs), Maintenance Shortfall (1013 / 1014, both 0 px), Future Jedi (Luke's 0x717a / Vader's 0x7179, both 0 px), Informants and Enemy Mission Foiled (both sides). The bombardment and the captures are compared on one side each. Batch b142: 23 of 23 gates; tooltip.mjs --a0 (Empire) passed separately.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
