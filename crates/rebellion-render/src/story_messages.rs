@@ -184,6 +184,8 @@ pub fn luke_goes_to_dagobah(tick: u64, texts: &HashMap<u16, String>) -> Option<G
     Some(
         GameMessage::new(tick, body, MessageCategory::Event)
             .on_rail(STORY_RAIL, RailAudience::Alliance)
+            // Kind 8 (vtable +0x10 0x48ad30): Display grey.
+            .plain()
             .with_title(title)
             .with_picture(StoryClass::LukeGoesToDagobah.picture(CockpitFaction::Alliance, None))
             // FUN_0048d190 writes 0x16.
@@ -208,6 +210,8 @@ pub fn luke_leaves_dagobah(
     Some(
         GameMessage::new(tick, body, MessageCategory::Event)
             .on_rail(STORY_RAIL, RailAudience::Alliance)
+            // Kind 8 (vtable +0x10 0x48ad30): Display grey.
+            .plain()
             .with_title(title)
             .with_picture(MessagePicture {
                 background: 0x412,
@@ -713,6 +717,8 @@ pub fn rescue_attempt_message(
             MessageCategory::Event,
         )
         .on_rail(STORY_RAIL, RailAudience::Alliance)
+        // Kind 8 (vtable +0x10 0x48ad30): Display grey.
+        .plain()
         .with_title(fill_message_text(texts.get(&0x71ea)?, &parameters))
         .with_picture(MessagePicture {
             background: side_background(CockpitFaction::Alliance),
@@ -801,6 +807,8 @@ pub fn assassins_message(
             MessageCategory::Event,
         )
         .on_rail(STORY_RAIL, RailAudience::Alliance)
+        // Kind 8 (vtable +0x10 0x48ad30): Display grey.
+        .plain()
         .with_title(fill_message_text(texts.get(&0x7208)?, &parameters))
         .with_picture(MessagePicture {
             background: 0x42e,
@@ -2369,6 +2377,8 @@ pub fn agent_advice_message(
     Some(
         GameMessage::new(tick, body.clone(), MessageCategory::Event)
             .on_rail(MessageRail::Advice, RailAudience::side(alliance))
+            // Class 0x0065b188's +0x10 is 0x48ad30 (kind 8): Display grey.
+            .plain()
             .with_title(title.clone())
             .with_picture(MessagePicture {
                 background: picture,
@@ -2446,6 +2456,8 @@ mod tests {
         .collect();
 
         let alliance = agent_advice_message(1, true, 4, &texts).unwrap();
+        // Its class is kind 8 (vtable +0x10 0x48ad30): Display grey.
+        assert!(alliance.plain);
         assert_eq!(alliance.title.as_deref(), Some("Victory Conditions"));
         assert_eq!(alliance.text, "To defeat the Empire");
         assert_eq!(alliance.rail, Some(MessageRail::Advice));
@@ -4419,6 +4431,8 @@ mod tests {
             (0x71bb, "I have finished my training with Yoda.".to_owned()),
         ]);
         let goes = luke_goes_to_dagobah(4, &texts).expect("a message");
+        // Its class is kind 8 (vtable +0x10 0x48ad30): Display grey.
+        assert!(goes.plain);
         assert_eq!(goes.title.as_deref(), Some("Luke Goes to Dagobah"));
         assert_eq!(goes.audience, RailAudience::Alliance);
         assert_eq!(goes.picture.map(|p| p.background), Some(0x421));
@@ -4431,6 +4445,8 @@ mod tests {
             ..Default::default()
         });
         let leaves = luke_leaves_dagobah(&world, luke, 9, &texts).expect("a message");
+        // Its class is kind 8 (vtable +0x10 0x48ad30): Display grey.
+        assert!(leaves.plain);
         assert_eq!(leaves.title.as_deref(), Some("Luke Leaves Dagobah"));
         assert_eq!(leaves.text, "I have finished my training with Yoda.");
         assert_eq!(leaves.audience, RailAudience::Alliance);
@@ -5192,6 +5208,8 @@ mod tests {
             ..Default::default()
         };
         let message = rescue_attempt_message(&luke, 5, &texts).expect("message");
+        // Its class is kind 8 (vtable +0x10 0x48ad30): Display grey.
+        assert!(message.plain);
         assert_eq!(
             message.title.as_deref(),
             Some("Luke Skywalker Rescue Attempt")
@@ -5304,6 +5322,8 @@ mod tests {
             ..Default::default()
         };
         let killed = assassins_message(&dodonna, "Yavin", 7, &texts).expect("message");
+        // Its class is kind 8 (vtable +0x10 0x48ad30): Display grey.
+        assert!(killed.plain);
         assert_eq!(killed.title.as_deref(), Some("Jan Dodonna Killed"));
         assert_eq!(
             killed.text,

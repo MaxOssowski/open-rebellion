@@ -239,6 +239,14 @@ pub struct GameMessage {
     /// transit, Display lit, its press doing nothing.
     #[serde(skip)]
     pub unplaced_target: bool,
+    /// Whether the class's kind (vtable `+0x10`) is 8 (`0x48ad30`), so
+    /// `FUN_004697b0` leaves Display (0x67) grey: Research Exhausted
+    /// (`0x0065b0b0`), Killed by Imperial Assassins (`0x0065b140`), advice
+    /// (`0x0065b188`), Rescue Attempt (`0x0065b2a8`) and Luke's Dagobah
+    /// messages (`0x0065b380`). Most classes take the generic `0x5a6730`,
+    /// kind 3, which lights Display whether or not they name an object.
+    #[serde(skip)]
+    pub plain: bool,
     /// The object a kind-4 message's Display opens in the Encyclopedia
     /// (`+0x60`, `FUN_00467f10` -> `FUN_0041d6b0`): Research Complete
     /// (class `0x0065bb40`, whose slot `+0x10` returns 4) names the class
@@ -303,6 +311,7 @@ impl GameMessage {
             continue_question: None,
             mission: None,
             unplaced_target: false,
+            plain: false,
             encyclopedia: None,
             lifetime: MessageLifetime::Days,
             posted: 0,
@@ -333,10 +342,19 @@ impl GameMessage {
             continue_question: None,
             mission: None,
             unplaced_target: false,
+            plain: false,
             encyclopedia: None,
             lifetime: MessageLifetime::Days,
             posted: 0,
         }
+    }
+
+    /// Mark the message's class as kind 8: Display stays grey
+    /// ([`GameMessage::plain`]).
+    #[must_use]
+    pub fn plain(mut self) -> Self {
+        self.plain = true;
+        self
     }
 
     /// Name an object with no system the viewer knows: Display is lit and

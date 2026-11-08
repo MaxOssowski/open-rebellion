@@ -1160,13 +1160,20 @@ pub fn display_lit(rows: &[&GameMessage], state: &MessageIndexState) -> bool {
 
 /// What Display shows for the chosen or viewed message: kind 4's
 /// Encyclopedia (`FUN_004697b0`, `FUN_00469de0`), or the object of a kind
-/// 3 or 5 message with a target.
+/// 3 message, or of a kind 5 one with a target. Kind 8 leaves it grey.
+/// port: mission and assault reports (kinds 3/5 by `+0x84`, 3/7 by
+/// `+0x6c`) keep needing a system.
 #[must_use]
 pub fn display_kind(rows: &[&GameMessage], state: &MessageIndexState) -> Option<DisplayKind> {
     let message = display_message(rows, state)?;
+    let report = message.mission.is_some()
+        || message.continue_question.is_some()
+        || message.assault_report.is_some();
     if message.encyclopedia.is_some() {
         Some(DisplayKind::Encyclopedia)
-    } else if message.system.is_some() || message.unplaced_target {
+    } else if message.plain || message.rail == Some(MessageRail::Advice) {
+        None
+    } else if message.system.is_some() || message.unplaced_target || !report {
         Some(DisplayKind::Object)
     } else {
         None
@@ -2716,6 +2723,73 @@ mod tests {
     }
 
     #[test]
+    fn display_is_lit_for_a_kind_3_message_without_an_object() {
+        // REBEXE vtables: Future Jedi Discovered's class 0x0065b520 takes
+        // the generic 0x5a6730 at +0x10 (kind 3), and FUN_004697b0 lights
+        // Display for kind 3 whatever the target; A0
+        // research-display/08-future-jedi shows it lit. Advice (0x0065b188,
+        // 0x48ad30: kind 8) stays grey, and so does a mission report
+        // without a system (kind 5, FUN_004ece60).
+        let mut log = MessageLog::new();
+        log.push(
+            GameMessage::new(1, "Kind 3", MessageCategory::Event)
+                .on_rail(MessageRail::Fleet, RailAudience::Both),
+        );
+        log.push(
+            GameMessage::new(2, "Advice", MessageCategory::Event)
+                .on_rail(MessageRail::Advice, RailAudience::Both),
+        );
+        let mut report = GameMessage::new(3, "Report", MessageCategory::Event)
+            .on_rail(MessageRail::Fleet, RailAudience::Both);
+        report.mission = Some(7);
+        log.push(report);
+        // A report with a system (FUN_004ece60 finds the target) is lit.
+        let mut placed = GameMessage::at_system(
+            4,
+            "Placed report",
+            MessageCategory::Event,
+            SystemKey::default(),
+        )
+        .on_rail(MessageRail::Fleet, RailAudience::Both);
+        placed.mission = Some(8);
+        log.push(placed);
+        // A Mission Report asking to continue (kind 5, +0x84) without one is grey.
+        let mut question = GameMessage::new(5, "Question", MessageCategory::Event)
+            .on_rail(MessageRail::Fleet, RailAudience::Both);
+        question.continue_question = Some(9);
+        log.push(question);
+        for (category, text, lit) in [
+            (0x7b, "Kind 3", true),
+            (0x7b, "Report", false),
+            (0x7b, "Placed report", true),
+            (0x7b, "Question", false),
+        ] {
+            let rows = filtered_messages(&log, category, true);
+            let mut state = MessageIndexState::new();
+            state.set_category(category);
+            let row = rows.iter().find(|message| message.text == text).unwrap();
+            state.selected.insert(row.id);
+            assert_eq!(display_lit(&rows, &state), lit, "{text}");
+            assert_eq!(
+                display_target(&rows, &state).is_some(),
+                text == "Placed report",
+                "{text}"
+            );
+        }
+        let advice = log
+            .messages()
+            .iter()
+            .find(|message| message.text == "Advice")
+            .unwrap();
+        assert!(advice.rail == Some(MessageRail::Advice));
+        let rows = vec![advice];
+        let mut state = MessageIndexState::new();
+        state.selected.insert(advice.id);
+        state.set_category(0x7b);
+        assert_eq!(display_kind(&rows, &state), None);
+    }
+
+    #[test]
     fn display_is_lit_for_an_unplaced_target_and_its_press_does_nothing() {
         // A0 maintenance-shortfall/test-day1224-corvette-no-system: a
         // corvette lost in transit names no system, yet Display is lit
@@ -2727,8 +2801,11 @@ mod tests {
                 .with_unplaced_target()
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
         );
+        // Kind 8 (Research Exhausted's class 0x0065b0b0, vtable +0x10
+        // 0x48ad30): grey.
         log.push(
             GameMessage::new(2, "No target", MessageCategory::Event)
+                .plain()
                 .on_rail(MessageRail::Fleet, RailAudience::Both),
         );
         let rows = filtered_messages(&log, 0x7b, true);

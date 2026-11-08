@@ -3917,7 +3917,8 @@ async fn main() {
                         .with_title(title)
                         .with_picture_if(Some(pictures::research()))
                         // FUN_0048abc0 (kind 8) writes code 4.
-                        .with_advisor_event(4),
+                        .with_advisor_event(4)
+                        .plain(),
                         MessageRail::Manufacturing,
                         Some(RailAudience::side(alliance)),
                     ));
@@ -12194,7 +12195,8 @@ fn apply_mission_result(
                                 .with_title(title)
                                 .with_picture_if(Some(pictures::research()))
                                 // FUN_0048abc0 (kind 8) writes code 4.
-                                .with_advisor_event(4),
+                                .with_advisor_event(4)
+                                .plain(),
                             MessageRail::Manufacturing,
                             Some(RailAudience::side(is_alliance)),
                         ));

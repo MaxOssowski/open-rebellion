@@ -1064,6 +1064,24 @@ async function run(browser, base, faction) {
       }
       assert.ok(rowChecks.manufacturing_icon_port === 0 && (rowChecks.manufacturing_icon_a0 ?? 0) === 0
         && (rowChecks.manufacturing_head_a0 ?? 0) === 0, JSON.stringify(rowChecks));
+      // With the idle report chosen, A0 manufacturing-messages/q02 (the
+      // Alliance, day 61) lights Display: Facility Idle's class 0x0065b260
+      // is kind 3 (vtable +0x10 0x5a6730), which FUN_004697b0 lights
+      // whatever the target. The rail every pixel A0's.
+      if (faction.byte === 1) {
+        const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT,
+          ".artifacts/a0-vm/manufacturing-messages/q02.png")));
+        let railDiffer = 0;
+        for (let y = 11; y < 296; y += 1) {
+          for (let x = 414; x < 468; x += 1) {
+            const i = ((manufacturing.window_top + y) * 640 + manufacturing.window_left + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => mfScreen.data[i + c] !== a0.data[j + c])) railDiffer += 1;
+          }
+        }
+        rowChecks.manufacturing_idle_rail_a0 = railDiffer;
+        assert.equal(railDiffer, 0, JSON.stringify(rowChecks));
+      }
 
       // Maintenance Shortfall for a corvette in hyperspace (FUN_00498970,
       // A0 maintenance-shortfall/test-day1224-corvette-no-system, an
