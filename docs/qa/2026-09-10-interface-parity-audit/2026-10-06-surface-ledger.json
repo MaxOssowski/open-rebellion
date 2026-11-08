@@ -8062,16 +8062,17 @@
         {
           "id": "EVT-01-C004",
           "requirement": "allegiance",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-system-joins-message/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-battle/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-occupation-and-finder-sides/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-fleet-arrival-and-joins-a0/"
           ],
-          "note": "A system moved by support joins a side or declares neutrality (0x100, control_change_texts); unit tests only, not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a planet taken by regiments alone posts no message (FUN_00510d70 leaves bit 0x2000 clear, so FUN_00499760 is silent; 0x31b has no message in FUN_00488de0); the port's 'X occupied by Y' left the index. A0 (DS_flip_allian, day 306) shows 'Ghorman Joins Enemy' over 0x703c; that save builds its messages for the Empire. 2026-11-06 (later): A0 in the unedited 'test' save (Alliance, day 215) shows 'Xyquine Joins Enemy' over 'Popular dissent on Xyquine has caused that world to join the Empire.' on STRATEGY 1005; message-display.mjs (Linux, Alliance) opens the fixture's 'Commenor Joins Enemy', reads the matching 0x703c body and finds its picture and title image 0 pixels from A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "A system moved by support joins a side or declares neutrality (0x100, control_change_texts); unit tests only, not shown in the browser. No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a planet taken by regiments alone posts no message (FUN_00510d70 leaves bit 0x2000 clear, so FUN_00499760 is silent; 0x31b has no message in FUN_00488de0); the port's 'X occupied by Y' left the index. A0 (DS_flip_allian, day 306) shows 'Ghorman Joins Enemy' over 0x703c; that save builds its messages for the Empire. 2026-11-06 (later): A0 in the unedited 'test' save (Alliance, day 215) shows 'Xyquine Joins Enemy' over 'Popular dissent on Xyquine has caused that world to join the Empire.' on STRATEGY 1005; message-display.mjs (Linux, Alliance) opens the fixture's 'Commenor Joins Enemy', reads the matching 0x703c body and finds its picture and title image 0 pixels from A0. 2026-11-08 (b135): the rail (Display lit) of Commenor Joins Enemy is 0 pixels from A0 joins-clean/test-day215 too, so text, picture, title image and rail all match A0; A0 events-day673/03 (Bpfassh Joins Enemy) reads the same 0x703c. Declares Neutrality has no A0 capture. Batch b135: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C005",
@@ -8104,17 +8105,18 @@
         {
           "id": "EVT-01-C007",
           "requirement": "arrival",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-arrival/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-unit-message-rails/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-fleet-arrival/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-personnel-arrive/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-escape-and-arrivals/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-fleet-arrival-and-joins-a0/"
           ],
-          "note": "Deployed (0x107) and arrival (0x105) messages go to the unit family's rail; delivery seen in the browser (delivery-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a fleet's arrival now takes FUN_004981c0's TEXTSTRA 0x7078/0x7079 ('Fleet Arrives at {system}', '{fleet} has arrived at {system}.') as A0 message-rail/fleet-arrives-averam; the port had its own untitled English. Personnel Arrive (0x200, Class_0065b798_vt14: 0x70c0..0x70c5) is not posted by the port. 2026-11-06 f12781c6: Personnel Arrive (FUN_004955b0, 0x70c0..0x70c5) now posts for Move/Return/Adrift landings; message-display.mjs reads Mon Mothma's arrival at Klatooine; A0 day 914 shows only the title. 2026-11-06 (later): Headquarters Arrives (FUN_004981c0 case 4, 0x707c/0x707d, Defense rail, Alliance only) now posts when the headquarters' trip ends, and regiments and squadrons travelling alone take 'Units Arrive at {system}' (0x707a/0x707b); fleet-window.mjs travel checks the regiment's title in the browser (Linux).",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Deployed (0x107) and arrival (0x105) messages go to the unit family's rail; delivery seen in the browser (delivery-browser.json). No A0 capture of this message; browser runs were Linux headless Chromium (agent-browser). 2026-11-06: a fleet's arrival now takes FUN_004981c0's TEXTSTRA 0x7078/0x7079 ('Fleet Arrives at {system}', '{fleet} has arrived at {system}.') as A0 message-rail/fleet-arrives-averam; the port had its own untitled English. Personnel Arrive (0x200, Class_0065b798_vt14: 0x70c0..0x70c5) is not posted by the port. 2026-11-06 f12781c6: Personnel Arrive (FUN_004955b0, 0x70c0..0x70c5) now posts for Move/Return/Adrift landings; message-display.mjs reads Mon Mothma's arrival at Klatooine; A0 day 914 shows only the title. 2026-11-06 (later): Headquarters Arrives (FUN_004981c0 case 4, 0x707c/0x707d, Defense rail, Alliance only) now posts when the headquarters' trip ends, and regiments and squadrons travelling alone take 'Units Arrive at {system}' (0x707a/0x707b); fleet-window.mjs travel checks the regiment's title in the browser (Linux). 2026-11-08 (b135): the whole fleet-arrival message against A0 events-day673/04 (an Alliance game): 'Fleet Arrives at Sluis Van', 'Fleet 1 has arrived at Sluis Van.' (FUN_004981c0 case 1, 0x7078/0x7079) on the Fleet rail. The fixture files it through the app's fleet_arrival_message (the movement loop's builder, now a function); message-display.mjs (Linux, Alliance) finds the text exact and picture, title image and rail 0 pixels from A0. Personnel Arrive, Headquarters Arrives and Units Arrive have no A0 capture. Batch b135: 23 of 23 gates.",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
           "id": "EVT-01-C008",
