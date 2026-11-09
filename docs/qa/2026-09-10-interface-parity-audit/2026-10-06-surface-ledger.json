@@ -3505,14 +3505,15 @@
         {
           "id": "CMD-09-C002",
           "requirement": "mine building",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "crates/rebellion-render/src/manufacturing_window.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-facility-building-a0/"
           ],
-          "note": "The facility page draws a mine under construction as STRATEGY 9002/9003 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no mine under construction yet.",
+          "note": "The facility page draws a mine under construction as STRATEGY 9002/9003 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no mine under construction yet. 2026-11-09: A0 build-selection4/17 (new Alliance game, Kessel's Mines page): a mine under construction after two built ones; STRATEGY 9003 matches it at the third cell (147, 79), 0 of 2145 opaque pixels differ, and the port draws 9003 exactly (build-selection.mjs, Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3583,14 +3584,15 @@
         {
           "id": "CMD-09-C008",
           "requirement": "shipyard building",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "crates/rebellion-render/src/manufacturing_window.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-03-facility-pictures-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-facility-building-a0/"
           ],
-          "note": "The facility page draws a shipyard under construction as STRATEGY 9007/9008 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no shipyard under construction yet.",
+          "note": "The facility page draws a shipyard under construction as STRATEGY 9007/9008 (FUN_00458fe0: base + 2 for side 1, + 1 otherwise). build-selection.mjs queues one for the system and finds it in the page's second cell at (78, 79), every opaque pixel exact, on Linux for both sides (2026-11-03). A0 shows the same rule on Xyquine's Advanced Training Facility (personnel-states/35, 9020), but no shipyard under construction yet. 2026-11-09: A0 build-selection4/18 (Kessel's Shipyards page): an Orbital Shipyard under construction in the second cell; STRATEGY 9008 matches it at (78, 79), 0 of 2147 opaque pixels differ, and the port draws 9008 exactly (build-selection.mjs, Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
