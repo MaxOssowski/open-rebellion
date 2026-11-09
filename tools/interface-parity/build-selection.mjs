@@ -1349,17 +1349,20 @@ async function inspect(server, source, faction, executable) {
     // shipyard, Advanced Training Facility, mine and refinery for the
     // system, each in its page's second cell (78, 79) under construction:
     // base + 2 for side 1, + 1 otherwise (FUN_00458fe0; A0
-    // personnel-states/35, Xyquine's 9020). The Mines page's first empty
-    // deposit, 9005, follows at the third cell's corner (8 + 138, 77). An
-    // Orbital Shipyard travelling to the system follows in the Shipyards
-    // page's third cell: base + 3, 9009 (A0 personnel-states/34).
+    // personnel-states/35, Xyquine's 9020). On the Mines page, a Mine
+    // travelling to the system follows them in the third cell, base +
+    // 3, 9004 (A0 build-selection4/26), and the first empty deposit, 9005,
+    // at the fourth cell's corner, the second row's first (8, 77 + 40).
+    // An Orbital Shipyard travelling to the system follows in the
+    // Shipyards page's third cell: base + 3, 9009 (A0 personnel-states/34).
     const building = faction.byte === 1 ? 2 : 1;
     const second = [78, 79];
     for (const [offset, picture, label, cell] of [[-32, 9006, "shipyards"], [-32, 9006 + building, "shipyard-building", second],
       [32, 9022, "construction-yards"],
       [-32, 9006 + 3, "shipyard-en-route", [147, 79]],
       [64, 9030, "refineries"], [64, 9030 + building, "refinery-building", second],
-      [96, 9001, "mines"], [96, 9001 + building, "mine-building", second], [96, 9005, "deposit", [146, 77]],
+      [96, 9001, "mines"], [96, 9001 + building, "mine-building", second], [96, 9001 + 3, "mine-en-route", [147, 79]],
+      [96, 9005, "deposit", [8, 117]],
       [0, 9014, "training"], [0, 9018 + building, "advanced-training-building", second]]) {
       await click(page, { x: tx + tw / 2 + offset, y: ty + th / 2 });
       await page.mouse.move(2, 2);
@@ -1400,7 +1403,10 @@ async function inspect(server, source, faction, executable) {
       const a0At = label === "shipyards" ? [145, 86, a0Page, [9, 79]]
         : label === "shipyard-en-route" ? [314, 86, a0EnRoute, [9, 79]]
           : label === "shipyard-building" ? [73, 86, a0Kessel("18-kessel-shipyards-page-shipyard-building.png"), [78, 79]]
-            : label === "mine-building" ? [73, 86, a0Kessel("17-kessel-mines-page-mine-building.png"), [147, 79]] : null;
+            : label === "mine-building" ? [73, 86, a0Kessel("17-kessel-mines-page-mine-building.png"), [147, 79]]
+              // A0 build-selection4/26: Yavin's Mines page (the window at
+              // (314, 86)), a mine en route after two built mines.
+              : label === "mine-en-route" ? [314, 86, a0Kessel("26-yavin-mines-page-mine-en-route-day194.png"), [147, 79]] : null;
       if (a0At && faction.byte === 1 && fs.existsSync(a0At[2])) {
         const a0 = PNG.sync.read(fs.readFileSync(a0At[2]));
         entry.a0_differing = 0;

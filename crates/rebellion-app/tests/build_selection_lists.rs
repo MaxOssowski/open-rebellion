@@ -118,4 +118,16 @@ fn kessel_to_yavin_deployment_days_match_a0() {
             ("X-wing".to_string(), 57),
         ]
     );
+    // A0 build-selection4/24: a Mine ordered on Kessel's facilities band
+    // with the Destination Yavin shows 96 Days (a facility moves at the
+    // GNPRTB default speed, FUN_004f63f0).
+    let listed = listed_classes(&world, &ResearchState::new(), ProductionArea::ConstructionYard, true);
+    let mine = listed
+        .into_iter()
+        .find(|&kind| match kind {
+            BuildableKind::ProductionFacility(build) => world.buildable_classes[&build.class].name == "Mine",
+            _ => false,
+        })
+        .expect("a mine is listed");
+    assert_eq!(rebellion_core::delivery::transit_days(&world, mine, kessel, yavin), 96);
 }
