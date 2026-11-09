@@ -1513,6 +1513,62 @@ async function inspect(server, source, faction, executable) {
     await page.mouse.move(2, 2);
     await frames(page);
 
+    // The refinery en route (the page's third cell): A0 build-selection4/31
+    // (Yavin, a Refinery travelling from Kessel) reads Location, "ETA
+    // Destination:" "Day 370", Status "Enroute", Maintenance Cost 0,
+    // Standard Processing Rate 5, Bombardment Value 2 (FUN_00446c50,
+    // FUN_004fd2b0's ETA after Location, FUN_0044a470 34628). The fixture's
+    // day differs, so the ETA's day is not compared.
+    await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+    await click(page, { x: 225 + 147 + 33, y: 76 + 79 + 17 }, "right");
+    await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+      null, { timeout: 10_000 });
+    const enRouteMenu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+    assert.deepEqual(enRouteMenu.row_states, [["Encyclopedia", true], ["Status", true], ["Scrap", false]],
+      JSON.stringify(enRouteMenu));
+    await page.evaluate(() => { window.__openRebellionInterfaceStatusRows = undefined; });
+    const enRouteRow = (enRouteMenu.height - 2) / enRouteMenu.rows;
+    await click(page, { x: enRouteMenu.left + enRouteMenu.width / 2,
+      y: enRouteMenu.top + 2 + enRouteRow * (enRouteMenu.status_window_row + 0.5) });
+    await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+    const enRouteStatus = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+    await page.mouse.move(2, 2);
+    await frames(page);
+    const enRouteShot = await page.screenshot({ animations: "disabled" });
+    fs.writeFileSync(path.join(directory, "en-route-status.png"), enRouteShot);
+    // As for the refinery under construction: the window at (108, 79), its
+    // picture (the en-route art 9033 over 11571) and buttons exact against
+    // A0 31.
+    const enRouteA0File = path.join(root, ".artifacts/a0-vm/build-selection4/31-yavin-refinery-en-route-status-day288.png");
+    let enRouteA0 = null;
+    if (faction.byte === 1 && fs.existsSync(enRouteA0File)) {
+      const a0 = PNG.sync.read(fs.readFileSync(enRouteA0File));
+      const port = PNG.sync.read(enRouteShot);
+      const [x0, y0] = [108, 79];
+      const differing = ([xa, ya, xb, yb]) => {
+        let count = 0;
+        for (let y = ya; y < yb; y += 1) for (let x = xa; x < xb; x += 1) {
+          const i = ((y0 + y) * port.width + x0 + x) * 4;
+          if (port.data[i] !== a0.data[i] || port.data[i + 1] !== a0.data[i + 1] || port.data[i + 2] !== a0.data[i + 2]) {
+            count += 1;
+          }
+        }
+        return count;
+      };
+      enRouteA0 = { picture: differing([242, 15, 372, 113]), buttons: differing([242, 200, 372, 260]) };
+      assert.deepEqual([enRouteA0.picture, enRouteA0.buttons], [0, 0], JSON.stringify(enRouteA0));
+    }
+    assert.equal(enRouteStatus.title, "Manufacturing Status", JSON.stringify(enRouteStatus));
+    assert.deepEqual(enRouteStatus.rows.map(([label]) => label),
+      ["Location:", "ETA Destination:", "Status:", "Maintenance Cost:", "Standard Processing Rate:",
+        "Bombardment Value:"], JSON.stringify(enRouteStatus));
+    assert.match(enRouteStatus.rows[1][1], /^Day \d+$/, JSON.stringify(enRouteStatus));
+    assert.deepEqual(enRouteStatus.rows.slice(2).map(([, value]) => value), ["Enroute", "0", "5", "2"],
+      JSON.stringify(enRouteStatus));
+    await page.keyboard.press("Escape");
+    await page.mouse.move(2, 2);
+    await frames(page);
+
     assert.ok(comparisons.every(({ different_pixels: d }) => d === 0),
       JSON.stringify(comparisons.filter(({ different_pixels: d }) => d !== 0)));
     assert.deepEqual(requests.map(({ url }) => url).sort(), [...expectedRequests].sort());
