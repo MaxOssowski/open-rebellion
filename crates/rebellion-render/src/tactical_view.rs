@@ -7027,6 +7027,27 @@ fn battle_alert_scene(skin: &BattleAlertSkin, tab: BattleAlertTab) -> u32 {
     }
 }
 
+/// The Battle Alert's bitmaps in paint order. The tab's scene fills the
+/// frame's 400-wide aperture at (12, 13); the list tabs' 410-wide scene is
+/// cut there (A0 alert-imperial-forces). The frame, keyed on blue, lies
+/// over the scene: in A0 TAC-01-C010 (window (62, 49), list scene 10714)
+/// 5931 of the frame's pixels inside the aperture show the frame and none
+/// shows the scene alone.
+fn battle_alert_layers(
+    skin: &BattleAlertSkin,
+    tab: BattleAlertTab,
+) -> [(u32, f32, f32, Option<Rect>); 2] {
+    [
+        (
+            battle_alert_scene(skin, tab),
+            12.0,
+            13.0,
+            Some(Rect::new(0.0, 0.0, 400.0, 310.0)),
+        ),
+        (skin.frame, 0.0, 0.0, None),
+    ]
+}
+
 fn battle_alert_skin(player_is_alliance: bool) -> BattleAlertSkin {
     use resources::strategy as art;
     if player_is_alliance {
@@ -9358,24 +9379,17 @@ fn draw_original_battle_alert(
     let text_color = battle_window_text_color(player_alliance);
 
     draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
-    draw_strategy_bitmap(
-        cache,
-        skin.frame,
-        canvas,
-        battle_window_origin().0,
-        battle_window_origin().1,
-    );
-    // The scene fills the frame's 400-wide aperture at (12, 13); the list
-    // tabs' 410-wide scene is cut there (A0 alert-imperial-forces).
-    draw_original_bitmap(
-        cache,
-        DllSource::Strategy,
-        battle_alert_scene(&skin, state.battle_alert_tab),
-        canvas,
-        battle_window_origin().0 + 12.0,
-        battle_window_origin().1 + 13.0,
-        Some(Rect::new(0.0, 0.0, 400.0, 310.0)),
-    );
+    for (id, x, y, clip) in battle_alert_layers(&skin, state.battle_alert_tab) {
+        draw_original_bitmap(
+            cache,
+            DllSource::Strategy,
+            id,
+            canvas,
+            battle_window_origin().0 + x,
+            battle_window_origin().1 + y,
+            clip,
+        );
+    }
     let rows = draw_battle_alert_text(state, cache, world, troop_transport, canvas, text_color);
     let (screen_x, screen_y) = mouse_position();
     alert_list_step(
@@ -19786,6 +19800,25 @@ mod tests {
                 NativeRect::new(426.0, 143.0, 44.0, 41.0),
                 NativeRect::new(426.0, 206.0, 44.0, 41.0),
             ]
+        );
+    }
+
+    #[test]
+    fn the_alert_frame_lies_over_the_scene() {
+        // A0 TAC-01-C010 (window (62, 49)): frame 10710's pixels inside the
+        // aperture show the frame over list scene 10714 (5931 of them).
+        let alliance = battle_alert_skin(true);
+        let layers = battle_alert_layers(&alliance, BattleAlertTab::AllianceForces);
+        assert_eq!(
+            layers.map(|(id, x, y, _)| (id, x, y)),
+            [(10_714, 12.0, 13.0), (10_710, 0.0, 0.0)]
+        );
+        assert_eq!(layers[0].3, Some(Rect::new(0.0, 0.0, 400.0, 310.0)));
+        assert_eq!(layers[1].3, None);
+        let empire = battle_alert_skin(false);
+        assert_eq!(
+            battle_alert_layers(&empire, BattleAlertTab::Summary).map(|(id, ..)| id),
+            [10_713, 10_711]
         );
     }
 

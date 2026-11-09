@@ -4213,10 +4213,24 @@ async function probeTacticalBattleAlertEntry(
     simulate: [10716, 10717],
     command: [10719, 10720],
   };
+  // A0 TAC-01-C010: the keyed frame lies over the scene, so its pixels
+  // inside the aperture are checked too; only the scene's text boxes, its
+  // bottom row of controls and the rail are skipped.
+  const alertFrameSource = decodeIndexedBmp(fs.readFileSync(path.join(
+    root, `data/base/ui/strategy-dll/BMP/${resources.frame}.bmp`,
+  )));
+  const alertFrameCovers = (x, y) => {
+    // Only index 252, pure blue, is keyed: 10711's dark blue (0, 0, 223)
+    // shows over the scene, as in A0 battle-alert-empire/00-alert-tralus.
+    const [r, g, b] = alertFrameSource.pixel(x + 12, y + 13);
+    return !(r === 0 && g === 0 && b === 255);
+  };
   const probes = [{
     type: "battle-alert-frame",
     ...verifyStrategyBitmap(viewport, stable.bytes, resources.frame, 65 + dx, 54 + dy, [
-      { x: 12, y: 13, width: 400, height: 310 },
+      { x: 12, y: 13, width: 400, height: 48 },
+      { x: 32, y: 213, width: 360, height: 80 },
+      { x: 12, y: 293, width: 400, height: 30 },
       { x: 412, y: 0, width: 58, height: 331 },
     ]),
   }, {
@@ -4227,7 +4241,7 @@ async function probeTacticalBattleAlertEntry(
       { x: 0, y: 0, width: 400, height: 48 },
       { x: 20, y: 200, width: 360, height: 80 },
       { x: 0, y: 280, width: 400, height: 30 },
-    ]),
+    ], false, alertFrameCovers),
   }, {
     type: "battle-alert-summary-selected",
     ...verifyStrategyBitmap(
@@ -4325,7 +4339,7 @@ async function probeTacticalBattleAlertEntry(
         // Its last 10 of 410 columns sit under the frame (A0
         // alert-imperial-forces).
         { x: 400, y: 0, width: 10, height: 280 },
-      ]),
+      ], false, alertFrameCovers),
     });
     // The Empire's System Assets (index 3) against A0
     // battle-alert-empire/01-system-assets (the Battle at Tralus): the
