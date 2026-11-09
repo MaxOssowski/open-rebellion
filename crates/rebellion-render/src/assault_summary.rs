@@ -389,6 +389,22 @@ fn category_art(category: ReportCategory, viewer: usize) -> (u32, u32) {
     }
 }
 
+/// The page's art at (12, 13): the report's picture, the forces columns
+/// (three for Personnel, `FUN_0044e290`) or the Display page.
+fn page_art(window: &OpenSummary, report: &AssaultReport) -> u32 {
+    match window.page {
+        SummaryPage::Summary => report.picture(),
+        SummaryPage::Attackers | SummaryPage::SystemForces => {
+            if window.category == ReportCategory::Personnel {
+                FORCES_THREE_COLUMNS
+            } else {
+                FORCES_TWO_COLUMNS
+            }
+        }
+        SummaryPage::Display => DISPLAY_PAGE,
+    }
+}
+
 fn shown_forces(window: &OpenSummary) -> Option<&ReportForces> {
     match window.page {
         SummaryPage::Attackers => Some(&window.report.attackers),
@@ -671,6 +687,12 @@ fn draw_window(
             };
 
             painter.rect_filled(local, 0.0, egui::Color32::BLACK);
+            // The page's art lies under the frame: the frame is keyed on its
+            // blue (252), and its corner arcs over the page show in A0
+            // (alliance-game2/assault-on-yavin-summary: 442 of 442 such
+            // pixels the frame's colour; messages-day633/assault-coruscant*,
+            // eight captures of every page: 500 of 500).
+            paint(cache, DllSource::Strategy, page_art(window, report), PAGE.0, PAGE.1);
             paint(cache, DllSource::Strategy, FRAME[viewer], 0.0, 0.0);
             let color = side_color(Some(report.attacker));
 
@@ -679,7 +701,6 @@ fn draw_window(
                     // The picture +0x2e, the title +0x44 (12, 13), 400
                     // wide, centred, and the outcome +0x50 at (25, 225),
                     // 350 wide, over its black shadow at (26, 226).
-                    paint(cache, DllSource::Strategy, report.picture(), PAGE.0, PAGE.1);
                     gdi_text(&window.title, 12.0, 13.0, 400.0, 11, color);
                     let body = |x: f32, y: f32, color| {
                         let galley = painter.layout(
@@ -695,12 +716,6 @@ fn draw_window(
                 }
                 SummaryPage::Attackers | SummaryPage::SystemForces => {
                     let personnel = window.category == ReportCategory::Personnel;
-                    let art = if personnel {
-                        FORCES_THREE_COLUMNS
-                    } else {
-                        FORCES_TWO_COLUMNS
-                    };
-                    paint(cache, DllSource::Strategy, art, PAGE.0, PAGE.1);
                     gdi_text(&window.title, 12.0, 13.0, 400.0, 11, color);
                     // FUN_0044e290: the page's rail label at (12, 36), 347 wide,
                     // centred, in the attacker's colour; the category's label at
@@ -851,7 +866,6 @@ fn draw_window(
                     }
                 }
                 SummaryPage::Display => {
-                    paint(cache, DllSource::Strategy, DISPLAY_PAGE, PAGE.0, PAGE.1);
                     // RCDATA 0x7013 above the two buttons. port: its
                     // placement (FUN_00601b30(0x19, 0xe1) on page 5) is
                     // not settled; it ends above the buttons here.
@@ -1500,6 +1514,10 @@ mod tests {
         // The frame and the attacker's picture (FUN_0044c630).
         assert_eq!(painted(&frame, FRAME[0]), [at(0.0, 0.0)]);
         assert_eq!(painted(&frame, 0x2b99), [at(12.0, 13.0)]);
+        // The picture lies under the frame, whose corner arcs show over it
+        // (A0 alliance-game2/assault-on-yavin-summary).
+        let order = |id| frame.painted.iter().position(|(each, _)| *each == id);
+        assert!(order(0x2b99) < order(FRAME[0]), "{:?}", frame.painted);
         // The open page's rail button is down, the others up.
         assert_eq!(painted(&frame, 0x29e9).len(), 1);
         assert_eq!(painted(&frame, 0x29e8).len(), 0);

@@ -1235,6 +1235,22 @@ const cases = [
         const body = [20, 220, 400, 245];
         checks.title = { a0: ink(a0, [62, 49], title, sideInk), port: ink(port, [ox, oy], title, sideInk) };
         checks.body = { a0: ink(a0, [62, 49], body, sideInk), port: ink(port, [ox, oy], body, sideInk) };
+        // The frame's corner arcs lie over the picture (the frame is
+        // keyed on blue): the window's top corners, clear of the title.
+        // Alliance only: A0 assault-clean is the Alliance's frame (10335)
+        // over the Empire's assault, and the fixture's viewer differs.
+        let corners = 0;
+        for (const [x0, x1] of [[0, 30], [384, 414]]) {
+          for (let y = 0; y < 22; y += 1) for (let x = x0; x < x1; x += 1) {
+            const i = ((49 + y) * a0.width + 62 + x) * 4;
+            const j = ((oy + y) * port.width + ox + x) * 4;
+            if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) corners += 1;
+          }
+        }
+        if (alliance) {
+          checks.corners_a0 = corners;
+          assert.equal(corners, 0, JSON.stringify(checks));
+        }
         const t = checks.title;
         assert.ok(t.a0 && t.port && Math.abs(t.a0[1] - t.port[1]) <= 2 && Math.abs(t.a0[3] - t.port[3]) <= 2
           && Math.abs((t.a0[0] + t.a0[2]) - (t.port[0] + t.port[2])) <= 6, JSON.stringify(checks));

@@ -1284,37 +1284,13 @@ pub fn draw_encyclopedia_topic(
                 ENCYCLOPEDIA_INDEX_HEIGHT * scale,
             );
             let (window_rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-            let (base, rail) = match faction {
-                crate::cockpit::CockpitFaction::Alliance => (10_335, 10_585),
-                crate::cockpit::CockpitFaction::Empire => (10_336, 10_589),
-            };
-            paint_original_resource_native(
+            paint_window_layers(
                 ui.painter(),
                 ctx,
                 cache,
-                base,
-                window_rect.min,
-                scale,
                 window_rect,
-            );
-            paint_original_resource_native(
-                ui.painter(),
-                ctx,
-                cache,
-                rail,
-                encyclopedia_point(window_rect, scale, 412.0, 0.0),
                 scale,
-                window_rect,
-            );
-            let content_rect = encyclopedia_rect(window_rect, scale, 12.0, 14.0, 400.0, 306.0);
-            paint_original_resource_native(
-                ui.painter(),
-                ctx,
-                cache,
-                TOPIC_CONTENT,
-                content_rect.min,
-                scale,
-                content_rect,
+                window_layers(faction, (TOPIC_CONTENT, 12.0, 14.0)),
             );
             if let Some(texture) = picture {
                 let rect = encyclopedia_rect(window_rect, scale, 12.0, 31.0, 400.0, 200.0);
@@ -1581,44 +1557,13 @@ fn draw_encyclopedia_index_layers(
                 ENCYCLOPEDIA_INDEX_HEIGHT * scale,
             );
             let (window_rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-            let (base, rail) = match faction {
-                crate::cockpit::CockpitFaction::Alliance => (10_335, 10_585),
-                crate::cockpit::CockpitFaction::Empire => (10_336, 10_589),
-            };
-            paint_original_resource_native(
+            paint_window_layers(
                 ui.painter(),
                 ctx,
                 cache,
-                base,
-                window_rect.min,
-                scale,
-                window_rect,
-            );
-            paint_original_resource_native(
-                ui.painter(),
-                ctx,
-                cache,
-                rail,
-                encyclopedia_point(window_rect, scale, 412.0, 0.0),
-                scale,
-                window_rect,
-            );
-            let content_rect = encyclopedia_rect(
                 window_rect,
                 scale,
-                INDEX_CONTENT_X,
-                INDEX_CONTENT_Y,
-                400.0,
-                306.0,
-            );
-            paint_original_resource_native(
-                ui.painter(),
-                ctx,
-                cache,
-                INDEX_CONTENT,
-                content_rect.min,
-                scale,
-                content_rect,
+                window_layers(faction, (INDEX_CONTENT, INDEX_CONTENT_X, INDEX_CONTENT_Y)),
             );
 
             for control in encyclopedia_category_controls(faction) {
@@ -2023,6 +1968,52 @@ fn original_index_row_rect(parent: egui::Rect, scale: f32, y: f32) -> egui::Rect
         ORIGINAL_INDEX_ROW_HEIGHT,
     )
     .intersect(original_index_list_rect(parent, scale))
+}
+
+/// The window's layers in paint order: the pane (400 by 306), then the
+/// base and the rail. The pane lies under the frame: the base is keyed on
+/// its blue (252), and its corner arcs inside the pane's rectangle show in
+/// A0 (encyclopedia/category-0-alliance-day185: 498 of 498 such pixels
+/// the base's colour; index-empire-day143: 86 of 86; topics
+/// ex1-adar-tallon: 499 of 499, topic-abduction-empire-day166: 474 of 474).
+fn window_layers(
+    faction: crate::cockpit::CockpitFaction,
+    pane: (u32, f32, f32),
+) -> [(u32, f32, f32, Option<(f32, f32)>); 3] {
+    let (base, rail) = match faction {
+        crate::cockpit::CockpitFaction::Alliance => (10_335, 10_585),
+        crate::cockpit::CockpitFaction::Empire => (10_336, 10_589),
+    };
+    [
+        (pane.0, pane.1, pane.2, Some((400.0, 306.0))),
+        (base, 0.0, 0.0, None),
+        (rail, 412.0, 0.0, None),
+    ]
+}
+
+/// Paint [`window_layers`], each clipped to its own size or the window.
+fn paint_window_layers(
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    window_rect: egui::Rect,
+    scale: f32,
+    layers: [(u32, f32, f32, Option<(f32, f32)>); 3],
+) {
+    for (resource, x, y, size) in layers {
+        let clip = size.map_or(window_rect, |(width, height)| {
+            encyclopedia_rect(window_rect, scale, x, y, width, height)
+        });
+        paint_original_resource_native(
+            painter,
+            ctx,
+            cache,
+            resource,
+            encyclopedia_point(window_rect, scale, x, y),
+            scale,
+            clip,
+        );
+    }
 }
 
 fn paint_original_resource_native(
@@ -2727,6 +2718,23 @@ mod tests {
         // An unknown selection has no neighbours.
         state.original_selected_object_id = Some(0x5000_0001);
         assert_eq!(original_topic_neighbours(&state, &catalog), (None, None));
+    }
+
+    #[test]
+    fn the_frames_corner_arcs_lie_over_the_pane() {
+        // A0 encyclopedia/category-0-alliance-day185, index-empire-day143,
+        // ex1-adar-tallon and topic-abduction-empire-day166 show the base's
+        // (10335 / 10336, keyed on blue) corner arcs inside the pane.
+        use crate::cockpit::CockpitFaction;
+        for (faction, base, rail) in [
+            (CockpitFaction::Alliance, 10_335, 10_585),
+            (CockpitFaction::Empire, 10_336, 10_589),
+        ] {
+            for pane in [(TOPIC_CONTENT, 12.0, 14.0), (INDEX_CONTENT, 12.0, 13.0)] {
+                let ids = window_layers(faction, pane).map(|(id, x, y, _)| (id, x, y));
+                assert_eq!(ids, [pane, (base, 0.0, 0.0), (rail, 412.0, 0.0)]);
+            }
+        }
     }
 
     fn run_topic(

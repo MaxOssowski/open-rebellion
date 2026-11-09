@@ -242,9 +242,12 @@ function sourceIdentity(source) {
 function composeExpected(source, faction, selectedCategory = 0x6f, heldCommand = null) {
   const base = resource(source, faction.base);
   const expected = new PNG({ width: dimensions.width, height: dimensions.height });
-  blitClipped(expected, base, 0, 0, dimensions.width, dimensions.height);
-  blitClipped(expected, resource(source, faction.rail), 412, 0, 58, 330);
+  // The pane lies under the frame, keyed on its blue: A0
+  // encyclopedia/category-0-alliance-day185 and index-empire-day143 show
+  // the base's corner arcs inside the pane's rectangle.
   blitClipped(expected, resource(source, 10338), 12, 13, 400, 306);
+  blitKeyed(expected, base, 0, 0, dimensions.width, dimensions.height);
+  blitClipped(expected, resource(source, faction.rail), 412, 0, 58, 330);
   for (const control of categoryControls) {
     const [normal, pressed] = resourcesFor(control, faction);
     const resourceId = control.command === selectedCategory || control.command === heldCommand ? pressed : normal;
@@ -397,6 +400,24 @@ async function inspectFaction(server, source, faction, executable) {
     );
     let selectedCategory = 0x6f;
     comparisons.push(await compareState("selected-6f", selectedCategory));
+    // The window's top corners against A0 (the frame's arcs over the pane):
+    // the Alliance's at (62, 50), the Empire's at (125, 52).
+    {
+      const [a0File, a0x, a0y] = faction.name === "alliance"
+        ? ["encyclopedia/category-0-alliance-day185.png", 62, 50]
+        : ["encyclopedia/index-empire-day143.png", 125, 52];
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm", a0File)));
+      const shell = cropShell(await page.screenshot({ animations: "disabled" }));
+      let corners = 0;
+      for (const [x0, x1] of [[0, 30], [384, 412]]) {
+        for (let y = 0; y < 20; y += 1) for (let x = x0; x < x1; x += 1) {
+          const i = ((a0y + y) * a0.width + a0x + x) * 4;
+          const j = (y * shell.width + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== shell.data[j + c])) corners += 1;
+        }
+      }
+      comparisons.push({ label: "a0-corners", a0: a0File, different_pixels: corners });
+    }
     for (const control of categoryControls.slice(1)) {
       await page.mouse.click(origin.x + control.x + Math.floor(control.width / 2), origin.y + control.y + Math.floor(control.height / 2));
       selectedCategory = control.command;
