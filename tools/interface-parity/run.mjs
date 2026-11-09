@@ -1180,7 +1180,7 @@ function verifyTacticalGreenBeam(viewport, beforeBytes, beamBytes) {
   return { status: "visible", changed_green_pixels: changedGreenPixels };
 }
 
-function verifyStrategyBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRects = [], keyBlack = false) {
+function verifyStrategyBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRects = [], keyBlack = false, covered = null) {
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
     return { status: "non-native-scale", pixels_checked: 0 };
   }
@@ -1198,6 +1198,8 @@ function verifyStrategyBitmap(viewport, screenshotBytes, id, x0, y0, ignoredRect
       // Art keyed on its first stored pixel, black (the Display pages'
       // destination buttons 10764, 10765): the page shows there.
       if (keyBlack && color[0] === 0 && color[1] === 0 && color[2] === 0) continue;
+      // A pixel another layer paints over (the keyed window frame's arcs).
+      if (covered && covered(x, y)) continue;
       const actualOffset = ((y0 + y) * screenshot.width + x0 + x) * 4;
       assert.deepEqual(
         Array.from(screenshot.data.subarray(actualOffset, actualOffset + 3)), color,
@@ -3919,10 +3921,21 @@ async function probeTacticalBattleResultsPresentation(
   };
   const tabX = (alliance ? 523.5 : 533) + dx;
   const tabY = (alliance ? [182.5, 236.5, 290.5, 344.5] : [183.5, 242.5, 301.5, 360.5]).map((y) => y + dy);
+  // A0 TAC-01-C006, TAC-01-C013 and battle-result-coruscant: the keyed
+  // frame lies over the scene (its arcs at the pane's corners), and the
+  // texts over both. Only the text boxes and the rail are skipped.
   const frameIgnored = [
-    { x: 12, y: 13, width: 400, height: 310 },
+    { x: 12, y: 17, width: 400, height: 43 },
+    { x: 12, y: 215, width: 400, height: 94 },
     { x: 412, y: 0, width: 58, height: 330 },
   ];
+  const frameSource = decodeIndexedBmp(fs.readFileSync(path.join(
+    root, `data/base/ui/strategy-dll/BMP/${resources.frame}.bmp`,
+  )));
+  const frameCovers = (x, y) => {
+    const [r, g, b] = frameSource.pixel(x + 12, y + 13);
+    return !(r < 32 && g < 32 && b > 192);
+  };
   const probes = [{
     type: "battle-results-frame",
     ...verifyStrategyBitmap(viewport, stable.bytes, resources.frame, 85 + dx, 74 + dy, frameIgnored),
@@ -3931,7 +3944,7 @@ async function probeTacticalBattleResultsPresentation(
     ...verifyStrategyBitmap(viewport, stable.bytes, resources.summary, 97 + dx, 87 + dy, [
       { x: 0, y: 4, width: 400, height: 43 },
       { x: 0, y: 202, width: 400, height: 94 },
-    ]),
+    ], false, frameCovers),
   }, {
     type: "battle-results-close-rest",
     ...verifyStrategyBitmap(
@@ -3962,7 +3975,7 @@ async function probeTacticalBattleResultsPresentation(
       { x: 0, y: 0, width: 400, height: 100 },
       // The list (window 37..384); font 6 empty labels reach x 356.
       { x: 0, y: 100, width: 372, height: 196 },
-    ]),
+    ], false, frameCovers),
   });
 
   // FUN_0046f360: the category bar at (130, 59), four 49 by 41 buttons;
@@ -4028,7 +4041,7 @@ async function probeTacticalBattleResultsPresentation(
           { x: 0, y: 0, width: 400, height: 100 },
           // The list (window 37..384); font 6 empty labels reach x 356.
           { x: 0, y: 100, width: 372, height: 196 },
-        ]),
+        ], false, frameCovers),
       });
     }
   }
@@ -4060,7 +4073,7 @@ async function probeTacticalBattleResultsPresentation(
       { x: 17, y: 169, width: 169, height: 96 },
       { x: 217, y: 169, width: 169, height: 96 },
       { x: 0, y: 265, width: 400, height: 22 },
-    ]),
+    ], false, frameCovers),
   }, {
     type: "battle-results-system-destination",
     ...verifyStrategyBitmap(viewport, capture, 10764, 114 + dx, 256 + dy, [], true),

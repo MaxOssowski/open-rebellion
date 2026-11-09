@@ -7980,7 +7980,8 @@ fn draw_battle_result_summary(
         &battle_result_summary_lines(session, world),
         text_color,
     );
-    draw_page_ops(cache, canvas, ops);
+    let frame = battle_result_skin(player_is_alliance(session)).frame;
+    draw_page_ops(cache, canvas, frame_over_page(ops, frame));
 }
 
 /// The summary page's scene, which `FUN_0046f360` picks for the viewer
@@ -8121,7 +8122,8 @@ fn draw_battle_result_force_details(
     );
     let content = battle_result_content(&entries, category);
     ops.extend(battle_result_bar_ops(&battle_result_bar(content, scroll), pressed));
-    draw_page_ops(cache, canvas, ops);
+    let frame = battle_result_skin(player_alliance).frame;
+    draw_page_ops(cache, canvas, frame_over_page(ops, frame));
 }
 
 /// The forces list's content height in pixels: its longest column's rows.
@@ -8303,6 +8305,28 @@ fn battle_result_pressed_arrow(
 }
 
 /// Draw a results page's steps in the Battle Results window.
+/// The Battle Summary's frame (10335 / 10336, keyed on blue) after the
+/// page's art and before its texts: the frame's corner arcs inside the
+/// aperture show over the scene in A0 (TAC-01-C006 and TAC-01-C013: 900
+/// of 900 such pixels the frame's colour; empire-game3/
+/// battle-result-coruscant: all 474 in the top corners).
+fn frame_over_page(mut ops: Vec<PageOp>, frame: u32) -> Vec<PageOp> {
+    let after_art = ops
+        .iter()
+        .position(|op| matches!(op, PageOp::Bitmap { .. }))
+        .map_or(0, |index| index + 1);
+    ops.insert(
+        after_art,
+        PageOp::Bitmap {
+            source: DllSource::Strategy,
+            id: frame,
+            x: 0.0,
+            y: 0.0,
+        },
+    );
+    ops
+}
+
 fn draw_page_ops(cache: &mut BmpCache, canvas: TacticalCanvas, ops: Vec<PageOp>) {
     draw_page_ops_at(
         cache,
@@ -8694,7 +8718,8 @@ fn draw_battle_result_destinations(
         hovered.filter(|_| mouse_down),
         text_color,
     );
-    draw_page_ops(cache, canvas, ops);
+    let frame = battle_result_skin(player_alliance).frame;
+    draw_page_ops(cache, canvas, frame_over_page(ops, frame));
 
     match hovered.filter(|_| mouse_released) {
         Some(DisplayButton::System) => {
@@ -9569,14 +9594,8 @@ fn draw_original_battle_results(
     let skin = battle_result_skin(player_alliance);
     let text_color = battle_window_text_color(player_alliance);
 
+    // The frame is painted with each page, over its art (`frame_over_page`).
     draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
-    draw_strategy_bitmap(
-        cache,
-        skin.frame,
-        canvas,
-        battle_window_origin().0,
-        battle_window_origin().1,
-    );
 
     let (screen_mouse_x, screen_mouse_y) = mouse_position();
     let mouse = canvas.logical_pointer(screen_mouse_x, screen_mouse_y);
@@ -14222,6 +14241,38 @@ mod tests {
             Some(DisplayButton::Fleet)
         );
         assert_eq!(display_button_at(300.0, 200.0, false), None);
+    }
+
+    #[test]
+    fn the_summary_frame_lies_over_the_scene_and_under_the_texts() {
+        // A0 TAC-01-C006 / TAC-01-C013 (Alliance) and empire-game3/
+        // battle-result-coruscant (Empire) show the frame's corner arcs
+        // (10335 / 10336, keyed on blue) over the scene at (12, 13).
+        let lines = vec!["The Imperial fleet is victorious. ".to_owned()];
+        let white = Color::from_rgba(255, 255, 255, 255);
+        for (alliance, frame) in [(true, 10_335), (false, 10_336)] {
+            assert_eq!(battle_result_skin(alliance).frame, frame);
+            let scene = resources::strategy::EVENT_BATTLE_EMPIRE_VICTORY;
+            let ops = frame_over_page(battle_summary_page("Hoth", scene, &lines, white), frame);
+            let bitmaps: Vec<u32> = ops
+                .iter()
+                .filter_map(|op| match op {
+                    PageOp::Bitmap { id, .. } => Some(*id),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(bitmaps, [scene, frame]);
+            assert_eq!(
+                ops[1],
+                PageOp::Bitmap {
+                    source: DllSource::Strategy,
+                    id: frame,
+                    x: 0.0,
+                    y: 0.0
+                }
+            );
+            assert!(matches!(ops[2], PageOp::Text { .. }), "{ops:?}");
+        }
     }
 
     #[test]

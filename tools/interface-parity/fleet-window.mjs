@@ -1595,11 +1595,15 @@ const cases = [
         summaryA0 = {
           scene: count(137, 540, 95, 270),
           rail: count(541, 595, 64, 370),
+          // The frame's corner arcs over the scene (window x 0..29 and
+          // 384..411, y 0..21).
+          corners: count(125, 155, 52, 74) + count(509, 537, 52, 74),
           headline_a0: headline(a0),
           headline_port: headline(port),
         };
         assert.equal(summaryA0.scene, 0, `the summary's scene differs from A0 ${JSON.stringify(summaryA0)}`);
         assert.equal(summaryA0.rail, 0, `the summary's rail differs from A0 ${JSON.stringify(summaryA0)}`);
+        assert.equal(summaryA0.corners, 0, `the summary's corners differ from A0 ${JSON.stringify(summaryA0)}`);
         assert.ok(Math.abs(summaryA0.headline_port.centre - summaryA0.headline_a0.centre) <= 1,
           `the headline's centre ${JSON.stringify(summaryA0)}`);
       }
