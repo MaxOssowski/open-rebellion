@@ -6525,15 +6525,16 @@
         {
           "id": "OBJ-09-C003",
           "requirement": "en route",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-delivery-browser/",
             "ghidra/notes/build-delivery.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-unfinished-facility/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-unfinished-facility/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-facility-en-route-status-a0/"
           ],
-          "note": "A product en route to its destination departs and arrives in the Linux browser (fleet-window.mjs 'delivery', Chromium 154). 2026-11-04: its page item's Status reads FUN_0044a470's 'Enroute' with FUN_004fd2b0's ETA after Location (FUN_00446c50) over mark 11506 (unit test), and the HQ en route reads 'Enroute' in sector-quadrants.mjs (Linux); no A0 capture of a facility en route.",
+          "note": "A product en route to its destination departs and arrives in the Linux browser (fleet-window.mjs 'delivery', Chromium 154). 2026-11-04: its page item's Status reads FUN_0044a470's 'Enroute' with FUN_004fd2b0's ETA after Location (FUN_00446c50) over mark 11506 (unit test), and the HQ en route reads 'Enroute' in sector-quadrants.mjs (Linux); no A0 capture of a facility en route. 2026-11-09: A0 build-selection4/30, 31 (Yavin, a Refinery en route from Kessel): menu Encyclopedia/Status/grey Scrap; Manufacturing Status Location, ETA Destination 'Day 370', Status 'Enroute', 0, 5, 2. build-selection.mjs (Linux, both sides) opens the fixture's refinery en route and finds the same menu, labels in order and values; the picture and buttons 0 px from A0 31.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
