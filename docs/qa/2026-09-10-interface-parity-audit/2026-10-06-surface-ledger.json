@@ -3194,9 +3194,10 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-28-message-index-shell.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-rows/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-chrome/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-message-index-background-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-message-index-background-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-message-index-frame-over-panes/"
           ],
-          "note": "Shell, title, category controls, rows, heading, scroll bar and rail match the A0 Advice list; the keyed last row shows the window's black background as in A0 (2026-10-31).",
+          "note": "Shell, title, category controls, rows, heading, scroll bar and rail match the A0 Advice list; the keyed last row shows the window's black background as in A0 (2026-10-31). 2026-11-09 (b149): the window's base (10335/10336, keyed on blue) now lies over the list pane 10822, as A0 shows: its corner arcs inside the pane's rectangle were covered by the pane's grey (x 12..17 and 405..411, y 13..20). A0 index-joins-chosen (Empire) shows the base's colour at all 86 such pixels and category-1-day228 (Alliance) at all 498. message-display.mjs compares the Empire's All Messages with A0 index-joins-chosen: corners, tabs and rail 0 pixels. Batch b149: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T04-01-18-496Z-1069758 148 of 148, workspace tests 3493 passed, 163 mutants caught.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -3205,9 +3206,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-summary-headline-and-message-arrows/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-summary-headline-and-message-arrows/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-message-index-frame-over-panes/"
           ],
-          "note": "Not yet identified against the manual's summary state. 2026-11-09: identified: the manual's Message Summary screen (p. 79, Fig. 3.19) is the Message Index's mode 2, the open message, compared with A0 for many messages in message-display.mjs (picture, title, text, rail), with Display Message back to the list and Display to the subject. Its arrows 0x96/0x9a (FUN_004665f0, FUN_0046a200) now step through the Conflict list in message-display.mjs (Linux): Assault on Coruscant -> Assault on Umgul and back. Which arrow goes to the older message is inferred from the art (and agrees with the 2026-11-08 VM handling), with no A0 capture of a step. Batch b148: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T02-31-18-762Z-605154 148 of 148, workspace tests 3492 passed, 4 mutants caught."
+          "note": "Not yet identified against the manual's summary state. 2026-11-09: identified: the manual's Message Summary screen (p. 79, Fig. 3.19) is the Message Index's mode 2, the open message, compared with A0 for many messages in message-display.mjs (picture, title, text, rail), with Display Message back to the list and Display to the subject. Its arrows 0x96/0x9a (FUN_004665f0, FUN_0046a200) now step through the Conflict list in message-display.mjs (Linux): Assault on Coruscant -> Assault on Umgul and back. Which arrow goes to the older message is inferred from the art (and agrees with the 2026-11-08 VM handling), with no A0 capture of a step. Batch b148: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T02-31-18-762Z-605154 148 of 148, workspace tests 3492 passed, 4 mutants caught. 2026-11-09 (b149): mode 2's title strip 0x2ab5 and text area 0x2ab4 also lie under the frame (A0 empire-game3/joins-enemy: the base's colour at all 27 and 45 overlapping pixels); shell_layers now paints the panes before the base for both modes."
         },
         {
           "id": "CMD-08-C005",
