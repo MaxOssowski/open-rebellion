@@ -1676,6 +1676,15 @@ async fn main() {
             push_character_health(&mut msg_log, &world, character, 0, &message_texts);
             world.characters[character].is_killed = false;
         }
+        // Character Injured, then Healed, for the Alliance (FUN_0048fdf0,
+        // 0x7160 / 0x7161 and 0x7162 / 0x7163): Leia, injured for the
+        // message only, so the scenario's world is unchanged.
+        if let Some(character) = interface_test_fixture::injured_character(request, &world) {
+            world.characters[character].injury = 1;
+            push_character_health(&mut msg_log, &world, character, 0, &message_texts);
+            world.characters[character].injury = 0;
+            push_character_health(&mut msg_log, &world, character, 0, &message_texts);
+        }
         // Smuggling Benefits for the Alliance (FUN_00499130, 0x7062 /
         // 0x7066): smuggling begins on an Empire-held Yavin. Filed first, so
         // it lists last on the Popular Support rail.

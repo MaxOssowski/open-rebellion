@@ -166,6 +166,12 @@ async function run(browser, base, faction) {
       assert.match(captured[0], / - [A-Za-z][A-Za-z -]* \d+ \( Captured \) $/, captured[0]);
       assert.ok(!/ - Fleet \d+ /.test(captured[0]), captured[0]);
     }
+    // An injured free character reads " ( Injured ) " (FUN_00465bb0,
+    // 0x8747 on +0x94; A0 health-2026-11-09/07-personnel-finder-wedge-
+    // injured-day954: "Wedge Antilles - Averam ( Injured )"). The Empire's
+    // fixture has no fifth character.
+    const injured = shown.rows.filter((row) => / - [^()]+ \( Injured \) $/.test(row));
+    if (faction.name === "alliance") assert.equal(injured.length, 1, JSON.stringify(shown.rows));
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("characters");

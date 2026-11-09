@@ -1083,8 +1083,14 @@ pub fn apply(
             .iter()
             .filter(|(_, character)| character.is_alliance == player_is_alliance && character.recruited)
             .map(|(key, _)| key)
-            .take(4)
+            .take(5)
             .collect();
+        // A fifth character, where the side has one, is injured and free
+        // where it stands (A0 health-2026-11-09/07-personnel-finder-wedge-
+        // injured-day954: "Wedge Antilles - Averam ( Injured )").
+        if let Some(&injured) = own.get(4) {
+            world.characters[injured].injury = 40;
+        }
         // A fourth character, where the side has one, is a captive aboard
         // a ship of the player's first fleet (A0 personnel-captured/
         // finder-day628: "Jan Dodonna - Punisher ( Captured )").
@@ -4031,6 +4037,28 @@ pub fn killed_character(
         .characters
         .iter()
         .find(|(_, character)| character.name.contains(name))
+        .map(|(key, _)| key)
+}
+
+/// The event-message scenario's Character Injured for the Alliance reader
+/// (`FUN_0048fdf0`, notification `0x106` with the injury `+0x94` not 0):
+/// Leia Organa, as A0 health-2026-11-09/01-leia-injured-day270 shows
+/// "Leia Organa has been injured." over STRATEGY 1050 in an Alliance game
+/// (after her Incite Uprising at Bortras was foiled), and 03-leia-healed-
+/// day372 "Leia Organa has been healed of all injuries." over 0x41b with
+/// her portrait. No Empire capture.
+#[must_use]
+pub fn injured_character(
+    request: FixtureRequest,
+    world: &GameWorld,
+) -> Option<rebellion_core::ids::CharacterKey> {
+    if request.scenario != Scenario::EventMessages || request.faction != CockpitFaction::Alliance {
+        return None;
+    }
+    world
+        .characters
+        .iter()
+        .find(|(_, character)| character.name.contains("Leia"))
         .map(|(key, _)| key)
 }
 

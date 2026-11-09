@@ -932,6 +932,89 @@ async function run(browser, base, faction) {
       captureChecks.jan_dodonna_killed = killedChecks;
       assert.deepEqual(killedChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
         JSON.stringify(killedChecks));
+
+      // Leia Organa Injured (FUN_0048fdf0, 0x7160 / 0x7161; A0
+      // health-2026-11-09/01-leia-injured-day270, an Alliance game, the
+      // window at (62, 49), the pointer outside): "Leia Organa has been
+      // injured." over STRATEGY 1050 (0x41a); the picture, its title image
+      // and its rail every pixel A0's.
+      await click(page, showMessage);
+      const listedI = await waitReport(page, (value) => value.mode === "list", "the list for Leia Organa Injured");
+      const injuredRow = listedI.rows.indexOf("Leia Organa Injured");
+      assert.ok(injuredRow >= 0, JSON.stringify(listedI.rows));
+      await click(page, await shown(injuredRow));
+      await click(page, showMessage);
+      const injured = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Leia Organa Injured", "Display Message shows Leia Organa Injured");
+      assert.equal(injured.viewing_text, "Leia Organa has been injured.", JSON.stringify(injured));
+      assert.equal(injured.viewing_background, 0x41a, JSON.stringify(injured));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("leia-organa-injured");
+      const shownI = PNG.sync.read(await page.screenshot());
+      const a0I = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/health-2026-11-09/01-leia-injured-day270.png")));
+      const [leftI, topI] = [Math.round(injured.window_left), Math.round(injured.window_top)];
+      const regionI = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topI + y) * 640 + leftI + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownI.data[i + c] !== a0I.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      const injuredChecks = {
+        picture_a0: regionI(12, 33, 412, 233),
+        title_image_a0: regionI(15, 16, 30, 32),
+        rail_a0: regionI(414, 11, 468, 296),
+      };
+      captureChecks.leia_organa_injured = injuredChecks;
+      assert.deepEqual(injuredChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(injuredChecks));
+
+      // Leia Organa Healed (0x7162 / 0x7163; A0 health-2026-11-09/
+      // 03-leia-healed-day372, the same game, the window at (62, 49)):
+      // "Leia Organa has been healed of all injuries." over 0x41b with her
+      // portrait; the picture, its title image and its rail every pixel A0's.
+      await click(page, showMessage);
+      const listedH = await waitReport(page, (value) => value.mode === "list", "the list for Leia Organa Healed");
+      const healedRow = listedH.rows.indexOf("Leia Organa Healed");
+      assert.ok(healedRow >= 0, JSON.stringify(listedH.rows));
+      await click(page, await shown(healedRow));
+      await click(page, showMessage);
+      const healed = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Leia Organa Healed", "Display Message shows Leia Organa Healed");
+      assert.equal(healed.viewing_text, "Leia Organa has been healed of all injuries.", JSON.stringify(healed));
+      assert.equal(healed.viewing_background, 0x41b, JSON.stringify(healed));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("leia-organa-healed");
+      const shownH = PNG.sync.read(await page.screenshot());
+      const a0H = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/health-2026-11-09/03-leia-healed-day372.png")));
+      const [leftH, topH] = [Math.round(healed.window_left), Math.round(healed.window_top)];
+      const regionH = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topH + y) * 640 + leftH + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownH.data[i + c] !== a0H.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      const healedChecks = {
+        picture_a0: regionH(12, 33, 412, 233),
+        title_image_a0: regionH(15, 16, 30, 32),
+        rail_a0: regionH(414, 11, 468, 296),
+      };
+      captureChecks.leia_organa_healed = healedChecks;
+      assert.deepEqual(healedChecks, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(healedChecks));
     }
 
 
@@ -2027,6 +2110,46 @@ async function run(browser, base, faction) {
         rail_a0: regionG(414, 11, 468, 296),
       };
       assert.deepEqual(dagobahChecks.force_growth, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
+        JSON.stringify(dagobahChecks));
+      // Han Solo Attacked by Bounty Hunters (FUN_0048fa00, notification
+      // 0x212 with Han free, 0x7168 / 0x7169; A0 health-2026-11-09/
+      // 04-han-bounty-hunters-day372, an Alliance game, the window at
+      // (62, 49), the pointer outside): over STRATEGY 1052 (0x41c); the
+      // picture, its title image and its rail every pixel A0's.
+      await click(page, showMessage);
+      const listedB = await waitReport(page, (value) => value.mode === "list"
+        && value.rows.includes("Han Solo Attacked by Bounty Hunters"), "the story list holds the bounty attack");
+      await click(page, await shown(listedB.rows.indexOf("Han Solo Attacked by Bounty Hunters")));
+      await click(page, showMessage);
+      const bounty = await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Han Solo Attacked by Bounty Hunters", "Display Message shows the bounty attack");
+      assert.equal(bounty.viewing_text, "Han Solo was attacked by bounty hunters, who failed to capture him.",
+        JSON.stringify(bounty));
+      assert.equal(bounty.viewing_background, 0x41c, JSON.stringify(bounty));
+      await page.mouse.move(2, 2);
+      await frames(page);
+      await shot("han-bounty-hunters");
+      const shownB = PNG.sync.read(await page.screenshot());
+      const a0B = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/health-2026-11-09/04-han-bounty-hunters-day372.png")));
+      const [leftB, topB] = [Math.round(bounty.window_left), Math.round(bounty.window_top)];
+      const regionB = (x0, y0, x1, y1) => {
+        let differ = 0;
+        for (let y = y0; y < y1; y += 1) {
+          for (let x = x0; x < x1; x += 1) {
+            const i = ((topB + y) * 640 + leftB + x) * 4;
+            const j = ((49 + y) * 640 + 62 + x) * 4;
+            if ([0, 1, 2].some((c) => shownB.data[i + c] !== a0B.data[j + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      dagobahChecks.bounty_attack = {
+        picture_a0: regionB(12, 33, 412, 233),
+        title_image_a0: regionB(15, 16, 30, 32),
+        rail_a0: regionB(414, 11, 468, 296),
+      };
+      assert.deepEqual(dagobahChecks.bounty_attack, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
         JSON.stringify(dagobahChecks));
     }
 
