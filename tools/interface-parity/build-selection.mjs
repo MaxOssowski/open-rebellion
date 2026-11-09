@@ -535,6 +535,24 @@ const A0_CLASSES = {
       file: ".artifacts/a0-vm/build-selection4/06-kessel-kdy150.png", at: [192, 84] },
     { name: "LNR Series I", values: ["7", "7", "28 Days", "0 Days"],
       file: ".artifacts/a0-vm/build-selection4/07-kessel-lnr.png", at: [191, 84] },
+    { name: "Training Facility", values: ["10", "10", "40 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/09-kessel-training-facility-day51.png", at: [192, 84] },
+  ],
+  // Kessel's Training Facility, built in that game (day 103): its six
+  // classes by name, regiments and special forces together.
+  troops: [
+    { name: "Alliance Army Regiment", values: ["6", "3", "24 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/11-kessel-alliance-army-regiment-day103.png", at: [192, 84] },
+    { name: "Alliance Fleet Regiment", values: ["8", "6", "32 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/12-2-alliance-fleet-regiment.png", at: [192, 84] },
+    { name: "Bothan Spies", values: ["1", "1", "4 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/12-3-bothan-spies.png", at: [192, 84] },
+    { name: "Guerrillas", values: ["1", "1", "4 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/12-4-guerrillas.png", at: [192, 84] },
+    { name: "Infiltrators", values: ["2", "1", "8 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/12-5-infiltrators.png", at: [192, 84] },
+    { name: "Longprobe Y-wing Recon Team", values: ["2", "1", "8 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/12-6-longprobe-y-wing-recon-team.png", at: [192, 84] },
   ],
 };
 // A0 build-selection4/08: the list opened with LNR Series I shown shows
@@ -573,6 +591,7 @@ async function classValuesCase(page, directory, area) {
   const opened = await read();
   const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
   const results = [];
+  let list = null;
   for (const expected of A0_CLASSES[area]) {
     const seen = [];
     for (let step = 0; step < 12 && (await read()).build_selection_class !== expected.name; step += 1) {
@@ -589,23 +608,22 @@ async function classValuesCase(page, directory, area) {
     const picture = regionDiffering(PNG.sync.read(bytes), [origin.x, origin.y], a0, expected.at, [6, 22, 201, 48]);
     assert.equal(picture.differing, 0, `${expected.name}'s picture differs from A0 in ${picture.differing} pixels`);
     results.push({ class: expected.name, values: chosen.build_selection_values, picture });
-  }
-  let list = null;
-  if (area === "facilities") {
-    // The list opened on the shown LNR Series I: the two items' pictures
-    // (rows 87..131 and 157..201, left of the bar) as A0 08.
-    await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
-    await read();
-    const bytes = await page.screenshot({ animations: "disabled" });
-    fs.writeFileSync(path.join(directory, "class-list-lnr-shown.png"), bytes);
-    const a0 = PNG.sync.read(fs.readFileSync(path.join(root, A0_LIST_LNR.file)));
-    const port = PNG.sync.read(bytes);
-    // A0's pointer covers window (113..132, 100..119) of the first item.
-    list = [[8, 87, 186, 100], [8, 120, 186, 132], [8, 100, 113, 120], [133, 100, 186, 120], [8, 157, 186, 202]]
-      .map((rect) => regionDiffering(port, [origin.x, origin.y], a0, A0_LIST_LNR.at, rect));
-    assert.ok(list.every(({ differing }) => differing === 0), `the open list differs from A0 08: ${JSON.stringify(list)}`);
-    await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
-    await read();
+    if (expected.name === "LNR Series I") {
+      // The list opened on the shown LNR Series I: the two items' pictures
+      // (rows 87..131 and 157..201, left of the bar) as A0 08.
+      await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+      await read();
+      const bytes = await page.screenshot({ animations: "disabled" });
+      fs.writeFileSync(path.join(directory, "class-list-lnr-shown.png"), bytes);
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, A0_LIST_LNR.file)));
+      const port = PNG.sync.read(bytes);
+      // A0's pointer covers window (113..132, 100..119) of the first item.
+      list = [[8, 87, 186, 100], [8, 120, 186, 132], [8, 100, 113, 120], [133, 100, 186, 120], [8, 157, 186, 202]]
+        .map((rect) => regionDiffering(port, [origin.x, origin.y], a0, A0_LIST_LNR.at, rect));
+      assert.ok(list.every(({ differing }) => differing === 0), `the open list differs from A0 08: ${JSON.stringify(list)}`);
+      await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+      await read();
+    }
   }
   await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
   const cancelled = await read();
@@ -1302,7 +1320,8 @@ async function inspect(server, source, faction, executable) {
     const a0Dir4 = path.join(root, ".artifacts/a0-vm/build-selection4");
     const shipsA0 = faction.byte === 1 && fs.existsSync(a0Dir4)
       ? { ships: await classValuesCase(page, directory, "ships"),
-        facilities: await classValuesCase(page, directory, "facilities") } : null;
+        facilities: await classValuesCase(page, directory, "facilities"),
+        troops: await classValuesCase(page, directory, "troops") } : null;
 
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
