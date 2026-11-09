@@ -78,5 +78,7 @@ Open:
   second bitmap. A0 headquarters/01 shows the part of the selected
   overlay that the menu leaves uncovered unchanged, and the port keeps
   drawing 904;
-- where a planet's own double click is handled when the HQ overlay takes
-  the point.
+- (settled 2026-11-09) a planet has no double click of its own:
+  `FUN_004593e0` case `0x203` hit-tests the overlay list only
+  (`FUN_0045cc10`) and does nothing when no overlay takes the point (A0:
+  Adega, Flax, Akrit'tar and Yavin open nothing).

@@ -150,8 +150,9 @@ all), it lists for every system by name:
   the icon (it paints its selected art) and opens its pop-up menu, as a right
   click does.
 
-A window or menu behind a hidden icon is refused. Only the System window
-opens without one, as a double click on the planet opens it.
+A window or menu behind a hidden icon is refused, the System window too:
+the original's double click hit-tests the icons only (`FUN_004593e0` case
+`0x203`), so a double click on the planet opens nothing.
 
 For a native run, write the commands one per line (`#` starts a comment)
 and pass the file with `scripts/launch-native.sh --commands FILE`. A script

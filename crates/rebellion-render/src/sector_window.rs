@@ -179,10 +179,10 @@ impl SectorWindowState {
     /// What a palette command asks of the sector windows. It opens the
     /// sector window holding its system, then gives the action a double
     /// click (`FUN_004593e0` case `0x203`) or a right click (cases `0x204`
-    /// and `0x205`) on the system's icon would, at the icon's center. The
-    /// System window needs no icon, as a double click on the planet opens
-    /// it; every other quadrant needs its icon shown. `Err` says why the
-    /// command did nothing.
+    /// and `0x205`) on the system's icon would, at the icon's center. Every
+    /// quadrant needs its icon shown, the System window too: case `0x203`
+    /// hit-tests the icons only, so the planet opens nothing. `Err` says
+    /// why the command did nothing.
     #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
     #[expect(
         clippy::too_many_arguments,
@@ -245,7 +245,7 @@ impl SectorWindowState {
                 point,
             }]);
         }
-        if quadrant != Quadrant::System && shown.is_none() {
+        if shown.is_none() {
             return Err("the icon is hidden");
         }
         Ok(vec![quadrant_window_action(system, quadrant, point)])
@@ -897,9 +897,6 @@ fn draw_sector_window(
                         result.drag_from = press.map(|point| screen_to_logical(layout, point));
                     }
                 }
-                let planet_double_clicked = planet_response.double_clicked()
-                    && planet_clicked
-                    && icon_double_clicked.is_none();
                 paint_resource(ui.painter(), ctx, cache, planet_art(system), planet_rect);
                 // FUN_0045bbb0 blits a side's uprising mark (0x389 side 1,
                 // 0x38a side 2) keyed into the planet's bitmap at (0, 0).
@@ -1014,10 +1011,11 @@ fn draw_sector_window(
                     result.selected = Some(*system_key);
                     result.focus = true;
                 }
-                if planet_double_clicked {
-                    let open_point = pointer.unwrap_or_else(|| planet_rect.center());
-                    result.opened = Some((*system_key, screen_to_logical(layout, open_point)));
-                }
+                // FUN_004593e0 case 0x203 hit-tests only the overlay list
+                // (FUN_0045cc10, +0x174): a double click on the planet
+                // itself opens nothing (A0 2026-11-09: Adega, Flax and
+                // Akrit'tar; system-windows/04, 05 Yavin). The System
+                // window opens from its icon.
             }
 
             // WM_PAINT draws a shown overlay's second bitmap (`+0x24`) while
@@ -2884,16 +2882,15 @@ mod tests {
     }
 
     #[test]
-    fn without_fleets_the_icons_corner_opens_the_system_window() {
-        // FUN_0045d140 hides the overlay at a zero count, so the planet
-        // answers.
+    fn without_icons_a_double_click_on_the_planet_opens_nothing() {
+        // FUN_0045d140 hides the overlay at a zero count, and
+        // FUN_004593e0 case 0x203 hit-tests the overlays only
+        // (FUN_0045cc10), so the planet answers nothing (A0 2026-11-09:
+        // Adega, Flax, Akrit'tar; system-windows/04, 05 Yavin).
         let (world, system, _) = fixture_world();
         let actions = double_click_at(&world, system, (100.0, 85.0));
 
-        assert!(matches!(
-            opened(&actions)[..],
-            [SectorWindowAction::OpenSystemWindow { .. }]
-        ));
+        assert!(opened(&actions).is_empty(), "{actions:?}");
     }
 
     #[test]
@@ -4086,13 +4083,14 @@ mod tests {
     }
 
     #[test]
-    fn a_hidden_icon_refuses_its_window_and_menu_but_the_system_window_opens() {
-        // A double click on the planet opens the System window without an
-        // icon; every other window and menu needs its icon shown.
-        let (world, system, _) = fixture_world();
+    fn a_hidden_icon_refuses_its_window_and_menu() {
+        // Every window and menu needs its icon shown, the System window
+        // too: FUN_004593e0 case 0x203 hit-tests the icons only.
+        let (world, _, _) = fixture_world();
         for owner in [Faction::Alliance, Faction::Empire] {
             let mut state = SectorWindowState::default();
             for label in [
+                "Open System window: Chandrila",
                 "Open Defenses window: Chandrila",
                 "Open Fleet window: Chandrila",
                 "Open Missions window: Chandrila",
@@ -4104,22 +4102,6 @@ mod tests {
                     "{owner:?}: {label}"
                 );
             }
-            let point = state
-                .quadrant_window_point(&world, layout(1.0), system, Quadrant::System)
-                .unwrap();
-            assert_eq!(
-                run_command(
-                    &world,
-                    owner,
-                    &mut state,
-                    palette_command(&world, "Open System window: Chandrila"),
-                ),
-                Ok(vec![SectorWindowAction::OpenSystemWindow {
-                    system,
-                    logical_position: point
-                }]),
-                "{owner:?}"
-            );
             assert_eq!(
                 run_command(
                     &world,
