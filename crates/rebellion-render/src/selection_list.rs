@@ -49,9 +49,12 @@ impl DropDown {
         )
     }
 
-    /// The scroll position that shows item `index` at the list's top.
+    /// The scroll position a newly opened list takes: from its top, only
+    /// as far as item `index` needs to be seen, as the last visible item
+    /// (A0 build-selection4: Build Selection's list opened on items 1 and 2
+    /// with either shown, and on 3 and 4 with the fourth shown).
     pub(crate) fn scroll_to(self, index: usize) -> f32 {
-        self.item_height * index as f32
+        self.item_height * index.saturating_sub(self.visible.saturating_sub(1)) as f32
     }
 }
 

@@ -3621,6 +3621,7 @@ struct FixtureProduction {
     /// (refined material, maintenance, completion, deployment).
     build_selection_quantity: Option<u32>,
     build_selection_values: Option<[String; 4]>,
+    build_selection_index: Option<usize>,
     /// The shown class's name (`FUN_00437880`).
     build_selection_class: Option<String>,
     /// The Training Facilities tab and its page's first cell, as
@@ -3673,6 +3674,7 @@ fn production_report(
         bands,
         build_selection_open: build_selection.is_open(),
         build_selection_quantity: build_selection.dialog().map(|dialog| dialog.quantity()),
+        build_selection_index: build_selection.dialog().map(|dialog| dialog.selected_index()),
         build_selection_class: build_selection
             .dialog()
             .map(|dialog| rebellion_render::manufacturing_window::product(world, dialog.kind()).0),

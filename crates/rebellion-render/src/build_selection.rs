@@ -122,6 +122,12 @@ impl BuildSelection {
         self.quantity
     }
 
+    /// The shown class's place in the list.
+    #[must_use]
+    pub fn selected_index(&self) -> usize {
+        self.selected
+    }
+
     #[must_use]
     pub fn list_open(&self) -> bool {
         self.list_open
@@ -535,7 +541,8 @@ pub fn draw_build_selection(
                 scale,
             ) {
                 dialog.list_open = !dialog.list_open;
-                // hyp: the list opens with the shown class at its top.
+                // The list opens scrolled only as far as the shown class
+                // needs (A0 build-selection4/08).
                 dialog.list_scroll = CLASS_LIST.scroll_to(dialog.selected);
                 dialog.list_hold = None;
             }
@@ -1322,6 +1329,7 @@ mod tests {
         drive(&world, &mut state, (100.0, 147.0), vec![vec![wheel]]);
         let dialog = state.dialog().unwrap();
         assert_eq!((dialog.kind(), dialog.list_scroll), (regiments[0], 0.0));
+        assert_eq!(dialog.selected_index(), 0);
         assert!(dialog.list_open());
 
         // The second item's row (87 + 70 .. 87 + 140) chooses it and closes
@@ -1330,12 +1338,19 @@ mod tests {
         let dialog = state.dialog().unwrap();
         assert!(!dialog.list_open());
         assert_eq!(dialog.kind(), regiments[1]);
+        assert_eq!(dialog.selected_index(), 1);
         assert_eq!(CLASS_LIST.height(), 144.0);
-        // Reopened, the list scrolls toward the shown class (hyp), as far
-        // as the bar lets two items go.
+        // Reopened, the list scrolls from its top only as far as the shown
+        // class needs to be seen, as the last of the two items: A0
+        // build-selection4 (Kessel, a new Alliance game) opened it on
+        // Dreadnaught and Escort Carrier with either of them shown, and on
+        // KDY-150 and LNR Series I with LNR, the fourth class, shown
+        // (08-list-opened-with-lnr-shown).
         click(&mut state, (111.0, 99.0));
-        assert!(state.dialog().unwrap().list_scroll > 0.0);
-        assert_eq!(CLASS_LIST.scroll_to(3), 210.0);
+        assert_eq!(state.dialog().unwrap().list_scroll, 0.0);
+        assert_eq!(CLASS_LIST.scroll_to(0), 0.0);
+        assert_eq!(CLASS_LIST.scroll_to(1), 0.0);
+        assert_eq!(CLASS_LIST.scroll_to(3), 140.0);
         assert_eq!(CLASS_LIST.list(), (8.0, 87.0, 191.0, 140.0));
     }
 
