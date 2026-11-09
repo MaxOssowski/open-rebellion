@@ -278,6 +278,23 @@ async function production(page) {
   return page.evaluate(() => window.__openRebellionInterfaceProduction);
 }
 
+// Step Build Selection to its next class. The class list (FUN_0060bed0,
+// button at (79, 90)) opens scrolled only as far as the shown class needs,
+// as the last of its two 70-pixel items (A0 build-selection4/08: LNR
+// Series I, the fourth class, shown under KDY-150). Past the first class,
+// seven clicks on the bar's down arrow (window (192, 222), 10 pixels each)
+// bring the shown class to the top; the second item is then the next.
+async function stepClass(page, origin) {
+  const shown = (await production(page)).build_selection_index;
+  await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  if (shown > 0) {
+    for (let arrow = 0; arrow < 7; arrow += 1) await click(page, { x: origin.x + 192, y: origin.y + 222 });
+  }
+  await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+}
+
 // Right-click the band, then click the menu row the report names.
 async function bandOrder(page, band, rowName, directory, label) {
   await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
@@ -478,14 +495,11 @@ async function quantityAndCancelCase(page, origin, band, directory, faction) {
   // shows two 70-pixel items under the box at (6, 85).
   let a0Class = null;
   if (faction.name === "empire") {
-    // The open list starts at the shown class, so its second item is the
-    // next class; step until the regiment shows.
+    // Step until the regiment shows.
     const seen = [];
     for (let step = 0; step < 12 && (await read()).build_selection_class !== "Imperial Army Regiment"; step += 1) {
       seen.push((await read()).build_selection_class);
-      await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
-      await read();
-      await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+      await stepClass(page, origin);
     }
     const chosen = await read();
     assert.equal(chosen.build_selection_class, "Imperial Army Regiment", JSON.stringify([seen, chosen]));
@@ -496,15 +510,55 @@ async function quantityAndCancelCase(page, origin, band, directory, faction) {
     a0_class: a0Class };
 }
 
-// The Alliance's Alliance Dreadnaught against A0 build-selection3/ships0
-// (a new Alliance game, Build Ships on Sluis Van, the window at (192, 84)):
-// 44, 33, "176 Days", "0 Days" (FUN_00538220: the class's refined cost and
-// maintenance, one Orbital Shipyard's processing rate 4 times 44). The
-// class's picture in the shown item (window 6..200 by 22..47, above the
-// name) matches A0 pixel for pixel. Cancel closes the window.
-const A0_SHIPS = { file: ".artifacts/a0-vm/build-selection3/ships0.png", x: 192, y: 84 };
+// The Alliance's classes against A0 (FUN_00538220: the class's refined
+// cost and maintenance times the number, the yards' best completion, the
+// transit): build-selection3/ships0 (a new Alliance game, Sluis Van) and
+// build-selection4 (a new Alliance game, Kessel: one Orbital Shipyard and
+// one Construction Yard, as the fixture's system). Each class's picture in
+// the shown item (window 6..200 by 22..47, above the name) matches A0
+// pixel for pixel at A0's window place. Cancel closes the window.
+const A0_CLASSES = {
+  ships: [
+    { name: "Alliance Dreadnaught", values: ["44", "33", "176 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection3/ships0.png", at: [192, 84] },
+    { name: "X-wing", values: ["5", "4", "20 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/02-kessel-x-wing-day34.png", at: [194, 96] },
+    { name: "Y-wing", values: ["5", "4", "20 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/03-kessel-y-wing.png", at: [194, 96] },
+  ],
+  facilities: [
+    { name: "Construction Yard", values: ["10", "10", "40 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/04-kessel-construction-yard-day37.png", at: [192, 84] },
+    { name: "GenCore Level I", values: ["12", "12", "48 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/05-kessel-gencore-day38.png", at: [192, 84] },
+    { name: "KDY-150", values: ["4", "4", "16 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/06-kessel-kdy150.png", at: [192, 84] },
+    { name: "LNR Series I", values: ["7", "7", "28 Days", "0 Days"],
+      file: ".artifacts/a0-vm/build-selection4/07-kessel-lnr.png", at: [191, 84] },
+  ],
+};
+// A0 build-selection4/08: the list opened with LNR Series I shown shows
+// KDY-150 and LNR Series I. Dragging the list's bar had moved the window
+// one pixel left, to (191, 84), as in 07.
+const A0_LIST_LNR = { file: ".artifacts/a0-vm/build-selection4/08-list-opened-with-lnr-shown.png", at: [191, 84] };
 
-async function shipsCase(page, faction, directory) {
+function regionDiffering(port, [px, py], a0, [ax, ay], [x0, y0, x1, y1]) {
+  let checked = 0;
+  let differing = 0;
+  for (let y = y0; y < y1; y += 1) {
+    for (let x = x0; x < x1; x += 1) {
+      const i = ((py + y) * port.width + px + x) * 4;
+      const j = ((ay + y) * a0.width + ax + x) * 4;
+      checked += 1;
+      if (port.data[i] !== a0.data[j] || port.data[i + 1] !== a0.data[j + 1] || port.data[i + 2] !== a0.data[j + 2]) {
+        differing += 1;
+      }
+    }
+  }
+  return { checked, differing };
+}
+
+async function classValuesCase(page, directory, area) {
   const read = async () => {
     await page.mouse.move(2, 2);
     await frames(page);
@@ -512,44 +566,52 @@ async function shipsCase(page, faction, directory) {
     await frames(page);
     return production(page);
   };
-  const ships = (await production(page)).bands.find(({ area }) => area === "ships");
-  await bandOrder(page, ships, "build_row", directory, "ships-build");
+  const band = (await production(page)).bands.find((entry) => entry.area === area);
+  await bandOrder(page, band, "build_row", directory, `${area}-build`);
   await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
     null, { timeout: 10_000 });
   const opened = await read();
   const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
-  const seen = [];
-  for (let step = 0; step < 12 && (await read()).build_selection_class !== "Alliance Dreadnaught"; step += 1) {
-    seen.push((await read()).build_selection_class);
+  const results = [];
+  for (const expected of A0_CLASSES[area]) {
+    const seen = [];
+    for (let step = 0; step < 12 && (await read()).build_selection_class !== expected.name; step += 1) {
+      seen.push((await read()).build_selection_class);
+      await stepClass(page, origin);
+    }
+    const chosen = await read();
+    const bytes = await page.screenshot({ animations: "disabled" });
+    const label = expected.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    fs.writeFileSync(path.join(directory, `class-${label}.png`), bytes);
+    assert.equal(chosen.build_selection_class, expected.name, JSON.stringify([seen, chosen]));
+    assert.deepEqual(chosen.build_selection_values, expected.values, JSON.stringify(chosen));
+    const a0 = PNG.sync.read(fs.readFileSync(path.join(root, expected.file)));
+    const picture = regionDiffering(PNG.sync.read(bytes), [origin.x, origin.y], a0, expected.at, [6, 22, 201, 48]);
+    assert.equal(picture.differing, 0, `${expected.name}'s picture differs from A0 in ${picture.differing} pixels`);
+    results.push({ class: expected.name, values: chosen.build_selection_values, picture });
+  }
+  let list = null;
+  if (area === "facilities") {
+    // The list opened on the shown LNR Series I: the two items' pictures
+    // (rows 87..131 and 157..201, left of the bar) as A0 08.
     await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
     await read();
-    await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+    const bytes = await page.screenshot({ animations: "disabled" });
+    fs.writeFileSync(path.join(directory, "class-list-lnr-shown.png"), bytes);
+    const a0 = PNG.sync.read(fs.readFileSync(path.join(root, A0_LIST_LNR.file)));
+    const port = PNG.sync.read(bytes);
+    // A0's pointer covers window (113..132, 100..119) of the first item.
+    list = [[8, 87, 186, 100], [8, 120, 186, 132], [8, 100, 113, 120], [133, 100, 186, 120], [8, 157, 186, 202]]
+      .map((rect) => regionDiffering(port, [origin.x, origin.y], a0, A0_LIST_LNR.at, rect));
+    assert.ok(list.every(({ differing }) => differing === 0), `the open list differs from A0 08: ${JSON.stringify(list)}`);
+    await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+    await read();
   }
-  const chosen = await read();
-  const bytes = await page.screenshot({ animations: "disabled" });
-  fs.writeFileSync(path.join(directory, "ships-dreadnaught.png"), bytes);
-  assert.equal(chosen.build_selection_class, "Alliance Dreadnaught", JSON.stringify([seen, chosen]));
-  assert.deepEqual(chosen.build_selection_values, ["44", "33", "176 Days", "0 Days"], JSON.stringify(chosen));
-  const port = PNG.sync.read(bytes);
-  const a0 = PNG.sync.read(fs.readFileSync(path.join(root, A0_SHIPS.file)));
-  let checked = 0;
-  let differing = 0;
-  for (let y = 22; y < 48; y += 1) {
-    for (let x = 6; x < 201; x += 1) {
-      const i = ((origin.y + y) * port.width + origin.x + x) * 4;
-      const j = ((A0_SHIPS.y + y) * a0.width + A0_SHIPS.x + x) * 4;
-      checked += 1;
-      if (port.data[i] !== a0.data[j] || port.data[i + 1] !== a0.data[j + 1] || port.data[i + 2] !== a0.data[j + 2]) {
-        differing += 1;
-      }
-    }
-  }
-  assert.equal(differing, 0, `the Dreadnaught's picture differs from A0 ships0 in ${differing} of ${checked} pixels`);
   await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
   const cancelled = await read();
   assert.equal(cancelled.build_selection_open, false, "Cancel closes Build Selection");
-  assert.equal(cancelled.bands.find(({ area }) => area === "ships").queued, ships.queued, "Cancel builds nothing");
-  return { class: chosen.build_selection_class, values: chosen.build_selection_values, picture: { checked, differing } };
+  assert.equal(cancelled.bands.find((entry) => entry.area === area).queued, band.queued, "Cancel builds nothing");
+  return { classes: results, list };
 }
 
 // A0 build-selection2/09 (Windows 10 VM, the Empire's Stop on Coruscant's
@@ -947,9 +1009,7 @@ async function overMaintenanceCase(page, faction, directory) {
   // order with no upkeep passes, FUN_0052e970): step to the regiment.
   if (faction.name === "empire") {
     for (let step = 0; step < 12 && opened.build_selection_class !== "Imperial Army Regiment"; step += 1) {
-      await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
-      await production(page);
-      await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+      await stepClass(page, origin);
       opened = await production(page);
     }
     assert.equal(opened.build_selection_class, "Imperial Army Regiment", JSON.stringify(opened));
@@ -1239,8 +1299,10 @@ async function inspect(server, source, faction, executable) {
     await page.mouse.move(2, 2);
     await frames(page);
 
-    const shipsA0 = faction.byte === 1 && fs.existsSync(path.join(root, A0_SHIPS.file))
-      ? await shipsCase(page, faction, directory) : null;
+    const a0Dir4 = path.join(root, ".artifacts/a0-vm/build-selection4");
+    const shipsA0 = faction.byte === 1 && fs.existsSync(a0Dir4)
+      ? { ships: await classValuesCase(page, directory, "ships"),
+        facilities: await classValuesCase(page, directory, "facilities") } : null;
 
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
