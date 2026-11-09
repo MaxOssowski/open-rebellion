@@ -1998,7 +1998,10 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 11902
                 | 10716..=10745
                 | 10766
-                | 10792
+                // The Alliance Battle Summary's Display tab, resting and
+                // pressed (`FUN_0046f360`): A0 TAC-01-C006 shows the frame's
+                // grey under 10791's 63 blue corner pixels.
+                | 10791..=10792
                 | 10971..=10976
                 // The System window's facility cell frames (`FUN_004568a0`),
                 // construction band frame and title strips (`FUN_00458080`,
@@ -3011,10 +3014,10 @@ pub(crate) mod tests {
     #[test]
     fn the_battle_windows_art_keys_out_blue() {
         // A0 TAC-01-C010, TAC-07-C001/C005/C013: no pure blue in either
-        // window.
+        // window; A0 TAC-01-C006: the Alliance's resting Display tab, 10791.
         for id in [
-            10335, 10336, 10370, 10376, 10710, 10711, 10716, 10719, 10729, 10745, 10766, 10792,
-            10971, 10976,
+            10335, 10336, 10370, 10376, 10710, 10711, 10716, 10719, 10729, 10745, 10766, 10791,
+            10792, 10971, 10976,
         ] {
             assert!(
                 uses_blue_screen_transparency(DllSource::Strategy, id),
@@ -3455,7 +3458,8 @@ pub(crate) mod tests {
     fn every_quadrant_icon_keys_out_its_blue_matte() {
         // STRATEGY 10771..10790 (FUN_0045ca80's four kinds, both bitmaps,
         // every side) each carry the palette-blue matte; the Fleet window's
-        // background 10770 beside them does not.
+        // background 10770 beside them does not. (10791 after them, the
+        // Battle Summary's Display tab, is keyed too: A0 TAC-01-C006.)
         let mut image = image::RgbaImage::new(1, 1);
         image.put_pixel(0, 0, image::Rgba([0, 0, 255, 255]));
         let mut encoded = Vec::new();
@@ -3469,7 +3473,7 @@ pub(crate) mod tests {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
         }
-        for resource_id in [10770, 10791] {
+        for resource_id in [10770] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 255, "{resource_id}");
         }

@@ -1050,6 +1050,53 @@ function verifyGokresBitmap(viewport, screenshotBytes, id, x0, y0) {
   return { status: "source-bitmap-exact", resource_id: id, pixels_checked: pixelsChecked };
 }
 
+// A0 TAC-01-C007 (the Empire's Battle at Yavin, day 234, Show Planet off,
+// first paused frame): only the starfield and the holocube's blue edges
+// fill the battle view. The port's first Imperial frame draws the same
+// edges (FUN_005d4d10's cube under FUN_005d9640's opening camera): every
+// blue edge pixel of either lies within two pixels of the other's, and no
+// planet backdrop lights the view (A0 732 lit non-blue pixels: stars, one
+// hull and the status line; a planet disc alone would be thousands).
+function compareEmptySpaceWithA0(viewport, screenshotBytes, faction) {
+  const a0Path = path.join(root, ".artifacts/interface-parity/a0/TAC-01-C007/original.png");
+  if (faction !== "empire" || viewport.width !== 640 || viewport.height !== 480
+    || viewport.device_scale_factor !== 1 || !fs.existsSync(a0Path)) {
+    return { status: "not-compared" };
+  }
+  const a0 = PNG.sync.read(fs.readFileSync(a0Path));
+  const port = PNG.sync.read(screenshotBytes);
+  const [left, right, top, bottom] = [17, 457, 30, 466];
+  const blue = (image, x, y) => {
+    const k = (y * 640 + x) * 4;
+    return image.data[k + 2] > 150 && image.data[k] < 60 && image.data[k + 1] < 60;
+  };
+  const near = (image, x, y) => {
+    for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (blue(image, x + i, y + j)) return true;
+    return false;
+  };
+  const counts = { a0_edge: 0, a0_edge_matched: 0, port_edge: 0, port_edge_matched: 0, port_lit: 0 };
+  for (let y = top; y < bottom; y++) {
+    for (let x = left; x < right; x++) {
+      if (blue(a0, x, y)) {
+        counts.a0_edge++;
+        if (near(port, x, y)) counts.a0_edge_matched++;
+      }
+      if (blue(port, x, y)) {
+        counts.port_edge++;
+        if (near(a0, x, y)) counts.port_edge_matched++;
+      } else {
+        const k = (y * 640 + x) * 4;
+        if (Math.max(port.data[k], port.data[k + 1], port.data[k + 2]) > 40) counts.port_lit++;
+      }
+    }
+  }
+  assert.ok(counts.a0_edge > 1000 && counts.port_edge > 1000, `holocube edges ${JSON.stringify(counts)}`);
+  assert.ok(counts.a0_edge_matched / counts.a0_edge >= 0.99, `A0's edges off the port's ${JSON.stringify(counts)}`);
+  assert.ok(counts.port_edge_matched / counts.port_edge >= 0.99, `the port's edges off A0's ${JSON.stringify(counts)}`);
+  assert.ok(counts.port_lit < 2000, `a backdrop lights the empty view ${JSON.stringify(counts)}`);
+  return { status: "compared", ...counts };
+}
+
 function verifyTacticalBackdrop(viewport, screenshotBytes, paletteResourceId) {
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
     return { status: "non-native-scale", bright_pixels_checked: 0 };
@@ -1806,6 +1853,42 @@ async function probeTacticalCameraJourney(page, viewport, folder, stable) {
   ));
   transitions.push(await press("camera-down", point(561, 456), 1056, 540, 424));
   transitions.push(await press("camera-target", point(560, 402), 1059, 549, 391));
+  // A0 TAC-04-C011 (Battle at Mon Calamari, the Victory Destroyer selected,
+  // then the centre of the camera sphere, 1058/1059): the subject's green
+  // box is centred at (237, 247), the battle view's middle. The port's
+  // selected hull, after the same control, sits on the same point.
+  const centreA0 = path.join(root, ".artifacts/interface-parity/a0/TAC-04-C011/original.png");
+  let centre = null;
+  if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1
+    && fs.existsSync(centreA0)) {
+    const green = (image, x, y) => {
+      const k = (y * 640 + x) * 4;
+      return image.data[k + 1] > 150 && image.data[k] < 80 && image.data[k + 2] < 80;
+    };
+    // The port's selected marker takes its side's colour: green for the
+    // Alliance's hull, red for the Empire's.
+    const red = (image, x, y) => {
+      const k = (y * 640 + x) * 4;
+      return image.data[k] > 150 && image.data[k + 1] < 80 && image.data[k + 2] < 80;
+    };
+    const middle = (image, [x0, x1, y0, y1], lit = green) => {
+      let [left, right, top, bottom] = [Infinity, -Infinity, Infinity, -Infinity];
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          if (!lit(image, x, y)) continue;
+          [left, right, top, bottom] = [Math.min(left, x), Math.max(right, x), Math.min(top, y), Math.max(bottom, y)];
+        }
+      }
+      return { x: (left + right) / 2, y: (top + bottom) / 2 };
+    };
+    const a0 = middle(PNG.sync.read(fs.readFileSync(centreA0)), [17, 457, 30, 466]);
+    // The port's selected marker without its shield and hull bars.
+    const port = middle(PNG.sync.read(transitions.at(-1).released), [222, 252, 237, 256],
+      (image, x, y) => green(image, x, y) || red(image, x, y));
+    centre = { a0, port };
+    assert.ok(Math.abs(a0.x - port.x) <= 1 && Math.abs(a0.y - port.y) <= 1,
+      `the centred subject ${JSON.stringify(centre)}`);
+  }
 
   const modelHashes = [initialModel, ...transitions.map(({ released }) =>
     tacticalProofModelHash(viewport, released))];
@@ -1816,6 +1899,7 @@ async function probeTacticalCameraJourney(page, viewport, folder, stable) {
     control: name,
     pressed_bitmap: bitmap,
     model_crop_sha256: modelHashes[index + 1],
+    ...(name === "camera-target" && centre ? { centre_a0: centre } : {}),
   }));
 }
 
@@ -4664,6 +4748,25 @@ async function probeTacticalBattleOptionsPresentation(
     ...verifyTacticalBitmap(viewport, held, simulate.pressed, simulate.x, simulate.y),
   });
   const results = await stableInteractionFrame(page, folder, "battle-options-simulated-results");
+  // A0 TAC-01-C006 / TAC-06-C004 (the Alliance's Battle at Coruscant after
+  // Get Immediate Result): the Battle Summary's rail and its five buttons,
+  // window (414..464, 11..296), every pixel as A0 draws them, the Display
+  // tab's blue corners keyed (10791).
+  const simulatedA0 = path.join(root, ".artifacts/interface-parity/a0/TAC-01-C006/original.png");
+  if (faction === "alliance" && viewport.width === 640 && viewport.height === 480
+    && viewport.device_scale_factor === 1 && fs.existsSync(simulatedA0)) {
+    const a0 = PNG.sync.read(fs.readFileSync(simulatedA0));
+    const port = PNG.sync.read(results);
+    let differing = 0;
+    for (let y = 60; y < 345; y++) {
+      for (let x = 476; x < 526; x++) {
+        const k = (y * 640 + x) * 4;
+        if ([0, 1, 2].some((c) => a0.data[k + c] !== port.data[k + c])) differing++;
+      }
+    }
+    probes.push({ type: "battle-options-simulated-rail-a0", differing });
+    assert.equal(differing, 0, `the simulated result's rail differs from A0 in ${differing} pixels`);
+  }
   probes.push({
     type: "battle-options-simulate-route",
     // A0 TAC-07-C001 / TAC-07-C002: (62, 49) for the Alliance, (125, 52) for the Empire.
@@ -5491,6 +5594,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
             backdrop: verifyTacticalBackdrop(viewport, stable.bytes, ready.palette_resource_id),
             planet_loaded: false,
             planet_submitted: false,
+            a0: compareEmptySpaceWithA0(viewport, stable.bytes, faction),
             screenshot_sha256: sha256(stable.bytes),
           }]
         : scenario.hull_scale_presentation
