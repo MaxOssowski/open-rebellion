@@ -7740,8 +7740,14 @@ fn battle_report_lines(texts: &HashMap<u16, String>, report: &BattleReport<'_>) 
         }
     };
     match (headline, body.into_iter().collect::<Option<Vec<String>>>()) {
+        // The headline keeps its record's trailing space (0x7002..0x7004
+        // end ". " before the 0x01 end mark): FUN_0046f360 centres it in
+        // the same 400-wide box as the title, and the space's advance
+        // moves it half a space left (A0 TAC-01-C006, TAC-01-C013 and
+        // empire-game3/battle-result-coruscant: x 71..344, centre 207.5,
+        // where the title is centred on 212).
         (Some(headline), Some(body)) => vec![
-            headline.trim_end().to_owned(),
+            headline.trim_end_matches(|c: char| c.is_control()).to_owned(),
             body.concat().trim_end().to_owned(),
         ],
         _ => {
@@ -12528,7 +12534,7 @@ mod tests {
         fled.retreated = true;
         let session = test_session(vec![fled, test_ship(64, 2, false, true)], Vec::new(), true);
         let lines = battle_result_summary_lines(&session, &GameWorld::default());
-        assert_eq!(lines[0], "The battle at Test System is indecisive.");
+        assert_eq!(lines[0], "The battle at Test System is indecisive. ");
         assert_eq!(
             lines[1],
             "There has been no victor.  The Alliance fleet has withdrawn. The Imperial fleet has been completely destroyed."
@@ -12560,7 +12566,7 @@ mod tests {
         assert_eq!(
             report(false, Some(false), None, Some(true)),
             [
-                "The Imperial fleet is victorious.",
+                "The Imperial fleet is victorious. ",
                 "Deyer is now under blockade by Imperial forces. The Alliance fleet has been completely destroyed."
             ]
         );
@@ -12568,7 +12574,7 @@ mod tests {
         assert_eq!(
             report(true, Some(false), None, Some(true)),
             [
-                "The Alliance fleet is defeated.",
+                "The Alliance fleet is defeated. ",
                 "Deyer is now under blockade by Imperial forces. The Alliance fleet has been completely destroyed."
             ]
         );
@@ -12595,7 +12601,7 @@ mod tests {
         assert_eq!(
             report(true, None, None, Some(true)),
             [
-                "The battle at Deyer is indecisive.",
+                "The battle at Deyer is indecisive. ",
                 "There has been no victor.  All Alliance and Imperial ships have been destroyed."
             ]
         );
@@ -12743,7 +12749,7 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "The Alliance fleet is defeated.",
+                "The Alliance fleet is defeated. ",
                 "The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam."
             ]
         );
@@ -12784,7 +12790,7 @@ mod tests {
         assert_eq!(
             battle_report_lines(&texts, &report),
             [
-                "The Alliance fleet is defeated.",
+                "The Alliance fleet is defeated. ",
                 "Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul."
             ]
         );
@@ -12860,7 +12866,7 @@ mod tests {
         assert_eq!(
             battle_report_lines(&texts, &report),
             [
-                "The Alliance fleet is victorious.",
+                "The Alliance fleet is victorious. ",
                 "Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn."
             ]
         );
@@ -12894,7 +12900,7 @@ mod tests {
         assert_eq!(
             battle_report_lines(&texts, &imperial),
             [
-                "The Imperial fleet is victorious.",
+                "The Imperial fleet is victorious. ",
                 "Coruscant has been successfully defended from Alliance forces. The Alliance fleet has withdrawn."
             ]
         );
@@ -12947,7 +12953,7 @@ mod tests {
         assert_eq!(
             battle_report_lines(&texts, &report),
             [
-                "The Alliance fleet is defeated.",
+                "The Alliance fleet is defeated. ",
                 "Umgul is now under blockade by Imperial forces. The Alliance fleet has been completely destroyed."
             ]
         );
@@ -12977,7 +12983,7 @@ mod tests {
         assert_eq!(
             battle_report_lines(&texts, &imperial),
             [
-                "The Imperial fleet is defeated.",
+                "The Imperial fleet is defeated. ",
                 "Umgul is now under blockade by Alliance forces. The Imperial fleet has been completely destroyed."
             ]
         );
@@ -13010,7 +13016,7 @@ mod tests {
         assert_eq!(
             lines,
             [
-                "The Imperial fleet is defeated.",
+                "The Imperial fleet is defeated. ",
                 "Tralus is now under blockade by Alliance forces. The Imperial fleet has withdrawn to Coruscant."
             ]
         );

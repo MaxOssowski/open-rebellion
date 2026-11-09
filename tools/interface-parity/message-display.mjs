@@ -1233,6 +1233,23 @@ async function run(browser, base, faction) {
       const conflictList = await waitReport(page, (value) => value.mode === "list"
         && value.rows[0]?.startsWith("Assault on Coruscant"), "the Conflict list");
       assert.equal(conflictList.rows[1], "Assault on Umgul", JSON.stringify(conflictList.rows));
+      // The message screen's scroll buttons (manual p. 79, "arrows at the
+      // top of the message graphic ... read through your messages"; 0x96 at
+      // window (390, 15), 0x9a at (367, 15), FUN_004665f0, enabled per
+      // neighbour by FUN_0046a200): from the newest report 0x96 shows the
+      // next row down, the older one, and 0x9a comes back.
+      await click(page, row(0));
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Assault on Coruscant", "Display Message shows Assault on Coruscant");
+      await click(page, [conflictList.window_left + 390 + 9, conflictList.window_top + 15 + 7]);
+      await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Assault on Umgul", "0x96 steps to the older report");
+      await click(page, [conflictList.window_left + 367 + 9, conflictList.window_top + 15 + 7]);
+      await waitReport(page, (value) => value.mode === "single"
+        && value.viewing_title === "Assault on Coruscant", "0x9a steps back to the newer report");
+      await click(page, showMessage);
+      await waitReport(page, (value) => value.mode === "list", "the Conflict list after stepping");
       // A0's reports were read (font 10, FUN_00469de0): show each once,
       // the older first, and come back with Coruscant chosen.
       for (const [index, title] of [[1, "Assault on Umgul"], [0, "Assault on Coruscant"]]) {

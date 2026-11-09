@@ -1546,7 +1546,47 @@ const cases = [
         (o) => o.enemy_fleets === 0, null, 30_000);
       assert.ok(after.enemy_planet_squadrons <= 2, JSON.stringify(after));
       await frames(page, 10);
-      await shot(page, directory, "squadron-battle-after");
+      const summaryShot = await shot(page, directory, "squadron-battle-after");
+      // A0 empire-game3/battle-result-coruscant (the Empire's simulated
+      // Battle at Coruscant, the same window origin (125, 52)): the scene
+      // (STRATEGY art of an Imperial defeat) and the rail with its five
+      // buttons, every pixel A0's; and the headline, centred with its
+      // record's trailing space (0x7003 "The {1} fleet is defeated. "), sits
+      // where A0's does: A0 x 71..344 of the window, centre 207.5.
+      let summaryA0 = null;
+      const summaryA0Path = path.join(root, ".artifacts/a0-vm/empire-game3/battle-result-coruscant.png");
+      if (faction.name === "empire" && fs.existsSync(summaryA0Path)) {
+        const a0 = PNG.sync.read(fs.readFileSync(summaryA0Path));
+        const port = PNG.sync.read(summaryShot.bytes);
+        const count = (x0, x1, y0, y1) => {
+          let n = 0;
+          for (let y = y0; y < y1; y += 1) for (let x = x0; x < x1; x += 1) {
+            const k = (y * 640 + x) * 4;
+            if ([0, 1, 2].some((c) => a0.data[k + c] !== port.data[k + c])) n += 1;
+          }
+          return n;
+        };
+        const headline = (image) => {
+          let [left, right] = [Infinity, -Infinity];
+          for (let y = 52 + 225; y < 52 + 252; y += 1) for (let x = 125 + 12; x < 125 + 412; x += 1) {
+            const k = (y * 640 + x) * 4;
+            if (image.data[k + 1] > 180 && image.data[k] < 60 && image.data[k + 2] < 60) {
+              [left, right] = [Math.min(left, x - 125), Math.max(right, x - 125)];
+            }
+          }
+          return { left, right, centre: (left + right) / 2 };
+        };
+        summaryA0 = {
+          scene: count(137, 540, 95, 270),
+          rail: count(541, 595, 64, 370),
+          headline_a0: headline(a0),
+          headline_port: headline(port),
+        };
+        assert.equal(summaryA0.scene, 0, `the summary's scene differs from A0 ${JSON.stringify(summaryA0)}`);
+        assert.equal(summaryA0.rail, 0, `the summary's rail differs from A0 ${JSON.stringify(summaryA0)}`);
+        assert.ok(Math.abs(summaryA0.headline_port.centre - summaryA0.headline_a0.centre) <= 1,
+          `the headline's centre ${JSON.stringify(summaryA0)}`);
+      }
       // The Battle Summary (FUN_0046f360): its rail's tabs tip TEXTSTRA
       // 0x1922, 0x1937, 0x1938, 0x1939 and its close box none; on a forces
       // page the four category buttons tip 0x1928..0x1931. A0 tooltip/
@@ -1578,7 +1618,7 @@ const cases = [
           assert.ok(ratio > 0.85 && ratio < 1.15, `${name} tip width ratio ${ratio.toFixed(3)}`);
         }
       }
-      return { before, speed, battle, alertTips, railA0, after, summaryTips };
+      return { before, speed, battle, alertTips, railA0, after, summaryA0, summaryTips };
     },
   },
   {
