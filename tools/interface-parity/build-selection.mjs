@@ -496,6 +496,62 @@ async function quantityAndCancelCase(page, origin, band, directory, faction) {
     a0_class: a0Class };
 }
 
+// The Alliance's Alliance Dreadnaught against A0 build-selection3/ships0
+// (a new Alliance game, Build Ships on Sluis Van, the window at (192, 84)):
+// 44, 33, "176 Days", "0 Days" (FUN_00538220: the class's refined cost and
+// maintenance, one Orbital Shipyard's processing rate 4 times 44). The
+// class's picture in the shown item (window 6..200 by 22..47, above the
+// name) matches A0 pixel for pixel. Cancel closes the window.
+const A0_SHIPS = { file: ".artifacts/a0-vm/build-selection3/ships0.png", x: 192, y: 84 };
+
+async function shipsCase(page, faction, directory) {
+  const read = async () => {
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(150);
+    await frames(page);
+    return production(page);
+  };
+  const ships = (await production(page)).bands.find(({ area }) => area === "ships");
+  await bandOrder(page, ships, "build_row", directory, "ships-build");
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+    null, { timeout: 10_000 });
+  const opened = await read();
+  const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
+  const seen = [];
+  for (let step = 0; step < 12 && (await read()).build_selection_class !== "Alliance Dreadnaught"; step += 1) {
+    seen.push((await read()).build_selection_class);
+    await click(page, { x: origin.x + 79 + 32, y: origin.y + 90 + 9 });
+    await read();
+    await click(page, { x: origin.x + 6 + 97, y: origin.y + 85 + 35 + 70 });
+  }
+  const chosen = await read();
+  const bytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "ships-dreadnaught.png"), bytes);
+  assert.equal(chosen.build_selection_class, "Alliance Dreadnaught", JSON.stringify([seen, chosen]));
+  assert.deepEqual(chosen.build_selection_values, ["44", "33", "176 Days", "0 Days"], JSON.stringify(chosen));
+  const port = PNG.sync.read(bytes);
+  const a0 = PNG.sync.read(fs.readFileSync(path.join(root, A0_SHIPS.file)));
+  let checked = 0;
+  let differing = 0;
+  for (let y = 22; y < 48; y += 1) {
+    for (let x = 6; x < 201; x += 1) {
+      const i = ((origin.y + y) * port.width + origin.x + x) * 4;
+      const j = ((A0_SHIPS.y + y) * a0.width + A0_SHIPS.x + x) * 4;
+      checked += 1;
+      if (port.data[i] !== a0.data[j] || port.data[i + 1] !== a0.data[j + 1] || port.data[i + 2] !== a0.data[j + 2]) {
+        differing += 1;
+      }
+    }
+  }
+  assert.equal(differing, 0, `the Dreadnaught's picture differs from A0 ships0 in ${differing} of ${checked} pixels`);
+  await click(page, { x: origin.x + 141 + 33, y: origin.y + 224 + 16 });
+  const cancelled = await read();
+  assert.equal(cancelled.build_selection_open, false, "Cancel closes Build Selection");
+  assert.equal(cancelled.bands.find(({ area }) => area === "ships").queued, ships.queued, "Cancel builds nothing");
+  return { class: chosen.build_selection_class, values: chosen.build_selection_values, picture: { checked, differing } };
+}
+
 // A0 build-selection2/09 (Windows 10 VM, the Empire's Stop on Coruscant's
 // troops band, day 144): the confirmation at (148, 52).
 const A0_STOP = { file: "09-stopped.png", x: 148, y: 52 };
@@ -1183,6 +1239,9 @@ async function inspect(server, source, faction, executable) {
     await page.mouse.move(2, 2);
     await frames(page);
 
+    const shipsA0 = faction.byte === 1 && fs.existsSync(path.join(root, A0_SHIPS.file))
+      ? await shipsCase(page, faction, directory) : null;
+
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
     // (FUN_005399e0), all enabled on the player's own yard as in A0
@@ -1392,6 +1451,7 @@ async function inspect(server, source, faction, executable) {
       idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,
+      ships_a0: shipsA0,
       built: { product: built.product, queued: built.queued },
       comparisons,
       textChecks,
