@@ -130,4 +130,13 @@ fn kessel_to_yavin_deployment_days_match_a0() {
         })
         .expect("a mine is listed");
     assert_eq!(rebellion_core::delivery::transit_days(&world, mine, kessel, yavin), 96);
+    // A0 build-selection4/27: a Refinery on the same band, 96 Days too.
+    let refinery = listed_classes(&world, &ResearchState::new(), ProductionArea::ConstructionYard, true)
+        .into_iter()
+        .find(|&kind| match kind {
+            BuildableKind::ProductionFacility(build) => world.buildable_classes[&build.class].name == "Refinery",
+            _ => false,
+        })
+        .expect("a refinery is listed");
+    assert_eq!(rebellion_core::delivery::transit_days(&world, refinery, kessel, yavin), 96);
 }

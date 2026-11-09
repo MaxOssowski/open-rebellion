@@ -551,10 +551,11 @@ pub fn requested() -> Option<FixtureRequest> {
     reason = "Keep the deterministic browser fixture setup in its existing order."
 )]
 /// The deliveries a scenario starts with, after [`apply`]. Build Selection:
-/// an Orbital Shipyard and a Mine travelling from the secondary to the
-/// primary, the Shipyards and Mines pages' third cells (FUN_00458fe0:
-/// base + 3 en route; A0 personnel-states/34, Mon Calamari's 9009, and
-/// build-selection4/26, Yavin's mine en route after its built ones, 9004).
+/// an Orbital Shipyard, a Mine and a Refinery travelling from the
+/// secondary to the primary, their pages' third cells (FUN_00458fe0:
+/// base + 3 en route; A0 personnel-states/34, Mon Calamari's 9009,
+/// build-selection4/26, Yavin's mine en route after its built ones, 9004,
+/// and build-selection4/29, Yavin's refinery en route, 9033).
 /// Their departure day lies past any the gate reaches, so they stay en
 /// route.
 pub fn place_deliveries(
@@ -587,6 +588,9 @@ pub fn place_deliveries(
             )),
             departure(rebellion_core::manufacturing::BuildableKind::ProductionFacility(
                 build(0x2c00_0001),
+            )),
+            departure(rebellion_core::manufacturing::BuildableKind::ProductionFacility(
+                build(0x2d00_0002),
             )),
         ],
     );
@@ -8077,10 +8081,11 @@ mod tests {
     }
 
     // FUN_00458fe0: an object en route takes its base + 3; the Build
-    // Selection scenario sends a shipyard and a mine to the primary (A0
-    // personnel-states/34, 9009; build-selection4/26, 9004).
+    // Selection scenario sends a shipyard, a mine and a refinery to the
+    // primary (A0 personnel-states/34, 9009; build-selection4/26, 9004;
+    // build-selection4/29, 9033).
     #[test]
-    fn the_build_selection_scenario_sends_a_shipyard_and_a_mine_to_the_primary() {
+    fn the_build_selection_scenario_sends_a_shipyard_a_mine_and_a_refinery_to_the_primary() {
         use rebellion_render::manufacturing_window::{page_cells, FacilityPage};
         for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
             let request = request(Scenario::BuildSelection, faction);
@@ -8089,10 +8094,10 @@ mod tests {
             let primary = world.systems.keys().next().unwrap();
             let mut deliveries = rebellion_core::delivery::DeliveryState::default();
             place_deliveries(request, world, &mut deliveries);
-            let [shipyard, mine] = deliveries.en_route() else {
+            let [shipyard, mine, refinery] = deliveries.en_route() else {
                 panic!("{:?}", deliveries.en_route());
             };
-            for delivery in [shipyard, mine] {
+            for delivery in [shipyard, mine, refinery] {
                 assert_eq!(delivery.destination, primary);
                 assert!(delivery.arrival_tick > 100_000);
             }
@@ -8112,6 +8117,10 @@ mod tests {
             // then the one en route, then the deposits).
             let mines: Vec<u32> = cells(FacilityPage::Mines).iter().map(|cell| cell.picture).collect();
             assert_eq!(mines[..3], [9_001, 9_004, 9_005], "{mines:?}");
+            // A0 build-selection4/29: Yavin's refinery en route, 9033.
+            let refineries: Vec<u32> =
+                cells(FacilityPage::Refineries).iter().map(|cell| cell.picture).collect();
+            assert_eq!(refineries, [9_030, 9_033], "{refineries:?}");
             let mut none = rebellion_core::delivery::DeliveryState::default();
             place_deliveries(
                 super::tests::request(Scenario::BuildSelectionDestination, faction),

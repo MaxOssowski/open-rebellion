@@ -1353,6 +1353,8 @@ async function inspect(server, source, faction, executable) {
     // travelling to the system follows them in the third cell, base +
     // 3, 9004 (A0 build-selection4/26), and the first empty deposit, 9005,
     // at the fourth cell's corner, the second row's first (8, 77 + 40).
+    // A Refinery travelling to the system takes the Refineries page's
+    // third cell, base + 3, 9033 (A0 build-selection4/29).
     // An Orbital Shipyard travelling to the system follows in the
     // Shipyards page's third cell: base + 3, 9009 (A0 personnel-states/34).
     const building = faction.byte === 1 ? 2 : 1;
@@ -1361,6 +1363,7 @@ async function inspect(server, source, faction, executable) {
       [32, 9022, "construction-yards"],
       [-32, 9006 + 3, "shipyard-en-route", [147, 79]],
       [64, 9030, "refineries"], [64, 9030 + building, "refinery-building", second],
+      [64, 9030 + 3, "refinery-en-route", [147, 79]],
       [96, 9001, "mines"], [96, 9001 + building, "mine-building", second], [96, 9001 + 3, "mine-en-route", [147, 79]],
       [96, 9005, "deposit", [8, 117]],
       [0, 9014, "training"], [0, 9018 + building, "advanced-training-building", second]]) {
@@ -1406,7 +1409,11 @@ async function inspect(server, source, faction, executable) {
             : label === "mine-building" ? [73, 86, a0Kessel("17-kessel-mines-page-mine-building.png"), [147, 79]]
               // A0 build-selection4/26: Yavin's Mines page (the window at
               // (314, 86)), a mine en route after two built mines.
-              : label === "mine-en-route" ? [314, 86, a0Kessel("26-yavin-mines-page-mine-en-route-day194.png"), [147, 79]] : null;
+              : label === "mine-en-route" ? [314, 86, a0Kessel("26-yavin-mines-page-mine-en-route-day194.png"), [147, 79]]
+                // A0 build-selection4/29: Yavin's Refineries page, its only
+                // refinery en route in the first cell.
+                : label === "refinery-en-route"
+                  ? [314, 86, a0Kessel("29-yavin-refineries-page-refinery-en-route-day287.png"), [9, 79]] : null;
       if (a0At && faction.byte === 1 && fs.existsSync(a0At[2])) {
         const a0 = PNG.sync.read(fs.readFileSync(a0At[2]));
         entry.a0_differing = 0;
