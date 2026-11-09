@@ -3202,10 +3202,12 @@
         {
           "id": "CMD-08-C004",
           "requirement": "summary",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Not yet identified against the manual's summary state."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-summary-headline-and-message-arrows/"
+          ],
+          "note": "Not yet identified against the manual's summary state. 2026-11-09: identified: the manual's Message Summary screen (p. 79, Fig. 3.19) is the Message Index's mode 2, the open message, compared with A0 for many messages in message-display.mjs (picture, title, text, rail), with Display Message back to the list and Display to the subject. Its arrows 0x96/0x9a (FUN_004665f0, FUN_0046a200) now step through the Conflict list in message-display.mjs (Linux): Assault on Coruscant -> Assault on Umgul and back. Which arrow goes to the older message is inferred from the art (and agrees with the 2026-11-08 VM handling), with no A0 capture of a step. Batch b148: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T02-31-18-762Z-605154 148 of 148, workspace tests 3492 passed, 4 mutants caught."
         },
         {
           "id": "CMD-08-C005",
@@ -8855,9 +8857,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-enemy-panel-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-tactical-a0-comparisons/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-tactical-a0-comparisons/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-summary-headline-and-message-arrows/"
           ],
-          "note": "Get Immediate Result routes to results in the browser (battle-options-simulate-route); A0 TAC-01-C006 is captured but no recorded comparison of the simulated result. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture. 2026-11-09 (b147): run.mjs production-battle-options-presentation (Alliance, 640x480, Linux) presses Get Immediate Result and compares the Battle Summary's rail and five buttons (x 476..525, y 60..344) with this capture: 0 pixels differ. The comparison found the Display tab's resting art 10791 unkeyed (its 63 blue corner pixels; A0 shows the frame's grey); bmp_cache now keys it. The frame is checked against STRATEGY 10335 at A0's origin and the texts word for word (unit test); the fixture's battle and scene are not A0's. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
+          "note": "Get Immediate Result routes to results in the browser (battle-options-simulate-route); A0 TAC-01-C006 is captured but no recorded comparison of the simulated result. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture. 2026-11-09 (b147): run.mjs production-battle-options-presentation (Alliance, 640x480, Linux) presses Get Immediate Result and compares the Battle Summary's rail and five buttons (x 476..525, y 60..344) with this capture: 0 pixels differ. The comparison found the Display tab's resting art 10791 unkeyed (its 63 blue corner pixels; A0 shows the frame's grey); bmp_cache now keys it. The frame is checked against STRATEGY 10335 at A0's origin and the texts word for word (unit test); the fixture's battle and scene are not A0's. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-09 (b148): the headline's place too (trailing space kept; see TAC-07-C001).",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -10194,9 +10197,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-windows-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-battle-window-underlay-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-battle-window-underlay-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-summary-headline-and-message-arrows/"
           ],
-          "note": "Summary page origin, rail 10820/10821, title/headline rows (FUN_0046f360) and TEXTSTRA 0x7002-0x700f match A0 TAC-07-C001; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-09 (b146): the Battle Summary is drawn over the same live strategy frame, as A0 TAC-01-C006 and TAC-01-C013 show the sector window and rail behind it; a fixture battle with no strategy frame keeps the shell bitmap.",
+          "note": "Summary page origin, rail 10820/10821, title/headline rows (FUN_0046f360) and TEXTSTRA 0x7002-0x700f match A0 TAC-07-C001; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-09 (b146): the Battle Summary is drawn over the same live strategy frame, as A0 TAC-01-C006 and TAC-01-C013 show the sector window and rail behind it; a fixture battle with no strategy frame keeps the shell bitmap. 2026-11-09 (b148): the headline keeps its record's trailing space (TEXTSTRA RCDATA 0x7002..0x7004 end '. ' before 0x01), which GDI measures when centring: A0 (TAC-01-C006, TAC-01-C013, empire-game3/battle-result-coruscant) centres it on 207.5 where the title is on 212; the port now 208 (211 before). fleet-window.mjs squadron-battle (Empire, Linux) compares the Summary with A0 battle-result-coruscant: scene and rail 0 pixels, headline centre within 1. Batch b148: 23 of 23 interface gates on Linux, tactical matrix 2026-11-09T02-31-18-762Z-605154 148 of 148, workspace tests 3492 passed, 4 mutants caught.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
