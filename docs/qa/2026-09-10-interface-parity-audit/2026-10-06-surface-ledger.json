@@ -2011,16 +2011,17 @@
         {
           "id": "CMD-03-C001",
           "requirement": "ten-system sector",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-names-and-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-track-visibility/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-window-background/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-planet-markers/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-moddell-sector-window-a0/"
           ],
-          "note": "A0 sector-a.png shows the ten-system Moddell sector; its title, names, tracks, markers and shading were each matched in the Linux sector-quadrants.mjs runs, but the whole ten-system window was never compared with A0 in one capture.",
+          "note": "A0 sector-a.png shows the ten-system Moddell sector; its title, names, tracks, markers and shading were each matched in the Linux sector-quadrants.mjs runs, but the whole ten-system window was never compared with A0 in one capture. 2026-11-09: the whole Moddell window is now compared with A0 sector-a in one capture (sector-windows.mjs, Linux Chromium): frame and buttons 0 pixels, title ink equal, nine planet pictures 0 pixels, nine white names within the accepted text deviation, background differing only in 15 marker-sized patches (galaxy markers of each game). Vjun's Imperial state and A0's cursor differ by game state; Vjun's state art was matched in 2026-10-28 evidence.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
