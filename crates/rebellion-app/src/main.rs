@@ -9250,6 +9250,28 @@ async fn main() {
             system_cursor_hidden = targeting_cursor_drawn;
         }
 
+        // The strategy view as it stands, for the Battle Alert and Battle
+        // Results windows the next battle opens over it (A0 battle-clean/00,
+        // message-rail/battle-averam-result). A copy on the GPU, made once
+        // the frame's batches are drawn.
+        if game_mode == GameMode::Galaxy {
+            let (width, height) = (screen_width(), screen_height());
+            let fits = tactical_state
+                .strategy_underlay
+                .as_ref()
+                .is_some_and(|texture| texture.width() == width && texture.height() == height);
+            if !fits {
+                tactical_state.strategy_underlay =
+                    Some(render_target(width as u32, height as u32).texture);
+            }
+            if let Some(texture) = tactical_state.strategy_underlay.as_ref() {
+                unsafe {
+                    get_internal_gl().flush();
+                }
+                texture.grab_screen();
+            }
+        }
+
         next_frame().await;
     }
 }

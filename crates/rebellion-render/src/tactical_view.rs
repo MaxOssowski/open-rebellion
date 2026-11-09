@@ -726,6 +726,12 @@ enum TacticalCameraFollow {
 pub struct TacticalState {
     /// The current battle session (None when not in combat).
     pub session: Option<BattleSession>,
+    /// The last strategy-view frame, copied by the app at the end of each
+    /// galaxy frame: the Battle Alert and the Battle Results windows sit on
+    /// the live command center (A0 battle-clean/00, message-rail/
+    /// battle-averam-result: its rail icons, droid and status bar), not on
+    /// the bare shell bitmap.
+    pub strategy_underlay: Option<Texture2D>,
     /// Ship being dragged during placement (index in session.ships).
     pub dragging_ship: Option<usize>,
     /// Mouse offset from ship center during drag.
@@ -886,6 +892,7 @@ impl Default for TacticalState {
     fn default() -> Self {
         Self {
             session: None,
+            strategy_underlay: None,
             dragging_ship: None,
             drag_offset: (0.0, 0.0),
             camera_x: 0.0,
@@ -9319,20 +9326,7 @@ fn draw_original_battle_alert(
     let skin = battle_alert_skin(player_alliance);
     let text_color = battle_window_text_color(player_alliance);
 
-    clear_background(BLACK);
-    draw_original_bitmap(
-        cache,
-        DllSource::Strategy,
-        if player_alliance {
-            resources::strategy::ALLIANCE_COMMAND_CENTER_SHELL
-        } else {
-            resources::strategy::EMPIRE_COMMAND_CENTER_SHELL
-        },
-        canvas,
-        0.0,
-        0.0,
-        Some(Rect::new(0.0, 0.0, 640.0, 480.0)),
-    );
+    draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
     draw_strategy_bitmap(
         cache,
         skin.frame,
@@ -9512,6 +9506,49 @@ fn draw_original_battle_alert(
     TacticalAction::None
 }
 
+/// What the Battle Alert and Battle Results windows sit on: the strategy
+/// view as it last stood (`underlay`, copied at the screen's own size), or,
+/// with none (a battle a fixture opens directly), the command center's
+/// shell bitmap.
+fn draw_battle_window_backdrop(
+    cache: &mut BmpCache,
+    canvas: TacticalCanvas,
+    player_alliance: bool,
+    underlay: Option<&Texture2D>,
+) {
+    clear_background(BLACK);
+    if let Some(underlay) = underlay.filter(|texture| {
+        (texture.width() - screen_width()).abs() < 0.5 && (texture.height() - screen_height()).abs() < 0.5
+    }) {
+        // A screen copy keeps the framebuffer's bottom-up rows.
+        draw_texture_ex(
+            underlay,
+            0.0,
+            0.0,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(screen_width(), screen_height())),
+                flip_y: true,
+                ..Default::default()
+            },
+        );
+        return;
+    }
+    draw_original_bitmap(
+        cache,
+        DllSource::Strategy,
+        if player_alliance {
+            resources::strategy::ALLIANCE_COMMAND_CENTER_SHELL
+        } else {
+            resources::strategy::EMPIRE_COMMAND_CENTER_SHELL
+        },
+        canvas,
+        0.0,
+        0.0,
+        Some(Rect::new(0.0, 0.0, 640.0, 480.0)),
+    );
+}
+
 fn draw_original_battle_results(
     state: &mut TacticalState,
     cache: &mut BmpCache,
@@ -9526,21 +9563,7 @@ fn draw_original_battle_results(
     let skin = battle_result_skin(player_alliance);
     let text_color = battle_window_text_color(player_alliance);
 
-    clear_background(BLACK);
-    let shell = if player_alliance {
-        resources::strategy::ALLIANCE_COMMAND_CENTER_SHELL
-    } else {
-        resources::strategy::EMPIRE_COMMAND_CENTER_SHELL
-    };
-    draw_original_bitmap(
-        cache,
-        DllSource::Strategy,
-        shell,
-        canvas,
-        0.0,
-        0.0,
-        Some(Rect::new(0.0, 0.0, 640.0, 480.0)),
-    );
+    draw_battle_window_backdrop(cache, canvas, player_alliance, state.strategy_underlay.as_ref());
     draw_strategy_bitmap(
         cache,
         skin.frame,

@@ -1490,7 +1490,23 @@ const cases = [
       const battle = await until(page, "the squadrons go up for the battle",
         (o) => o.enemy_planet_squadrons === 0 && o.enemy_fleets === 1, null, 60_000);
       await frames(page, 30);
-      await shot(page, directory, "squadron-battle");
+      const alertShot = await shot(page, directory, "squadron-battle");
+      // The Battle Alert sits on the live command center, not on the bare
+      // shell bitmap (A0 empire-game3/battle-alert-coruscant, a new Empire
+      // game, day 629): the Empire's message rail beside the window, every
+      // pixel A0's (no message unread in either).
+      let railA0 = null;
+      const alertA0 = path.join(root, ".artifacts/a0-vm/empire-game3/battle-alert-coruscant.png");
+      if (faction.name === "empire" && fs.existsSync(alertA0)) {
+        const a0 = PNG.sync.read(fs.readFileSync(alertA0));
+        const port = PNG.sync.read(alertShot.bytes);
+        railA0 = 0;
+        for (let y = 100; y < 340; y += 1) for (let x = 606; x < 640; x += 1) {
+          const k = (y * 640 + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[k + c] !== port.data[k + c])) railA0 += 1;
+        }
+        assert.equal(railA0, 0, `the alert's rail differs from A0 in ${railA0} pixels`);
+      }
       // FUN_0044f860's tips on the Battle Alert (TEXTSTRA 0x1922..0x1925 on
       // the tabs, 0x1926 Simulate Results, 0x1927 Take Command), at the
       // window's origin (tactical_view.rs BATTLE_WINDOW_*).
@@ -1562,7 +1578,7 @@ const cases = [
           assert.ok(ratio > 0.85 && ratio < 1.15, `${name} tip width ratio ${ratio.toFixed(3)}`);
         }
       }
-      return { before, speed, battle, alertTips, after, summaryTips };
+      return { before, speed, battle, alertTips, railA0, after, summaryTips };
     },
   },
   {
