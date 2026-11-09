@@ -8894,9 +8894,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-windows-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-layout/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-alert-scroll-bar/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-alert-scroll-bar/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-battle-window-underlay-a0/"
           ],
-          "note": "Battle Alert entry matches A0 TAC-01-C010 (window origin, frame 10710, texts); production-battle-alert-entry Take Command transition passes on Linux Arch Chromium 155.",
+          "note": "Battle Alert entry matches A0 TAC-01-C010 (window origin, frame 10710, texts); production-battle-alert-entry Take Command transition passes on Linux Arch Chromium 155. 2026-11-09 (b146): the Battle Alert sits on the live command center, as A0 empire-game3/battle-alert-coruscant (day 629) shows: the app copies the finished strategy frame (TacticalState::strategy_underlay) and the alert draws over it instead of the bare shell bitmap. fleet-window.mjs squadron-battle (Linux, Empire) compares the message rail beside the window with A0: 0 pixels differ (2425 on the b145 build). Batch b146: 23 of 23 gates; tactical matrix 2026-11-09T00-21-31-675Z-329774 148 of 148.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -10181,9 +10182,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-battle-windows-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-battle-window-underlay-a0/"
           ],
-          "note": "Summary page origin, rail 10820/10821, title/headline rows (FUN_0046f360) and TEXTSTRA 0x7002-0x700f match A0 TAC-07-C001; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28).",
+          "note": "Summary page origin, rail 10820/10821, title/headline rows (FUN_0046f360) and TEXTSTRA 0x7002-0x700f match A0 TAC-07-C001; Browser: tactical matrix 148/148 on Linux Arch Chromium 155 (2026-10-28). 2026-11-09 (b146): the Battle Summary is drawn over the same live strategy frame, as A0 TAC-01-C006 and TAC-01-C013 show the sector window and rail behind it; a fixture battle with no strategy frame keeps the shell bitmap.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
