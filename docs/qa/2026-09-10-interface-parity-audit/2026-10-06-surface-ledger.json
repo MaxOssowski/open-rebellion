@@ -6257,16 +6257,17 @@
         {
           "id": "OBJ-08-C001",
           "requirement": "ship",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-move/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-dreadnaught-a0/"
           ],
-          "note": "A shipyard band lists researched ships (FUN_00537ff0 producer type 0 -> 0x28; listed_classes unit tests). Build Selection is ported (FUN_00437df0/FUN_00438500, 210x261 over 10800, strip 10801/10802); build-selection.mjs on Arch Chromium 155 still fails 6 of 28,646 chrome pixels in its 'opened' case. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests.",
+          "note": "A shipyard band lists researched ships (FUN_00537ff0 producer type 0 -> 0x28; listed_classes unit tests). Build Selection is ported (FUN_00437df0/FUN_00438500, 210x261 over 10800, strip 10801/10802); build-selection.mjs on Arch Chromium 155 still fails 6 of 28,646 chrome pixels in its 'opened' case. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection3/ships0 (Alliance Dreadnaught on Sluis Van, one shipyard): 44, 33, '176 Days', '0 Days'; build-selection.mjs (Alliance, Linux) opens Build on the ships band, steps to the Dreadnaught and finds the four values exactly and its picture 0 of 5070 px from A0 at the same window place (192, 84). The 'opened' chrome now differs in 0 of 28,496 pixels.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
