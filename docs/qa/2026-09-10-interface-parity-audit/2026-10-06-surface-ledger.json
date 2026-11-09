@@ -3519,13 +3519,14 @@
         {
           "id": "CMD-09-C003",
           "requirement": "mine en route",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "crates/rebellion-render/src/manufacturing_window.rs"
+            "crates/rebellion-render/src/manufacturing_window.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-mine-en-route-a0/"
           ],
-          "note": "The facility page draws mine en route as STRATEGY 9004 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page.",
+          "note": "The facility page draws mine en route as STRATEGY 9004 (FUN_00458fe0: base + 0 built, 1 or 2 by side under construction, 3 en route), unit-tested; no A0 capture of this state and no browser check of the facility page. 2026-11-09: A0 build-selection4/26 (new Alliance game, Yavin's Mines page, day 194): a mine en route from Kessel in the third cell after two built mines; STRATEGY 9004 matches it, 0 of 2345 opaque pixels differ. The Build Selection fixture now sends a Mine to the primary too, and build-selection.mjs (Linux, both sides) finds 9004 exactly in the third cell, the deposits after it.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
