@@ -1385,7 +1385,16 @@ async function inspect(server, source, faction, executable) {
       // A0 personnel-states/34: Mon Calamari's Shipyards page (the window
       // at (314, 86)) shows a shipyard en route, 9009, at (9, 79).
       const a0EnRoute = path.join(root, ".artifacts/a0-vm/personnel-states/34-mon-calamari-shipyards-day303.png");
-      const a0At = label === "shipyards" ? [145, 86, a0Page] : label === "shipyard-en-route" ? [314, 86, a0EnRoute] : null;
+      // A0 build-selection4/18 and 17 (a new Alliance game, Kessel's window
+      // at (73, 86)): an Orbital Shipyard under construction in the
+      // Shipyards page's second cell (78, 79), after its built one, and a
+      // mine under construction in the Mines page's third cell (147, 79),
+      // after its two built mines (FUN_00458fe0: base + 2 for side 1).
+      const a0Kessel = (file) => path.join(root, ".artifacts/a0-vm/build-selection4", file);
+      const a0At = label === "shipyards" ? [145, 86, a0Page, [9, 79]]
+        : label === "shipyard-en-route" ? [314, 86, a0EnRoute, [9, 79]]
+          : label === "shipyard-building" ? [73, 86, a0Kessel("18-kessel-shipyards-page-shipyard-building.png"), [78, 79]]
+            : label === "mine-building" ? [73, 86, a0Kessel("17-kessel-mines-page-mine-building.png"), [147, 79]] : null;
       if (a0At && faction.byte === 1 && fs.existsSync(a0At[2])) {
         const a0 = PNG.sync.read(fs.readFileSync(a0At[2]));
         entry.a0_differing = 0;
@@ -1393,7 +1402,7 @@ async function inspect(server, source, faction, executable) {
           for (let x = 0; x < 67; x += 1) {
             const from = (y * 67 + x) * 4;
             if ((bitmap.data[from] << 16 | bitmap.data[from + 1] << 8 | bitmap.data[from + 2]) === bitmap.key) continue;
-            const at = ((a0At[1] + 79 + y) * a0.width + a0At[0] + 9 + x) * 4;
+            const at = ((a0At[1] + a0At[3][1] + y) * a0.width + a0At[0] + a0At[3][0] + x) * 4;
             if (a0.data[at] !== bitmap.data[from] || a0.data[at + 1] !== bitmap.data[from + 1]
               || a0.data[at + 2] !== bitmap.data[from + 2]) entry.a0_differing += 1;
           }
