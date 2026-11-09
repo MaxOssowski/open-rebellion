@@ -6273,15 +6273,16 @@
         {
           "id": "OBJ-08-C002",
           "requirement": "fighter",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
           ],
-          "note": "Fighters are listed with ships for a shipyard (a_shipyard_lists_its_sides_researched_ships_and_fighters). No browser case picks a fighter class. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests.",
+          "note": "Fighters are listed with ships for a shipyard (a_shipyard_lists_its_sides_researched_ships_and_fighters). No browser case picks a fighter class. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection4 (new Alliance game, Kessel, one shipyard): X-wing and Y-wing 5, 4, '20 Days', '0 Days'; build-selection.mjs (Alliance, Linux) steps to each and finds the four values exactly and the picture 0 of 5070 px from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6316,27 +6317,29 @@
         {
           "id": "OBJ-08-C005",
           "requirement": "facility",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
           ],
-          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests.",
+          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection4/04 (Kessel, one Construction Yard): Construction Yard 10, 10, '40 Days', '0 Days'; build-selection.mjs finds the values exactly and the picture 0 px from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-08-C006",
           "requirement": "defense",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
           ],
-          "note": "Defense classes 0x22..0x25 come from DEFFACSD (BuildableKind::DefenseFacility); unit tests only. No A0 capture of this state.",
+          "note": "Defense classes 0x22..0x25 come from DEFFACSD (BuildableKind::DefenseFacility); unit tests only. No A0 capture of this state. 2026-11-09: A0 build-selection4/05..07: GenCore Level I 12/12/'48 Days', KDY-150 4/4/'16 Days', LNR Series I 7/7/'28 Days', all '0 Days'; build-selection.mjs finds each exactly with the picture 0 px from A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6348,9 +6351,10 @@
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
           ],
-          "note": "Only researched classes are listed (FUN_0052e580) and Confirm is enabled when FUN_00538220 accepts the order; exercised by both Linux browser gates, the chrome gate passes since 2026-10-30 and was compared with A0 15-t01; no A0 capture of other classes exists.",
+          "note": "Only researched classes are listed (FUN_0052e580) and Confirm is enabled when FUN_00538220 accepts the order; exercised by both Linux browser gates, the chrome gate passes since 2026-10-30 and was compared with A0 15-t01; no A0 capture of other classes exists. 2026-11-09: seven more classes (ships, fighters, facilities, defenses) show A0's values in build-selection.mjs; the class list now opens scrolled as A0 build-selection4/08 (the shown class last of two). Confirm's state per class is not asserted.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
