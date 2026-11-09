@@ -602,12 +602,14 @@ fn shell_layers(faction: CockpitFaction, mode: IndexMode) -> Vec<(u32, (f32, f32
         CockpitFaction::Alliance => (INDEX_BASE_ALLIANCE, INDEX_RAIL_ALLIANCE),
         CockpitFaction::Empire => (INDEX_BASE_EMPIRE, INDEX_RAIL_EMPIRE),
     };
-    let mut layers = vec![
-        (base, (0.0, 0.0, MESSAGE_INDEX_WIDTH, MESSAGE_INDEX_HEIGHT)),
-        (rail, (412.0, 0.0, 58.0, 330.0)),
-    ];
-    match mode {
-        IndexMode::List => layers.push((
+    // The panes lie under the frame: the base is keyed on its blue (252),
+    // and its corner arcs inside the panes' rectangles show in A0. Every
+    // non-blue base pixel over 10822 is the base's own colour in A0
+    // empire-game3/index-joins-chosen (86 of 86, ignoring one where the two
+    // agree) and message-index/category-1-day228 (498 of 498), and over
+    // 0x2ab5 / 0x2ab4 in empire-game3/joins-enemy (27 and 45).
+    let mut layers = match mode {
+        IndexMode::List => vec![(
             INDEX_CONTENT,
             (
                 INDEX_CONTENT_X,
@@ -615,9 +617,13 @@ fn shell_layers(faction: CockpitFaction, mode: IndexMode) -> Vec<(u32, (f32, f32
                 INDEX_CONTENT_WIDTH,
                 INDEX_CONTENT_HEIGHT,
             ),
-        )),
-        IndexMode::SingleMessage => layers.extend([MESSAGE_TITLE_STRIP, MESSAGE_TEXT_PANE]),
-    }
+        )],
+        IndexMode::SingleMessage => vec![MESSAGE_TITLE_STRIP, MESSAGE_TEXT_PANE],
+    };
+    layers.extend([
+        (base, (0.0, 0.0, MESSAGE_INDEX_WIDTH, MESSAGE_INDEX_HEIGHT)),
+        (rail, (412.0, 0.0, 58.0, 330.0)),
+    ]);
     layers
 }
 
@@ -3495,6 +3501,28 @@ mod tests {
     }
 
     #[test]
+    fn the_frames_corner_arcs_lie_over_the_panes() {
+        // A0 empire-game3/index-joins-chosen and message-index/
+        // category-1-day228 show the base's (10336 / 10335, keyed on blue)
+        // corner arcs inside 10822's rectangle; empire-game3/joins-enemy
+        // shows them over 0x2ab5 and 0x2ab4.
+        for faction in [CockpitFaction::Alliance, CockpitFaction::Empire] {
+            for mode in [IndexMode::List, IndexMode::SingleMessage] {
+                let layers = shell_layers(faction, mode);
+                let base = layers
+                    .iter()
+                    .position(|(_, (x, y, _, _))| *x == 0.0 && *y == 0.0)
+                    .expect("the base");
+                let last_pane = layers
+                    .iter()
+                    .rposition(|(_, (x, _, _, _))| *x == 12.0)
+                    .expect("a pane");
+                assert!(last_pane < base, "{faction:?} {mode:?}: {layers:?}");
+            }
+        }
+    }
+
+    #[test]
     fn mode_two_shows_the_message_pane_without_the_list_or_its_controls() {
         // FUN_004665f0 panes: 0x32 holds the list content 10822; 0x34 the
         // title strip 0x2ab5 at (12, 14) and the text area 0x2ab4 at
@@ -3508,18 +3536,18 @@ mod tests {
         assert_eq!(
             ids(IndexMode::List),
             [
+                (10_822, 12.0, 13.0),
                 (10_335, 0.0, 0.0),
-                (10_820, 412.0, 0.0),
-                (10_822, 12.0, 13.0)
+                (10_820, 412.0, 0.0)
             ]
         );
         assert_eq!(
             ids(IndexMode::SingleMessage),
             [
-                (10_335, 0.0, 0.0),
-                (10_820, 412.0, 0.0),
                 (10_933, 12.0, 14.0),
-                (10_932, 12.0, 232.0)
+                (10_932, 12.0, 232.0),
+                (10_335, 0.0, 0.0),
+                (10_820, 412.0, 0.0)
             ]
         );
         // The text area sits inside the black pane.

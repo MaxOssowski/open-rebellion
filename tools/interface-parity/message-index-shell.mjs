@@ -171,16 +171,20 @@ function sourceIdentity(source) {
 }
 
 function composeExpected(source, faction, pressedCommand = null) {
-  const expected = resource(source, faction.base, dimensions.width, dimensions.height);
   // The base keys out its blue over the window's black background: the
   // 470 by 331 window (FUN_00466350) shows its keyed last row black in A0
-  // modal2/17-msg (screen row 382).
-  for (let offset = 0; offset < expected.data.length; offset += 4) {
-    const [red, green, blue] = expected.data.subarray(offset, offset + 3);
-    if (red === 0 && green === 0 && blue === 255) expected.data.set([0, 0, 0], offset);
+  // modal2/17-msg (screen row 382). The list pane 10822 lies under the
+  // base: A0 empire-game3/index-joins-chosen and message-index/
+  // category-1-day228 show the base's corner arcs inside the pane.
+  const expected = new PNG({ width: dimensions.width, height: dimensions.height });
+  for (let offset = 0; offset < expected.data.length; offset += 4) expected.data.set([0, 0, 0, 255], offset);
+  blit(expected, resource(source, 10822, 400, 306), 12, 13);
+  const base = resource(source, faction.base, dimensions.width, dimensions.height);
+  for (let offset = 0; offset < base.data.length; offset += 4) {
+    const [red, green, blue] = base.data.subarray(offset, offset + 3);
+    if (!(red === 0 && green === 0 && blue === 255)) expected.data.set(base.data.subarray(offset, offset + 4), offset);
   }
   blit(expected, resource(source, faction.rail, 58, 330), 412, 0);
-  blit(expected, resource(source, 10822, 400, 306), 12, 13);
   for (const control of controls) {
     const [normal, pressed] = resourcesFor(control, faction);
     const selected = control.command === pressedCommand ? pressed : normal;

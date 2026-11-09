@@ -697,7 +697,47 @@ async function run(browser, base, faction) {
           assert.deepEqual(joinsChecksE, { picture_a0: 0, title_image_a0: 0, rail_a0: 0 },
             JSON.stringify(joinsChecksE));
           await click(page, showMessage);
-          await waitReport(page, (value) => value.mode === "list", "the Empire's Popular Support list after joins");
+          const listJE = await waitReport(page, (value) => value.mode === "list", "the Empire's Popular Support list after joins");
+          // The Empire's list with Commenor Joins Enemy chosen (A0
+          // empire-game3/index-joins-chosen, the same game, All Messages
+          // shown): the title strip, the rail and the chosen row's head.
+          {
+            await click(page, [listJE.window_left + 41 + 8, listJE.window_top + 64 + 4]);
+            const allJE = await waitReport(page, (value) => value.mode === "list"
+              && value.rows.length > listJE.rows.length, "the Empire's All Messages list after joins");
+            await page.mouse.move(2, 2);
+            await frames(page);
+            await shot("joins-list-empire");
+            const listShot = PNG.sync.read(await page.screenshot());
+            const a0L = PNG.sync.read(await fs.readFile(path.join(ROOT,
+              ".artifacts/a0-vm/empire-game3/index-joins-chosen.png")));
+            const [leftL, topL] = [Math.round(listJE.window_left), Math.round(listJE.window_top)];
+            const regionL = (x0, y0, x1, y1) => {
+              let differ = 0;
+              for (let y = y0; y < y1; y += 1) {
+                for (let x = x0; x < x1; x += 1) {
+                  const i = ((topL + y) * 640 + leftL + x) * 4;
+                  const j = ((52 + y) * 640 + 125 + x) * 4;
+                  if ([0, 1, 2].some((c) => listShot.data[i + c] !== a0L.data[j + c])) differ += 1;
+                }
+              }
+              return differ;
+            };
+            // The rows differ (the fixture's history is not A0's game), and
+            // the white titles' anti-aliasing is the accepted font deviation;
+            // the frame's corner arcs over the list pane (the base 10336,
+            // keyed on blue, lies over 10822) and the tabs must match.
+            const listChecksE = {
+              corner_left_a0: regionL(0, 0, 30, 22),
+              corner_right_a0: regionL(380, 0, 414, 40),
+              tabs_a0: regionL(0, 44, 414, 88),
+              rail_a0: regionL(414, 11, 468, 296),
+            };
+            captureChecks.joins_list_empire = listChecksE;
+            assert.deepEqual(listChecksE,
+              { corner_left_a0: 0, corner_right_a0: 0, tabs_a0: 0, rail_a0: 0 },
+              JSON.stringify(listChecksE));
+          }
         }
         // The Empire's Maintenance Shortfall (FUN_00498970; A0 empire-game3/
         // maintenance-shortfall, a new Empire game, day 50, the window at
