@@ -13,7 +13,9 @@
 // the sector name's ink box within the accepted text deviation. In Churba
 // (04-left) the unexplored planets' pictures and the rows below them must
 // match A0 exactly: no map-item marker. The
-// windows' contents show each game's state and are left out.
+// windows' contents show each game's state and are left out. Last, the
+// whole ten-system Moddell window is compared with A0
+// 2026-10-28-nav/sector-a (see the step's comment).
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
 // Run:         node sector-windows.mjs --a0=.artifacts/a0-vm/sector-windows [--out=DIR]
@@ -247,6 +249,96 @@ try {
         && Math.abs(a[3] - p[3]) <= 1, `${frame} ${half}: title ink ${p} vs A0 ${a}`);
     }
   }
+  // The whole ten-system Moddell window against A0 2026-10-28-nav/sector-a
+  // (a new Alliance game, day 8; Moddell on the left half). The fixture's
+  // galaxy is another game's: Vjun is the Empire's there and holds its
+  // fleet and marks, the cursor rests on Adega, and the galaxy's own
+  // markers show through the shaded background. Everything else must
+  // match: the frame and its buttons, the title, nine planets' pictures
+  // and their white names.
+  const moddell = await (await browser.newContext({ viewport: { width: 640, height: 480 } })).newPage();
+  moddell.on("pageerror", (error) => errors.push(String(error)));
+  await moddell.goto(`http://127.0.0.1:${server.address().port}/?fixture-code=${POPULAR_SUPPORT | (ALLIANCE << 8)}`);
+  await moddell.waitForFunction(() => Boolean(window.__openRebellionInterfaceReady), null, { timeout: 30_000 });
+  await moddell.locator("#glcanvas").focus();
+  await moddell.waitForTimeout(800);
+  for (const key of ["F2", "type:Adega", "Enter"]) {
+    if (key.startsWith("type:")) await moddell.keyboard.type(key.slice(5), { delay: 60 });
+    else await moddell.keyboard.press(key);
+    await moddell.waitForTimeout(700);
+  }
+  await moddell.mouse.move(2, 470, { steps: 4 });
+  await moddell.waitForTimeout(600);
+  const port = PNG.sync.read(await moddell.screenshot({ path: path.join(OUT, "moddell.png") }));
+  const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/2026-10-28-nav/sector-a.png")));
+  // A0's name ink boxes; each picture is 37 by 41, centred over its name,
+  // 52 rows above the name's top (as Churba's in 04-left).
+  const names = { Agrilat: [202, 117, 231, 126], Adega: [136, 135, 166, 144], Basilisk: [83, 184, 117, 191],
+    Khuiumin: [139, 240, 180, 247], Endor: [204, 247, 230, 254], Annaj: [78, 265, 104, 274],
+    Pzob: [134, 307, 156, 314], "Hozrel XI": [184, 349, 225, 356], "Gandolo IV": [95, 374, 146, 381] };
+  const picture = ([l, t, r]) => [Math.round((l + r + 1) / 2 - 18.5), t - 52, 37, 41];
+  // Adega's picture left of A0's cursor (x 160..), Endor's right of the
+  // galaxy markers behind its keyed left edge (x ..208).
+  const parts = { Adega: [133, 83, 27, 41], Endor: [209, 195, 27, 41] };
+  const shape = window(HALVES.left);
+  const whole = {
+    frame: [shape.buttons, ...shape.frame].map((region) => differing(port, a0, region, HALVES.left)),
+    title: { a0: inkBox(a0, shape.title), port: inkBox(port, shape.title) },
+    planets: Object.fromEntries(Object.entries(names).map(([name, box]) =>
+      [name, differing(port, a0, parts[name] ?? picture(box), 0)])),
+    names: Object.fromEntries(Object.entries(names).map(([name, box]) => [name, { a0: box, port: whiteBox(port, box) }])),
+  };
+  // The rest of the window: the shaded galaxy. Each differing patch must
+  // be a marker's size (a cross or a diamond, at most 16 by 20).
+  const masks = [[62, 37, 231, 21], [205, 120, 85, 80], [158, 105, 30, 32]];
+  for (const box of Object.values(names)) {
+    const [l, t, r, b] = box;
+    masks.push([l - 8, t - 3, r - l + 17, b - t + 7], picture(box));
+  }
+  const masked = (x, y) => masks.some(([mx, my, mw, mh]) => x >= mx && y >= my && x < mx + mw && y < my + mh);
+  const rest = new Set();
+  for (let y = 37; y < 393; y += 1) {
+    for (let x = 62; x < 293; x += 1) {
+      if (!masked(x, y) && rgb(port, x, y) !== rgb(a0, x, y)) rest.add(`${x},${y}`);
+    }
+  }
+  const patches = [];
+  while (rest.size) {
+    const [first] = rest;
+    rest.delete(first);
+    const stack = [first.split(",").map(Number)];
+    let [l, t, r, b, count] = [...stack[0], ...stack[0], 0];
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      count += 1;
+      [l, t, r, b] = [Math.min(l, x), Math.min(t, y), Math.max(r, x), Math.max(b, y)];
+      for (let dy = -2; dy <= 2; dy += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
+          const key = `${x + dx},${y + dy}`;
+          if (rest.delete(key)) stack.push([x + dx, y + dy]);
+        }
+      }
+    }
+    patches.push([l, t, r - l + 1, b - t + 1, count]);
+  }
+  whole.background = { patches: patches.length, pixels: patches.reduce((sum, patch) => sum + patch[4], 0),
+    largest: patches.reduce((most, patch) => [Math.max(most[0], patch[2]), Math.max(most[1], patch[3])], [0, 0]) };
+  result.moddell = whole;
+  assert.deepEqual(whole.frame, whole.frame.map(() => 0), `Moddell frame: ${JSON.stringify(whole.frame)}`);
+  {
+    const { a0: a, port: p } = whole.title;
+    assert.ok(a && p && Math.abs((a[0] + a[2]) / 2 - (p[0] + p[2]) / 2) <= 1.5 && Math.abs(a[1] - p[1]) <= 1,
+      `Moddell title ink ${p} vs A0 ${a}`);
+  }
+  assert.ok(Object.values(whole.planets).every((count) => count === 0), `Moddell planets: ${JSON.stringify(whole.planets)}`);
+  for (const [name, { a0: a, port: p }] of Object.entries(whole.names)) {
+    assert.ok(p, `Moddell ${name}: no white name`);
+    const ratio = (p[2] - p[0] + 1) / (a[2] - a[0] + 1);
+    assert.ok(Math.abs((a[0] + a[2]) / 2 - (p[0] + p[2]) / 2) <= 1.5 && Math.abs(a[1] - p[1]) <= 1
+      && Math.abs(a[3] - p[3]) <= 1 && ratio >= 0.93 && ratio <= 1.07, `Moddell ${name}: ink ${p} vs A0 ${a}`);
+  }
+  assert.ok(whole.background.largest[0] <= 16 && whole.background.largest[1] <= 20,
+    `Moddell background patch larger than a marker: ${JSON.stringify(whole.background)}`);
   assert.deepEqual(errors, []);
   result.status = "pass";
 } catch (error) {
