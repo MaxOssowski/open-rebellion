@@ -6328,9 +6328,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-facility-menus/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-deployment-a0/"
           ],
-          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection4/04 (Kessel, one Construction Yard): Construction Yard 10, 10, '40 Days', '0 Days'; build-selection.mjs finds the values exactly and the picture 0 px from A0.",
+          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection4/04 (Kessel, one Construction Yard): Construction Yard 10, 10, '40 Days', '0 Days'; build-selection.mjs finds the values exactly and the picture 0 px from A0. 2026-11-09: Mine 20/0/'80 Days', Orbital Shipyard 20/13/'80 Days', Refinery 20/0/'80 Days' match A0 build-selection4/13..15 in build-selection.mjs (values exact, pictures 0 px).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6392,15 +6393,16 @@
         {
           "id": "OBJ-08-C010",
           "requirement": "destination",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/production-destination.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "tools/interface-parity/fleet-window.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-deployment-a0/"
           ],
-          "note": "Per-area Destination (0x214) is ported; fleet-window.mjs 'destination' (Arch Chromium) releases it on a planet and agent-build points the producer's Destination. No A0 capture of the Destination order.",
+          "note": "Per-area Destination (0x214) is ported; fleet-window.mjs 'destination' (Arch Chromium) releases it on a planet and agent-build points the producer's Destination. No A0 capture of the Destination order. 2026-11-09: A0 build-selection4/19..23 (new Alliance game, Kessel's ships band with Destination Yavin): Best Time To Deployment 76 Days for Dreadnaught, Escort Carrier and Corvette, 57 Days for X-wing; the real-data test kessel_to_yavin_deployment_days_match_a0 (rebellion-app, original DAT) computes the same with delivery::transit_days (FUN_00555f90/FUN_00555b30).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
