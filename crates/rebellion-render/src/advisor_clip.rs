@@ -440,6 +440,10 @@ impl ClipPlayer {
                 if *next_frame <= *last_frame {
                     let id = *next_frame;
                     *next_frame += 1;
+                    // A missing type-302 frame is an empty frame
+                    // (FUN_0041c680 finds no resource, FUN_0041c8f0 left it
+                    // 0 by 0), which FUN_0041c7a0 refuses for its size: the
+                    // picture holds for that tick and the clip plays on.
                     let applied = advisor_resource(
                         &self.asset_root,
                         directory,
@@ -450,10 +454,9 @@ impl ClipPlayer {
                         add_type302_deltas(&bytes, base.width, base.height, &mut base.indices)
                             .is_ok()
                     });
-                    if !applied {
-                        return true;
+                    if applied {
+                        self.show(base);
                     }
-                    self.show(base);
                 }
                 // hyp: the clip waits for its voice (FUN_00403fe0 with
                 // flag bit 5, whose writer is unread); a stopped op 0x13
@@ -729,6 +732,44 @@ mod tests {
         assert_eq!(ticks(&mut player, 1), [ClipEvent::Finished(action)]);
         assert!(player.frame().is_none());
         assert!(!player.is_busy());
+    }
+
+    #[test]
+    fn a_missing_frame_holds_the_picture_and_the_clip_plays_to_its_end() {
+        // FUN_00404440 adds every frame id first + 1 .. first + count - 1;
+        // for an absent one FUN_0041c680 finds no type-302 resource and
+        // leaves the frame empty (FUN_0041c8f0), and FUN_00404360's apply
+        // FUN_0041c7a0 refuses it (its 0 width is not the bitmap's).
+        let root = staged_root(4);
+        std::fs::remove_file(root.path().join("albrief-dll/TYPE302/2103.bin")).unwrap();
+        let mut player = ClipPlayer::new(AdvisorFaction::Alliance, root.path());
+        let action = ClipAction { kind: 2, code: 1 };
+        player.queue(QueuedClip {
+            op: OP_DEFINITION,
+            slot: BRIEFING_SLOT,
+            record: 0x103b,
+            action,
+        });
+
+        ticks(&mut player, 1);
+        player.voice_started(6.0 * CLIP_TICK_SECONDS);
+        let (first, first_serial) = player.frame().map(|(f, s)| (f.indices.clone(), s)).unwrap();
+        // 2102 adds its delta.
+        assert!(ticks(&mut player, 1).is_empty());
+        let (second, second_serial) = player.frame().map(|(f, s)| (f.indices.clone(), s)).unwrap();
+        assert_eq!(second[1], first[1].wrapping_add(4));
+        assert_eq!(second_serial, first_serial + 1);
+        // 2103 is missing: the same picture, and the clip goes on.
+        assert!(ticks(&mut player, 1).is_empty());
+        let (held, held_serial) = player.frame().map(|(f, s)| (f.indices.clone(), s)).unwrap();
+        assert_eq!(held, second);
+        assert_eq!(held_serial, second_serial);
+        // 2104 adds its delta to the held picture; the clip ends with its
+        // voice, as one with every frame does.
+        assert!(ticks(&mut player, 1).is_empty());
+        let (fourth, _) = player.frame().unwrap();
+        assert_eq!(fourth.indices[1], first[1].wrapping_add(8));
+        assert_eq!(ticks(&mut player, 5), [ClipEvent::Finished(action)]);
     }
 
     #[test]
