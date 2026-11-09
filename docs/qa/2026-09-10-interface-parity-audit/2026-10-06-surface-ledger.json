@@ -3900,9 +3900,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-command/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-placement/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-keyed-blit-exact-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-keyed-blit-exact-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-encyclopedia-assault-frame-over-panes/"
           ],
-          "note": "The control 0x131 (FUN_00429f30) opens the original Encyclopedia in the Linux GID gate; its placement and index match A0 index-empire-day143.png (Empire at (125, 52)). 2026-11-01: the index's buttons key exactly their first pixel's blue as in A0; encyclopedia-index-shell passes at 0 pixels.",
+          "note": "The control 0x131 (FUN_00429f30) opens the original Encyclopedia in the Linux GID gate; its placement and index match A0 index-empire-day143.png (Empire at (125, 52)). 2026-11-01: the index's buttons key exactly their first pixel's blue as in A0; encyclopedia-index-shell passes at 0 pixels. 2026-11-09 (b150): the pane now lies under the keyed base 10335/10336 (window_layers), as A0 shows the base's corner arcs inside it (category-0-alliance-day185 498/498, index-empire-day143 86/86, topics 499/499 and 474/474); encyclopedia-index-shell.mjs composes in that order and compares the top corners with both A0 captures: 0 pixels. Batch b150: 23 of 23 gates, matrix 148 of 148.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -4477,9 +4478,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-placement/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-list-scroll-bars/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-command/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-encyclopedia-command/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-encyclopedia-assault-frame-over-panes/"
           ],
-          "note": "The index window (FUN_0045ddc0, FUN_00607ea0) matches the A0 Empire capture index-empire-day143: placement (125, 52), title, Topic, category icons, eight grey 20-pixel rows, nothing selected; encyclopedia-placement.mjs passed both sides in the Linux browser; the bar matches A0 to 2 pixels.",
+          "note": "The index window (FUN_0045ddc0, FUN_00607ea0) matches the A0 Empire capture index-empire-day143: placement (125, 52), title, Topic, category icons, eight grey 20-pixel rows, nothing selected; encyclopedia-placement.mjs passed both sides in the Linux browser; the bar matches A0 to 2 pixels. 2026-11-09 (b150): the pane now lies under the keyed base 10335/10336 (window_layers), as A0 shows the base's corner arcs inside it (category-0-alliance-day185 498/498, index-empire-day143 86/86, topics 499/499 and 474/474); encyclopedia-index-shell.mjs composes in that order and compares the top corners with both A0 captures: 0 pixels. Batch b150: 23 of 23 gates, matrix 148 of 148.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
@@ -8626,9 +8628,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-assault-taken/",
-            "tools/interface-parity/fleet-window.mjs"
+            "tools/interface-parity/fleet-window.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-encyclopedia-assault-frame-over-panes/"
           ],
-          "note": "The Assault Summary window (FUN_0044c410/FUN_0044c630) opens for the attacker at once. Against A0 messages-day633/assault-coruscant* (the Alliance's Assault on Coruscant, the window at (62, 49)) fleet-window.mjs 'assault-taken' (Linux, both sides) finds the summary picture exact between the title and the body, the title's rows and centre, the body's corner, and on both forces pages the category bar exact and the labels' ink boxes within the accepted text deviation (2026-11-05). Open: the forces list's scroll bar (C010), captured personnel.",
+          "note": "The Assault Summary window (FUN_0044c410/FUN_0044c630) opens for the attacker at once. Against A0 messages-day633/assault-coruscant* (the Alliance's Assault on Coruscant, the window at (62, 49)) fleet-window.mjs 'assault-taken' (Linux, both sides) finds the summary picture exact between the title and the body, the title's rows and centre, the body's corner, and on both forces pages the category bar exact and the labels' ink boxes within the accepted text deviation (2026-11-05). Open: the forces list's scroll bar (C010), captured personnel. 2026-11-09 (b150): the page art now lies under the keyed frame 10335/10336 (page_art), as A0 shows the frame's corner arcs over every page (assault-on-yavin-summary 442/442, messages-day633/assault-coruscant* 500/500 each); fleet-window.mjs compares the Alliance's top corners with A0 assault-coruscant: 0 pixels. Batch b150: 23 of 23 gates, matrix 148 of 148.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
