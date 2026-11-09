@@ -29,13 +29,34 @@ There is no "Inactive", "Damaged", "Repairing", "Critical" or "Blocked";
 | EVT-03-C004 | bombardment blocked by shields | Shields lower the shots (`FUN_0058df60`). The summary has no shield line, and no TEXTSTRA text names one |
 | EVT-03-C012 | bombardment damaged column | The assault/bombardment summary has Operational and Destroyed columns only (`FUN_0044c410`) |
 
+## Settled since (2026-11-09)
+
+- OBJ-07-C013 (priority control), proposed for exclusion like the cells
+  above: no string with "priorit" exists in TEXTSTRA, TEXTCOMM, TEXTTACT,
+  STRATEGY, COMMON, GOKRES or any other game DLL, in REBEXE.EXE (apart
+  from the Win32 import `SetThreadPriority`), in the 1998 manual, or in
+  README.TXT and TSGUIDE.TXT. `manufacturing-build-selection.md` names no
+  such control.
+- CMD-07-C006 (urgent message), proposed for exclusion, with a caveat.
+  TEXTSTRA holds "Post All Messages as Urgent" (0x8000) and "Post All
+  Selected Messages as Urgent" (0x8004), beside the Silently, with Alert
+  and Block strings (0x8001..0x8007). The code uses only two of them. The
+  posting control 0x66 flips bit 4 of a category's option and shows
+  "Post Messages Silently" (0x8005) or "Post Messages with Alert"
+  (0x8006) (`FUN_00467f10` case 0x66, `FUN_004697b0`). The Message
+  Alerts submenu flips the same bit (`FUN_00486fb0`). The immediate
+  0x8004 occurs nowhere in REBEXE.EXE (objdump). 0x8000 occurs only as
+  ordinary constants. So the shipped game seems to have no urgent
+  posting. The caveat: a string could still be reached as a base plus an
+  index, which this search would not find.
+- CMD-07-C012 (missing clip frame) is not absent: the original holds the
+  picture and plays on (`2026-11-09-advisor-missing-frame`). The port now
+  does the same. The cell stays partial.
+
 ## Not settled
 
 These need a trace before anything is decided:
 
-- OBJ-07-C013 (priority control): `manufacturing-build-selection.md`
-  names no such control.
 - OBJ-12-C008 (no-result mission report) and OBJ-12-C013 (acknowledge):
   reports go to the Message Index.
-- CMD-07-C006 (urgent message) and CMD-07-C012 (missing clip frame).
 - CMD-08-C004 (summary).

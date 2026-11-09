@@ -204,9 +204,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-render/src/video_player.rs"
+            "crates/rebellion-render/src/video_player.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/"
           ],
-          "note": "Native open_cutscene logs 'cutscene skipped' and goes on when the file is missing (test open_returns_not_decoded_when_cutscene_directory_is_missing). The original's behaviour is not traced; no A0, no browser path.",
+          "note": "Native open_cutscene logs 'cutscene skipped' and goes on when the file is missing (test open_returns_not_decoded_when_cutscene_directory_is_missing). The original's behaviour is not traced; no A0, no browser path. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -3020,8 +3021,10 @@
           "requirement": "urgent message",
           "status": "pending",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Not yet identified: the schedule plays the first due message by id; no separate urgent path is traced."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/"
+          ],
+          "note": "Not yet identified: the schedule plays the first due message by id; no separate urgent path is traced. 2026-11-09: proposed for exclusion (owner's decision pending): the posting control and the Message Alerts submenu flip one bit between 'Post Messages Silently' 0x8005 and 'with Alert' 0x8006 (FUN_00467f10 case 0x66, FUN_004697b0, FUN_00486fb0); TEXTSTRA's 'as Urgent' strings 0x8000/0x8004 are not referenced (0x8004 is no immediate in REBEXE.EXE)."
         },
         {
           "id": "CMD-07-C007",
@@ -3087,10 +3090,12 @@
         {
           "id": "CMD-07-C012",
           "requirement": "missing frame",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "The behaviour for a missing clip frame is not yet traced."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-advisor-missing-frame/"
+          ],
+          "note": "The behaviour for a missing clip frame is not yet traced. 2026-11-09 (b147): traced: FUN_0041c680 leaves a missing type-302 frame empty (FUN_0041c8f0) and FUN_0041c7a0 applies nothing for it, so the picture holds for that tick and the clip plays to its end; the port ended the clip at once and now holds (advisor_clip.rs, unit test a_missing_frame_holds_the_picture_and_the_clip_plays_to_its_end). No shipped clip that plays misses a frame, so no A0 capture can show it; a missing first bitmap is not traced. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass)."
         }
       ]
     },
@@ -6107,8 +6112,10 @@
           "requirement": "priority",
           "status": "pending",
           "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No priority control is traced in ghidra/notes/manufacturing-build-selection.md or present in the port."
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/"
+          ],
+          "note": "No priority control is traced in ghidra/notes/manufacturing-build-selection.md or present in the port. 2026-11-09: proposed for exclusion (owner's decision pending): no string with 'priorit' in any game DLL, in REBEXE.EXE (apart from the import SetThreadPriority), the manual, README.TXT or TSGUIDE.TXT."
         },
         {
           "id": "OBJ-07-C014",
@@ -8842,26 +8849,28 @@
         {
           "id": "TAC-01-C006",
           "requirement": "simulated",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-enemy-panel-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-tactical-a0-comparisons/"
           ],
-          "note": "Get Immediate Result routes to results in the browser (battle-options-simulate-route); A0 TAC-01-C006 is captured but no recorded comparison of the simulated result. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Get Immediate Result routes to results in the browser (battle-options-simulate-route); A0 TAC-01-C006 is captured but no recorded comparison of the simulated result. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture. 2026-11-09 (b147): run.mjs production-battle-options-presentation (Alliance, 640x480, Linux) presses Get Immediate Result and compares the Battle Summary's rail and five buttons (x 476..525, y 60..344) with this capture: 0 pixels differ. The comparison found the Display tab's resting art 10791 unkeyed (its 63 blue corner pixels; A0 shows the frame's grey); bmp_cache now keys it. The frame is checked against STRATEGY 10335 at A0's origin and the texts word for word (unit test); the fixture's battle and scene are not A0's. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "TAC-01-C007",
           "requirement": "empty space",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-camera-backdrop/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-camera-backdrop/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-tactical-a0-comparisons/"
           ],
-          "note": "Show Planet off leaves only the starfield (FUN_005d58c0 option mask); A0 TAC-01-C007 captured and production-empty-space-presentation passes, but no comparison is recorded.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Show Planet off leaves only the starfield (FUN_005d58c0 option mask); A0 TAC-01-C007 captured and production-empty-space-presentation passes, but no comparison is recorded. 2026-11-09 (b147): compared: run.mjs production-empty-space-presentation (Empire, 640x480, Linux) finds every holocube edge pixel of A0 and of the port within 2 pixels of the other's (2026-11-07 run: 99.6% / 100%) and no backdrop (A0 732 lit non-edge pixels, port 1046; the gate allows under 2000). Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "TAC-01-C008",
@@ -9613,14 +9622,15 @@
         {
           "id": "TAC-04-C011",
           "requirement": "center",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-camera-target/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-camera-tracking/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-camera-tracking/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-tactical-a0-comparisons/"
           ],
-          "note": "Camera target LookAt (0x005d9640) implemented; A0 TAC-04-C011 (centred on Victory Destroyer 1) is captured but not compared.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Camera target LookAt (0x005d9640) implemented; A0 TAC-04-C011 (centred on Victory Destroyer 1) is captured but not compared. 2026-11-09 (b147): compared: A0's subject box is centred at (237, 247), the battle view's middle; run.mjs camera-journey (640x480, Linux) presses the same control (1058/1059) and finds the selected hull centred within 1 pixel (237.5, 247). Both sides: the Empire's red marker at (237.5, 247) too. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "TAC-04-C012",
@@ -10062,14 +10072,15 @@
         {
           "id": "TAC-06-C004",
           "requirement": "simulate remainder",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-report-texts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-tactical-a0-comparisons/"
           ],
-          "note": "Get Immediate Result routes to the results (battle-options-simulate-route); A0 TAC-06-C004's result text is not recorded as compared. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Get Immediate Result routes to the results (battle-options-simulate-route); A0 TAC-06-C004's result text is not recorded as compared. 2026-11-06: A0's simulated result text ('The Alliance fleet is defeated.' / 'The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam.') is compared by the unit test a_failed_alliance_attack_reads_as_a0, word for word; the browser's results window is not compared with this capture. 2026-11-09 (b147): as TAC-01-C006: the simulated remainder opens the Battle Summary at once, its rail and buttons 0 pixels from A0 after the 10791 key fix (run.mjs, Linux). Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
+          "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155); the user accepted Linux and browser without macOS or Safari on 2026-10-30."
         },
         {
           "id": "TAC-06-C005",
@@ -10673,12 +10684,13 @@
         {
           "id": "END-01-C011",
           "requirement": "media failure",
-          "status": "pending",
+          "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "crates/rebellion-app/src/main.rs"
+            "crates/rebellion-app/src/main.rs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/"
           ],
-          "note": "Not implemented for ending media; the original behaviour is not traced."
+          "note": "Not implemented for ending media; the original behaviour is not traced. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass)."
         },
         {
           "id": "END-01-C012",
