@@ -74,3 +74,48 @@ fn a_new_alliance_games_shipyard_lists_ships_and_fighters_by_name_as_a0() {
         ]
     );
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn kessel_to_yavin_deployment_days_match_a0() {
+    // A0 2026-11-09 (build-selection4/20..23: a new Alliance game, Kessel's
+    // ships band with its Destination on Yavin): Best Time To Deployment
+    // 76 Days for Alliance Dreadnaught, Alliance Escort Carrier and
+    // Corellian Corvette, 57 Days for X-wing (FUN_00555f90 ->
+    // FUN_00555b30: the product's transit from its yard to the destination).
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let system = |name: &str| {
+        world
+            .systems
+            .iter()
+            .find(|(_, system)| system.name == name)
+            .map(|(key, _)| key)
+            .unwrap_or_else(|| panic!("no system {name}"))
+    };
+    let (kessel, yavin) = (system("Kessel"), system("Yavin"));
+    let listed = listed_classes(&world, &ResearchState::new(), ProductionArea::Shipyard, true);
+    let days: Vec<(String, u32)> = listed
+        .into_iter()
+        .map(|kind| {
+            (
+                rebellion_render::manufacturing_window::product(&world, kind).0,
+                rebellion_core::delivery::transit_days(&world, kind, kessel, yavin),
+            )
+        })
+        .filter(|(name, _)| {
+            ["Alliance Dreadnaught", "Alliance Escort Carrier", "Corellian Corvette", "X-wing"]
+                .contains(&name.as_str())
+        })
+        .collect();
+    let mut days = days;
+    days.sort();
+    assert_eq!(
+        days,
+        [
+            ("Alliance Dreadnaught".to_string(), 76),
+            ("Alliance Escort Carrier".to_string(), 76),
+            ("Corellian Corvette".to_string(), 76),
+            ("X-wing".to_string(), 57),
+        ]
+    );
+}
