@@ -1905,10 +1905,27 @@ const cases = [
       const shipFile = { fighters: "10-isd1-fighters", troops: "11-isd1-troops", personnel: "12-isd1-personnel" };
       checks.ship = await compareTabsWithA0(page, directory, "a0-coruscant-ship",
         has && ((tab) => path.join(dir, `${shipFile[tab]}.png`)),
-        // Measured 2026-11-10: 4292, 4067, 2116: the text, the pane title
-        // drawn past A0's clip, and (Fighters) the right list's scroll bar,
-        // which the port does not draw yet.
-        { fighters: 4400, troops: 4200, personnel: 2250 }, origin, ["fighters", "troops", "personnel"]);
+        // Measured 2026-11-10: 3018, 4067, 2116: the text and the pane
+        // title drawn past A0's clip.
+        { fighters: 3150, troops: 4200, personnel: 2250 }, origin, ["fighters", "troops", "personnel"]);
+      // The right list's scroll bar for six squadrons (RCDATA 10699,
+      // FUN_0060a490): window x 224..233, y 127..290, every pixel A0's.
+      if (has) {
+        await click(page, { x: origin.x + 99 + 33 + 15, y: origin.y + 96 + 14 });
+        await compareWindowWithA0(page, directory, "a0-coruscant-ship-fighters-bar", null, 0, origin);
+        const port = PNG.sync.read(fs.readFileSync(path.join(directory, "a0-coruscant-ship-fighters-bar.png")));
+        const a0 = PNG.sync.read(fs.readFileSync(path.join(dir, `${shipFile.fighters}.png`)));
+        let differing = 0;
+        for (let y = 127; y < 291; y += 1) {
+          for (let x = 224; x < 234; x += 1) {
+            const p = (y * port.width + x) * 4;
+            const q = ((origin.y + y) * a0.width + origin.x + x) * 4;
+            if ([0, 1, 2].some((k) => port.data[p + k] !== a0.data[q + k])) differing += 1;
+          }
+        }
+        assert.equal(differing, 0, `the right list's scroll bar differs from A0 in ${differing} pixels`);
+        checks.bar = { differing, total: 1640 };
+      }
       return checks;
     },
   },
