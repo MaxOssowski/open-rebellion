@@ -167,3 +167,32 @@ fn a_new_empire_games_training_facility_lists_seven_classes_as_a0() {
         ]
     );
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn a_new_empire_games_shipyard_lists_eight_classes_as_a0() {
+    // A0 2026-11-10 (build-selection-empire2/15-*: Build Ships on
+    // Chandrila's new Orbital Shipyard, day 129 of a new Empire game):
+    // Carrack Light Cruiser, Death Star, Galleon, Imperial Dreadnaught,
+    // Imperial Escort Carrier, Imperial Star Destroyer, TIE Fighter,
+    // Victory Destroyer.
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let listed = listed_classes(&world, &ResearchState::new(), ProductionArea::Shipyard, false);
+    let names: Vec<String> = rebellion_render::build_selection::in_list_order(&world, listed)
+        .into_iter()
+        .map(|kind| rebellion_render::manufacturing_window::product(&world, kind).0)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "Carrack Light Cruiser",
+            "Death Star",
+            "Galleon",
+            "Imperial Dreadnaught",
+            "Imperial Escort Carrier",
+            "Imperial Star Destroyer",
+            "TIE Fighter",
+            "Victory Destroyer",
+        ]
+    );
+}

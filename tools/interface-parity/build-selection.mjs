@@ -593,6 +593,25 @@ const A0_EMPIRE_TROOPS = [
 ].map(([name, values, file]) => ({ name, values, file: `.artifacts/a0-vm/build-selection-empire2/${file}`,
   at: [255, 87] }));
 
+// The Empire's shipyard classes against A0 build-selection-empire2/15-* (a
+// new Empire game, day 129, Chandrila's one new Orbital Shipyard, the
+// window at (255, 87); the side's unallocated maintenance 126). The
+// Death Star's 600 maintenance exceeds it, so FUN_0052e970 refuses the
+// order and FUN_00439160 writes "n/a" in all four values. The fixture's
+// side has more to spare, so its Death Star shows 584, 600: only its
+// picture is compared (the refusal is the over-maintenance case's).
+const A0_EMPIRE_SHIPS = [
+  ["Carrack Light Cruiser", ["26", "24", "104 Days", "0 Days"], "15-1-carrack-light-cruiser.png"],
+  ["Death Star", ["n/a", "n/a", "n/a", "n/a"], "15-2-death-star.png"],
+  ["Galleon", ["10", "10", "40 Days", "0 Days"], "15-3-galleon.png"],
+  ["Imperial Dreadnaught", ["44", "33", "176 Days", "0 Days"], "15-4-imperial-dreadnaught.png"],
+  ["Imperial Escort Carrier", ["34", "30", "136 Days", "0 Days"], "15-5-imperial-escort-carrier.png"],
+  ["Imperial Star Destroyer", ["112", "71", "448 Days", "0 Days"], "15-6-imperial-star-destroyer.png"],
+  ["TIE Fighter", ["3", "3", "12 Days", "0 Days"], "15-7-tie-fighter.png"],
+  ["Victory Destroyer", ["68", "44", "272 Days", "0 Days"], "15-8-victory-destroyer.png"],
+].map(([name, values, file]) => ({ name, values, file: `.artifacts/a0-vm/build-selection-empire2/${file}`,
+  at: [255, 87], skipValues: name === "Death Star" }));
+
 // A0 build-selection4/08: the list opened with LNR Series I shown shows
 // KDY-150 and LNR Series I. Dragging the list's bar had moved the window
 // one pixel left, to (191, 84), as in 07.
@@ -644,7 +663,7 @@ async function classValuesCase(page, directory, area, classes = A0_CLASSES[area]
     const shown = expected.skipCompletion
       ? chosen.build_selection_values.filter((_, index) => index !== 2) : chosen.build_selection_values;
     const wanted = expected.skipCompletion ? expected.values.filter((_, index) => index !== 2) : expected.values;
-    assert.deepEqual(shown, wanted, JSON.stringify(chosen));
+    if (!expected.skipValues) assert.deepEqual(shown, wanted, JSON.stringify(chosen));
     const a0 = PNG.sync.read(fs.readFileSync(path.join(root, expected.file)));
     const picture = regionDiffering(PNG.sync.read(bytes), [origin.x, origin.y], a0, expected.at, [6, 22, 201, 48]);
     assert.equal(picture.differing, 0, `${expected.name}'s picture differs from A0 in ${picture.differing} pixels`);
@@ -1364,7 +1383,8 @@ async function inspect(server, source, faction, executable) {
         troops: await classValuesCase(page, directory, "troops") }
       : faction.byte === 2 && fs.existsSync(path.join(root, ".artifacts/a0-vm/build-selection-empire2"))
         ? { facilities: await classValuesCase(page, directory, "facilities", A0_EMPIRE_FACILITIES),
-          troops: await classValuesCase(page, directory, "troops", A0_EMPIRE_TROOPS) } : null;
+          troops: await classValuesCase(page, directory, "troops", A0_EMPIRE_TROOPS),
+          ships: await classValuesCase(page, directory, "ships", A0_EMPIRE_SHIPS) } : null;
 
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
