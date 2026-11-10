@@ -1558,6 +1558,33 @@ fn right_items(
     selected: Option<FleetWindowEntry>,
     tab: FleetWindowTab,
 ) -> Vec<RightItem> {
+    // A selected ship lists what it carries (FUN_00536da0(ship, ..), its
+    // own containers): A0 fleet-aboard/10..12 shows Imperial Star Destroyer
+    // 1's six TIE Fighter squadrons, three Stormtrooper Regiments and
+    // Veers. The port seats the fleet's units as `ship_cargo` does.
+    if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
+        let cargo = ship_cargo(world, transport, fleet);
+        let Some(own) = cargo.get(index) else {
+            return Vec::new();
+        };
+        let items = right_items(world, transport, Some(FleetWindowEntry::Fleet(fleet)), tab);
+        return match tab {
+            FleetWindowTab::CapitalShips => Vec::new(),
+            FleetWindowTab::Fighters => {
+                let before: usize = cargo[..index].iter().map(|each| each.squadrons).sum();
+                items.into_iter().skip(before).take(own.squadrons).collect()
+            }
+            FleetWindowTab::Troops | FleetWindowTab::Personnel => items
+                .into_iter()
+                .filter(|item| match item.object {
+                    Some(ItemObject::Regiment(key)) => own.regiments.contains(&key),
+                    Some(ItemObject::Character(key)) => own.characters.contains(&key),
+                    Some(ItemObject::SpecialForce(key)) => own.special_forces.contains(&key),
+                    _ => false,
+                })
+                .collect(),
+        };
+    }
     let Some(FleetWindowEntry::Fleet(fleet)) = selected else {
         return Vec::new();
     };
@@ -1676,6 +1703,25 @@ fn tab_counts(
     selected: Option<FleetWindowEntry>,
     tab: FleetWindowTab,
 ) -> Option<(u32, u32)> {
+    // A selected ship prints its own slots (A0 fleet-aboard/10, 11:
+    // Imperial Star Destroyer 1's 6 and 6 squadrons, 3 and 3 regiments).
+    if let Some(FleetWindowEntry::Ship { fleet, index }) = selected {
+        let value = world.fleets.get(fleet)?;
+        let ship = value.capital_ships.get(index)?;
+        let class = world.capital_ship_classes.get(ship.class)?;
+        let own = ship_cargo(world, transport, fleet).into_iter().nth(index)?;
+        return match tab {
+            FleetWindowTab::Fighters => Some((
+                u32::try_from(own.squadrons).unwrap_or(u32::MAX),
+                class.fighter_capacity,
+            )),
+            FleetWindowTab::Troops => Some((
+                u32::try_from(own.regiments.len()).unwrap_or(u32::MAX),
+                class.troop_capacity,
+            )),
+            FleetWindowTab::CapitalShips | FleetWindowTab::Personnel => None,
+        };
+    }
     let Some(FleetWindowEntry::Fleet(fleet)) = selected else {
         return None;
     };
@@ -3132,6 +3178,76 @@ pub(crate) mod tests {
             10469
         );
         assert_eq!(side_art(TAB_BASE, 2), 10459);
+    }
+
+    #[test]
+    fn a_selected_ship_lists_and_counts_what_it_carries() {
+        // A0 fleet-aboard/10..12: Imperial Star Destroyer 1 selected lists
+        // its TIE Fighter squadrons (6 and 6), its regiments (3 and 3) and
+        // Veers; a ship's own slots (FUN_004a5c00, +0x23c/+0x26c,
+        // +0x240/+0x270). Two ships here: the squadrons and regiments fill
+        // the first ship's capacity, the rest go to the second.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 2);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        world.capital_ship_classes[class].fighter_capacity = 2;
+        let second = world.fleets[fleet].capital_ships[0].clone();
+        world.fleets[fleet].capital_ships.push(second);
+        world.number_ships();
+        let fighter = world.fighter_classes.insert(rebellion_core::world::FighterClass {
+            name: "X-wing".into(),
+            is_alliance: true,
+            ..Default::default()
+        });
+        world.fleets[fleet].fighters.push(rebellion_core::world::FighterEntry {
+            class: fighter,
+            count: 3,
+            carrier: None,
+        });
+        let troops: Vec<_> = (0..3).map(|_| add_troop(&mut world, system)).collect();
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, fleet, &troops).unwrap();
+        let ship = |index| Some(FleetWindowEntry::Ship { fleet, index });
+        let labels = |index, tab| {
+            right_items(&world, &transport, ship(index), tab)
+                .into_iter()
+                .map(|item| item.label)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(labels(0, FleetWindowTab::Fighters), ["X-wing", "X-wing"]);
+        assert_eq!(labels(1, FleetWindowTab::Fighters), ["X-wing"]);
+        assert_eq!(tab_counts(&world, &transport, ship(0), FleetWindowTab::Fighters), Some((2, 2)));
+        assert_eq!(tab_counts(&world, &transport, ship(1), FleetWindowTab::Fighters), Some((1, 2)));
+        assert_eq!(labels(0, FleetWindowTab::Troops).len(), 2);
+        assert_eq!(labels(1, FleetWindowTab::Troops).len(), 1);
+        assert_eq!(tab_counts(&world, &transport, ship(0), FleetWindowTab::Troops), Some((2, 2)));
+        assert!(labels(0, FleetWindowTab::CapitalShips).is_empty());
+
+        // A character lists under the ship it is seated on; a special force
+        // under the first ship.
+        let seat = world.fleets[fleet].capital_ships[1].id;
+        let officer = world.characters.insert(rebellion_core::world::Character {
+            name: "Veers".into(),
+            ship: Some(seat),
+            ..Default::default()
+        });
+        world.fleets[fleet].characters.push(officer);
+        let unit = world.special_forces.insert(rebellion_core::world::SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0002),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.fleets[fleet].special_forces.push(unit);
+        let objects = |index| {
+            right_items(&world, &transport, ship(index), FleetWindowTab::Personnel)
+                .into_iter()
+                .map(|item| item.object)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(objects(1), [Some(ItemObject::Character(officer))]);
+        assert_eq!(objects(0), [Some(ItemObject::SpecialForce(unit))]);
     }
 
     #[test]
