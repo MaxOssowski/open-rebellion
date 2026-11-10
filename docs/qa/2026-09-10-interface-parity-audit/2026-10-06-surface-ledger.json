@@ -1863,7 +1863,7 @@
             "tools/interface-parity/run.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
           ],
-          "note": "No GID mark for a blockade: FUN_0042b330 and FUN_0042cde0 read +0x88 only for bits 1 and 2 (explored, uprising), never the blockade bit 0x20, so a blockaded system's item is its display's mark alone. run.mjs 'blockade' (Linux, 640x480, both sides) asserts the primary system draws one bitmap; draw_blockade_indicators (an invented ring) stays uncalled. No A0 capture of a blockaded system on the GID (2026-11-04).",
+          "note": "No GID mark for a blockade: FUN_0042b330 and FUN_0042cde0 read +0x88 only for bits 1 and 2 (explored, uprising), never the blockade bit 0x20, so a blockaded system's item is its display's mark alone. run.mjs 'blockade' (Linux, 640x480, both sides) asserts the primary system draws one bitmap; draw_blockade_indicators (an invented ring) stays uncalled. No A0 capture of a blockaded system on the GID (2026-11-04). 2026-11-10: the uncalled invented ring draw_blockade_indicators is removed, with the uncalled facility squares (draw_facility_icons) and sector outlines (draw_sector_boundaries).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
