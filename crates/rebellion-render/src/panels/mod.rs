@@ -168,8 +168,6 @@ pub enum PanelAction {
     SaveGame { slot: usize, name: String },
     /// Player confirmed a load from the given slot.
     LoadGame { slot: usize },
-    /// Player deleted the save in the given slot.
-    DeleteSave { slot: usize },
     /// Player closed the save/load panel without taking an action.
     CloseSaveLoadPanel,
 

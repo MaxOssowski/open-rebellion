@@ -4772,9 +4772,6 @@ async fn main() {
                         macroquad::logging::info!("[game_options] command=restart");
                     }
                     GameOptionsAction::Exit => quit_requested = true,
-                    GameOptionsAction::Delete { slot } => {
-                        panel_actions.push(PanelAction::DeleteSave { slot })
-                    }
                     GameOptionsAction::Save { slot, name } => {
                         panel_actions.push(PanelAction::SaveGame { slot, name });
                     }
@@ -8606,9 +8603,6 @@ async fn main() {
                         name: name.clone(),
                     }),
                     PanelAction::LoadGame { slot } => Some(GameOptionsAction::Load { slot: *slot }),
-                    PanelAction::DeleteSave { slot } => {
-                        Some(GameOptionsAction::Delete { slot: *slot })
-                    }
                     _ => None,
                 };
                 if let Some(intent) = intent {
@@ -8810,26 +8804,6 @@ async fn main() {
                                     slot, clock.tick, fingerprint, player_faction
                                 );
                             }
-                        }
-                        Err(error) => {
-                            save_load_panel_state.error_message = Some(error.to_string());
-                            game_options_state.error = Some(error.to_string());
-                        }
-                    }
-                }
-                PanelAction::DeleteSave { slot } => {
-                    match rebellion_data::save::delete_slot(&saves_dir, slot) {
-                        Ok(()) => {
-                            save_load_panel_state.selected_slot = None;
-                            save_load_panel_state.error_message = None;
-                            save_slots = read_save_slots(&saves_dir);
-                            game_options_state.refresh_saves(&save_slots);
-                            game_options_state.error = None;
-                            msg_log.push(GameMessage::new(
-                                clock.tick,
-                                format!("Deleted save in slot {}", slot + 1),
-                                MessageCategory::Event,
-                            ));
                         }
                         Err(error) => {
                             save_load_panel_state.error_message = Some(error.to_string());
@@ -11005,7 +10979,6 @@ fn apply_panel_action(
         | PanelAction::OpenSaveLoad
         | PanelAction::SaveGame { .. }
         | PanelAction::LoadGame { .. }
-        | PanelAction::DeleteSave { .. }
         | PanelAction::CloseSaveLoadPanel
         | PanelAction::OpenModManager => {
             // Handled by UI state toggle (not a world mutation)

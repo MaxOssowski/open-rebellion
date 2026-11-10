@@ -47,17 +47,17 @@ try {
     page.on('response', response => network.push({ url: response.url(), status: response.status() }));
     const screenshot = name => page.screenshot({ path: path.join(output, `${faction}-${name}.png`) });
     const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
-    const deleteButton = async () => {
-      // Locate the existing red Delete label; panel height depends on occupancy.
+    // The original's Game Options has no delete (FUN_00407180 builds none,
+    // and no game DLL holds such a string): the port's panel shows none.
+    const noDeleteLabel = async () => {
       const png = PNG.sync.read(await page.screenshot());
-      let xSum = 0, ySum = 0, count = 0;
+      let count = 0;
       for (let y = 340; y < 615; y++) for (let x = 450; x < 600; x++) {
         const index = (y * png.width + x) * 4;
         const [r, g, b] = png.data.subarray(index, index + 3);
-        if (r > 130 && g < 130 && b < 140 && r > 1.8 * g) { xSum += x; ySum += y; count++; }
+        if (r > 130 && g < 130 && b < 140 && r > 1.8 * g) count++;
       }
-      assert.ok(count > 5, 'save-management panel renders its Delete label');
-      await click(xSum / count, ySum / count);
+      assert.ok(count <= 5, 'the save panel shows no Delete label');
     };
     const key = async value => { await page.keyboard.press(value, { delay: 100 }); await page.waitForTimeout(350); };
     const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
@@ -111,27 +111,9 @@ try {
       assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=9 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`)), 'slot 10 restores the live campaign');
       await key('F1');
       await key('F9');
-      await page.mouse.move(530, 500);
-      await page.mouse.wheel(0, 800);
-      await page.waitForTimeout(500);
-      await screenshot('slot-ten-delete-panel');
-      await deleteButton();
-      await click(560, 602);
-      assert.deepEqual(await storage(), saved, 'deleting slot 10 preserves slot 1 and removes only its own payload and metadata');
-      await key('F9');
-      await page.mouse.move(530, 500);
-      await page.mouse.wheel(0, -800);
-      await page.waitForTimeout(500);
-      await screenshot('legacy-save-delete');
-      await deleteButton();
-      await screenshot('delete-confirmation');
-      await click(742, 602);
-      assert.deepEqual(await storage(), saved, 'cancelled deletion preserves storage');
-      await key('F9');
-      await deleteButton();
-      await click(560, 602);
-      assert.equal((await storage()).rebellion_save_v14_0, undefined, 'confirmed deletion removes payload');
-      assert.equal((await storage()).rebellion_meta_v14_0, undefined, 'confirmed deletion removes metadata');
+      await screenshot('save-panel-no-delete');
+      await noDeleteLabel();
+      await key('Escape');
       await key('F8');
       await screenshot('legacy-load');
       await key('Escape');

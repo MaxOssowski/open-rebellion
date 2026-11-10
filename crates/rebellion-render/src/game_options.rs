@@ -37,7 +37,6 @@ pub enum GameOptionsAction {
     Exit,
     Save { slot: usize, name: String },
     Load { slot: usize },
-    Delete { slot: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -199,10 +198,6 @@ impl GameOptionsState {
             // A0 TAC-06-C007: a battle's Game Options shows each occupied
             // slot's Load lit (10049) beside its grey Save (10048).
             GameOptionsAction::Load { slot } => self.occupied.get(*slot).copied().unwrap_or(false),
-            GameOptionsAction::Delete { slot } => {
-                self.origin != GameOptionsOrigin::TacticalBattle
-                    && self.occupied.get(*slot).copied().unwrap_or(false)
-            }
             // FUN_00407180 never disables Restart: from the shuttle cockpit
             // it shows 10035 and returns there at once (A0
             // main-menu-states/12), and a battle shows it lit (A0
@@ -230,7 +225,7 @@ impl GameOptionsState {
             // no save made in this visit asks 0x476 (FUN_00408170); else
             // Restart goes straight to the shuttle cockpit.
             GameOptionsAction::Restart => self.origin.has_live_campaign() && !self.saved_this_visit,
-            GameOptionsAction::Exit | GameOptionsAction::Delete { .. } => true,
+            GameOptionsAction::Exit => true,
             _ => false,
         };
         self.error = None;
@@ -297,7 +292,6 @@ impl GameOptionsState {
 /// A question's two REBDLOG strings (`FUN_00408170`): Restart 0x121a and
 /// 0x121b, Load 0x121c and 0x121d, Save 0x121e and 0x121f; Exit asks
 /// 0x1202 alone (`FUN_00401110(0x470, 0, 0x1202)`, the quit question).
-/// port: Delete has no original question.
 fn confirmation_strings(action: &GameOptionsAction) -> (Option<String>, String) {
     let dialog = |id: u16, shipped: &str| {
         crate::win_tooltip::module_string(crate::win_tooltip::StringModule::Dialog, id)
@@ -326,7 +320,7 @@ fn confirmation_strings(action: &GameOptionsAction) -> (Option<String>, String) 
             dialog(0x121f, "Save anyway?"),
         ),
         GameOptionsAction::Exit => (None, dialog(0x1202, "Are you sure you want to quit?")),
-        _ => (None, "Delete the selected saved game?".to_owned()),
+        GameOptionsAction::None | GameOptionsAction::Return => (None, String::new()),
     }
 }
 
@@ -1296,9 +1290,9 @@ mod tests {
     }
 
     #[test]
-    fn tactical_options_reject_save_and_delete_but_ask_load_and_restart() {
+    fn tactical_options_reject_save_but_ask_load_and_restart() {
         // A0 TAC-06-C007 (a battle's Game Options): every Save grey (10048),
-        // each occupied slot's Load lit (10049). Delete is the port's.
+        // each occupied slot's Load lit (10049).
         let mut state = GameOptionsState::new(GameOptionsOrigin::TacticalBattle);
         state.occupied[0] = true;
         for action in [
@@ -1306,7 +1300,6 @@ mod tests {
                 slot: 0,
                 name: "Battle".into(),
             },
-            GameOptionsAction::Delete { slot: 0 },
             GameOptionsAction::Load { slot: 1 },
         ] {
             assert_eq!(state.request(action), GameOptionsAction::None);
@@ -1611,10 +1604,6 @@ mod tests {
         assert_eq!(
             confirmation_strings(&GameOptionsAction::Exit),
             line(None, "Are you sure you want to quit?")
-        );
-        assert_eq!(
-            confirmation_strings(&GameOptionsAction::Delete { slot: 0 }),
-            line(None, "Delete the selected saved game?")
         );
     }
 

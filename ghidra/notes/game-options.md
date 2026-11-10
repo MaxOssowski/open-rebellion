@@ -137,10 +137,12 @@ registry's zeros.
 
 - The authentic window has six rows. The compatibility panel retains all ten
   existing slots through F8 / Ctrl+L (load) and campaign F9 / Ctrl+S
-  (save/delete), sharing confirmation guards. No storage migration is needed.
-- No native delete button is present in this constructor or the inspected
-  manual pages. Do not invent one; existing legacy deletion remains separate
-  until its native gesture is recovered.
+  (save), sharing confirmation guards. No storage migration is needed.
+- The original has no delete: this constructor builds none, and no game DLL
+  holds a delete string apart from the Message Index's "Delete Selected
+  Messages" (TEXTSTRA 0x8009); REBDLOG's save strings are overwrite and
+  load questions only. The port's legacy deletion was removed on
+  2026-11-10 (owner: states absent from the original are removed).
 - Upstream display flags, including Holocube, are preserved. Their full original
   visual behavior remains outside this save/confirmation checkpoint.
 - The slider transfer function, the text objects and persistence are

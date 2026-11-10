@@ -8,7 +8,6 @@
 //!         match action {
 //!             PanelAction::SaveGame { slot, name } => { /* call rebellion_data::save::save_slot */ }
 //!             PanelAction::LoadGame { slot }       => { /* call rebellion_data::save::load_slot */ }
-//!             PanelAction::DeleteSave { slot }     => { /* call rebellion_data::save::delete_slot */ }
 //!             PanelAction::CloseSaveLoadPanel      => { /* hide the panel */ }
 //!             _ => {}
 //!         }
@@ -120,7 +119,7 @@ fn confirm_is_enabled(saves: &[SaveSlotInfo], state: &SaveLoadPanelState) -> boo
 /// `rebellion_data::save::list_saves()` and converting to `SaveSlotInfo`.
 /// It may be empty (all slots are free).
 ///
-/// Returns a `PanelAction` whenever the player confirms a save/load/delete
+/// Returns a `PanelAction` whenever the player confirms a save or load
 /// or closes the window; returns `None` while the player is still browsing.
 ///
 /// The maximum number of save slots is `MAX_DISPLAY_SLOTS`.
@@ -203,23 +202,6 @@ pub fn draw_save_load(
                         }
                     }
 
-                    // Delete button (save mode only, existing slots)
-                    if state.save_mode {
-                        if let Some(info) = existing {
-                            ui.horizontal(|ui| {
-                                ui.add_space(20.0);
-                                if ui
-                                    .small_button(
-                                        RichText::new("✕ Delete")
-                                            .color(Color32::from_rgb(200, 80, 80)),
-                                    )
-                                    .clicked()
-                                {
-                                    action = Some(PanelAction::DeleteSave { slot: info.slot });
-                                }
-                            });
-                        }
-                    }
                 }
             });
 
