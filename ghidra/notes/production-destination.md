@@ -160,7 +160,10 @@ AI's Manage Production/Manage Garrisons agent skips reserved managers.
   manufacturing facility of the player's (port: its production areas). The
   targeting release on a planet or a fleet sets every area's destination
   (`PanelAction::SetDestination`), logged as `[interface] command=0x214
-  destination=production_destination status=set`. Reserved stays disabled.
+  destination=production_destination status=set`. Its Reserved is ported
+  since 2026-11-10 (`sector-icon-menus.md`, "The facility icon's Reserved"),
+  and so is its drop, a `0x214` against the drop window's `+0x68`
+  ("Drags by kind" there).
 - Gate: `tools/interface-parity/fleet-window.mjs`, case `destination`
   (fixture code 54, a player shipyard at the primary system), both sides.
 - Best Time to Deployment = Best Time to Completion + transit time, where

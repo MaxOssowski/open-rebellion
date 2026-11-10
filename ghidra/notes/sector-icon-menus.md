@@ -3,7 +3,7 @@ title: "Sector Window Icons: Selection, Pop-up Menus and Drags"
 description: "How a press on a sector window's quadrant icon selects it (FUN_004593e0, FUN_0045b1b0), which orders its right-click menu lists per kind (FUN_00507290, FUN_0050f2e0), and what each order acts on (FUN_00512700)"
 category: "ghidra"
 created: 2026-10-06
-updated: 2026-10-06
+updated: 2026-11-10
 tags: [sector-window, quadrant-icons, object-popup-menu, orders]
 ---
 
@@ -100,6 +100,55 @@ side must be 1 or 2. Every list is filtered to that side by `FUN_00553350`
 Move then splits the members into sub-orders (`move-order.md`, "Expansion
 into sub-orders").
 
+Kind `0x40` does not look at the order's kind: any order on the mission
+icon, a drag's Move included, gets the mission members.
+
+## The facility icon's Reserved (read 2026-11-10)
+
+`0x216` is order class `0x006612a8` (`FUN_0051f4b0` registers
+`FUN_00539090` -> `FUN_00539040`). Its slot `+0x48` (`Class_006612a8_vt48`)
+creates one `Event216` (vtable `0x00669aa8`) per team member through
+`+0x4c` (`FUN_005201c0` -> `FUN_005535b0`), so on an icon there is one per
+manager of the side.
+
+- Enabled (`+0x18`, `FUN_0051fe20`): each event's `+0x18`
+  (`Event216_vt18`) asks its manager's `+0x1d8` (`ManuMgr_vt1d8`: the object
+  check `FUN_004f9860`), and `FUN_00553770` refuses an empty team (`0x16`)
+  or mixed sides (`0x14`).
+- Checked (`+0x14`, `FUN_0051fd30`, read from the image at
+  `0x0051fd30..0x0051fe14`): `FUN_00553720` walks the events, noting whether
+  some answer yes and some no (`Event216_vt14` -> `ManuMgr_vt1d4`, the
+  manager's Reserved). With the order's `+0x54` non-zero the row is checked
+  when all answer yes; Reserved's `+0x54` is `FUN_006158b0`, which returns 0,
+  so **the row is checked when any manager is Reserved**.
+- Chosen (`+0x50`, `Class_006612a8_vt50`): each event's value `+0x50` is
+  `+0x14 == 0`, the opposite of the mark; `Event216_Fire` hands it to the
+  manager's `+0x1fc` (`ManuMgr_vt1fc` -> `+0x1dc`, then
+  `ManuMgr_SetReserved`). So a marked row clears every manager and an
+  unmarked one reserves them all.
+
+## Drags by kind (read 2026-11-10)
+
+`FUN_00422ce0`'s `0x29a` handler, window type 1 (`move-order.md`, "A drag
+is a move"), walks the selection: an entry whose kind (`+0x1c`) has bit 4
+(the facility icon) is copied into a new entry (`FUN_004f5b10(id, 4)`) for
+a `0x214` order against the drop window's `+0x68`; every other entry goes
+into `0x201`, or `0x202` with Ctrl, against `+0x70`. So:
+
+- facilities: Destination for the system's managers of the side, against
+  the object under the point. `FUN_00537180` refuses a manager's
+  destination that is no system (`1`/`0x25`); `FUN_00487cc0` has no case for
+  `0x214`, so nothing asks and Ctrl changes nothing;
+- defenses: Move or Confirmed Move of the regiments, squadrons, characters
+  and special forces (`FUN_00512700` kind 8), split into one `0x241` order
+  for the characters and special forces and one `0x204` group order for the
+  rest (`FUN_0053c810`, `FUN_0053ca50`);
+- fleets: Move or Confirmed Move of the system's fleets;
+- missions: Move or Confirmed Move of the members on visible missions
+  (kind `0x40` ignores the order kind). hyp: it is refused, since the
+  `0x241` command's `FUN_00522b30` refuses a busy member
+  (`move-order.md`, "A character's Move"); not run in A0.
+
 ## Ported
 
 - `sector_window.rs`: each open window keeps its icon selection. A left or
@@ -138,11 +187,24 @@ into sub-orders").
   selection (`SectorWindowAction::DropSelection`), a Confirmed Move with
   Ctrl held. The fleet icon's drop moves its fleets against what the window
   under the point gives (`+0x70`, `targeting::release_destination`).
-- port: the other icons' orders and drops do nothing until their
-  system-wide forms are ported (the defenses' include characters, whose
-  move is not ported; the facilities' `0x214` and `0x216` act on family
-  `0xa0` objects the port does not model). The drag image is not drawn,
-  and Ctrl's multiple selection is not ported. (The selected icon's second
+- The facility icon's Reserved (2026-11-10) is enabled when the system
+  has managers of the player's (port: a manufacturing facility of the
+  side, `quadrant_icons::facility_icon_has_managers`, as for Destination),
+  checked while any area is Reserved (`ManufacturingState::any_reserved`),
+  and sets every area to the opposite of the mark
+  (`ManufacturingState::toggle_system_reserved`).
+- The facility icon's drop (2026-11-10) sets every area's Destination to
+  the system `+0x68` names (`targeting::destination_drop_target`), with no
+  question; a point naming an object below the system sets nothing. port:
+  `+0x68` is read through the Mission release's hit test, so a planet's
+  squadron, an unfinished unit or a Missions window's mission answers its
+  system where the original refuses; the refusal's advisor reaction
+  (`FUN_00487c90`) is not played.
+- port: the defenses icon's Move and Confirmed Move stay disabled and its
+  drop does nothing until its mixed team's move (`0x241` plus a `0x204`
+  group with `FUN_0053d430`'s `1`/`0x28` rule) is ported; the missions
+  icon's drop does nothing. The drag image is not drawn, and Ctrl's
+  multiple selection is not ported. (The selected icon's second
   bitmap is drawn: `sector-quadrants.mjs` checks all 20 bitmaps of
   `FUN_0045ca80`'s matrix, each also found exactly in A0, 2026-11-10.)
 
@@ -152,4 +214,8 @@ into sub-orders").
 `FUN_004f5b10`, `FUN_0042d170`, `FUN_00442130`, `FUN_004f3220`,
 `FUN_0045b3b0`, `FUN_004ac3a0`, `FUN_004ac5c0`, `FUN_0051d990`,
 `FUN_00507290`, `FUN_0050f0b0`, `FUN_0050f2e0`, `FUN_00512700`,
-`FUN_00553350`, `FUN_0052c170`, `FUN_0053efd0`.
+`FUN_00553350`, `FUN_0052c170`, `FUN_0053efd0`, `FUN_00539040`,
+`FUN_0051fd30`, `FUN_00553720`, `FUN_006158b0`, `FUN_005201c0`,
+`FUN_005535b0`, `FUN_0057ed20`, `FUN_0057eef0`, `FUN_0057efb0`,
+`FUN_0057f150`, `FUN_00539180`, `FUN_00528410`, `FUN_00528430`,
+`FUN_00529c30`, `FUN_00422ce0`.
