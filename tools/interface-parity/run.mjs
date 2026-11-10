@@ -6465,9 +6465,20 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     // The trench run ends on its movie (ghidra/notes/movie-flow.md: 0x71
     // MDATA.201 on success, 0x70 MDATA.202 on failure), which the browser
     // plays from data/video.
-    if (/trench-run-success/.test(id)) expectedRequests.push("/data/video/201.webm");
-    if (/trench-run-failure/.test(id)) expectedRequests.push("/data/video/202.webm");
-    assert.deepEqual(requests.map(({ url: pathname }) => pathname).sort(), expectedRequests.sort());
+    // The movie's proof: its request, or, when Escape ends it before the
+    // browser asks for the file, the port's own "[cutscene] opened" line
+    // for that stem.
+    const trenchMovie = /trench-run-success/.test(id) ? "201" : /trench-run-failure/.test(id) ? "202" : null;
+    const moviePath = trenchMovie && `/data/video/${trenchMovie}.webm`;
+    const movieOpened = trenchMovie && consoleLines.some(({ text }) =>
+      text.startsWith("[cutscene] opened ") && text.endsWith(`/${trenchMovie}.webm`));
+    if (moviePath) {
+      assert.ok(requests.some(({ url }) => url === moviePath) || movieOpened,
+        `the trench run's movie ${trenchMovie} was neither requested nor opened`);
+      expectedRequests.push(moviePath);
+    }
+    assert.deepEqual(requests.map(({ url: pathname }) => pathname).filter((url) => url !== moviePath).sort(),
+      expectedRequests.filter((url) => url !== moviePath).sort());
     assert.ok(requests.every(({ status, aborted }) => aborted || status === 200), "startup has non-200 requests");
     assert.deepEqual(errors, [], `browser diagnostics for ${id}: ${errors.join("; ")}`);
     if (["mismatch", "mismatch_not_updated", "dimension_mismatch"].includes(comparison.status)) {
