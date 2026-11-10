@@ -4648,7 +4648,7 @@
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-10-01-encyclopedia-topic-source-bindings.md"
           ],
-          "note": "P66A exposes the ten source-empty mission records without fallback (unit tests; macOS-era evidence); the original's display of a missing entry was not compared in A0 or a Linux browser run.",
+          "note": "P66A exposes the ten source-empty mission records without fallback (unit tests; macOS-era evidence); the original's display of a missing entry was not compared in A0 or a Linux browser run. 2026-11-10: the ten source-empty records are exactly MISSNSD's hidden missions (Move, Return, Autorouting, Adrift, Dagobah, Palace, Vacation, Sabbatical, Pickup, Bounty; record +0x5c), which FUN_00422620 leaves out of the window's list and the port too (EncyclopediaCatalog::listed_entries); A0 encyclopedia/category-0 runs Adar Tallon, Adega, Advanced Construction Yard with no Adrift. Open: whether another path (an object menu's Encyclopedia on such a mission) reaches a missing entry is not traced.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
