@@ -5490,8 +5490,15 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     });
     page.on("requestfailed", (request) => {
       // Escape on the trench run's movie stops its download (see below).
+      // When it does so before the response arrives, the browser still
+      // asked for the movie: count the request, with no status, so the
+      // list check sees the movie either way.
       if (scenario.trench_run_outcome && /\/data\/video\/20[12]\.webm$/.test(request.url())
-        && request.failure()?.errorText === "net::ERR_ABORTED") return;
+        && request.failure()?.errorText === "net::ERR_ABORTED") {
+        const pathname = new URL(request.url()).pathname;
+        if (!requests.some(({ url }) => url === pathname)) requests.push({ url: pathname, status: null, aborted: true });
+        return;
+      }
       errors.push(`requestfailed:${request.url()}:${request.failure()?.errorText}`);
     });
     page.on("pageerror", (error) => errors.push(`pageerror:${error.stack || error.message}`));
@@ -6427,7 +6434,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     if (/trench-run-success/.test(id)) expectedRequests.push("/data/video/201.webm");
     if (/trench-run-failure/.test(id)) expectedRequests.push("/data/video/202.webm");
     assert.deepEqual(requests.map(({ url: pathname }) => pathname).sort(), expectedRequests.sort());
-    assert.ok(requests.every(({ status }) => status === 200), "startup has non-200 requests");
+    assert.ok(requests.every(({ status, aborted }) => aborted || status === 200), "startup has non-200 requests");
     assert.deepEqual(errors, [], `browser diagnostics for ${id}: ${errors.join("; ")}`);
     if (["mismatch", "mismatch_not_updated", "dimension_mismatch"].includes(comparison.status)) {
       fail(`pixel comparison failed for ${id}: ${comparison.different_pixels} pixels`);
