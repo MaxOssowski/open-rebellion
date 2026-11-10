@@ -140,3 +140,30 @@ fn kessel_to_yavin_deployment_days_match_a0() {
         .expect("a refinery is listed");
     assert_eq!(rebellion_core::delivery::transit_days(&world, refinery, kessel, yavin), 96);
 }
+
+#[test]
+#[ignore = "requires original data/base DAT files"]
+fn a_new_empire_games_training_facility_lists_seven_classes_as_a0() {
+    // A0 2026-11-10 (build-selection-empire2/12-*: Build Troops on Sluis
+    // Van, day 7 of a new Empire game): Imperial Army Regiment, Imperial
+    // Commandos, Imperial Espionage Droid, Imperial Fleet Regiment,
+    // Imperial Probe Droid, Noghri Death Commandos, Stormtrooper Regiment.
+    let world = rebellion_data::load_game_data(&data_dir()).expect("load original game data");
+    let listed = listed_classes(&world, &ResearchState::new(), ProductionArea::TrainingFacility, false);
+    let names: Vec<String> = rebellion_render::build_selection::in_list_order(&world, listed)
+        .into_iter()
+        .map(|kind| rebellion_render::manufacturing_window::product(&world, kind).0)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "Imperial Army Regiment",
+            "Imperial Commandos",
+            "Imperial Espionage Droid",
+            "Imperial Fleet Regiment",
+            "Imperial Probe Droid",
+            "Noghri Death Commandos",
+            "Stormtrooper Regiment",
+        ]
+    );
+}

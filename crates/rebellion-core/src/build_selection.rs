@@ -53,8 +53,13 @@ fn catalog_kind(class: DatId, is_alliance: bool) -> Option<BuildableKind> {
 }
 
 /// The classes `area`'s manager lists for a side: its family's classes that
-/// side builds and has researched, in `DatId` order. hyp: `FUN_0051cb20`
-/// walks the class tables in id order.
+/// side builds, has researched and that cost refined material, in `DatId`
+/// order. `FUN_0052e580` lists through `FUN_0051cb20` -> `FUN_00567880`,
+/// which keeps only classes with a refined cost (`FUN_0053b860` nonzero):
+/// the Empire's Bounty Hunters (SPECFCSD 9, cost 0) are never listed (A0
+/// build-selection-empire2/12-*: Sluis Van's Training Facility lists seven
+/// classes, no Bounty Hunters). hyp: `FUN_0051cb20` walks the class
+/// tables in id order.
 #[must_use]
 pub fn listed_classes(
     world: &GameWorld,
@@ -71,14 +76,22 @@ pub fn listed_classes(
             world
                 .capital_ship_classes
                 .iter()
-                .filter(|(_, c)| serves(c.is_alliance, c.is_empire) && unlocked(c.research_order))
+                .filter(|(_, c)| {
+                    serves(c.is_alliance, c.is_empire)
+                        && c.refined_material_cost != 0
+                        && unlocked(c.research_order)
+                })
                 .map(|(key, c)| (c.dat_id.raw(), BuildableKind::CapitalShip(key))),
         );
         listed.extend(
             world
                 .fighter_classes
                 .iter()
-                .filter(|(_, c)| serves(c.is_alliance, c.is_empire) && unlocked(c.research_order))
+                .filter(|(_, c)| {
+                    serves(c.is_alliance, c.is_empire)
+                        && c.refined_material_cost != 0
+                        && unlocked(c.research_order)
+                })
                 .map(|(key, c)| (c.dat_id.raw(), BuildableKind::Fighter(key))),
         );
     } else {
@@ -90,6 +103,7 @@ pub fn listed_classes(
                     let kind = catalog_kind(class, is_alliance)?;
                     (ProductionArea::of(kind) == area
                         && value.serves(is_alliance)
+                        && value.refined_material_cost != 0
                         && unlocked(value.research_order))
                     .then_some((class.raw(), kind))
                 }),

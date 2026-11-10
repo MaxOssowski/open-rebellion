@@ -11267,11 +11267,13 @@ mod tests {
         let site = add_system(&mut world, sector, 0.9, 0.1);
         let elsewhere = add_system(&mut world, sector, 0.9, 0.1);
         let yard = DatId(0x2a00_0003);
+        // A listed class costs refined material (FUN_00567880).
         world.buildable_classes.insert(
             yard,
             crate::world::BuildableClass {
                 is_alliance: true,
                 is_empire: true,
+                refined_material_cost: 10,
                 ..Default::default()
             },
         );
@@ -11500,11 +11502,13 @@ mod tests {
         let site = add_system(&mut world, sector, 0.9, 0.1);
         let spy = DatId(0x3c00_0001);
         for class in [spy, DatId(0x2900_0001), DatId(0x2a00_0003)] {
+            // A listed class costs refined material (FUN_00567880).
             world.buildable_classes.insert(
                 class,
                 crate::world::BuildableClass {
                     is_alliance: true,
                     is_empire: true,
+                    refined_material_cost: 1,
                     ..Default::default()
                 },
             );

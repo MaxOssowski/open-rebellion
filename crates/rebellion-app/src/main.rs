@@ -14006,6 +14006,8 @@ mod fleet_move_tests {
                     .insert(rebellion_core::world::CapitalShipClass {
                         is_alliance: true,
                         is_empire: true,
+                        // A listed class costs refined material (FUN_00567880).
+                        refined_material_cost: 10,
                         ..rebellion_core::world::CapitalShipClass::default()
                     });
             let mut manufacturing = ManufacturingState::new();
