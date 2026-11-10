@@ -3157,6 +3157,16 @@ fn place_quadrant_contents(
                     is_mine: true,
                 });
         world.systems[neutral].production_facilities = vec![mine];
+        // And the player's battery, so its defenses icon shows with the
+        // system's side too: the neutral pair 10789/10790 (FUN_0045ce80,
+        // FUN_0045ca80 state 0; A0 modal/07-after shows 10790).
+        let battery = world
+            .defense_facilities
+            .insert(rebellion_core::world::DefenseFacilityInstance {
+                class_dat_id: rebellion_core::ids::DatId::new(0x2200_0001),
+                side: player,
+            });
+        world.systems[neutral].defense_facilities = vec![battery];
         uprisings.active_uprisings.remove(&neutral);
     }
     // And a fourth, destroyed (FUN_0045bbb0: the asteroid field 10240 in
@@ -4985,6 +4995,8 @@ struct FixtureQuadrantSetup {
     /// system icon's rect (A0 sector-b: neutral names white, the icon
     /// STRATEGY 10787).
     neutral: Option<[[f32; 4]; 2]>,
+    /// The neutral system's defenses icon rect (its player battery).
+    neutral_defenses: Option<[f32; 4]>,
     /// A destroyed system's rect (A0 menus3/05: Averam's asteroid field
     /// STRATEGY 10240 and its white name).
     destroyed: Option<[f32; 4]>,
@@ -5100,6 +5112,10 @@ fn quadrant_setup(
                 planet(Some(&system))?,
                 [icon.min.x, icon.min.y, icon.width(), icon.height()],
             ])
+        }),
+        neutral_defenses: marks.get(2).and_then(|&system| {
+            let icon = sectors.quadrant_screen_rect(world, layout, system, Quadrant::Defenses)?;
+            Some([icon.min.x, icon.min.y, icon.width(), icon.height()])
         }),
         destroyed: planet(marks.get(3)),
         day_readout: day_readout_centre(request.faction, layout),

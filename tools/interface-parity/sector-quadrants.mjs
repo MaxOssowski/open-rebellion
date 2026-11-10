@@ -581,6 +581,20 @@ const cases = [
       assert.equal(neutralSelected.different_pixels, 0,
         `the selected neutral icon: ${neutralSelected.different_pixels} of ${neutralSelected.pixels_checked} differ`);
       neutral.selected = neutralSelected;
+      // Its defenses icon (the player's battery there) takes the system's
+      // side too: the neutral pair 10789 at rest, 10790 selected
+      // (FUN_0045ce80, FUN_0045ca80 state 0); A0 shows both, every pixel
+      // (sector-b's neutral planets; modal/07-after).
+      assert.ok(setup.neutral_defenses, JSON.stringify(setup));
+      const defensesRest = { id: 10789, ...compareIcon(selectedScreen, setup.neutral_defenses,
+        resource(source, 10789), "neutral-defenses", directory) };
+      await click(page, { x: Math.round(setup.neutral_defenses[0]) + 4, y: Math.round(setup.neutral_defenses[1]) + 9 });
+      const defensesScreen = await stableScreen(page, directory, "neutral-defenses-selected");
+      const defensesSelected = { id: 10790, ...compareIcon(defensesScreen, setup.neutral_defenses,
+        resource(source, 10790), "neutral-defenses-selected", directory) };
+      assert.deepEqual([defensesRest.different_pixels, defensesSelected.different_pixels], [0, 0],
+        JSON.stringify([defensesRest, defensesSelected]));
+      neutral.defenses = [defensesRest, defensesSelected];
       return { compares, absent, headquarters, uprising, neutral: { ...neutral, white }, destroyed };
     },
   },

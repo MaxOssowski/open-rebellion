@@ -141,9 +141,10 @@ into sub-orders").
 - port: the other icons' orders and drops do nothing until their
   system-wide forms are ported (the defenses' include characters, whose
   move is not ported; the facilities' `0x214` and `0x216` act on family
-  `0xa0` objects the port does not model). The selected icon's second
-  bitmap and the drag image are not drawn. Ctrl's multiple selection is not
-  ported.
+  `0xa0` objects the port does not model). The drag image is not drawn,
+  and Ctrl's multiple selection is not ported. (The selected icon's second
+  bitmap is drawn: `sector-quadrants.mjs` checks all 20 bitmaps of
+  `FUN_0045ca80`'s matrix, each also found exactly in A0, 2026-11-10.)
 
 ## Supporting decompiles
 
