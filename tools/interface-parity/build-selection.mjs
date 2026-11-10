@@ -578,6 +578,21 @@ const A0_EMPIRE_FACILITIES = [
 ].map(([name, values, file]) => ({ name, values, file: `.artifacts/a0-vm/build-selection-empire2/${file}`,
   at: [255, 87], skipCompletion: true }));
 
+// The Empire's Training Facility classes against A0 build-selection-empire2
+// /12-* (a new Empire game, Sluis Van's one Training Facility, the window
+// at (255, 87)): seven classes by name, with no Bounty Hunters (SPECFCSD 9
+// costs no refined material, and FUN_00567880 lists only classes that do).
+const A0_EMPIRE_TROOPS = [
+  ["Imperial Army Regiment", ["6", "3", "24 Days", "0 Days"], "12-1-imperial-army-regiment.png"],
+  ["Imperial Commandos", ["2", "1", "8 Days", "0 Days"], "12-2-imperial-commandos.png"],
+  ["Imperial Espionage Droid", ["1", "1", "4 Days", "0 Days"], "12-3-imperial-espionage-droid.png"],
+  ["Imperial Fleet Regiment", ["7", "5", "28 Days", "0 Days"], "12-4-imperial-fleet-regiment.png"],
+  ["Imperial Probe Droid", ["1", "1", "4 Days", "0 Days"], "12-5-imperial-probe-droid.png"],
+  ["Noghri Death Commandos", ["2", "1", "8 Days", "0 Days"], "12-6-noghri-death-commandos.png"],
+  ["Stormtrooper Regiment", ["9", "6", "36 Days", "0 Days"], "12-7-stormtrooper-regiment.png"],
+].map(([name, values, file]) => ({ name, values, file: `.artifacts/a0-vm/build-selection-empire2/${file}`,
+  at: [255, 87] }));
+
 // A0 build-selection4/08: the list opened with LNR Series I shown shows
 // KDY-150 and LNR Series I. Dragging the list's bar had moved the window
 // one pixel left, to (191, 84), as in 07.
@@ -1048,9 +1063,8 @@ async function overMaintenanceCase(page, faction, directory) {
   let opened = await production(page);
   const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
   // A0 manufacturing/11 shows the Imperial Army Regiment, whose upkeep the
-  // side lacks. The list shows its classes by name, and the Empire's first,
-  // Bounty Hunters, costs no maintenance (its Confirm stays live, as an
-  // order with no upkeep passes, FUN_0052e970): step to the regiment.
+  // side lacks. The list shows its classes by name; the Empire's first is
+  // that regiment (A0 build-selection-empire2/12-1), so no step is needed.
   if (faction.name === "empire") {
     for (let step = 0; step < 12 && opened.build_selection_class !== "Imperial Army Regiment"; step += 1) {
       await stepClass(page, origin);
@@ -1349,7 +1363,8 @@ async function inspect(server, source, faction, executable) {
         facilities: await classValuesCase(page, directory, "facilities"),
         troops: await classValuesCase(page, directory, "troops") }
       : faction.byte === 2 && fs.existsSync(path.join(root, ".artifacts/a0-vm/build-selection-empire2"))
-        ? { facilities: await classValuesCase(page, directory, "facilities", A0_EMPIRE_FACILITIES) } : null;
+        ? { facilities: await classValuesCase(page, directory, "facilities", A0_EMPIRE_FACILITIES),
+          troops: await classValuesCase(page, directory, "troops", A0_EMPIRE_TROOPS) } : null;
 
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
