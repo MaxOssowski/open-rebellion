@@ -2223,7 +2223,7 @@
         {
           "id": "CMD-03-C016",
           "requirement": "quadrant icon faction and state art",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/sector-quadrants.md",
@@ -2231,7 +2231,7 @@
             "tools/interface-parity/sector-quadrants.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-art-a0/"
           ],
-          "note": "Art follows FUN_0045ca80 for the base faction paths; the full state matrix and an A0 comparison are open. 2026-11-10: all 20 bitmaps of FUN_0045ca80's matrix (10771..10790, rest and selected, sides 1, 2 and neither) occur pixel for pixel in A0 captures (new: quadrant-icons-empire/01, the Empire's selected mission icon 10786); sector-quadrants.mjs checks 18 of them in the port, now with the selected neutral system icon 10788 (0 of 94 px). Open: the neutral defenses pair 10789/10790 in the port.",
+          "note": "Art follows FUN_0045ca80 for the base faction paths; the full state matrix and an A0 comparison are open. 2026-11-10: all 20 bitmaps of FUN_0045ca80's matrix (10771..10790, rest and selected, sides 1, 2 and neither) occur pixel for pixel in A0 captures (new: quadrant-icons-empire/01, the Empire's selected mission icon 10786); sector-quadrants.mjs checks 18 of them in the port, now with the selected neutral system icon 10788 (0 of 94 px). Open: the neutral defenses pair 10789/10790 in the port. 2026-11-10: the neutral defenses pair too: the fixture's neutral system gets the player's battery, and sector-quadrants.mjs finds 10789 at rest and 10790 selected, 0 px, both sides. All 20 bitmaps of FUN_0045ca80's matrix are now checked in the port and occur exactly in A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
