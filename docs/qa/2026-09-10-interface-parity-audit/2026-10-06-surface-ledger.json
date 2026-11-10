@@ -6303,9 +6303,10 @@
             "ghidra/notes/manufacturing-build-selection.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-build-selection-quantity-cancel/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-training-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-training-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-empire-training-list-a0/"
           ],
-          "note": "Compared with A0 on 2026-11-02 (build-selection2/01..07): the Empire's Imperial Army Regiment in Build Selection, 6 / 3 / '24 Days' / '0 Days', confirmed onto the band. build-selection.mjs (Linux) selects that troop class and finds the four values exactly; the Alliance's troop class builds in the same gate. 2026-11-09: the Alliance too: Alliance Army Regiment 6/3/'24 Days' and Alliance Fleet Regiment 8/6/'32 Days' as A0 build-selection4/11, 12-2, pictures 0 px.",
+          "note": "Compared with A0 on 2026-11-02 (build-selection2/01..07): the Empire's Imperial Army Regiment in Build Selection, 6 / 3 / '24 Days' / '0 Days', confirmed onto the band. build-selection.mjs (Linux) selects that troop class and finds the four values exactly; the Alliance's troop class builds in the same gate. 2026-11-09: the Alliance too: Alliance Army Regiment 6/3/'24 Days' and Alliance Fleet Regiment 8/6/'32 Days' as A0 build-selection4/11, 12-2, pictures 0 px. 2026-11-10: the Empire's Imperial Army, Fleet and Stormtrooper Regiments (6/3/24, 7/5/28, 9/6/36) as A0 build-selection-empire2/12-1, 4, 7, pictures 0 px.",
           "scope": "Passed against A0 (Windows 10 VM) and the Linux browser build (Arch Chromium 155), with the text deviations the owner accepted on 2026-10-30."
         },
         {
@@ -6317,9 +6318,10 @@
             "ghidra/notes/manufacturing-build-selection.md",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-training-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-training-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-empire-training-list-a0/"
           ],
-          "note": "Training facilities list special-force classes (catalog family 0x3c, BuildableKind::SpecialForce; unit test). No browser case or A0 capture selects a special force. 2026-11-09: A0 build-selection4/12-* (new Alliance game, Kessel's new Training Facility): Bothan Spies 1/1/'4 Days', Guerrillas 1/1/'4 Days', Infiltrators 2/1/'8 Days', Longprobe Y-wing Recon Team 2/1/'8 Days', all '0 Days'; build-selection.mjs (Alliance, Linux) steps to each and finds the values exactly and the picture 0 of 5070 px from A0.",
+          "note": "Training facilities list special-force classes (catalog family 0x3c, BuildableKind::SpecialForce; unit test). No browser case or A0 capture selects a special force. 2026-11-09: A0 build-selection4/12-* (new Alliance game, Kessel's new Training Facility): Bothan Spies 1/1/'4 Days', Guerrillas 1/1/'4 Days', Infiltrators 2/1/'8 Days', Longprobe Y-wing Recon Team 2/1/'8 Days', all '0 Days'; build-selection.mjs (Alliance, Linux) steps to each and finds the values exactly and the picture 0 of 5070 px from A0. 2026-11-10: the Empire too, and corrected: A0 build-selection-empire2/12-* (Sluis Van's Training Facility) lists seven classes and no Bounty Hunters; FUN_00567880 lists only classes with a refined cost, so listed_classes now drops zero-cost classes (SPECFCSD 9 Bounty Hunters). build-selection.mjs (Empire, Linux): Imperial Commandos, Espionage Droid, Probe Droid, Noghri Death Commandos values exact, pictures 0 px.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
