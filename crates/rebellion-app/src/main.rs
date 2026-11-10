@@ -2440,6 +2440,7 @@ async fn main() {
         }
 
         // ── Tick the clock (Galaxy mode only) ────────────────────────────────
+        let galaxy_before_ticks = game_mode == GameMode::Galaxy;
         let tick_events = if game_mode == GameMode::Galaxy {
             clock.advance(dt)
         } else {
@@ -4312,6 +4313,16 @@ async fn main() {
             }
         }
 
+        // The Battle Alert opens over the strategy view as it stood (A0
+        // battle-clean/00). port: the frame a battle begins in still draws
+        // the galaxy and is copied once at its end, where the battle takes
+        // the screen; a copy every galaxy frame held Firefox at 3 fps.
+        let battle_underlay_pending =
+            galaxy_before_ticks && game_mode == GameMode::TacticalCombat;
+        if battle_underlay_pending {
+            game_mode = GameMode::Galaxy;
+        }
+
         // ── Developer commands ───────────────────────────────────────────────
 
         let mut panel_actions: Vec<PanelAction> = Vec::new();
@@ -4373,6 +4384,7 @@ async fn main() {
         // The game's end, after the story movies ahead of it
         // (pending_ending).
         if game_mode == GameMode::Galaxy
+            && !battle_underlay_pending
             && cutscene_player.is_none()
             && (!plays_story_movies || msg_log.queued_story_movies().next().is_none())
         {
@@ -4399,6 +4411,7 @@ async fn main() {
         // port: the strategic clock holds while it plays, as in every
         // cutscene; hyp: the original's keeps running.
         if game_mode == GameMode::Galaxy
+            && !battle_underlay_pending
             && plays_story_movies
             && cutscene_player.is_none()
             && clock.speed != GameSpeed::Paused
@@ -5208,9 +5221,14 @@ async fn main() {
                 set_cockpit_viewport_clip(None);
 
                 // The Message Index rail lights each category with unread
-                // messages for the player's side (FUN_0048a2a0).
-                cockpit_state.message_unread_mask =
-                    msg_log.unread_mask(player_faction == MissionFaction::Alliance);
+                // messages for the player's side (FUN_0048a2a0). The frame a
+                // battle began in keeps the last frame's rail: the Battle
+                // Alert's backdrop shows none of that day's messages lit
+                // (A0 empire-game3/battle-alert-coruscant).
+                if !battle_underlay_pending {
+                    cockpit_state.message_unread_mask =
+                        msg_log.unread_mask(player_faction == MissionFaction::Alliance);
+                }
 
                 // 4. All egui panels in a single ui() + draw() pass
                 egui_macroquad::ui(|ctx| {
@@ -9308,25 +9326,42 @@ async fn main() {
         }
 
         // The strategy view as it stands, for the Battle Alert and Battle
-        // Results windows the next battle opens over it (A0 battle-clean/00,
+        // Results windows the battle opens over it (A0 battle-clean/00,
         // message-rail/battle-averam-result). A copy on the GPU, made once
-        // the frame's batches are drawn.
-        if game_mode == GameMode::Galaxy {
-            let (width, height) = (screen_width(), screen_height());
-            let fits = tactical_state
-                .strategy_underlay
-                .as_ref()
-                .is_some_and(|texture| texture.width() == width && texture.height() == height);
-            if !fits {
-                tactical_state.strategy_underlay =
-                    Some(render_target(width as u32, height as u32).texture);
-            }
-            if let Some(texture) = tactical_state.strategy_underlay.as_ref() {
-                unsafe {
-                    get_internal_gl().flush();
+        // the frame's batches are drawn, in the frame the battle began in;
+        // the battle then takes the screen. A frame that left the galaxy
+        // meanwhile (Game Options from the cockpit) yields to the battle.
+        if battle_underlay_pending
+            && matches!(
+                game_mode,
+                GameMode::Galaxy
+                    | GameMode::GameOptions {
+                        origin: GameOptionsOrigin::CommandCenter
+                    }
+            )
+        {
+            if game_mode == GameMode::Galaxy {
+                let (width, height) = (screen_width(), screen_height());
+                let fits = tactical_state
+                    .strategy_underlay
+                    .as_ref()
+                    .is_some_and(|texture| texture.width() == width && texture.height() == height);
+                if !fits {
+                    tactical_state.strategy_underlay =
+                        Some(render_target(width as u32, height as u32).texture);
                 }
-                texture.grab_screen();
+                if let Some(texture) = tactical_state.strategy_underlay.as_ref() {
+                    unsafe {
+                        get_internal_gl().flush();
+                    }
+                    texture.grab_screen();
+                }
+            } else {
+                // No galaxy was drawn: the windows fall back to the plain
+                // backdrop rather than an older battle's copy.
+                tactical_state.strategy_underlay = None;
             }
+            game_mode = GameMode::TacticalCombat;
         }
 
         next_frame().await;
