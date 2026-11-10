@@ -1,0 +1,11 @@
+10772 54 2026-10-28-nav/rail-vjun0.png@(220,132) 2026-10-28-nav/rail-vjun1.png@(220,132)
+10774 7 headquarters-move/05-release-1.png@(178,317) personnel-states/33-rail-thirteenth-in-oldest-slot.png@(91,78)
+10776 7 build-selection/05-closed.png@(408,216) build-selection2/33-destination-on-yavin-planet.png@(473,221)
+10777 367 gid-selection/02-released.png@(147,275) gid/hq-burst-alliance-day390.png@(529,272)
+10778 7 personnel-states/15-mon-calamari-regiments.png@(216,250) personnel-states/24-mon-calamari-building-band.png@(216,250)
+10782 5 menus3/58-after-decoy-accept.png@(196,224) modal2/00-now.png@(196,224)
+10784 2 menus3/09-scrap-cancelled.png@(165,165) move-confirm/04-x-cancelled.png@(225,204)
+10785 16 mission-dialog-tips/begin.png@(153,101) mission-dialog-tips/cancel.png@(153,101)
+10786 0 
+10788 1 tooltip/151-menu.png@(124,81)
+10790 1 modal/07-after.png@(277,143)
