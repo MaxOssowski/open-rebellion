@@ -409,6 +409,24 @@ fn right_row_top(row: usize, scroll: f32) -> Option<f32> {
     (top < RIGHT_LIST.1 + RIGHT_LIST.3 && top + RIGHT_ITEM_HEIGHT > RIGHT_LIST.1).then_some(top)
 }
 
+/// The left list's row under window-local `y` when the list shows from
+/// pixel `scroll` (the same bar, 266 high: `FUN_004a4b10`).
+fn left_row_at(y: f32, scroll: f32) -> usize {
+    ((y - LEFT_LIST.1 + scroll) / LEFT_ITEM_HEIGHT) as usize
+}
+
+/// The left list's entries' height for `rows` entries.
+fn left_content(rows: usize) -> f32 {
+    LEFT_ITEM_HEIGHT * rows as f32
+}
+
+/// Entry `row`'s top when the left list shows from pixel `scroll`, or
+/// `None` when the entry lies wholly outside the list.
+fn left_row_top(row: usize, scroll: f32) -> Option<f32> {
+    let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32 - scroll;
+    (top < LEFT_LIST.1 + LEFT_LIST.3 && top + LEFT_ITEM_HEIGHT > LEFT_LIST.1).then_some(top)
+}
+
 /// The scroll state to store once a list's bar hides: back to the top,
 /// or `None` when it is there already.
 fn reset_when_hidden(
@@ -502,15 +520,22 @@ struct OpenFleetWindow {
     /// The right list's first visible pixel and a press held on its bar.
     right_scroll: f32,
     right_hold: Option<crate::list_scroll_bar::Hold>,
+    /// The left list's first visible pixel and a press held on its bar.
+    /// A selection keeps it: a click's `0x29b` only posts `0x467` and
+    /// refreshes the right pane (`FUN_004a6390`, `FUN_004a5c00`); a select
+    /// from outside (slot `+0x6c`, `FUN_004a73c0`) relays the list out
+    /// (`FUN_0060a280`), which only clamps it to the range (`FUN_00609ae0`).
+    left_scroll: f32,
+    left_hold: Option<crate::list_scroll_bar::Hold>,
 }
 
 impl OpenFleetWindow {
-    /// Show `tab`; another tab's list starts at its top.
+    /// Show `tab`. The right list keeps its first visible pixel: the
+    /// strip's `0x6a`/`0x6b` (`FUN_004a6390`) refills the list through
+    /// `FUN_004a5c00`, which empties its items (`FUN_005f5b20` on `+0x18c`)
+    /// and lays it out (`FUN_0060a280` on `+0x164`), and the layout only
+    /// clamps `+0xc4` to the range (`FUN_00609ae0`); the draw clamps it.
     fn show_tab(&mut self, tab: FleetWindowTab) {
-        if self.tab != tab {
-            self.right_scroll = 0.0;
-            self.right_hold = None;
-        }
         self.tab = tab;
         self.selected_item = None;
     }
@@ -700,6 +725,8 @@ impl FleetWindowState {
             roster: None,
             right_scroll: 0.0,
             right_hold: None,
+            left_scroll: 0.0,
+            left_hold: None,
         });
         true
     }
@@ -718,8 +745,8 @@ impl FleetWindowState {
         window.selected = Some(entry);
         window.selected_item = None;
         window.tab = tab_for(Some(entry), window.tab);
-        window.right_scroll = 0.0;
-        window.right_hold = None;
+        // The right list keeps its place, clamped (`FUN_004a73c0` →
+        // `FUN_0060d7e0` → `FUN_004a5c00`; see `OpenFleetWindow::show_tab`).
         true
     }
 
@@ -843,7 +870,7 @@ impl FleetWindowState {
             window_screen_rect(window, layout),
             layout.scale,
             LEFT_LIST.0,
-            LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32,
+            LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32 - window.left_scroll,
             LEFT_LIST.2,
             LEFT_ITEM_HEIGHT,
         ))
@@ -1000,7 +1027,7 @@ impl FleetWindowState {
             (point.y - rect.min.y) / scale,
         );
         let target = if in_rect(LEFT_LIST, local) {
-            let row = ((local.1 - LEFT_LIST.1) / LEFT_ITEM_HEIGHT) as usize;
+            let row = left_row_at(local.1, window.left_scroll);
             let player = cockpit_faction(self.faction);
             match left_entries(world, movement, fog, player, window).get(row) {
                 Some(FleetWindowEntry::Ship { fleet, index }) => {
@@ -1415,7 +1442,7 @@ fn drop_target(
     };
     let fleet_target = |fleet: FleetKey| ReleaseTarget::Fleet { fleet, system };
     if in_rect(LEFT_LIST, local) {
-        let row = ((local.1 - LEFT_LIST.1) / LEFT_ITEM_HEIGHT) as usize;
+        let row = left_row_at(local.1, window.left_scroll);
         return Some(
             entries
                 .get(row)
@@ -1922,6 +1949,8 @@ struct WindowDrawResult {
     travel: Option<egui::Vec2>,
     /// The right list's scroll and bar hold after this frame.
     right_scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
+    /// The left list's scroll and bar hold after this frame.
+    left_scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
 }
 
 /// Draw every open Fleet window.
@@ -2004,12 +2033,16 @@ pub fn draw_fleet_windows(
                 open.right_scroll = first;
                 open.right_hold = hold;
             }
+            if let Some((first, hold)) = result.left_scroll {
+                open.left_scroll = first;
+                open.left_hold = hold;
+            }
             if let Some(selected) = result.select {
                 open.selected = selected;
                 open.selected_item = None;
+                // The right list keeps its place, clamped (`0x29b`,
+                // `FUN_004a6390` → `FUN_004a5c00`).
                 open.tab = tab_for(selected, open.tab);
-                open.right_scroll = 0.0;
-                open.right_hold = None;
             }
             if roster_changed(world, open) {
                 open.selected = None;
@@ -2214,11 +2247,34 @@ fn draw_fleet_window(
                     here.is_some_and(|here| win32_double_click(window.last_click, here, delay));
                 result.last_click = Some(here.filter(|_| !double));
             }
+            // The left list's bar (FUN_004a4b10: FUN_0060a490 with 0x29cb,
+            // 266 high), as the right list's.
+            let left_content = left_content(entries.len());
+            let left_bar = crate::list_scroll_bar::ScrollBar::new(
+                LIST_BAR_ART,
+                LEFT_LIST.0,
+                LEFT_LIST.1,
+                LEFT_LIST.2,
+                LEFT_LIST.3,
+                left_content,
+                window.left_scroll,
+            );
+            let left_scroll = if left_bar.visible() {
+                window.left_scroll.clamp(
+                    0.0,
+                    crate::list_scroll_bar::max_first(left_content, LEFT_LIST.3),
+                )
+            } else {
+                0.0
+            };
+            let left_bar_rect = {
+                let (bx, by, bw, bh) = left_bar.rect();
+                logical_rect(local, scale, bx, by, bw, bh)
+            };
             for (row, entry) in entries.iter().enumerate() {
-                let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32;
-                if top >= LEFT_LIST.1 + LEFT_LIST.3 {
-                    break;
-                }
+                let Some(top) = left_row_top(row, left_scroll) else {
+                    continue;
+                };
                 let item = logical_rect(
                     local,
                     scale,
@@ -2409,12 +2465,21 @@ fn draw_fleet_window(
                         }
                     }
                 }
+                // The bar takes its own presses, over the entry's edge.
+                let entry_area = if left_bar.visible() {
+                    egui::Rect::from_min_max(
+                        item.min,
+                        egui::pos2(item.max.x.min(left_bar_rect.min.x), item.max.y),
+                    )
+                } else {
+                    item
+                };
                 let response = ui.interact(
-                    item.intersect(list),
+                    entry_area.intersect(list),
                     ui.id().with((window.system, "entry", row)),
                     egui::Sense::click(),
                 );
-                if exact_clicked(&response, item) {
+                if exact_clicked(&response, entry_area) {
                     result.select = Some(Some(*entry));
                     result.focus = true;
                 }
@@ -2457,9 +2522,38 @@ fn draw_fleet_window(
                     }
                 }
             }
+            // The bar (FUN_0060a490) shows once the entries pass the list's
+            // height; its arrows, track and thumb scroll it.
+            if left_bar.visible() {
+                let mut hold = window.left_hold;
+                let first = crate::list_scroll_bar::ui_bar(
+                    ui,
+                    cache,
+                    local,
+                    scale,
+                    LIST_BAR_ART,
+                    LEFT_LIST,
+                    left_content,
+                    left_scroll,
+                    &mut hold,
+                    LIST_STEP,
+                );
+                result.left_scroll = Some((first, hold));
+            } else {
+                result.left_scroll = reset_when_hidden(window.left_scroll, window.left_hold);
+            }
             if let Some(edit) = &window.rename {
-                result.rename =
-                    draw_rename_edit(ui, window, edit, &entries, local, list, scale, &font);
+                result.rename = draw_rename_edit(
+                    ui,
+                    window,
+                    edit,
+                    &entries,
+                    local,
+                    list,
+                    scale,
+                    &font,
+                    left_scroll,
+                );
             }
 
             if let Some(side) = selected_side {
@@ -2863,10 +2957,13 @@ fn draw_rename_edit(
     list: egui::Rect,
     scale: f32,
     font: &egui::FontId,
+    left_scroll: f32,
 ) -> Option<RenameOutcome> {
     let rect = if let Some(item) = edit.item {
-        // The item's name line (+37, 125 wide) in the right list.
-        let top = RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * item as f32 + 37.0;
+        // The item's name line (+37, 125 wide) in the right list, where
+        // the list shows it: FUN_004a71d0 takes the item's rect, which
+        // FUN_00609e20 keeps less the first visible pixel (FUN_00609dd0).
+        let top = RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * item as f32 - window.right_scroll + 37.0;
         let right = logical_rect(local, scale, RIGHT_LIST.0, RIGHT_LIST.1, RIGHT_LIST.2, RIGHT_LIST.3);
         logical_rect(local, scale, RIGHT_LIST.0, top, 125.0, 14.0).intersect(right)
     } else {
@@ -2874,7 +2971,7 @@ fn draw_rename_edit(
             // The entry left the list: the edit goes with it.
             return Some(RenameOutcome::Cancel);
         };
-        let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32;
+        let top = LEFT_LIST.1 + LEFT_ITEM_HEIGHT * row as f32 - left_scroll;
         logical_rect(local, scale, LEFT_LIST.0 + 4.0, top + 3.0, 85.0, 15.0).intersect(list)
     };
     let id = ui.id().with((window.system, "rename"));
@@ -2936,8 +3033,10 @@ fn draw_rename_edit(
         }
         return Some(RenameOutcome::Commit(text));
     }
-    // hyp: Escape and a click elsewhere end the edit unissued
-    // (`FUN_004aca40`); what sends them is untraced.
+    // A press elsewhere ends the edit unissued (`FUN_004aca40`): the
+    // window's own 0x201/0x204 and a child's 0x40e (`FUN_004ac3a0`), which
+    // a list (`FUN_006083c0`) and its scroll bar (`FUN_0060aca0`) post on
+    // a press. hyp: Escape too; the field's own key handling is untraced.
     if escape || response.lost_focus() {
         return Some(RenameOutcome::Cancel);
     }
@@ -3135,6 +3234,8 @@ pub(crate) mod tests {
             roster: None,
             right_scroll: 0.0,
             right_hold: None,
+            left_scroll: 0.0,
+            left_hold: None,
         }
     }
 
@@ -4276,7 +4377,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_scrolled_right_list_moves_its_items_up_and_resets_on_a_new_selection() {
+    fn a_scrolled_right_list_moves_its_items_up_and_keeps_its_place_on_a_new_selection() {
         // The bar's first visible pixel (FUN_0060a490, RCDATA 10699; A0
         // fleet-aboard/10 shows it for six squadrons) moves every row up.
         let (world, _, system, _, _) = fleet_with_regiment();
@@ -4286,9 +4387,11 @@ pub(crate) mod tests {
             state.item_screen_rect(scaled(), system, 1),
             Some(egui::Rect::from_min_max(at(101.0, 137.0), at(226.0, 187.0)))
         );
+        // FUN_004a5c00 refills the list without touching its first visible
+        // pixel +0xc4; FUN_00609ae0 only clamps it (the draw does).
         let fleet = world.systems[system].fleets[0];
         assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
-        assert_eq!(state.window_mut(system).unwrap().right_scroll, 0.0);
+        assert_eq!(state.window_mut(system).unwrap().right_scroll, 40.0);
         // The bar's art: width 10, its arrows keyed (bmp_cache).
         assert_eq!(LIST_BAR_ART.width, 10);
         assert_eq!(LIST_BAR_ART.up, [10_692, 10_693]);
@@ -4317,13 +4420,224 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn another_tab_starts_its_list_at_the_top() {
+    fn another_tab_keeps_the_right_lists_place() {
+        // The strip's 0x6a/0x6b (FUN_004a6390) refills through FUN_004a5c00,
+        // which leaves +0xc4 to FUN_00609ae0's clamp.
         let mut window = window(SystemKey::default(), None);
         window.right_scroll = 40.0;
-        window.show_tab(FleetWindowTab::CapitalShips);
-        assert_eq!(window.right_scroll, 40.0);
         window.show_tab(FleetWindowTab::Troops);
-        assert_eq!((window.tab, window.right_scroll), (FleetWindowTab::Troops, 0.0));
+        assert_eq!(
+            (window.tab, window.right_scroll),
+            (FleetWindowTab::Troops, 40.0)
+        );
+    }
+
+    #[test]
+    fn a_new_selection_draws_the_right_list_from_its_kept_place_clamped_to_the_range() {
+        // FUN_00609ae0: +0xc4 stays unless past the new range (content + 5
+        // - 164 for a full list), and a range of 0 (no bar) shows from 0.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let big = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[big].capital_ships[0].class;
+        for _ in 0..5 {
+            world.fleets[big]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, true));
+        }
+        let four = add_fleet(&mut world, system, true, 0);
+        for _ in 0..3 {
+            world.fleets[four]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, true));
+        }
+        let small = add_fleet(&mut world, system, true, 0);
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        let frame = |state: &mut FleetWindowState| {
+            run(
+                &world,
+                &transport,
+                state,
+                CockpitFaction::Alliance,
+                hover(at(-50.0, 0.0)),
+            );
+            state.windows[0].right_scroll
+        };
+        // Six ships (300 high): kept at 100.
+        assert!(state.select(system, FleetWindowEntry::Fleet(big)));
+        state.window_mut(system).unwrap().right_scroll = 100.0;
+        assert_eq!(frame(&mut state), 100.0);
+        // A click on the second entry, four ships (200 high): clamped to
+        // 200 + 5 - 164 = 41.
+        run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            click(at(40.0, 29.0 + 75.0)),
+        );
+        assert_eq!(
+            state.windows[0].selected,
+            Some(FleetWindowEntry::Fleet(four))
+        );
+        assert_eq!(frame(&mut state), 41.0);
+        // One ship: no bar, from the top.
+        assert!(state.select(system, FleetWindowEntry::Fleet(small)));
+        assert_eq!(frame(&mut state), 0.0);
+    }
+
+    #[test]
+    fn the_left_lists_entries_follow_its_scroll() {
+        // Entries 50 high from y 29, 266 shown (FUN_004a4b10's list 0xc9,
+        // 0x5b by 0x10a, with its own 0x29cb bar).
+        assert_eq!(left_content(7), 350.0);
+        assert_eq!(left_row_at(29.0, 0.0), 0);
+        assert_eq!(left_row_at(80.0, 0.0), 1);
+        assert_eq!(left_row_at(80.0, 89.0), 2);
+        assert_eq!(left_row_top(0, 0.0), Some(29.0));
+        assert_eq!(left_row_top(6, 89.0), Some(240.0));
+        // An entry scrolled wholly above the list, or below it, is not
+        // drawn; one that shows a single pixel is.
+        assert_eq!(left_row_top(0, 50.0), None);
+        assert_eq!(left_row_top(0, 49.0), Some(-20.0));
+        assert_eq!(left_row_top(5, 0.0), Some(279.0));
+        assert_eq!(left_row_top(6, 0.0), None);
+        // The list ends at y 295: an entry starting there is hidden.
+        assert_eq!(left_row_top(6, 34.0), None);
+        assert_eq!(left_row_top(6, 35.0), Some(294.0));
+    }
+
+    #[test]
+    fn a_scrolled_left_list_moves_its_entries_rects_and_drop_rows_up() {
+        // The left list's bar (FUN_004a4b10: FUN_0060a490, 0x29cb) shows
+        // from its first visible pixel; the +0x70 drop (FUN_004a3130 step
+        // 2) takes the entry under the point.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleets: Vec<_> = (0..7)
+            .map(|_| add_fleet(&mut world, system, true, 0))
+            .collect();
+        let mut state = opened(&world, system);
+        state.window_mut(system).unwrap().left_scroll = 89.0;
+        assert_eq!(
+            state.entry_screen_rect(scaled(), system, 6),
+            Some(egui::Rect::from_min_max(at(4.0, 240.0), at(95.0, 290.0)))
+        );
+        let open = state.windows[0].clone();
+        let entries = left_entries(
+            &world,
+            &MovementState::default(),
+            &fog(system),
+            Faction::Alliance,
+            &open,
+        );
+        assert_eq!(
+            drop_target(&world, Faction::Alliance, &open, &entries, (40.0, 260.0)),
+            Some(ReleaseTarget::Fleet {
+                fleet: fleets[6],
+                system
+            })
+        );
+        let layer = egui::LayerId::new(egui::Order::Foreground, area_id(system));
+        // FUN_004a2f80: the left list's entry under the point.
+        let pick = |state: &FleetWindowState, y: f32| {
+            state
+                .mission_target(
+                    &world,
+                    &MovementState::default(),
+                    &fog(system),
+                    &TroopTransportState::default(),
+                    scaled(),
+                    layer,
+                    at(40.0, y),
+                )
+                .unwrap()
+        };
+        let ship = world.fleets[fleets[6]].capital_ships[0].class;
+        state.windows[0].expanded = vec![fleets[6]];
+        // Fleet 7 at 240, its ship at 290: the ship is an object target.
+        assert_eq!(
+            pick(&state, 292.0).unwrap().object,
+            Some(MissionTarget::CapitalShip {
+                fleet: fleets[6],
+                class: ship
+            })
+        );
+    }
+
+    #[test]
+    fn a_click_on_a_scrolled_left_list_selects_the_entry_shown_and_the_bar_selects_nothing() {
+        // FUN_004a6390: the left list's 0x29b posts 0x467 and refreshes the
+        // right pane only, so the selection keeps the list's place (hyp).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleets: Vec<_> = (0..7)
+            .map(|_| add_fleet(&mut world, system, true, 0))
+            .collect();
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        state.window_mut(system).unwrap().left_scroll = 89.0;
+        // A press on the bar's track (window x 85..95) pages it and
+        // chooses no entry.
+        run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            click(at(90.0, 200.0)),
+        );
+        assert_eq!(state.windows[0].selected, None);
+        state.window_mut(system).unwrap().left_scroll = 89.0;
+        run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            click(at(40.0, 260.0)),
+        );
+        assert_eq!(
+            (state.windows[0].selected, state.windows[0].left_scroll),
+            (Some(FleetWindowEntry::Fleet(fleets[6])), 89.0)
+        );
+    }
+
+    #[test]
+    fn a_selection_from_outside_leaves_the_left_list_where_it_was_scrolled() {
+        // The Fleet Finder's open (FUN_00429440) selects through slot +0x6c
+        // (FUN_004a73c0): it marks the entry (+0x3c bit 0) and relays out
+        // the list (FUN_0060a280: FUN_00609ae0, FUN_00609a00), which only
+        // clamps the first visible pixel to the range; nothing scrolls the
+        // entry into view.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleets: Vec<_> = (0..7)
+            .map(|_| add_fleet(&mut world, system, true, 0))
+            .collect();
+        let mut state = opened(&world, system);
+        state.window_mut(system).unwrap().left_scroll = 89.0;
+        assert!(state.select(system, FleetWindowEntry::Fleet(fleets[0])));
+        assert!(state.select(
+            system,
+            FleetWindowEntry::Ship {
+                fleet: fleets[0],
+                index: 0
+            }
+        ));
+        assert_eq!(state.windows[0].left_scroll, 89.0);
+    }
+
+    #[test]
+    fn the_left_lists_bar_hides_and_returns_to_the_top_once_its_entries_fit() {
+        // FUN_0060b5d0: the bar shows unless the whole range is in view.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        add_fleet(&mut world, system, true, 0);
+        let mut state = opened(&world, system);
+        state.window_mut(system).unwrap().left_scroll = 40.0;
+        run(
+            &world,
+            &TroopTransportState::default(),
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        );
+        assert_eq!(state.windows[0].left_scroll, 0.0);
     }
 
     #[test]
@@ -5699,6 +6013,107 @@ pub(crate) mod tests {
         // The field's text starts just inside it (egui's margin).
         assert!(field.x >= entry.x && field.x - entry.x < 6.0, "{field:?} {entry:?}");
         assert!(field.y > entry.y, "{field:?} {entry:?}");
+    }
+
+    /// A fleet of `ships` live ships, selected on its Capital ships tab,
+    /// renaming ship `index` with the right list scrolled to `scroll`.
+    fn renaming_in_a_scrolled_right_list(
+        ships: usize,
+        index: usize,
+        scroll: f32,
+    ) -> (GameWorld, SystemKey, FleetWindowState) {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        for _ in 1..ships {
+            world.fleets[fleet]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, true));
+        }
+        let mut state = opened(&world, system);
+        assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
+        state.window_mut(system).unwrap().right_scroll = scroll;
+        assert!(state.begin_rename(&world, system, FleetWindowEntry::Ship { fleet, index }));
+        (world, system, state)
+    }
+
+    #[test]
+    fn the_rename_field_opens_on_a_scrolled_right_items_shown_name_line() {
+        // FUN_004a71d0: the field takes the item's rect, which FUN_00609e20
+        // keeps less the list's first visible pixel (FUN_00609dd0).
+        let (world, _, mut state) = renaming_in_a_scrolled_right_list(6, 4, 100.0);
+        let shown = run(
+            &world,
+            &TroopTransportState::default(),
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        );
+        let field = shown
+            .texts
+            .iter()
+            .find(|text| text.text == "Transport" && text.color == egui::Color32::BLACK)
+            .unwrap_or_else(|| panic!("no field: {:?}", shown.texts))
+            .pos;
+        // Row 4 shows from y 127 + 200 - 100 = 227; its name line is +37.
+        let line = at(0.0, 227.0 + 37.0).y;
+        assert!(
+            field.y > line && field.y - line < 2.0 * 14.0,
+            "{field:?} {line}"
+        );
+        assert!(state.renaming());
+    }
+
+    #[test]
+    fn the_rename_field_opens_on_a_scrolled_left_entrys_shown_name_line() {
+        // FUN_004a71d0, as for the right list: the entry's rect less the
+        // left list's first visible pixel.
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleets: Vec<_> = (0..7)
+            .map(|_| add_fleet(&mut world, system, true, 0))
+            .collect();
+        let mut state = opened(&world, system);
+        state.window_mut(system).unwrap().left_scroll = 89.0;
+        assert!(state.begin_rename(&world, system, FleetWindowEntry::Fleet(fleets[6])));
+        let shown = run(
+            &world,
+            &TroopTransportState::default(),
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        );
+        let name = world.fleet_name(fleets[6]).unwrap().to_owned();
+        let field = shown
+            .texts
+            .iter()
+            .find(|text| text.text == name && text.color == egui::Color32::BLACK)
+            .unwrap_or_else(|| panic!("no field: {:?}", shown.texts))
+            .pos;
+        // Fleet 7 shows from y 29 + 300 - 89 = 240; the field is at +3.
+        let line = at(0.0, 240.0 + 3.0).y;
+        assert!(
+            field.y > line && field.y - line < 2.0 * 15.0,
+            "{field:?} {line}"
+        );
+    }
+
+    #[test]
+    fn a_press_on_a_lists_scroll_bar_ends_the_rename_unissued() {
+        // The bar (FUN_0060f640, base FUN_0060aca0) posts 0x40e on a press;
+        // the list relays it (FUN_006083c0) and the window drops the edit
+        // (FUN_004ac3a0 → vtable +0x80, FUN_004aca40).
+        let (world, system, mut state) = renaming_in_a_scrolled_right_list(6, 4, 100.0);
+        // The right bar's track, window x 224..233.
+        let run = run(
+            &world,
+            &TroopTransportState::default(),
+            &mut state,
+            CockpitFaction::Alliance,
+            click(at(228.0, 200.0)),
+        );
+        assert!(renames(&run.actions).is_empty());
+        assert!(!state.renaming());
+        assert!(state.is_open(system));
     }
 
 
