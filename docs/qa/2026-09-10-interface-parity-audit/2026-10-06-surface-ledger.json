@@ -634,16 +634,18 @@
         {
           "id": "PRE-03-C005",
           "requirement": "delete",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
             "ghidra/notes/game-options.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-native-acceptance/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-absent-states-second-pass/"
           ],
-          "note": "FUN_00407180 builds no delete control and the original delete gesture is not traced; the port deletes from the replacement ten-slot compatibility panel (smoke-tested on macOS). Needs the original gesture first."
+          "note": "FUN_00407180 builds no delete control and the original delete gesture is not traced; the port deletes from the replacement ten-slot compatibility panel (smoke-tested on macOS). Needs the original gesture first. 2026-11-10: excluded by the owner's decision (states absent from the original are removed); traced absent (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "PRE-03-C006",
@@ -3307,10 +3309,13 @@
         {
           "id": "CMD-08-C012",
           "requirement": "chat",
-          "status": "blocked",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Chat needs a multiplayer session, which the port does not run; Compose Chat (0x68) shows disabled, as A0 shows in single player."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-absent-states-second-pass/"
+          ],
+          "note": "Chat needs a multiplayer session, which the port does not run; Compose Chat (0x68) shows disabled, as A0 shows in single player. 2026-11-10: excluded by the owner's decision (states absent from the original are removed); traced absent (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "CMD-08-C013",
@@ -4403,7 +4408,7 @@
             "crates/rebellion-render/src/game_speed.rs",
             "tools/interface-parity/personnel-orders.mjs"
           ],
-          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked.",
+          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked. 2026-11-10: To Cockpit and Acknowledged appear only in multiplayer boxes (REBDLOG 0x1204/0x1205/0x1208 callers); the single-player save notices 0x1217/0x1219 are not yet compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5799,10 +5804,13 @@
         {
           "id": "OBJ-06-C004",
           "requirement": "destroyed",
-          "status": "pending",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No destroyed-ship status state is traced or shown."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-absent-states-second-pass/"
+          ],
+          "note": "No destroyed-ship status state is traced or shown. 2026-11-10: excluded by the owner's decision (states absent from the original are removed); traced absent (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-06-C005",
@@ -7440,10 +7448,13 @@
         {
           "id": "OBJ-12-C013",
           "requirement": "acknowledge",
-          "status": "pending",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No acknowledge control of a mission report was found; reports go to the Message Index. Not traced."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-absent-states-second-pass/"
+          ],
+          "note": "No acknowledge control of a mission report was found; reports go to the Message Index. Not traced. 2026-11-10: excluded by the owner's decision (states absent from the original are removed); traced absent (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-12-C014",
@@ -10979,8 +10990,8 @@
     "surface_families": 45,
     "required_surface_families": 43,
     "baseline_cells": 664,
-    "required_baseline_cells": 629,
-    "excluded_baseline_cells": 35,
+    "required_baseline_cells": 625,
+    "excluded_baseline_cells": 39,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."
