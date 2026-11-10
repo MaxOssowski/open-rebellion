@@ -143,6 +143,24 @@ pub fn own_visible_missions(
     ids
 }
 
+/// Whether a facility icon's Destination (`0x214`) and Reserved (`0x216`)
+/// have a team at `system` for `side`: `FUN_00512700` kind 4 gives the
+/// system's managers (`FUN_0052c170`, families `0xa0..0xaf`) of the order's
+/// side (`FUN_00553350`), and `FUN_00553770` refuses an empty team (`0x16`).
+/// port: the managers are not modelled; a system has the side's when it has
+/// a manufacturing facility of the side.
+#[must_use]
+pub fn facility_icon_has_managers(world: &GameWorld, system: SystemKey, side: Faction) -> bool {
+    world.systems.get(system).is_some_and(|value| {
+        value.manufacturing_facilities.iter().any(|key| {
+            world
+                .manufacturing_facilities
+                .get(*key)
+                .is_some_and(|facility| facility.side == side)
+        })
+    })
+}
+
 /// `FUN_004a1f60(system, player side)` over what the player sees: the other
 /// side's missions win, then the player's, else 3.
 pub(crate) fn missions_side(
@@ -593,6 +611,33 @@ mod tests {
                 "{quadrant:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_facility_icons_production_orders_need_a_yard_of_the_players_side() {
+        // FUN_00512700 kind 4 (0x214, 0x216) gives the side's managers
+        // (FUN_0052c170, FUN_00553350); FUN_00553770 refuses an empty team.
+        let (mut world, system) = alliance_world();
+        add_mine(&mut world, system, true);
+        assert!(!facility_icon_has_managers(
+            &world,
+            system,
+            Faction::Alliance
+        ));
+        let yard = world
+            .manufacturing_facilities
+            .insert(ManufacturingFacilityInstance {
+                class_dat_id: DatId::new(0x2800_0001),
+                side: Faction::Alliance,
+                is_shipyard: true,
+            });
+        world.systems[system].manufacturing_facilities.push(yard);
+        assert!(facility_icon_has_managers(
+            &world,
+            system,
+            Faction::Alliance
+        ));
+        assert!(!facility_icon_has_managers(&world, system, Faction::Empire));
     }
 
     #[test]

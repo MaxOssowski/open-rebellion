@@ -397,6 +397,30 @@ impl ManufacturingState {
         }
     }
 
+    /// Whether a facility icon's Reserved (`0x216`) is checked for `system`:
+    /// its team is every manager of the system (`FUN_00512700` kind 4 ->
+    /// `FUN_0052c170`), and the order's check (`FUN_0051fd30`) marks it when
+    /// some member answers yes (`Event216_vt14` -> `ManuMgr_vt1d4`), as the
+    /// order's slot `+0x54` (`FUN_006158b0`) is 0.
+    #[must_use]
+    pub fn any_reserved(&self, system: SystemKey) -> bool {
+        ProductionArea::ALL
+            .iter()
+            .any(|&area| self.is_reserved(system, area))
+    }
+
+    /// A facility icon's Reserved (`0x216`): every manager of `system` takes
+    /// the opposite of the row's mark (`Class_006612a8_vt50` sets each
+    /// `Event216`'s value to `+0x14 == 0`; `Event216_Fire` ->
+    /// `ManuMgr_vt1fc`). Returns the value set.
+    pub fn toggle_system_reserved(&mut self, system: SystemKey) -> bool {
+        let reserved = !self.any_reserved(system);
+        for area in ProductionArea::ALL {
+            self.set_reserved(system, area, reserved);
+        }
+        reserved
+    }
+
     /// The queue of `system`'s `area`, created when absent.
     pub fn queue_mut(&mut self, system: SystemKey, area: ProductionArea) -> &mut ProductionQueue {
         self.queues.entry((system, area)).or_default()
@@ -981,6 +1005,42 @@ mod tests {
         assert!(!state.is_reserved(away, ProductionArea::ConstructionYard));
         state.set_reserved(home, ProductionArea::ConstructionYard, false);
         assert!(!state.is_reserved(home, ProductionArea::ConstructionYard));
+    }
+
+    #[test]
+    fn a_facility_icons_reserved_is_checked_when_any_area_is_reserved() {
+        // FUN_0051fd30 with the Reserved order's slot +0x54 (FUN_006158b0)
+        // at 0: checked when some Event216 answers yes (ManuMgr_vt1d4).
+        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let (home, away) = (systems.insert(()), systems.insert(()));
+        let mut state = ManufacturingState::new();
+        assert!(!state.any_reserved(home));
+        state.set_reserved(home, ProductionArea::TrainingFacility, true);
+        assert!(state.any_reserved(home));
+        assert!(!state.any_reserved(away));
+    }
+
+    #[test]
+    fn a_facility_icons_reserved_sets_every_area_to_the_opposite_of_its_mark() {
+        // Class_006612a8_vt50: each Event216's value is (+0x14 == 0), and
+        // Event216_Fire hands it to every manager's +0x1fc (ManuMgr_vt1fc).
+        let mut systems: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();
+        let (home, away) = (systems.insert(()), systems.insert(()));
+        let mut state = ManufacturingState::new();
+        state.set_reserved(away, ProductionArea::Shipyard, true);
+        // One reserved area marks the row, so the order clears them all.
+        state.set_reserved(home, ProductionArea::Shipyard, true);
+        assert!(!state.toggle_system_reserved(home));
+        for area in ProductionArea::ALL {
+            assert!(!state.is_reserved(home, area));
+        }
+        // None reserved: the order reserves them all.
+        assert!(state.toggle_system_reserved(home));
+        for area in ProductionArea::ALL {
+            assert!(state.is_reserved(home, area));
+        }
+        assert!(state.is_reserved(away, ProductionArea::Shipyard));
+        assert!(!state.is_reserved(away, ProductionArea::TrainingFacility));
     }
 
     #[test]

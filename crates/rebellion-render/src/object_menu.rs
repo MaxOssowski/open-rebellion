@@ -541,9 +541,13 @@ impl ObjectMenuRow {
 /// and Scrap; defenses Move, Confirmed Move and Scrap; fleets Move, Confirmed
 /// Move, the bombardments, Assault and Scrap; missions Abort. Its object is a
 /// system, so Status stays disabled. The fleet icon's Move and Confirmed Move
-/// follow `gates.fleet_move` for the system's fleets of the player's side.
-/// port: the icons' other orders stay disabled until their system-wide forms
-/// (`FUN_00512700`) are ported.
+/// follow `gates.fleet_move` for the system's fleets of the player's side;
+/// the facility icon's Reserved follows `gates.reserved` and is checked by
+/// `gates.reserved_checked`, as a band's is (its team is every manager of
+/// the system, `FUN_00512700` kind 4). port: the defenses icon's Move and
+/// Confirmed Move stay disabled until their mixed team's move (regiments,
+/// squadrons, characters and special forces, `FUN_0053c810` and
+/// `FUN_0053ca50`) is ported.
 /// A Manufacturing window band offers its manager class's orders
 /// (`FUN_0052ae30`, `FUN_0055b580`, `FUN_0055b900`, `FUN_0055bd30`): Build,
 /// Stop, Destination and Reserved, and for ships Rename. Build, Stop and
@@ -601,6 +605,16 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
     let special_force = matches!(selection, Some(MenuObject::SpecialForce(_)));
     let ship = matches!(selection, Some(MenuObject::Ship { .. }));
     let producer = matches!(selection, Some(MenuObject::Producer { .. }));
+    // The facility icon's Reserved acts on every manager of the system
+    // (FUN_00512700 kind 4 -> FUN_0052c170), a band's on its own.
+    let managers = producer
+        || matches!(
+            selection,
+            Some(MenuObject::SystemIcon {
+                quadrant: Quadrant::System,
+                ..
+            })
+        );
     let headquarters = matches!(selection, Some(MenuObject::Headquarters(_)));
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
@@ -659,7 +673,9 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
         .chain(&[ENCYCLOPEDIA, STATUS])
         .map(|&item| ObjectMenuRow {
             item,
-            checked: item.command == ObjectMenuCommand::Reserved && producer && gates.reserved_checked,
+            checked: item.command == ObjectMenuCommand::Reserved
+                && managers
+                && gates.reserved_checked,
             enabled: match item.command {
                 ObjectMenuCommand::Mission => gates.mission,
                 ObjectMenuCommand::Move => {
@@ -674,10 +690,10 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
                 ObjectMenuCommand::Destination => gates.destination,
-                // A band's Reserved (0x216, ManuMgr_vt1fc after +0x1dc).
-                // port: the facility icon's (FUN_00512700 kind 4, every
-                // manager of the system) is not ported.
-                ObjectMenuCommand::Reserved => producer && gates.reserved,
+                // Reserved (0x216): each Event216's +0x18 asks its
+                // manager's +0x1d8 (FUN_004f9860), FUN_00553770 an
+                // unempty team; ManuMgr_vt1fc sets it.
+                ObjectMenuCommand::Reserved => managers && gates.reserved,
                 ObjectMenuCommand::Stop => producer && gates.stop,
                 ObjectMenuCommand::Build => producer && gates.build,
                 // A0 fleet3/02: a ship's Confirmed Move is white with its
@@ -814,7 +830,11 @@ pub struct OrderGates {
     /// Reserved (0x216) on a band: enabled as Destination is (hyp: its
     /// `+0x1dc` is not read; A0 menus3/30-32 enable it on every band of
     /// the player's system, Destination too), and checked while the band's
-    /// manager is Reserved.
+    /// manager is Reserved. On a facility icon: enabled when the system has
+    /// managers of the player's (the team `FUN_00512700` kind 4 gives;
+    /// `FUN_00553770` refuses an empty one with `0x16`), and checked while
+    /// any of them is Reserved (`FUN_0051fd30`,
+    /// `ManufacturingState::any_reserved`).
     pub reserved: bool,
     pub reserved_checked: bool,
     /// Stop (0x213) on a band: the band's area is the player's and is
@@ -1548,18 +1568,27 @@ mod tests {
         assert!(menu.row_checked(ObjectMenuCommand::Reserved));
         assert!(!menu.row_checked(ObjectMenuCommand::Destination));
         assert!(!row(OrderGates::default()).enabled);
-        // An icon's Reserved is not ported.
-        let icon_reserved = object_menu_rows(
-            icon(Quadrant::System),
-            OrderGates {
-                reserved_checked: true,
-                ..reserve
-            },
-        )
-        .into_iter()
-        .find(|row| row.item.command == ObjectMenuCommand::Reserved)
-        .unwrap();
-        assert!(!icon_reserved.enabled && !icon_reserved.checked);
+        // The facility icon's Reserved follows the same gates for every
+        // manager of the system (FUN_00512700 kind 4 -> FUN_0052c170;
+        // Event216_vt14 -> ManuMgr_vt1d4 marks it).
+        let icon_reserved = |gates: OrderGates| {
+            object_menu_rows(icon(Quadrant::System), gates)
+                .into_iter()
+                .find(|row| row.item.command == ObjectMenuCommand::Reserved)
+                .unwrap()
+        };
+        let marked = icon_reserved(OrderGates {
+            reserved_checked: true,
+            ..reserve
+        });
+        assert!(marked.enabled && marked.checked);
+        assert_eq!(marked.entry().icon, Some(11_902));
+        assert!(icon_reserved(reserve).enabled && !icon_reserved(reserve).checked);
+        assert!(!icon_reserved(OrderGates::default()).enabled);
+        // No other icon offers it.
+        assert!(object_menu_rows(icon(Quadrant::Defenses), reserve)
+            .iter()
+            .all(|row| row.item.command != ObjectMenuCommand::Reserved));
         // Build and Stop belong to the bands alone.
         let icon_rows = enabled(&object_menu_rows(icon(Quadrant::System), gates));
         assert!(!icon_rows.contains(&"Stop") && !icon_rows.contains(&"Build"));

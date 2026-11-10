@@ -100,13 +100,13 @@ use rebellion_render::move_confirmation::{
 use rebellion_render::object_menu::{
     draw_object_menu, MenuObject, ObjectMenuCommand, ObjectMenuState, OrderGates,
 };
-use rebellion_render::quadrant_icons::Quadrant;
+use rebellion_render::quadrant_icons::{facility_icon_has_managers, Quadrant};
 use rebellion_render::status_rows::StatusSources;
 use rebellion_render::status_window::{draw_status_window, StatusWindowAction, StatusWindowState};
 use rebellion_render::system_window::fleet_label;
 use rebellion_render::targeting::{
     capture_pointer, draw_targeting_cursor, mission_release_target, release_destination,
-    MissionReleaseSources, ReleaseTarget, ReleaseWindows,
+    destination_drop_target, MissionReleaseSources, ReleaseTarget, ReleaseWindows,
     TargetOrder, Targeting, TargetingEnd,
 };
 use rebellion_render::{
@@ -5971,9 +5971,10 @@ async fn main() {
                             }
                             // FUN_00422ce0, window type 1: the selection moves
                             // against what +0x70 gives under the point, kind
-                            // 4 entries apart (0x214 against +0x68). port: only
-                            // the fleet icon's drop moves; its fleets are the
-                            // system's of the player's side (FUN_00512700).
+                            // 4 entries apart (0x214 against +0x68, below).
+                            // The fleet icon's fleets are the system's of the
+                            // player's side (FUN_00512700). port: the
+                            // defenses and missions icons' drops do nothing.
                             SectorWindowAction::DropSelection {
                                 selection:
                                     MenuObject::SystemIcon {
@@ -6020,6 +6021,64 @@ async fn main() {
                                         &mut move_confirmation_state,
                                         &mut panel_actions,
                                     );
+                                }
+                            }
+                            // FUN_00422ce0, window type 1: a kind 4 entry is
+                            // split off into a 0x214 order (Destination)
+                            // against +0x68; its team is the system's
+                            // managers of the player's (FUN_00512700 kind
+                            // 4). FUN_00487cc0 asks nothing for 0x214.
+                            SectorWindowAction::DropSelection {
+                                selection:
+                                    MenuObject::SystemIcon {
+                                        system,
+                                        quadrant: Quadrant::System,
+                                    },
+                                point,
+                                ..
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                let side = Faction::from(player_faction);
+                                let sources = MissionReleaseSources {
+                                    world: &world,
+                                    movement: &movement_state,
+                                    fog: fog_state,
+                                    missions: &mission_state,
+                                    manufacturing: &mfg_state,
+                                    deliveries: &delivery_state,
+                                    transport: &troop_transport_state,
+                                };
+                                let team = facility_icon_has_managers(&world, system, side);
+                                let destination = if team {
+                                    destination_drop_target(
+                                        ctx,
+                                        sources,
+                                        cockpit_layout,
+                                        windows,
+                                        point,
+                                    )
+                                } else {
+                                    None
+                                };
+                                match destination {
+                                    Some(destination) => {
+                                        panel_actions.push(PanelAction::SetDestination {
+                                            system,
+                                            area: None,
+                                            destination,
+                                        });
+                                    }
+                                    None => {
+                                        macroquad::logging::info!(
+                                            "[interface] command=0x214 destination=production_destination status=refused drop=1"
+                                        );
+                                    }
                                 }
                             }
                             // The manual (p. 134): "drag the HQ icon onto a
@@ -7091,7 +7150,22 @@ async fn main() {
                         Some((
                             ObjectMenuCommand::Reserved,
                             Some(MenuObject::Producer { system, area }),
-                        )) => panel_actions.push(PanelAction::ToggleReserved { system, area }),
+                        )) => panel_actions.push(PanelAction::ToggleReserved {
+                            system,
+                            area: Some(area),
+                        }),
+                        // A facility icon's Reserved: every manager of the
+                        // system takes the opposite of the row's mark
+                        // (Class_006612a8_vt50, Event216_Fire).
+                        Some((
+                            ObjectMenuCommand::Reserved,
+                            Some(MenuObject::SystemIcon {
+                                system,
+                                quadrant: Quadrant::System,
+                            }),
+                        )) => {
+                            panel_actions.push(PanelAction::ToggleReserved { system, area: None })
+                        }
                         // FUN_00486fb0 0x203 → FUN_0041d600 → FUN_00429350:
                         // the edit opens in the window that lists the object.
                         // port: with no Fleet window open there, one opens.
@@ -10080,24 +10154,28 @@ fn order_gates(
             Some(MenuObject::SystemIcon {
                 system,
                 quadrant: Quadrant::System,
-            }) => world.systems.get(system).is_some_and(|value| {
-                value.manufacturing_facilities.iter().any(|key| {
-                    world
-                        .manufacturing_facilities
-                        .get(*key)
-                        .is_some_and(|facility| {
-                            facility.side == rebellion_core::dat::Faction::of_alliance(is_alliance)
-                        })
-                })
-            }),
+            }) => facility_icon_has_managers(world, system, side),
             Some(MenuObject::Producer { system, .. }) => holds(system),
             _ => false,
         },
         // A band's Reserved (0x216): as Destination; checked while its
-        // manager is Reserved (A0 menus3/30-33).
-        reserved: matches!(selection, Some(MenuObject::Producer { system, .. }) if holds(system)),
+        // manager is Reserved (A0 menus3/30-33). A facility icon's: its team
+        // is Destination's (FUN_00512700 kind 4), checked while any manager
+        // is Reserved (FUN_0051fd30).
+        reserved: match selection {
+            Some(MenuObject::Producer { system, .. }) => holds(system),
+            Some(MenuObject::SystemIcon {
+                system,
+                quadrant: Quadrant::System,
+            }) => facility_icon_has_managers(world, system, side),
+            _ => false,
+        },
         reserved_checked: match selection {
             Some(MenuObject::Producer { system, area }) => manufacturing.is_reserved(system, area),
+            Some(MenuObject::SystemIcon {
+                system,
+                quadrant: Quadrant::System,
+            }) => manufacturing.any_reserved(system),
             _ => false,
         },
         // Build opens Build Selection on what the band's manager lists
@@ -10843,8 +10921,14 @@ fn apply_panel_action(
             }
         }
         PanelAction::ToggleReserved { system, area } => {
-            let reserved = !mfg_state.is_reserved(system, area);
-            mfg_state.set_reserved(system, area, reserved);
+            let reserved = match area {
+                Some(area) => {
+                    let reserved = !mfg_state.is_reserved(system, area);
+                    mfg_state.set_reserved(system, area, reserved);
+                    reserved
+                }
+                None => mfg_state.toggle_system_reserved(system),
+            };
             macroquad::logging::info!(
                 "[interface] command=0x216 destination=production_reserved status=set reserved={reserved} area={area:?} system={}",
                 world.systems.get(system).map_or("", |value| value.name.as_str())

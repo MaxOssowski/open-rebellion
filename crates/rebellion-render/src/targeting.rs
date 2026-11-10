@@ -336,6 +336,42 @@ pub fn mission_release_target(
     Some(pick)
 }
 
+/// The system a facility icon's drop sets as its managers' Destination.
+/// `FUN_00422ce0`, window type 1, splits a kind 4 entry off into a `0x214`
+/// order against the drop window's `+0x68`, the object under the point;
+/// `FUN_00537180` refuses a manager's destination that is not a system
+/// (`1`/`0x25`), so only a point that names no object below its system gives
+/// one. `FUN_00487cc0` has no case for `0x214`: nothing asks, and Ctrl
+/// changes nothing.
+///
+/// port: `+0x68` is read through [`mission_release_target`], so a planet's
+/// squadron, an unfinished unit or a Missions window's mission answers its
+/// system here where the original names the object and refuses.
+#[must_use]
+pub fn destination_drop_target(
+    ctx: &egui::Context,
+    sources: MissionReleaseSources<'_>,
+    layout: CockpitLayout,
+    windows: ReleaseWindows<'_>,
+    point: egui::Pos2,
+) -> Option<SystemKey> {
+    drop_destination(mission_release_target(
+        ctx,
+        sources,
+        layout,
+        windows,
+        &[],
+        point,
+    )?)
+}
+
+/// The Destination a `+0x68` pick gives a manager: its system when it names
+/// no character or object (`FUN_00537180`, else `1`/`0x25`).
+#[must_use]
+pub fn drop_destination(pick: rebellion_core::missions::MissionTargetPick) -> Option<SystemKey> {
+    (pick.character.is_none() && pick.object.is_none()).then_some(pick.system)
+}
+
 /// The topmost visible area holding `point`, passing over the capture,
 /// which covers the screen while targeting.
 fn window_layer_at(ctx: &egui::Context, point: egui::Pos2) -> Option<egui::LayerId> {
@@ -424,6 +460,33 @@ mod tests {
         assert_eq!(
             ReleaseTarget::System(system).squadron_place(),
             SquadronPlace::Planet(system)
+        );
+    }
+
+    #[test]
+    fn a_facility_icon_dropped_on_an_object_sets_no_destination() {
+        // FUN_00422ce0 gives a kind 4 entry 0x214 against +0x68;
+        // FUN_00537180 refuses a manager's destination that is no system
+        // (1/0x25), so only a point naming its system alone sets one.
+        use rebellion_core::missions::{MissionTarget, MissionTargetPick};
+        let system = SystemKey::default();
+        assert_eq!(
+            drop_destination(MissionTargetPick::from(system)),
+            Some(system)
+        );
+        assert_eq!(
+            drop_destination(MissionTargetPick {
+                character: Some(CharacterKey::default()),
+                ..MissionTargetPick::from(system)
+            }),
+            None
+        );
+        assert_eq!(
+            drop_destination(MissionTargetPick {
+                object: Some(MissionTarget::Troop(TroopKey::default())),
+                ..MissionTargetPick::from(system)
+            }),
+            None
         );
     }
     use crate::cockpit::CockpitViewport;
@@ -1186,6 +1249,42 @@ mod tests {
             assert_eq!(pick((40.0 + 150.0, 50.0 + 40.0)), Some(system));
             // Over the bare map there is nothing to target.
             assert_eq!(pick((600.0, 500.0)), None);
+
+            // A facility icon's drop (FUN_00422ce0, 0x214 against +0x68)
+            // sets the system only where +0x68 names no object
+            // (FUN_00537180, else 1/0x25).
+            let mut destination = |at| {
+                drawn(
+                    &world,
+                    &mut SectorWindowState::default(),
+                    &mut SystemWindowState::default(),
+                    &mut FleetWindowState::default(),
+                    &mut defenses,
+                    (&mut MissionsWindowState::default(), &MissionState::new()),
+                    at,
+                    |ctx, windows, fog, layout, point| {
+                        destination_drop_target(
+                            ctx,
+                            MissionReleaseSources {
+                                world: &world,
+                                movement: &rebellion_core::movement::MovementState::default(),
+                                fog,
+                                missions: &MissionState::new(),
+                                manufacturing:
+                                    &rebellion_core::manufacturing::ManufacturingState::new(),
+                                deliveries: &rebellion_core::delivery::DeliveryState::new(),
+                                transport: &TroopTransportState::default(),
+                            },
+                            layout,
+                            windows,
+                            point,
+                        )
+                    },
+                )
+            };
+            assert_eq!(destination((40.0 + 150.0, 50.0 + 40.0)), Some(first));
+            assert_eq!(destination((40.0 + 110.0, 50.0 + 115.0)), None);
+            assert_eq!(destination((600.0, 500.0)), None);
         }
 
         #[test]
