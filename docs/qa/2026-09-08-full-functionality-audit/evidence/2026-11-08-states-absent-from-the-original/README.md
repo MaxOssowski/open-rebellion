@@ -1,6 +1,15 @@
-# Ledger states the original does not have (for the owner's decision)
+# Ledger states the original does not have
 
-Date: 2026-11-08 (night). This is not a status change. The ledger's
+Date: 2026-11-08 (night).
+
+**Decided 2026-11-10 by the owner:** states absent from the original are
+removed. The eight cells in the table, OBJ-07-C013 (priority) and
+CMD-07-C006 (urgent message) are now excluded from the parity
+denominator, which falls from 639 to 629. The port draws none of these
+states, so no code changes. The cells under "Not settled" stay as they
+are until traced.
+
+The original proposal follows. The ledger's
 required states came partly from the manual's wording. For the cells below,
 the executable and its string tables show no such state. If the owner
 agrees, they could be marked excluded ("not in the original") instead of

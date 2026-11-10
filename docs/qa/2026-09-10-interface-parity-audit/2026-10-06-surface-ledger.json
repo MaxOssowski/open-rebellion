@@ -3021,12 +3021,14 @@
         {
           "id": "CMD-07-C006",
           "requirement": "urgent message",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
           ],
-          "note": "Not yet identified: the schedule plays the first due message by id; no separate urgent path is traced. 2026-11-09: proposed for exclusion (owner's decision pending): the posting control and the Message Alerts submenu flip one bit between 'Post Messages Silently' 0x8005 and 'with Alert' 0x8006 (FUN_00467f10 case 0x66, FUN_004697b0, FUN_00486fb0); TEXTSTRA's 'as Urgent' strings 0x8000/0x8004 are not referenced (0x8004 is no immediate in REBEXE.EXE)."
+          "note": "Not yet identified: the schedule plays the first due message by id; no separate urgent path is traced. 2026-11-09: proposed for exclusion (owner's decision pending): the posting control and the Message Alerts submenu flip one bit between 'Post Messages Silently' 0x8005 and 'with Alert' 0x8006 (FUN_00467f10 case 0x66, FUN_004697b0, FUN_00486fb0); TEXTSTRA's 'as Urgent' strings 0x8000/0x8004 are not referenced (0x8004 is no immediate in REBEXE.EXE). 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "CMD-07-C007",
@@ -5786,10 +5788,13 @@
         {
           "id": "OBJ-06-C003",
           "requirement": "critical",
-          "status": "pending",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No 'critical' status state is traced or shown."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
+          ],
+          "note": "No 'critical' status state is traced or shown. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-06-C004",
@@ -6108,28 +6113,36 @@
         {
           "id": "OBJ-07-C011",
           "requirement": "damaged",
-          "status": "pending",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No damaged-producer state is traced or shown."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
+          ],
+          "note": "No damaged-producer state is traced or shown. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-07-C012",
           "requirement": "blocked",
-          "status": "pending",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "Production halts in an uprising or blockade in the core (6eb24155), but no window state for it is shown or compared."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
+          ],
+          "note": "Production halts in an uprising or blockade in the core (6eb24155), but no window state for it is shown or compared. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-07-C013",
           "requirement": "priority",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
           ],
-          "note": "No priority control is traced in ghidra/notes/manufacturing-build-selection.md or present in the port. 2026-11-09: proposed for exclusion (owner's decision pending): no string with 'priorit' in any game DLL, in REBEXE.EXE (apart from the import SetThreadPriority), the manual, README.TXT or TSGUIDE.TXT."
+          "note": "No priority control is traced in ghidra/notes/manufacturing-build-selection.md or present in the port. 2026-11-09: proposed for exclusion (owner's decision pending): no string with 'priorit' in any game DLL, in REBEXE.EXE (apart from the import SetThreadPriority), the manual, README.TXT or TSGUIDE.TXT. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-07-C014",
@@ -6559,32 +6572,38 @@
         {
           "id": "OBJ-09-C005",
           "requirement": "inactive",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-status-window-text/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
           ],
-          "note": "No 'Inactive' facility state is modelled; status_rows.rs always writes 34659 'Active'. No A0 capture of this state."
+          "note": "No 'Inactive' facility state is modelled; status_rows.rs always writes 34659 'Active'. No A0 capture of this state. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-09-C006",
           "requirement": "damaged",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
           ],
-          "note": "Facilities carry no damage state in the port (only ships have the 0x200 damage mark). No A0 capture of this state."
+          "note": "Facilities carry no damage state in the port (only ships have the 0x200 damage mark). No A0 capture of this state. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-09-C007",
           "requirement": "repairing",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-ship-repair-timer/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-ship-repair-timer/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
           ],
-          "note": "Ship repair timing exists in core (2026-10-20-ship-repair-timer) but there is no facility repairing state or display. No A0 capture of this state."
+          "note": "Ship repair timing exists in core (2026-10-20-ship-repair-timer) but there is no facility repairing state or display. No A0 capture of this state. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-09-C008",
@@ -8616,12 +8635,14 @@
         {
           "id": "EVT-03-C004",
           "requirement": "shield blocked",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
           ],
-          "note": "Shields reduce the shots (FUN_0058df60), but no shield-blocked report state is identified or shown."
+          "note": "Shields reduce the shots (FUN_0058df60), but no shield-blocked report state is identified or shown. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "EVT-03-C005",
@@ -8717,10 +8738,13 @@
         {
           "id": "EVT-03-C012",
           "requirement": "damaged",
-          "status": "pending",
-          "counts_toward_parity": true,
-          "evidence": [],
-          "note": "No damaged state is identified for the bombardment/assault summary (it has Operational and Destroyed columns only); damage marks on its rows are not traced."
+          "status": "excluded",
+          "counts_toward_parity": false,
+          "evidence": [
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-states-absent-from-the-original/README.md"
+          ],
+          "note": "No damaged state is identified for the bombardment/assault summary (it has Operational and Destroyed columns only); damage marks on its rows are not traced. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no such state in the executable or its string tables (see the evidence README).",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "EVT-03-C013",
@@ -10955,8 +10979,8 @@
     "surface_families": 45,
     "required_surface_families": 43,
     "baseline_cells": 664,
-    "required_baseline_cells": 639,
-    "excluded_baseline_cells": 25,
+    "required_baseline_cells": 629,
+    "excluded_baseline_cells": 35,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."

@@ -279,7 +279,7 @@ stage them from a contributor-owned installation.
 ## Progress snapshot
 
 <!-- interface-parity-status:start -->
-Required interface families: 43. Complete: 0. Partial: 42. Failing: 0. Blocked: 0. Strictly accepted cells: 515/639.
+Required interface families: 43. Complete: 0. Partial: 42. Failing: 0. Blocked: 0. Strictly accepted cells: 515/629.
 The current CMD-02 GID catalog has 38 scenarios (29 baseline cells and nine additional native filter variants) and 152 faction/viewport executions. Its strict original-evidence and cross-browser gate remains open.
 <!-- interface-parity-status:end -->
 
