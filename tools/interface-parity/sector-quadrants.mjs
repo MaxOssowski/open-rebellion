@@ -571,6 +571,16 @@ const cases = [
       }
       const destroyed = { id: 10240, pixels_checked: fieldChecked, different_pixels: fieldDiffering };
       assert.equal(fieldDiffering, 0, `asteroid field: ${fieldDiffering} of ${fieldChecked} differ`);
+      // A press selects it, and it draws its pair's second bitmap 10788
+      // (FUN_0045ca80 state 0, FUN_004593e0 WM_PAINT), as A0
+      // tooltip/151-menu shows on Chandrila, every pixel.
+      await click(page, { x: Math.round(neutral.at[0]) + 4, y: Math.round(neutral.at[1]) + 9 });
+      const selectedScreen = await stableScreen(page, directory, "neutral-selected");
+      const neutralSelected = { id: 10788, ...compareIcon(selectedScreen, [neutral.at[0], neutral.at[1], 28, 19],
+        resource(source, 10788), "neutral-selected", directory) };
+      assert.equal(neutralSelected.different_pixels, 0,
+        `the selected neutral icon: ${neutralSelected.different_pixels} of ${neutralSelected.pixels_checked} differ`);
+      neutral.selected = neutralSelected;
       return { compares, absent, headquarters, uprising, neutral: { ...neutral, white }, destroyed };
     },
   },
