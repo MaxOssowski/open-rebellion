@@ -7391,12 +7391,14 @@
         {
           "id": "OBJ-12-C008",
           "requirement": "no result",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "ghidra/notes/mission-lifecycle.md"
+            "ghidra/notes/mission-lifecycle.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-mission-no-result-absent/"
           ],
-          "note": "No 'no result' report state was found in the port's mission reports. No A0 capture of this state."
+          "note": "No 'no result' report state was found in the port's mission reports. No A0 capture of this state. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): every reported mission's +0x280 handler turns a result still at 0 into 2 (failed), research gives 2 or 3, and nothing sets 1, so a report is success, failure, foiled or aborted.",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-12-C009",
@@ -10994,8 +10996,8 @@
     "surface_families": 45,
     "required_surface_families": 43,
     "baseline_cells": 664,
-    "required_baseline_cells": 624,
-    "excluded_baseline_cells": 40,
+    "required_baseline_cells": 623,
+    "excluded_baseline_cells": 41,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."
