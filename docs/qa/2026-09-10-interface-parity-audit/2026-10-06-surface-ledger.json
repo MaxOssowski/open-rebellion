@@ -6367,9 +6367,10 @@
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-memory-across-games-a0/"
           ],
-          "note": "Only researched classes are listed (FUN_0052e580) and Confirm is enabled when FUN_00538220 accepts the order; exercised by both Linux browser gates, the chrome gate passes since 2026-10-30 and was compared with A0 15-t01; no A0 capture of other classes exists. 2026-11-09: seven more classes (ships, fighters, facilities, defenses) show A0's values in build-selection.mjs; the class list now opens scrolled as A0 build-selection4/08 (the shown class last of two). Confirm's state per class is not asserted.",
+          "note": "Only researched classes are listed (FUN_0052e580) and Confirm is enabled when FUN_00538220 accepts the order; exercised by both Linux browser gates, the chrome gate passes since 2026-10-30 and was compared with A0 15-t01; no A0 capture of other classes exists. 2026-11-09: seven more classes (ships, fighters, facilities, defenses) show A0's values in build-selection.mjs; the class list now opens scrolled as A0 build-selection4/08 (the shown class last of two). Confirm's state per class is not asserted. 2026-11-10: A0 build-selection-empire2/13: a new game's first Build reopened on the class confirmed in the game before (DAT_006b289c is a global); the port now keeps the remembered classes across new games and loads (BuildSelectionState::for_next_game, unit test).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
