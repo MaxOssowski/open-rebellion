@@ -2239,14 +2239,15 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 | 11_103..=11_110
                 | 11_117..=11_120
                 // The list scroll bars' arrows (RCDATA 0x299a, 10653,
-                // 0x29fc), strobe buttons too (FUN_00602150 from the bar's
-                // FUN_0060b179/FUN_0060b24e): A0 kinds/31 shows the track
-                // under their blue bottom-left pixel.
+                // 0x29fc, 10699), strobe buttons too (FUN_00602150 from the
+                // bar's FUN_0060b179/FUN_0060b24e): A0 kinds/31 shows the
+                // track under their blue bottom-left pixel.
                 | 10_658
                 | 10_660
                 | 10_662
                 | 10_664
                 | 10_685..=10_688
+                | 10_692..=10_695
                 | 10_750..=10_753
                 // The move confirmation's checkmark and X (FUN_0044f180's
                 // controls 0x14, 0x15): A0 fleet3/11 shows the panel behind
@@ -3392,7 +3393,8 @@ pub(crate) mod tests {
         // it keyed; A0 menus3/05).
         for keyed in [
             10108, 10109, 10117, 10118, 10128, 10129, 10240, 10592, 10594, 10597, 10606, 10607,
-            10610, 10613, 11103, 11110, 11117, 11120, 10658, 10664, 10685, 10688, 10750, 10753,
+            10610, 10613, 11103, 11110, 11117, 11120, 10658, 10664, 10685, 10688, 10692, 10695,
+            10750, 10753,
         ] {
             assert_eq!(alpha(keyed), [0, 255], "{keyed}");
         }

@@ -374,6 +374,49 @@ const TAB_X: [f32; 4] = [1.0, 33.0, 65.0, 97.0];
 const TAB_SIZE: (f32, f32) = (31.0, 28.0);
 const LEFT_ITEM_HEIGHT: f32 = 50.0;
 const RIGHT_ITEM_HEIGHT: f32 = 50.0;
+/// Each list's scroll bar (`FUN_004a4b10`: `FUN_0060a490(.., 0x29cb, ..)`):
+/// STRATEGY RCDATA 10699, `[10, 10657, 10692, 10693, 10694, 10695, 10696,
+/// 10697, 10698, 10684]`. A0 fleet-aboard/10 shows it at the right list's
+/// right edge, window x 224..233 from y 127, for six squadrons.
+const LIST_BAR_ART: crate::list_scroll_bar::BarArt = crate::list_scroll_bar::BarArt {
+    width: 10,
+    track: 10_657,
+    up: [10_692, 10_693],
+    down: [10_694, 10_695],
+    top: 10_696,
+    middle: 10_697,
+    bottom: 10_698,
+};
+/// The lists' arrow step. hyp: `FUN_00607ea0`'s step argument, as the
+/// Status window's list takes it (10); not read for this window.
+const LIST_STEP: f32 = 10.0;
+
+/// The right list's row under window-local `y` when the list shows from
+/// pixel `scroll`.
+fn right_row_at(y: f32, scroll: f32) -> usize {
+    ((y - RIGHT_LIST.1 + scroll) / RIGHT_ITEM_HEIGHT) as usize
+}
+
+/// The right list's rows' height for `rows` rows.
+fn right_content(rows: usize) -> f32 {
+    RIGHT_ITEM_HEIGHT * rows as f32
+}
+
+/// Row `row`'s top when the list shows from pixel `scroll`, or `None` when
+/// the row lies wholly outside the list.
+fn right_row_top(row: usize, scroll: f32) -> Option<f32> {
+    let top = RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * row as f32 - scroll;
+    (top < RIGHT_LIST.1 + RIGHT_LIST.3 && top + RIGHT_ITEM_HEIGHT > RIGHT_LIST.1).then_some(top)
+}
+
+/// The scroll state to store once a list's bar hides: back to the top,
+/// or `None` when it is there already.
+fn reset_when_hidden(
+    scroll: f32,
+    hold: Option<crate::list_scroll_bar::Hold>,
+) -> Option<(f32, Option<crate::list_scroll_bar::Hold>)> {
+    (scroll != 0.0 || hold.is_some()).then_some((0.0, None))
+}
 
 /// The four tabs (`0x66..0x69`), in strip order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -456,6 +499,21 @@ struct OpenFleetWindow {
     /// The selected fleet and its ship count when last drawn: a change of
     /// that count drops the selection (see [`roster_changed`]).
     roster: Option<(FleetKey, usize)>,
+    /// The right list's first visible pixel and a press held on its bar.
+    right_scroll: f32,
+    right_hold: Option<crate::list_scroll_bar::Hold>,
+}
+
+impl OpenFleetWindow {
+    /// Show `tab`; another tab's list starts at its top.
+    fn show_tab(&mut self, tab: FleetWindowTab) {
+        if self.tab != tab {
+            self.right_scroll = 0.0;
+            self.right_hold = None;
+        }
+        self.tab = tab;
+        self.selected_item = None;
+    }
 }
 
 /// Whether a click at `now` completes a double click begun at `previous`:
@@ -640,6 +698,8 @@ impl FleetWindowState {
             last_click: None,
             moving: None,
             roster: None,
+            right_scroll: 0.0,
+            right_hold: None,
         });
         true
     }
@@ -658,6 +718,8 @@ impl FleetWindowState {
         window.selected = Some(entry);
         window.selected_item = None;
         window.tab = tab_for(Some(entry), window.tab);
+        window.right_scroll = 0.0;
+        window.right_hold = None;
         true
     }
 
@@ -800,7 +862,7 @@ impl FleetWindowState {
             window_screen_rect(window, layout),
             layout.scale,
             RIGHT_LIST.0,
-            RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * row as f32,
+            RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * row as f32 - window.right_scroll,
             125.0,
             RIGHT_ITEM_HEIGHT,
         ))
@@ -948,7 +1010,7 @@ impl FleetWindowState {
                 None => None,
             }
         } else if in_rect(RIGHT_LIST, local) {
-            let row = ((local.1 - RIGHT_LIST.1) / RIGHT_ITEM_HEIGHT) as usize;
+            let row = right_row_at(local.1, window.right_scroll);
             right_target(world, transport, window, row).or_else(|| {
                 window
                     .selected_item
@@ -1364,7 +1426,7 @@ fn drop_target(
     }
     if window.tab == FleetWindowTab::CapitalShips && in_rect(RIGHT_LIST, local) {
         if let Some(FleetWindowEntry::Fleet(fleet)) = window.selected {
-            let row = ((local.1 - RIGHT_LIST.1) / RIGHT_ITEM_HEIGHT) as usize;
+            let row = right_row_at(local.1, window.right_scroll);
             let ships = world.fleets.get(fleet).map_or(0, |value| {
                 value.capital_ships.iter().filter(|ship| ship.alive).count()
             });
@@ -1858,6 +1920,8 @@ struct WindowDrawResult {
     last_click: Option<Option<((i32, i32), f64)>>,
     /// The pointer's travel since a press on the window's surface.
     travel: Option<egui::Vec2>,
+    /// The right list's scroll and bar hold after this frame.
+    right_scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
 }
 
 /// Draw every open Fleet window.
@@ -1936,10 +2000,16 @@ pub fn draw_fleet_windows(
                     )
                 },
             );
+            if let Some((first, hold)) = result.right_scroll {
+                open.right_scroll = first;
+                open.right_hold = hold;
+            }
             if let Some(selected) = result.select {
                 open.selected = selected;
                 open.selected_item = None;
                 open.tab = tab_for(selected, open.tab);
+                open.right_scroll = 0.0;
+                open.right_hold = None;
             }
             if roster_changed(world, open) {
                 open.selected = None;
@@ -1957,8 +2027,7 @@ pub fn draw_fleet_windows(
                 }
             }
             if let Some(tab) = result.tab {
-                open.tab = tab;
-                open.selected_item = None;
+                open.show_tab(tab);
             }
             if let Some(item) = result.item {
                 open.selected_item = Some(item);
@@ -2578,14 +2647,24 @@ fn draw_fleet_window(
                     selected,
                     Some(FleetWindowEntry::Fleet(fleet)) if movement.is_in_transit(fleet)
                 );
-                for (row, item) in right_items(world, transport, selected, window.tab)
-                    .iter()
-                    .enumerate()
-                {
-                    let top = RIGHT_LIST.1 + RIGHT_ITEM_HEIGHT * row as f32;
-                    if top >= RIGHT_LIST.1 + RIGHT_LIST.3 {
-                        break;
-                    }
+                let shown_items = right_items(world, transport, selected, window.tab);
+                let content = right_content(shown_items.len());
+                let bar = crate::list_scroll_bar::ScrollBar::new(
+                    LIST_BAR_ART,
+                    RIGHT_LIST.0,
+                    RIGHT_LIST.1,
+                    RIGHT_LIST.2,
+                    RIGHT_LIST.3,
+                    content,
+                    window.right_scroll,
+                );
+                let scroll = if bar.visible() { window.right_scroll.clamp(0.0, crate::list_scroll_bar::max_first(content, RIGHT_LIST.3)) } else { 0.0 };
+                let (bx, by, bw, bh) = bar.rect();
+                let bar_rect = logical_rect(local, scale, bx, by, bw, bh);
+                for (row, item) in shown_items.iter().enumerate() {
+                    let Some(top) = right_row_top(row, scroll) else {
+                        continue;
+                    };
                     let cell =
                         logical_rect(local, scale, RIGHT_LIST.0, top, 125.0, RIGHT_ITEM_HEIGHT);
                     if window.selected_item == Some(row) {
@@ -2652,12 +2731,21 @@ fn draw_fleet_window(
                             (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                         );
                     }
+                    // The bar takes its own presses, over the cell's edge.
+                    let cell_area = if bar.visible() {
+                        egui::Rect::from_min_max(
+                            cell.min,
+                            egui::pos2(cell.max.x.min(bar_rect.min.x), cell.max.y),
+                        )
+                    } else {
+                        cell
+                    };
                     let response = ui.interact(
-                        cell.intersect(right),
+                        cell_area.intersect(right),
                         ui.id().with((window.system, "item", row)),
                         egui::Sense::click(),
                     );
-                    if exact_clicked(&response, cell) {
+                    if exact_clicked(&response, cell_area) {
                         result.item = Some(row);
                         result.focus = true;
                     }
@@ -2688,6 +2776,26 @@ fn draw_fleet_window(
                             });
                         }
                     }
+                }
+                // The bar (FUN_0060a490) shows once the items pass the
+                // list's height; its arrows, track and thumb scroll it.
+                if bar.visible() {
+                    let mut hold = window.right_hold;
+                    let first = crate::list_scroll_bar::ui_bar(
+                        ui,
+                        cache,
+                        local,
+                        scale,
+                        LIST_BAR_ART,
+                        RIGHT_LIST,
+                        content,
+                        scroll,
+                        &mut hold,
+                        LIST_STEP,
+                    );
+                    result.right_scroll = Some((first, hold));
+                } else {
+                    result.right_scroll = reset_when_hidden(window.right_scroll, window.right_hold);
                 }
             }
 
@@ -3017,6 +3125,8 @@ pub(crate) mod tests {
             last_click: None,
             moving: None,
             roster: None,
+            right_scroll: 0.0,
+            right_hold: None,
         }
     }
 
@@ -4151,6 +4261,57 @@ pub(crate) mod tests {
 
         assert!(!held);
         assert!(regiment_drops(&actions).is_empty());
+    }
+
+    #[test]
+    fn a_scrolled_right_list_moves_its_items_up_and_resets_on_a_new_selection() {
+        // The bar's first visible pixel (FUN_0060a490, RCDATA 10699; A0
+        // fleet-aboard/10 shows it for six squadrons) moves every row up.
+        let (world, _, system, _, _) = fleet_with_regiment();
+        let mut state = opened(&world, system);
+        state.window_mut(system).unwrap().right_scroll = 40.0;
+        assert_eq!(
+            state.item_screen_rect(scaled(), system, 1),
+            Some(egui::Rect::from_min_max(at(101.0, 137.0), at(226.0, 187.0)))
+        );
+        let fleet = world.systems[system].fleets[0];
+        assert!(state.select(system, FleetWindowEntry::Fleet(fleet)));
+        assert_eq!(state.window_mut(system).unwrap().right_scroll, 0.0);
+        // The bar's art: width 10, its arrows keyed (bmp_cache).
+        assert_eq!(LIST_BAR_ART.width, 10);
+        assert_eq!(LIST_BAR_ART.up, [10_692, 10_693]);
+    }
+
+    #[test]
+    fn the_right_lists_rows_follow_its_scroll() {
+        // Rows 50 high from y 127, 164 shown (FUN_004a4b10's list 200).
+        assert_eq!(right_content(6), 300.0);
+        assert_eq!(right_row_at(127.0, 0.0), 0);
+        assert_eq!(right_row_at(180.0, 0.0), 1);
+        assert_eq!(right_row_at(180.0, 60.0), 2);
+        assert_eq!(right_row_top(0, 0.0), Some(127.0));
+        assert_eq!(right_row_top(1, 10.0), Some(167.0));
+        // A row scrolled wholly above the list, or below it, is not drawn;
+        // one that shows a single pixel is.
+        assert_eq!(right_row_top(0, 50.0), None);
+        assert_eq!(right_row_top(0, 49.0), Some(78.0));
+        assert_eq!(right_row_top(4, 0.0), None);
+        assert_eq!(right_row_top(3, 0.0), Some(277.0));
+        // The list ends at y 291: a row starting there is hidden.
+        assert_eq!(right_row_top(4, 36.0), None);
+        assert_eq!(right_row_top(4, 37.0), Some(290.0));
+        assert_eq!(reset_when_hidden(0.0, None), None);
+        assert_eq!(reset_when_hidden(30.0, None), Some((0.0, None)));
+    }
+
+    #[test]
+    fn another_tab_starts_its_list_at_the_top() {
+        let mut window = window(SystemKey::default(), None);
+        window.right_scroll = 40.0;
+        window.show_tab(FleetWindowTab::CapitalShips);
+        assert_eq!(window.right_scroll, 40.0);
+        window.show_tab(FleetWindowTab::Troops);
+        assert_eq!((window.tab, window.right_scroll), (FleetWindowTab::Troops, 0.0));
     }
 
     #[test]
