@@ -5881,9 +5881,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-scroll-bar-a0/README.md"
           ],
-          "note": "A ship's carried units show on the Fleet window tabs (fleet-window.mjs, Linux); no A0 comparison of a ship's contents. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: compared: the FleetWindowCoruscant fixture rebuilds A0 fleet-aboard (Imperial Star Destroyer 1 with six TIE Fighter squadrons, three Stormtrooper Regiments, Veers); fleet-window.mjs a0-coruscant (Empire, Linux) matches the selected ship's Fighters, Troops and Personnel tabs, counts 6/6 and 3/3, apart from text, the pane title's clip and the right list's scroll bar (not drawn yet). Fixed: a selected ship listed nothing (right_items, tab_counts).",
+          "note": "A ship's carried units show on the Fleet window tabs (fleet-window.mjs, Linux); no A0 comparison of a ship's contents. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: compared: the FleetWindowCoruscant fixture rebuilds A0 fleet-aboard (Imperial Star Destroyer 1 with six TIE Fighter squadrons, three Stormtrooper Regiments, Veers); fleet-window.mjs a0-coruscant (Empire, Linux) matches the selected ship's Fighters, Troops and Personnel tabs, counts 6/6 and 3/3, apart from text, the pane title's clip and the right list's scroll bar (not drawn yet). Fixed: a selected ship listed nothing (right_items, tab_counts). 2026-11-10 b175: the right list scrolls with its RCDATA 10699 bar once its rows pass 164 pixels; the bar matches A0 fleet-aboard/10 in 0 of 1640 pixels.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6794,9 +6795,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-special-forces-aboard-fleets/",
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-scroll-bar-a0/README.md"
           ],
-          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture.",
+          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
