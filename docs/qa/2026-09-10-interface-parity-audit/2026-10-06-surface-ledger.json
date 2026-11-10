@@ -4840,15 +4840,15 @@
         {
           "id": "OBJ-02-C011",
           "requirement": "unknown",
-          "status": "partial",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-track-visibility/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-planet-double-click-a0/"
           ],
-          "note": "Unexplored systems are settled for the sector window by A0 Moddell and FUN_0045c240; the System/Defenses window's unknown state is unit-tested only. 2026-11-09: no A0 path opens an unexplored system's System window: it shows no icons, its planet's double click opens nothing (A0 planet-dblclick/01), and the System Finder's Display opens its sector window.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Unexplored systems are settled for the sector window by A0 Moddell and FUN_0045c240; the System/Defenses window's unknown state is unit-tested only. 2026-11-09: no A0 path opens an unexplored system's System window: it shows no icons, its planet's double click opens nothing (A0 planet-dblclick/01), and the System Finder's Display opens its sector window. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): no path in the original opens an unexplored system's System window.",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "OBJ-02-C012",
@@ -11001,8 +11001,8 @@
     "surface_families": 45,
     "required_surface_families": 43,
     "baseline_cells": 664,
-    "required_baseline_cells": 622,
-    "excluded_baseline_cells": 42,
+    "required_baseline_cells": 621,
+    "excluded_baseline_cells": 43,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."

@@ -71,3 +71,18 @@ is open.
 among them; they double-click icons, never planets. Workspace tests 3496
 passed, fixture tests 139. The diff's mutants: 2 caught, 1 unviable.
 Tactical matrix `2026-11-09T21-58-54-327Z-3100795`: 148 of 148.
+
+## 2026-11-10: OBJ-02-C011 excluded
+
+Under the owner's decision of 2026-11-10 (states absent from the
+original are removed), OBJ-02-C011 is excluded. In the original, an
+unexplored system's System window cannot be reached:
+
+- the unexplored system shows no quadrant icons (A0 Moddell,
+  `FUN_0045c240`);
+- a double click on its planet opens nothing (above);
+- the System Finder's Display opens its sector window.
+
+The port's only other opener, a battle result's system button, needs a
+battle there. A battle needs a fleet there, and a fleet there explores
+the system.
