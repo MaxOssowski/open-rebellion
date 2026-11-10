@@ -5880,9 +5880,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/"
           ],
-          "note": "A ship's carried units show on the Fleet window tabs (fleet-window.mjs, Linux); no A0 comparison of a ship's contents.",
+          "note": "A ship's carried units show on the Fleet window tabs (fleet-window.mjs, Linux); no A0 comparison of a ship's contents. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6792,9 +6793,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-23-special-forces-aboard-fleets/",
             "tools/interface-parity/fleet-window.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/"
           ],
-          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet.",
+          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
