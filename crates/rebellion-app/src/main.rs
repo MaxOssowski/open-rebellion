@@ -4892,7 +4892,7 @@ async fn main() {
                                     warmed_galaxy_font_sizes.clear();
                                     msg_log = MessageLog::default();
                                     log_state = MessageLogState::default();
-                                    build_selection_state = BuildSelectionState::default();
+                                    build_selection_state = build_selection_state.for_next_game();
                                     mission_dialog_state = MissionDialogState::default();
                                     move_confirmation_state = MoveConfirmationState::default();
                                     status_window_state = StatusWindowState::default();
@@ -8773,7 +8773,7 @@ async fn main() {
                             missions_window_state.clear();
                             object_menu = None;
                             targeting = None;
-                            build_selection_state = BuildSelectionState::default();
+                            build_selection_state = build_selection_state.for_next_game();
                             mission_dialog_state = MissionDialogState::default();
                             move_confirmation_state = MoveConfirmationState::default();
                             status_window_state = StatusWindowState::default();

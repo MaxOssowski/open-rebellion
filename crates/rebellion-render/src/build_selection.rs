@@ -181,6 +181,20 @@ const fn area_index(area: ProductionArea) -> usize {
 }
 
 impl BuildSelectionState {
+    /// The state for a new or loaded game: no window open, the remembered
+    /// classes kept. `DAT_006b289c`, `DAT_006b28a0` and `DAT_006b28a4` are
+    /// globals of the executable, so they outlive a game (A0
+    /// build-selection-empire2/13: a new Empire game's first Build on a
+    /// facilities band opened on the Orbital Shipyard confirmed in the
+    /// previous game).
+    #[must_use]
+    pub fn for_next_game(&self) -> Self {
+        Self {
+            dialog: None,
+            remembered: self.remembered,
+        }
+    }
+
     /// Open the window for a band with the classes its manager lists. With
     /// none, nothing opens. The quantity starts at 1 (`FUN_00437f80`).
     pub fn open(
@@ -1293,6 +1307,28 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn the_last_confirmed_class_outlives_the_game() {
+        // DAT_006b289c / DAT_006b28a0 / DAT_006b28a4 are globals: A0
+        // build-selection-empire2/13 opened a new game's facilities Build
+        // on the Orbital Shipyard confirmed in the game before.
+        let (_, system) = galaxy(true);
+        let regiments = kinds();
+        let mut state = BuildSelectionState::default();
+        assert!(state.open(system, ProductionArea::TrainingFacility, true, regiments.clone()));
+        state.dialog_mut().unwrap().select(1);
+        assert!(state.confirm().is_some());
+        let mut next = state.for_next_game();
+        assert!(!next.is_open());
+        assert!(next.open(system, ProductionArea::TrainingFacility, true, regiments.clone()));
+        assert_eq!(next.dialog().unwrap().kind(), regiments[1]);
+        // A fresh state, as the port's new game made before, opens on the
+        // first class.
+        let mut fresh = BuildSelectionState::default();
+        assert!(fresh.open(system, ProductionArea::TrainingFacility, true, regiments.clone()));
+        assert_eq!(fresh.dialog().unwrap().kind(), regiments[0]);
+    }
 
     #[test]
     fn the_class_list_opens_scrolls_on_its_bar_and_a_click_chooses_a_class() {
