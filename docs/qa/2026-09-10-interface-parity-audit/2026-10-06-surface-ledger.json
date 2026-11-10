@@ -1265,28 +1265,30 @@
         {
           "id": "CMD-01-C002",
           "requirement": "Imperial initial",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-shell-canvas.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-agent-objectives/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-empire-initial-frame-a0/"
           ],
-          "note": "STRATEGY 901 shell with aperture 120,40,480,355. 2026-10-31: the Empire shell of a real Linux browser game (agent-objectives.mjs speed-menu.png, emsprite advisor) against A0 status/00-resume.png: top bar 99.1%, left 96.0%, right 96.5%, bottom 92.9% identical; outside the aperture, droids, readouts and the speed menu, the 2,544 differing pixels of 97,380 are the Game Controls globe, the rail's unread lights, the holoprojector's frame and an A0 window's edge (state or animation). No A0 capture of the initial frame of a new Empire game. The interface fixtures showed the Alliance droids on the Empire cockpit; since 2026-10-31 (74a00db9) every fixture sets its own side's advisor (GID catalog 152/152).",
+          "note": "STRATEGY 901 shell with aperture 120,40,480,355. 2026-10-31: the Empire shell of a real Linux browser game (agent-objectives.mjs speed-menu.png, emsprite advisor) against A0 status/00-resume.png: top bar 99.1%, left 96.0%, right 96.5%, bottom 92.9% identical; outside the aperture, droids, readouts and the speed menu, the 2,544 differing pixels of 97,380 are the Game Controls globe, the rail's unread lights, the holoprojector's frame and an A0 window's edge (state or animation). No A0 capture of the initial frame of a new Empire game. The interface fixtures showed the Alliance droids on the Empire cockpit; since 2026-10-31 (74a00db9) every fixture sets its own side's advisor (GID catalog 152/152). 2026-11-10: A0 empire-initial/01 (a new Empire game, day 2, Popular Support) against the GID gate's Empire capture: 304,574 of 307,200 pixels identical, every aperture, rail and control pixel-identical; the rest is game state (GID marks, readouts, day) and the advisor's idle frame.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-01-C003",
           "requirement": "all apertures populated",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-shell-canvas.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-empire-initial-frame-a0/"
           ],
-          "note": "Alliance apertures (galaxy, top bar, cockpit bottom/left) match A0 in galaxy-composition-a0 except state-dependent pixels; the Empire apertures are not compared, and the ledger notes exact population as open. 2026-10-31: the Empire shell apertures compared as in CMD-01-C002 (state and animation differences only).",
+          "note": "Alliance apertures (galaxy, top bar, cockpit bottom/left) match A0 in galaxy-composition-a0 except state-dependent pixels; the Empire apertures are not compared, and the ledger notes exact population as open. 2026-10-31: the Empire shell apertures compared as in CMD-01-C002 (state and animation differences only). 2026-11-10: A0 empire-initial/01 (a new Empire game, day 2, Popular Support) against the GID gate's Empire capture: 304,574 of 307,200 pixels identical, every aperture, rail and control pixel-identical; the rest is game state (GID marks, readouts, day) and the advisor's idle frame.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1890,12 +1892,14 @@
         {
           "id": "CMD-02-C025",
           "requirement": "Death Star intelligence",
-          "status": "pending",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-empire-initial-frame-a0/"
           ],
-          "note": "The gate renders a fleet with the Death Star, but no Death Star intelligence mark is traced or drawn on the GID; no A0."
+          "note": "The gate renders a fleet with the Death Star, but no Death Star intelligence mark is traced or drawn on the GID; no A0. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): the GID's Death Star display 0x73 counts the holder's completed shields (FUN_0051c0d0 -> FUN_005131d0) with no intelligence test, and no display marks the Death Star.",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "CMD-02-C026",
@@ -10990,8 +10994,8 @@
     "surface_families": 45,
     "required_surface_families": 43,
     "baseline_cells": 664,
-    "required_baseline_cells": 625,
-    "excluded_baseline_cells": 39,
+    "required_baseline_cells": 624,
+    "excluded_baseline_cells": 40,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."
