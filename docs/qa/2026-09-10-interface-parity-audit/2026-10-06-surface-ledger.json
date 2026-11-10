@@ -1294,14 +1294,15 @@
         {
           "id": "CMD-01-C004",
           "requirement": "first frame complete",
-          "status": "pending",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-shell-canvas.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-11-strategic-command-controls.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-galaxy-composition-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-first-frame-complete/"
           ],
-          "note": "No check that the first rendered frame is complete; no A0 or browser evidence for the first frame."
+          "note": "No check that the first rendered frame is complete; no A0 or browser evidence for the first frame. 2026-11-10: the GID gate captures the first frame once the game reports ready and finds its side columns and bottom console identical to the settled frame in all 76 native cases (run 2026-11-10T06-47-01-846Z-4111588); A0 empire-initial/00 shows the original's first frame with the whole cockpit drawn."
         },
         {
           "id": "CMD-01-C005",
@@ -8379,14 +8380,15 @@
         {
           "id": "EVT-01-C020",
           "requirement": "acknowledge",
-          "status": "partial",
-          "counts_toward_parity": true,
+          "status": "excluded",
+          "counts_toward_parity": false,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-rows/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-posting/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-message-index-posting/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-absent-states-second-pass/"
           ],
-          "note": "Events are read and closed through the Message Index (double click opens, Close); the event-specific acknowledge state is not identified against the manual or A0.",
-          "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
+          "note": "Events are read and closed through the Message Index (double click opens, Close); the event-specific acknowledge state is not identified against the manual or A0. 2026-11-10: excluded by the owner's decision (states absent from the original are removed): the Message Index has no acknowledge control (message-index-rows.md), and REBDLOG's 'Acknowledged' labels multiplayer error boxes only.",
+          "scope": "Excluded from the parity denominator."
         },
         {
           "id": "EVT-01-C021",
@@ -10996,8 +10998,8 @@
     "surface_families": 45,
     "required_surface_families": 43,
     "baseline_cells": 664,
-    "required_baseline_cells": 623,
-    "excluded_baseline_cells": 41,
+    "required_baseline_cells": 622,
+    "excluded_baseline_cells": 42,
     "required_surfaces_with_retrieval_packages": 43
   },
   "acceptance_scope_decision": "2026-10-30: the user accepts verification on Linux and in the browser (Arch Chromium); macOS native and Safari are not required. A cell passes with an A0 comparison and a Linux browser check. 2026-10-30 (second decision): a cell may pass despite two systematic deviations, each named in its note: text drawn about 9% wider than GDI's hinted Arial (egui with Liberation Sans has no hinting), and shaded fills not snapped to the 256-colour palette."

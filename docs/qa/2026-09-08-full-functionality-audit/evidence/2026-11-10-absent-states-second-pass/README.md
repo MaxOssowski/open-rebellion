@@ -80,3 +80,21 @@ this change. The panel is a replacement window, due for removal with
 its tracker item (the replacement-panels decision). Its Save and Load
 paths are exercised by the save tests in `rebellion-data` and by the
 Game Options gate.
+
+## Later the same day: EVT-01-C020 (event acknowledge)
+
+An event, like a mission report, is read and closed through the Message
+Index. The window's controls are the full list in
+`ghidra/notes/message-index-rows.md`:
+
+- Select All `0x90` and Delete `0x91`;
+- the posting toggle `0x66`;
+- Display Message `0x65`, Display `0x67` and Compose Chat `0x68`;
+- the arrows `0x96` and `0x9a`;
+- Close `0x28`;
+- for a kind-5 message only, the continue question's check mark and X
+  (`0x98`, `0x99`).
+
+None of them acknowledges an event. As traced above, "Acknowledged" is
+only a multiplayer box's label. EVT-01-C020 is excluded with the cells
+above.
