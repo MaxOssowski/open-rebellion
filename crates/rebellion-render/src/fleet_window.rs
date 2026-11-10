@@ -2482,9 +2482,13 @@ fn draw_fleet_window(
                     // format 0 (left, top), font 5. The A0 capture shows
                     // "Fleet 2" red, bold, from x 101.
                     if let Some(label) = fleet_label(world, fleet) {
+                        // DrawTextA without DT_NOCLIP clips to the label: A0
+                        // fleet-aboard/10 cuts "Imperial Star Destroyer 1"
+                        // at x 228.
+                        let label_rect = logical_rect(local, scale, 100.0, 29.0, 128.0, 25.0);
                         crate::theme::paint_gdi_text(
-                            &painter,
-                            logical_rect(local, scale, 100.0, 29.0, 128.0, 25.0),
+                            &painter.with_clip_rect(label_rect.intersect(painter.clip_rect())),
+                            label_rect,
                             scale,
                             5,
                             &label,
@@ -2503,9 +2507,13 @@ fn draw_fleet_window(
                         Some(world.ship_name(fleet, index).unwrap_or(&class.name).to_owned())
                     });
                     if let Some(name) = name {
+                        // DrawTextA without DT_NOCLIP clips to the label: A0
+                        // fleet-aboard/10 cuts "Imperial Star Destroyer 1"
+                        // at x 228.
+                        let label_rect = logical_rect(local, scale, 100.0, 29.0, 128.0, 25.0);
                         crate::theme::paint_gdi_text(
-                            &painter,
-                            logical_rect(local, scale, 100.0, 29.0, 128.0, 25.0),
+                            &painter.with_clip_rect(label_rect.intersect(painter.clip_rect())),
+                            label_rect,
                             scale,
                             5,
                             &name,
@@ -3680,6 +3688,8 @@ pub(crate) mod tests {
         pos: egui::Pos2,
         /// Where the last character's layout ends.
         end: f32,
+        /// The clip rectangle the line is painted under.
+        clip: egui::Rect,
         size: f32,
         color: egui::Color32,
     }
@@ -3805,6 +3815,7 @@ pub(crate) mod tests {
                                 if line.size == format.font_id.size
                                     && line.color == format.color
                                     && line.pos.y == baseline
+                                    && line.clip == clipped.clip_rect
                                     && (text.pos.x - line.end).abs() < line.size =>
                             {
                                 line.text.push_str(text.galley.text());
@@ -3816,6 +3827,7 @@ pub(crate) mod tests {
                                 end: text.pos.x + text.galley.size().x,
                                 size: format.font_id.size,
                                 color: format.color,
+                                clip: clipped.clip_rect,
                             }),
                         }
                     }
@@ -5080,6 +5092,10 @@ pub(crate) mod tests {
                     "{faction:?}: {label} in {rect:?} in {texts:?}"
                 );
             }
+            // The label is clipped to its box (A0 fleet-aboard/10).
+            assert!(texts.iter().any(|text| text.size == font5
+                && text.text == "Fleet 1"
+                && text.clip == egui::Rect::from_min_max(at(100.0, 29.0), at(228.0, 54.0))));
             // FUN_004a4b10: the title from x 19, centred in rows 2..18
             // (DT_VCENTER: (16 - 16) / 2, then tmAscent 13), font 5, black.
             let title = texts.iter().find(|text| text.text == "Sluis Van").unwrap();
@@ -5165,11 +5181,14 @@ pub(crate) mod tests {
         assert!(!output.painted.iter().any(|&(_, point)| point == at(100.0, 96.0)));
         assert!(output.painted.iter().any(|&(_, point)| point == at(132.0, 96.0)));
         let font5 = crate::theme::gdi_font(5, 2.0).size;
+        // Clipped to its box: A0 fleet-aboard/10 cuts a long name at x 228.
+        let clip = egui::Rect::from_min_max(at(100.0, 29.0), at(228.0, 54.0));
         assert!(
             output.texts.iter().any(|text| text.text == "Medium Transport"
                 && text.set_in((100.0, 29.0, 128.0, 25.0), 5, crate::theme::GdiAlign::Left)
                 && text.size == font5
-                && text.color == label_color(1)),
+                && text.color == label_color(1)
+                && text.clip == clip),
             "{:?}",
             output.texts
         );
