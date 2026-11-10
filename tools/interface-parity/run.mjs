@@ -369,6 +369,37 @@ function verifyGidRootFrame(viewport, screenshotBytes, faction, systemWindowOpen
   };
 }
 
+// The first frame after the game is ready already holds the whole shell
+// (CMD-01-C004): the side columns above the advisors and the bottom
+// console right of them are the settled frame's, pixel for pixel. The
+// original's first frame of a new game shows the complete cockpit under
+// its Message Index (A0 empire-initial/00). The galaxy aperture, the top
+// readouts and the animated advisors are left out.
+function verifyFirstFrameComplete(viewport, firstBytes, stableBytes, folder) {
+  if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
+    return { status: "non-native-scale" };
+  }
+  fs.writeFileSync(path.join(folder, "first-ready.png"), firstBytes);
+  const first = PNG.sync.read(firstBytes);
+  const settled = PNG.sync.read(stableBytes);
+  const regions = { left: [0, 40, 55, 300], right: [540, 40, 640, 390], console: [120, 395, 640, 480] };
+  const differing = {};
+  for (const [name, [x0, y0, x1, y1]] of Object.entries(regions)) {
+    let count = 0;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        const i = (y * first.width + x) * 4;
+        if (first.data[i] !== settled.data[i] || first.data[i + 1] !== settled.data[i + 1]
+          || first.data[i + 2] !== settled.data[i + 2]) count += 1;
+      }
+    }
+    differing[name] = count;
+  }
+  assert.ok(Object.values(differing).every((count) => count === 0),
+    `the first ready frame lacks part of the shell: ${JSON.stringify(differing)}`);
+  return { status: "complete", differing };
+}
+
 function verifyMessageIndexRail(faction, viewport, screenshotBytes) {
   if (viewport.width !== 640 || viewport.height !== 480 || viewport.device_scale_factor !== 1) {
     return { status: "non-native-scale", source_bitmaps_checked: 0 };
@@ -5531,10 +5562,13 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
     const ready = await page.evaluate(() => window.__openRebellionInterfaceReady);
     assert.equal(ready.status, battle ? "battle-ready" : "ready", JSON.stringify(ready));
     assert.equal(battle ? ready.fixture_code : ready.code, code);
+    // The first frame the game shows once ready, before anything settles.
+    const firstReadyBytes = battle ? null : await page.screenshot({ animations: "disabled" });
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(250);
     const stable = await stableFrame(page, folder);
     assert.equal(stable.first, stable.second, `unstable screenshot for ${id}`);
+    const firstFrame = battle ? null : verifyFirstFrameComplete(viewport, firstReadyBytes, stable.bytes, folder);
     const messageIndexRail = battle ? null : verifyMessageIndexRail(faction, viewport, stable.bytes);
     const probes = battle
       ? [{ type: "production-tactical-entry", system: ready.system,
@@ -6461,6 +6495,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       screenshot_sha256: stable.second,
       two_frame_hashes: { first: stable.first, second: stable.second, equal: stable.first === stable.second },
       message_index_rail: messageIndexRail,
+      first_frame: firstFrame,
       runtime_measurements: runtimeMeasurements,
       wasm_sha256: sha256(fs.readFileSync(path.join(site, "open-rebellion-test.wasm"))),
       runtime_pack_sha256: sha256(fs.readFileSync(path.join(site, "data/runtime.orpk"))),
