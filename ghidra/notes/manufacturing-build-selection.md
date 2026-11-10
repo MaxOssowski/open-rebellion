@@ -432,8 +432,11 @@ Manufacturing side panel (M) is gone.
 - port: every yard counts toward the times; the busy bit (`+0x60` bit 0)
   is not modelled. A unit's days are fixed when queued, so yards built
   or lost later do not change them.
-- port: maintenance is shown, not charged (manual p. 84 deducts it at the
-  order); refined material is not drawn down.
+- The order's maintenance counts at once (manual p. 84): the port's
+  `maintenance_totals` adds each queued item's upkeep, and A0
+  build-selection-empire2/09a, 09 (2026-11-10) shows the counter drop from
+  103 to 90 at an Orbital Shipyard's Confirm. port: refined material is
+  not drawn down.
 - port: a built special force takes its class's base skills, without the
   creation roll.
 - hyp: the list is in `DatId` order.

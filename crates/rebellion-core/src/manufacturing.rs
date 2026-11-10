@@ -592,6 +592,19 @@ mod tests {
     use super::*;
     use crate::ids::SystemKey;
 
+    #[test]
+    fn two_construction_yards_finish_as_a0_shows() {
+        // A0 2026-11-10 (build-selection-empire2/01..08: Coruscant with two
+        // Construction Yards, processing period 4 each; build-selection4
+        // shows one yard taking 4 days a point): 10 -> 20 days, 12 -> 24,
+        // 4 -> 8, 7 -> 16 (two yards finish 2 points every 4 days), 20 -> 40
+        // (FUN_00538220's best completion).
+        for (work, days) in [(10, 20), (12, 24), (4, 8), (7, 16), (20, 40)] {
+            assert_eq!(completion_day(&[4, 4], work), Some(days), "work {work}");
+        }
+        assert_eq!(completion_day(&[4], 7), Some(28));
+    }
+
     // Helper: fabricate distinct SystemKeys from one shared slotmap.
     fn mock_system_keys(n: usize) -> Vec<SystemKey> {
         let mut sm: slotmap::SlotMap<SystemKey, ()> = slotmap::SlotMap::with_key();

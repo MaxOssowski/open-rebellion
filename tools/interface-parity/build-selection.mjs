@@ -561,6 +561,23 @@ const A0_CLASSES = {
       file: ".artifacts/a0-vm/build-selection4/12-6-longprobe-y-wing-recon-team.png", at: [192, 84] },
   ],
 };
+// The Empire's facility classes against A0 build-selection-empire2 (a new
+// Empire game, Coruscant's facilities band with two Construction Yards,
+// the window at (255, 87)). The fixture's yards differ, so the completion
+// (half A0's single-yard time with two yards; the core's completion_day
+// test) is not compared here: refined, maintenance and deployment are.
+const A0_EMPIRE_FACILITIES = [
+  ["Construction Yard", ["10", "10", "20 Days", "0 Days"], "01-construction-yard.png"],
+  ["GenCore Level I", ["12", "12", "24 Days", "0 Days"], "02-gencore.png"],
+  ["KDY-150", ["4", "4", "8 Days", "0 Days"], "03-kdy150.png"],
+  ["LNR Series I", ["7", "7", "16 Days", "0 Days"], "04-lnr.png"],
+  ["Mine", ["20", "0", "40 Days", "0 Days"], "05-mine.png"],
+  ["Orbital Shipyard", ["20", "13", "40 Days", "0 Days"], "06-orbital-shipyard.png"],
+  ["Refinery", ["20", "0", "40 Days", "0 Days"], "07-refinery.png"],
+  ["Training Facility", ["10", "10", "20 Days", "0 Days"], "08-training-facility.png"],
+].map(([name, values, file]) => ({ name, values, file: `.artifacts/a0-vm/build-selection-empire2/${file}`,
+  at: [255, 87], skipCompletion: true }));
+
 // A0 build-selection4/08: the list opened with LNR Series I shown shows
 // KDY-150 and LNR Series I. Dragging the list's bar had moved the window
 // one pixel left, to (191, 84), as in 07.
@@ -582,7 +599,7 @@ function regionDiffering(port, [px, py], a0, [ax, ay], [x0, y0, x1, y1]) {
   return { checked, differing };
 }
 
-async function classValuesCase(page, directory, area) {
+async function classValuesCase(page, directory, area, classes = A0_CLASSES[area]) {
   const read = async () => {
     await page.mouse.move(2, 2);
     await frames(page);
@@ -598,7 +615,7 @@ async function classValuesCase(page, directory, area) {
   const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
   const results = [];
   let list = null;
-  for (const expected of A0_CLASSES[area]) {
+  for (const expected of classes) {
     const seen = [];
     for (let step = 0; step < 12 && (await read()).build_selection_class !== expected.name; step += 1) {
       seen.push((await read()).build_selection_class);
@@ -609,7 +626,10 @@ async function classValuesCase(page, directory, area) {
     const label = expected.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     fs.writeFileSync(path.join(directory, `class-${label}.png`), bytes);
     assert.equal(chosen.build_selection_class, expected.name, JSON.stringify([seen, chosen]));
-    assert.deepEqual(chosen.build_selection_values, expected.values, JSON.stringify(chosen));
+    const shown = expected.skipCompletion
+      ? chosen.build_selection_values.filter((_, index) => index !== 2) : chosen.build_selection_values;
+    const wanted = expected.skipCompletion ? expected.values.filter((_, index) => index !== 2) : expected.values;
+    assert.deepEqual(shown, wanted, JSON.stringify(chosen));
     const a0 = PNG.sync.read(fs.readFileSync(path.join(root, expected.file)));
     const picture = regionDiffering(PNG.sync.read(bytes), [origin.x, origin.y], a0, expected.at, [6, 22, 201, 48]);
     assert.equal(picture.differing, 0, `${expected.name}'s picture differs from A0 in ${picture.differing} pixels`);
@@ -1327,7 +1347,9 @@ async function inspect(server, source, faction, executable) {
     const shipsA0 = faction.byte === 1 && fs.existsSync(a0Dir4)
       ? { ships: await classValuesCase(page, directory, "ships"),
         facilities: await classValuesCase(page, directory, "facilities"),
-        troops: await classValuesCase(page, directory, "troops") } : null;
+        troops: await classValuesCase(page, directory, "troops") }
+      : faction.byte === 2 && fs.existsSync(path.join(root, ".artifacts/a0-vm/build-selection-empire2"))
+        ? { facilities: await classValuesCase(page, directory, "facilities", A0_EMPIRE_FACILITIES) } : null;
 
     // A manufacturing facility's menu: its page cell's right click lists
     // FUN_0051d990's Encyclopedia and Status and the facility's one Scrap
