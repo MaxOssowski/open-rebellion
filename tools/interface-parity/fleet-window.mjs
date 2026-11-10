@@ -1905,9 +1905,9 @@ const cases = [
       const shipFile = { fighters: "10-isd1-fighters", troops: "11-isd1-troops", personnel: "12-isd1-personnel" };
       checks.ship = await compareTabsWithA0(page, directory, "a0-coruscant-ship",
         has && ((tab) => path.join(dir, `${shipFile[tab]}.png`)),
-        // Measured 2026-11-10: 3018, 4067, 2116: the text and the pane
-        // title drawn past A0's clip.
-        { fighters: 3150, troops: 4200, personnel: 2250 }, origin, ["fighters", "troops", "personnel"]);
+        // Measured 2026-11-10: 2967, 4016, 2065, the text's rasterising;
+        // the pane title is clipped at x 228 as in A0.
+        { fighters: 3050, troops: 4100, personnel: 2150 }, origin, ["fighters", "troops", "personnel"]);
       // The right list's scroll bar for six squadrons (RCDATA 10699,
       // FUN_0060a490): window x 224..233, y 127..290, every pixel A0's.
       if (has) {
