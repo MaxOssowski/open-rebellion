@@ -282,6 +282,19 @@ Missions window draws them (`FUN_004a0e10`).
   They submit its text through the pending order `+0x13c`, or cancel it. A
   click or message `0x407`/`0x40e` ends the edit. untraced: what starts it
   (hyp: the Rename order `0x203`).
+  - The rect (`FUN_004a71d0`) is the selected item's text rect
+    (`FUN_0060a2a0` on item `+0x40..+0x4c`) moved by the list's position,
+    its right edge at the list's right less 8. `FUN_00609e20` keeps
+    `+0x40..+0x4c` at the item's content position less the first visible
+    pixel `+0xc4` (`FUN_00609dd0`), so the edit opens where the item is
+    shown in a scrolled list. The edit is a child of the window, placed
+    once; it does not follow a later scroll.
+  - Ends unissued (`FUN_004ac3a0` → vtable `+0x80`): the window's own
+    `0x201`/`0x204`, and `0x40e`, which a list posts on a press
+    (`FUN_006083c0`) and relays from its scroll bar (`FUN_0060f640`,
+    whose base procedure `FUN_0060aca0` posts it on `0x201`/`0x203`). So a
+    press on either bar drops the edit before the list can scroll under it.
+    `0x407` commits (vtable `+0x7c`).
 - **Drag source**: a drag out of either list posts `0x29a`. The galaxy view
   (`FUN_00422ce0`, `move-order.md` "A drag is a move") moves the whole
   selection against the drop window's `+0x70`, as `0x201` (`0x202` with
@@ -422,7 +435,7 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
   hold that kept it off a fleet loaded by order went on 2026-10-17 (save
   v59).
 - **Port rules.** The left list follows the system window's fog rule; one
-  entry is selected at a time; there are no scroll bars; a listed ship
+  entry is selected at a time; the bars' arrows step 10 (hyp); a listed ship
   stands for its fleet as a release target and draws no selected look; the
   pressed state of the sector window's icon is not drawn. Only a Troops tab
   regiment drags out of the window (`regiment-unload.md`).
@@ -448,6 +461,33 @@ therefore joins a fleet when a move names the Fleet window's `+0x70` target.
 - The Fleet Finder opens the window from the sector window's fleet icon
   with the fleet or ship selected, expanding the fleet for a ship (slot
   `+0x6c`, `FUN_00429440`; `fleet-finder.md`).
+
+## Scroll and selection
+
+- A click on a left entry (`0x29b`, `FUN_004a6390`) posts `0x467` and
+  refreshes the right pane (`FUN_004a5c00`); nothing moves the left list.
+- A select from outside (slot `+0x6c`, `FUN_004a73c0`, from the Fleet
+  Finder's `FUN_00429440`) finds the entry by id (`FUN_0060a860`), sets its
+  `+0x3c` bit 0, expands the fleet for a ship (`FUN_004a3d40`), and relays
+  the list out (`FUN_0060a280` = `FUN_00609ae0` layout, `FUN_00609a00`
+  repaint). The layout only clamps the first visible pixel `+0xc4` to the
+  range; nothing scrolls the selected entry into view. Then `FUN_0060d7e0`
+  picks the tab, which refreshes the right list.
+- The right pane's refill (`FUN_004a5c00`, after a selection and after a
+  tab click `0x6a`/`0x6b`, `FUN_004a6390`) empties the right list's items
+  (`FUN_005f5b20` on `+0x18c`, at `0x4a5c4a`), shows or hides the list
+  (its vtable `+4(5)` / `+8`), adds the items (`FUN_004a6be0`) and lays
+  the list out (`FUN_0060a280` on `+0x164`, at `0x4a61b5`). Nothing there
+  writes the list's first visible pixel `+0xc4`: in the list class only
+  `FUN_00609ed0` (a scroll by the bar) moves it, and `FUN_00609ae0` clamps
+  it to the new range (`content + 5 - view` for a full list, else 0). So
+  the right list keeps its place across a selection or tab, clamped.
+- port: both selections keep the left list's scroll, and a selection or
+  tab keeps the right list's, clamped by the draw
+  (`a_selection_from_outside_leaves_the_left_list_where_it_was_scrolled`,
+  `a_new_selection_draws_the_right_list_from_its_kept_place_clamped_to_the_range`,
+  `another_tab_keeps_the_right_lists_place`). The 2026-11-10 port reset
+  the right list instead, uncited; corrected 2026-11-11 from this trace.
 
 ## Still open
 
