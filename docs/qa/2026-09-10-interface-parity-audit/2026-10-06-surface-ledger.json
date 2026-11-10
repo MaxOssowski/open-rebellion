@@ -6333,9 +6333,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-build-selection-order/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-deployment-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-deployment-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-empire-facilities-a0/"
           ],
-          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection4/04 (Kessel, one Construction Yard): Construction Yard 10, 10, '40 Days', '0 Days'; build-selection.mjs finds the values exactly and the picture 0 px from A0. 2026-11-09: Mine 20/0/'80 Days', Orbital Shipyard 20/13/'80 Days', Refinery 20/0/'80 Days' match A0 build-selection4/13..15 in build-selection.mjs (values exact, pictures 0 px).",
+          "note": "Construction yards list facility classes (producer type 1 -> 0x2a, MANFACSD/PROFACSD catalog); unit tests only. No A0 capture of this state. 2026-11-05: the list's order matches A0 build-selection3/ (new Alliance game): Build Selection shows its classes by name (FUN_00437880's sorted list), checked on the original data by rebellion-app's build_selection_lists tests. 2026-11-09: A0 build-selection4/04 (Kessel, one Construction Yard): Construction Yard 10, 10, '40 Days', '0 Days'; build-selection.mjs finds the values exactly and the picture 0 px from A0. 2026-11-09: Mine 20/0/'80 Days', Orbital Shipyard 20/13/'80 Days', Refinery 20/0/'80 Days' match A0 build-selection4/13..15 in build-selection.mjs (values exact, pictures 0 px). 2026-11-10: the Empire too: A0 build-selection-empire2 (Coruscant, two Construction Yards): Construction Yard, Mine, Orbital Shipyard, Refinery, Training Facility match in build-selection.mjs (Empire, Linux): refined, maintenance and deployment exact, pictures 0 px; the two-yard completion times by the core test two_construction_yards_finish_as_a0_shows.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6346,9 +6347,10 @@
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-build-selection-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-empire-facilities-a0/"
           ],
-          "note": "Defense classes 0x22..0x25 come from DEFFACSD (BuildableKind::DefenseFacility); unit tests only. No A0 capture of this state. 2026-11-09: A0 build-selection4/05..07: GenCore Level I 12/12/'48 Days', KDY-150 4/4/'16 Days', LNR Series I 7/7/'28 Days', all '0 Days'; build-selection.mjs finds each exactly with the picture 0 px from A0.",
+          "note": "Defense classes 0x22..0x25 come from DEFFACSD (BuildableKind::DefenseFacility); unit tests only. No A0 capture of this state. 2026-11-09: A0 build-selection4/05..07: GenCore Level I 12/12/'48 Days', KDY-150 4/4/'16 Days', LNR Series I 7/7/'28 Days', all '0 Days'; build-selection.mjs finds each exactly with the picture 0 px from A0. 2026-11-10: the Empire's GenCore Level I 12/12/'24 Days', KDY-150 4/4/'8 Days', LNR Series I 7/7/'16 Days' with two yards (A0 build-selection-empire2/02..04) match likewise.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
