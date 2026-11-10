@@ -40,6 +40,7 @@ const BLOCKADE_ARRIVAL = 77;
 const SUPPORT_FLIP = 78;
 const FLEET_WINDOW_A0 = 80;
 const FLEET_WINDOW_VJUN = 81;
+const FLEET_WINDOW_CORUSCANT = 100;
 const FLEET_WINDOW_UMGUL = 82;
 const FLEET_WINDOW_SELONIA = 83;
 const FLEET_WINDOW_EMPTY = 84;
@@ -462,8 +463,7 @@ const a0Origin = { x: 305, y: 86 };
 // Capture the Fleet window at A0's (305, 86) as `label` and, when `a0Png`
 // names A0's capture of the same state, count the window's pixels that
 // differ from it; the count must stay within `ceiling`.
-async function compareWindowWithA0(page, directory, label, a0Png, ceiling) {
-  const origin = a0Origin;
+async function compareWindowWithA0(page, directory, label, a0Png, ceiling, origin = a0Origin) {
   const port = await stableWindow(page, origin, directory, label);
   fs.writeFileSync(path.join(directory, `${label}.png`), PNG.sync.write(port));
   if (!a0Png) return null;
@@ -486,13 +486,15 @@ async function compareWindowWithA0(page, directory, label, a0Png, ceiling) {
 
 // Click each tab of the Fleet window and compare it with A0's capture of
 // that tab, `a0File(tab)`, within the tab's ceiling.
-async function compareTabsWithA0(page, directory, name, a0File, ceilings) {
-  const tabs = ["ships", "fighters", "troops", "personnel"];
+async function compareTabsWithA0(page, directory, name, a0File, ceilings, origin = a0Origin,
+  tabs = ["ships", "fighters", "troops", "personnel"]) {
   const checks = {};
-  for (const [index, tab] of tabs.entries()) {
+  for (const tab of tabs) {
+    const index = ["ships", "fighters", "troops", "personnel"].indexOf(tab);
     // TAB_STRIP (99, 96) + TAB_X, 31 by 28 (fleet_window.rs).
-    await click(page, { x: a0Origin.x + 99 + [1, 33, 65, 97][index] + 15, y: a0Origin.y + 96 + 14 });
-    checks[tab] = await compareWindowWithA0(page, directory, `${name}-${tab}`, a0File && a0File(tab), ceilings[tab]);
+    await click(page, { x: origin.x + 99 + [1, 33, 65, 97][index] + 15, y: origin.y + 96 + 14 });
+    checks[tab] = await compareWindowWithA0(page, directory, `${name}-${tab}`, a0File && a0File(tab),
+      ceilings[tab], origin);
   }
   return checks;
 }
@@ -1877,6 +1879,38 @@ const cases = [
     run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-vjun",
       a0Fleet2Dir && ((tab) => path.join(a0Fleet2Dir, `vjun-fleet5-admiral-${tab}.png`)),
       { ships: 1700, fighters: 1250, troops: 1250, personnel: 1600 }),
+  },
+  {
+    name: "a0-coruscant",
+    code: FLEET_WINDOW_CORUSCANT,
+    factions: ["empire"],
+    standalone: true,
+    // A0's Empire Fleet window over Coruscant at the start of a new game
+    // (fleet-aboard/*, day 10, the window at (225, 92)): Fleet 1's
+    // Imperial Star Destroyer 1 with six TIE Fighter squadrons, three
+    // Stormtrooper Regiments and Veers. The fleet's Ships, Troops and
+    // Personnel tabs, then the ship selected in the left list (its row at
+    // LEFT_LIST y 29 + 50) with its Fighters, Troops and Personnel.
+    async run(page, faction, setup, directory) {
+      const origin = { x: 225, y: 92 };
+      const dir = path.join(root, ".artifacts/a0-vm/fleet-aboard");
+      const has = fs.existsSync(dir);
+      const fleetFile = { ships: "00-coruscant-fleet1-ships", troops: "01-coruscant-fleet1-troops",
+        personnel: "02-coruscant-fleet1-personnel" };
+      const checks = { fleet: await compareTabsWithA0(page, directory, "a0-coruscant",
+        has && ((tab) => path.join(dir, `${fleetFile[tab]}.png`)),
+        // Measured 2026-11-10: 2012, 3452, 1501 (the GDI text's hinting).
+        { ships: 2150, troops: 3600, personnel: 1600 }, origin, ["ships", "troops", "personnel"]) };
+      await click(page, { x: origin.x + 40, y: origin.y + 29 + 50 + 26 });
+      const shipFile = { fighters: "10-isd1-fighters", troops: "11-isd1-troops", personnel: "12-isd1-personnel" };
+      checks.ship = await compareTabsWithA0(page, directory, "a0-coruscant-ship",
+        has && ((tab) => path.join(dir, `${shipFile[tab]}.png`)),
+        // Measured 2026-11-10: 4292, 4067, 2116: the text, the pane title
+        // drawn past A0's clip, and (Fighters) the right list's scroll bar,
+        // which the port does not draw yet.
+        { fighters: 4400, troops: 4200, personnel: 2250 }, origin, ["fighters", "troops", "personnel"]);
+      return checks;
+    },
   },
   {
     name: "a0-umgul",

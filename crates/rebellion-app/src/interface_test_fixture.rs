@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 99;
+const SCENARIO_COUNT: u8 = 100;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -318,6 +318,12 @@ pub enum Scenario {
     /// As `EndingDefeat` with the sides swapped: the player's side wins on
     /// the first day (Alliance MDATA.105, Empire MDATA.108).
     EndingVictory = 98,
+    /// The Empire's Fleet window over Coruscant at the start of A0's new
+    /// Empire game (`.artifacts/a0-vm/fleet-aboard/*.png`, day 10): Fleet 1,
+    /// Imperial Star Destroyer 1 carrying six TIE Fighter squadrons, three
+    /// Stormtrooper Regiments and Veers, selected and expanded; the window
+    /// at A0's (225, 92).
+    FleetWindowCoruscant = 99,
 }
 
 impl Scenario {
@@ -422,6 +428,7 @@ impl Scenario {
             96 => Self::FleetAssaultTaken,
             97 => Self::EndingDefeat,
             98 => Self::EndingVictory,
+            99 => Self::FleetWindowCoruscant,
             _ => return None,
         })
     }
@@ -994,6 +1001,9 @@ pub fn apply(
     if request.scenario == Scenario::FleetWindowVjun {
         place_vjun(request, world, cockpit, movement, fleets);
     }
+    if request.scenario == Scenario::FleetWindowCoruscant {
+        place_coruscant(request, world, cockpit, movement, troop_transport, fleets);
+    }
     if request.scenario == Scenario::FleetWindowUmgul {
         place_umgul(request, world, cockpit, movement, troop_transport, fleets);
     }
@@ -1505,6 +1515,108 @@ fn place_kimanan(
     let layout = cockpit.layout_for(640.0, 480.0);
     fleets.open(world, kimanan, (305, 86), request.faction, layout);
     fleets.select(kimanan, FleetWindowEntry::Fleet(first));
+}
+
+/// The `FleetWindowCoruscant` scenario: A0's Fleet 1 at Coruscant in a new
+/// Empire game, and its Fleet window open where A0's lay.
+fn place_coruscant(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    cockpit: &CockpitState,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+    fleets: &mut FleetWindowState,
+) {
+    let coruscant = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Coruscant")
+        .map(|(key, _)| key);
+    let destroyer = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, value)| value.is_empire && value.name == "Imperial Star Destroyer")
+        .map(|(key, _)| key);
+    let tie = world
+        .fighter_classes
+        .iter()
+        .find(|(_, value)| !value.is_alliance && value.name == "TIE Fighter")
+        .map(|(key, _)| key);
+    let veers = world
+        .characters
+        .iter()
+        .find(|(_, value)| value.name == "Veers")
+        .map(|(key, _)| key);
+    let stormtroopers = world
+        .buildable_classes
+        .iter()
+        .find(|(class, value)| class.family() == 0x10 && value.name == "Stormtrooper Regiment")
+        .map(|(class, _)| *class);
+    let (Some(coruscant), Some(destroyer), Some(tie), Some(veers), Some(stormtroopers)) =
+        (coruscant, destroyer, tie, veers, stormtroopers)
+    else {
+        return;
+    };
+    let sector = world.systems[coruscant].sector;
+    let Some(elsewhere) = world
+        .systems
+        .iter()
+        .find(|(key, value)| *key != coruscant && value.sector == sector)
+        .map(|(key, _)| key)
+    else {
+        return;
+    };
+    for value in world.fleets.values_mut() {
+        if value.location == coruscant {
+            value.location = elsewhere;
+        }
+    }
+    let value = &mut world.systems[coruscant];
+    value.control = ControlKind::Controlled(Faction::Empire);
+    value.exploration_status = ExplorationStatus::Explored;
+    value.ground_units.clear();
+    value.special_forces.clear();
+    let ship = ShipInstance::new(destroyer, world.capital_ship_classes[destroyer].hull as i32, true);
+    // A0 lists six TIE Fighter squadrons, one item each.
+    let squadrons = (0..6)
+        .map(|_| rebellion_core::world::FighterEntry {
+            class: tie,
+            count: 1,
+            carrier: None,
+        })
+        .collect();
+    let first = world.insert_fleet(rebellion_core::world::Fleet {
+        location: coruscant,
+        capital_ships: vec![ship],
+        fighters: squadrons,
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(first, "Fleet 1");
+    world.rename_ship(first, 0, "Imperial Star Destroyer 1");
+    world.number_ships();
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let regiments: Vec<_> = (0..3)
+        .map(|_| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: stormtroopers,
+                is_alliance: false,
+                regiment_strength: 100,
+            })
+        })
+        .collect();
+    world.systems[coruscant].ground_units = regiments.clone();
+    let _ = troop_transport.embark(world, first, &regiments);
+    world.systems[coruscant].ground_units.clear();
+    rebellion_core::missions::board_fleet(world, rebellion_core::missions::MissionMember::Character(veers), first);
+    rebellion_core::missions::seat_characters(world, first);
+    let layout = cockpit.layout_for(640.0, 480.0);
+    fleets.open(world, coruscant, (225, 92), request.faction, layout);
+    fleets.select(coruscant, FleetWindowEntry::Fleet(first));
+    // A0 opened it with a double click on the entry, which expands it.
+    fleets.expand(coruscant, first);
 }
 
 /// The `FleetWindowVjun` scenario: A0's Fleet 5 at Vjun with Garm Bel
@@ -7448,6 +7560,67 @@ mod tests {
             applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), kimanan).map(|rect| rect.min),
             Some(egui_macroquad::egui::pos2(305.0, 86.0))
         );
+    }
+
+    #[test]
+    fn the_a0_coruscant_scenario_loads_fleet_1_as_a0_shows_it() {
+        // A0 fleet-aboard/00..12 (a new Empire game, day 10): Fleet 1's one
+        // Imperial Star Destroyer carries six TIE Fighter squadrons, three
+        // Stormtrooper Regiments and Veers.
+        let request = request(Scenario::FleetWindowCoruscant, CockpitFaction::Empire);
+        let applied = apply_to_loading_world_with(request, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Coruscant".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    name: "Imperial Star Destroyer".into(),
+                    is_empire: true,
+                    hull: 100,
+                    hyperdrive: 80,
+                    fighter_capacity: 6,
+                    troop_capacity: 3,
+                    ..Default::default()
+                });
+            world.fighter_classes.insert(rebellion_core::world::FighterClass {
+                name: "TIE Fighter".into(),
+                is_empire: true,
+                ..Default::default()
+            });
+            world.buildable_classes.insert(
+                rebellion_core::ids::DatId::new(0x1000_0007),
+                rebellion_core::world::BuildableClass {
+                    name: "Stormtrooper Regiment".into(),
+                    is_empire: true,
+                    ..Default::default()
+                },
+            );
+            world.characters.insert(rebellion_core::world::Character {
+                name: "Veers".into(),
+                ..Default::default()
+            });
+        });
+        let world = &applied.world;
+        let coruscant = world.systems.keys().next().unwrap();
+        let [first] = world.systems[coruscant].fleets[..] else {
+            panic!("one fleet at Coruscant: {:?}", world.systems[coruscant].fleets);
+        };
+        let fleet = &world.fleets[first];
+        assert_eq!(world.fleet_name(first), Some("Fleet 1"));
+        assert_eq!(world.ship_name(first, 0), Some("Imperial Star Destroyer 1"));
+        assert!(!fleet.is_alliance);
+        assert_eq!(fleet.fighters.iter().map(|entry| entry.count).sum::<u32>(), 6);
+        let [veers] = fleet.characters[..] else {
+            panic!("one character aboard");
+        };
+        // Seated on the numbered destroyer, so its entry shows the
+        // personnel mark 10456 as A0's does.
+        assert_eq!(world.characters[veers].ship, Some(fleet.capital_ships[0].id));
+        assert_ne!(world.characters[veers].ship, Some(0));
+        assert_eq!(world.systems[coruscant].ground_units.len(), 0);
+        assert!(applied.fleets.is_open(coruscant));
     }
 
     #[test]
