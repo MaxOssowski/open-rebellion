@@ -1,0 +1,23 @@
+Linux Chromium (.browser-linux.json), --no-build, worktree agent-a3cdf1233be672987.
+Test WASM sha256 f58f1dfcfeff66c88e79c5f30fd95d3a87da13fa15a9536a7aa538c73a3ca526
+(commit 32b682a6's render code), except the first personnel-states run, which used
+the build of commit 6cf0bf94 (before the menu fix).
+
+personnel-states   personnel-states-2026-11-11T22-42-17-035Z            pass, both sides (topic text, before the menu fix)
+sector-quadrants   sector-quadrants-2026-11-11T22-51-49-580Z-2489806    pass, defenses-icon-menu-a0 only, both sides
+sector-quadrants   sector-quadrants-2026-11-11T22-52-16-682Z-2493234    pass, 32 of 32 cases
+fleet-move         fleet-move-2026-11-11T22-56-37-897Z-2585423          pass
+personnel-states   personnel-states-2026-11-11T22-58-28-677Z            pass, both sides
+personnel-orders   personnel-orders-2026-11-11T23-01-00-663Z-2739145    pass
+build-selection    build-selection-2026-11-11T23-02-08-845Z-2767593     pass
+fleet-window       fleet-window-2026-11-11T23-05-29-897Z-2826468        pass
+status-window      status-window-2026-11-11T23-15-29-115Z-2931242       pass
+mission-dialog     mission-dialog-2026-11-11T23-18-25-036Z-2942234      pass
+agent-objectives   agent-objectives-2026-11-11T23-19-44-506Z            fail, environment: it serves the
+                   production web/ (the committed open-rebellion.wasm, without this change), and this
+                   worktree's web/data/video is empty, so the main menu never became active. Not run
+                   against this change; the batch should run it from the main checkout.
+
+Earlier sector-quadrants runs (22-50-03, 22-50-44, 22-51-33) were the new case's first drafts:
+the moves were expected white (A0 12) but the fixture's team holds an agent on a mission, and
+the row scan took in the bottom frame. The case now compares with A0 00.
