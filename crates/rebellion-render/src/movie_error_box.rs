@@ -72,10 +72,9 @@ const TEXT_X: f32 = 66.0;
 /// The frame's width beyond the text: 300 less A0's 200-pixel path.
 const TEXT_EXTRA: f32 = 100.0;
 const CAPTION_X: f32 = 28.0;
-const CLOSE: Rect = Rect {
-    min: Pos2::new(275.0, 5.0),
-    max: Pos2::new(295.0, 23.0),
-};
+/// The close box, 20 by 18, 5 in from the frame's right and 5 down.
+const CLOSE_SIZE: Vec2 = Vec2::new(20.0, 18.0);
+const CLOSE_INSET: f32 = 5.0;
 const OK_SIZE: Vec2 = Vec2::new(75.0, 23.0);
 const OK_TOP: f32 = 114.0;
 const OK_RIGHT: f32 = 18.0;
@@ -110,7 +109,7 @@ impl MovieErrorBox {
     #[must_use]
     pub fn layout(text_width: f32, caption_width: f32) -> BoxLayout {
         let width = (text_width + TEXT_EXTRA)
-            .max(CAPTION_X + caption_width + (300.0 - CLOSE.min.x) + 4.0)
+            .max(CAPTION_X + caption_width + CLOSE_INSET + CLOSE_SIZE.x + 4.0)
             .round();
         let frame = Rect::from_center_size(CENTRE, Vec2::new(width, HEIGHT));
         let at = |x: f32, y: f32| frame.min + Vec2::new(x, y);
@@ -130,6 +129,19 @@ impl MovieErrorBox {
             band,
             ok,
         }
+    }
+
+    /// The title's close box in `frame`: A0 (448, 176)..(467, 193) in the
+    /// frame (173, 171)..(472, 319).
+    #[must_use]
+    pub fn close_box(frame: Rect) -> Rect {
+        Rect::from_min_size(
+            Pos2::new(
+                frame.max.x - CLOSE_INSET - CLOSE_SIZE.x,
+                frame.min.y + CLOSE_INSET,
+            ),
+            CLOSE_SIZE,
+        )
     }
 
     /// Answer one input; `true` when it closes the box (IDOK). Only OK
@@ -186,7 +198,7 @@ impl MovieErrorBox {
             font.clone(),
             Color32::BLACK,
         );
-        let close = CLOSE.translate(frame.min.to_vec2());
+        let close = Self::close_box(frame);
         painter.rect_filled(at(close), 0.0, FACE);
         bevel(painter, &at, close, [LIGHT, FACE], [DARK, SHADOW]);
         let mark = at(close).center();
@@ -395,6 +407,14 @@ mod tests {
             Rect::from_min_max(Pos2::new(197.0, 220.0), Pos2::new(229.0, 252.0))
         );
         assert_eq!(layout.text.min.x, 239.0);
+        assert_eq!(
+            MovieErrorBox::close_box(layout.frame),
+            Rect::from_min_max(Pos2::new(448.0, 176.0), Pos2::new(468.0, 194.0))
+        );
+        let short = MovieErrorBox::layout(120.0, 202.0);
+        let close = MovieErrorBox::close_box(short.frame);
+        assert!(short.title.contains_rect(close));
+        assert_eq!(short.frame.max.x - close.max.x, 5.0);
         assert!(layout.band.contains_rect(layout.ok));
         let long = MovieErrorBox::layout(600.0, 202.0);
         assert!(long.text.width() >= 600.0);
