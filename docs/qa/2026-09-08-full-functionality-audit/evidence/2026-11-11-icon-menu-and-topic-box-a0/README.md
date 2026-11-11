@@ -1,15 +1,16 @@
 # The defenses icon's menu and the Topic box against A0
 
-Date: 2026-11-11. Covers CMD-03-C018 (quadrant icon right-click menu) and
-the Encyclopedia Topic box of `2026-11-11-finder-prefix-search`. Both
-cells stay partial: this stage records A0 only and changes no code.
+Date: 2026-11-11. Covers CMD-03-C018 (quadrant icon right-click menu),
+the Encyclopedia Topic box of `2026-11-11-finder-prefix-search`, and the
+missing-movie box (PRE-01-C009, END-01-C011). The cells stay partial: this
+stage records A0 only and changes no code.
 
 ## A0
 
 Windows 10 VM, original REBEXE, the Empire game of
 `2026-11-10-quadrant-icon-art-a0`, days 12 to 106. The captures are in
 `.artifacts/a0-vm/2026-11-11-icon-menu-topic/`, with their SHA-256 in
-`SHA256SUMS` (39 files). The game was changed for the test: Palpatine, the
+`SHA256SUMS` (51 files). The game was changed for the test: Palpatine, the
 six Coruscant regiments and nine TIE squadrons were moved to Sluis Van, and
 one TIE squadron to Umgul.
 
@@ -86,10 +87,50 @@ there.
   row after an edit (`21`, `22`) and on the first row after a category
   change (`26`); the box shows the topic's name after Index (`24`).
 
+## The missing-movie box
+
+The game was restarted (`taskkill`, then `REBEXE.EXE`; the day-677 Empire
+game was lost). In the guest, `C:\Games\Rebellion\MDATA\MDATA.005` was
+renamed to `MDATA.005.bak` (`50`), and Credits (the LucasArts button,
+(475, 256)) was pressed on the main menu (`51`).
+
+| Capture | Seen |
+| --- | --- |
+| `52` | the box, partly under a Windows Game Bar notice |
+| `53` | the box alone, on a black 640 by 480 screen |
+| `54` | OK clicked: the main menu again |
+| `55`, `56` | Credits again; Enter answers the box, and the main menu shows |
+| `57` | the file renamed back, the same size (21,230,876 bytes) |
+
+The box in `53`, in 640 by 480 game pixels (the game runs in 256 colours):
+- outer rect (173, 171) to (472, 319), 300 by 149, with a raised 3D frame
+  (white and cream outside, grey `128,128,128` and `160,160,164` inside);
+- title bar y 174..195, 22 rows, flat `166,202,240`; black caption
+  "PathName unknown to VideoManager", text x 201..402, y 180..191; a close
+  box at the right;
+- white body y 197..274; the stop icon, 32 by 32, its red at x 200..224,
+  y 223..247; the path "C:\Games\Rebellion\MDATA\MDATA.005" in black, x
+  239..438, y 233..241;
+- cream band (`255,251,240`) y 275..317; OK, x 380..454 by y 285..307 (75
+  by 23), a classic raised button with a dotted focus frame.
+
+**Findings.**
+- The port's flow holds: the box waits, and OK or Enter goes on as after
+  a played movie, here back to the main menu.
+- **Divergence.** The port draws a Windows 10 box at 96 DPI (title 31
+  rows, band 49, OK 88 by 26, `movie_error_box.rs`). A0 is smaller and
+  classic: title 22 rows, band 43, OK 75 by 23, 300 by 149 overall. The
+  hyp in `2026-11-11-missing-movie-box` can now be replaced by these
+  measures.
+- The path in the box is the original's install path; the port shows its
+  own file (`port:` in that README).
+
 ## Not captured
 
-- The missing-movie box: it needs a movie file removed in the guest.
-- The fleet window's left list with a scroll bar: it needs about six
-  fleets in one system. Sluis Van has one (`38`).
+- The fleet window's left list with a scroll bar. It needs about six
+  fleets in one system. Four Carracks were built at Coruscant and made
+  three fleets by Create Fleet (`41`, five fleets, no bar), but the
+  Alliance destroyed them in later battles (`42`, `43`), and the
+  Empire's maintenance could not pay for more.
 - A defenses icon dropped on another system, and the Confirmed Move
   window.
