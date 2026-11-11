@@ -90,3 +90,14 @@ them (23 of 23 caught in `world/mod.rs`). The other 18 of the first run
 were caught, 1 unviable.
 
 Save format v113 -> v114 (`FleetNames::ship_spares`).
+
+## Batch b188
+
+- 29 of 29 interface gates on Linux (`cutscenes`
+  run `cutscenes-2026-11-11T11-51-49-653Z`).
+- Workspace tests: 3570 passed, 0 failed. Fixture tests: 150. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T12-01-02-268Z-460396`: 148 of 148.
+
+Not yet covered: no browser gate drives a ship order to Confirm and reads
+the band against A0 `66`, so the cell stays partial.

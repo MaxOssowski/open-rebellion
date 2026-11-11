@@ -5911,9 +5911,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-build-selection-classes-and-list-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-empire-ships-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-build-selection-empire-ships-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-ship-spare-fleet/"
           ],
-          "note": "Ships are ordered through Build Selection (FUN_00438500); build-selection.mjs carries a known 6-pixel failure in its 'opened' case and A0 Build Selection was captured only for troops. 2026-11-10: both open points are settled: the 'opened' chrome now differs in 0 pixels, and ship classes are compared with A0 on both sides (OBJ-08-C001/C002: build-selection3/ships0, build-selection4, build-selection-empire2/15-*; values exact, pictures 0 px). Still open: a ship order's Confirm and the band it fills are not compared with A0 (A0 shows a confirmed troop order, build-selection2/07).",
+          "note": "Ships are ordered through Build Selection (FUN_00438500); build-selection.mjs carries a known 6-pixel failure in its 'opened' case and A0 Build Selection was captured only for troops. 2026-11-10: both open points are settled: the 'opened' chrome now differs in 0 pixels, and ship classes are compared with A0 on both sides (OBJ-08-C001/C002: build-selection3/ships0, build-selection4, build-selection-empire2/15-*; values exact, pictures 0 px). Still open: a ship order's Confirm and the band it fills are not compared with A0 (A0 shows a confirmed troop order, build-selection2/07). 2026-11-11: A0 66 to 68 show a confirmed ship order: the band reads \"Carrack Light Cruiser 2 / Building: 4 / Destination: Fleet\" and the ships fill a new spare fleet beside Fleet 1. The port now creates that spare per system and side (FUN_005385f0, FUN_0052a140; save v114) and the band names it and the next numbered ship (unit tests; batch b188 green). Still open: no browser gate drives a ship Confirm and compares the band with A0 66.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
