@@ -58,6 +58,15 @@ fn shared(name: &[char], typed: &[char]) -> usize {
     }
 }
 
+/// The row an edit's match scrolls to: `FUN_00609650` chooses
+/// (`FUN_00609500`) and scrolls to (`FUN_00609ed0`) its best row only when
+/// that row is not chosen already (`+0x3c` bit 0, `0x60973f..0x609743`);
+/// an edit that keeps the same best row leaves the list where it is.
+#[must_use]
+pub fn row_to_show(choice: Option<usize>, chosen_before: Option<usize>) -> Option<usize> {
+    choice.filter(|&row| Some(row) != chosen_before)
+}
+
 /// A key's step through a Finder's list. A0 2026-11-05 (finder-keys/): in
 /// the Fleet Finder, Down and Up move the chosen row by one and copy its
 /// name into the name box, also while the box has the focus; with the
@@ -118,6 +127,16 @@ pub fn stepped_row(current: Option<usize>, len: usize, step: ListStep) -> Option
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_edit_scrolls_only_to_a_row_not_chosen_already() {
+        // FUN_00609650: `if ((best->+0x3c & 1) == 0)` select and scroll.
+        use super::row_to_show;
+        assert_eq!(row_to_show(Some(3), None), Some(3));
+        assert_eq!(row_to_show(Some(3), Some(1)), Some(3));
+        assert_eq!(row_to_show(Some(3), Some(3)), None);
+        assert_eq!(row_to_show(None, Some(3)), None);
+    }
+
     #[test]
     fn a_key_steps_the_chosen_row_and_stops_at_the_lists_ends() {
         use super::{step_of, stepped_row, ListStep};

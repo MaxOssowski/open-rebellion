@@ -134,6 +134,14 @@ pub struct EncyclopediaState {
     pub original_topic_text: Option<String>,
     /// The last row click and its time, for the list's double click.
     pub original_last_click: Option<(u32, f64)>,
+    /// Whether the Topic box (`+0x128`, control id 100) holds the keys.
+    /// A press on it (`FUN_00605160` `0x201`) or the Index command
+    /// (`0x68`, `FUN_0045da70` case `0x66`) gives it the focus; a row
+    /// press (`FUN_006083c0`), a category icon (case `0x6e`: the list
+    /// `+0x12c`) or a topic (`FUN_0045f480(2)`: `+0x13c`) takes it away.
+    /// The opening sets no focus (`FUN_00429f30`), so typing does not
+    /// reach the box until it is pressed.
+    pub original_box_focused: bool,
     /// EDATA keys explicitly approved by the faithful-HD manifest.
     approved_hd_assets: HashMap<String, ApprovedHdAsset>,
     /// Cached textures keyed by EDATA file number (1-based).
@@ -141,6 +149,14 @@ pub struct EncyclopediaState {
 }
 
 impl EncyclopediaState {
+    /// Whether the open index's Topic box holds the keys
+    /// ([`Self::original_box_focused`]): the focused edit gets them, not
+    /// the galaxy view's shortcuts.
+    #[must_use]
+    pub const fn topic_box_holds_keys(&self) -> bool {
+        self.open && !self.original_topic_mode && self.original_box_focused
+    }
+
     /// The topic body starts at its top for each topic shown: its text
     /// object is refilled (`FUN_0041ecf0`).
     fn follow_topic(&mut self, title: &str) {
@@ -206,6 +222,7 @@ impl Default for EncyclopediaState {
             original_extra_entry: None,
             original_topic_text: None,
             original_last_click: None,
+            original_box_focused: false,
             approved_hd_assets: HashMap::new(),
             textures: HashMap::new(),
         }
@@ -999,7 +1016,11 @@ pub fn draw_encyclopedia_index_catalog(
         state.original_category_command,
         Some(content),
     );
+    if outcome.box_pressed {
+        state.original_box_focused = true;
+    }
     if let Some(command) = outcome.activated_command {
+        command_focus(state, command);
         change_category(state, catalog, command);
         // FUN_0045f480: the rail's topic command shows the selected object.
         if command == 0x67 && state.original_selected_object_id.is_some() {
@@ -1015,6 +1036,8 @@ pub fn draw_encyclopedia_index_catalog(
         state.original_last_click = outcome.click;
     }
     if let Some(object_id) = outcome.selected_object_id {
+        // A row press focuses the list (FUN_006083c0).
+        state.original_box_focused = false;
         state.original_selected_object_id = Some(object_id);
         state.original_topic_text = None;
         reconcile_original_index_state(state, catalog, true);
@@ -1023,7 +1046,82 @@ pub fn draw_encyclopedia_index_catalog(
             state.original_topic_mode = true;
         }
     }
+    if state.original_box_focused && !state.original_topic_mode {
+        type_into_topic_box(ctx, state, catalog);
+    }
     outcome.activated_command
+}
+
+/// Where an index command leaves the keys: a category icon (case `0x6e`
+/// of `FUN_0045da70`) gives them to the list (`+0x12c`); Topic (`0x67`)
+/// to the topic text (`FUN_0045f480(2)`, `+0x13c`), or, with nothing
+/// chosen, presses Index (`0x68`), which gives them to the Topic box
+/// (`+0x128`).
+fn command_focus(state: &mut EncyclopediaState, command: u16) {
+    match command {
+        0x6f..=0x75 => state.original_box_focused = false,
+        0x67 => state.original_box_focused = state.original_selected_object_id.is_none(),
+        0x68 => state.original_box_focused = true,
+        _ => {}
+    }
+}
+
+/// Typing in the focused Topic box. Each edit (`0x408`, `FUN_0045d8f0`)
+/// runs `FUN_00609650` on the box's text: the best prefix row is chosen
+/// and scrolled to unless it is chosen already, and `+0x148` takes it
+/// (none for an empty list). Enter (`0x407` from the box) with an object
+/// chosen shows its topic (`FUN_0045f480(2)`).
+/// port: the caret stays at the text's end (a press places it at the
+/// pointer, `FUN_006062d0`); Backspace removes the last letter.
+fn type_into_topic_box(
+    ctx: &egui::Context,
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+) {
+    let (typed, backspace, enter) = ctx.input(|input| {
+        let typed: String = input
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                egui::Event::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        (
+            typed,
+            input.key_pressed(egui::Key::Backspace),
+            input.key_pressed(egui::Key::Enter),
+        )
+    });
+    if !typed.is_empty() || backspace {
+        let extra = state.original_extra_entry.clone();
+        let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
+        let mut text = state.original_topic_text.clone().unwrap_or_else(|| {
+            entries
+                .iter()
+                .find(|entry| Some(entry.object_id) == state.original_selected_object_id)
+                .map_or_else(String::new, |entry| entry.name.clone())
+        });
+        if backspace {
+            text.pop();
+        }
+        text.push_str(&typed);
+        let before = entries
+            .iter()
+            .position(|entry| Some(entry.object_id) == state.original_selected_object_id);
+        let choice = crate::list_prefix::best_prefix_row(
+            entries.iter().map(|entry| entry.name.as_str()),
+            &text,
+        );
+        state.original_selected_object_id = choice.map(|row| entries[row].object_id);
+        state.original_topic_text = Some(text);
+        let shown = crate::list_prefix::row_to_show(choice, before).is_some();
+        reconcile_original_index_state(state, catalog, shown);
+    }
+    if enter && state.original_selected_object_id.is_some() {
+        state.original_topic_mode = true;
+        state.original_box_focused = false;
+    }
 }
 
 /// The Encyclopedia object a menu object opens at (`FUN_0045d400` resolves
@@ -1104,6 +1202,7 @@ pub fn open_original_encyclopedia_at(
 ) {
     state.open = true;
     state.original_topic_mode = false;
+    state.original_box_focused = false;
     state.original_extra_entry = None;
     state.original_topic_text = None;
     state.original_category_command = 0x6f;
@@ -1226,7 +1325,12 @@ pub fn apply_original_topic_command(
                 state.original_topic_text = None;
             }
         }
-        0x68 => state.original_topic_mode = false,
+        // FUN_0045da70 case 0x66: Index shows the list and gives the
+        // Topic box the focus.
+        0x68 => {
+            state.original_topic_mode = false;
+            state.original_box_focused = true;
+        }
         _ => {}
     }
     reconcile_original_index_state(state, catalog, true);
@@ -1532,6 +1636,8 @@ struct OriginalIndexOutcome {
     selected_object_id: Option<u32>,
     /// A row's first click and its time, for the double click.
     click: Option<(u32, f64)>,
+    /// A press on the Topic box.
+    box_pressed: bool,
     scroll: Option<usize>,
     scroll_hold: Option<crate::list_scroll_bar::Hold>,
 }
@@ -1664,6 +1770,19 @@ fn draw_original_index_content(
         &content.selected_name,
         GdiAlign::Left,
     );
+    // The Topic box (FUN_00604cf0 at (143, 45), 245 by 18) takes the keys
+    // when pressed. port: its caret is not drawn.
+    let box_rect = encyclopedia_rect(window_rect, scale, 143.0, 45.0, 245.0, 18.0);
+    if ui
+        .interact(
+            box_rect,
+            ui.id().with("encyclopedia-topic-box"),
+            egui::Sense::click(),
+        )
+        .clicked()
+    {
+        outcome.box_pressed = true;
+    }
     text(
         (40.0, 119.0, 340.0, 16.0),
         5,
@@ -2894,6 +3013,151 @@ mod tests {
             },
         );
         (activated, output.shapes, ctx)
+    }
+
+    /// Twenty systems, S00..S19, in every category that lists systems.
+    fn systems_catalog() -> OriginalEncyclopediaCatalog {
+        OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            (0..20)
+                .map(|index| OriginalEncyclopediaEntry {
+                    object_id: 0x9000_0001 + index,
+                    name: format!("S{index:02}"),
+                })
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn typing_reaches_the_topic_box_only_once_it_is_pressed() {
+        // FUN_00429f30 opens the window without SetFocus, so keys do not
+        // reach the box; a press on it (FUN_00605160 0x201) gives it the
+        // focus. Each edit's 0x408 (FUN_0045d8f0) chooses the best prefix
+        // row and scrolls to it (FUN_00609650); Enter's 0x407 shows the
+        // chosen object's topic (FUN_0045f480(2)).
+        let catalog = systems_catalog();
+        let mut state = EncyclopediaState::default();
+        open_original_encyclopedia_at(&mut state, &catalog, None);
+        run_index(
+            &mut state,
+            &catalog,
+            (200.0, 54.0),
+            vec![vec![egui::Event::Text("s1".into())]],
+        );
+        assert_eq!(state.original_selected_object_id, None);
+        assert_eq!(state.original_topic_text, None);
+
+        run_index(
+            &mut state,
+            &catalog,
+            (200.0, 54.0),
+            vec![
+                vec![button((200.0, 54.0), true)],
+                vec![button((200.0, 54.0), false)],
+                vec![egui::Event::Text("s1".into())],
+            ],
+        );
+        assert!(state.original_box_focused);
+        // "s1": S10 shares two letters, the first row to do so.
+        assert_eq!(state.original_selected_object_id, Some(0x9000_000b));
+        assert_eq!(state.original_topic_text.as_deref(), Some("s1"));
+        // Row 10 (200..220) brought into the 160-pixel list.
+        assert_eq!(state.original_scroll, 60);
+
+        // An edit that keeps S10 leaves the list where it is (FUN_00609650
+        // skips a row chosen already).
+        state.original_scroll = 0;
+        run_index(
+            &mut state,
+            &catalog,
+            (0.0, 0.0),
+            vec![vec![egui::Event::Text("0".into())]],
+        );
+        assert_eq!(state.original_topic_text.as_deref(), Some("s10"));
+        assert_eq!(state.original_selected_object_id, Some(0x9000_000b));
+        assert_eq!(state.original_scroll, 0);
+
+        run_index(
+            &mut state,
+            &catalog,
+            (0.0, 0.0),
+            vec![vec![key(egui::Key::Enter)]],
+        );
+        assert!(state.original_topic_mode);
+    }
+
+    #[test]
+    fn only_the_open_indexs_focused_topic_box_holds_the_galaxy_keys() {
+        // The focused edit gets the keys (encyclopedia-window.md, "Which
+        // control holds the keys"); a topic shows its text control
+        // (+0x13c, FUN_0045f480(2)) and a closed window holds nothing.
+        let mut state = EncyclopediaState {
+            open: true,
+            original_box_focused: true,
+            ..EncyclopediaState::default()
+        };
+        assert!(state.topic_box_holds_keys());
+        state.original_topic_mode = true;
+        assert!(!state.topic_box_holds_keys());
+        state.original_topic_mode = false;
+        state.open = false;
+        assert!(!state.topic_box_holds_keys());
+        state.open = true;
+        state.original_box_focused = false;
+        assert!(!state.topic_box_holds_keys());
+    }
+
+    #[test]
+    fn a_category_icon_or_a_row_takes_the_keys_from_the_topic_box() {
+        // FUN_0045da70 case 0x6e: SetFocus(+0x12c), the list; a row press
+        // focuses the list itself (FUN_006083c0). Keys typed then do not
+        // reach the box. The Index command (0x68) gives it back.
+        let catalog = systems_catalog();
+        let mut state = EncyclopediaState::default();
+        open_original_encyclopedia_at(&mut state, &catalog, None);
+        state.original_box_focused = true;
+        // The System Database icon (its press is keyed on its bitmap, which
+        // the test cache lacks, so the command is applied as draw does).
+        command_focus(&mut state, 0x70);
+        change_category(&mut state, &catalog, 0x70);
+        assert!(!state.original_box_focused);
+        run_index(
+            &mut state,
+            &catalog,
+            (0.0, 0.0),
+            vec![vec![egui::Event::Text("s1".into())]],
+        );
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0001));
+        assert_eq!(state.original_topic_text.as_deref(), Some(""));
+        // Topic with nothing chosen presses Index, which focuses the box.
+        state.original_selected_object_id = None;
+        command_focus(&mut state, 0x67);
+        assert!(state.original_box_focused);
+        command_focus(&mut state, 0x71);
+        assert!(!state.original_box_focused);
+        // The Index command focuses the box (FUN_0045da70 case 0x66).
+        command_focus(&mut state, 0x68);
+        assert!(state.original_box_focused);
+        command_focus(&mut state, 0x71);
+
+        apply_original_topic_command(&mut state, &catalog, 0x68);
+        assert!(state.original_box_focused);
+        // A press on the second row (y 157..177).
+        run_index(
+            &mut state,
+            &catalog,
+            (100.0, 167.0),
+            vec![
+                vec![button((100.0, 167.0), true)],
+                vec![button((100.0, 167.0), false)],
+                vec![egui::Event::Text("s1".into())],
+            ],
+        );
+        assert!(!state.original_box_focused);
+        assert_eq!(state.original_topic_text, None);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0002));
     }
 
     fn key(key: egui::Key) -> egui::Event {

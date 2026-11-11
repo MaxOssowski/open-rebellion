@@ -255,6 +255,21 @@ const fn ending_cutscene(alliance_won: bool, player_is_alliance: bool) -> u32 {
     }
 }
 
+/// Whether a text box holds the keys, so the galaxy view's own shortcuts
+/// stay quiet: an open Finder's name box (each Finder's opener focuses its
+/// window, which hands the focus to the box, e.g. `FUN_0042a640`, the
+/// Troop Finder's slot `+0x14` case 7), a rename edit (`FUN_004ac7a0`
+/// focuses it), or the Encyclopedia's Topic box while focused
+/// (`encyclopedia-window.md`). Keys go to the focused edit in the original.
+const fn text_box_holds_keys(finders_open: [bool; 4], renaming: bool, topic_box: bool) -> bool {
+    finders_open[0]
+        || finders_open[1]
+        || finders_open[2]
+        || finders_open[3]
+        || renaming
+        || topic_box
+}
+
 /// Whether a key ends the playing movie: Escape (and a left click) always
 /// (`FUN_005f7240`); any other key too, except in the trench run's
 /// movies, which ignore `WM_KEYDOWN` (`FUN_00421790`, ids 0x70/0x71).
@@ -446,6 +461,26 @@ mod audio_source_tests {
             music_context_after_cutscene(&CutsceneKind::Story(101)),
             Some(MusicContext::GalaxyMap)
         );
+    }
+}
+
+#[cfg(test)]
+mod text_box_key_tests {
+    use super::text_box_holds_keys;
+
+    #[test]
+    fn a_finder_a_rename_or_the_focused_topic_box_holds_the_galaxy_keys() {
+        // The original sends keys to the focused edit: each Finder's name
+        // box (the System Finder's too, FUN_00461000 case 7), a rename edit
+        // (FUN_004ac7a0) and the Encyclopedia's Topic box once pressed.
+        assert!(!text_box_holds_keys([false; 4], false, false));
+        for finder in 0..4 {
+            let mut open = [false; 4];
+            open[finder] = true;
+            assert!(text_box_holds_keys(open, false, false), "finder {finder}");
+        }
+        assert!(text_box_holds_keys([false; 4], true, false));
+        assert!(text_box_holds_keys([false; 4], false, true));
     }
 }
 
@@ -2283,10 +2318,16 @@ async fn main() {
         // rename edit for the name it holds.
         if game_mode == GameMode::Galaxy
             && !briefing_holds_keys
-            && !fleet_finder_state.is_open()
-            && !troop_finder_state.is_open()
-            && !personnel_finder_state.is_open()
-            && !fleet_window_state.renaming()
+            && !text_box_holds_keys(
+                [
+                    fleet_finder_state.is_open(),
+                    troop_finder_state.is_open(),
+                    personnel_finder_state.is_open(),
+                    system_finder_state.is_open(),
+                ],
+                fleet_window_state.renaming(),
+                enc_state.topic_box_holds_keys(),
+            )
         {
             // F6 (case 0x75) opens the Message Index on All.
             message_index_key = is_key_pressed(KeyCode::F6);

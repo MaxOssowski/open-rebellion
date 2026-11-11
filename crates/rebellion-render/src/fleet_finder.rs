@@ -884,8 +884,11 @@ pub fn draw_fleet_finder(
         // FUN_00462a50 0x408: the best prefix match is chosen and shown.
         open_window.name.clone_from(&name);
         let choice = prefix_choice(&list, &name);
+        let before = open_window
+            .chosen
+            .and_then(|object| list.iter().position(|row| row.object == object));
         open_window.chosen = choice.map(|index| list[index].object);
-        if let Some(index) = choice {
+        if let Some(index) = crate::list_prefix::row_to_show(choice, before) {
             open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
     }
@@ -1370,6 +1373,44 @@ mod tests {
         );
         assert!(!list.is_empty());
         assert_eq!(state.window.as_ref().unwrap().chosen, Some(list[0].object));
+    }
+
+    #[test]
+    fn an_edit_that_keeps_the_chosen_row_leaves_the_list_where_it_is() {
+        // FUN_00609650 chooses and scrolls only to a row not chosen
+        // already (+0x3c bit 0, 0x60973f): "z" then "z0" both choose Z00.
+        let mut galaxy = galaxy();
+        let home = galaxy.world.fleets[galaxy.own].location;
+        for index in 0..12 {
+            let fleet = add_fleet(&mut galaxy.world, home, true, &["Nebulon-B"]);
+            assert!(galaxy.world.rename_fleet(fleet, &format!("Z{index:02}")));
+        }
+        let mut state = FleetFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        drive(
+            &galaxy,
+            &mut state,
+            (0.0, 0.0),
+            vec![vec![egui::Event::Text("z".into())]],
+        );
+        let chosen = state.window.as_ref().unwrap().chosen;
+        assert!(chosen.is_some());
+        // At least fourteen rows: the galaxy's fleets and Z00..Z11. Z00
+        // lies above a scroll of 100 (the test fails without the rule).
+        assert!(max_scroll(14) >= 100);
+        // A fresh context: give the name box the keys again.
+        let window = state.window.as_mut().unwrap();
+        window.scroll = 100;
+        window.focus_name = true;
+        drive(
+            &galaxy,
+            &mut state,
+            (0.0, 0.0),
+            vec![vec![egui::Event::Text("0".into())]],
+        );
+        let window = state.window.as_ref().unwrap();
+        assert_eq!((window.name.as_str(), window.chosen), ("z0", chosen));
+        assert_eq!(window.scroll, 100);
     }
 
     #[test]

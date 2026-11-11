@@ -732,8 +732,11 @@ pub fn draw_system_finder(
         // emptied name; none with no row.
         open_window.name.clone_from(&name);
         let choice = edited_choice(&list, &name);
+        let before = open_window
+            .chosen
+            .and_then(|system| list.iter().position(|row| row.system == system));
         open_window.chosen = choice.map(|index| list[index].system);
-        if let Some(index) = choice {
+        if let Some(index) = crate::list_prefix::row_to_show(choice, before) {
             open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
     }
@@ -947,6 +950,53 @@ mod tests {
         let list = rows(&world, SystemTab::Rebel);
         window.chosen = prefix_choice(&list, "").map(|index| list[index].system);
         assert_eq!(state.report(&world).unwrap().chosen, Some(0));
+    }
+
+    #[test]
+    fn an_edit_that_keeps_the_chosen_row_leaves_the_list_where_it_is() {
+        // FUN_00609650 chooses and scrolls only to a row not chosen
+        // already (+0x3c bit 0, 0x60973f): "s" then "s0" both choose S00.
+        let mut world = GameWorld::default();
+        for index in 0..12 {
+            add(
+                &mut world,
+                &format!("S{index:02}"),
+                ControlKind::Uncontrolled,
+                true,
+            );
+        }
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let layout =
+            crate::cockpit::CockpitState::new(CockpitFaction::Alliance).layout_for(640.0, 480.0);
+        let mut state = SystemFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        let mut frame = |state: &mut SystemFinderState, events: Vec<egui::Event>| {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(640.0, 480.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    draw_system_finder(ctx, &world, state, layout, &mut cache);
+                },
+            );
+        };
+        frame(&mut state, vec![]);
+        frame(&mut state, vec![egui::Event::Text("s".into())]);
+        let first = rows(&world, SystemTab::All)[0].system;
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(first));
+        assert!(max_scroll(12) >= 40);
+        state.window.as_mut().unwrap().scroll = 40;
+        frame(&mut state, vec![egui::Event::Text("0".into())]);
+        let window = state.window.as_ref().unwrap();
+        assert_eq!((window.name.as_str(), window.chosen), ("s0", Some(first)));
+        assert_eq!(window.scroll, 40);
     }
 
     #[test]

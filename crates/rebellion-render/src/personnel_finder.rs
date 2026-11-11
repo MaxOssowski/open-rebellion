@@ -1206,9 +1206,10 @@ pub fn draw_personnel_finder(
         // FUN_00464c20 0x408: the best row is chosen and +0x178 takes its
         // object, or is emptied with no row.
         let choice = prefix_choice(&list, &name);
+        let before = open_window.chosen;
         open_window.chosen = choice;
         open_window.target = choice.map(|index| (list[index].clone(), open_window.tab));
-        if let Some(index) = choice {
+        if let Some(index) = crate::list_prefix::row_to_show(choice, before) {
             open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
     }
@@ -2143,6 +2144,55 @@ mod tests {
 
         state.set_view(PersonnelView::SpecForces);
         assert_eq!(state.window.as_ref().unwrap().chosen, None);
+    }
+
+    #[test]
+    fn an_edit_that_keeps_the_chosen_row_leaves_the_list_where_it_is() {
+        // FUN_00609650 chooses and scrolls only to a row not chosen
+        // already (+0x3c bit 0, 0x60973f): "c" then "c0" both choose C00,
+        // so the second edit leaves the list scrolled away from it.
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        for index in 0..12 {
+            let mut character = default_character();
+            character.name = format!("C{index:02}");
+            character.is_alliance = true;
+            character.current_system = Some(yavin);
+            character.recruited = true;
+            world.characters.insert(character);
+        }
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut state = PersonnelFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        let mut frame = |state: &mut PersonnelFinderState, events: Vec<egui::Event>| {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, 520.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_personnel_finder(ctx, &world, &fog, state, layout(), &mut cache);
+                },
+            );
+        };
+        frame(&mut state, vec![]);
+        frame(&mut state, vec![egui::Event::Text("c".into())]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(0));
+        state.window.as_mut().unwrap().scroll = 80;
+        frame(&mut state, vec![egui::Event::Text("0".into())]);
+        let window = state.window.as_ref().unwrap();
+        assert_eq!((window.name.as_str(), window.chosen), ("c0", Some(0)));
+        assert_eq!(window.scroll, 80);
+        // "c1" chooses C10, another row: the list scrolls to it.
+        frame(&mut state, vec![egui::Event::Text("1".into())]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(1));
     }
 
     #[test]
