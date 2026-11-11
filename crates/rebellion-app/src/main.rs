@@ -5902,8 +5902,7 @@ async fn main() {
                             // against what +0x70 gives under the point, kind
                             // 4 entries apart (0x214 against +0x68, below).
                             // The fleet icon's fleets are the system's of the
-                            // player's side (FUN_00512700). port: the
-                            // defenses and missions icons' drops do nothing.
+                            // player's side (FUN_00512700).
                             SectorWindowAction::DropSelection {
                                 selection:
                                     MenuObject::SystemIcon {
@@ -5942,6 +5941,7 @@ async fn main() {
                                             blockaded: blockade_state.blockaded_systems(),
                                             faction: player_faction,
                                             tick: clock.tick,
+                                            icon: true,
                                         },
                                         &fleets,
                                         confirmed,
@@ -6008,6 +6008,104 @@ async fn main() {
                                             "[interface] command=0x214 destination=production_destination status=refused drop=1"
                                         );
                                     }
+                                }
+                            }
+                            // FUN_00422ce0, window type 1: a kind 8 entry
+                            // moves against +0x70, a Confirmed Move with
+                            // Ctrl; its team is the system's regiments,
+                            // squadrons, characters and special forces of
+                            // the player's (FUN_00512700 kind 8).
+                            SectorWindowAction::DropSelection {
+                                selection:
+                                    MenuObject::SystemIcon {
+                                        system,
+                                        quadrant: Quadrant::Defenses,
+                                    },
+                                point,
+                                confirmed,
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                if let Some(target) = release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                ) {
+                                    issue_defenses_move(
+                                        &DefensesMoveContext {
+                                            world: &world,
+                                            movement: &movement_state,
+                                            missions: &mission_state,
+                                            transport: &troop_transport_state,
+                                            blockaded: blockade_state.blockaded_systems(),
+                                            faction: player_faction,
+                                            tick: clock.tick,
+                                        },
+                                        system,
+                                        confirmed,
+                                        target,
+                                        &mut msg_log,
+                                        &mut move_confirmation_state,
+                                        &mut panel_actions,
+                                    );
+                                }
+                            }
+                            // FUN_00422ce0, window type 1: a kind 0x40 entry
+                            // moves against +0x70 too. Kind 0x40 ignores the
+                            // order's kind (FUN_00512700), so the team is the
+                            // members on visible missions; the 0x241's
+                            // command validator (Event250_vt1c FUN_0054d280
+                            // -> FUN_00542b60 -> FUN_0054c200 ->
+                            // FUN_00522b30) refuses a member that has a
+                            // mission, and an empty team is 1/0x16
+                            // (FUN_0053c4b0). Every such drop is refused.
+                            SectorWindowAction::DropSelection {
+                                selection:
+                                    MenuObject::SystemIcon {
+                                        quadrant: Quadrant::Missions,
+                                        ..
+                                    },
+                                point,
+                                confirmed,
+                            } => {
+                                let windows = ReleaseWindows {
+                                    sector: &sector_window_state,
+                                    system: &system_window_state,
+                                    fleet: &fleet_window_state,
+                                    defenses: &defenses_window_state,
+                                    missions: &missions_window_state,
+                                };
+                                if release_destination(
+                                    ctx,
+                                    &world,
+                                    &movement_state,
+                                    fog_state,
+                                    cockpit_layout,
+                                    windows,
+                                    point,
+                                )
+                                .is_some()
+                                {
+                                    macroquad::logging::info!(
+                                        "[interface] command={:#x} missions_icon status=refused",
+                                        if confirmed { 0x202 } else { 0x201 }
+                                    );
+                                    // port: FUN_00487c90 plays the side's
+                                    // advisor reaction; this line stands in.
+                                    msg_log.push(GameMessage::new(
+                                        clock.tick,
+                                        "Move refused".to_string(),
+                                        MessageCategory::Event,
+                                    ));
                                 }
                             }
                             // The manual (p. 134): "drag the HQ icon onto a
@@ -6218,6 +6316,7 @@ async fn main() {
                                             blockaded: blockade_state.blockaded_systems(),
                                             faction: player_faction,
                                             tick: clock.tick,
+                                            icon: false,
                                         },
                                         &[fleet],
                                         false,
@@ -6882,6 +6981,7 @@ async fn main() {
                             targeting = Some(Targeting::new(TargetOrder::FleetMove {
                                 fleets: vec![fleet],
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                                icon: false,
                             }));
                         }
                         // FUN_00512700, kind 0x10: the order's team is the
@@ -6900,6 +7000,21 @@ async fn main() {
                                     system,
                                     player_faction == MissionFaction::Alliance,
                                 ),
+                                confirmed: command == ObjectMenuCommand::ConfirmedMove,
+                                icon: true,
+                            }));
+                        }
+                        // FUN_00512700, kind 8: the order's team is the
+                        // icon's entry, resolved when the target is set.
+                        Some((
+                            command @ (ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove),
+                            Some(MenuObject::SystemIcon {
+                                system,
+                                quadrant: Quadrant::Defenses,
+                            }),
+                        )) => {
+                            targeting = Some(Targeting::new(TargetOrder::DefensesMove {
+                                system,
                                 confirmed: command == ObjectMenuCommand::ConfirmedMove,
                             }));
                         }
@@ -7703,22 +7818,39 @@ async fn main() {
                                 ),
                             }
                         }));
-                        panel_actions.extend(special_forces.into_iter().map(|unit| {
-                            PanelAction::MoveSpecialForce {
-                                unit,
+                        if characters.len() + special_forces.len() > 1 {
+                            // A defenses icon's 0x202: its one 0x241 takes
+                            // every character and special force
+                            // (FUN_0053c810), one Move mission.
+                            panel_actions.push(PanelAction::MoveMembers {
+                                members: characters
+                                    .into_iter()
+                                    .map(MissionMember::Character)
+                                    .chain(
+                                        special_forces.into_iter().map(MissionMember::SpecialForce),
+                                    )
+                                    .collect(),
                                 system: destination,
                                 fleet: join,
-                            }
-                        }));
-                        // FUN_0041ce20(order, 1): a character's 0x202 is
-                        // the Move mission order 0x241 again.
-                        panel_actions.extend(characters.into_iter().map(|character| {
-                            PanelAction::MoveCharacter {
-                                character,
-                                system: destination,
-                                fleet: join,
-                            }
-                        }));
+                            });
+                        } else {
+                            panel_actions.extend(special_forces.into_iter().map(|unit| {
+                                PanelAction::MoveSpecialForce {
+                                    unit,
+                                    system: destination,
+                                    fleet: join,
+                                }
+                            }));
+                            // FUN_0041ce20(order, 1): a character's 0x202 is
+                            // the Move mission order 0x241 again.
+                            panel_actions.extend(characters.into_iter().map(|character| {
+                                PanelAction::MoveCharacter {
+                                    character,
+                                    system: destination,
+                                    fleet: join,
+                                }
+                            }));
+                        }
                         panel_actions.extend(fleets.into_iter().map(|fleet| match join {
                             Some(target) => PanelAction::JoinFleet {
                                 mover: FleetMover::Fleet(fleet),
@@ -7807,7 +7939,12 @@ async fn main() {
                                     ..
                                 }) => {}
                                 Some(TargetingEnd::Target {
-                                    order: TargetOrder::FleetMove { fleets, confirmed },
+                                    order:
+                                        TargetOrder::FleetMove {
+                                            fleets,
+                                            confirmed,
+                                            icon,
+                                        },
                                     target,
                                 }) => issue_fleet_move(
                                     &FleetMoveContext {
@@ -7816,6 +7953,7 @@ async fn main() {
                                         blockaded: blockade_state.blockaded_systems(),
                                         faction: player_faction,
                                         tick: clock.tick,
+                                        icon,
                                     },
                                     &fleets,
                                     confirmed,
@@ -7943,6 +8081,28 @@ async fn main() {
                                         });
                                     }
                                 }
+                                // A defenses icon's 0x201 or 0x202 against
+                                // the release window's +0x70.
+                                Some(TargetingEnd::Target {
+                                    order: TargetOrder::DefensesMove { system, confirmed },
+                                    target,
+                                }) => issue_defenses_move(
+                                    &DefensesMoveContext {
+                                        world: &world,
+                                        movement: &movement_state,
+                                        missions: &mission_state,
+                                        transport: &troop_transport_state,
+                                        blockaded: blockade_state.blockaded_systems(),
+                                        faction: player_faction,
+                                        tick: clock.tick,
+                                    },
+                                    system,
+                                    confirmed,
+                                    target,
+                                    &mut msg_log,
+                                    &mut move_confirmation_state,
+                                    &mut panel_actions,
+                                ),
                                 // The headquarters' 0x201 against the
                                 // release window's +0x70. port: a Fleet
                                 // window's fleet is refused, the HQ only
@@ -9257,6 +9417,263 @@ struct FleetMoveContext<'a> {
     blockaded: &'a HashSet<SystemKey>,
     faction: MissionFaction,
     tick: u64,
+    /// The team is a sector window fleet icon's (`FUN_00512700` kind
+    /// `0x10`): the order's first team id is the system.
+    icon: bool,
+}
+
+/// What a defenses icon's Move reads.
+struct DefensesMoveContext<'a> {
+    world: &'a GameWorld,
+    movement: &'a MovementState,
+    missions: &'a MissionState,
+    transport: &'a TroopTransportState,
+    blockaded: &'a HashSet<SystemKey>,
+    faction: MissionFaction,
+    tick: u64,
+}
+
+/// `FUN_0053c100` for a defenses icon's Move and Confirmed Move at
+/// `system`: `FUN_0053c4b0` refuses an empty team (`1`/`0x16`), then each
+/// sub-order's `+0x18` runs. The `0x241` of the characters and special
+/// forces checks each member (`MissionState::move_order_enabled`); the
+/// `0x204` group of the regiments and squadrons checks each member's move
+/// command (`FUN_00578c00`: `regiment_move_enabled`, `squadrons::move_enabled`).
+fn defenses_move_enabled(
+    world: &GameWorld,
+    missions: &MissionState,
+    transport: &TroopTransportState,
+    faction: MissionFaction,
+    system: SystemKey,
+) -> bool {
+    let is_alliance = faction == MissionFaction::Alliance;
+    let team = rebellion_render::quadrant_icons::defenses_move_team(
+        world,
+        missions,
+        Faction::from(faction),
+        system,
+    );
+    !team.is_empty()
+        && (team.members.is_empty() || missions.move_order_enabled(world, faction, &team.members))
+        && team
+            .troops
+            .iter()
+            .all(|&troop| transport.regiment_move_enabled(world, troop, is_alliance))
+        && team.squadrons.iter().all(|&class| {
+            rebellion_core::squadrons::move_enabled(
+                world,
+                is_alliance,
+                class,
+                SquadronPlace::Planet(system),
+            )
+        })
+}
+
+/// A defenses icon's Move (`0x201`) or Confirmed Move (`0x202`) with its
+/// target set, from the menu's targeting or a drop (`FUN_00422ce0`).
+///
+/// The order resolves its team, the icon's kind 8 objects of the side
+/// (`FUN_00512700`), and splits it (`FUN_0053c4b0`): one `0x241` for the
+/// characters and special forces (`FUN_0053c810`), one Move mission with
+/// them all, then one `0x204` group for the regiments and squadrons
+/// (`FUN_0053ca50`). The validator `FUN_0053c1a0` runs every sub-order's, so
+/// one refusal refuses the whole order (`FUN_00487740` -> `FUN_00487c90`).
+/// The `0x241`'s: its `+0x18` again (`FUN_0051ff30`), the target's side
+/// (`FUN_004f4b60`, `1`/`0x28`). The `0x204` group's: `FUN_0053d430`'s
+/// `1`/`0x28` rule and each member's command; port: each regiment and
+/// squadron class runs its own move check, which holds the group rule for
+/// a group of one kind, and a mixed group meets the squadrons' refusal of
+/// another side's planet first.
+///
+/// `FUN_00487cc0` asks for a Confirmed Move. A Move asks only when the
+/// first team id's container is a blockaded system of its side; the
+/// icon's entry is the system, whose container is a sector, so a Move
+/// never asks (read from the image at `0x00487cc0..0x00487e13`). For the
+/// same reason `FUN_0049a350` gives no evacuation warning. The window lists
+/// a line per member, the `0x241`'s first (`FUN_0053c2e0`).
+fn issue_defenses_move(
+    context: &DefensesMoveContext<'_>,
+    system: SystemKey,
+    confirmed: bool,
+    target: ReleaseTarget,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+    panel_actions: &mut Vec<PanelAction>,
+) {
+    let world = context.world;
+    let is_alliance = context.faction == MissionFaction::Alliance;
+    let team = rebellion_render::quadrant_icons::defenses_move_team(
+        world,
+        context.missions,
+        Faction::from(context.faction),
+        system,
+    );
+    let (destination, join, regiment_target) = match target {
+        ReleaseTarget::System(to) => (to, None, RegimentTarget::System(to)),
+        ReleaseTarget::Fleet { fleet, system: to } => {
+            (to, Some(fleet), RegimentTarget::Fleet(fleet))
+        }
+    };
+    let squadron_to = target.squadron_place();
+    let from = SquadronPlace::Planet(system);
+    let member_days = if team.members.is_empty() {
+        Some(Vec::new())
+    } else if context
+        .missions
+        .move_order_enabled(world, context.faction, &team.members)
+        && rebellion_core::missions::move_place_allowed(world, context.faction, destination, join)
+    {
+        rebellion_core::missions::team_move_days(world, &team.members, destination)
+    } else {
+        None
+    };
+    let troop_days: Option<Vec<u32>> = team
+        .troops
+        .iter()
+        .map(|&troop| {
+            context
+                .transport
+                .move_days(
+                    world,
+                    context.movement,
+                    context.blockaded,
+                    troop,
+                    regiment_target,
+                )
+                .ok()
+        })
+        .collect();
+    // Each class's squadrons together, so the room is checked for them all.
+    let mut classes: Vec<(rebellion_core::ids::FighterKey, u32)> = Vec::new();
+    for &class in &team.squadrons {
+        match classes.iter_mut().find(|(known, _)| *known == class) {
+            Some((_, count)) => *count += 1,
+            None => classes.push((class, 1)),
+        }
+    }
+    let class_days: Option<Vec<(rebellion_core::ids::FighterKey, u32)>> = classes
+        .iter()
+        .map(|&(class, count)| {
+            context
+                .transport
+                .squadrons
+                .move_days(world, is_alliance, class, count, from, squadron_to)
+                .ok()
+                .map(|days| (class, days))
+        })
+        .collect();
+    let (false, Some(member_days), Some(troop_days), Some(class_days)) =
+        (team.is_empty(), member_days, troop_days, class_days)
+    else {
+        macroquad::logging::info!(
+            "[interface] command={:#x} defenses_icon status=refused",
+            if confirmed { 0x202 } else { 0x201 }
+        );
+        // port: FUN_00487c90 plays the side's advisor reaction; this line
+        // stands in.
+        msg_log.push(GameMessage::new(
+            context.tick,
+            "Move refused".to_string(),
+            MessageCategory::Event,
+        ));
+        return;
+    };
+    let (characters, special_forces): (Vec<MissionMember>, Vec<MissionMember>) = team
+        .members
+        .iter()
+        .copied()
+        .partition(|member| matches!(member, MissionMember::Character(_)));
+    if !confirmed {
+        if !team.members.is_empty() {
+            panel_actions.push(PanelAction::MoveMembers {
+                members: team.members.clone(),
+                system: destination,
+                fleet: join,
+            });
+        }
+        panel_actions.extend(team.troops.iter().map(|&troop| PanelAction::MoveRegiment {
+            troop,
+            target: regiment_target,
+        }));
+        panel_actions.extend(
+            team.squadrons
+                .iter()
+                .map(|&class| PanelAction::MoveSquadron {
+                    class,
+                    from,
+                    to: squadron_to,
+                }),
+        );
+        return;
+    }
+    let member_name = |member: MissionMember| match member {
+        MissionMember::Character(key) => world.characters.get(key).map(|c| c.name.clone()),
+        MissionMember::SpecialForce(key) => world.special_forces.get(key).and_then(|unit| {
+            world
+                .buildable_classes
+                .get(&unit.class_dat_id)
+                .map(|class| class.name.clone())
+        }),
+    };
+    let class_name = |class| {
+        world
+            .fighter_classes
+            .get(class)
+            .map(|value| value.name.clone())
+    };
+    let mut lines: Vec<(String, u32)> = team
+        .members
+        .iter()
+        .zip(member_days)
+        .filter_map(|(&member, days)| Some((member_name(member)?, days)))
+        .collect();
+    lines.extend(
+        team.troops
+            .iter()
+            .zip(troop_days)
+            .filter_map(|(&troop, days)| {
+                Some((
+                    rebellion_core::scrap::target_name(
+                        world,
+                        rebellion_core::scrap::ScrapTarget::Troop(troop),
+                    )?,
+                    days,
+                ))
+            }),
+    );
+    lines.extend(team.squadrons.iter().filter_map(|&class| {
+        let days = class_days.iter().find(|(known, _)| *known == class)?.1;
+        Some((class_name(class)?, days))
+    }));
+    macroquad::logging::info!(
+        "[interface] command=0x202 defenses_icon status=asks lines={}",
+        lines.len()
+    );
+    move_confirmation_state.open(MoveConfirmation {
+        order: ConfirmedOrder::Move,
+        faction: context.faction,
+        fleets: Vec::new(),
+        characters: characters
+            .into_iter()
+            .filter_map(|member| member.character())
+            .collect(),
+        special_forces: special_forces
+            .into_iter()
+            .filter_map(|member| match member {
+                MissionMember::SpecialForce(key) => Some(key),
+                MissionMember::Character(_) => None,
+            })
+            .collect(),
+        missions: Vec::new(),
+        scrap: Vec::new(),
+        troops: team.troops.clone(),
+        squadrons: team.squadrons.iter().map(|&class| (class, from)).collect(),
+        ships: None,
+        blockaded: false,
+        destination,
+        join,
+        lines,
+    });
 }
 
 /// A team of fleets' Move (`0x201`) or Confirmed Move (`0x202`) with its
@@ -9305,16 +9722,23 @@ fn issue_fleet_move(
         ));
         return;
     }
-    let asks = fleets.iter().any(|fleet| match join {
-        Some(target) => rebellion_core::fleet_join::join_confirms(
-            world,
-            context.blockaded,
-            *fleet,
-            target,
-            confirmed,
-        ),
-        None => fleet_move_confirms(world, context.blockaded, *fleet, confirmed),
-    });
+    // FUN_00487cc0 reads the order's first team id. A fleet icon's is the
+    // system, whose container is a sector, so only 0x202 asks
+    // (0x00487cc0..0x00487e13).
+    let asks = if context.icon {
+        confirmed
+    } else {
+        fleets.iter().any(|fleet| match join {
+            Some(target) => rebellion_core::fleet_join::join_confirms(
+                world,
+                context.blockaded,
+                *fleet,
+                target,
+                confirmed,
+            ),
+            None => fleet_move_confirms(world, context.blockaded, *fleet, confirmed),
+        })
+    };
     if !asks {
         panel_actions.extend(fleets.iter().map(|fleet| match join {
             Some(target) => PanelAction::JoinFleet {
@@ -9998,24 +10422,30 @@ fn order_gates(
             ),
             _ => false,
         },
-        // FUN_0053c4b0 resolves the character; FUN_004f4a00 only builds
-        // the command. The order reads the character's side
-        // (FUN_00504e60), a prisoner's being its captor's.
+        // FUN_0053c4b0 resolves the character; the 0x241's +0x18
+        // (FUN_0051fe20) builds command 0x250 (FUN_004f4a00), whose +0x18
+        // (FUN_0054d1a0 -> FUN_005429e0 -> FUN_0054c110, member slot
+        // +0x1c8) refuses a member on a mission or travelling. The side is
+        // the character's, a prisoner's being its captor's (FUN_00504e60).
         character_move: match selection {
-            Some(MenuObject::Character(character)) => {
-                world.characters.get(character).is_some_and(|c| {
-                    !c.is_killed && rebellion_core::missions::character_side(c) == Some(side)
-                })
-            }
+            Some(MenuObject::Character(character)) => mission_state.move_order_enabled(
+                world,
+                player_faction,
+                &[MissionMember::Character(character)],
+            ),
             _ => false,
         },
         // FUN_00536bc0's Move on a unit, as a character's: the unit is the
         // player's.
+        // As a character's: the 0x241's +0x18 reaches FUN_0054c110, whose
+        // member slot +0x1c8 for a unit (FUN_00533ce0) refuses one of
+        // another side, on a mission or travelling.
         special_force_move: match selection {
-            Some(MenuObject::SpecialForce(unit)) => world
-                .special_forces
-                .get(unit)
-                .is_some_and(|value| value.is_alliance == is_alliance),
+            Some(MenuObject::SpecialForce(unit)) => mission_state.move_order_enabled(
+                world,
+                player_faction,
+                &[MissionMember::SpecialForce(unit)],
+            ),
             _ => false,
         },
         troop_move: match selection {
@@ -10030,6 +10460,19 @@ fn order_gates(
                 troop_transport_state,
                 is_alliance,
             ),
+        defenses_move: match selection {
+            Some(MenuObject::SystemIcon {
+                system,
+                quadrant: Quadrant::Defenses,
+            }) => defenses_move_enabled(
+                world,
+                mission_state,
+                troop_transport_state,
+                player_faction,
+                system,
+            ),
+            _ => false,
+        },
         squadron_move: match selection {
             Some(MenuObject::Fighter { fleet, index }) => world
                 .fleets
@@ -11148,6 +11591,56 @@ fn apply_panel_action(
             };
             macroquad::logging::info!(
                 "[interface] special_force_move unit={unit:?} to={:?} fleet={:?} result={result:?}",
+                world.systems.get(system).map(|s| s.name.as_str()),
+                fleet.and_then(|key| fleet_label(world, key)),
+            );
+            if result.is_err() {
+                msg_log.push(GameMessage::new(
+                    clock.tick,
+                    "Move refused".to_string(),
+                    MessageCategory::Event,
+                ));
+            }
+        }
+        // A Move's one 0x241 for several members (FUN_0053c810): the Move
+        // mission 0x41000001 with them all as its team.
+        PanelAction::MoveMembers {
+            members,
+            system,
+            fleet,
+        } => {
+            let result = if rebellion_core::missions::move_place_allowed(
+                world,
+                *player_faction,
+                system,
+                fleet,
+            ) {
+                mission_state
+                    .dispatch_guarded(
+                        rebellion_core::missions::MissionRequest {
+                            kind: MissionKind::Move,
+                            faction: *player_faction,
+                            team: members.clone(),
+                            decoys: Vec::new(),
+                            target_system: system,
+                            target_character: None,
+                            target_object: None,
+                            tick: clock.tick,
+                        },
+                        world,
+                    )
+                    .inspect(|&id| {
+                        if let Some(fleet) = fleet {
+                            mission_state.set_target_fleet(id, fleet);
+                        }
+                    })
+                    .map_err(|refusal| format!("{refusal:?}"))
+            } else {
+                Err("1/0x28".to_string())
+            };
+            macroquad::logging::info!(
+                "[interface] members_move members={} to={:?} fleet={:?} result={result:?}",
+                members.len(),
                 world.systems.get(system).map(|s| s.name.as_str()),
                 fleet.and_then(|key| fleet_label(world, key)),
             );
@@ -13853,6 +14346,7 @@ mod fleet_move_tests {
                 blockaded: &blockaded,
                 faction: MissionFaction::Alliance,
                 tick: 0,
+                icon: true,
             },
             fleets,
             confirmed,
@@ -14250,6 +14744,400 @@ mod fleet_move_tests {
         assert!(issued.actions.is_empty());
         assert!(!issued.confirmation.is_open());
         assert_eq!(issued.log.messages().len(), 1);
+    }
+
+    #[test]
+    fn a_fleet_icons_move_never_asks_even_out_of_a_blockaded_system() {
+        // FUN_00487cc0 (0x00487cc0..0x00487e13) asks a 0x201 only when its
+        // first team id's container is a blockaded system of its side. A
+        // fleet's first id is the fleet, in its system; a fleet icon's is
+        // the system (FUN_004f5b10), in its sector, so it never asks.
+        let (mut world, fleets, destination) = world_with_two_fleets();
+        let origin = world.fleets[fleets[0]].location;
+        world.systems[origin].control = ControlKind::Controlled(Faction::Alliance);
+        let movement = MovementState::new();
+        let blockaded: HashSet<SystemKey> = [origin].into_iter().collect();
+        let run = |team: &[FleetKey], icon: bool, confirmed: bool| {
+            let mut issued = Issued {
+                actions: Vec::new(),
+                confirmation: MoveConfirmationState::default(),
+                log: MessageLog::new(),
+            };
+            issue_fleet_move(
+                &FleetMoveContext {
+                    world: &world,
+                    movement: &movement,
+                    blockaded: &blockaded,
+                    faction: MissionFaction::Alliance,
+                    tick: 0,
+                    icon,
+                },
+                team,
+                confirmed,
+                ReleaseTarget::System(destination),
+                &mut issued.log,
+                &mut issued.confirmation,
+                &mut issued.actions,
+            );
+            issued
+        };
+        let icon = run(&fleets, true, false);
+        assert!(!icon.confirmation.is_open());
+        assert_eq!(dispatched(&icon.actions), fleets);
+        // Its Confirmed Move (0x202) still asks.
+        assert!(run(&fleets, true, true).confirmation.is_open());
+        // One fleet's own Move out of the blockade asks.
+        let own = run(&fleets[..1], false, false);
+        assert!(own.confirmation.is_open());
+        assert!(own.actions.is_empty());
+    }
+
+    #[test]
+    fn a_characters_menu_move_is_disabled_while_it_is_on_a_mission_or_travelling() {
+        // The 0x241's +0x18: FUN_0051fe20 -> command 0x250's FUN_0054d1a0 ->
+        // FUN_005429e0 -> FUN_0054c110, member slot +0x1c8, refuses a
+        // member on a mission (+0x78 bit 7) or en route (+0x50 bit 4).
+        use rebellion_core::world::Character;
+        let (mut world, _, destination) = world_with_two_fleets();
+        let agent = world.characters.insert(Character {
+            name: "Agent".into(),
+            is_alliance: true,
+            current_system: Some(destination),
+            recruited: true,
+            ..Character::default()
+        });
+        let gate = |world: &GameWorld, missions: &MissionState| {
+            order_gates(
+                Some(MenuObject::Character(agent)),
+                world,
+                missions,
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                MissionFaction::Alliance,
+                0,
+            )
+            .character_move
+        };
+        assert!(gate(&world, &MissionState::new()));
+        let mut travelling = MissionState::new();
+        travelling.dispatch(rebellion_core::missions::MissionRequest::single(
+            MissionKind::Move,
+            MissionFaction::Alliance,
+            agent,
+            destination,
+            None,
+            0,
+        ));
+        assert!(!gate(&world, &travelling), "a member of a mission");
+        world.characters[agent].on_mission = true;
+        assert!(!gate(&world, &MissionState::new()), "on a mission");
+    }
+
+    #[test]
+    fn a_special_forces_menu_move_is_disabled_while_it_is_on_a_mission_or_travelling() {
+        // FUN_0054c110 asks the unit's slot +0x1c8 (FUN_00533ce0, over
+        // FUN_004f9860): another side's, on a mission or en route refuses.
+        use rebellion_core::world::SpecialForceUnit;
+        let (mut world, _, destination) = world_with_two_fleets();
+        let unit = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[destination].special_forces.push(unit);
+        let gate = |world: &GameWorld, missions: &MissionState, faction| {
+            order_gates(
+                Some(MenuObject::SpecialForce(unit)),
+                world,
+                missions,
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                faction,
+                0,
+            )
+            .special_force_move
+        };
+        let free = MissionState::new();
+        assert!(gate(&world, &free, MissionFaction::Alliance));
+        assert!(
+            !gate(&world, &free, MissionFaction::Empire),
+            "another side's"
+        );
+        let mut travelling = MissionState::new();
+        travelling.dispatch(rebellion_core::missions::MissionRequest {
+            kind: MissionKind::Move,
+            faction: MissionFaction::Alliance,
+            team: vec![MissionMember::SpecialForce(unit)],
+            decoys: Vec::new(),
+            target_system: destination,
+            target_character: None,
+            target_object: None,
+            tick: 0,
+        });
+        assert!(
+            !gate(&world, &travelling, MissionFaction::Alliance),
+            "a member of a mission"
+        );
+        world.special_forces[unit].on_mission = true;
+        assert!(
+            !gate(&world, &free, MissionFaction::Alliance),
+            "on a mission"
+        );
+    }
+
+    /// The Alliance's two held systems 40 apart; at the first, a regiment,
+    /// two X-wing squadrons, a character and a special force of the
+    /// Alliance, and the Empire's regiment.
+    struct DefensesWorld {
+        world: GameWorld,
+        origin: SystemKey,
+        destination: SystemKey,
+        troop: rebellion_core::ids::TroopKey,
+        x_wing: rebellion_core::ids::FighterKey,
+        agent: rebellion_core::ids::CharacterKey,
+        force: rebellion_core::ids::SpecialForceKey,
+    }
+
+    fn defenses_world() -> DefensesWorld {
+        use rebellion_core::world::{
+            BuildableClass, Character, FighterClass, SpecialForceUnit, TroopUnit,
+        };
+        let (mut world, _, destination) = world_with_two_fleets();
+        let origin = world.fleets.values().next().expect("a fleet").location;
+        // Only the defenses team stays; the fleets are not kind 8's.
+        world.fleets.clear();
+        world.systems[origin].fleets.clear();
+        for system in [origin, destination] {
+            world.systems[system].control = ControlKind::Controlled(Faction::Alliance);
+        }
+        let named = |world: &mut GameWorld, raw: u32, name: &str| {
+            let id = DatId::new(raw);
+            world.buildable_classes.insert(
+                id,
+                BuildableClass {
+                    name: name.into(),
+                    ..BuildableClass::default()
+                },
+            );
+            id
+        };
+        let regiment_class = named(&mut world, 0x1000_0001, "Alliance Army Regiment");
+        let force_class = named(&mut world, 0x3c00_0001, "Bothan Spies");
+        let troop = world.troops.insert(TroopUnit {
+            class_dat_id: regiment_class,
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let enemy = world.troops.insert(TroopUnit {
+            class_dat_id: regiment_class,
+            is_alliance: false,
+            regiment_strength: 100,
+        });
+        world.systems[origin].ground_units.extend([troop, enemy]);
+        let x_wing = world.fighter_classes.insert(FighterClass {
+            name: "X-wing Squadron".into(),
+            is_alliance: true,
+            ..FighterClass::default()
+        });
+        rebellion_core::squadrons::add(&mut world.systems[origin].fighters, x_wing, 2);
+        let agent = world.characters.insert(Character {
+            name: "Agent".into(),
+            is_alliance: true,
+            current_system: Some(origin),
+            recruited: true,
+            ..Character::default()
+        });
+        let force = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: force_class,
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[origin].special_forces.push(force);
+        DefensesWorld {
+            world,
+            origin,
+            destination,
+            troop,
+            x_wing,
+            agent,
+            force,
+        }
+    }
+
+    fn issue_defenses(
+        world: &GameWorld,
+        missions: &MissionState,
+        system: SystemKey,
+        confirmed: bool,
+        to: SystemKey,
+    ) -> Issued {
+        let movement = MovementState::new();
+        let transport = TroopTransportState::new();
+        let blockaded = HashSet::new();
+        let mut issued = Issued {
+            actions: Vec::new(),
+            confirmation: MoveConfirmationState::default(),
+            log: MessageLog::new(),
+        };
+        issue_defenses_move(
+            &DefensesMoveContext {
+                world,
+                movement: &movement,
+                missions,
+                transport: &transport,
+                blockaded: &blockaded,
+                faction: MissionFaction::Alliance,
+                tick: 0,
+            },
+            system,
+            confirmed,
+            ReleaseTarget::System(to),
+            &mut issued.log,
+            &mut issued.confirmation,
+            &mut issued.actions,
+        );
+        issued
+    }
+
+    #[test]
+    fn a_defenses_icons_move_sends_one_member_mission_and_the_group_at_once() {
+        // FUN_0053c4b0 splits the kind 8 team (FUN_00512700): one 0x241 for
+        // the characters and special forces (FUN_0053c810), one 0x204 for
+        // the regiments and squadrons (FUN_0053ca50). FUN_00487cc0 asks
+        // nothing for 0x201: its first team id is the system, whose
+        // container is no system (0x00487cc0..0x00487e13).
+        let w = defenses_world();
+        let issued = issue_defenses(
+            &w.world,
+            &MissionState::new(),
+            w.origin,
+            false,
+            w.destination,
+        );
+        assert!(!issued.confirmation.is_open());
+        assert!(issued.log.messages().is_empty());
+        let to = SquadronPlace::Planet(w.destination);
+        assert_eq!(
+            format!("{:?}", issued.actions),
+            format!(
+                "{:?}",
+                [
+                    PanelAction::MoveMembers {
+                        members: vec![
+                            MissionMember::Character(w.agent),
+                            MissionMember::SpecialForce(w.force),
+                        ],
+                        system: w.destination,
+                        fleet: None,
+                    },
+                    PanelAction::MoveRegiment {
+                        troop: w.troop,
+                        target: RegimentTarget::System(w.destination),
+                    },
+                    PanelAction::MoveSquadron {
+                        class: w.x_wing,
+                        from: SquadronPlace::Planet(w.origin),
+                        to,
+                    },
+                    PanelAction::MoveSquadron {
+                        class: w.x_wing,
+                        from: SquadronPlace::Planet(w.origin),
+                        to,
+                    },
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn a_defenses_icons_confirmed_move_asks_once_with_a_line_per_member() {
+        // FUN_00487cc0 asks for 0x202; FUN_0053c2e0 collects a line per
+        // member from the 0x241 (FUN_004f4850) then the 0x204
+        // (FUN_0053d200). FUN_0049a350 gives no evacuation warning: its
+        // first member is the system.
+        let w = defenses_world();
+        let issued = issue_defenses(
+            &w.world,
+            &MissionState::new(),
+            w.origin,
+            true,
+            w.destination,
+        );
+        assert!(issued.actions.is_empty());
+        let window = issued
+            .confirmation
+            .confirmation()
+            .expect("the window opens");
+        assert_eq!(window.characters, [w.agent]);
+        assert_eq!(window.special_forces, [w.force]);
+        assert_eq!(window.troops, [w.troop]);
+        assert_eq!(window.squadrons.len(), 2);
+        assert!(!window.blockaded);
+        let names: Vec<&str> = window.lines.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "Agent",
+                "Bothan Spies",
+                "Alliance Army Regiment",
+                "X-wing Squadron",
+                "X-wing Squadron"
+            ]
+        );
+        assert!(window.lines.iter().all(|(_, days)| *days > 0));
+    }
+
+    #[test]
+    fn one_busy_member_keeps_the_whole_defenses_team_home() {
+        // FUN_0053c1a0 runs every sub-order's validator: the 0x241's
+        // member check (FUN_0054c110 -> +0x1c8) refuses a member on a
+        // mission, and FUN_00487c90 reports it; nothing moves.
+        let mut w = defenses_world();
+        w.world.characters[w.agent].on_mission = true;
+        let issued = issue_defenses(
+            &w.world,
+            &MissionState::new(),
+            w.origin,
+            false,
+            w.destination,
+        );
+        assert!(issued.actions.is_empty());
+        assert!(!issued.confirmation.is_open());
+        assert_eq!(issued.log.messages().len(), 1);
+    }
+
+    #[test]
+    fn a_defenses_icons_move_is_enabled_for_a_free_team_of_the_side() {
+        // FUN_0053c100: FUN_0053c4b0 refuses an empty team (1/0x16), then
+        // each sub-order's +0x18 checks its members.
+        let mut w = defenses_world();
+        let gate = |world: &GameWorld, system| {
+            order_gates(
+                Some(MenuObject::SystemIcon {
+                    system,
+                    quadrant: Quadrant::Defenses,
+                }),
+                world,
+                &MissionState::new(),
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                MissionFaction::Alliance,
+                0,
+            )
+            .defenses_move
+        };
+        assert!(gate(&w.world, w.origin));
+        assert!(!gate(&w.world, w.destination));
+        w.world.characters[w.agent].on_mission = true;
+        assert!(!gate(&w.world, w.origin));
     }
 }
 

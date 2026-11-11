@@ -36,6 +36,9 @@ pub enum TargetOrder {
     FleetMove {
         fleets: Vec<FleetKey>,
         confirmed: bool,
+        /// The team is a fleet icon's: the order's first team id is the
+        /// system, so `FUN_00487cc0` never asks for a Move.
+        icon: bool,
     },
     /// A character's Move (`0x201`), which expands to the Move mission order
     /// `0x241` (`FUN_0053c810`): to a system, or aboard a fleet a Fleet
@@ -83,6 +86,11 @@ pub enum TargetOrder {
         /// days first (A0 fleet3/11 "Corellian Corvette 1:  0").
         confirmed: bool,
     },
+    /// A sector window defenses icon's Move (`0x201`), or Confirmed Move
+    /// (`0x202`) when `confirmed`. Its team is the icon's entry: the order
+    /// resolves it on validation (`FUN_0053c4b0` -> `FUN_00512700` kind 8,
+    /// `quadrant_icons::defenses_move_team`).
+    DefensesMove { system: SystemKey, confirmed: bool },
     /// The headquarters' Move (`0x201`), or Confirmed Move (`0x202`) when
     /// `confirmed` (`FUN_00526c00`; [`rebellion_core::headquarters_move`]).
     HeadquartersMove { confirmed: bool },
@@ -535,6 +543,7 @@ mod tests {
             let order = TargetOrder::FleetMove {
                 fleets: vec![FleetKey::default()],
                 confirmed,
+                icon: false,
             };
             let target = ReleaseTarget::System(system);
             assert_eq!(
@@ -554,6 +563,7 @@ mod tests {
         let order = TargetOrder::FleetMove {
             fleets: vec![FleetKey::default()],
             confirmed: true,
+            icon: false,
         };
         assert_eq!(Targeting::new(order).release(None), TargetingEnd::Dropped);
     }

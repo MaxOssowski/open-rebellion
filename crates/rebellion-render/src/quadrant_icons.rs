@@ -161,6 +161,86 @@ pub fn facility_icon_has_managers(world: &GameWorld, system: SystemKey, side: Fa
     })
 }
 
+/// The team of a defenses icon's Move and Confirmed Move (`0x201`, `0x202`):
+/// `FUN_00512700` kind 8 gives the system's regiments (`FUN_00504c40`,
+/// families `0x10..0x13`), fighter squadrons (`FUN_005039d0`, `0x1c..0x1f`),
+/// then characters and special forces (`FUN_00536da0`, `0x30..0x3f`), each
+/// list filtered to the order's side (`FUN_00553350`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DefensesTeam {
+    /// The side's regiments on the planet.
+    pub troops: Vec<rebellion_core::ids::TroopKey>,
+    /// The side's squadrons on the planet, one class entry per squadron.
+    pub squadrons: Vec<rebellion_core::ids::FighterKey>,
+    /// The side's characters and special forces in the system, those on
+    /// their way there included.
+    pub members: Vec<MissionMember>,
+}
+
+impl DefensesTeam {
+    /// `FUN_0053c4b0` refuses a move with no member (`1`/`0x16`).
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.troops.is_empty() && self.squadrons.is_empty() && self.members.is_empty()
+    }
+}
+
+/// [`DefensesTeam`] at `system` for `side`. The walk is the system's own
+/// (`FUN_00513050` over its children), so it takes no fog, and a member on
+/// its way in counts, as `FUN_0045ce80`'s does: a transit puts the member
+/// in its target's container at once (`mission-lifecycle.md`).
+#[must_use]
+pub fn defenses_move_team(
+    world: &GameWorld,
+    missions: &MissionState,
+    side: Faction,
+    system: SystemKey,
+) -> DefensesTeam {
+    let Some(value) = world.systems.get(system) else {
+        return DefensesTeam::default();
+    };
+    let own = faction_side(side);
+    let troops = value
+        .ground_units
+        .iter()
+        .copied()
+        .filter(|key| {
+            world
+                .troops
+                .get(*key)
+                .is_some_and(|troop| fleet_side(troop.is_alliance) == own)
+        })
+        .collect();
+    let squadrons = value
+        .fighters
+        .iter()
+        .filter(|entry| {
+            world
+                .fighter_classes
+                .get(entry.class)
+                .is_some_and(|class| fleet_side(class.is_alliance) == own)
+        })
+        .flat_map(|entry| std::iter::repeat_n(entry.class, entry.count as usize))
+        .collect();
+    let arrivals = missions
+        .en_route()
+        .iter()
+        .filter(|transit| transit.abode.is_none());
+    let mut members: Vec<MissionMember> = Vec::new();
+    for (member, member_side, _) in
+        system_members(world, system).chain(transit_members(world, arrivals, system))
+    {
+        if member_side == own && !members.contains(&member) {
+            members.push(member);
+        }
+    }
+    DefensesTeam {
+        troops,
+        squadrons,
+        members,
+    }
+}
+
 /// `FUN_004a1f60(system, player side)` over what the player sees: the other
 /// side's missions win, then the player's, else 3.
 pub(crate) fn missions_side(
@@ -441,6 +521,27 @@ fn mission_side(contents: &SystemContents<'_>, missions: &MissionState) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_defenses_team_with_any_one_kind_of_member_is_not_empty() {
+        // FUN_0053c4b0 refuses only a team with no member at all (1/0x16).
+        assert!(DefensesTeam::default().is_empty());
+        let troops = DefensesTeam {
+            troops: vec![rebellion_core::ids::TroopKey::default()],
+            ..Default::default()
+        };
+        let squadrons = DefensesTeam {
+            squadrons: vec![rebellion_core::ids::FighterKey::default()],
+            ..Default::default()
+        };
+        let members = DefensesTeam {
+            members: vec![MissionMember::Character(CharacterKey::default())],
+            ..Default::default()
+        };
+        for team in [troops, squadrons, members] {
+            assert!(!team.is_empty(), "{team:?}");
+        }
+    }
     use rebellion_core::dat::SectorGroup;
     use rebellion_core::ids::{CharacterKey, DatId};
     use rebellion_core::missions::{MissionFaction, MissionKind, MissionRequest};
@@ -751,6 +852,69 @@ mod tests {
         rebellion_core::squadrons::add(&mut world.systems[system].fighters, x_wing, 1);
         assert_eq!(alliance_side(&world, system, Quadrant::Defenses), Some(1));
         assert_eq!(alliance_side(&world, system, Quadrant::System), None);
+    }
+
+    #[test]
+    fn a_defenses_icons_move_team_is_its_sides_regiments_squadrons_and_personnel() {
+        // FUN_00512700 kind 8 for 0x201/0x202: FUN_00504c40 (regiments),
+        // FUN_005039d0 (squadrons), FUN_00536da0 (characters and special
+        // forces), each through FUN_00553350's side filter. Defense
+        // facilities are Scrap's only (FUN_00527050).
+        let (mut world, system) = alliance_world();
+        let troop = |world: &mut GameWorld, is_alliance| {
+            let key = world.troops.insert(TroopUnit {
+                class_dat_id: DatId::new(0x1000_0001),
+                is_alliance,
+                regiment_strength: 100,
+            });
+            world.systems[system].ground_units.push(key);
+            key
+        };
+        let ours = troop(&mut world, true);
+        troop(&mut world, false);
+        let class = |world: &mut GameWorld, is_alliance| {
+            world
+                .fighter_classes
+                .insert(rebellion_core::world::FighterClass {
+                    is_alliance,
+                    ..Default::default()
+                })
+        };
+        let x_wing = class(&mut world, true);
+        let tie = class(&mut world, false);
+        rebellion_core::squadrons::add(&mut world.systems[system].fighters, x_wing, 2);
+        rebellion_core::squadrons::add(&mut world.systems[system].fighters, tie, 1);
+        let agent = add_character(&mut world, system, true);
+        add_character(&mut world, system, false);
+        let force = world.special_forces.insert(SpecialForceUnit {
+            class_dat_id: DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[system].special_forces.push(force);
+        let facility = world.defense_facilities.insert(DefenseFacilityInstance {
+            class_dat_id: DatId::new(0x2200_0001),
+            side: Faction::Alliance,
+        });
+        world.systems[system].defense_facilities.push(facility);
+
+        let team = defenses_move_team(&world, &MissionState::new(), Faction::Alliance, system);
+        assert_eq!(team.troops, [ours]);
+        assert_eq!(team.squadrons, [x_wing, x_wing]);
+        assert_eq!(
+            team.members,
+            [
+                MissionMember::Character(agent),
+                MissionMember::SpecialForce(force)
+            ]
+        );
+        assert!(!team.is_empty());
+        let (empty, elsewhere) = alliance_world();
+        assert!(
+            defenses_move_team(&empty, &MissionState::new(), Faction::Alliance, elsewhere)
+                .is_empty()
+        );
     }
 
     #[test]

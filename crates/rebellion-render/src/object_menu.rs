@@ -544,10 +544,10 @@ impl ObjectMenuRow {
 /// follow `gates.fleet_move` for the system's fleets of the player's side;
 /// the facility icon's Reserved follows `gates.reserved` and is checked by
 /// `gates.reserved_checked`, as a band's is (its team is every manager of
-/// the system, `FUN_00512700` kind 4). port: the defenses icon's Move and
-/// Confirmed Move stay disabled until their mixed team's move (regiments,
-/// squadrons, characters and special forces, `FUN_0053c810` and
-/// `FUN_0053ca50`) is ported.
+/// the system, `FUN_00512700` kind 4). The defenses icon's Move and
+/// Confirmed Move follow `gates.defenses_move` for its mixed team
+/// (regiments, squadrons, characters and special forces, split by
+/// `FUN_0053c810` and `FUN_0053ca50`).
 /// A Manufacturing window band offers its manager class's orders
 /// (`FUN_0052ae30`, `FUN_0055b580`, `FUN_0055b900`, `FUN_0055bd30`): Build,
 /// Stop, Destination and Reserved, and for ships Rename. Build, Stop and
@@ -616,6 +616,14 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
             })
         );
     let headquarters = matches!(selection, Some(MenuObject::Headquarters(_)));
+    // The defenses icon's Move rows act on its kind 8 team (FUN_00512700).
+    let defenses = matches!(
+        selection,
+        Some(MenuObject::SystemIcon {
+            quadrant: Quadrant::Defenses,
+            ..
+        })
+    );
     let offered: &[ObjectMenuItem] = match selection {
         Some(MenuObject::Character(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION, COMMAND],
         Some(MenuObject::SpecialForce(_)) => &[MOVE, CONFIRMED_MOVE, RETIRE, MISSION],
@@ -686,6 +694,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (ship && gates.ship_move)
                         || (squadron && gates.squadron_move)
                         || (headquarters && gates.headquarters_move)
+                        || (defenses && gates.defenses_move)
                 }
                 ObjectMenuCommand::CreateFleet => ship && gates.ship_move,
                 ObjectMenuCommand::Rename => (fleet_entry || ship) && gates.rename,
@@ -706,6 +715,7 @@ pub fn object_menu_rows(selection: Option<MenuObject>, gates: OrderGates) -> Vec
                         || (character && gates.character_move)
                         || (special_force && gates.special_force_move)
                         || (headquarters && gates.headquarters_move)
+                        || (defenses && gates.defenses_move)
                 }
                 // hyp: a submenu parent is enabled when one of its
                 // children is. A0 shows Planetary Bombardment grey, its
@@ -819,6 +829,14 @@ pub struct OrderGates {
     pub squadron_move: bool,
     /// The headquarters' Move ([`rebellion_core::headquarters_move::move_enabled`]).
     pub headquarters_move: bool,
+    /// A defenses icon's Move and Confirmed Move (`FUN_0053c100`): the
+    /// team `FUN_00512700` kind 8 gives is not empty (`FUN_0053c4b0`,
+    /// `1`/`0x16`), and each sub-order's `+0x18` passes: the `0x241` of its
+    /// characters and special forces
+    /// ([`rebellion_core::missions::MissionState::move_order_enabled`]) and
+    /// the `0x204` group's per-member command checks for its regiments and
+    /// squadrons (`FUN_00578c00`).
+    pub defenses_move: bool,
     pub ship_move: bool,
     /// Rename (0x203): the selection is the player's and can take a name
     /// (`FUN_004f6e60` refuses a destroyed object).
@@ -1087,6 +1105,7 @@ mod tests {
         special_force_move: false,
         squadron_move: false,
         headquarters_move: false,
+        defenses_move: false,
         ship_move: false,
         rename: false,
         destination: false,
@@ -1320,6 +1339,7 @@ mod tests {
             special_force_move: false,
             squadron_move: true,
             headquarters_move: true,
+            defenses_move: false,
             ship_move: true,
             rename: false,
             destination: false,
@@ -1734,7 +1754,7 @@ mod tests {
     fn a_fleet_icons_move_rows_follow_its_fleets_move_rule() {
         // FUN_0053c100 -> FUN_0053c4b0: the team is the system's fleets of
         // the order's side (FUN_00512700, kind 0x10); the other icons' Move
-        // rows act on members whose moves are not ported.
+        // rows follow their own teams' rules.
         let every_gate = OrderGates {
             mission: true,
             fleet_move: true,
@@ -1743,6 +1763,7 @@ mod tests {
             special_force_move: false,
             squadron_move: true,
             headquarters_move: true,
+            defenses_move: false,
             ship_move: true,
             rename: false,
             destination: false,
@@ -1769,6 +1790,40 @@ mod tests {
                 "{quadrant:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_defenses_icons_move_rows_follow_its_mixed_teams_move_rule() {
+        // FUN_0050f2e0 lists 0x201 and 0x202 for kind 8; FUN_0053c100 asks
+        // FUN_0053c4b0 and each sub-order's +0x18 for the team FUN_00512700
+        // kind 8 gives (gates.defenses_move). The other icons ignore it.
+        let gates = OrderGates {
+            defenses_move: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(icon(Quadrant::Defenses), gates)),
+            ["Move", "Confirmed Move", "Encyclopedia"]
+        );
+        for quadrant in [Quadrant::System, Quadrant::Fleets, Quadrant::Missions] {
+            assert_eq!(
+                enabled(&object_menu_rows(icon(quadrant), gates)),
+                ["Encyclopedia"],
+                "{quadrant:?}"
+            );
+        }
+        // The members' own Move gates do not open the icon's rows.
+        let members = OrderGates {
+            troop_move: true,
+            character_move: true,
+            squadron_move: true,
+            special_force_move: true,
+            ..OrderGates::default()
+        };
+        assert_eq!(
+            enabled(&object_menu_rows(icon(Quadrant::Defenses), members)),
+            ["Encyclopedia"]
+        );
     }
 
     #[test]
@@ -2036,6 +2091,7 @@ mod tests {
         // may move (FUN_00578c00).
         let movable = OrderGates {
             headquarters_move: true,
+            defenses_move: false,
             ..OrderGates::default()
         };
         assert_eq!(

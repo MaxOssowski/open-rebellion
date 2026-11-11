@@ -2321,6 +2321,52 @@ impl MissionState {
         place.is_some()
     }
 
+    /// Whether a Move's `0x241` sub-order (`FUN_0053c810`) is enabled for
+    /// `team`: its `+0x18` (`FUN_0051fe20`) builds command `0x250`
+    /// (`FUN_004f4a00`), whose `+0x18` (`FUN_0054d1a0` -> `FUN_005429e0`)
+    /// asks what [`Self::mission_order_enabled`] asks but for the order kind
+    /// (`ghidra/notes/object-popup-menu.md`, "When Mission is enabled"):
+    /// `FUN_0054c110`'s member slot `+0x1c8` exempts `0x241` from the
+    /// recruited rule and checks the prisoner only for `0x240`. So every
+    /// member is the side's, not on a mission and not travelling, and the
+    /// located members share one place (`FUN_0054bf00`).
+    ///
+    /// A character's side is [`character_side`], a prisoner's being its
+    /// captor's, as the character menu's Move reads it.
+    #[must_use]
+    pub fn move_order_enabled(
+        &self,
+        world: &GameWorld,
+        faction: MissionFaction,
+        team: &[MissionMember],
+    ) -> bool {
+        let side = crate::dat::Faction::from(faction);
+        let mut place = None;
+        for &member in team {
+            let Some(state) = member_state(world, member) else {
+                return false;
+            };
+            let member_side = match member {
+                MissionMember::Character(key) => world.characters.get(key).and_then(character_side),
+                MissionMember::SpecialForce(_) => {
+                    Some(crate::dat::Faction::of_alliance(state.is_alliance))
+                }
+            };
+            if member_side != Some(side) || state.busy || self.engaged(member) {
+                return false;
+            }
+            if state.location == MemberLocation::Nowhere {
+                continue;
+            }
+            match place {
+                None => place = Some(state.location),
+                Some(here) if here != state.location => return false,
+                Some(_) => {}
+            }
+        }
+        place.is_some()
+    }
+
     /// Queue a mission built in a test, past the dispatch rules.
     #[cfg(test)]
     pub(crate) fn push_timed(&mut self, mission: ActiveMission) {
@@ -3952,20 +3998,7 @@ impl MissionSystem {
     /// when Han Solo is a free member and no special force is, else the
     /// GNPRTB 1 default.
     fn character_speed(mission: &ActiveMission, world: &GameWorld) -> i64 {
-        let han_free = mission.members().any(|member| {
-            member
-                .character()
-                .and_then(|key| world.characters.get(key))
-                .is_some_and(|c| c.dat_id.raw() == HAN_SOLO && !c.is_captive)
-        });
-        let has_special_force = mission
-            .members()
-            .any(|member| matches!(member, MissionMember::SpecialForce(_)));
-        if han_free && !has_special_force {
-            crate::movement::gnprtb_or_shipped(world, GNPRTB_HAN_SOLO_SPEED, SHIPPED_HAN_SOLO_SPEED)
-        } else {
-            crate::movement::default_speed(world)
-        }
+        team_speed(world, &mission.members().collect::<Vec<_>>())
     }
 
     /// Phase 4's departures (`FUN_00556430`, `FUN_00556390`): every member
@@ -4870,29 +4903,59 @@ pub fn move_days(world: &GameWorld, character: CharacterKey, to: SystemKey) -> O
 /// speed (`FUN_00548370` speeds up only a free Han Solo).
 #[must_use]
 pub fn member_move_days(world: &GameWorld, member: MissionMember, to: SystemKey) -> Option<u32> {
-    let from = member_location(world, member)?;
+    team_move_days(world, &[member], to)?.pop()
+}
+
+/// The days a Move of `team` to `to` lists, one per member in team order
+/// (`FUN_0053c2e0` -> `FUN_004f4850` for the one `0x241` sub-order): each
+/// member's system to `to` at the speed phase 2 gives the whole mission
+/// ([`team_speed`], `FUN_00548370`). `None` when a member is gone or has no
+/// location.
+#[must_use]
+pub fn team_move_days(
+    world: &GameWorld,
+    team: &[MissionMember],
+    to: SystemKey,
+) -> Option<Vec<u32>> {
     let position = |key: SystemKey| world.systems.get(key).map(|s| (s.x, s.y));
-    let han = match member {
-        MissionMember::Character(key) => {
-            let c = world.characters.get(key)?;
-            c.dat_id.raw() == HAN_SOLO && !c.is_captive
-        }
-        MissionMember::SpecialForce(key) => {
-            world.special_forces.get(key)?;
-            false
-        }
-    };
-    let speed = if han {
+    let to = position(to)?;
+    let speed = team_speed(world, team);
+    team.iter()
+        .map(|&member| {
+            match member {
+                MissionMember::Character(key) => {
+                    world.characters.get(key)?;
+                }
+                MissionMember::SpecialForce(key) => {
+                    world.special_forces.get(key)?;
+                }
+            }
+            let from = position(member_location(world, member)?)?;
+            Some(crate::movement::transit_ticks_between(
+                world, from, to, speed,
+            ))
+        })
+        .collect()
+}
+
+/// The speed `FUN_00548370` gives a mission's members: GNPRTB 3083 when Han
+/// Solo is a free member and no special force is, else the GNPRTB 1
+/// default.
+fn team_speed(world: &GameWorld, members: &[MissionMember]) -> i64 {
+    let han_free = members.iter().any(|member| {
+        member
+            .character()
+            .and_then(|key| world.characters.get(key))
+            .is_some_and(|c| c.dat_id.raw() == HAN_SOLO && !c.is_captive)
+    });
+    let has_special_force = members
+        .iter()
+        .any(|member| matches!(member, MissionMember::SpecialForce(_)));
+    if han_free && !has_special_force {
         crate::movement::gnprtb_or_shipped(world, GNPRTB_HAN_SOLO_SPEED, SHIPPED_HAN_SOLO_SPEED)
     } else {
         crate::movement::default_speed(world)
-    };
-    Some(crate::movement::transit_ticks_between(
-        world,
-        position(from)?,
-        position(to)?,
-        speed,
-    ))
+    }
 }
 
 /// Where `member` of the ended `mission` returns (`FUN_00521220`,
@@ -7923,6 +7986,74 @@ mod tests {
         assert_eq!(member_move_days(&world, member, to), None);
         world.systems[from].special_forces.push(unit);
         assert_eq!(member_move_days(&world, member, to), Some(20));
+    }
+
+    #[test]
+    fn a_team_moves_at_the_speed_its_whole_mission_takes() {
+        // FUN_00548370 sets one speed for the mission: GNPRTB 3083 when Han
+        // Solo is a free member and no special force is. FUN_0053c2e0 ->
+        // FUN_004f4850 lists a line per member at it.
+        let mut world = minimal_world();
+        let from = system_at(&mut world, 0);
+        let to = system_at(&mut world, 100);
+        let han = agent_at(&mut world, from, true);
+        world.characters[han].dat_id = crate::ids::DatId::new(HAN_SOLO);
+        let mate = agent_at(&mut world, from, true);
+        let unit = world.special_forces.insert(crate::world::SpecialForceUnit {
+            class_dat_id: crate::ids::DatId::new(0x3c00_0001),
+            is_alliance: true,
+            skills: [0; 8],
+            on_mission: false,
+        });
+        world.systems[from].special_forces.push(unit);
+        let (han, mate, unit) = (
+            MissionMember::Character(han),
+            MissionMember::Character(mate),
+            MissionMember::SpecialForce(unit),
+        );
+        let fast = team_move_days(&world, &[han, mate], to).expect("a trip");
+        assert_eq!(fast[0], fast[1]);
+        assert!(fast[1] < 20, "the mate travels at Han's speed: {fast:?}");
+        assert_eq!(
+            team_move_days(&world, &[han, mate, unit], to),
+            Some(vec![20, 20, 20])
+        );
+        assert_eq!(team_move_days(&world, &[mate], to), Some(vec![20]));
+    }
+
+    #[test]
+    fn a_moves_member_order_is_enabled_for_free_members_of_the_side_at_one_place() {
+        // FUN_0054c110's member slot +0x1c8 for 0x241 (object-popup-menu.md,
+        // "When Mission is enabled"): the side, not on a mission, not
+        // travelling; 0x241 is exempt from the recruited rule and only 0x240
+        // checks a prisoner. FUN_0054bf00: one place.
+        let mut world = minimal_world();
+        let (here, there) = two_systems();
+        let a = agent_at(&mut world, here, true);
+        let b = agent_at(&mut world, here, true);
+        let far = agent_at(&mut world, there, true);
+        let member = MissionMember::Character;
+        let state = MissionState::new();
+        let enabled = |world: &GameWorld, team: &[MissionMember]| {
+            state.move_order_enabled(world, MissionFaction::Alliance, team)
+        };
+        assert!(enabled(&world, &[member(a), member(b)]));
+        assert!(!enabled(&world, &[member(a), member(far)]));
+        assert!(!enabled(&world, &[]));
+        assert!(!state.move_order_enabled(&world, MissionFaction::Empire, &[member(a)]));
+        world.characters[b].recruited = false;
+        assert!(enabled(&world, &[member(a), member(b)]), "unrecruited");
+        world.characters[b].on_mission = true;
+        assert!(!enabled(&world, &[member(a), member(b)]), "on a mission");
+        let mut travelling = MissionState::new();
+        travelling.push_transit(MemberTransit {
+            member: member(a),
+            mission_id: 7,
+            to: there,
+            arrival: 10,
+            abode: None,
+        });
+        assert!(!travelling.move_order_enabled(&world, MissionFaction::Alliance, &[member(a)]));
     }
 
     #[test]

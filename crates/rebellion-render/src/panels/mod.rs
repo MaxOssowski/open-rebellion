@@ -114,6 +114,14 @@ pub enum PanelAction {
         system: rebellion_core::ids::SystemKey,
         fleet: Option<rebellion_core::ids::FleetKey>,
     },
+    /// The one `0x241` sub-order a Move builds for its characters and
+    /// special forces together (`FUN_0053c810`): one Move mission with them
+    /// all as its team, to a system or aboard a fleet there.
+    MoveMembers {
+        members: Vec<rebellion_core::missions::MissionMember>,
+        system: rebellion_core::ids::SystemKey,
+        fleet: Option<rebellion_core::ids::FleetKey>,
+    },
     /// A squadron's Move (`0x201`) released on a system or fleet
     /// (`squadrons::move_squadrons`).
     MoveSquadron {
