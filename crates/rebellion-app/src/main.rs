@@ -9482,6 +9482,9 @@ fn defenses_move_enabled(
         system,
     );
     !team.is_empty()
+        // A regiment or squadron on its way in is in the team, and its own
+        // move command refuses while it travels.
+        && !transport.surface_arrival_pending(world, system, is_alliance)
         && (team.members.is_empty() || missions.move_order_enabled(world, faction, &team.members))
         && team
             .troops
@@ -9590,8 +9593,13 @@ fn issue_defenses_move(
                 .map(|days| (class, days))
         })
         .collect();
-    let (false, Some(member_days), Some(troop_days), Some(class_days)) =
-        (team.is_empty(), member_days, troop_days, class_days)
+    // A regiment or squadron flying in is in the team, and its own move
+    // command refuses (`surface_arrival_pending`).
+    let arriving = context
+        .transport
+        .surface_arrival_pending(world, system, is_alliance);
+    let (false, false, Some(member_days), Some(troop_days), Some(class_days)) =
+        (team.is_empty(), arriving, member_days, troop_days, class_days)
     else {
         macroquad::logging::info!(
             "[interface] command={:#x} defenses_icon status=refused",
@@ -10664,7 +10672,19 @@ fn order_gates(
         // (FUN_005796c0; scrap::check, a fleet en route refused); an
         // icon's team is its kind's objects of the side (FUN_00512700),
         // and an empty team refuses (FUN_0053c4b0). A0 menus3/06-13.
+        // A defenses icon's team also holds the side's regiments and
+        // squadrons flying in, whose scrap command refuses while they
+        // travel (surface_arrival_pending; A0 2026-11-11-icon-menu-topic/30).
         scrap: selection.is_some_and(|object| {
+            if let MenuObject::SystemIcon {
+                system,
+                quadrant: Quadrant::Defenses,
+            } = object
+            {
+                if troop_transport_state.surface_arrival_pending(world, system, is_alliance) {
+                    return false;
+                }
+            }
             let team = object.scrap_team(movement_state, world, side);
             !team.is_empty()
                 && team.iter().all(|&target| {
@@ -15210,6 +15230,57 @@ mod fleet_move_tests {
         assert!(!gate(&w.world, w.destination));
         w.world.characters[w.agent].on_mission = true;
         assert!(!gate(&w.world, w.origin));
+    }
+
+    #[test]
+    fn a_defenses_icons_move_and_scrap_are_disabled_while_a_squadron_flies_in() {
+        // FUN_005039d0 (mode 3) keeps a squadron in flight, as it already sits
+        // in its target's container; its own move and scrap commands refuse.
+        // A0 2026-11-11-icon-menu-topic/30 (grey) and 33 (white after it lands).
+        let mut w = defenses_world();
+        let troop = w.world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        w.world.systems[w.destination].ground_units.push(troop);
+        let gates = |world: &GameWorld, transport: &TroopTransportState| {
+            let gates = order_gates(
+                Some(MenuObject::SystemIcon {
+                    system: w.destination,
+                    quadrant: Quadrant::Defenses,
+                }),
+                world,
+                &MissionState::new(),
+                &MovementState::new(),
+                transport,
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                MissionFaction::Alliance,
+                0,
+            );
+            (gates.defenses_move, gates.scrap)
+        };
+        let mut transport = TroopTransportState::new();
+        assert_eq!(gates(&w.world, &transport), (true, true));
+        let x_wing = w.world.systems[w.origin].fighters[0].class;
+        let moved = transport
+            .squadrons
+            .move_squadrons(
+                &mut w.world,
+                true,
+                x_wing,
+                1,
+                SquadronPlace::Planet(w.origin),
+                SquadronPlace::Planet(w.destination),
+                0,
+            )
+            .expect("the squadron departs");
+        assert!(matches!(
+            moved,
+            rebellion_core::squadrons::SquadronMove::Departed(_)
+        ));
+        assert_eq!(gates(&w.world, &transport), (false, false));
     }
 }
 

@@ -215,6 +215,35 @@ impl TroopTransportState {
             && regiment_system(world, troop).is_some()
     }
 
+    /// Whether a regiment or squadron of the side `alliance` is on its way
+    /// to `system`'s planet. The original moves a travelling object into
+    /// its target's container at once with its en-route bit (`+0x50` bit
+    /// 4), and the defenses icon's walks (`FUN_00504c40`, `FUN_005039d0`,
+    /// mode 3, existing) keep it, so its Move and Scrap teams hold it and
+    /// its own move and scrap commands refuse. A0
+    /// `2026-11-11-icon-menu-topic/30`: Umgul's icon has Move and Scrap grey
+    /// while a TIE squadron flies in, white again after it lands (`33`).
+    #[must_use]
+    pub fn surface_arrival_pending(
+        &self,
+        world: &GameWorld,
+        system: SystemKey,
+        alliance: bool,
+    ) -> bool {
+        let regiment = self.transit.iter().any(|transit| {
+            transit.leg == RegimentLeg::Surface(system)
+                && world
+                    .troops
+                    .get(transit.troop)
+                    .is_some_and(|troop| troop.is_alliance == alliance)
+        });
+        regiment
+            || self.squadrons.transits().iter().any(|transit| {
+                transit.to == crate::squadrons::SquadronPlace::Planet(system)
+                    && crate::squadrons::is_alliance(world, transit.class) == Some(alliance)
+            })
+    }
+
     /// Regiments travelling on their own, in departure order.
     #[must_use]
     pub fn transits(&self) -> &[RegimentTransit] {
@@ -1333,6 +1362,50 @@ mod tests {
             target,
             10,
         )
+    }
+
+    // FUN_00504c40 and FUN_005039d0 (mode 3) keep an object that travels,
+    // as it is already in its target's container: A0
+    // 2026-11-11-icon-menu-topic/30 and 33 (Umgul, a TIE squadron in flight).
+    #[test]
+    fn a_regiment_or_squadron_flying_to_a_planet_is_pending_there_for_its_side_only() {
+        let (mut world, origin, destination, _, troops) = alliance_world(2);
+        let mut state = TroopTransportState::new();
+        assert!(!state.surface_arrival_pending(&world, destination, true));
+
+        move_to(
+            &mut state,
+            &mut world,
+            troops[0],
+            RegimentTarget::System(destination),
+        )
+        .unwrap();
+        assert!(state.surface_arrival_pending(&world, destination, true));
+        assert!(!state.surface_arrival_pending(&world, destination, false));
+        assert!(!state.surface_arrival_pending(&world, origin, true));
+        state.advance_transit(&mut world, 30);
+        assert!(!state.surface_arrival_pending(&world, destination, true));
+
+        let x_wing = world.fighter_classes.insert(crate::world::FighterClass {
+            name: "X-wing".into(),
+            is_alliance: true,
+            ..crate::world::FighterClass::default()
+        });
+        crate::squadrons::add(&mut world.systems[origin].fighters, x_wing, 1);
+        state
+            .squadrons
+            .move_squadrons(
+                &mut world,
+                true,
+                x_wing,
+                1,
+                crate::squadrons::SquadronPlace::Planet(origin),
+                crate::squadrons::SquadronPlace::Planet(destination),
+                40,
+            )
+            .unwrap();
+        assert!(state.surface_arrival_pending(&world, destination, true));
+        assert!(!state.surface_arrival_pending(&world, destination, false));
     }
 
     // FUN_00556390: within one system the in-transit bit is written clear
