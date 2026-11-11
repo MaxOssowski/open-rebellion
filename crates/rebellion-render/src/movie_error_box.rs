@@ -10,10 +10,12 @@
 //! natural end) stops, posts 0x405 and calls the movie's callback: the flow
 //! goes on exactly as after a movie that played to its end.
 //!
-//! The box itself is drawn by Windows, not by the game. hyp: its look here
-//! (a Windows 10 message box at 96 DPI over the 640 by 480 client: white
-//! title and body, grey button band, OK on the right) is not compared with
-//! a capture.
+//! The box itself is drawn by Windows, not by the game. Its look here is
+//! measured on A0 `2026-11-11-icon-menu-topic/53` (Windows 10 under the
+//! game's 640 by 480, 256-colour mode): a classic 3D frame, a flat light
+//! blue title, a white body with the stop icon and the path, and a cream
+//! band with OK, 300 by 149 for the path
+//! `C:\Games\Rebellion\MDATA\MDATA.005`.
 
 use egui_macroquad::egui::{self, Align2, Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
@@ -55,15 +57,38 @@ pub struct BoxLayout {
     pub ok: Rect,
 }
 
-// hyp: Windows 10 message-box metrics at 96 DPI.
-const TITLE_HEIGHT: f32 = 31.0;
-const MARGIN: f32 = 24.0;
+// A0 2026-11-11-icon-menu-topic/53, in client pixels from the frame's
+// top left: frame 300 by 149 at (173, 171); title (3, 3)..(297, 25); a
+// close box (275, 5)..(295, 23); body (3, 26)..(297, 104); the icon at
+// (24, 49), 32 square; the text from x 66; band (3, 104)..(297, 147); OK
+// 75 by 23 at y 114, 18 in from the frame's right.
+const FRAME: f32 = 3.0;
+const HEIGHT: f32 = 149.0;
+const TITLE_BOTTOM: f32 = 25.0;
+const BODY_BOTTOM: f32 = 104.0;
+const ICON_AT: Vec2 = Vec2::new(24.0, 49.0);
 const ICON: f32 = 32.0;
-const ICON_GAP: f32 = 12.0;
-const BAND_HEIGHT: f32 = 49.0;
-const OK_SIZE: Vec2 = Vec2::new(88.0, 26.0);
-const MIN_WIDTH: f32 = 180.0;
+const TEXT_X: f32 = 66.0;
+/// The frame's width beyond the text: 300 less A0's 200-pixel path.
+const TEXT_EXTRA: f32 = 100.0;
+const CAPTION_X: f32 = 28.0;
+const CLOSE: Rect = Rect {
+    min: Pos2::new(275.0, 5.0),
+    max: Pos2::new(295.0, 23.0),
+};
+const OK_SIZE: Vec2 = Vec2::new(75.0, 23.0);
+const OK_TOP: f32 = 114.0;
+const OK_RIGHT: f32 = 18.0;
+/// A0's frame centre: (173 + 300 / 2, 171 + 149 / 2) less half a pixel
+/// for the exclusive edge. hyp: a longer path keeps this centre.
+const CENTRE: Pos2 = Pos2::new(323.0, 245.5);
 const TEXT_SIZE: f32 = 12.0;
+
+const FACE: Color32 = Color32::from_rgb(255, 251, 240);
+const LIGHT: Color32 = Color32::WHITE;
+const SHADOW: Color32 = Color32::from_rgb(160, 160, 164);
+const DARK: Color32 = Color32::from_rgb(128, 128, 128);
+const TITLE: Color32 = Color32::from_rgb(166, 202, 240);
 
 impl MovieErrorBox {
     #[must_use]
@@ -81,27 +106,22 @@ impl MovieErrorBox {
     }
 
     /// The box's parts for a text `text_width` pixels wide and a caption
-    /// `caption_width` wide, centred in the 640 by 480 client.
+    /// `caption_width` wide, at A0's place in the 640 by 480 client.
     #[must_use]
     pub fn layout(text_width: f32, caption_width: f32) -> BoxLayout {
-        let body = MARGIN + ICON + ICON_GAP + text_width + MARGIN;
-        let width = body.max(caption_width + 2.0 * MARGIN + 46.0).max(MIN_WIDTH);
-        let height = TITLE_HEIGHT + MARGIN + ICON + MARGIN + BAND_HEIGHT;
-        let frame = Rect::from_center_size(Pos2::new(320.0, 240.0), Vec2::new(width, height));
-        let title = Rect::from_min_size(frame.min, Vec2::new(width, TITLE_HEIGHT));
-        let icon = Rect::from_min_size(
-            Pos2::new(frame.min.x + MARGIN, title.max.y + MARGIN),
-            Vec2::splat(ICON),
-        );
+        let width = (text_width + TEXT_EXTRA)
+            .max(CAPTION_X + caption_width + (300.0 - CLOSE.min.x) + 4.0)
+            .round();
+        let frame = Rect::from_center_size(CENTRE, Vec2::new(width, HEIGHT));
+        let at = |x: f32, y: f32| frame.min + Vec2::new(x, y);
+        let title = Rect::from_min_max(at(FRAME, FRAME), at(width - FRAME, TITLE_BOTTOM));
+        let icon = Rect::from_min_size(at(ICON_AT.x, ICON_AT.y), Vec2::splat(ICON));
         let text = Rect::from_min_max(
-            Pos2::new(icon.max.x + ICON_GAP, icon.min.y),
-            Pos2::new(frame.max.x - MARGIN, icon.max.y),
+            Pos2::new(frame.min.x + TEXT_X, icon.min.y),
+            Pos2::new(frame.min.x + TEXT_X + text_width, icon.max.y),
         );
-        let band = Rect::from_min_max(Pos2::new(frame.min.x, frame.max.y - BAND_HEIGHT), frame.max);
-        let ok = Rect::from_center_size(
-            Pos2::new(band.max.x - 11.0 - OK_SIZE.x / 2.0, band.center().y),
-            OK_SIZE,
-        );
+        let band = Rect::from_min_max(at(FRAME, BODY_BOTTOM), at(width - FRAME, HEIGHT - 2.0));
+        let ok = Rect::from_min_size(at(width - OK_RIGHT - OK_SIZE.x, OK_TOP), OK_SIZE);
         BoxLayout {
             frame,
             title,
@@ -153,39 +173,36 @@ impl MovieErrorBox {
                 origin + rect.max.to_vec2() * scale,
             )
         };
-        let border = Color32::from_rgb(0x00, 0x78, 0xd7);
-        painter.rect_filled(at(layout.frame), 0.0, Color32::WHITE);
-        painter.rect_stroke(
-            at(layout.frame),
-            0.0,
-            Stroke::new(scale, border),
-            egui::StrokeKind::Inside,
-        );
+        let frame = layout.frame;
+        // The raised frame: face, then light inside face on the top and
+        // left; shadow and dark on the right and bottom.
+        painter.rect_filled(at(frame), 0.0, FACE);
+        bevel(painter, &at, frame, [FACE, LIGHT], [DARK, SHADOW]);
+        painter.rect_filled(at(layout.title), 0.0, TITLE);
         painter.text(
-            at(layout.title).left_center() + Vec2::new(10.0 * scale, 0.0),
+            at(layout.title).left_center() + Vec2::new((CAPTION_X - FRAME) * scale, 0.0),
             Align2::LEFT_CENTER,
             CAPTION,
             font.clone(),
             Color32::BLACK,
         );
-        // The stop icon (MB_ICONHAND): a red disc with a white cross.
-        let icon = at(layout.icon);
-        painter.circle_filled(
-            icon.center(),
-            icon.width() / 2.0,
-            Color32::from_rgb(0xe8, 0x11, 0x23),
-        );
-        let arm = icon.width() * 0.2;
-        let cross = Stroke::new(2.5 * scale, Color32::WHITE);
+        let close = CLOSE.translate(frame.min.to_vec2());
+        painter.rect_filled(at(close), 0.0, FACE);
+        bevel(painter, &at, close, [LIGHT, FACE], [DARK, SHADOW]);
+        let mark = at(close).center();
+        let arm = 4.0 * scale;
         for (dx, dy) in [(arm, arm), (arm, -arm)] {
             painter.line_segment(
-                [
-                    icon.center() - Vec2::new(dx, dy),
-                    icon.center() + Vec2::new(dx, dy),
-                ],
-                cross,
+                [mark - Vec2::new(dx, dy), mark + Vec2::new(dx, dy)],
+                Stroke::new(2.0 * scale, Color32::BLACK),
             );
         }
+        let body = Rect::from_min_max(
+            Pos2::new(layout.title.min.x, layout.title.max.y + 1.0),
+            Pos2::new(layout.title.max.x, layout.band.min.y),
+        );
+        painter.rect_filled(at(body), 0.0, LIGHT);
+        stop_icon(painter, at(layout.icon), scale);
         painter.text(
             at(layout.text).left_center(),
             Align2::LEFT_CENTER,
@@ -193,29 +210,107 @@ impl MovieErrorBox {
             font.clone(),
             Color32::BLACK,
         );
-        painter.rect_filled(at(layout.band), 0.0, Color32::from_rgb(0xf0, 0xf0, 0xf0));
-        let ok = at(layout.ok);
-        let face = if self.ok_pressed {
-            Color32::from_rgb(0xcc, 0xe4, 0xf7)
-        } else {
-            Color32::from_rgb(0xe1, 0xe1, 0xe1)
-        };
-        painter.rect_filled(ok, 0.0, face);
-        // The default button carries the focus border.
+        painter.rect_filled(at(layout.band), 0.0, FACE);
+        // The default OK: a dark outline, then light top and left, dark
+        // and shadow bottom and right; pressed, it sinks.
+        let ok = layout.ok;
         painter.rect_stroke(
-            ok,
+            at(ok),
             0.0,
-            Stroke::new(2.0 * scale, border),
+            Stroke::new(scale, DARK),
             egui::StrokeKind::Inside,
         );
+        let inner = ok.shrink(1.0);
+        if self.ok_pressed {
+            painter.rect_stroke(
+                at(inner),
+                0.0,
+                Stroke::new(scale, SHADOW),
+                egui::StrokeKind::Inside,
+            );
+        } else {
+            bevel(painter, &at, inner, [LIGHT, FACE], [DARK, SHADOW]);
+        }
+        let shift = if self.ok_pressed { scale } else { 0.0 };
         painter.text(
-            ok.center(),
+            at(ok).center() + Vec2::splat(shift),
             Align2::CENTER_CENTER,
             "OK",
             font,
             Color32::BLACK,
         );
         layout
+    }
+}
+
+/// A two-pixel 3D edge around `rect`: `lit` (outer, inner) on the top and
+/// left, `shade` (outer, inner) on the right and bottom.
+fn bevel(
+    painter: &egui::Painter,
+    at: &impl Fn(Rect) -> Rect,
+    rect: Rect,
+    lit: [Color32; 2],
+    shade: [Color32; 2],
+) {
+    for (inset, (light, dark)) in [(0.0, (lit[0], shade[0])), (1.0, (lit[1], shade[1]))] {
+        let r = rect.shrink(inset);
+        let line = |painter: &egui::Painter, rect: Rect, colour| {
+            painter.rect_filled(at(rect), 0.0, colour);
+        };
+        line(
+            painter,
+            Rect::from_min_size(r.min, Vec2::new(r.width(), 1.0)),
+            light,
+        );
+        line(
+            painter,
+            Rect::from_min_size(r.min, Vec2::new(1.0, r.height())),
+            light,
+        );
+        line(
+            painter,
+            Rect::from_min_max(Pos2::new(r.min.x, r.max.y - 1.0), r.max),
+            dark,
+        );
+        line(
+            painter,
+            Rect::from_min_max(Pos2::new(r.max.x - 1.0, r.min.y), r.max),
+            dark,
+        );
+    }
+}
+
+/// The stop icon (`MB_ICONHAND`) as A0 draws it in 256 colours: a grey
+/// ring, a red disc darker to the lower right, and a light grey cross.
+fn stop_icon(painter: &egui::Painter, icon: Rect, scale: f32) {
+    let centre = icon.center();
+    let radius = icon.width() / 2.0;
+    painter.circle_filled(centre, radius, DARK);
+    painter.circle_filled(centre, radius - scale, LIGHT);
+    painter.circle_filled(
+        centre,
+        radius - 2.0 * scale,
+        Color32::from_rgb(192, 192, 192),
+    );
+    painter.circle_filled(centre, radius - 3.0 * scale, Color32::from_rgb(128, 0, 0));
+    painter.circle_filled(
+        centre - Vec2::splat(1.5 * scale),
+        radius - 5.0 * scale,
+        Color32::from_rgb(255, 0, 0),
+    );
+    let arm = radius * 0.45;
+    for (dx, dy) in [(arm, arm), (arm, -arm)] {
+        painter.line_segment(
+            [
+                centre - Vec2::new(dx, dy) + Vec2::splat(scale),
+                centre + Vec2::new(dx, dy) + Vec2::splat(scale),
+            ],
+            Stroke::new(4.0 * scale, DARK),
+        );
+        painter.line_segment(
+            [centre - Vec2::new(dx, dy), centre + Vec2::new(dx, dy)],
+            Stroke::new(4.0 * scale, Color32::from_rgb(192, 192, 192)),
+        );
     }
 }
 
@@ -273,13 +368,44 @@ mod tests {
     }
 
     #[test]
-    fn the_box_is_centred_and_ok_sits_in_its_button_band() {
-        let layout = layout();
-        assert_eq!(layout.frame.center(), Pos2::new(320.0, 240.0));
-        assert!(layout.frame.contains_rect(layout.ok));
+    fn the_box_takes_a0s_rects_for_a0s_path() {
+        // A0 2026-11-11-icon-menu-topic/53: the path's ink is 200 pixels
+        // wide (x 239..438), the frame (173, 171)..(472, 319), title y
+        // 174..195, band y 275..317, OK (380, 285)..(454, 307), the icon's
+        // ring (197, 220)..(228, 251).
+        let layout = MovieErrorBox::layout(200.0, 202.0);
+        assert_eq!(
+            layout.frame,
+            Rect::from_min_max(Pos2::new(173.0, 171.0), Pos2::new(473.0, 320.0))
+        );
+        assert_eq!(
+            layout.title,
+            Rect::from_min_max(Pos2::new(176.0, 174.0), Pos2::new(470.0, 196.0))
+        );
+        assert_eq!(
+            layout.band,
+            Rect::from_min_max(Pos2::new(176.0, 275.0), Pos2::new(470.0, 318.0))
+        );
+        assert_eq!(
+            layout.ok,
+            Rect::from_min_max(Pos2::new(380.0, 285.0), Pos2::new(455.0, 308.0))
+        );
+        assert_eq!(
+            layout.icon,
+            Rect::from_min_max(Pos2::new(197.0, 220.0), Pos2::new(229.0, 252.0))
+        );
+        assert_eq!(layout.text.min.x, 239.0);
         assert!(layout.band.contains_rect(layout.ok));
-        assert!(layout.text.width() >= 200.0);
-        let long = MovieErrorBox::layout(600.0, 190.0);
+        let long = MovieErrorBox::layout(600.0, 202.0);
         assert!(long.text.width() >= 600.0);
+        assert!(long.frame.contains_rect(long.text));
+    }
+
+    #[test]
+    fn a_caption_wider_than_the_text_widens_the_box_past_its_close_box() {
+        // The caption starts 28 in and the close box takes the title's last
+        // 25 pixels; 4 more keep them apart.
+        let layout = MovieErrorBox::layout(10.0, 400.0);
+        assert_eq!(layout.frame.width(), 457.0);
     }
 }
