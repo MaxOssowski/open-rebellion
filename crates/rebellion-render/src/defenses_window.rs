@@ -21,6 +21,7 @@ use rebellion_core::ids::{
 };
 use rebellion_core::manufacturing::{BuildableKind, ManufacturingState};
 use rebellion_core::missions::{MissionMember, MissionState, MissionTarget, MissionTargetPick};
+use rebellion_core::troop_transport::{RegimentLeg, RegimentTransit};
 use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};
@@ -228,6 +229,9 @@ impl DefensesItem {
 pub struct DefensesProduction<'a> {
     pub manufacturing: &'a ManufacturingState,
     pub deliveries: &'a DeliveryState,
+    /// The regiments travelling by Move (`TroopTransportState::transits`):
+    /// those bound for a planet's surface list there en route.
+    pub regiments: &'a [RegimentTransit],
 }
 
 /// What `FUN_0042c3b0(.., 0, 1)` draws under a row's mini: a personnel's
@@ -235,9 +239,15 @@ pub struct DefensesProduction<'a> {
 /// injured (`FUN_004f7800` sets `+0x50` bit `0x200` to injury != 0). An
 /// unfinished unit (bit 2 clear) takes STRATEGY `0x2d32` (11570) for side 1,
 /// else `0x2d34` (11572), on top; a defense facility en route (bit 4) takes
-/// 11509 (`0x2cf5`, families `0x22..0x27`). port: no built object in the
+/// 11509 (`0x2cf5`, families `0x22..0x27`). A regiment travelling to the
+/// planet (bit 4) takes its en route mark over its backdrop (A0
+/// 2026-11-11-regiment-en-route/00). port: no other built object in the
 /// window is en route (it leaves out personnel on a visible mission).
-fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
+fn row_marks(
+    world: &GameWorld,
+    regiments: &[RegimentTransit],
+    row: &DefensesRow,
+) -> Vec<(DllSource, u32)> {
     if let DefensesItem::Pending { kind, arrival, .. } = row.item {
         let side_one = match kind {
             BuildableKind::Fighter(class) => world
@@ -272,6 +282,8 @@ fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
     use crate::fleet_window::MiniObject;
     let injured = matches!(row.item, DefensesItem::Character(key)
         if world.characters.get(key).is_some_and(|character| character.injury > 0));
+    let en_route = matches!(row.item, DefensesItem::Troop(key)
+        if regiments.iter().any(|transit| transit.troop == key));
     let object = match row.item {
         DefensesItem::Character(_) => MiniObject::Character,
         DefensesItem::SpecialForce(key) => world
@@ -286,7 +298,7 @@ fn row_marks(world: &GameWorld, row: &DefensesRow) -> Vec<(DllSource, u32)> {
             MiniObject::Craft
         }
     };
-    crate::fleet_window::mini_marks(object, row.mini, false, injured)
+    crate::fleet_window::mini_marks(object, row.mini, en_route, injured)
 }
 
 /// One list row: the object, its GOKRES mini and its name (`FUN_004a9ab0`).
@@ -753,7 +765,7 @@ fn page_rows(
     if side != faction_side(player) && !opposing_contents_visible(world, fog, player, system) {
         return Vec::new();
     }
-    let mut rows = built_rows(world, missions, side, system, page);
+    let mut rows = built_rows(world, missions, production.regiments, side, system, page);
     rows.extend(pending_rows(world, production, side, system, page));
     rows
 }
@@ -838,6 +850,7 @@ fn defense_page_family(page: DefensesPage, family: u8) -> bool {
 fn built_rows(
     world: &GameWorld,
     missions: &MissionState,
+    regiments: &[RegimentTransit],
     side: u8,
     system: SystemKey,
     page: DefensesPage,
@@ -902,11 +915,21 @@ fn built_rows(
             rows.sort_by_key(|row| matches!(row.item, DefensesItem::SpecialForce(_)));
             rows
         }
-        // FUN_00504cc0.
+        // FUN_00504cc0. A regiment on its way to the planet is already in
+        // its destination (FUN_00556390): A0 2026-11-11-regiment-en-route/00
+        // lists Averam's travelling Alliance Army Regiment first, then the
+        // one in training. port: after the planet's own.
         DefensesPage::Regiments => value
             .ground_units
             .iter()
-            .filter_map(|&key| {
+            .copied()
+            .chain(
+                regiments
+                    .iter()
+                    .filter(|transit| transit.leg == RegimentLeg::Surface(system))
+                    .map(|transit| transit.troop),
+            )
+            .filter_map(|key| {
                 let troop = world.troops.get(key)?;
                 if fleet_side(troop.is_alliance) != side {
                     return None;
@@ -1378,7 +1401,7 @@ fn draw_defenses_window(
                 let captive = matches!(row.item, DefensesItem::Character(key)
                     if world.characters.get(key).is_some_and(|value| value.is_captive))
                 .then(|| crate::fleet_window::captive_mark(row.mini));
-                for (source, id) in row_marks(world, row)
+                for (source, id) in row_marks(world, production.regiments, row)
                     .into_iter()
                     .chain(std::iter::once((DllSource::Gokres, row.mini)))
                     .chain(captive)
@@ -1611,6 +1634,7 @@ mod tests {
         DefensesProduction {
             manufacturing: Box::leak(Box::default()),
             deliveries: Box::leak(Box::default()),
+            regiments: &[],
         }
     }
 
@@ -1813,6 +1837,7 @@ mod tests {
         let production = DefensesProduction {
             manufacturing: &manufacturing,
             deliveries: &deliveries,
+            regiments: &[],
         };
         let fog = seen(system);
         let rows = |page| {
@@ -1842,7 +1867,7 @@ mod tests {
                 class: xwing
             })
         );
-        assert_eq!(row_marks(&world, squadron), [(DllSource::Strategy, 11_570)]);
+        assert_eq!(row_marks(&world, &[], squadron), [(DllSource::Strategy, 11_570)]);
 
         let [battery] = &tail(DefensesPage::Batteries)[..] else {
             panic!("{:?}", tail(DefensesPage::Batteries));
@@ -1851,7 +1876,7 @@ mod tests {
             battery.label,
             defense_facility_mini(DatId::new(KDY)).unwrap().1
         );
-        assert_eq!(row_marks(&world, battery), [(DllSource::Strategy, 11_570)]);
+        assert_eq!(row_marks(&world, &[], battery), [(DllSource::Strategy, 11_570)]);
         assert_eq!(
             battery.item.menu_object(),
             Some(MenuObject::PendingFacility {
@@ -1865,7 +1890,7 @@ mod tests {
         let [shield] = &tail(DefensesPage::Shields)[..] else {
             panic!("{:?}", tail(DefensesPage::Shields));
         };
-        assert_eq!(row_marks(&world, shield), [(DllSource::Strategy, 11_509)]);
+        assert_eq!(row_marks(&world, &[], shield), [(DllSource::Strategy, 11_509)]);
         assert_eq!(
             shield.item.menu_object(),
             Some(MenuObject::PendingFacility {
@@ -1910,6 +1935,7 @@ mod tests {
         let production = DefensesProduction {
             manufacturing: &manufacturing,
             deliveries: &deliveries,
+            regiments: &[],
         };
         let fog = seen(system);
         let built = labels(&world, &fog, &missions, system, DefensesPage::Regiments).len();
@@ -1930,7 +1956,7 @@ mod tests {
             troop_mini(DatId::new(ALLIANCE_ARMY)).unwrap().1
         );
         assert_eq!(
-            row_marks(&world, training),
+            row_marks(&world, &[], training),
             [(DllSource::Strategy, 11_513), (DllSource::Strategy, 11_570)]
         );
         assert_eq!(
@@ -1939,6 +1965,82 @@ mod tests {
                 system,
                 class: DatId::new(ALLIANCE_ARMY)
             })
+        );
+    }
+
+    #[test]
+    fn a_regiment_travelling_to_the_planet_lists_on_its_page_with_the_en_route_mark() {
+        // A0 2026-11-11-regiment-en-route/00: Averam's Trooper Regiments
+        // page lists the Alliance Army Regiment moving there from Yavin,
+        // its mini over the striped en route mark (FUN_0042c3b0 bit 4; class
+        // 0x10000002 takes its own GOKRES mark, the mini plus 0x1000).
+        let (mut world, system, missions) = stocked();
+        let built = labels(
+            &world,
+            &seen(system),
+            &missions,
+            system,
+            DefensesPage::Regiments,
+        )
+        .len();
+        let moving = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(ALLIANCE_ARMY),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let elsewhere = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(ALLIANCE_ARMY),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        let other_system = world.systems.insert(world.systems[system].clone());
+        let regiments = [
+            RegimentTransit {
+                troop: moving,
+                origin: other_system,
+                leg: RegimentLeg::Surface(system),
+                arrival_tick: 135,
+            },
+            RegimentTransit {
+                troop: elsewhere,
+                origin: system,
+                leg: RegimentLeg::Surface(other_system),
+                arrival_tick: 135,
+            },
+        ];
+        let manufacturing = ManufacturingState::default();
+        let deliveries = DeliveryState::default();
+        let rows = page_rows(
+            &world,
+            &seen(system),
+            &missions,
+            DefensesProduction {
+                manufacturing: &manufacturing,
+                deliveries: &deliveries,
+                regiments: &regiments,
+            },
+            Faction::Alliance,
+            system,
+            DefensesPage::Regiments,
+        );
+        let [travelling] = &rows[built..] else {
+            panic!("{rows:?}");
+        };
+        assert_eq!(travelling.item, DefensesItem::Troop(moving));
+        assert_eq!(
+            travelling.item.menu_object(),
+            Some(MenuObject::Troop(moving))
+        );
+        assert_eq!(
+            row_marks(&world, &regiments, travelling),
+            [
+                (DllSource::Strategy, 11_513),
+                (DllSource::Gokres, travelling.mini + 0x1000)
+            ]
+        );
+        assert_eq!(
+            row_marks(&world, &[], travelling),
+            [(DllSource::Strategy, 11_513)]
         );
     }
 
@@ -1962,6 +2064,7 @@ mod tests {
         let production = DefensesProduction {
             manufacturing: &manufacturing,
             deliveries: &deliveries,
+            regiments: &[],
         };
         let rows = page_rows(
             &world,
@@ -1973,7 +2076,10 @@ mod tests {
             DefensesPage::Batteries,
         );
         assert_eq!(rows.len(), 1);
-        assert_eq!(row_marks(&world, &rows[0]), [(DllSource::Strategy, 11_572)]);
+        assert_eq!(
+            row_marks(&world, &[], &rows[0]),
+            [(DllSource::Strategy, 11_572)]
+        );
     }
 
     #[test]

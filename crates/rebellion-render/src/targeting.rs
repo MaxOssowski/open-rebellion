@@ -297,6 +297,7 @@ pub fn mission_release_target(
                 crate::defenses_window::DefensesProduction {
                     manufacturing,
                     deliveries,
+                    regiments: transport.transits(),
                 },
                 layout,
                 layer,
@@ -919,6 +920,7 @@ mod tests {
                             manufacturing:
                                 &rebellion_core::manufacturing::ManufacturingState::default(),
                             deliveries: &rebellion_core::delivery::DeliveryState::default(),
+                            regiments: &[],
                         },
                         &rebellion_core::economy::EconomyState::default(),
                         defenses,

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 104;
+const SCENARIO_COUNT: u8 = 105;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -346,6 +346,12 @@ pub enum Scenario {
     /// destination's Defenses window lists it first (A0 sfstatus/01..03:
     /// the Alliance's Infiltrators en route to Yavin, and their Status).
     SpecialForceEnroute = 103,
+    /// The primary system, the player's, on its Defenses window's Trooper
+    /// Regiments page: an Alliance Army (Imperial Army) Regiment travelling
+    /// there by Move from the third system, then one of the same class in
+    /// training there (A0 2026-11-11-regiment-en-route/00: Averam lists the
+    /// regiment from Yavin, then the one in training).
+    RegimentEnroute = 104,
 }
 
 impl Scenario {
@@ -455,6 +461,7 @@ impl Scenario {
             101 => Self::ModdellUninhabited,
             102 => Self::TroopResearchTargeting,
             103 => Self::SpecialForceEnroute,
+            104 => Self::RegimentEnroute,
             _ => return None,
         })
     }
@@ -509,6 +516,7 @@ impl Scenario {
             || self == Self::CharacterAboard
             || self == Self::ReconTargeting
             || self == Self::SpecialForceEnroute
+            || self == Self::RegimentEnroute
             || self == Self::ResearchTargeting
             || self == Self::TroopResearchTargeting
             || self == Self::UprisingTargeting
@@ -1303,6 +1311,7 @@ pub fn apply(
             | Scenario::ForceStatus
             | Scenario::ReconTargeting
             | Scenario::SpecialForceEnroute
+            | Scenario::RegimentEnroute
             | Scenario::ResearchTargeting
             | Scenario::TroopResearchTargeting
             | Scenario::UprisingTargeting
@@ -1327,8 +1336,78 @@ pub fn apply(
         );
         sectors.open_for_system(world, secondary, request.faction);
     }
+    if request.scenario == Scenario::RegimentEnroute {
+        place_regiment_enroute(
+            request,
+            world,
+            movement,
+            manufacturing,
+            troop_transport,
+            defenses,
+            primary,
+            system_keys.get(2).copied(),
+        );
+    }
 
     let _ = manufacturing;
+}
+
+/// The `RegimentEnroute` scenario: TROOPSD 2 (the Alliance Army Regiment)
+/// or 8 (the Imperial Army Regiment), both classes `FUN_0042c3b0` gives
+/// their own GOKRES en route mark, one sent by Move from `origin` to
+/// `primary` and one in training at `primary`, whose Defenses window shows
+/// its Trooper Regiments page.
+#[allow(clippy::too_many_arguments)]
+fn place_regiment_enroute(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    movement: &MovementState,
+    manufacturing: &mut ManufacturingState,
+    troop_transport: &mut TroopTransportState,
+    defenses: &mut DefensesWindowState,
+    primary: SystemKey,
+    origin: Option<SystemKey>,
+) {
+    let alliance = request.faction == CockpitFaction::Alliance;
+    let side = rebellion_core::dat::Faction::of_alliance(alliance);
+    let class = rebellion_core::ids::DatId::new(if alliance { 0x1000_0002 } else { 0x1000_0008 });
+    // The page lists only these two: the primary's own regiments of the
+    // side leave its list.
+    let troops = &world.troops;
+    world.systems[primary].ground_units.retain(|key| {
+        troops
+            .get(*key)
+            .is_none_or(|troop| troop.is_alliance != alliance)
+    });
+    if let Some(origin) = origin.filter(|&origin| origin != primary) {
+        world.systems[origin].control = ControlKind::Controlled(side);
+        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: class,
+            is_alliance: alliance,
+            regiment_strength: 100,
+        });
+        world.systems[origin].ground_units.push(troop);
+        let _ = troop_transport.move_regiment(
+            world,
+            movement,
+            &std::collections::HashSet::new(),
+            troop,
+            rebellion_core::troop_transport::RegimentTarget::System(primary),
+            0,
+        );
+    }
+    manufacturing.enqueue(
+        primary,
+        rebellion_core::manufacturing::QueueItem::new(
+            rebellion_core::manufacturing::BuildableKind::Troop(class),
+            100_000,
+        )
+        .delivered_to(primary),
+    );
+    defenses.show_page(
+        primary,
+        rebellion_render::defenses_window::DefensesPage::Regiments,
+    );
 }
 
 /// The Rescue scenario: the second character becomes a prisoner of the
@@ -2336,8 +2415,8 @@ pub fn emit_personnel_finder(
 
 /// The open Status window's title, name and rows: a Character Status in the
 /// ForceStatus scenario, a facility's (the headquarters') in Quadrants, the
-/// travelling special force's in SpecialForceEnroute (with the picture's
-/// marks), and an unfinished unit's or a producer's in any.
+/// travelling special force's in SpecialForceEnroute and regiment's in
+/// RegimentEnroute (with the picture's marks), and an unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
     request: FixtureRequest,
     sources: rebellion_render::status_rows::StatusSources<'_>,
@@ -2356,7 +2435,8 @@ pub fn emit_status_rows(
             };
             ("Character Status", None, rows)
         }
-        (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_))) => {
+        (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_)))
+        | (Scenario::RegimentEnroute, Some(object @ StatusObject::Troop(_))) => {
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
@@ -2380,6 +2460,11 @@ pub fn emit_status_rows(
             let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
                 return;
             };
+            marks = view
+                .marks
+                .iter()
+                .map(|&(source, id)| (format!("{source:?}"), id))
+                .collect();
             (view.title, Some(view.name), view.rows)
         }
         _ => return,
@@ -10251,6 +10336,7 @@ mod tests {
                         production: rebellion_render::DefensesProduction {
                             manufacturing: &manufacturing,
                             deliveries: &deliveries,
+                            regiments: &[],
                         },
                         economy: &economy,
                     },
@@ -10388,6 +10474,7 @@ mod tests {
                     production: rebellion_render::DefensesProduction {
                         manufacturing: &manufacturing,
                         deliveries: &deliveries,
+                        regiments: &[],
                     },
                     economy: &economy,
                 },
@@ -10480,6 +10567,51 @@ mod tests {
         assert!(recon.missions.en_route().is_empty());
     }
 
+    // A0 2026-11-11-regiment-en-route/00: Averam lists the Alliance Army
+    // Regiment moving there from Yavin.
+    #[test]
+    fn the_regiment_enroute_scenario_moves_a_regiment_to_the_primary_system() {
+        for (faction, class, alliance) in [
+            (CockpitFaction::Alliance, 0x1000_0002, true),
+            (CockpitFaction::Empire, 0x1000_0008, false),
+        ] {
+            // The primary's own regiment leaves its list; the other side's
+            // stays.
+            let mut kept = None;
+            let applied =
+                apply_to_loading_world_with(request(Scenario::RegimentEnroute, faction), |world| {
+                    let primary = world.systems.keys().next().unwrap();
+                    for is_alliance in [alliance, !alliance] {
+                        let troop = world.troops.insert(rebellion_core::world::TroopUnit {
+                            class_dat_id: rebellion_core::ids::DatId::new(class),
+                            is_alliance,
+                            regiment_strength: 100,
+                        });
+                        world.systems[primary].ground_units.push(troop);
+                        kept = Some(troop);
+                    }
+                });
+            let primary = applied.world.systems.keys().next().unwrap();
+            assert_eq!(applied.world.systems[primary].ground_units, [kept.unwrap()]);
+            let [transit] = applied.transport.transits() else {
+                panic!("{:?}", applied.transport.transits());
+            };
+            assert_eq!(
+                transit.leg,
+                rebellion_core::troop_transport::RegimentLeg::Surface(primary)
+            );
+            assert_ne!(transit.origin, primary);
+            let troop = &applied.world.troops[transit.troop];
+            assert_eq!(
+                (troop.class_dat_id.raw(), troop.is_alliance),
+                (class, alliance)
+            );
+        }
+        let recon =
+            apply_to_fleet_world(request(Scenario::ReconTargeting, CockpitFaction::Alliance));
+        assert!(recon.transport.transits().is_empty());
+    }
+
     #[test]
     fn the_targeting_fleet_move_and_fleet_window_scenarios_report_the_object_menu() {
         let reporting: Vec<_> = (0..SCENARIO_COUNT)
@@ -10534,6 +10666,7 @@ mod tests {
                 Scenario::BuildSelectionTraining,
                 Scenario::TroopResearchTargeting,
                 Scenario::SpecialForceEnroute,
+                Scenario::RegimentEnroute,
             ]
         );
     }

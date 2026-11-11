@@ -31,7 +31,7 @@ Yavin's Defenses window lists them, and their Status reads:
 ### The port
 
 No port change was needed. The new fixture `SpecialForceEnroute` (code
-101) is the Recon fixture with a team on its way to the primary system:
+104) is the Recon fixture with a team on its way to the primary system:
 Infiltrators (`0x3c000002`) for the Alliance, Imperial Commandos
 (`0x3c000007`) for the Empire. Neither class takes the GOKRES mark. The
 team is a member transit, so the destination's Defenses window lists it
@@ -64,11 +64,6 @@ Run `status-window-2026-11-11T14-16-17-925Z-707410`: pass, 22 of 22 cases
 `7985f94b9deb34377ebbd024f55f60a92235b101d47b75548620391fc1ba83fe`.
 After the run, three statements in the Rust were reformatted only.
 
-### Not covered
-
-An en route **regiment** (STRATEGY 11516) has no A0 Status capture.
-`troopstatus/03` and `status/12-troop` show regiments that stand still.
-
 ### Tests
 
 - `the_special_force_enroute_scenario_sends_a_team_to_the_primary_system`
@@ -82,6 +77,112 @@ An en route **regiment** (STRATEGY 11516) has no A0 Status capture.
   6057). Those lines were not changed here. The `emit_status_rows` arm runs
   only in the WASM build, so the browser gate tests it.
 - `provenance-scan check`: 0 uncited.
+
+## OBJ-10-C004: an en route regiment, and one in training
+
+### A0
+
+`.artifacts/a0-vm/2026-11-11-regiment-en-route/` (an Alliance game in the
+Windows 10 VM; `NOTES.txt`, `SHA256SUMS`). On day 42 one of Yavin's
+Alliance Army Regiments was sent by Move to Averam. Another was in
+training at Averam.
+
+| File | SHA-256 | Shows |
+|---|---|---|
+| `00-averam-troops-page.png` | `4e1333c0…` | Averam's Trooper Regiments page: the travelling regiment first, with the striped mark under its mini; then the one in training, on the red grid |
+| `01-training-regiment-menu.png` | `4304c0fb…` | the training regiment's menu: Move, Confirmed Move, Encyclopedia and Status lit; Scrap grey |
+| `02-training-regiment-status.png` | `ca97df9a…` | its Status: Attached Averam, Status Training, no ETA row; the picture over the red grid |
+| `03-first-regiment-menu.png` | `52bdbe28…` | the travelling regiment's menu: Move, Confirmed Move and Scrap grey |
+| `04-first-regiment-status.png` | `c65ca344…` | its Status: Attached Averam, Status Enroute, ETA Destination Day 135; the picture over the striped mark |
+
+### The source
+
+- `FUN_00445280` fills the rows. The Status word is "Enroute" (bit 4),
+  "Awaiting Orders" (bit 2) or "Training". The ETA row shows only en route.
+- `FUN_0042c3b0` draws the regiment's backdrop, STRATEGY 11514. Over it,
+  en route, it draws 11516. Classes `0x10000002` and `0x10000008` take
+  their own GOKRES mark instead: the portrait plus `0x1000`. An unfinished
+  regiment takes 11571 for side 1, 11573 for side 2.
+- A0 `04`'s picture is exactly 11514, GOKRES 5185 and the portrait 1089.
+  A0 `02`'s is exactly 11514, 11571 and 1089.
+
+### Port fixes
+
+1. **The Defenses window's Trooper Regiments page left out a travelling
+   regiment.** A0 `00` lists it at its destination. The page now adds the
+   regiments moving to that planet's surface after the planet's own
+   (`built_rows`). Their mini carries the en route mark (`row_marks`).
+   `port:` A0 shows no case with both, so the order between the planet's
+   own regiments and travelling ones is a guess.
+   Test:
+   `a_regiment_travelling_to_the_planet_lists_on_its_page_with_the_en_route_mark`.
+   It fails without the change.
+2. **The regiments' own GOKRES en route marks (5184..5252) were not
+   keyed.** Their one key pixel showed blue in the Status picture; A0
+   `04` shows the frame there. `bmp_cache` now keys them. Test:
+   `a_regiments_own_en_route_mark_is_keyed`. It fails without the change.
+
+`DefensesProduction` now carries the travelling regiments
+(`TroopTransportState::transits`). The save format is unchanged.
+
+### Fixture
+
+`RegimentEnroute` (code 105) opens the primary system's Defenses window
+on its Trooper Regiments page. It holds:
+
+- an Alliance Army Regiment (Imperial Army for the Empire) sent there by
+  Move from the third system;
+- one of the same class in training there.
+
+The page lists the travelling regiment first and the trainee second, as
+in A0 `00`. The fixture now also reports the Status window's marks for a
+regiment and for an unfinished unit. Test:
+`the_regiment_enroute_scenario_moves_a_regiment_to_the_primary_system`.
+
+### Browser (Linux Chromium, `status-window.mjs`)
+
+**`regiment-en-route` (both sides):**
+
+- the menu is 104 by 102, with A0 `03`'s rows and states: Move,
+  Confirmed Move and Scrap grey; Encyclopedia and Status lit;
+- the labels are A0's eight, and Status reads "Enroute";
+- the marks are STRATEGY 11514, then GOKRES 5185 (Empire: 5250).
+
+**`regiment-training` (both sides):**
+
+- the labels are A0's seven, and Status reads "Training";
+- the marks are STRATEGY 11514 and 11571 (Empire: 11573).
+
+For both cases, on the Alliance side, against A0 `04` and `02`:
+
+- the picture frame's interior differs from A0 in **0 of 12,740
+  pixels**;
+- the title and every label are within 1 pixel of A0's.
+
+Run `status-window-2026-11-11T14-40-50-657Z-906974`: pass, 26 of 26 cases.
+Test WASM
+`a1fff5d6d3cb0364130f08803258f134a3ab31656d8cba1c4d829d152b53830e`.
+After the run, some Rust lines were reformatted; nothing else changed.
+
+### Still different from A0
+
+- **The trainee's menu.** A0 `01` offers Move and Confirmed Move for a
+  regiment in training. The port greys them; `build-selection.mjs` already
+  records this for an unfinished squadron. Porting it means tracing what a
+  Move does to a unit not yet built. The case therefore does not compare
+  the menu's states.
+- **The list cell's pixels.** A0 `00`'s list cell is not compared pixel
+  for pixel. Only the unit test covers its marks.
+
+### Mutants
+
+The new lines of `defenses_window.rs` and `bmp_cache.rs`: 2 caught, 0
+missed. `place_regiment_enroute`: 9 caught, 0 missed. One of them, the
+rule that keeps the other side's regiments, was missed at first. The
+fixture test now places a regiment of each side on the primary system.
+The run again missed the two old `FleetLoadWatch::next` mutants, on lines
+this change did not touch. The fixture's new `emit_status_rows` arms run only in the WASM
+build, so the browser gate covers them.
 
 ## Cells with no A0 yet
 
@@ -141,3 +242,8 @@ completed mission posts its report. Success and failure reports already
 match A0 (OBJ-12-C004 and C005). The lead should decide whether the
 existing report evidence settles this cell or whether it should be
 excluded. No new capture is needed for the window itself.
+
+The scenarios were renumbered at the merge onto main, after the other
+agents' scenarios 100..102: SpecialForceEnroute is 103 (code 104) and
+RegimentEnroute is 104 (code 105). The run ids above used codes 101 and
+102 in the worktree.

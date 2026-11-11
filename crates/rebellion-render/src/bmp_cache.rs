@@ -2078,6 +2078,11 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 3_072..=3_330
                 | 7_168..=7_426
                 | 5_696..=6_031
+                // The regiments' own en route marks (portrait + 0x1000,
+                // `0x1440..0x1484`, TROOPSD 2 and 8, `FUN_0042c3b0`): A0
+                // 2026-11-11-regiment-en-route/04 shows the frame through
+                // the mark's key pixel.
+                | 5_184..=5_252
                 // The craft portraits' and minis' damage marks (`+0x2000`,
                 // `0x2640..0x278f` and `0x6640..0x678f`, `FUN_0042c3b0`).
                 | 9_792..=10_127
@@ -3164,6 +3169,21 @@ pub(crate) mod tests {
         ] {
             assert!(!uses_blue_screen_transparency(source, resource_id), "{resource_id}");
         }
+    }
+
+    #[test]
+    fn a_regiments_own_en_route_mark_is_keyed() {
+        // FUN_0042c3b0: TROOPSD 2 and 8 take their portrait + 0x1000 en route
+        // (GOKRES 5185, 5250). A0 2026-11-11-regiment-en-route/04 shows the
+        // picture frame, not blue, through the mark's key pixel.
+        for resource_id in [0x1440, 0x1441, 0x1482, 0x1484] {
+            assert!(
+                uses_blue_screen_transparency(DllSource::Gokres, resource_id),
+                "{resource_id}"
+            );
+        }
+        assert!(!uses_blue_screen_transparency(DllSource::Gokres, 0x143f));
+        assert!(!uses_blue_screen_transparency(DllSource::Gokres, 0x1485));
     }
 
     #[test]

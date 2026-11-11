@@ -51,6 +51,10 @@ const RECON_TARGETING = 63;
 // 104 SpecialForceEnroute: ReconTargeting with an Infiltrators team (the
 // Empire's Imperial Commandos) travelling to the primary system.
 const SPECIAL_FORCE_ENROUTE = 104;
+// 105 RegimentEnroute: the primary system's Trooper Regiments page with an
+// Alliance (Imperial) Army Regiment travelling there, then one in training.
+const REGIMENT_ENROUTE = 105;
+const regimentA0 = "../2026-11-11-regiment-en-route";
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -452,6 +456,43 @@ const cases = [
       rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
+  // The en route regiment (OBJ-10 C004): A0 2026-11-11-regiment-en-route/
+  // 03, 04 (an Alliance game, day 46..47: the Alliance Army Regiment moving
+  // from Yavin, listed first on Averam's Trooper Regiments page). Its menu
+  // greys Move, Confirmed Move and Scrap; its Status (FUN_00445280) reads
+  // Enroute with the ETA row; FUN_0042c3b0 draws the backdrop 11514, then
+  // the class's own GOKRES en route mark (portrait + 0x1000), under the
+  // picture. Title, labels and the picture's interior against A0.
+  {
+    name: "regiment-en-route",
+    code: REGIMENT_ENROUTE,
+    family: "Troop",
+    a0: { file: `${regimentA0}/04-first-regiment-status.png`, x: 108, y: 79, labels: 8, side: "alliance" },
+    a0Picture: { file: `${regimentA0}/04-first-regiment-status.png`, x: 108, y: 79, side: "alliance" },
+    rows: [["Attached: "], ["Status:", "Enroute"], ["ETA Destination:"], ["Maintenance Cost:"], ["Attack Strength:"],
+      ["Defense Strength:"], ["Bombardment Value:"], ["Detection Value:"]],
+    marks: { alliance: [["Strategy", 11514], ["Gokres", 5185]], empire: [["Strategy", 11514], ["Gokres", 5250]] },
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"],
+      states: [false, false, true, true, false] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
+  // The regiment in training, the page's second cell: A0 02 reads
+  // "Training" with no ETA row, the picture over 11514 and the unfinished
+  // mark 11571 (11573 for side 2). A0 01's menu offers Move and Confirmed
+  // Move, which the port greys (see the 2026-11-11 evidence), so only the
+  // rows are compared.
+  {
+    name: "regiment-training",
+    code: REGIMENT_ENROUTE,
+    family: "PendingTroop",
+    a0: { file: `${regimentA0}/02-training-regiment-status.png`, x: 108, y: 79, labels: 7, side: "alliance" },
+    a0Picture: { file: `${regimentA0}/02-training-regiment-status.png`, x: 108, y: 79, side: "alliance" },
+    rows: [["Attached: "], ["Status:", "Training"], ["Maintenance Cost:"], ["Attack Strength:"],
+      ["Defense Strength:"], ["Bombardment Value:"], ["Detection Value:"]],
+    marks: { alliance: [["Strategy", 11514], ["Strategy", 11571]], empire: [["Strategy", 11514], ["Strategy", 11573]] },
+    a0Menu: { width: 104, height: 102, rows: ["Move", "Confirmed Move", "Encyclopedia", "Status", "Scrap"] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42 + 70, y: faction.galaxy.y + 5 + 116 }),
+  },
   // A KDY-150's Status from the Defenses window's Planetary Batteries
   // page (A0 status/22, 23 at Coruscant): Location, Status "Active",
   // Maintenance Cost, Weapons Rating, Shield Strength, Bombardment Defense
@@ -543,6 +584,9 @@ async function inspect(server, source, faction, testCase, executable) {
     if (testCase.a0Menu) {
       assert.deepEqual([menu.width, menu.height], [testCase.a0Menu.width, testCase.a0Menu.height], JSON.stringify(menu));
       assert.deepEqual(menu.row_states.map(([label]) => label), testCase.a0Menu.rows, JSON.stringify(menu));
+      if (testCase.a0Menu.states) {
+        assert.deepEqual(menu.row_states.map(([, enabled]) => enabled), testCase.a0Menu.states, JSON.stringify(menu));
+      }
     }
     const line = await logged("Status opens the window", opened);
     const [, x, y, width, height] = line.match(opened).map(Number);
@@ -565,7 +609,8 @@ async function inspect(server, source, faction, testCase, executable) {
       });
       if (testCase.marks) {
         const { marks } = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
-        assert.deepEqual(marks, testCase.marks, JSON.stringify(marks));
+        const expected = Array.isArray(testCase.marks) ? testCase.marks : testCase.marks[faction.name];
+        assert.deepEqual(marks, expected, JSON.stringify(marks));
       }
     }
     await page.mouse.move(2, 2);

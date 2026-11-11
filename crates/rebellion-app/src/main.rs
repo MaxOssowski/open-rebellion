@@ -6561,6 +6561,7 @@ async fn main() {
                         rebellion_render::DefensesProduction {
                             manufacturing: &mfg_state,
                             deliveries: &delivery_state,
+                            regiments: troop_transport_state.transits(),
                         },
                         &economy_state,
                         &mut defenses_window_state,
@@ -9355,6 +9356,7 @@ async fn main() {
                         production: rebellion_render::DefensesProduction {
                             manufacturing: &mfg_state,
                             deliveries: &delivery_state,
+                            regiments: troop_transport_state.transits(),
                         },
                         economy: &economy_state,
                     },
