@@ -442,6 +442,209 @@ function verifyMessageIndexRail(faction, viewport, screenshotBytes) {
     pixels_keyed: keyed };
 }
 
+// The GID's system states (CMD-02 C018, C020, C022, C023, C024) against A0.
+// FUN_0042cde0 blits each item's mark keyed (FUN_005fd0f0) at the 17 by 17
+// cell's top left, FUN_00425d00's corner. A0's game states are not the
+// fixture's, so each mark the port draws at the primary system is compared
+// with the same STRATEGY mark where an A0 capture shows it at a system's
+// exact corner, every non-key pixel. The table lists, for each mark and
+// cockpit, the capture, the system and its corner (found by an exact keyed
+// search at every system's corner; the largest mark that matches there).
+const GID_STATE_SCENARIOS = new Map([
+  ["known", []],
+  ["uninhabited", []],
+  // Idle Fleets (Alt+3, accelerator 0xbcc, display 0x21) and Active
+  // Personnel (Alt+6, 0xbcf, 0x44), then Popular Support (Alt+1) again.
+  ["blockade", ["3"]],
+  ["mission", ["6"]],
+  ["fleet", ["3"]],
+]);
+// The mark each display gives the primary system (FUN_0042b330 through
+// FUN_00426e70; STRATEGY 10146..10149 the Alliance's, largest first, 10150..
+// 10153 the Empire's, smallest first, as their art shows):
+// - Popular Support (0x11): the player's support, 92% for the Alliance
+//   (largest), 8% for the Empire (smallest), in the holder's colour;
+// - Idle Fleets (0x21, bands 3, 2, 2, 1, 1): one fleet is the medium mark,
+//   in its side's colour; the blockade's fleet is the enemy's;
+// - Active Personnel (0x44, bands 1): the agent on a mission makes it the
+//   player's largest.
+const GID_STATE_EXPECTED = {
+  alliance: { "Popular Support": 10146, "blockade:Alt+3": 10151,
+    "fleet:Alt+3": 10148, "mission:Alt+6": 10146 },
+  empire: { "Popular Support": 10150, "blockade:Alt+3": 10148, "fleet:Alt+3": 10151,
+    "mission:Alt+6": 10153 },
+};
+const GID_KNOWN_CELLS = new Map();
+const GID_A0_MARKS = {
+  alliance: {
+    // agent-menu/alliance-easy-day1 and alliance-expert-day1 (new Alliance
+    // games, day 1, Popular Support) and 2026-10-28-nav/fleet-averam (the
+    // "test" save). Not the DS_flip_allian captures (gid-selection/*),
+    // whose sides are mixed.
+    10146: ["agent-menu/alliance-easy-day1.png", "Corsin", 245, 155],
+    10147: ["agent-menu/alliance-expert-day1.png", "Averam", 214, 146],
+    10148: ["2026-10-28-nav/fleet-averam.png", "Umgul", 367, 272],
+    10150: ["agent-menu/alliance-easy-day1.png", "Coruscant", 226, 150],
+    10151: ["agent-menu/alliance-easy-day1.png", "Vagran", 191, 228],
+    10152: ["agent-menu/alliance-expert-day1.png", "Xyquine", 182, 196],
+    10155: ["agent-menu/alliance-easy-day1.png", "Bothawui", 352, 258],
+  },
+  empire: {
+    // gid/d-popular-support, d-idle-fleets and d-energy (Empire, day 209).
+    10146: ["gid/d-energy.png", "Commenor", 257, 201],
+    10147: ["gid/d-energy.png", "Duros", 264, 219],
+    10148: ["gid/d-idle-fleets.png", "Yavin", 526, 236],
+    10149: ["gid/d-popular-support.png", "Commenor", 257, 201],
+    10150: ["gid/d-idle-fleets.png", "Coruscant", 289, 152],
+    10151: ["gid/d-idle-fleets.png", "Averam", 277, 148],
+    10152: ["gid/d-popular-support.png", "Averam", 277, 148],
+    10153: ["gid/d-popular-support.png", "Coruscant", 289, 152],
+    10154: ["gid/d-popular-support.png", "Corellia", 270, 205],
+    10155: ["gid/d-popular-support.png", "Yaga Minor", 290, 135],
+    10156: ["gid/d-energy.png", "Yaga Minor", 290, 135],
+    10157: ["gid/d-energy.png", "Svivren", 274, 169],
+  },
+};
+
+function gidMarkPixels(id) {
+  const bitmap = decodeIndexedBmp(fs.readFileSync(path.join(root, `data/base/ui/strategy-dll/BMP/${id}.bmp`)));
+  const key = bitmap.pixel(0, bitmap.height - 1).join(",");
+  const pixels = [];
+  for (let y = 0; y < bitmap.height; y += 1) {
+    for (let x = 0; x < bitmap.width; x += 1) {
+      const rgb = bitmap.pixel(x, y);
+      if (rgb.join(",") !== key) pixels.push([x, y, rgb]);
+    }
+  }
+  return pixels;
+}
+
+// The largest STRATEGY mark (10146..10160) whose every non-key pixel the
+// image shows at (left, top).
+function gidMarkAt(png, left, top) {
+  let found = null;
+  for (let id = 10146; id <= 10160; id += 1) {
+    if (id === 10159) continue;
+    const pixels = gidMarkPixels(id);
+    const exact = pixels.every(([x, y, rgb]) => {
+      const i = ((top + y) * png.width + left + x) * 4;
+      return png.data[i] === rgb[0] && png.data[i + 1] === rgb[1] && png.data[i + 2] === rgb[2];
+    });
+    if (exact && (!found || pixels.length > found.pixels)) found = { id, pixels: pixels.length };
+  }
+  return found?.id ?? null;
+}
+
+function compareGidMarkWithA0(faction, id, port, left, top) {
+  const reference = GID_A0_MARKS[faction][id];
+  assert.ok(reference, `${faction}: no A0 capture listed for GID mark ${id}`);
+  const [file, system, a0Left, a0Top] = reference;
+  const a0Path = path.join(root, ".artifacts/a0-vm", file);
+  assert.ok(fs.existsSync(a0Path), `A0 capture ${file} is missing`);
+  const a0 = PNG.sync.read(fs.readFileSync(a0Path));
+  let different = 0;
+  const pixels = gidMarkPixels(id);
+  for (const [x, y] of pixels) {
+    const i = ((a0Top + y) * a0.width + a0Left + x) * 4;
+    const j = ((top + y) * port.width + left + x) * 4;
+    if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[j + c])) different += 1;
+  }
+  assert.equal(gidMarkAt(a0, a0Left, a0Top), id, `A0 ${file} shows no ${id} at ${system}`);
+  assert.equal(different, 0, `${faction}: ${different} of ${pixels.length} pixels of ${id} differ from A0 ${file} (${system})`);
+  return { mark: id, a0: file, a0_system: system, a0_corner: [a0Left, a0Top], port_corner: [left, top],
+    pixels_checked: pixels.length, different_pixels: different };
+}
+
+async function verifyGidStateMarksAgainstA0(page, faction, scenario, folder, ready) {
+  const probes = [];
+  const left = Math.round(ready.primary_screen_x - 8.5);
+  const top = Math.round(ready.primary_screen_y - 8.5);
+  // Off the galaxy, so no hover label covers the primary system.
+  await page.mouse.move(2, 2);
+  const shown = await stableInteractionFrame(page, folder, `${scenario.slug}-a0-marks`);
+  const shot = PNG.sync.read(shown);
+  const mark = ready.primary_gid_marks.at(-1);
+  assert.equal(ready.mode, "Popular Support");
+  assert.equal(mark, GID_STATE_EXPECTED[faction]["Popular Support"], JSON.stringify(ready));
+  assert.equal(gidMarkAt(shot, left, top), mark, `${faction}: the primary system does not show ${mark}`);
+  // The cell and a 2-pixel margin, as the known (unblockaded) case drew it.
+  const cell = [];
+  for (let y = -2; y < 19; y += 1) {
+    for (let x = -2; x < 19; x += 1) {
+      const i = ((top + y) * shot.width + left + x) * 4;
+      cell.push(shot.data[i], shot.data[i + 1], shot.data[i + 2]);
+    }
+  }
+  if (scenario.slug === "known") GID_KNOWN_CELLS.set(faction, cell);
+  if (scenario.slug === "blockade") {
+    // A0, the Empire game, one day (gid-displays/legend-alt-1 and
+    // legend-alt-3, Alt+1 and Alt+3 3 s apart): Yavin is held by the
+    // Alliance (Popular Support 10149, the Alliance's smallest) with one
+    // Empire fleet alone in orbit (Idle Fleets 10151, the Empire's medium
+    // mark, not the both-sides 10160). FUN_0050b8e0's rule (no battle, a
+    // fleet of another side than the holder's) makes it blockaded. Its
+    // Popular Support cell and margin equal, pixel for pixel, Yavin's on
+    // day 209 (gid/d-popular-support), when the Alliance's own fleet
+    // orbited it (d-idle-fleets 10148): the blockade draws nothing.
+    const a0 = (file) => PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm", file)));
+    const blockaded = a0("gid-displays/legend-alt-1.png");
+    assert.equal(gidMarkAt(a0("gid-displays/legend-alt-3.png"), 526, 236), 10151,
+      "A0 gid-displays/legend-alt-3: Yavin's Idle Fleets mark");
+    const unblockaded = a0("gid/d-popular-support.png");
+    let a0Different = 0;
+    for (let y = -2; y < 19; y += 1) {
+      for (let x = -2; x < 19; x += 1) {
+        const i = ((236 + y) * 640 + 526 + x) * 4;
+        if ([0, 1, 2].some((c) => blockaded.data[i + c] !== unblockaded.data[i + c])) a0Different += 1;
+      }
+    }
+    assert.equal(a0Different, 0, "A0's blockaded Yavin differs from its unblockaded cell");
+    assert.equal(gidMarkAt(blockaded, 526, 236), 10149, "A0 gid-displays/legend-alt-1: Yavin's mark");
+    // The port: the blockaded primary system's cell equals the known
+    // case's, when that case ran first (run.mjs --all).
+    const known = GID_KNOWN_CELLS.get(faction);
+    const portDifferent = known
+      ? known.reduce((count, value, index) => count + (value !== cell[index] ? 1 : 0), 0) : null;
+    if (known) {
+      assert.equal(portDifferent, 0, `${faction}: the blockaded system's cell differs from the known case's`);
+    }
+    probes.push({ type: "gid-blockade-cell", a0_yavin_cell_pixels: 21 * 21, a0_different: a0Different,
+      port_compared_with_known: Boolean(known), port_different_channels: portDifferent });
+  }
+  probes.push({ type: "gid-state-mark-a0", display: ready.mode,
+    ...compareGidMarkWithA0(faction, mark, shot, left, top) });
+  // A frame between each key event, so the port's per-frame key state
+  // sees Alt held when the digit goes down.
+  const nextFrames = () => page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const altDigit = async (digit) => {
+    await page.keyboard.down("Alt");
+    await nextFrames();
+    await page.keyboard.down(`Digit${digit}`);
+    await nextFrames();
+    await page.keyboard.up(`Digit${digit}`);
+    await page.keyboard.up("Alt");
+  };
+  for (const digit of GID_STATE_SCENARIOS.get(scenario.slug)) {
+    await altDigit(digit);
+    const frameBytes = await stableInteractionFrame(page, folder, `${scenario.slug}-alt-${digit}-a0-marks`);
+    assert.notEqual(sha256(frameBytes), sha256(shown), `${faction}: Alt+${digit} changed no display`);
+    const frame = PNG.sync.read(frameBytes);
+    const id = gidMarkAt(frame, left, top);
+    assert.equal(id, GID_STATE_EXPECTED[faction][`${scenario.slug}:Alt+${digit}`],
+      `${faction}: Alt+${digit} shows ${id} at the primary system`);
+    probes.push({ type: "gid-state-mark-a0", display: `Alt+${digit}`,
+      ...compareGidMarkWithA0(faction, id, frame, left, top) });
+  }
+  if (GID_STATE_SCENARIOS.get(scenario.slug).length > 0) {
+    await altDigit("1");
+    const back = await stableInteractionFrame(page, folder, `${scenario.slug}-alt-1-restored`);
+    assert.equal(sha256(back), sha256(shown), `${faction}: Alt+1 did not restore Popular Support`);
+  }
+  return probes;
+}
+
 async function probeGid(page, faction, scenario, viewport, folder, consoleLines, ready) {
   const scale = Math.min(viewport.width / 640, viewport.height / 480);
   const offsetX = (viewport.width - 640 * scale) / 2;
@@ -493,6 +696,9 @@ async function probeGid(page, faction, scenario, viewport, folder, consoleLines,
   if (scenario.slug === "blockade" && scale === 1) {
     assert.equal(ready.primary_gid_marks.length, 1, JSON.stringify(ready));
     probes.push({ type: "blockade-marks", marks: ready.primary_gid_marks });
+  }
+  if (GID_STATE_SCENARIOS.has(scenario.slug) && scale === 1) {
+    probes.push(...await verifyGidStateMarksAgainstA0(page, faction, scenario, folder, ready));
   }
 
   const commandLines = () => consoleLines.map(({ text }) => text)

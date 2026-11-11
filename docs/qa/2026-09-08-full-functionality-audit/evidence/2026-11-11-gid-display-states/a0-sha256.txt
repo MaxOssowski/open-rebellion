@@ -1,0 +1,11 @@
+8fc72554b3b8367497ee4f712119be4cb53aec43093fd5d3893a76c160932f2f  .artifacts/a0-vm/agent-menu/alliance-easy-day1.png
+03de8a0ec151a4639d63ee443932e0ca100d6e588c137072c5d32255e3f45890  .artifacts/a0-vm/agent-menu/alliance-expert-day1.png
+db7c6159215ab329c2ac7f01fd12070fd47d0e909b37869c3cae96f1204d8ade  .artifacts/a0-vm/2026-10-28-nav/fleet-averam.png
+26e2393f4eb76a09fc2d39bae80fbfd24544b46d480171daf06e7ef864580dbb  .artifacts/a0-vm/gid/d-popular-support.png
+e5dfcabf4981bb447bddea36e5b8d2dbe8f09d365be3854f7b2d7106b7bbda8d  .artifacts/a0-vm/gid/d-idle-fleets.png
+046835b16feace7c486e070699306e072bb9e708e455452a6cdc363f90c4b750  .artifacts/a0-vm/gid/d-energy.png
+24d1d87eec35ee755997ab0baea4701b7802b2f7598b3290ea6a668dac5a9f10  .artifacts/a0-vm/gid/d-active-personnel.png
+fd5a2da87fe1e4e0bedb9ddfcd04885a2f82ff8eba62eecdba763d42fc06b1a3  .artifacts/a0-vm/gid-displays/alt-1.png
+51cd48094fdd42f4c30955469ac3e082bf89f0d1081aba8e67f568f20378bdc6  .artifacts/a0-vm/gid-displays/alt-3.png
+24e41bf208b687b0d64e0fd5b8259e4b0618218415b72eee2c5f3c75cc963123  .artifacts/a0-vm/gid-displays/legend-alt-1.png
+3ffe5c65fc3976d3b96054ebf786386c0d622cfb122af1c187a9ff39f3a2ee23  .artifacts/a0-vm/gid-displays/legend-alt-3.png
