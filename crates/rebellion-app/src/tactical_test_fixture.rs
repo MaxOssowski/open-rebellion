@@ -61,6 +61,10 @@ const HULL_SCALE_PRESENTATION_SCENARIO: u32 = 37;
 /// A0 TAC-03-C017: the lifecycle fixture's battle after every hostile
 /// capital has jumped out, so Attack Capital Ships holds no target.
 const ATTACK_TARGET_LOST_PRESENTATION_SCENARIO: u32 = 38;
+/// A0 message-rail/retreat-result-commenor and battle-alert-empire/04:
+/// Retreat on the Battle Alert at the viewer's own system, which the enemy
+/// reached last, by a fleet weak enough to leave at once (FUN_005d19a0).
+const BATTLE_ALERT_RETREAT_SCENARIO: u32 = 39;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -122,6 +126,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub tactical_audio_presentation: bool,
     pub hull_scale_presentation: bool,
     pub attack_target_lost_presentation: bool,
+    pub battle_alert_retreat: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -353,7 +358,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | BATTLE_ALERT_PRESENTATION_SCENARIO
         | TACTICAL_AUDIO_PRESENTATION_SCENARIO
         | HULL_SCALE_PRESENTATION_SCENARIO
-        | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO => (
+        | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO
+        | BATTLE_ALERT_RETREAT_SCENARIO => (
             false,
             true,
             false,
@@ -397,6 +403,7 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         tactical_audio_presentation: scenario == TACTICAL_AUDIO_PRESENTATION_SCENARIO,
         hull_scale_presentation: scenario == HULL_SCALE_PRESENTATION_SCENARIO,
         attack_target_lost_presentation: scenario == ATTACK_TARGET_LOST_PRESENTATION_SCENARIO,
+        battle_alert_retreat: scenario == BATTLE_ALERT_RETREAT_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -494,7 +501,8 @@ pub(crate) fn apply(
                 && class.hull > 0
                 && (!request.hull_scale_presentation || class.name.contains("Medium Transport"))
                 && (!request.detail_escort_presentation || class.troop_capacity >= 3)
-                && (!request.battle_options_presentation || class.hyperdrive > 0)
+                && (!(request.battle_options_presentation || request.battle_alert_retreat)
+                    || class.hyperdrive > 0)
                 && (!(request.command_execution_presentation
                     || request.command_progression_presentation
                     || request.attack_targeting_presentation
@@ -512,7 +520,8 @@ pub(crate) fn apply(
                 && class.hull > 0
                 && (!request.hull_scale_presentation || class.name.contains("Victory"))
                 && (!request.detail_escort_presentation || class.troop_capacity >= 3)
-                && (!request.battle_options_presentation || class.hyperdrive > 0)
+                && (!(request.battle_options_presentation || request.battle_alert_retreat)
+                    || class.hyperdrive > 0)
                 && (!(request.command_execution_presentation
                     || request.command_progression_presentation
                     || request.attack_targeting_presentation
@@ -552,7 +561,16 @@ pub(crate) fn apply(
             || request.navigation_camera_presentation
             || ((request.group_presentation || request.effect_presentation)
                 && is_alliance == player_is_alliance);
-        let ship_count = if request.battle_options_withdrawal {
+        let ship_count = if request.battle_alert_retreat {
+            // One hull against four: the viewer's strength is a quarter
+            // of the enemy's, under the leave threshold 0.33 (+0x24,
+            // FUN_005c7cb0), so it leaves at the first step.
+            if is_alliance == player_is_alliance {
+                1
+            } else {
+                4
+            }
+        } else if request.battle_options_withdrawal {
             2
         } else if request.projectile_field_presentation
             || request.detail_escort_presentation
@@ -588,7 +606,7 @@ pub(crate) fn apply(
             2
         } else if request.group_presentation && expanded {
             4
-        } else if request.hull_scale_presentation {
+        } else if request.hull_scale_presentation || request.battle_alert_retreat {
             0
         } else if request.death_star_presentation && !is_alliance {
             // FUN_005ad930 enables Attack Death Star only while fewer
@@ -744,6 +762,19 @@ pub(crate) fn apply(
         }
     }
 
+    if request.battle_alert_retreat {
+        // The viewer's system, which the enemy reached last (+0x78 bits
+        // 6..7): FUN_0049b4d0 then reads 0x7008 "now under blockade".
+        use rebellion_core::dat::Faction;
+        let (viewer, enemy) = if player_is_alliance {
+            (Faction::Alliance, Faction::Empire)
+        } else {
+            (Faction::Empire, Faction::Alliance)
+        };
+        world.systems[system].control = rebellion_core::world::ControlKind::Controlled(viewer);
+        world.systems[system].last_arrival = Some(enemy);
+    }
+
     let player_is_attacker = request.faction == CockpitFaction::Alliance;
     tactical_flow::begin_player_battle(
         world,
@@ -763,7 +794,7 @@ pub(crate) fn apply(
     )
     .map_err(|error| format!("fixture battle entry failed: {error:?}"))?;
     #[cfg(feature = "interface-test-fixtures")]
-    if !request.battle_alert_presentation {
+    if !(request.battle_alert_presentation || request.battle_alert_retreat) {
         tactical.dismiss_battle_alert_for_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
@@ -920,6 +951,7 @@ struct FixtureRecord<'a> {
     tactical_audio_presentation: bool,
     hull_scale_presentation: bool,
     attack_target_lost_presentation: bool,
+    battle_alert_retreat: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1430,6 +1462,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         tactical_audio_presentation: request.tactical_audio_presentation,
         hull_scale_presentation: request.hull_scale_presentation,
         attack_target_lost_presentation: request.attack_target_lost_presentation,
+        battle_alert_retreat: request.battle_alert_retreat,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1517,6 +1550,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         tactical_audio_presentation: request.tactical_audio_presentation,
         hull_scale_presentation: request.hull_scale_presentation,
         attack_target_lost_presentation: request.attack_target_lost_presentation,
+        battle_alert_retreat: request.battle_alert_retreat,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1632,6 +1666,9 @@ mod tests {
         assert!(decode(0x10126).unwrap().attack_target_lost_presentation);
         assert!(decode(0x10126).unwrap().attack_target_lifecycle_presentation);
         assert!(!decode(0x10117).unwrap().attack_target_lost_presentation);
+        assert!(decode(0x10127).unwrap().battle_alert_retreat);
+        assert!(!decode(0x10127).unwrap().battle_alert_presentation);
+        assert!(!decode(0x10123).unwrap().battle_alert_retreat);
         assert_eq!(
             decode(0x10103).unwrap().lod_fixture,
             TacticalLodFixture::Close
@@ -1653,7 +1690,7 @@ mod tests {
             TacticalLodFixture::CameraJourney
         );
         assert!(decode(0x10100).is_none());
-        assert!(decode(0x10127).is_none());
+        assert!(decode(0x10128).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
     }

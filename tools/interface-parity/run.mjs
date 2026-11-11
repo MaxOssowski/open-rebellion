@@ -4545,6 +4545,120 @@ async function probeTacticalBattleResultsPresentation(
   return probes;
 }
 
+// Retreat on the Battle Alert (0x67, FUN_00450540 -> FUN_00487830: answer
+// 1 with the retreat word) at the viewer's own system, which the enemy
+// reached last, by one hull against four. The abstract battle lets it
+// leave at once (FUN_005d19a0: its strength under 0.33 of the enemy's),
+// and the report reads the viewer's withdrawal (FUN_0049b4d0: 0x7003,
+// 0x7008, 0x700d) over its withdrawal scene (FUN_0046f360 +0x54).
+// A0: message-rail/retreat-result-commenor (Alliance) and
+// battle-alert-empire/04-result (Empire).
+async function probeTacticalBattleAlertRetreat(page, viewport, folder, consoleLines, ready, faction) {
+  assert.equal(ready.battle_alert_open, true, `${faction}: Battle Alert was bypassed`);
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const alliance = faction === "alliance";
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  // The alert at (62, 49) / (125, 52), as probeTacticalBattleAlertEntry.
+  const [dx, dy] = alliance ? [-3, -5] : [60, -2];
+  const before = await stableInteractionFrame(page, folder, "battle-alert-retreat-before");
+  const probes = [{
+    type: "battle-alert-retreat-enabled",
+    ...verifyStrategyBitmap(viewport, before, alliance ? 10974 : 10971, 77 + dx, 350 + dy),
+  }];
+  const retreat = point(144 + dx, 363.5 + dy);
+  await page.mouse.move(retreat.x, retreat.y);
+  await page.mouse.down({ button: "left" });
+  await page.waitForTimeout(100);
+  await page.mouse.up({ button: "left" });
+  await page.waitForTimeout(300);
+  await page.mouse.move(2, 2);
+  const results = await stableInteractionFrame(page, folder, "battle-alert-retreat-results");
+  assert.ok(consoleLines.some(({ text }) =>
+    text.includes("[battle_alert] command=retreat") && text.includes("status=simulated")),
+  `${faction}: Retreat did not route the battle`);
+  assert.ok(!consoleLines.some(({ text }) => text.includes("[battle_alert] command=take_command")),
+    `${faction}: Retreat entered the tactical battle`);
+  const summary = consoleLines.map(({ text }) =>
+    text.match(/\[tactical-results\] summary lines=(\[.*\])/)).filter(Boolean);
+  assert.equal(summary.length, 1, `${faction}: no single Battle Summary report`);
+  const lines = JSON.parse(summary[0][1]);
+  const [viewer, enemy] = alliance ? ["Alliance", "Imperial"] : ["Imperial", "Alliance"];
+  // A0's words: "The Alliance fleet is defeated." / "Commenor is now under
+  // blockade by Imperial forces. The Alliance fleet has withdrawn to
+  // Bortras." and "The Imperial fleet is defeated." / "Tralus is now under
+  // blockade by Alliance forces. The Imperial fleet has withdrawn to
+  // Coruscant."; the names are the fixture's.
+  assert.equal(lines.length, 2, JSON.stringify(lines));
+  assert.equal(lines[0], `The ${viewer} fleet is defeated. `);
+  const body = lines[1].match(new RegExp(
+    `^(.+) is now under blockade by ${enemy} forces\\. The ${viewer} fleet has withdrawn to (.+)\\.$`));
+  assert.ok(body, `${faction}: the report's body ${JSON.stringify(lines[1])}`);
+  assert.equal(body[1], ready.system, `${faction}: the report names another system`);
+  assert.notEqual(body[2], ready.system, `${faction}: the fleet withdrew to its own battle`);
+  probes.push({ type: "battle-alert-retreat-report", lines });
+
+  // The window's own withdrawal scene, 10757 / 10758, at A0's place, and
+  // against A0's pixels: the scene under the keyed frame, less the text
+  // boxes (the port's text is the accepted deviation) and A0's pointer.
+  const [rx, ry] = alliance ? [-23, -25] : [40, -22];
+  const frame = alliance ? 10335 : 10336;
+  const scene = alliance ? 10757 : 10758;
+  const frameSource = decodeIndexedBmp(fs.readFileSync(path.join(
+    root, `data/base/ui/strategy-dll/BMP/${frame}.bmp`,
+  )));
+  const frameCovers = (x, y) => {
+    const [r, g, b] = frameSource.pixel(x + 12, y + 13);
+    return !(r < 32 && g < 32 && b > 192);
+  };
+  const textBoxes = [
+    { x: 0, y: 4, width: 400, height: 43 },
+    { x: 0, y: 202, width: 400, height: 94 },
+  ];
+  probes.push({
+    type: "battle-alert-retreat-scene",
+    ...verifyStrategyBitmap(viewport, results, scene, 97 + rx, 87 + ry, textBoxes, false, frameCovers),
+  });
+  // A0's pointer (screen coordinates) is skipped. TAC-07-C004 is the
+  // Alliance's own Withdraw From Battle at Coruscant (tactical), which
+  // ends in the same report state; its pointer is off the scene.
+  const captures = alliance ? [
+    [".artifacts/a0-vm/message-rail/retreat-result-commenor.png", { x: 140, y: 356, width: 20, height: 24 }],
+    [".artifacts/interface-parity/a0/TAC-07-C004/original.png", { x: 0, y: 0, width: 0, height: 0 }],
+  ] : [
+    [".artifacts/a0-vm/battle-alert-empire/04-result.png", { x: 336, y: 359, width: 24, height: 24 }],
+  ];
+  for (const [file, pointer] of captures) {
+    const a0Path = path.join(root, file);
+    if (!native || !fs.existsSync(a0Path)) continue;
+    const a0 = PNG.sync.read(fs.readFileSync(a0Path));
+    const port = PNG.sync.read(results);
+    const [left, top] = [97 + rx, 87 + ry];
+    let checked = 0;
+    let differ = 0;
+    for (let y = 0; y < 310; y++) {
+      for (let x = 0; x < 400; x++) {
+        if (textBoxes.some((rect) => x >= rect.x && y >= rect.y
+          && x < rect.x + rect.width && y < rect.y + rect.height)) continue;
+        if (frameCovers(x, y)) continue;
+        if (left + x >= pointer.x && top + y >= pointer.y
+          && left + x < pointer.x + pointer.width && top + y < pointer.y + pointer.height) continue;
+        const i = ((top + y) * 640 + left + x) * 4;
+        checked++;
+        if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) differ++;
+      }
+    }
+    probes.push({ type: "battle-alert-retreat-scene-a0", a0: file, checked, differ });
+    assert.equal(differ, 0, `${faction}: the withdrawal scene differs from A0 ${file} in ${differ} of ${checked} pixels`);
+  }
+  // Retreat's results, like Simulate's, never enter the tactical scene.
+  probes.push({ type: "battle-alert-simulate-route", route: "command=retreat",
+    screenshot_sha256: sha256(results) });
+  return probes;
+}
+
 async function probeTacticalBattleAlertEntry(
   page, viewport, folder, stable, consoleLines, ready, faction,
 ) {
@@ -5929,6 +6043,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? await probeTacticalNavigationCameraPresentation(
           page, viewport, folder, stable, consoleLines, ready,
         )
+        : scenario.battle_alert_retreat
+        ? await probeTacticalBattleAlertRetreat(
+          page, viewport, folder, consoleLines, ready, faction,
+        )
         : scenario.battle_alert_presentation
         ? await probeTacticalBattleAlertEntry(
           page, viewport, folder, stable, consoleLines, ready, faction,
@@ -6039,6 +6157,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         Boolean(scenario.detail_escort_presentation));
       assert.equal(ready.battle_alert_presentation,
         Boolean(scenario.battle_alert_presentation));
+      assert.equal(ready.battle_alert_retreat, Boolean(scenario.battle_alert_retreat));
       assert.equal(ready.tactical_audio_presentation,
         Boolean(scenario.tactical_audio_presentation));
       assert.equal(ready.hull_scale_presentation,
@@ -6082,7 +6201,9 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
       assert.equal(ready.palette_resource_id, ready.system_picture_id + 5530);
       assert.ok(ready.attacker_ships > 0 && ready.defender_ships > 0);
       // A0 TAC-01-C003's battle has no fighters.
-      assert.equal(ready.fighters > 0, !scenario.hull_scale_presentation);
+      // The retreat fixture brings no fighters either.
+      assert.equal(ready.fighters > 0,
+        !scenario.hull_scale_presentation && !scenario.battle_alert_retreat);
       const groupLayout = faction === "alliance"
         ? { first_active_objects: 12, second_active_objects: 2 }
         : { first_active_objects: 2, second_active_objects: 12 };
@@ -6090,7 +6211,16 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? { first_active_objects: 7, second_active_objects: 2 }
         : { first_active_objects: 2, second_active_objects: 7 };
       const projectileFieldLayout = { first_active_objects: 4, second_active_objects: 4 };
-      assert.deepEqual(ready.source_layout, scenario.hull_scale_presentation ? {
+      assert.deepEqual(ready.source_layout, scenario.battle_alert_retreat ? {
+        // The viewer's one hull against the enemy's four: 100 + 3 x 4.
+        first_active_objects: faction === "alliance" ? 1 : 4,
+        second_active_objects: faction === "alliance" ? 4 : 1,
+        battle_extent: 112,
+        outer_positive_z: 56,
+        outer_negative_z: -56,
+        inner_negative_z: -36,
+        inner_positive_z: 36,
+      } : scenario.hull_scale_presentation ? {
         // One unit a side (A0 TAC-01-C003): 100 + 3 (FUN_005ab650).
         first_active_objects: 1,
         second_active_objects: 1,
@@ -6206,6 +6336,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
                 || scenario.battle_options_withdrawal ? 6
                 : scenario.battle_results_presentation ? 16
                   : scenario.battle_alert_presentation ? 12
+                  : scenario.battle_alert_retreat ? 5
                   : scenario.death_star_presentation ? 3
                     : scenario.hull_scale_presentation ? 2 : 4);
       const expectedParticipantLanes = new Map([
@@ -6409,6 +6540,12 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
           position[2] === ready.source_layout.inner_negative_z));
         assert.ok(of("fighter-group", "empire").every(({ source_position: position }) =>
           position[2] === ready.source_layout.inner_positive_z));
+      } else if (scenario.battle_alert_retreat) {
+        const of = (kind, side) => ready.participants.filter((participant) =>
+          participant.kind === kind && participant.faction === side);
+        assert.equal(of("capital-ship", faction).length, 1);
+        assert.equal(of("capital-ship", faction === "alliance" ? "empire" : "alliance").length, 4);
+        assert.equal(of("fighter-group", "alliance").length + of("fighter-group", "empire").length, 0);
       } else if (scenario.hull_scale_presentation) {
         // A0 TAC-01-C003: the Medium Transport (2070) and the Victory
         // Destroyer (2550), each alone on its side's capital lane.
@@ -6949,19 +7086,20 @@ async function main() {
         "production-tactical-audio-routing",
         "production-hull-scale-a0",
         "production-participants-3d-off",
-        "production-attack-target-lost-presentation"]);
+        "production-attack-target-lost-presentation",
+        "production-battle-alert-retreat"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(31).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(32).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined, undefined, undefined]);
+        undefined, undefined, undefined, undefined, undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 38 }, (_, index) => index === 5));
+      Array.from({ length: 39 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 38 }, (_, index) => index === 6));
+      Array.from({ length: 39 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });

@@ -534,6 +534,18 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Compares the selected ship's order box (the line 'Attack Capital Ships' with no target) with A0 TAC-03-C017 for the Empire at 640 x 480."
+    },
+    {
+      "slug": "production-battle-alert-retreat",
+      "description": "Retreat on the Battle Alert at the viewer's own system, which the enemy reached last, by one hull against four: the abstract battle lets it leave and the Battle Summary reads the viewer's withdrawal over its withdrawal scene. It supports TAC-07-C004 and EVT-02-C005, which other scenarios map: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65831, "empire": 66087 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "battle_alert_retreat": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Compares the report's words and the withdrawal scene's pixels outside the text boxes with A0 message-rail/retreat-result-commenor (Alliance) and battle-alert-empire/04-result (Empire) at 640 x 480. The fixture's system and destination names differ from A0's."
     }
   ]
 }
