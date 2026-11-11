@@ -89,3 +89,11 @@ Empire's droid frames differ).
   `main-menu-hit/` (a press on each control's keyed corner and on an opaque
   pixel) on the galaxy-size screens, Game Type, Load/Options, Credits and
   Multiplayer.
+
+## Batch b192
+
+- 29 of 29 interface gates on Linux, among them `message-display`
+  (`message-display-2026-11-11T19-47-15-648Z`) and `briefing`.
+- Workspace tests: 3586 passed, 0 failed. Fixture tests: 156. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T20-06-11-086Z-2039305`: 152 of 152.

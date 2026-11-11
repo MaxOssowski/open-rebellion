@@ -100,3 +100,11 @@ Mutants: `theme.rs` (`gdi_pen_positions|paint_gdi_text$`) 63 of 63 caught;
 - CMD-08-C004: two captures of one open message, before and after one
   press of an arrow (0x96 or 0x9a), to show which arrow goes to the older
   message.
+
+## Batch b192
+
+- 29 of 29 interface gates on Linux, among them `message-display`
+  (`message-display-2026-11-11T19-47-15-648Z`) and `briefing`.
+- Workspace tests: 3586 passed, 0 failed. Fixture tests: 156. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T20-06-11-086Z-2039305`: 152 of 152.

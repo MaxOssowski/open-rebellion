@@ -144,3 +144,11 @@ crates/rebellion-core/src/agent_automation.rs --re
 | CMD-04-C018 | stays partial | No A0 of clicks behind a summary. |
 | CMD-09-C010 | stays partial | No A0 of a finished advanced base. |
 | CMD-10-C010 | stays partial | No A0 during a load. |
+
+## Batch b192
+
+- 29 of 29 interface gates on Linux, among them `message-display`
+  (`message-display-2026-11-11T19-47-15-648Z`) and `briefing`.
+- Workspace tests: 3586 passed, 0 failed. Fixture tests: 156. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T20-06-11-086Z-2039305`: 152 of 152.
