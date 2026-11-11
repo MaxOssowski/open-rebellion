@@ -1600,8 +1600,6 @@ async fn main() {
         open_cutscene(
             Path::new(INTRO_CUTSCENE),
             audio_vol.cutscene_volume(),
-            &mut msg_log,
-            clock.tick,
             #[cfg(not(target_arch = "wasm32"))]
             &mut audio_engine,
         )
@@ -4369,8 +4367,6 @@ async fn main() {
                 cutscene_player = open_cutscene(
                     Path::new(&story_cutscene_path(number)),
                     audio_vol.cutscene_volume(),
-                    &mut msg_log,
-                    clock.tick,
                     #[cfg(not(target_arch = "wasm32"))]
                     &mut audio_engine,
                 );
@@ -4399,8 +4395,6 @@ async fn main() {
                 cutscene_player = open_cutscene(
                     Path::new(&story_cutscene_path(movie.movie)),
                     audio_vol.cutscene_volume(),
-                    &mut msg_log,
-                    clock.tick,
                     #[cfg(not(target_arch = "wasm32"))]
                     &mut audio_engine,
                 );
@@ -4445,6 +4439,7 @@ async fn main() {
                     if let Some(caption) = story_caption.as_deref() {
                         draw_story_caption(caption);
                     }
+                    answer_movie_error_box(player);
 
                     if player.is_finished() {
                         cutscene_player = None;
@@ -4456,8 +4451,6 @@ async fn main() {
                             cutscene_player = open_cutscene(
                                 Path::new(INTRO_CINEMATIC),
                                 audio_vol.cutscene_volume(),
-                                &mut msg_log,
-                                clock.tick,
                                 #[cfg(not(target_arch = "wasm32"))]
                                 &mut audio_engine,
                             );
@@ -4599,8 +4592,6 @@ async fn main() {
                             cutscene_player = open_cutscene(
                                 Path::new(new_game_cutscene(faction == MissionFaction::Alliance)),
                                 audio_vol.cutscene_volume(),
-                                &mut msg_log,
-                                clock.tick,
                                 #[cfg(not(target_arch = "wasm32"))]
                                 &mut audio_engine,
                             );
@@ -4627,8 +4618,6 @@ async fn main() {
                             cutscene_player = open_cutscene(
                                 Path::new(CREDITS_CUTSCENE),
                                 audio_vol.cutscene_volume(),
-                                &mut msg_log,
-                                clock.tick,
                                 #[cfg(not(target_arch = "wasm32"))]
                                 &mut audio_engine,
                             );
@@ -8741,8 +8730,6 @@ async fn main() {
                         cutscene_player = open_cutscene(
                             Path::new(trench_run_cutscene_path(outcome)),
                             audio_vol.cutscene_volume(),
-                            &mut msg_log,
-                            clock.tick,
                             #[cfg(not(target_arch = "wasm32"))]
                             &mut audio_engine,
                         );
@@ -13712,11 +13699,12 @@ fn env_flag_on(value: &str) -> bool {
         .any(|on| value.trim().eq_ignore_ascii_case(on))
 }
 
+/// Start a movie. One whose file cannot be opened shows the video
+/// manager's error box instead and ends when it is answered
+/// (`FUN_005f6920`); the original logs nothing to the Message Index.
 fn open_cutscene(
     path: &Path,
     volume: f32,
-    msg_log: &mut MessageLog,
-    tick: u64,
     #[cfg(not(target_arch = "wasm32"))] audio_engine: &mut audio::AudioEngine,
 ) -> Option<VideoPlayer> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -13727,19 +13715,62 @@ fn open_cutscene(
             macroquad::logging::info!("[cutscene] opened path={}", path.display());
             Some(player)
         }
-        Err(VideoError::NotDecoded { .. }) => {
-            let message =
-                "cutscene skipped — run scripts/decode-cutscenes.sh to enable".to_string();
-            eprintln!("[cutscene] {message}");
-            msg_log.push(GameMessage::new(tick, message, MessageCategory::Event));
-            None
-        }
         Err(error) => {
-            let message = format!("cutscene skipped — {error}");
-            eprintln!("[cutscene] {message}");
-            msg_log.push(GameMessage::new(tick, message, MessageCategory::Event));
-            None
+            if matches!(error, VideoError::NotDecoded { .. }) {
+                eprintln!("[cutscene] {error} — run scripts/decode-cutscenes.sh");
+            } else {
+                eprintln!("[cutscene] {error}");
+            }
+            Some(VideoPlayer::unopened(path))
         }
+    }
+}
+
+/// The video manager's error box over the movie window (`FUN_0060a9e0`):
+/// paint it and answer its keys and clicks; OK ends the movie (0x403).
+fn answer_movie_error_box(player: &mut VideoPlayer) {
+    use egui_macroquad::egui;
+    use rebellion_render::movie_error_box::BoxInput;
+    let (x, y, scale) = movie_client();
+    let Some(dialog) = player.error_box_mut() else {
+        return;
+    };
+    let mut layout = None;
+    egui_macroquad::ui(|ctx| {
+        let painter = ctx.layer_painter(egui::LayerId::new(
+            egui::Order::Foreground,
+            egui::Id::new("movie-error-box"),
+        ));
+        layout = Some(dialog.paint(&painter, egui::pos2(x, y), scale));
+    });
+    egui_macroquad::draw();
+    let Some(layout) = layout else {
+        return;
+    };
+    let (mouse_x, mouse_y) = mouse_position();
+    let (client_x, client_y) = ((mouse_x - x) / scale, (mouse_y - y) / scale);
+    let mut inputs = Vec::new();
+    if is_key_pressed(KeyCode::Enter) || is_key_pressed(KeyCode::KpEnter) {
+        inputs.push(BoxInput::EnterPressed);
+    }
+    if is_key_pressed(KeyCode::Escape) {
+        inputs.push(BoxInput::EscapePressed);
+    }
+    if is_key_released(KeyCode::Space) {
+        inputs.push(BoxInput::SpaceReleased);
+    }
+    if is_mouse_button_pressed(MouseButton::Left) {
+        inputs.push(BoxInput::MouseDown(client_x, client_y));
+    }
+    if is_mouse_button_released(MouseButton::Left) {
+        inputs.push(BoxInput::MouseUp(client_x, client_y));
+    }
+    // In order: a press and a release in one frame make a click.
+    if inputs
+        .into_iter()
+        .any(|input| dialog.handle(input, &layout))
+    {
+        player.close_error_box();
     }
 }
 

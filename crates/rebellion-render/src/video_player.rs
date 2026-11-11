@@ -1,5 +1,9 @@
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+use macroquad::prelude::Texture2D;
+
+use crate::movie_error_box::MovieErrorBox;
 
 #[derive(Debug)]
 pub enum VideoError {
@@ -179,6 +183,11 @@ mod native {
             if let Some(audio) = self.audio.take() {
                 audio.playback.stop(&audio.ctx);
             }
+        }
+
+        /// The native player opens every file it plays before it starts.
+        pub const fn load_failed(&self) -> bool {
+            false
         }
 
         fn display_frame(&mut self, frame_index: usize) -> Result<(), VideoError> {
@@ -421,6 +430,8 @@ mod web {
     use super::VideoError;
 
     const ENDED: u32 = 2;
+    /// The `<video>`'s `error` event: the file could not be loaded.
+    const FAILED: u32 = 3;
 
     extern "C" {
         fn open_rebellion_video_play(ptr: *const u8, len: usize, volume: f32) -> u32;
@@ -475,10 +486,151 @@ mod web {
             unsafe { open_rebellion_video_stop() };
             self.finished = true;
         }
+
+        /// Whether the page could not load the movie (FAILED).
+        pub fn load_failed(&self) -> bool {
+            !self.finished && unsafe { open_rebellion_video_state() } == FAILED
+        }
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::VideoPlayer;
+use native::VideoPlayer as Backend;
 #[cfg(target_arch = "wasm32")]
-pub use web::VideoPlayer;
+use web::VideoPlayer as Backend;
+
+/// A movie: playing, or held by the video manager's error box when its
+/// file could not be opened (`FUN_005f6920`, `crate::movie_error_box`).
+pub struct VideoPlayer {
+    playing: Option<Backend>,
+    error_box: Option<MovieErrorBox>,
+    shown_path: String,
+}
+
+impl VideoPlayer {
+    /// Play the movie `path` names.
+    ///
+    /// # Errors
+    /// Returns an error if the movie cannot be opened; the caller then shows
+    /// the error box with [`VideoPlayer::unopened`].
+    pub fn open(path: &Path, volume: f32) -> Result<VideoPlayer, VideoError> {
+        Ok(VideoPlayer {
+            playing: Some(Backend::open(path, volume)?),
+            error_box: None,
+            shown_path: shown_path(path),
+        })
+    }
+
+    /// A movie whose file could not be opened: the box with its path stands
+    /// where the movie would play, and the movie ends when it is answered
+    /// (`FUN_005f6920`: `FUN_0060a9e0`, then 0x403).
+    #[must_use]
+    pub fn unopened(path: &Path) -> VideoPlayer {
+        let shown = shown_path(path);
+        log_box(&shown);
+        VideoPlayer {
+            playing: None,
+            error_box: Some(MovieErrorBox::new(shown.clone())),
+            shown_path: shown,
+        }
+    }
+
+    pub fn advance(&mut self, dt: f32) {
+        if self.error_box.is_some() {
+            return;
+        }
+        if let Some(playing) = self.playing.as_mut() {
+            // The browser learns only after the start that the file is
+            // missing; the box then stands in for the movie as above.
+            if playing.load_failed() {
+                log_box(&self.shown_path);
+                self.playing = None;
+                self.error_box = Some(MovieErrorBox::new(self.shown_path.clone()));
+                return;
+            }
+            playing.advance(dt);
+        }
+    }
+
+    pub fn current_frame(&self) -> Option<&Texture2D> {
+        self.playing.as_ref().and_then(Backend::current_frame)
+    }
+
+    /// The movie ended, was skipped, or its error box was answered.
+    pub fn is_finished(&self) -> bool {
+        self.error_box.is_none()
+            && self
+                .playing
+                .as_ref()
+                .is_none_or(|playing| playing.is_finished() && !playing.load_failed())
+    }
+
+    /// Skip the movie. The error box takes no skip: it waits for its OK.
+    pub fn stop(&mut self) {
+        if self.error_box.is_some() {
+            return;
+        }
+        if let Some(playing) = self.playing.as_mut() {
+            playing.stop();
+        }
+    }
+
+    /// The open error box, if the movie's file could not be opened.
+    pub fn error_box_mut(&mut self) -> Option<&mut MovieErrorBox> {
+        self.error_box.as_mut()
+    }
+
+    /// Answer the error box: the movie ends as if it had played (0x403).
+    pub fn close_error_box(&mut self) {
+        if self.error_box.is_some() {
+            macroquad::logging::info!("[cutscene] error_box answered path={}", self.shown_path);
+        }
+        self.error_box = None;
+        self.playing = None;
+    }
+}
+
+/// Log the box: `MessageBeep(0x10)` has no sound in the port (no asset).
+fn log_box(path: &str) {
+    macroquad::logging::info!(
+        "[cutscene] error_box path={path} caption={}",
+        crate::movie_error_box::CAPTION
+    );
+}
+
+/// The path the box shows. port: the port's movie file stands where the
+/// original's `<TooBigLocation>\MDATA\MDATA.NNN` stood; the browser plays
+/// `data/video/<stem>.webm`.
+fn shown_path(path: &Path) -> String {
+    if cfg!(target_arch = "wasm32") {
+        path.file_stem().and_then(|stem| stem.to_str()).map_or_else(
+            || path.display().to_string(),
+            |stem| format!("data/video/{stem}.webm"),
+        )
+    } else {
+        path.display().to_string()
+    }
+}
+
+#[cfg(test)]
+mod wrapper_tests {
+    use super::*;
+
+    #[test]
+    fn an_unopened_movie_waits_for_its_box_then_ends_like_a_played_one() {
+        // FUN_005f6920: FUN_0060a9e0's MessageBoxA returns on OK, then 0x403,
+        // which FUN_00421790 handles as 0x402 (the natural end).
+        let mut movie = VideoPlayer::unopened(Path::new("assets/references/ref-videos/105.webm"));
+        assert!(!movie.is_finished());
+        movie.advance(10.0);
+        movie.stop();
+        assert!(!movie.is_finished(), "a skip does not answer the box");
+        assert_eq!(
+            movie.error_box_mut().map(|dialog| dialog.path().to_owned()),
+            Some("assets/references/ref-videos/105.webm".to_owned())
+        );
+        movie.close_error_box();
+        assert!(movie.is_finished());
+        assert!(movie.current_frame().is_none());
+    }
+}

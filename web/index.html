@@ -238,7 +238,10 @@
         (function registerCutscenes() {
             "use strict";
 
-            const IDLE = 0, PLAYING = 1, ENDED = 2, FAILED = 3;
+            // FAILED: the file could not be loaded (the game shows the
+            // video manager's error box, FUN_005f6920); REFUSED: the
+            // browser would not start it even muted (the game goes on).
+            const IDLE = 0, PLAYING = 1, ENDED = 2, FAILED = 3, REFUSED = 4;
             let video = null;
             let state = IDLE;
 
@@ -280,8 +283,14 @@
                     // then plays muted rather than not at all.
                     video.play().catch(() => {
                         if (!video) return;
+                        if (video.error) {
+                            finish(FAILED);
+                            return;
+                        }
                         video.muted = true;
-                        video.play().catch(() => finish(FAILED));
+                        video.play().catch(() => {
+                            if (video) finish(video.error ? FAILED : REFUSED);
+                        });
                     });
                     return 1;
                 };

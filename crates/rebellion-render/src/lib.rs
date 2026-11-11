@@ -33,6 +33,7 @@ pub mod message_pictures;
 pub mod minis;
 pub mod mission_dialog;
 pub mod missions_window;
+pub mod movie_error_box;
 pub mod move_confirmation;
 pub mod object_menu;
 pub mod panels;
