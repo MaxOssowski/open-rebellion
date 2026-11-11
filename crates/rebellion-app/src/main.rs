@@ -5913,6 +5913,7 @@ async fn main() {
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &delivery_state,
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
@@ -6076,6 +6077,7 @@ async fn main() {
                                             movement: &movement_state,
                                             missions: &mission_state,
                                             transport: &troop_transport_state,
+                                            deliveries: &delivery_state,
                                             blockaded: blockade_state.blockaded_systems(),
                                             faction: player_faction,
                                             tick: clock.tick,
@@ -6252,6 +6254,7 @@ async fn main() {
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &delivery_state,
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
@@ -6311,6 +6314,7 @@ async fn main() {
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &delivery_state,
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
@@ -6591,6 +6595,7 @@ async fn main() {
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &delivery_state,
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
@@ -6672,6 +6677,7 @@ async fn main() {
                                     &mission_state,
                                     &movement_state,
                                     &troop_transport_state,
+                                    &delivery_state,
                                     &mfg_state,
                                     &research_state,
                                     player_faction,
@@ -8122,6 +8128,7 @@ async fn main() {
                                         movement: &movement_state,
                                         missions: &mission_state,
                                         transport: &troop_transport_state,
+                                        deliveries: &delivery_state,
                                         blockaded: blockade_state.blockaded_systems(),
                                         faction: player_faction,
                                         tick: clock.tick,
@@ -9456,6 +9463,9 @@ struct DefensesMoveContext<'a> {
     movement: &'a MovementState,
     missions: &'a MissionState,
     transport: &'a TroopTransportState,
+    /// Products on their way (`FUN_005150c0`): inside the destination's
+    /// container, so in the defenses icon's team.
+    deliveries: &'a DeliveryState,
     blockaded: &'a HashSet<SystemKey>,
     faction: MissionFaction,
     tick: u64,
@@ -9471,6 +9481,7 @@ fn defenses_move_enabled(
     world: &GameWorld,
     missions: &MissionState,
     transport: &TroopTransportState,
+    deliveries: &DeliveryState,
     faction: MissionFaction,
     system: SystemKey,
 ) -> bool {
@@ -9483,8 +9494,10 @@ fn defenses_move_enabled(
     );
     !team.is_empty()
         // A regiment or squadron on its way in is in the team, and its own
-        // move command refuses while it travels.
+        // move command refuses while it travels; a product on its way from
+        // its facility too (`DeliveryState::surface_arrival_pending`).
         && !transport.surface_arrival_pending(world, system, is_alliance)
+        && !deliveries.surface_arrival_pending(system, Faction::from(faction))
         && (team.members.is_empty() || missions.move_order_enabled(world, faction, &team.members))
         && team
             .troops
@@ -9597,7 +9610,10 @@ fn issue_defenses_move(
     // command refuses (`surface_arrival_pending`).
     let arriving = context
         .transport
-        .surface_arrival_pending(world, system, is_alliance);
+        .surface_arrival_pending(world, system, is_alliance)
+        || context
+            .deliveries
+            .surface_arrival_pending(system, Faction::from(context.faction));
     let (false, false, Some(member_days), Some(troop_days), Some(class_days)) =
         (team.is_empty(), arriving, member_days, troop_days, class_days)
     else {
@@ -10418,6 +10434,7 @@ fn order_gates(
     mission_state: &MissionState,
     movement_state: &MovementState,
     troop_transport_state: &TroopTransportState,
+    delivery_state: &DeliveryState,
     manufacturing: &ManufacturingState,
     research: &rebellion_core::research::ResearchState,
     player_faction: MissionFaction,
@@ -10504,6 +10521,7 @@ fn order_gates(
                 world,
                 mission_state,
                 troop_transport_state,
+                delivery_state,
                 player_faction,
                 system,
             ),
@@ -10681,7 +10699,9 @@ fn order_gates(
                 quadrant: Quadrant::Defenses,
             } = object
             {
-                if troop_transport_state.surface_arrival_pending(world, system, is_alliance) {
+                if troop_transport_state.surface_arrival_pending(world, system, is_alliance)
+                    || delivery_state.surface_arrival_pending(system, side)
+                {
                     return false;
                 }
             }
@@ -14596,6 +14616,7 @@ mod fleet_move_tests {
                     &MissionState::new(),
                     &MovementState::new(),
                     &TroopTransportState::new(),
+                    &DeliveryState::new(),
                     manufacturing,
                     &rebellion_core::research::ResearchState::new(),
                     player,
@@ -14652,6 +14673,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 &MovementState::new(),
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &manufacturing,
                 &rebellion_core::research::ResearchState::new(),
                 holder,
@@ -14682,6 +14704,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 &MovementState::new(),
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
@@ -14713,6 +14736,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 movement,
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 player,
@@ -14758,6 +14782,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 movement,
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
@@ -14791,6 +14816,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 movement,
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 player,
@@ -14905,6 +14931,7 @@ mod fleet_move_tests {
                 missions,
                 &MovementState::new(),
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
@@ -14947,6 +14974,7 @@ mod fleet_move_tests {
                 missions,
                 &MovementState::new(),
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 faction,
@@ -15083,6 +15111,7 @@ mod fleet_move_tests {
                 movement: &movement,
                 missions,
                 transport: &transport,
+                deliveries: &DeliveryState::new(),
                 blockaded: &blockaded,
                 faction: MissionFaction::Alliance,
                 tick: 0,
@@ -15219,6 +15248,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 &MovementState::new(),
                 &TroopTransportState::new(),
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
@@ -15254,6 +15284,7 @@ mod fleet_move_tests {
                 &MissionState::new(),
                 &MovementState::new(),
                 transport,
+                &DeliveryState::new(),
                 &ManufacturingState::new(),
                 &rebellion_core::research::ResearchState::new(),
                 MissionFaction::Alliance,
@@ -15281,6 +15312,53 @@ mod fleet_move_tests {
             rebellion_core::squadrons::SquadronMove::Departed(_)
         ));
         assert_eq!(gates(&w.world, &transport), (false, false));
+    }
+
+    #[test]
+    fn a_defenses_icons_move_and_scrap_are_disabled_while_a_built_regiment_is_on_its_way() {
+        // FUN_005150c0 -> FUN_00556430: a product travels already inside its
+        // destination's container, en route (ghidra/notes/build-delivery.md),
+        // so the defenses icon's walks (mode 3) hold it and its own move and
+        // scrap commands refuse it. A0 2026-11-11-icon-menu-topic/00..18:
+        // Coruscant's icon grey with every visible member free.
+        let mut w = defenses_world();
+        let troop = w.world.troops.insert(rebellion_core::world::TroopUnit {
+            class_dat_id: DatId::new(0x1000_0001),
+            is_alliance: true,
+            regiment_strength: 100,
+        });
+        w.world.systems[w.destination].ground_units.push(troop);
+        let gates = |world: &GameWorld, deliveries: &DeliveryState| {
+            let gates = order_gates(
+                Some(MenuObject::SystemIcon {
+                    system: w.destination,
+                    quadrant: Quadrant::Defenses,
+                }),
+                world,
+                &MissionState::new(),
+                &MovementState::new(),
+                &TroopTransportState::new(),
+                deliveries,
+                &ManufacturingState::new(),
+                &rebellion_core::research::ResearchState::new(),
+                MissionFaction::Alliance,
+                0,
+            );
+            (gates.defenses_move, gates.scrap)
+        };
+        let mut deliveries = DeliveryState::new();
+        assert_eq!(gates(&w.world, &deliveries), (true, true));
+        deliveries.depart(
+            &w.world,
+            &[rebellion_core::manufacturing::Departure {
+                origin: w.origin,
+                destination: w.destination,
+                tick: 0,
+                kind: rebellion_core::manufacturing::BuildableKind::Troop(DatId::new(0x1000_0001)),
+            }],
+        );
+        assert_eq!(deliveries.en_route()[0].side, Faction::Alliance);
+        assert_eq!(gates(&w.world, &deliveries), (false, false));
     }
 }
 

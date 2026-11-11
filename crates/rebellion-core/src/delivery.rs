@@ -108,6 +108,26 @@ impl DeliveryState {
         &self.en_route
     }
 
+    /// A regiment, fighter squadron or special force of `side` on its way to
+    /// `system`. The original keeps it in the destination's container, en
+    /// route (`FUN_005150c0` -> `FUN_00556430`, `ghidra/notes/build-delivery.md`),
+    /// so the defenses icon's walks (mode 3, `FUN_00504c40` regiments,
+    /// `FUN_005039d0` squadrons) hold it, and its own move and scrap
+    /// commands refuse it while it travels.
+    #[must_use]
+    pub fn surface_arrival_pending(&self, system: SystemKey, side: crate::dat::Faction) -> bool {
+        self.en_route.iter().any(|delivery| {
+            delivery.destination == system
+                && delivery.side == side
+                && matches!(
+                    delivery.kind,
+                    BuildableKind::Troop(_)
+                        | BuildableKind::Fighter(_)
+                        | BuildableKind::SpecialForce(_)
+                )
+        })
+    }
+
     /// Start each departure on its trip; the arrival day is the completion
     /// day plus the transit time from the facility's system to the
     /// destination (`FUN_00556430`: `+0x44 = clock + ticks`).
@@ -299,6 +319,41 @@ mod tests {
             }]
         );
         assert!(state.en_route().is_empty());
+    }
+
+    // FUN_005150c0 -> FUN_00556430: a product travels inside its
+    // destination's container, so the defenses icon's team (walk mode 3)
+    // holds a regiment, squadron or special force on its way; a capital ship
+    // joins a fleet instead. A0 2026-11-11-icon-menu-topic/30.
+    #[test]
+    fn a_regiment_squadron_or_special_force_on_its_way_is_pending_where_it_goes() {
+        let (mut world, systems) = world_with_systems(&[(0, 0), (30, 40)]);
+        let regiment = troop(&mut slotmap::SlotMap::with_key());
+        let ship = BuildableKind::CapitalShip(
+            world
+                .capital_ship_classes
+                .insert(CapitalShipClass::default()),
+        );
+        let squadron = BuildableKind::Fighter(world.fighter_classes.insert(Default::default()));
+        let special = BuildableKind::SpecialForce(crate::ids::DatId::new(0x3c00_0001));
+        let delivery = |kind| Delivery {
+            origin: systems[0],
+            destination: systems[1],
+            arrival_tick: 10,
+            kind,
+            side: crate::dat::Faction::Empire,
+        };
+        let mut state = DeliveryState::new();
+        assert!(!state.surface_arrival_pending(systems[1], crate::dat::Faction::Empire));
+        state.en_route.push(delivery(ship));
+        assert!(!state.surface_arrival_pending(systems[1], crate::dat::Faction::Empire));
+        for kind in [regiment, squadron, special] {
+            let mut state = DeliveryState::new();
+            state.en_route.push(delivery(kind));
+            assert!(state.surface_arrival_pending(systems[1], crate::dat::Faction::Empire));
+            assert!(!state.surface_arrival_pending(systems[1], crate::dat::Faction::Alliance));
+            assert!(!state.surface_arrival_pending(systems[0], crate::dat::Faction::Empire));
+        }
     }
 
     // FUN_00500820: a capital ship travels at its class hyperdrive.

@@ -30,11 +30,30 @@ while it travels, so the whole order is disabled (`FUN_0053c100`).
   the targeted Move refuse with the "Move refused" line) and the Scrap gate
   of a defenses icon (`order_gates`) check it.
 
-**Not covered.** Coruscant's icon was grey on days 12 to 17 with every
-visible member free (`00`, `10`, `16`, `18`). An object en route there
-is the likely cause, but none was seen. Deliveries from production
-(`DeliveryState`) are not counted; whether a delivery sits in its
-destination's container while it travels is untraced.
+**Coruscant's grey icon.** Coruscant's icon was grey on days 12 to 17
+with every visible member free (`00`, `10`, `16`, `18`). An object en
+route there is the likely cause, but none was seen.
+
+Deliveries from production now count, as of the stage after b188. The
+trace in `ghidra/notes/build-delivery.md` shows the travelling product
+already in its destination's container:
+- deployment (`FUN_004fb4b0`, event `0x308`) runs `FUN_005150c0`;
+- `FUN_005150c0` calls `FUN_00556430`, which makes the product travel to
+  "the container it already sits in";
+- en route (bit 4) is recomputed by `FUN_004f8240`.
+
+So a built regiment, squadron or special force on its way is in the
+defenses icon's team. The port holds such products in `DeliveryState`
+until they arrive (the hyp in `delivery.rs`). Now:
+- `DeliveryState::surface_arrival_pending(system, side)` answers for a
+  regiment, fighter squadron or special force of the side going to the
+  system;
+- `defenses_move_enabled`, `issue_defenses_move` and the defenses icon's
+  Scrap gate (`order_gates`, which now takes the delivery state) check it
+  beside the transit check.
+
+The Coruscant case itself stays inferred, since the Empire's deliveries
+on days 12 to 17 were not seen in A0.
 
 ## 2. A freshly opened Encyclopedia gives the keys to the Topic box
 
@@ -81,6 +100,10 @@ deviation, `acceptance-linux-browser`).
 
 ## Tests
 
+- `delivery::tests::a_regiment_squadron_or_special_force_on_its_way_is_pending_where_it_goes`
+  (9 of 9 mutants of `surface_arrival_pending` caught).
+- `fleet_move_tests::a_defenses_icons_move_and_scrap_are_disabled_while_a_built_regiment_is_on_its_way`
+  fails without the check: `left: (true, true)`, `right: (false, false)`.
 - `troop_transport::tests::a_regiment_or_squadron_flying_to_a_planet_is_pending_there_for_its_side_only`
 - `fleet_move_tests::a_defenses_icons_move_and_scrap_are_disabled_while_a_squadron_flies_in`
   fails without the change: `left: (true, true)`, `right: (false, false)`.
