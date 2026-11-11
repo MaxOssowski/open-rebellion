@@ -16,6 +16,8 @@ const root = path.resolve(here, "../..");
 const site = path.join(root, ".artifacts/interface-parity/site");
 const browserManifest = JSON.parse(fs.readFileSync(path.join(here, "browser.json"), "utf8"));
 const noBuild = process.argv.includes("--no-build");
+// --only=a,b runs those scenarios alone (a quick check; the gate runs all).
+const only = process.argv.find((argument) => argument.startsWith("--only="))?.slice(7).split(",");
 const expectedRequests = ["/", "/data/runtime.orpk", "/gl.js", "/open-rebellion-test.wasm"];
 // FUN_0046a750 builds a 259 by 355 window; the port centers it on whole pixels
 // in the galaxy view (hyp: FUN_00606980). At 640 by 480 that is:
@@ -52,6 +54,28 @@ const scenarios = [
   // Selonia, Subdue Uprising above Espionage; GOKRES 7296 at (70, 86)).
   { name: "uprising", code: 91, page: "mission", firstKind: "SubdueUprising",
     icon: { alliance: 3200, empire: 7296 } },
+  // No A0 capture yet of the next four kinds in the dialog (evidence
+  // 2026-11-11-mission-kinds-dialog); each kind's icon is FUN_0046a9c0's
+  // GOKRES (TEXTSTRA id & 0xfff, + 0x1000 for the Empire), as A0 confirms
+  // for the kinds above.
+  // Scenario::RescueTargeting (57): the agent's Mission released on the
+  // side's prisoner offers Rescue alone (TEXTSTRA 11281).
+  { name: "rescue", code: 58, page: "mission", kinds: ["Rescue"], icon: { alliance: 3089, empire: 7185 } },
+  // Scenario::DeathStarTargeting (59): released on an enemy Death Star in
+  // its Fleet window, the Alliance is offered Death Star Sabotage alone
+  // (TEXTSTRA 11329; FUN_0054c590). The Empire has no such record, so its
+  // case is not run (the fixture's Alliance Death Star exists only there).
+  { name: "death-star", code: 60, page: "mission", kinds: ["DeathStarSabotage"], icon: { alliance: 3137 },
+    factions: ["alliance"] },
+  // Scenario::ReconTargeting (62): a recon special force (SPECFCSD class 3
+  // or 5) released on the enemy planet is offered Reconnaissance alone
+  // (TEXTSTRA 11285; MISSNSD mask 0x104).
+  { name: "recon", code: 63, page: "mission", kinds: ["Reconnaissance"], icon: { alliance: 3093, empire: 7189 } },
+  // Scenario::ResearchTargeting (63): a ship designer on its own system
+  // with a shipyard: the box lists the last record first (box_order), Ship
+  // Design Research (TEXTSTRA 11296) above Espionage.
+  { name: "research", code: 64, page: "mission", kinds: ["ShipDesignResearch", "Espionage"],
+    icon: { alliance: 3104, empire: 7200 } },
 ];
 // REBEXE.EXE cursor 1002 (FUN_00422ce0 WM_CREATE), 32 by 32 with its hotspot
 // at (12, 12); extract-dll-resources.py --cursors keys its mask to blue.
@@ -505,7 +529,7 @@ async function inspect(server, source, faction, scenario, executable) {
     const { origin } = faction;
     const comparisons = [];
     let targeting = null;
-    if (["targeting", "sabotage", "enemy-character", "uprising"].includes(scenario.name)) targeting = await target(page, faction, directory);
+    if (["targeting", "sabotage", "enemy-character", "uprising", "rescue", "death-star", "recon", "research"].includes(scenario.name)) targeting = await target(page, faction, directory);
     const opened = await stableDialog(page, origin, directory, "opened");
     comparisons.push(compare(opened, composeExpected(source, faction, scenario.page), scenario.page, "opened", directory));
     if (scenario.name === "mission") {
@@ -628,7 +652,8 @@ async function main() {
   try {
     results = [];
     for (const faction of factions) {
-      for (const scenario of scenarios) results.push(await inspect(server, source, faction, scenario, executable));
+      for (const scenario of scenarios.filter(({ name, factions: sides }) => (!only || only.includes(name))
+        && (!sides || sides.includes(faction.name)))) results.push(await inspect(server, source, faction, scenario, executable));
     }
   } finally {
     await new Promise((resolve) => server.close(resolve));

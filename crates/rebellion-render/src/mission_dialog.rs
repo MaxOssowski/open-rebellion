@@ -2143,4 +2143,47 @@ mod tests {
             7232
         );
     }
+
+    #[test]
+    fn rescue_recon_research_jedi_and_death_star_kinds_show_their_textstra_icons() {
+        // FUN_0046a9c0: GOKRES (MISSNSD record +0x30 & 0xfff), + 0x1000 off
+        // side 1. TEXTSTRA 11281 Rescue, 11285 Reconnaissance, 11296..11298
+        // the research kinds, 11329 Death Star Sabotage, 11330 Jedi Training.
+        let cases = [
+            (MissionKind::Rescue, 3089),
+            (MissionKind::Reconnaissance, 3093),
+            (MissionKind::ShipDesignResearch, 3104),
+            (MissionKind::FacilityDesignResearch, 3105),
+            (MissionKind::TroopTrainingResearch, 3106),
+            (MissionKind::DeathStarSabotage, 3137),
+            (MissionKind::JediTraining, 3138),
+        ];
+        for (kind, alliance) in cases {
+            assert_eq!(
+                kind_icon(kind, MissionFaction::Alliance),
+                alliance,
+                "{kind:?}"
+            );
+            assert_eq!(
+                kind_icon(kind, MissionFaction::Empire),
+                alliance + 0x1000,
+                "{kind:?}"
+            );
+        }
+        assert_eq!(kind_name(MissionKind::Reconnaissance), "Reconnaissance");
+        assert_eq!(kind_name(MissionKind::Rescue), "Rescue");
+        assert_eq!(kind_name(MissionKind::JediTraining), "Jedi Training");
+        assert_eq!(
+            kind_name(MissionKind::ShipDesignResearch),
+            "Ship Design Research"
+        );
+        assert_eq!(
+            kind_name(MissionKind::FacilityDesignResearch),
+            "Facility Design Research"
+        );
+        assert_eq!(
+            kind_name(MissionKind::TroopTrainingResearch),
+            "Troop Training Research"
+        );
+    }
 }
