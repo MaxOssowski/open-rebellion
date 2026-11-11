@@ -448,6 +448,14 @@ fn unit_picture(unit: &ReportUnit) -> Option<u32> {
 /// The height a row keeps under its picture for the name.
 const NAME_HEIGHT: f32 = 14.0;
 
+/// A row's name: a text item in font 10 (`FUN_0044edb0`, `+0x38`; A0
+/// assault-clean/03: "Alliance Army Regiment" in the planet names' font).
+const NAME_FONT: u16 = 10;
+
+/// The Display page's RCDATA `0x7013` line: its left (`0x1d`), the row its
+/// bottom stops at (`0xb1`) and its wrap width (`0x15e`; `FUN_0044c630`).
+const DISPLAY_NOTE: (f32, f32, f32) = (29.0, 177.0, 350.0);
+
 /// A category button's label (`FUN_0044c630`), shown over the columns.
 const fn category_label(category: ReportCategory) -> &'static str {
     match category {
@@ -674,11 +682,6 @@ fn draw_window(
                 let left = rect.min.x + (rect.width() - galley.size().x) / 2.0;
                 painter.galley(egui::pos2(left, rect.min.y), galley, color);
             };
-            // port: the texts whose font is not traced keep a pixel size.
-            let text = |text: &str, x: f32, y: f32, width: f32, size: f32, color| {
-                let font = egui::FontId::proportional((size * scale).max(6.0));
-                text_in(text, x, y, width, font, color);
-            };
             // FUN_0044c630 and FUN_0044e290 set each text's font
             // (FUN_00601c60): the title 11, the outcome and the rail label 6,
             // the category label and the column heads 4.
@@ -850,32 +853,59 @@ fn draw_window(
                                         picture_box = painted;
                                     }
                                 }
-                                let galley = list_painter.layout(
-                                    unit.name.clone(),
-                                    egui::FontId::proportional((9.0 * scale).max(6.0)),
+                                // The name's text item: font 10 (+0x38),
+                                // centred (+0x50 1), its top at the
+                                // picture's bottom (+0x34; FUN_0044edb0).
+                                // A top-aligned line needs no height.
+                                crate::theme::paint_gdi_text(
+                                    &list_painter,
+                                    egui::Rect::from_min_size(
+                                        egui::pos2(cell.min.x, picture_box.max.y),
+                                        egui::vec2(cell.width(), 0.0),
+                                    ),
+                                    scale,
+                                    NAME_FONT,
+                                    &unit.name,
                                     egui::Color32::WHITE,
-                                    cell_w * scale,
+                                    (crate::theme::GdiAlign::Center, crate::theme::GdiVAlign::Top),
                                 );
-                                let name_at = egui::pos2(
-                                    cell.center().x - galley.size().x / 2.0,
-                                    picture_box.max.y,
-                                );
-                                list_painter.galley(name_at, galley, egui::Color32::WHITE);
                             }
                         }
                     }
                 }
                 SummaryPage::Display => {
-                    // RCDATA 0x7013 above the two buttons. port: its
-                    // placement (FUN_00601b30(0x19, 0xe1) on page 5) is
-                    // not settled; it ends above the buttons here.
-                    text(
-                        "Select one of the following buttons to close this display and go directly to... ",
-                        25.0,
-                        140.0,
-                        375.0,
-                        11.0,
+                    // FUN_0044c630 draws the title again on page 5
+                    // (FUN_00601ce0(local_40)), then RCDATA 0x7013 in
+                    // the outcome's text: font 6, 350 wide (0x15e),
+                    // word-broken (0x110), the attacker's colour,
+                    // measured at (25, 225) and moved to (29, 177 less
+                    // its height) (FUN_00601b30(0x1d, h + 0xb1)): its
+                    // bottom just above the buttons (A0 assault-clean/
+                    // 04-display: two lines ending above row 182).
+                    // hyp: the height term is the measured rectangle's
+                    // top less its bottom.
+                    gdi_text(&window.title, 12.0, 13.0, 400.0, 11, color);
+                    let note = "Select one of the following buttons to close this display and go directly to... ";
+                    let lines = crate::theme::gdi_word_break(note, DISPLAY_NOTE.2, |line| {
+                        crate::theme::gdi_text_width(&painter, 6, line, scale)
+                    });
+                    #[expect(clippy::cast_precision_loss, reason = "A handful of lines.")]
+                    let height = lines.len() as f32 * crate::theme::line_pitch(6);
+                    crate::theme::paint_gdi_text_block(
+                        &painter,
+                        logical_rect(
+                            local,
+                            scale,
+                            DISPLAY_NOTE.0,
+                            DISPLAY_NOTE.1 - height,
+                            DISPLAY_NOTE.2,
+                            height,
+                        ),
+                        scale,
+                        6,
+                        note,
                         color,
+                        crate::theme::GdiAlign::Left,
                     );
                     let selected = [10767, 10768][viewer];
                     let fleet = [10765, 10766][viewer];
@@ -1572,20 +1602,29 @@ mod tests {
         let frame = run(&mut state, click(at(438.0, 215.0)));
         assert_eq!(state.report().unwrap().page, SummaryPage::SystemForces);
         // Each regiment's name shows under its picture's box.
-        let names = frame
-            .texts
+        let names: Vec<_> = frame
+            .lines
             .iter()
-            .filter(|(text, ..)| text == "Rebel Infantry")
-            .count();
+            .filter(|line| line.text == "Rebel Infantry")
+            .collect();
         // Two rows fit; the third is drawn under the list's clip.
-        assert_eq!(names, 3);
+        assert_eq!(names.len(), 3);
         assert!(has(&frame, "System Forces").is_some());
-        // The name is centred in its cell, under the cell less 14.
-        let (first, _) = has(&frame, "Rebel Infantry").unwrap();
-        let (font, size, wrap) = metrics(&frame, "Rebel Infantry");
-        assert_eq!((font, wrap), (18.0, 330.0));
-        assert_eq!(first.y, at(0.0, 136.0 + 70.0 - 14.0).y);
-        assert_eq!(first.x, at(37.0 + 165.0 / 2.0, 0.0).x - size.x / 2.0);
+        // FUN_0044edb0: the name's text item in font 10 (+0x38), centred
+        // in its cell (+0x50 1), its top at the picture's bottom (+0x34),
+        // here the cell less 14; the pen at font 10's ascent below (A0
+        // assault-clean/03: "Alliance Army Regiment" in that font).
+        let first = names[0];
+        let (_, width) = crate::theme::gdi_pen_positions(10, "Rebel Infantry").unwrap();
+        let (ascent, _) = crate::theme::original_font_metrics(10);
+        assert_eq!(first.size, crate::theme::gdi_font(10, 2.0).size);
+        assert_eq!(
+            first.pen,
+            at(
+                37.0 + ((165.0 - width) / 2.0).floor(),
+                136.0 + 70.0 - 14.0 + ascent
+            )
+        );
         // FUN_0044e290: the category label in font 4.
         let (font, ..) = metrics(&frame, "Trooper Regiments");
         assert_eq!(font, crate::theme::gdi_font(4, 2.0).size);
@@ -1672,6 +1711,20 @@ mod tests {
         // A0 assault-clean/04-display: each label's line at the button's
         // 76, centred in 169, its pen at font 4's ascent below.
         let line = |text: &str| frame.lines.iter().find(|line| line.text == text).unwrap();
+        // FUN_0044c630 page 5: the title again, and RCDATA 0x7013 in font
+        // 6 broken at 350, its bottom at 177 (A0 assault-clean/04-display:
+        // the title over the page, the note in two lines above the
+        // buttons).
+        assert!(has(&frame, "Assault on Hoth").is_some());
+        let (ascent, descent) = crate::theme::original_font_metrics(6);
+        let first = line("Select one of the following buttons to close this");
+        let second = line("display and go directly to...");
+        assert_eq!(first.size, crate::theme::gdi_font(6, 2.0).size);
+        assert_eq!(
+            first.pen,
+            at(29.0, 177.0 - 2.0 * (ascent + descent) + ascent)
+        );
+        assert_eq!(second.pen, at(29.0, 177.0 - (ascent + descent) + ascent));
         for (label, x) in [("Hoth", 29.0), ("Fleet", 226.0)] {
             let (_, width) = crate::theme::gdi_pen_positions(4, label).unwrap();
             assert_eq!(
