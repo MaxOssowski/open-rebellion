@@ -680,8 +680,7 @@ fn draw_volume(cache: &mut BmpCache, canvas: OptionsCanvas, y: f32, centre: f32,
     else {
         return;
     };
-    let left = centre - (thumb.width() / 2.0).floor();
-    let visible = (SLIDER_WIDTH - left).min(thumb.width()).max(0.0);
+    let (left, visible) = thumb_span(centre, thumb.width());
     let (screen_x, screen_y) = canvas.point(SLIDER_X + left, y + 4.0);
     draw_texture_ex(
         thumb,
@@ -694,6 +693,14 @@ fn draw_volume(cache: &mut BmpCache, canvas: OptionsCanvas, y: f32, centre: f32,
             ..Default::default()
         },
     );
+}
+
+/// The thumb's left in slider pixels and its width left visible once the
+/// track's 201 pixels clip it (`FUN_00604a50`), for a thumb `width` wide
+/// centred on `centre`.
+fn thumb_span(centre: f32, width: f32) -> (f32, f32) {
+    let left = centre - (width / 2.0).floor();
+    (left, (SLIDER_WIDTH - left).min(width).max(0.0))
 }
 
 /// The slider's left edge (`FUN_00407180`: x 0x188) and client width.
@@ -788,7 +795,32 @@ const fn slider_rect(index: usize) -> NativeRect {
     }
 }
 
+/// The control a press goes to: a slider takes it anywhere in its window
+/// (no key-colour mask, `FUN_006048f0`), any other control only on its
+/// opaque pixels (`masked`).
+fn press_target(
+    at: Option<GameOptionsControl>,
+    masked: impl FnOnce() -> Option<GameOptionsControl>,
+) -> Option<GameOptionsControl> {
+    match at {
+        Some(control) if slider_index(control).is_some() => Some(control),
+        _ => masked(),
+    }
+}
+
 impl GameOptionsState {
+    /// `Class_0066e010_vt14`: a move with the button held and the pointer
+    /// strictly inside the pressed slider moves the thumb and sends the
+    /// value.
+    fn held_slider_move(&mut self, audio: &mut AudioVolumeState, pointer: (f32, f32), down: bool) {
+        if let Some(control) = self.pressed_slider() {
+            if down && inside_slider(control, pointer.0, pointer.1) {
+                self.move_thumb(control, pointer.0, pointer.1);
+                self.send_slider(audio, control);
+            }
+        }
+    }
+
     /// The slider the button went down on, if any.
     fn pressed_slider(&self) -> Option<GameOptionsControl> {
         self.pressed
@@ -1159,20 +1191,14 @@ pub fn draw_game_options(
     }
     // Class_0066e010_vt14: a move with the button held and the pointer
     // inside moves the thumb and sends the value.
-    if let Some(control) = state.pressed_slider() {
-        if is_mouse_button_down(MouseButton::Left) && inside_slider(control, pointer.0, pointer.1) {
-            state.move_thumb(control, pointer.0, pointer.1);
-            state.send_slider(audio, control);
-        }
-    }
+    state.held_slider_move(audio, pointer, is_mouse_button_down(MouseButton::Left));
     if is_mouse_button_pressed(MouseButton::Left) {
         // A slider takes a press anywhere in its window (no key-colour
         // mask), captures the mouse and moves the thumb; it sends nothing
         // until the pointer moves or the button is released.
-        state.pressed = match control_at(state.origin, pointer.0, pointer.1) {
-            Some(control) if slider_index(control).is_some() => Some(control),
-            _ => masked_control_at(cache, state.origin, pointer.0, pointer.1),
-        };
+        state.pressed = press_target(control_at(state.origin, pointer.0, pointer.1), || {
+            masked_control_at(cache, state.origin, pointer.0, pointer.1)
+        });
         if let Some(control) = state.pressed_slider() {
             if inside_slider(control, pointer.0, pointer.1) {
                 state.move_thumb(control, pointer.0, pointer.1);
@@ -1778,6 +1804,66 @@ mod tests {
         assert!(!inside_slider(music, 392.5, 150.0));
         assert!(!inside_slider(music, 500.0, 184.0));
         assert!(!inside_slider(GameOptionsControl::Music, 500.0, 150.0));
+        // The edges themselves are outside: x 201 and y 0.
+        assert!(!inside_slider(music, 593.0, 150.0));
+        assert!(!inside_slider(music, 500.0, 130.0));
+    }
+
+    #[test]
+    fn a_held_move_inside_the_pressed_slider_moves_and_sends_and_nothing_else_does() {
+        // Class_0066e010_vt14: only with the button down, the pointer
+        // strictly inside (FUN_006048f0) and a slider pressed.
+        let music = GameOptionsControl::MusicVolume;
+        let inside = (392.0 + 100.0, 150.0);
+        let sent = |pressed, pointer, down| {
+            let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+            let mut audio = AudioVolumeState::default();
+            state.pressed = pressed;
+            state.held_slider_move(&mut audio, pointer, down);
+            audio.music_volume
+        };
+        let moved = hundredths_gain(slider_hundredths(thumb_percent(100.0)));
+        assert_eq!(sent(Some(music), inside, true), moved);
+        assert_eq!(sent(Some(music), inside, false), 1.0);
+        assert_eq!(sent(Some(music), (392.0 + 100.0, 190.0), true), 1.0);
+        assert_eq!(sent(Some(GameOptionsControl::Music), inside, true), 1.0);
+        assert_eq!(sent(None, inside, true), 1.0);
+    }
+
+    #[test]
+    fn a_press_goes_to_a_slider_anywhere_and_to_other_controls_by_their_mask() {
+        let music = GameOptionsControl::MusicVolume;
+        let other = GameOptionsControl::Music;
+        assert_eq!(press_target(Some(music), || None), Some(music));
+        assert_eq!(press_target(Some(other), || None), None);
+        assert_eq!(press_target(Some(other), || Some(other)), Some(other));
+        assert_eq!(press_target(None, || Some(other)), Some(other));
+    }
+
+    #[test]
+    fn a_full_volume_thumb_is_clipped_at_the_tracks_end() {
+        // FUN_00604a50 clips the 11-wide thumb to the 201-pixel track: at
+        // 100% (centre 201) five columns show (A0 200-options: the music
+        // thumb cut at the right end).
+        assert_eq!(thumb_span(201.0, 11.0), (196.0, 5.0));
+        assert_eq!(thumb_span(100.0, 11.0), (95.0, 11.0));
+        assert_eq!(thumb_span(300.0, 11.0), (295.0, 0.0));
+    }
+
+    #[test]
+    fn a_negative_or_unreadable_amplitude_is_directsounds_minimum() {
+        assert_eq!(gain_hundredths(-0.5), -10_000);
+        assert_eq!(gain_hundredths(f32::NAN), -10_000);
+        assert_eq!(gain_hundredths(0.0), -10_000);
+    }
+
+    #[test]
+    fn only_a_slider_counts_as_the_pressed_slider() {
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        state.pressed = Some(GameOptionsControl::SoundVolume);
+        assert_eq!(state.pressed_slider(), Some(GameOptionsControl::SoundVolume));
+        state.pressed = Some(GameOptionsControl::Music);
+        assert_eq!(state.pressed_slider(), None);
     }
 
     #[test]
