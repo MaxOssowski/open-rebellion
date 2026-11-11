@@ -6203,6 +6203,20 @@ async fn main() {
                         }
                     }
 
+                    // FUN_00457690: only the galaxy view's focused child
+                    // draws the focused strip, across window kinds.
+                    let [system_focus, fleet_focus, defenses_focus, missions_focus] =
+                        rebellion_render::window_focus::shared_focus([
+                            system_window_state.focus_stamp(),
+                            fleet_window_state.focus_stamp(),
+                            defenses_window_state.focus_stamp(),
+                            missions_window_state.focus_stamp(),
+                        ]);
+                    system_window_state.set_holds_focus(system_focus);
+                    fleet_window_state.set_holds_focus(fleet_focus);
+                    defenses_window_state.set_holds_focus(defenses_focus);
+                    missions_window_state.set_holds_focus(missions_focus);
+
                     for action in draw_system_windows(
                         ctx,
                         &world,

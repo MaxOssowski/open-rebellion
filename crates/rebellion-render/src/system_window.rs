@@ -284,6 +284,8 @@ impl RailEntry {
 pub struct SystemWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenSystemWindow>,
+    /// The kind's claim on the shared window focus.
+    focus: crate::window_focus::FocusStamp,
     rail: [Option<RailEntry>; REFERENCE_RAIL_SLOTS],
     /// The occupied slots, oldest minimized first (`+0x428`, count
     /// `+0x458`).
@@ -301,6 +303,7 @@ impl Default for SystemWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            focus: crate::window_focus::FocusStamp::default(),
             rail: std::array::from_fn(|_| None),
             rail_age: Vec::new(),
             created: false,
@@ -310,6 +313,18 @@ impl Default for SystemWindowState {
 }
 
 impl SystemWindowState {
+    /// When this kind last raised a window, while one is open: its claim
+    /// on the shared focus ([`crate::window_focus::shared_focus`]).
+    pub fn focus_stamp(&self) -> Option<u64> {
+        (!self.windows.is_empty()).then(|| self.focus.stamp())
+    }
+
+    /// Whether this kind holds the shared focus, so its top window draws
+    /// the focused title strip.
+    pub fn set_holds_focus(&mut self, holds: bool) {
+        self.focus.set_holds(holds);
+    }
+
     /// Whether a window was created since the last call, which the
     /// agent's advice hears of (`FUN_0041d2d0`).
     pub fn take_created(&mut self) -> bool {
@@ -348,6 +363,7 @@ impl SystemWindowState {
             selected_band: None,
             moving: None,
         });
+        self.focus.take();
         true
     }
 
@@ -599,6 +615,7 @@ impl SystemWindowState {
         };
         let window = self.windows.remove(index);
         self.windows.push(window);
+        self.focus.take();
         true
     }
 
@@ -738,6 +755,7 @@ impl SystemWindowState {
         };
         if let Some(RailEntry::System(window)) = self.take_rail(&entry) {
             self.windows.push(window);
+            self.focus.take();
         }
         true
     }
@@ -881,7 +899,10 @@ pub fn draw_system_windows(
         fog,
     };
     let windows = state.windows.clone();
-    let focused_system = windows.last().map(|window| window.system);
+    let focused_system = windows
+        .last()
+        .filter(|_| state.focus.holds())
+        .map(|window| window.system);
     for window in windows {
         let system = window.system;
         let mut result = draw_system_window(
@@ -2413,6 +2434,64 @@ mod tests {
         assert_eq!(production_facility_mini(DatId::new(0x2d00_0003)), None);
         assert_eq!(troop_mini(DatId::new(0x1000_000b)), None);
         assert_eq!(special_force_mini(DatId::new(0x3c00_000a)), None);
+    }
+
+    #[test]
+    fn the_kind_claims_the_shared_focus_only_while_a_window_is_open() {
+        // window_focus.rs: a kind with no window open makes no claim; one it
+        // raises claims later than any stamp taken before.
+        let (world, systems) = fixture_world(1);
+        let mut state = SystemWindowState::default();
+        assert_eq!(state.focus_stamp(), None);
+        let mut earlier = crate::window_focus::FocusStamp::default();
+        earlier.take();
+        assert!(state.open(
+            &world,
+            systems[0],
+            ORIGIN,
+            CockpitFaction::Alliance,
+            layout(CockpitFaction::Alliance, 2.0)
+        ));
+        let stamp = state.focus_stamp().expect("a window is open");
+        assert!(stamp > earlier.stamp(), "{stamp} after {}", earlier.stamp());
+        assert!(state.focus.holds());
+        state.set_holds_focus(false);
+        assert!(!state.focus.holds());
+    }
+
+    #[test]
+    fn the_window_draws_its_unfocused_strip_while_another_kind_holds_the_focus() {
+        // FUN_00457690: +0x180 (side 1 10299) only while the window is the
+        // galaxy view's focused child, else +0x184 (10200). A0
+        // 2026-11-11-manufacturing-focus/02: a Defenses window opened
+        // beside Averam turns Averam's strip to the unfocused art.
+        let (mut world, systems) = fixture_world(1);
+        add_yard(&mut world, systems[0], 0x2800_0001);
+        let mut state = opened(&world, systems[0]);
+        let mut defenses = crate::defenses_window::DefensesWindowState::default();
+        defenses.open(
+            &world,
+            systems[0],
+            ORIGIN,
+            CockpitFaction::Alliance,
+            layout(CockpitFaction::Alliance, 2.0),
+        );
+        let [system_focus, defenses_focus] =
+            crate::window_focus::shared_focus([state.focus_stamp(), defenses.focus_stamp()]);
+        assert_eq!((system_focus, defenses_focus), (false, true));
+        state.set_holds_focus(system_focus);
+        let run = run_with(
+            &world,
+            &ManufacturingState::new(),
+            &mut state,
+            hover(at(150.0, 10.0)),
+        );
+        assert!(
+            run.painted.contains(&(10_200, at(2.0, 2.0))),
+            "{:?}",
+            run.painted
+        );
+        assert!(!run.painted.iter().any(|(id, _)| *id == 10_299));
     }
 
     #[test]

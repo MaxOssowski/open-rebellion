@@ -171,3 +171,40 @@ All four on the same fixture WASM, SHA-256
 - Workspace tests: 3580 passed, 0 failed. Fixture tests: 155. Provenance
   is ok.
 - Tactical matrix `2026-11-11T16-06-34-266Z-1301758`: 148 of 148.
+
+## Shared window focus (OBJ-07-C010), 2026-11-11 evening
+
+The user approved the architectural change on 2026-11-11.
+
+- **The port.** `rebellion-render/src/window_focus.rs`: the System, Fleet,
+  Defenses and Missions window kinds each keep a `FocusStamp`. A kind
+  stamps itself whenever it raises a window: it opens, restores or
+  focuses one, and a press on a window focuses it. Each frame `main.rs`
+  gives the shared focus to the kind with the latest stamp among those
+  with a window open (`shared_focus`). Only that kind's top window draws
+  the focused strip (`FUN_00457690`, `+0x180` against `+0x184`). The
+  sector window keeps its own focus: A0 `01` shows that a press on it does
+  not take the focus.
+- port: the per-kind stacks and the stamps are the port's. The original
+  keeps one z-order of child windows. The painting order across kinds is
+  unchanged: it is still fixed by kind.
+- **Browser.** `sector-quadrants.mjs` `shared-focus`, both sides. The
+  Defenses window is opened and dragged aside, then the System window is
+  opened.
+  - The System strip is focused (10299 / 10201) and the Defenses strip
+    unfocused (10200 / 10302).
+  - A press on the Defenses title bar swaps them.
+  - A press on the System title bar swaps them back.
+  - Each strip region (40 by 16, right of the title) is 0 pixels off its
+    bitmap.
+  - Run `sector-quadrants-2026-11-11T21-06-04-376Z-2115663`, pass.
+- **Tests.**
+  - `window_focus::tests::*`.
+  - `system_window::tests::the_window_draws_its_unfocused_strip_while_another_kind_holds_the_focus`
+    fails without the change (the strip stays 10299).
+  - `the_kind_claims_the_shared_focus_only_while_a_window_is_open` in each
+    of the four window modules.
+- **Mutants.**
+  - `window_focus.rs`: 10 of 10 caught.
+  - The accessors and draw functions of the four windows: 45 caught, 4
+    unviable, 0 missed.

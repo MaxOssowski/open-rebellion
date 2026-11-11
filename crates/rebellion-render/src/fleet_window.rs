@@ -650,6 +650,8 @@ impl ItemObject {
 pub struct FleetWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenFleetWindow>,
+    /// The kind's claim on the shared window focus.
+    focus: crate::window_focus::FocusStamp,
     /// Minimized windows (`0x466`): hidden, not destroyed, so one comes
     /// back with its selection and tab (A0 personnel-states/39, Pzob's
     /// window back with its Arrow selected). port: the rail's thirteenth
@@ -667,6 +669,7 @@ impl Default for FleetWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            focus: crate::window_focus::FocusStamp::default(),
             hidden: Vec::new(),
             drag: None,
             created: false,
@@ -675,6 +678,18 @@ impl Default for FleetWindowState {
 }
 
 impl FleetWindowState {
+    /// When this kind last raised a window, while one is open: its claim
+    /// on the shared focus ([`crate::window_focus::shared_focus`]).
+    pub fn focus_stamp(&self) -> Option<u64> {
+        (!self.windows.is_empty()).then(|| self.focus.stamp())
+    }
+
+    /// Whether this kind holds the shared focus, so its top window draws
+    /// the focused title strip.
+    pub fn set_holds_focus(&mut self, holds: bool) {
+        self.focus.set_holds(holds);
+    }
+
     /// Whether a window was created since the last call, which the
     /// agent's advice hears of (`FUN_0041d2d0`).
     pub fn take_created(&mut self) -> bool {
@@ -705,6 +720,7 @@ impl FleetWindowState {
             window.moving = None;
             window.last_click = None;
             self.windows.push(window);
+            self.focus.take();
             return true;
         }
         self.windows.push(OpenFleetWindow {
@@ -728,6 +744,7 @@ impl FleetWindowState {
             left_scroll: 0.0,
             left_hold: None,
         });
+        self.focus.take();
         true
     }
 
@@ -1150,6 +1167,7 @@ impl FleetWindowState {
         };
         let window = self.windows.remove(index);
         self.windows.push(window);
+        self.focus.take();
         true
     }
 
@@ -1971,7 +1989,10 @@ pub fn draw_fleet_windows(
 ) -> Vec<FleetWindowAction> {
     state.prepare_faction(faction);
     let windows = state.windows.clone();
-    let focused_system = windows.last().map(|window| window.system);
+    let focused_system = windows
+        .last()
+        .filter(|_| state.focus.holds())
+        .map(|window| window.system);
     let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
     for window in &windows {
         let mut result = draw_fleet_window(
@@ -3676,6 +3697,23 @@ pub(crate) mod tests {
                 FleetWindowEntry::Ship { fleet, index: 0 }
             ]
         );
+    }
+
+    #[test]
+    fn the_kind_claims_the_shared_focus_only_while_a_window_is_open() {
+        // window_focus.rs: a kind with no window open makes no claim; one it
+        // raises claims later than any stamp taken before.
+        let (world, system) = world(ControlKind::Uncontrolled);
+        let mut state = FleetWindowState::default();
+        assert_eq!(state.focus_stamp(), None);
+        let mut earlier = crate::window_focus::FocusStamp::default();
+        earlier.take();
+        assert!(state.open(&world, system, (10, 10), CockpitFaction::Alliance, layout()));
+        let stamp = state.focus_stamp().expect("a window is open");
+        assert!(stamp > earlier.stamp(), "{stamp} after {}", earlier.stamp());
+        assert!(state.focus.holds());
+        state.set_holds_focus(false);
+        assert!(!state.focus.holds());
     }
 
     #[test]

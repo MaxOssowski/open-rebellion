@@ -340,6 +340,8 @@ struct DefensesDrag {
 pub struct DefensesWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenDefensesWindow>,
+    /// The kind's claim on the shared window focus.
+    focus: crate::window_focus::FocusStamp,
     drag: Option<DefensesDrag>,
     /// A window was created, not raised, since [`Self::take_created`]
     /// (`FUN_0045aac0` then calls `FUN_0041d2d0`).
@@ -351,6 +353,7 @@ impl Default for DefensesWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            focus: crate::window_focus::FocusStamp::default(),
             drag: None,
             created: false,
         }
@@ -358,6 +361,18 @@ impl Default for DefensesWindowState {
 }
 
 impl DefensesWindowState {
+    /// When this kind last raised a window, while one is open: its claim
+    /// on the shared focus ([`crate::window_focus::shared_focus`]).
+    pub fn focus_stamp(&self) -> Option<u64> {
+        (!self.windows.is_empty()).then(|| self.focus.stamp())
+    }
+
+    /// Whether this kind holds the shared focus, so its top window draws
+    /// the focused title strip.
+    pub fn set_holds_focus(&mut self, holds: bool) {
+        self.focus.set_holds(holds);
+    }
+
     /// Whether a window was created since the last call, which the
     /// agent's advice hears of (`FUN_0041d2d0`).
     pub fn take_created(&mut self) -> bool {
@@ -395,6 +410,7 @@ impl DefensesWindowState {
             selected: None,
             moving: None,
         });
+        self.focus.take();
         true
     }
 
@@ -632,6 +648,7 @@ impl DefensesWindowState {
         };
         let window = self.windows.remove(index);
         self.windows.push(window);
+        self.focus.take();
         true
     }
 
@@ -1100,7 +1117,10 @@ pub fn draw_defenses_windows(
 ) -> Vec<DefensesWindowAction> {
     state.prepare_faction(faction);
     let windows = state.windows.clone();
-    let focused_system = windows.last().map(|window| window.system);
+    let focused_system = windows
+        .last()
+        .filter(|_| state.focus.holds())
+        .map(|window| window.system);
     let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
     for window in &windows {
         let mut result = draw_defenses_window(
@@ -2341,6 +2361,23 @@ mod tests {
             10.0 + (f32::from(ORIGIN.0) + x) * 2.0,
             20.0 + (f32::from(ORIGIN.1) + y) * 2.0,
         )
+    }
+
+    #[test]
+    fn the_kind_claims_the_shared_focus_only_while_a_window_is_open() {
+        // window_focus.rs: a kind with no window open makes no claim; one it
+        // raises claims later than any stamp taken before.
+        let (world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let mut state = DefensesWindowState::default();
+        assert_eq!(state.focus_stamp(), None);
+        let mut earlier = crate::window_focus::FocusStamp::default();
+        earlier.take();
+        assert!(state.open(&world, system, ORIGIN, CockpitFaction::Alliance, scaled()));
+        let stamp = state.focus_stamp().expect("a window is open");
+        assert!(stamp > earlier.stamp(), "{stamp} after {}", earlier.stamp());
+        assert!(state.focus.holds());
+        state.set_holds_focus(false);
+        assert!(!state.focus.holds());
     }
 
     fn opened(world: &GameWorld, system: SystemKey) -> DefensesWindowState {

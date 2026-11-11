@@ -727,6 +727,74 @@ const cases = [
     },
   },
   {
+    name: "shared-focus",
+    // FUN_00457690 draws a window's focused strip (+0x180) only while it is
+    // the galaxy view's focused child, else +0x184 (FUN_00456230: side 1
+    // 10299 / 10200, side 2 10201 / 10302). A0
+    // 2026-11-11-manufacturing-focus/02: a Defenses window opened beside a
+    // System window turns the System window's strip unfocused. One focus is
+    // shared by the window kinds (window_focus.rs).
+    async run(page, faction, setup, directory, source) {
+      const focusedId = faction.side === 1 ? 10299 : 10201;
+      const unfocusedId = faction.side === 1 ? 10200 : 10302;
+      // The strip right of the title text and left of the title buttons.
+      const strip = (screenshot, origin, id, label) => ({
+        id,
+        ...compareRegion(screenshot, [origin[0] + 2, origin[1] + 2], resource(source, id), [140, 0, 40, 16],
+          label, directory),
+      });
+      const { dat, window } = await openDefenses(page, setup, "primary");
+      // The Defenses window covers the system icon: drag it off to the
+      // right by its title bar (window_move.rs), as defenses-icon-scrap does.
+      const [rowLeft, rowTop] = window.tabs[0][1];
+      const grab = { x: Math.round(rowLeft) + 60, y: Math.round(rowTop) - 12 };
+      await page.mouse.move(grab.x, grab.y);
+      await frames(page);
+      await page.mouse.down();
+      await frames(page, 2);
+      await page.mouse.move(grab.x + 260, grab.y, { steps: 12 });
+      await frames(page, 2);
+      await page.mouse.up();
+      await frames(page, 2);
+      await page.waitForTimeout(600);
+      const moved = await until(page, "the Defenses window was dragged",
+        (o, value) => o.defenses_windows.some((w) => w.system_dat_id === value), dat);
+      const defensesOrigin = corner(defensesWindow(moved, dat));
+      const [left, top] = quadrant(setup, "primary", "system");
+      await doubleClick(page, { x: Math.round(left) + 4, y: Math.round(top) + 9 });
+      const opened = await until(page, "the system icon opens the System window",
+        (o, value) => o.system_windows.some(([system]) => system === value), dat);
+      const [, systemOrigin] = opened.system_windows.find(([system]) => system === dat);
+      await page.mouse.move(2, 470);
+      await page.waitForTimeout(500);
+      let screenshot = await stableScreen(page, directory, "system-opened-last");
+      const checks = [
+        strip(screenshot, systemOrigin, focusedId, "system-strip-focused"),
+        strip(screenshot, defensesOrigin, unfocusedId, "defenses-strip-unfocused"),
+      ];
+      // A press on the Defenses window's title bar gives it the focus.
+      await click(page, { x: defensesOrigin[0] + 150, y: defensesOrigin[1] + 9 });
+      await page.mouse.move(2, 470);
+      await page.waitForTimeout(500);
+      screenshot = await stableScreen(page, directory, "defenses-pressed");
+      checks.push(
+        strip(screenshot, systemOrigin, unfocusedId, "system-strip-unfocused"),
+        strip(screenshot, defensesOrigin, focusedId, "defenses-strip-focused"),
+      );
+      // And a press on the System window's title bar takes it back.
+      await click(page, { x: systemOrigin[0] + 150, y: systemOrigin[1] + 9 });
+      await page.mouse.move(2, 470);
+      await page.waitForTimeout(500);
+      screenshot = await stableScreen(page, directory, "system-pressed");
+      checks.push(
+        strip(screenshot, systemOrigin, focusedId, "system-strip-refocused"),
+        strip(screenshot, defensesOrigin, unfocusedId, "defenses-strip-unfocused-again"),
+      );
+      assertExact(checks);
+      return { systemOrigin, defensesOrigin, checks };
+    },
+  },
+  {
     name: "troop-finder-display",
     // The Troop Finder's Enter, Display or double click (FUN_0046df90,
     // FUN_00429440) opens the row system's Defenses window on its regiment

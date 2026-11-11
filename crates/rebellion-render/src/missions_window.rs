@@ -194,6 +194,8 @@ struct OpenMissionsWindow {
 pub struct MissionsWindowState {
     faction: CockpitFaction,
     windows: Vec<OpenMissionsWindow>,
+    /// The kind's claim on the shared window focus.
+    focus: crate::window_focus::FocusStamp,
     /// Minimized windows (`0x466`): hidden, not destroyed, so one comes
     /// back with its selected mission and tab. `FUN_00428b40` keeps every
     /// window kind's object in its rail slot alike (A0 personnel-states/39,
@@ -210,6 +212,7 @@ impl Default for MissionsWindowState {
         Self {
             faction: CockpitFaction::Alliance,
             windows: Vec::new(),
+            focus: crate::window_focus::FocusStamp::default(),
             hidden: Vec::new(),
             created: false,
         }
@@ -217,6 +220,18 @@ impl Default for MissionsWindowState {
 }
 
 impl MissionsWindowState {
+    /// When this kind last raised a window, while one is open: its claim
+    /// on the shared focus ([`crate::window_focus::shared_focus`]).
+    pub fn focus_stamp(&self) -> Option<u64> {
+        (!self.windows.is_empty()).then(|| self.focus.stamp())
+    }
+
+    /// Whether this kind holds the shared focus, so its top window draws
+    /// the focused title strip.
+    pub fn set_holds_focus(&mut self, holds: bool) {
+        self.focus.set_holds(holds);
+    }
+
     /// Whether a window was created since the last call, which the
     /// agent's advice hears of (`FUN_0041d2d0`).
     pub fn take_created(&mut self) -> bool {
@@ -253,6 +268,7 @@ impl MissionsWindowState {
             let mut window = self.hidden.remove(index);
             window.moving = None;
             self.windows.push(window);
+            self.focus.take();
             return true;
         }
         let player = cockpit_faction(faction);
@@ -271,6 +287,7 @@ impl MissionsWindowState {
             tab: MissionsTab::Agents,
             moving: None,
         });
+        self.focus.take();
         true
     }
 
@@ -461,6 +478,7 @@ impl MissionsWindowState {
         };
         let window = self.windows.remove(index);
         self.windows.push(window);
+        self.focus.take();
         true
     }
 
@@ -950,7 +968,10 @@ pub fn draw_missions_windows(
         }
     }
     let windows = state.windows.clone();
-    let focused_system = windows.last().map(|window| window.system);
+    let focused_system = windows
+        .last()
+        .filter(|_| state.focus.holds())
+        .map(|window| window.system);
     let mut actions = Vec::new();
     for window in &windows {
         let mut result = draw_missions_window(
@@ -1826,6 +1847,32 @@ mod tests {
         let idle = CharacterKey::default();
         assert!(!state.show_member(&missions, system, MissionMember::Character(idle)));
         assert_eq!(state.windows[0].selected, Some(0));
+    }
+
+    #[test]
+    fn the_kind_claims_the_shared_focus_only_while_a_window_is_open() {
+        // window_focus.rs: a kind with no window open makes no claim; one it
+        // raises claims later than any stamp taken before.
+        let (world, system, missions, _) = busy();
+        let fog = unseen();
+        let mut state = MissionsWindowState::default();
+        assert_eq!(state.focus_stamp(), None);
+        let mut earlier = crate::window_focus::FocusStamp::default();
+        earlier.take();
+        assert!(state.open(
+            &world,
+            &fog,
+            &missions,
+            system,
+            (20, 30),
+            CockpitFaction::Alliance,
+            scaled()
+        ));
+        let stamp = state.focus_stamp().expect("a window is open");
+        assert!(stamp > earlier.stamp(), "{stamp} after {}", earlier.stamp());
+        assert!(state.focus.holds());
+        state.set_holds_focus(false);
+        assert!(!state.focus.holds());
     }
 
     #[test]
