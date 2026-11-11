@@ -2440,6 +2440,26 @@ impl TacticalState {
             AutoResolveSide::Defender => CombatWinner::Defender,
             AutoResolveSide::Draw => CombatWinner::Draw,
         };
+        // The abstract battle ends a side only when it has no active unit
+        // left (FUN_005ae9c0 words 1 and 3), so a loser's hull that is still
+        // whole escaped (state 9, FUN_005af910). FUN_00516ef0 then sends the
+        // loser's fleets off, and their departure records the system's
+        // withdrawn side, +0x78 bits 2..3 (FUN_0050c6c0 -> FUN_0050a0b0),
+        // which the report reads as +0x54 (FUN_0049b060).
+        let loser_is_attacker = match winner {
+            CombatWinner::Attacker => Some(false),
+            CombatWinner::Defender => Some(true),
+            CombatWinner::Draw => None,
+        };
+        if let Some(loser_is_attacker) = loser_is_attacker {
+            for ship in session
+                .ships
+                .iter_mut()
+                .filter(|ship| ship.is_attacker == loser_is_attacker && ship.alive)
+            {
+                ship.retreated = true;
+            }
+        }
         session.queue_battle_outcome_voice(winner);
         session.winner = Some(winner);
         session.phase = BattlePhase::Results;
@@ -2451,6 +2471,16 @@ impl TacticalState {
         self.battle_result_scroll = 0;
         self.strategic_results_applied = true;
         true
+    }
+
+    /// The Battle Summary's headline and body as the report builds them
+    /// for the viewer (`FUN_0049b0f0`), once the battle has a result.
+    #[must_use]
+    pub fn battle_summary_lines(&self, world: &GameWorld) -> Option<Vec<String>> {
+        self.session
+            .as_ref()
+            .filter(|session| session.phase == BattlePhase::Results)
+            .map(|session| battle_result_summary_lines(session, world))
     }
 
     /// True when auto-resolve has already mutated the strategic world.
@@ -14540,6 +14570,120 @@ mod tests {
         assert!(result_session.ships[1].alive);
         assert!(result_session.fighters[0].alive);
         assert!(!result_session.fighters[1].alive);
+    }
+
+    #[test]
+    fn a_simulated_retreat_whose_fleet_escaped_reports_its_withdrawal() {
+        // A0 message-rail/retreat-result-commenor (Retreat on the Battle
+        // Alert): "The Alliance fleet is defeated." over "Commenor is now
+        // under blockade by Imperial forces. The Alliance fleet has
+        // withdrawn to Bortras." The abstract battle's escaped hull stays
+        // whole (FUN_005af910); the report's +0x54 is the loser that left
+        // (FUN_0049b060, FUN_0050c6c0), so 0x700d follows, not 0x700b.
+        let mut escaped = test_ship(64, 1, true, true);
+        escaped.hull_current = 100;
+        escaped.hull_max = 100;
+        escaped.shield = 7;
+        // A squadron that left with the fleet keeps its craft.
+        let session = test_session(
+            vec![escaped, test_ship(64, 2, false, true)],
+            vec![test_fighter(1, true)],
+            true,
+        );
+        let attacker_fleet = session.attacker_fleet;
+        let defender_fleet = session.defender_fleet;
+        let system = session.system;
+        let mut state = TacticalState {
+            session: Some(session),
+            ..TacticalState::default()
+        };
+        // No report before the battle has its result.
+        assert_eq!(state.battle_summary_lines(&GameWorld::default()), None);
+        assert!(state.present_auto_resolve_result(&SpaceCombatResult {
+            attacker_fleet,
+            defender_fleet,
+            system,
+            winner: AutoResolveSide::Defender,
+            // Hit on its way out, yet whole.
+            ship_damage: vec![rebellion_core::combat::ShipDamageEvent {
+                fleet: attacker_fleet,
+                ship_index: 0,
+                hull_before: 100,
+                hull_after: 40,
+                hits_after: 0,
+            }],
+            fighter_losses: vec![rebellion_core::combat::FighterLossEvent {
+                fleet: attacker_fleet,
+                fighter_index: 0,
+                squads_before: 1,
+                squads_after: 1,
+            }],
+            tick: 0,
+        }));
+        // The app logs the same lines the summary page draws.
+        let logged = state.battle_summary_lines(&GameWorld::default()).unwrap();
+        assert!(logged.iter().any(|line| line.contains("withdrawn")), "{logged:?}");
+        let session = state.session.as_ref().unwrap();
+        assert!(session.ships[0].alive && session.ships[0].retreated);
+        assert_eq!((session.ships[0].hull_current, session.ships[0].shield), (40, 7));
+        assert!(!session.ships[1].retreated);
+        assert!(session.fighters[0].alive && session.fighters[0].squad_count == 12);
+        let world = GameWorld::default();
+        let report = battle_report(session, &world, Some(true));
+        assert_eq!(report.withdrawn, Some(true));
+        assert_eq!(
+            battle_summary_scene(&report),
+            resources::strategy::EVENT_BATTLE_ALLIANCE_DEFEATED
+        );
+        let lines = battle_report_lines(
+            &battle_texts(),
+            &BattleReport {
+                destination: Some("Bortras"),
+                system_name: "Commenor",
+                last_arrival: Some(false),
+                ..report
+            },
+        );
+        assert_eq!(
+            lines,
+            [
+                "The Alliance fleet is defeated. ",
+                "Commenor is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Bortras."
+            ]
+        );
+    }
+
+    #[test]
+    fn a_simulated_battle_whose_loser_died_reports_no_withdrawal() {
+        // A0 TAC-01-C013: the last Alliance hull died, so the report reads
+        // 0x700b "has been completely destroyed" (FUN_0049b4d0).
+        let mut lost = test_ship(64, 1, true, true);
+        lost.hull_current = 100;
+        lost.hull_max = 100;
+        let session = test_session(vec![lost, test_ship(64, 2, false, true)], Vec::new(), true);
+        let attacker_fleet = session.attacker_fleet;
+        let mut state = TacticalState {
+            session: Some(session.clone()),
+            ..TacticalState::default()
+        };
+        assert!(state.present_auto_resolve_result(&SpaceCombatResult {
+            attacker_fleet,
+            defender_fleet: session.defender_fleet,
+            system: session.system,
+            winner: AutoResolveSide::Defender,
+            ship_damage: vec![rebellion_core::combat::ShipDamageEvent {
+                fleet: attacker_fleet,
+                ship_index: 0,
+                hull_before: 100,
+                hull_after: 0,
+                hits_after: 0,
+            }],
+            fighter_losses: Vec::new(),
+            tick: 0,
+        }));
+        let session = state.session.as_ref().unwrap();
+        assert!(!session.ships[0].retreated && !session.ships[1].retreated);
+        assert_eq!(battle_report(session, &GameWorld::default(), None).withdrawn, None);
     }
 
     // Source: FUN_005d3e90 effect dispatcher; FUN_005a7500 hit ordering.

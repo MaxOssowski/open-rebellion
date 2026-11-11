@@ -8634,6 +8634,12 @@ async fn main() {
                             );
                             result_presented =
                                 tactical_state.present_auto_resolve_result(&space_result);
+                            if let Some(lines) = tactical_state.battle_summary_lines(&world) {
+                                macroquad::logging::info!(
+                                    "[tactical-results] summary lines={:?}",
+                                    lines
+                                );
+                            }
                         }
                         if !result_presented {
                             game_mode = GameMode::Galaxy;
