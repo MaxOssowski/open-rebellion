@@ -1303,7 +1303,46 @@ const cases = [
       const screenshot = await stableScreen(page, directory, "other-side");
       const checks = compareTabs(screenshot, source, window, directory, "other-side");
       assertExact(checks);
-      return { at, window, checks };
+      // A0 coruscant-676/14-after-movie (the VM's Empire game, day 679):
+      // after the Alliance seized Coruscant, the Empire's player sees its
+      // Defenses window with side 1's focused title strip 10299 (FUN_004a9800
+      // by the system's side) at (202, 93), the window at (200, 91). The
+      // strip, its sector, minimize and close buttons match the port's
+      // pixel for pixel outside the name's label (x 19..198, the window's
+      // own); the name's ink, black, starts within a pixel of A0's. The
+      // three buttons' bottom-left pixels, their green key, are skipped:
+      // A0 shows black there, but green in fleet-aboard/00..02 and red in
+      // menus2/11, so what shows under a button's key is not settled.
+      const buttonKeys = new Set(["3,16", "204,16", "218,16"]);
+      let a0 = null;
+      const a0File = path.join(root, ".artifacts/a0-vm/coruscant-676/14-after-movie.png");
+      if (faction.side === 2 && fs.existsSync(a0File)) {
+        const shot = PNG.sync.read(fs.readFileSync(a0File));
+        const [ox, oy] = window.origin;
+        const pixel = (png, x0, y0, x, y) =>
+          Array.from(png.data.subarray(((y0 + y) * png.width + x0 + x) * 4, ((y0 + y) * png.width + x0 + x) * 4 + 3));
+        let differing = 0;
+        let checked = 0;
+        const label = { a0: null, port: null };
+        const grow = (box, x, y) => box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        for (let y = 2; y < 18; y += 1) for (let x = 2; x < 233; x += 1) {
+          const [a, p] = [pixel(shot, 200, 91, x, y), pixel(screenshot, ox, oy, x, y)];
+          if (x >= 19 && x < 199) {
+            if (a.every((value) => value < 64)) label.a0 = grow(label.a0, x, y);
+            if (p.every((value) => value < 64)) label.port = grow(label.port, x, y);
+            continue;
+          }
+          if (buttonKeys.has(`${x},${y}`)) continue;
+          checked += 1;
+          if (a.some((value, k) => value !== p[k])) differing += 1;
+        }
+        a0 = { checked, differing, label };
+        assert.equal(differing, 0, `the title strip against A0: ${JSON.stringify(a0)}`);
+        assert.ok(label.a0 && label.port && Math.abs(label.a0[0] - label.port[0]) <= 1
+          && Math.abs(label.a0[1] - label.port[1]) <= 1 && Math.abs(label.a0[3] - label.port[3]) <= 1,
+        `the name's ink against A0: ${JSON.stringify(a0)}`);
+      }
+      return { at, window, checks, a0 };
     },
   },
   {
