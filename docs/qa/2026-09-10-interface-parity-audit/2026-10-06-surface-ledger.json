@@ -205,9 +205,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-missing-movie-box/README.md"
           ],
-          "note": "Native open_cutscene logs 'cutscene skipped' and goes on when the file is missing (test open_returns_not_decoded_when_cutscene_directory_is_missing). The original's behaviour is not traced; no A0, no browser path. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass).",
+          "note": "Native open_cutscene logs 'cutscene skipped' and goes on when the file is missing (test open_returns_not_decoded_when_cutscene_directory_is_missing). The original's behaviour is not traced; no A0, no browser path. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-11 b184: a missing movie now shows the video manager's box (FUN_0060a9e0: MB_OK|MB_ICONHAND|MB_SYSTEMMODAL, caption 'PathName unknown to VideoManager') and waits for OK, then ends as a played movie (0x403 = 0x402 in FUN_00421790). hyp: the box's look; no beep asset; no A0 of the box.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -5193,9 +5194,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-finder-prefix-search/README.md"
           ],
-          "note": "Prefix search follows FUN_00609650 (list_prefix, unit tests); the README notes the Personnel Finder's case 100 (FUN_00464890) does no prefix match, so the search behaviour is not settled against A0.",
+          "note": "Prefix search follows FUN_00609650 (list_prefix, unit tests); the README notes the Personnel Finder's case 100 (FUN_00464890) does no prefix match, so the search behaviour is not settled against A0. 2026-11-11 b183: settled by trace: every Finder answers a name edit (0x408) with FUN_00609650 on its shown list (Personnel +0x150, case-insensitive longest prefix, ties keep the earlier row, an emptied name chooses the first row); the Personnel Finder's tabs (FUN_00464890 cases 100/0x6e) only rebuild and keep the stored id. Ported with unit tests; no A0 of typing.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -10787,9 +10789,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "crates/rebellion-app/src/main.rs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-missing-movie-box/README.md"
           ],
-          "note": "Not implemented for ending media; the original behaviour is not traced. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass)."
+          "note": "Not implemented for ending media; the original behaviour is not traced. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-11 b184: as PRE-01-C009, the ending movies share the box path."
         },
         {
           "id": "END-01-C012",
