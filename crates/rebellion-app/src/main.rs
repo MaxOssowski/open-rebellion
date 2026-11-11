@@ -111,11 +111,11 @@ use rebellion_render::targeting::{
 };
 use rebellion_render::{
     advisor_combat_result, advisor_greet, advisor_manufacturing_complete,
-    advisor_mission_result, advisor_uprising, draw_advisor, draw_audio_controls,
+    advisor_mission_result, advisor_uprising, draw_advisor,
     draw_cockpit_background, draw_cockpit_chrome, draw_cockpit_egui_layer,
     draw_encyclopedia, draw_galaxy_backdrop, draw_galaxy_map, draw_game_options,
     draw_game_setup, draw_gid_caption, draw_main_menu, draw_multiplayer_setup,
-    draw_save_load, draw_sector_windows, draw_system_windows, draw_tactical_view,
+    draw_sector_windows, draw_system_windows, draw_tactical_view,
     handle_cockpit_egui_input, set_cockpit_viewport_clip, AdvisorFaction, AdvisorState,
     AssetRenderProfile, AudioVolumeState, BmpCache, CockpitButton, CockpitFaction, CockpitState,
     EncyclopediaState, GalaxyMapState, GameMessage, GameOptionsAction,
@@ -140,8 +140,6 @@ enum GameMode {
     Cutscene { kind: CutsceneKind },
     /// Title screen: New Game / Load Game / Quit.
     MainMenu,
-    /// Save-slot picker entered from the main menu.
-    LoadGame,
     /// Historical head-to-head setup destination.
     MultiplayerSetup,
     /// Campaign configuration: galaxy size, difficulty, faction.
@@ -488,10 +486,15 @@ fn configured_asset_render_profile() -> AssetRenderProfile {
     }
 }
 
+/// The Game Options window's six rows (`FUN_00407180`). Saves the data
+/// layer holds in slots 6..9 (the removed legacy panel's) stay on disk
+/// untouched and are not listed.
 fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
+    use rebellion_render::game_options::SAVE_ROWS;
     let mut slots: Vec<_> = rebellion_data::save::list_saves(saves_dir)
         .into_iter()
         .filter_map(std::result::Result::ok)
+        .filter(|meta| meta.slot < SAVE_ROWS)
         .map(|meta| rebellion_render::SaveSlotInfo {
             slot: meta.slot,
             name: meta.name,
@@ -506,7 +509,7 @@ fn read_save_slots(saves_dir: &Path) -> Vec<rebellion_render::SaveSlotInfo> {
             player_is_alliance: meta.player_is_alliance,
         })
         .collect();
-    for slot in 0..rebellion_data::save::MAX_SAVE_SLOTS {
+    for slot in 0..SAVE_ROWS {
         if !slots.iter().any(|save| save.slot == slot)
             && rebellion_data::save::slot_occupied(saves_dir, slot)
         {
@@ -1350,8 +1353,6 @@ async fn main() {
     enc_state.set_hd_path(hd_path);
 
     // Panel visibility (mutually exclusive left panels)
-    let mut show_save_load = false;
-    let mut save_load_panel_state = rebellion_render::SaveLoadPanelState::default();
     let saves_dir = rebellion_data::save::default_saves_dir();
     let mut save_slots = read_save_slots(&saves_dir);
 
@@ -2212,19 +2213,13 @@ async fn main() {
             }
         } else if is_key_pressed(KeyCode::Escape) {
             if let GameMode::GameOptions { origin } = game_mode.clone() {
-                if game_options_state.suspended {
-                    save_load_panel_state.close();
-                    game_options_state.suspended = false;
-                } else if game_options_state.escape() == GameOptionsAction::Return {
+                if game_options_state.escape() == GameOptionsAction::Return {
                     game_mode = match origin {
                         GameOptionsOrigin::ShuttleCockpit => GameMode::MainMenu,
                         GameOptionsOrigin::CommandCenter => GameMode::Galaxy,
                         GameOptionsOrigin::TacticalBattle => GameMode::TacticalCombat,
                     };
                 }
-            } else if game_mode == GameMode::LoadGame {
-                save_load_panel_state.close();
-                game_mode = GameMode::MainMenu;
             } else if matches!(game_mode, GameMode::MultiplayerSetup) {
                 game_mode = GameMode::MainMenu;
             } else if game_mode == GameMode::Galaxy {
@@ -2272,8 +2267,6 @@ async fn main() {
                     cockpit_state.gid_ui.menu_open = false;
                     cockpit_state.gid_ui.category = None;
                 } else {
-                    show_save_load = false;
-                    save_load_panel_state.close();
                     game_mode = GameMode::MainMenu;
                     macroquad::logging::info!(
                         "[main_menu] returned_from_campaign generation={} audio_context=main_menu",
@@ -2292,7 +2285,6 @@ async fn main() {
         // rename edit for the name it holds.
         if game_mode == GameMode::Galaxy
             && !briefing_holds_keys
-            && !show_save_load
             && !fleet_finder_state.is_open()
             && !troop_finder_state.is_open()
             && !personnel_finder_state.is_open()
@@ -2409,22 +2401,6 @@ async fn main() {
                     if let Some(request) = interface_fixture_request {
                         interface_test_fixture::emit_selected(request, cockpit_state.gid_mode);
                     }
-                }
-            }
-            if !alt_down
-                && is_key_pressed(KeyCode::S)
-                && !matches!(
-                    game_mode,
-                    GameMode::Cutscene { .. }
-                )
-            {
-                if show_save_load {
-                    save_load_panel_state.close();
-                    show_save_load = false;
-                } else {
-                    save_slots = read_save_slots(&saves_dir);
-                    save_load_panel_state.open_save();
-                    show_save_load = true;
                 }
             }
             if is_key_pressed(KeyCode::Tab) {
@@ -4704,45 +4680,7 @@ async fn main() {
                 }
             }
 
-            GameMode::LoadGame => {
-                clear_background(Color::new(0.02, 0.02, 0.06, 1.0));
-                egui_macroquad::ui(|ctx| {
-                    egui_macroquad::egui::TopBottomPanel::bottom("main_menu_audio_options").show(
-                        ctx,
-                        |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("Audio");
-                                draw_audio_controls(ui, &mut audio_vol);
-                            });
-                        },
-                    );
-                    if let Some(action) =
-                        draw_save_load(ctx, &save_slots, &mut save_load_panel_state)
-                    {
-                        panel_actions.push(action);
-                    }
-                });
-                egui_macroquad::draw();
-            }
-
             GameMode::GameOptions { origin } => {
-                let control =
-                    is_key_down(KeyCode::LeftControl) || is_key_down(KeyCode::RightControl);
-                let legacy_load =
-                    is_key_pressed(KeyCode::F8) || (control && is_key_pressed(KeyCode::L));
-                let legacy_save =
-                    is_key_pressed(KeyCode::F9) || (control && is_key_pressed(KeyCode::S));
-                if !game_options_state.modal()
-                    && origin != GameOptionsOrigin::TacticalBattle
-                    && (legacy_load || (legacy_save && origin == GameOptionsOrigin::CommandCenter))
-                {
-                    if legacy_save {
-                        save_load_panel_state.open_save();
-                    } else {
-                        save_load_panel_state.open_load();
-                    }
-                    game_options_state.suspended = true;
-                }
                 let mut action = draw_game_options(
                     &mut game_options_state,
                     &mut bmp_cache,
@@ -4757,13 +4695,6 @@ async fn main() {
                     );
                     if overlay != GameOptionsAction::None {
                         action = overlay;
-                    }
-                    if game_options_state.suspended {
-                        if let Some(action) =
-                            draw_save_load(ctx, &save_slots, &mut save_load_panel_state)
-                        {
-                            panel_actions.push(action);
-                        }
                     }
                 });
                 egui_macroquad::draw();
@@ -4922,9 +4853,6 @@ async fn main() {
                                             .join("hd")
                                             .join("EData"),
                                     );
-                                    show_save_load = false;
-                                    save_load_panel_state =
-                                        rebellion_render::SaveLoadPanelState::default();
                                     save_slots = read_save_slots(&saves_dir);
                                     tactical_state = TacticalState::new();
 
@@ -5660,23 +5588,6 @@ async fn main() {
                     let pause_input = !original_modal_fixture_open && !window_modal_open;
                     if draw_pause_alert(ctx, &clock, &mut bmp_cache, cockpit_layout, pause_input) {
                         clock.resume();
-                    }
-
-                    // Save/Load panel (floating window)
-                    if show_save_load {
-                        save_load_panel_state.open = true;
-                        if let Some(action) =
-                            draw_save_load(ctx, &save_slots, &mut save_load_panel_state)
-                        {
-                            match &action {
-                                PanelAction::CloseSaveLoadPanel => {
-                                    show_save_load = false;
-                                }
-                                _ => {
-                                    panel_actions.push(action);
-                                }
-                            }
-                        }
                     }
 
                     // The original Galactic Encyclopedia (FUN_00429f30,
@@ -8688,22 +8599,6 @@ async fn main() {
 
         // 5. Apply panel actions
         for action in panel_actions {
-            if matches!(game_mode, GameMode::GameOptions { .. }) && game_options_state.suspended {
-                let intent = match &action {
-                    PanelAction::SaveGame { slot, name } => Some(GameOptionsAction::Save {
-                        slot: *slot,
-                        name: name.clone(),
-                    }),
-                    PanelAction::LoadGame { slot } => Some(GameOptionsAction::Load { slot: *slot }),
-                    _ => None,
-                };
-                if let Some(intent) = intent {
-                    game_options_state.suspended = false;
-                    if game_options_state.request(intent) == GameOptionsAction::None {
-                        continue;
-                    }
-                }
-            }
             match action {
                 PanelAction::SaveGame { slot, name } => {
                     let state = LiveCampaign {
@@ -8757,7 +8652,6 @@ async fn main() {
                                 state.clock.tick,
                                 fingerprint
                             );
-                            save_load_panel_state.error_message = None;
                             save_slots = read_save_slots(&saves_dir);
                             game_options_state.refresh_saves(&save_slots);
                             game_options_state.error = None;
@@ -8771,7 +8665,6 @@ async fn main() {
                             ));
                         }
                         Err(error) => {
-                            save_load_panel_state.error_message = Some(error.to_string());
                             macroquad::logging::warn!("[save] slot={} failed: {}", slot, error);
                             // FUN_00408240: "Selected Game Failed To Save".
                             game_options_state.saved_notice = Some(false);
@@ -8879,8 +8772,6 @@ async fn main() {
                                     .join("hd")
                                     .join("EData"),
                             );
-                            show_save_load = false;
-                            save_load_panel_state.close();
                             tactical_state = TacticalState::new();
                             dual_ai_mode = secondary_ai_state.is_some();
                             msg_log = MessageLog::default();
@@ -8898,20 +8789,11 @@ async fn main() {
                             }
                         }
                         Err(error) => {
-                            save_load_panel_state.error_message = Some(error.to_string());
                             game_options_state.error = Some(error.to_string());
                         }
                     }
                 }
                 PanelAction::SetGameSpeed(speed) => choose_game_speed(&mut clock, speed),
-                PanelAction::CloseSaveLoadPanel => {
-                    game_options_state.suspended = false;
-                    save_load_panel_state.close();
-                    show_save_load = false;
-                    if game_mode == GameMode::LoadGame {
-                        game_mode = GameMode::MainMenu;
-                    }
-                }
                 action => {
                     let active_fog_state = if player_faction == MissionFaction::Alliance {
                         &mut fog_alliance_state
@@ -11095,10 +10977,8 @@ fn apply_panel_action(
         // they require access to the full save state and are not routed through
         // this helper.
         PanelAction::SelectFaction(_)
-        | PanelAction::OpenSaveLoad
         | PanelAction::SaveGame { .. }
         | PanelAction::LoadGame { .. }
-        | PanelAction::CloseSaveLoadPanel
         | PanelAction::OpenModManager => {
             // Handled by UI state toggle (not a world mutation)
         }
@@ -13804,13 +13684,29 @@ mod options_save_tests {
         let root =
             std::env::temp_dir().join(format!("options-corrupt-save-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let path = rebellion_data::save::slot_path(&root, 9);
+        let path = rebellion_data::save::slot_path(&root, 5);
         std::fs::write(&path, b"corrupt save fixture").unwrap();
         let slots = super::read_save_slots(&root);
         assert_eq!(slots.len(), 1);
-        assert_eq!(slots[0].slot, 9);
+        assert_eq!(slots[0].slot, 5);
         assert_eq!(slots[0].name, "Unreadable save");
         assert_eq!(std::fs::read(&path).unwrap(), b"corrupt save fixture");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn saves_beyond_the_six_rows_stay_on_disk_and_are_not_listed() {
+        // FUN_00407180 builds six save rows; slots 6..9 and stray files in
+        // the saves directory are left alone.
+        let root = std::env::temp_dir().join(format!("options-extra-saves-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let legacy = rebellion_data::save::slot_path(&root, 9);
+        std::fs::write(&legacy, b"legacy slot fixture").unwrap();
+        let stray = root.join("notes.txt");
+        std::fs::write(&stray, b"not a save").unwrap();
+        assert!(super::read_save_slots(&root).is_empty());
+        assert_eq!(std::fs::read(&legacy).unwrap(), b"legacy slot fixture");
+        assert_eq!(std::fs::read(&stray).unwrap(), b"not a save");
         std::fs::remove_dir_all(root).unwrap();
     }
 }

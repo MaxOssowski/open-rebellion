@@ -72,7 +72,7 @@ pub use advisor::{
     advisor_combat_result, advisor_greet, advisor_manufacturing_complete, advisor_mission_result,
     advisor_uprising, draw_advisor, AdvisorFaction, AdvisorMessage, AdvisorPriority, AdvisorState,
 };
-pub use audio::{draw_audio_controls, AudioVolumeState, MusicContext, MusicTrack, SfxKind};
+pub use audio::{AudioVolumeState, MusicContext, MusicTrack, SfxKind};
 #[cfg(target_arch = "wasm32")]
 pub use bmp_cache::set_bmp_cache;
 pub use bmp_cache::{AssetRenderProfile, BmpCache, DllSource};
@@ -107,7 +107,9 @@ pub use fleet_window::{
     FLEET_WINDOW_WIDTH,
 };
 pub use fog::draw_fog_overlay;
-pub use game_options::{draw_game_options, GameOptionsAction, GameOptionsOrigin, GameOptionsState};
+pub use game_options::{
+    draw_game_options, GameOptionsAction, GameOptionsOrigin, GameOptionsState, SaveSlotInfo,
+};
 pub use gid_legend::set_gid_legends;
 pub use main_menu::{draw_main_menu, MainMenuAction, MainMenuControl, MainMenuState};
 pub use main_menu_destinations::{
@@ -125,10 +127,7 @@ pub use missions_window::{
     draw_missions_windows, MissionsTab, MissionsWindowAction, MissionsWindowState,
 };
 pub use panels::game_setup::{draw_game_setup, Difficulty, GameSetupAction, GameSetupState};
-pub use panels::{
-    draw_mod_manager, draw_save_load, ModInfo, ModManagerAction, ModManagerState, PanelAction,
-    SaveLoadPanelState, SaveSlotInfo,
-};
+pub use panels::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState, PanelAction};
 pub use rebellion_core::tactical::{
     BattlePhase, BattleSession, CombatWinner, OriginalTacticalRng, TacticalTrenchRunOutcome,
 };

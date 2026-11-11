@@ -1,4 +1,4 @@
-//! The port's remaining panels: game setup, saves and mods.
+//! The port's remaining panels: game setup and mods.
 //!
 //! Each panel is a standalone function that accepts the egui context, read-only
 //! world data, and mutable panel-local state.  Every panel returns
@@ -12,7 +12,7 @@
 //!
 //! ```ignore
 //! egui_macroquad::ui(|ctx| {
-//!     if let Some(action) = panels::draw_save_load(ctx, &slots, &mut save_load) {
+//!     if let Some(action) = panels::draw_mod_manager(ctx, &mut mods) {
 //!         apply_panel_action(&mut world, &mut missions, action);
 //!     }
 //! });
@@ -21,13 +21,11 @@
 
 pub mod game_setup;
 pub mod mod_manager;
-pub mod save_load;
 
 #[cfg(any(debug_assertions, not(target_arch = "wasm32")))]
 pub mod command_palette;
 
 pub use mod_manager::{draw_mod_manager, ModInfo, ModManagerAction, ModManagerState};
-pub use save_load::{draw_save_load, SaveLoadPanelState, SaveSlotInfo};
 
 use rebellion_core::fleet_join::FleetMover;
 use rebellion_core::ids::{CharacterKey, FleetKey, SystemKey, TroopKey};
@@ -162,15 +160,11 @@ pub enum PanelAction {
         tick: u64,
     },
 
-    // ── Save / Load ───────────────────────────────────────────────────────────
-    /// Open (toggle) the save/load panel.
-    OpenSaveLoad,
-    /// Player confirmed a save to the given slot with the given name.
+    // ── Save / Load (the Game Options window's rows) ─────────────────────────
+    /// Save to the given slot with the given name.
     SaveGame { slot: usize, name: String },
-    /// Player confirmed a load from the given slot.
+    /// Load the given slot.
     LoadGame { slot: usize },
-    /// Player closed the save/load panel without taking an action.
-    CloseSaveLoadPanel,
 
     // ── Mod Manager ─────────────────────────────────────────────────────
     /// Open/close the mod manager panel.
