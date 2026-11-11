@@ -208,3 +208,11 @@ The user approved the architectural change on 2026-11-11.
   - `window_focus.rs`: 10 of 10 caught.
   - The accessors and draw functions of the four windows: 45 caught, 4
     unviable, 0 missed.
+
+## Batch b193
+
+Full gate batch b193 (2026-11-11 23:34) is green: 30 gates, check, workspace
+(3593) and fixture (156) tests with 0 failures, 152 battle PASS. Its
+`sector-quadrants` run `sector-quadrants-2026-11-11T21-29-32-961Z-2350269`
+includes the `shared-focus` case. OBJ-07-C010 passes on it with A0
+manufacturing-focus/00 and /02.
