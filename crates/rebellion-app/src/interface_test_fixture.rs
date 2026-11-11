@@ -2635,6 +2635,7 @@ pub fn emit_encyclopedia(
     request: FixtureRequest,
     state: &rebellion_render::EncyclopediaState,
     catalog: &rebellion_render::encyclopedia::OriginalEncyclopediaCatalog,
+    topics: Option<&std::collections::HashMap<u32, rebellion_render::OriginalEncyclopediaTopic>>,
 ) {
     if !matches!(
         request.scenario,
@@ -2644,15 +2645,21 @@ pub fn emit_encyclopedia(
         return;
     }
     if state.original_topic_mode {
-        // The topic: its name and whether Previous and Next are enabled
-        // (FUN_0045fd20).
+        // The topic: its name, whether Previous and Next are enabled
+        // (FUN_0045fd20), and the title and body the window draws
+        // (FUN_0045fa60), for an exact text comparison with A0.
         #[derive(Serialize)]
         struct Topic {
             status: &'static str,
             topic: String,
             previous: bool,
             next: bool,
+            title: Option<String>,
+            body: Option<String>,
         }
+        let shown = state
+            .original_selected_object_id
+            .and_then(|id| topics.and_then(|topics| topics.get(&id)));
         let (previous, next) = rebellion_render::encyclopedia::original_topic_neighbours(state, catalog);
         let topic = state
             .original_selected_object_id
@@ -2664,6 +2671,8 @@ pub fn emit_encyclopedia(
             topic,
             previous: previous.is_some(),
             next: next.is_some(),
+            title: shown.map(|topic| topic.title.clone()),
+            body: shown.and_then(|topic| topic.body.clone()),
         })
         .expect("serialize the encyclopedia topic report");
         unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };

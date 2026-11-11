@@ -377,6 +377,49 @@ async function run(browser, base, faction) {
       }
     };
     topicSteps.push(await topicUntil("a double click opens Abduction's topic", "Abduction"));
+    // OBJ-01-C008, the topic text. The body is ENCYTEXT's text as the
+    // window draws it (FUN_0045fa60 -> FUN_0041ecf0 at (17, 231), 395 by
+    // 80, DT_WORDBREAK in the default font). A0 shows Abduction's five
+    // lines (the Alliance's encyclopedia/topic-step-2, the Empire's
+    // topic-abduction-empire-day166): the body must be exactly their
+    // words, and each line's ink must sit within a pixel of A0's, so each
+    // line breaks at A0's word.
+    await frames(page, 4);
+    const abductionShot = PNG.sync.read(await page.screenshot());
+    await shot("encyclopedia-topic-abduction");
+    const ABDUCTION_A0 = ["Abduction missions are used to capture a specific character. The",
+      "target of this mission must be an enemy character on a specific",
+      "enemy fleet or system. The success of this mission depends on the",
+      "combat attributes of the characters and the SpecForces assigned to",
+      "the mission team."];
+    assert.equal(topicSteps[0].title, "Abduction", JSON.stringify(topicSteps[0]));
+    assert.equal(topicSteps[0].body, ABDUCTION_A0.join(" "), JSON.stringify(topicSteps[0]));
+    const whiteInk = (png, [x0, y0, x1, y1]) => {
+      let box = null;
+      for (let y = y0; y < y1; y += 1) {
+        for (let x = x0; x < x1; x += 1) {
+          const i = (y * png.width + x) * 4;
+          if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) <= 200) continue;
+          box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)] : [x, y, x, y];
+        }
+      }
+      return box;
+    };
+    const inkAgainst = (a0Png, portPng, regions) => {
+      const checks = {};
+      for (const [name, region] of regions) {
+        const [a, p] = [whiteInk(a0Png, region), whiteInk(portPng, region)];
+        checks[name] = { a0: a, port: p };
+        assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1),
+          `${name}: ${JSON.stringify(checks[name])}`);
+      }
+      return checks;
+    };
+    const bodyLine = (k, x0 = 17, x1 = 412) => [ex + x0, ey + 231 + 16 * k, ex + x1, ey + 247 + 16 * k];
+    const abductionA0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/encyclopedia",
+      faction.name === "alliance" ? "topic-step-2.png" : "topic-abduction-empire-day166.png")));
+    const abductionText = inkAgainst(abductionA0, abductionShot,
+      ABDUCTION_A0.map((_, k) => [`abduction-line-${k + 1}`, bodyLine(k)]));
     for (const [x, name] of [[380, "Ackbar"], [28, "Abduction"], [28, "A-wing"]]) {
       await clickAt(ex + x + 10, ey + 14 + 8);
       topicSteps.push(await topicUntil(`the arrow steps to ${name}`, name));
@@ -394,6 +437,7 @@ async function run(browser, base, faction) {
     // arrows, 13 by 9, at the window's (399, 231) and (399, 302), every
     // pixel; the thumb follows the line count and is not compared.
     let topicBar = null;
+    const topicText = { abduction: abductionText };
     if (faction.name === "alliance") {
       const a0 = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/encyclopedia/topic-step-6.png")));
       const port = PNG.sync.read(await page.screenshot());
@@ -409,12 +453,23 @@ async function run(browser, base, faction) {
       };
       topicBar = { up: differ(231), down: differ(302) };
       assert.ok(topicBar.up === 0 && topicBar.down === 0, `the topic's bar: ${JSON.stringify(topicBar)}`);
+      // A-wing's first five lines are label-tab-value rows. A0 topic-step-6
+      // reads them so; each label and each value (the tab stop) inks
+      // within a pixel of A0's.
+      const AWING_A0 = [["Refined Material Cost:", "5"], ["Maintenance Cost:", "4"],
+        ["Attack Strength (Laser Cannon):", "5"], ["Attack Strength (Ion Cannon):", "0"], ["Shield Energy:", "5"]];
+      const awing = topicSteps[3];
+      assert.deepEqual(awing.body.split("\n").slice(0, 5).map((line) => line.split(/\t+/)), AWING_A0,
+        JSON.stringify(awing));
+      topicText.awing = inkAgainst(a0, port, AWING_A0.flatMap((_, k) => [
+        [`a-wing-label-${k + 1}`, bodyLine(k, 17, 224)], [`a-wing-value-${k + 1}`, bodyLine(k, 224, 398)]]));
     }
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", busy: busy[0], travelling: travelling[0],
       commanding: commanding[0], available, rows: shown.rows,
       menu: { left: menu.left, top: menu.top, width: menu.width, height: menu.height, rows: menu.row_states },
       topicSteps: topicSteps.map(({ topic, previous, next }) => [topic, previous, next]),
+      topicBar, topicText,
       encyclopedia: encyclopedia.map(({ label, chosen }) => ({ label, chosen })),
       fleet_finder_other_tab: { tab: other.tab, rows: other.rows.length, own: fleets.rows.length }, shots };
   } catch (error) {

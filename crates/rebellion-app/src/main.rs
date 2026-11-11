@@ -5662,7 +5662,12 @@ async fn main() {
                     if let (Some(request), Some(catalog)) =
                         (interface_fixture_request, original_encyclopedia_catalog.as_ref())
                     {
-                        interface_test_fixture::emit_encyclopedia(request, &enc_state, catalog);
+                        interface_test_fixture::emit_encyclopedia(
+                            request,
+                            &enc_state,
+                            catalog,
+                            original_topics,
+                        );
                     }
                     if let (true, Some(catalog), Some(topics)) = (
                         enc_state.open,
