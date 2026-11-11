@@ -140,7 +140,9 @@ let occupied = list_saves(saves_dir);
 delete_slot(saves_dir, slot)?;
 ```
 
-Native saves live at `<saves_dir>/<slot>.reb`. The UI exposes ten slots.
+Native saves live at `<saves_dir>/<slot>.reb`. The data layer keeps ten
+slots (`MAX_SAVE_SLOTS`); the UI, the original's Game Options window, lists
+and writes only the first six (`game_options::SAVE_ROWS`).
 
 ## Safe change checklist
 

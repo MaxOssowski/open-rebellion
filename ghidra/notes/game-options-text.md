@@ -360,6 +360,20 @@ Interaction (`Class_0066e010_vt14` = `FUN_00604b80`, `FUN_00604950`):
   or 100. Those come only from the initial value.
 - The cursor point is written into `+0xc8` before the bounds check. A
   rejected point does not repaint, but it changes the next WM_PAINT.
+- (2026-11-11) `FUN_00601080` is `SetCapture(hwnd)` itself, and
+  `FUN_006048f0` is the strict test `0 < x < 201 && 0 < y < 54` in client
+  pixels; the move handler posts only while it holds. The down message
+  reaches the slider anywhere in its 201 by 54 window (no key mask).
+- The thumb centre is `+0xc8`, the pointer itself: during a drag the thumb
+  sits under the pointer, not at the percent's `floor(201 * v / 100)`. It
+  stays there until the window is built again (`FUN_00407180`).
+- The posted `+0xdc` is the last paint's `cx * 100 / 201`. A click that
+  moves nothing (a press in the 5-pixel margins and a release) posts the
+  opened thumb's value: a volume that opens at 48 (centre 96) sends 47.
+- Port (2026-11-11, `game_options.rs`): `move_thumb`, `send_slider`,
+  `inside_slider`; the thumb sits at the pointer during a visit
+  (`slider_thumbs`), the volume changes on a held move inside and on the
+  release, not on the press.
 
 Volume ↔ slider transfer:
 - Initial value (`FUN_00407180` at `40773b`-`407780`, constants at

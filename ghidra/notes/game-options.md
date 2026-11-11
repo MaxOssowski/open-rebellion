@@ -125,19 +125,33 @@ absent):
 | `DisplayOpts` | `FUN_004163a0` | `FUN_00413000` | the window's flag word `+0xa0` |
 
 The slider's percent v becomes `floor(2000 * log10(v / 100))` hundredths of
-a dB (`FUN_00406b80`), so the DirectSound amplitude `10^(dB / 20)` is v / 100
-less at most 0.12 per cent: the port's linear gain v / 100 matches it. The
-port keeps the same four values (`rebellion_data::settings`) in
+a dB (`FUN_00406b80`; 0 sends -9600), and the window opens a slider at
+`floor(100 * 10^(vol / 2000))` (`FUN_00407180`; 0 below -9600). Both floor,
+so a sent percent other than 1, 10 and 100 reopens one lower (49 -> -620 ->
+48). Since 2026-11-11 the port does the same (`game_options.rs`:
+`slider_hundredths`, `slider_percent`) and feeds its mixer DirectSound's
+amplitude `10^(vol / 2000)` (`hundredths_gain`); before, it used the linear
+v / 100 and reopened at v. hyp: the arithmetic is f64 (MSVC's default
+53-bit x87 precision); under 64-bit precision 10 might reopen as 9.
+
+The port keeps the same four values (`rebellion_data::settings`) in
 `saves/settings.json` and in the browser's `localStorage`
-(`rebellion_settings_v1`). port: an absent store keeps the port's defaults
-(all display options on, as the manual says, music 0.8) rather than the
-registry's zeros.
+(`rebellion_settings_v1`), each volume as the amplitude (exact for the
+hundredths: `gain_hundredths` inverts it).
+
+Defaults: `FUN_005f41b0` gives 0 for an absent value, so `FUN_004173c0`
+and `FUN_00413000` start both volumes at 0 dB, full (slider 100; A0
+200-options shows the music thumb clipped at the right end), and the
+music on (`MusicSwitch` 0). The port's music default was 0.8 until
+2026-11-11; it is now 1.0, like the effects. port: an absent store keeps
+all display options on (as the manual says) rather than `DisplayOpts` 0.
 
 ## Compatibility and evidence gaps
 
-- The authentic window has six rows. The compatibility panel retains all ten
-  existing slots through F8 / Ctrl+L (load) and campaign F9 / Ctrl+S
-  (save), sharing confirmation guards. No storage migration is needed.
+- The authentic window has six rows, the only save and load path. The
+  port's legacy ten-slot panel (galaxy `S`, F8 / Ctrl+L, F9 / Ctrl+S) was
+  removed on 2026-11-11; saves in slots 6..9 stay on disk untouched and are
+  not listed (`read_save_slots`, `game_options::SAVE_ROWS`).
 - The original has no delete: this constructor builds none, and no game DLL
   holds a delete string apart from the Message Index's "Delete Selected
   Messages" (TEXTSTRA 0x8009); REBDLOG's save strings are overwrite and
