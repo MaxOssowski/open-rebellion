@@ -48,6 +48,9 @@ const BUILD_SELECTION = 55;
 const SQUADRON_LOAD = 65;
 const BATTERY_STATUS = 92;
 const RECON_TARGETING = 63;
+// 104 SpecialForceEnroute: ReconTargeting with an Infiltrators team (the
+// Empire's Imperial Commandos) travelling to the primary system.
+const SPECIAL_FORCE_ENROUTE = 104;
 // FUN_00443020: 0x66 Encyclopedia and 0x65 Close, 32 by 31.
 const buttons = {
   encyclopedia: { x: 258, y: 218, id: 11552 },
@@ -430,6 +433,25 @@ const cases = [
       rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"] },
     target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
   },
+  // The en route special force (OBJ-10 C004): A0 sfstatus/03, the
+  // Alliance's Infiltrators travelling to Yavin, listed on Yavin's Defenses
+  // window. FUN_00445780's eight rows, Status "Enroute" with the ETA row;
+  // FUN_0042c3b0 draws STRATEGY 11520 (the en route mark) under the
+  // Infiltrators' picture. The title and all eight labels are compared with
+  // A0, and the picture frame's interior in every pixel.
+  {
+    name: "special-force-en-route",
+    code: SPECIAL_FORCE_ENROUTE,
+    family: "SpecialForce",
+    a0: { file: "../sfstatus/03-sf-status.png", x: 108, y: 79, labels: 8, side: "alliance" },
+    a0Picture: { file: "../sfstatus/03-sf-status.png", x: 108, y: 79, side: "alliance" },
+    rows: [["Attached: "], ["Status:", "Enroute"], ["ETA Destination:", "Day 249"], ["Maintenance Cost:"],
+      ["Diplomacy Rating:"], ["Espionage Rating:"], ["Combat Rating:"], ["Leadership Rating:"]],
+    marks: [["Strategy", 11520]],
+    a0Menu: { width: 104, height: 122,
+      rows: ["Move", "Confirmed Move", "Mission", "Encyclopedia", "Status", "Retire"] },
+    target: async (page, faction) => ({ x: faction.galaxy.x + faction.galaxy.width - 235 - 5 + 42, y: faction.galaxy.y + 5 + 116 }),
+  },
   // A KDY-150's Status from the Defenses window's Planetary Batteries
   // page (A0 status/22, 23 at Coruscant): Location, Status "Active",
   // Maintenance Cost, Weapons Rating, Shield Strength, Bombardment Defense
@@ -533,6 +555,19 @@ async function inspect(server, source, faction, testCase, executable) {
       forceRanking = rows.find(([label]) => label === "Force Ranking:")?.[1] ?? null;
       assert.equal(forceRanking, testCase.forceRanking[faction.name], JSON.stringify(rows));
     }
+    let statusRows = null;
+    if (testCase.rows) {
+      await page.waitForFunction(() => window.__openRebellionInterfaceStatusRows?.rows?.length, null, { timeout: 10_000 });
+      statusRows = (await page.evaluate(() => window.__openRebellionInterfaceStatusRows)).rows;
+      assert.deepEqual(statusRows.map(([label]) => label), testCase.rows.map(([label]) => label), JSON.stringify(statusRows));
+      testCase.rows.forEach(([, value], k) => {
+        if (value !== undefined) assert.equal(statusRows[k][1], value, JSON.stringify(statusRows));
+      });
+      if (testCase.marks) {
+        const { marks } = await page.evaluate(() => window.__openRebellionInterfaceStatusRows);
+        assert.deepEqual(marks, testCase.marks, JSON.stringify(marks));
+      }
+    }
     await page.mouse.move(2, 2);
     await page.waitForTimeout(200);
     await frames(page);
@@ -592,6 +627,25 @@ async function inspect(server, source, faction, testCase, executable) {
     const textChecks = a0Dir && faction.name === "alliance" && testCase.name === "fleet"
       ? fleetStatusText(PNG.sync.read(second), rect)
       : testCase.a0 && faction.name === (testCase.a0.side ?? "empire") ? facilityStatusText(PNG.sync.read(second), rect, testCase.a0) : null;
+
+    // The picture frame's interior (masks.picture) against A0, every pixel.
+    let pictureCheck = null;
+    if (testCase.a0Picture && faction.name === testCase.a0Picture.side) {
+      const a0 = PNG.sync.read(fs.readFileSync(path.join(root, ".artifacts/a0-vm/status", testCase.a0Picture.file)));
+      const port = PNG.sync.read(second);
+      const box = masks.picture;
+      let differing = 0;
+      for (let y = box.y; y < box.y + box.height; y += 1) {
+        for (let x = box.x; x < box.x + box.width; x += 1) {
+          const i = ((testCase.a0Picture.y + y) * a0.width + testCase.a0Picture.x + x) * 4;
+          const j = ((rect.y + y) * port.width + rect.x + x) * 4;
+          if ([0, 1, 2].some((k) => a0.data[i + k] !== port.data[j + k])) differing += 1;
+        }
+      }
+      fs.writeFileSync(path.join(directory, "picture-port.png"), PNG.sync.write(crop(second, { x: rect.x + box.x, y: rect.y + box.y, width: box.width, height: box.height })));
+      pictureCheck = { pixels: box.width * box.height, differing };
+      assert.equal(differing, 0, `the picture differs from A0: ${JSON.stringify(pictureCheck)}`);
+    }
 
     // FUN_00443020's tips (A0 a0-vm/tooltip/122-st-ency.png,
     // 123-st-close.png): a (255, 251, 240) tip with a (128, 128, 128)
@@ -676,7 +730,7 @@ async function inspect(server, source, faction, testCase, executable) {
       menuTopic = await page.evaluate(() => window.__openRebellionInterfaceEncyclopediaTopic);
       assert.equal(menuTopic.topic, "Mon Mothma", JSON.stringify(menuTopic));
     }
-    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, forceRanking, menuTopic, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
+    result = { status: "pass", faction: faction.name, case: testCase.name, fixture_code: fixtureCode, object_menu: menu, opened: line, rect, forceRanking, menuTopic, statusRows, pictureCheck, comparison, closes, tips, textChecks, scrolledEnd, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } catch (error) {
     result = { status: "fail", faction: faction.name, case: testCase.name, error: String(error.stack || error), errors, console: consoleLines.slice(-20), launch_attempts: launchAttempts };
   } finally {

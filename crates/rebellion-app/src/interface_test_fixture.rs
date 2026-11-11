@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 103;
+const SCENARIO_COUNT: u8 = 104;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -340,6 +340,12 @@ pub enum Scenario {
     /// Adar Tallon on his own Averam, one Training Facility, shows Troop
     /// Training Research first of two kinds).
     TroopResearchTargeting = 102,
+    /// As `ReconTargeting` with a special force of a class whose en route
+    /// mark is STRATEGY 11520 travelling to the primary system: the
+    /// Alliance's Infiltrators, the Empire's Imperial Commandos. Its
+    /// destination's Defenses window lists it first (A0 sfstatus/01..03:
+    /// the Alliance's Infiltrators en route to Yavin, and their Status).
+    SpecialForceEnroute = 103,
 }
 
 impl Scenario {
@@ -448,6 +454,7 @@ impl Scenario {
             100 => Self::BuildSelectionTraining,
             101 => Self::ModdellUninhabited,
             102 => Self::TroopResearchTargeting,
+            103 => Self::SpecialForceEnroute,
             _ => return None,
         })
     }
@@ -501,6 +508,7 @@ impl Scenario {
             || self == Self::CharacterBoard
             || self == Self::CharacterAboard
             || self == Self::ReconTargeting
+            || self == Self::SpecialForceEnroute
             || self == Self::ResearchTargeting
             || self == Self::TroopResearchTargeting
             || self == Self::UprisingTargeting
@@ -1107,17 +1115,25 @@ pub fn apply(
             request, world, defenses, systems, fleets, cockpit, primary, secondary,
         );
     }
-    if request.scenario == Scenario::ReconTargeting {
+    if matches!(
+        request.scenario,
+        Scenario::ReconTargeting | Scenario::SpecialForceEnroute
+    ) {
         // The recon special force takes the agent's place: SPECFCSD class 3
         // (mission mask 0x4) for the Alliance, class 5 (0x100) for the
         // Empire, both in Reconnaissance's mask 0x104.
         if let Some(agent) = world.characters.keys().next() {
             world.characters[agent].current_system = None;
         }
-        let class = rebellion_core::ids::DatId::new(if player_is_alliance {
-            0x3c00_0003
-        } else {
-            0x3c00_0005
+        let enroute = request.scenario == Scenario::SpecialForceEnroute;
+        // En route: SPECFCSD class 2 (Infiltrators, A0 sfstatus/03) for the
+        // Alliance, class 7 (Imperial Commandos) for the Empire; neither is
+        // a class FUN_0042c3b0 gives the GOKRES en route mark.
+        let class = rebellion_core::ids::DatId::new(match (enroute, player_is_alliance) {
+            (false, true) => 0x3c00_0003,
+            (false, false) => 0x3c00_0005,
+            (true, true) => 0x3c00_0002,
+            (true, false) => 0x3c00_0007,
         });
         let unit = world
             .special_forces
@@ -1127,7 +1143,20 @@ pub fn apply(
                 skills: [0; 8],
                 on_mission: false,
             });
-        world.systems[primary].special_forces = vec![unit];
+        if enroute {
+            // A member on its way is listed in its destination's Defenses
+            // window (A0 specforces/03) and its Status reads Enroute.
+            world.systems[primary].special_forces.clear();
+            missions.push_transit(rebellion_core::missions::MemberTransit {
+                member: MissionMember::SpecialForce(unit),
+                mission_id: 0,
+                to: primary,
+                arrival: 249,
+                abode: None,
+            });
+        } else {
+            world.systems[primary].special_forces = vec![unit];
+        }
     }
     if request.scenario == Scenario::PersonnelStates {
         let own: Vec<_> = world
@@ -1273,6 +1302,7 @@ pub fn apply(
         Scenario::MissionTargeting
             | Scenario::ForceStatus
             | Scenario::ReconTargeting
+            | Scenario::SpecialForceEnroute
             | Scenario::ResearchTargeting
             | Scenario::TroopResearchTargeting
             | Scenario::UprisingTargeting
@@ -2305,14 +2335,16 @@ pub fn emit_personnel_finder(
 }
 
 /// The open Status window's title, name and rows: a Character Status in the
-/// ForceStatus scenario, a facility's (the headquarters') in Quadrants, and
-/// an unfinished unit's or a producer's in any.
+/// ForceStatus scenario, a facility's (the headquarters') in Quadrants, the
+/// travelling special force's in SpecialForceEnroute (with the picture's
+/// marks), and an unfinished unit's or a producer's in any.
 pub fn emit_status_rows(
     request: FixtureRequest,
     sources: rebellion_render::status_rows::StatusSources<'_>,
     status: &rebellion_render::status_window::StatusWindowState,
 ) {
     use rebellion_render::status_rows::StatusObject;
+    let mut marks = Vec::new();
     let (title, name, rows) = match (request.scenario, status.object()) {
         (Scenario::ForceStatus, Some(StatusObject::Character(key))) => {
             let Some(rows) = rebellion_render::status_window::character_rows(
@@ -2323,6 +2355,17 @@ pub fn emit_status_rows(
                 return;
             };
             ("Character Status", None, rows)
+        }
+        (Scenario::SpecialForceEnroute, Some(object @ StatusObject::SpecialForce(_))) => {
+            let Some(view) = rebellion_render::status_rows::status_view(sources, object) else {
+                return;
+            };
+            marks = view
+                .marks
+                .iter()
+                .map(|&(source, id)| (format!("{source:?}"), id))
+                .collect();
+            (view.title, Some(view.name), view.rows)
         }
         (Scenario::Quadrants, Some(object @ StatusObject::ManufacturingFacility(_)))
         | (
@@ -2347,12 +2390,14 @@ pub fn emit_status_rows(
         title: &'static str,
         name: Option<String>,
         rows: Vec<(String, String)>,
+        marks: Vec<(String, u32)>,
     }
     let bytes = serde_json::to_vec(&Report {
         status: "status-rows",
         title,
         name,
         rows: rows.into_iter().map(|row| (row.label, row.value)).collect(),
+        marks,
     })
     .expect("serialize the status rows report");
     unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
@@ -10405,6 +10450,36 @@ mod tests {
         assert_eq!(kinds, [MissionKind::SubdueUprising]);
     }
 
+    // A0 sfstatus/03: the Alliance's Infiltrators en route to Yavin, listed
+    // there; FUN_0042c3b0 gives class 2 the STRATEGY 11520 mark.
+    #[test]
+    fn the_special_force_enroute_scenario_sends_a_team_to_the_primary_system() {
+        for (faction, class, alliance) in [
+            (CockpitFaction::Alliance, 0x3c00_0002, true),
+            (CockpitFaction::Empire, 0x3c00_0007, false),
+        ] {
+            let applied = apply_to_fleet_world(request(Scenario::SpecialForceEnroute, faction));
+            let primary = applied.world.systems.keys().next().unwrap();
+            let [transit] = applied.missions.en_route() else {
+                panic!("{:?}", applied.missions.en_route());
+            };
+            let MissionMember::SpecialForce(unit) = transit.member else {
+                panic!("{transit:?}");
+            };
+            assert_eq!(transit.to, primary);
+            assert_eq!(transit.abode, None);
+            let unit = &applied.world.special_forces[unit];
+            assert_eq!(
+                (unit.class_dat_id.raw(), unit.is_alliance),
+                (class, alliance)
+            );
+            assert!(applied.world.systems[primary].special_forces.is_empty());
+        }
+        let recon =
+            apply_to_fleet_world(request(Scenario::ReconTargeting, CockpitFaction::Alliance));
+        assert!(recon.missions.en_route().is_empty());
+    }
+
     #[test]
     fn the_targeting_fleet_move_and_fleet_window_scenarios_report_the_object_menu() {
         let reporting: Vec<_> = (0..SCENARIO_COUNT)
@@ -10458,6 +10533,7 @@ mod tests {
                 Scenario::FleetAssaultTaken,
                 Scenario::BuildSelectionTraining,
                 Scenario::TroopResearchTargeting,
+                Scenario::SpecialForceEnroute,
             ]
         );
     }
