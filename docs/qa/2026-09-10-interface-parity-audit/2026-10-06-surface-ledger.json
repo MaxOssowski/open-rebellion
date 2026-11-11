@@ -1811,14 +1811,15 @@
         {
           "id": "CMD-02-C018",
           "requirement": "known",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-visibility/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-side-zero-flags/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
           ],
-          "note": "Explored systems show their marks as FUN_0042b330's gate allows, unit-tested and run in the Linux GID gate; not compared with A0.",
+          "note": "Explored systems show their marks as FUN_0042b330's gate allows, unit-tested and run in the Linux GID gate; not compared with A0. 2026-11-11 b191: run.mjs verifyGidStateMarksAgainstA0 (known case, 640x480, both sides): the explored primary system's Popular Support mark (Alliance 10146, Empire 10150; FUN_0042b330, FUN_00426e70) equals, every non-key pixel, the same mark at an exact FUN_00425d00 corner in A0 agent-menu/alliance-easy-day1, alliance-expert-day1 and gid-displays; Alt+1 restores the frame byte for byte. Run 2026-11-11T16-42-37-223Z-1403128, 152/152.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1842,9 +1843,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-unpopulated-marks/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
           ],
-          "note": "An explored unpopulated system takes its holder's no-side mark (FUN_00426ee0, FUN_0050b610), unit-tested and run in the Linux GID gate; not compared with A0.",
+          "note": "An explored unpopulated system takes its holder's no-side mark (FUN_00426ee0, FUN_0050b610), unit-tested and run in the Linux GID gate; not compared with A0. 2026-11-11 b191: the mark art matches A0; no A0 shows a system known to be uninhabited on the galaxy view.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1862,13 +1864,14 @@
         {
           "id": "CMD-02-C022",
           "requirement": "blockade",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "tools/interface-parity/run.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
           ],
-          "note": "No GID mark for a blockade: FUN_0042b330 and FUN_0042cde0 read +0x88 only for bits 1 and 2 (explored, uprising), never the blockade bit 0x20, so a blockaded system's item is its display's mark alone. run.mjs 'blockade' (Linux, 640x480, both sides) asserts the primary system draws one bitmap; draw_blockade_indicators (an invented ring) stays uncalled. No A0 capture of a blockaded system on the GID (2026-11-04). 2026-11-10: the uncalled invented ring draw_blockade_indicators is removed, with the uncalled facility squares (draw_facility_icons) and sector outlines (draw_sector_boundaries).",
+          "note": "No GID mark for a blockade: FUN_0042b330 and FUN_0042cde0 read +0x88 only for bits 1 and 2 (explored, uprising), never the blockade bit 0x20, so a blockaded system's item is its display's mark alone. run.mjs 'blockade' (Linux, 640x480, both sides) asserts the primary system draws one bitmap; draw_blockade_indicators (an invented ring) stays uncalled. No A0 capture of a blockaded system on the GID (2026-11-04). 2026-11-10: the uncalled invented ring draw_blockade_indicators is removed, with the uncalled facility squares (draw_facility_icons) and sector outlines (draw_sector_boundaries). 2026-11-11 b191: A0 gid-displays legend-alt-1/legend-alt-3 (Empire game, same day): Alliance-held Yavin with one Empire fleet alone (10151, not 10160), blockaded under FUN_0050b8e0; its 21x21 cell equals the unblockaded Yavin of gid/d-popular-support (0 of 441 pixels). The port's blockade cell equals the known cell for both sides, and its Idle Fleets enemy mark matches A0. Run 2026-11-11T16-42-37-223Z-1403128.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1878,9 +1881,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-marker-bands/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
           ],
-          "note": "Characters on a mission count as Active Personnel (FUN_0042b330 0x44, +0x78 bit 7) and the mission fixture runs in the Linux GID gate; no A0 and no other mission mark is traced.",
+          "note": "Characters on a mission count as Active Personnel (FUN_0042b330 0x44, +0x78 bit 7) and the mission fixture runs in the Linux GID gate; no A0 and no other mission mark is traced. 2026-11-11 b191: Active Personnel marks (Alliance 10146, Empire 10153) match A0 art; no A0 shows a mission under way on Active Personnel.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1890,9 +1894,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-gid-fleet-marks/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-gid-display-states/"
           ],
-          "note": "Fleet marks for both sides and the both-sides art 10160 follow FUN_0042b330 cases 0x20..0x22, run in the Linux GID gate; mixed-fleet allegiance and A0 are open.",
+          "note": "Fleet marks for both sides and the both-sides art 10160 follow FUN_0042b330 cases 0x20..0x22, run in the Linux GID gate; mixed-fleet allegiance and A0 are open. 2026-11-11 b191: one-side Idle Fleets marks (Alliance 10148, Empire 10151) match A0 pixel for pixel; no A0 shows the both-sides mark 10160.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7645,7 +7650,7 @@
             "tools/interface-parity/sector-quadrants.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-headquarters-move/"
           ],
-          "note": "FUN_00556390 puts the HQ in its destination at once, en route until arrival (save v112): 904 shows there (FUN_0045bbb0 mode 3), its menu greys both moves (FUN_004f9860 4), and its Defense Facility Status leads with 'ETA Destination: Day N' (FUN_004fd2b0) and reads 'Enroute' (FUN_0044a470); sector-quadrants.mjs 'headquarters-move' (Linux) checks all three. Open: A0 headquarters-move/07 vs /09 shows an open sector window keeping 904 over the origin until reopened (the overlay is rebuilt only by a system refresh, FUN_0045b770 -> FUN_0045bbb0, from the side's record FUN_004f3220); the port redraws at once. No A0 capture en route; no arrival notice traced (2026-11-04).",
+          "note": "FUN_00556390 puts the HQ in its destination at once, en route until arrival (save v112): 904 shows there (FUN_0045bbb0 mode 3), its menu greys both moves (FUN_004f9860 4), and its Defense Facility Status leads with 'ETA Destination: Day N' (FUN_004fd2b0) and reads 'Enroute' (FUN_0044a470); sector-quadrants.mjs 'headquarters-move' (Linux) checks all three. Open: A0 headquarters-move/07 vs /09 shows an open sector window keeping 904 over the origin until reopened (the overlay is rebuilt only by a system refresh, FUN_0045b770 -> FUN_0045bbb0, from the side's record FUN_004f3220); the port redraws at once. No A0 capture en route; no arrival notice traced (2026-11-04). 2026-11-11 b191: all 2723 A0 PNGs searched for 904: 75 hits, all Alliance-side; an open sector window in A0 keeps 904 over the origin after a move while the port redraws at once (refresh untraced). Captures needed are listed in evidence 2026-11-11-hq-and-tactical-states.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7667,9 +7672,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-18-seat-of-power/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-19-loyalty-coruscant-hq/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
           ],
-          "note": "Coruscant's side and SeatOfPower (FUN_005617b0, 0x230 message) are ported; unit tests only, no browser or A0 of the state. 2026-11-07 (A0 VM, the Empire game, day 676..679, a0-vm/coruscant-676/12..14): when Get Immediate Result gave the Alliance Coruscant, closing the result played the movie with the caption 'The Alliance has seized the Imperial capital system of Coruscant.' (TEXTSTRA 0x7171, MDATA.103 per movie-flow.md), and the game went on (Standard victory also needs the Emperor and Vader): Coruscant's window shows the Alliance's red title. The port plays 103 under 0x7171 (story_messages); no browser case reaches the state.",
+          "note": "Coruscant's side and SeatOfPower (FUN_005617b0, 0x230 message) are ported; unit tests only, no browser or A0 of the state. 2026-11-07 (A0 VM, the Empire game, day 676..679, a0-vm/coruscant-676/12..14): when Get Immediate Result gave the Alliance Coruscant, closing the result played the movie with the caption 'The Alliance has seized the Imperial capital system of Coruscant.' (TEXTSTRA 0x7171, MDATA.103 per movie-flow.md), and the game went on (Standard victory also needs the Emperor and Vader): Coruscant's window shows the Alliance's red title. The port plays 103 under 0x7171 (story_messages); no browser case reaches the state. 2026-11-11 b191: sector-quadrants.mjs defenses-other-side: the Empire's Defenses window title row for an Alliance-held system matches A0 coruscant-676/14 (0 of 813 pixels outside the name; name start within a pixel; run sector-quadrants-2026-11-11T16-47-05-922Z-1422686). The fixture system is not Coruscant; the title buttons' bottom-left key pixel is unsettled in A0 (black here, green or red elsewhere).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8648,14 +8654,15 @@
         {
           "id": "EVT-03-C001",
           "requirement": "bombard military",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment-menu/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-bombardment-sources/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-bombardment-sources/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Order 0x220 targets regiments, defenses and HQ (FUN_0058d770, FUN_0058cba0); the submenu row is browser-checked but only General Bombardment was executed there. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Order 0x220 targets regiments, defenses and HQ (FUN_0058d770, FUN_0058cba0); the submenu row is browser-checked but only General Bombardment was executed there. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-11 b191: a0-kimanan-bombard against A0 menus/13, 15: menu, submenu (Destroy System grey) and the strike running at once on the side's own Kimanan; picture, rail and corners 0 px. Only a strike that costs nothing is compared. run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8665,9 +8672,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-bombardment/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-bombardment-sources/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-bombardment-sources/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Order 0x221 targets civilian facilities with the support penalty (FUN_0058e320); unit tests only. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Order 0x221 targets civilian facilities with the support penalty (FUN_0058e320); unit tests only. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-11 b191: no A0 capture of this state; the capture needed is listed in evidence 2026-11-11-assault-and-bombardment.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8715,9 +8723,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Failure texts 0x7092/0x7094 are unit-tested; the browser case shows a repulsed assault's window. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Failure texts 0x7092/0x7094 are unit-tested; the browser case shows a repulsed assault's window. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-11 b191: no A0 capture of this state; the capture needed is listed in evidence 2026-11-11-assault-and-bombardment.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8755,9 +8764,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Assault failure (defender left) shown in the browser fixture. Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Assault failure (defender left) shown in the browser fixture. Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-11 b191: no A0 capture of this state; the capture needed is listed in evidence 2026-11-11-assault-and-bombardment.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8778,13 +8788,14 @@
         {
           "id": "EVT-03-C011",
           "requirement": "destroyed",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-bombardment-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-bombardment-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Destroyed column files the losses (+0x80/+0x88). Compared only with Steam guide screenshots (guide-061/062/065), not A0.",
+          "note": "Destroyed column files the losses (+0x80/+0x88). Compared only with Steam guide screenshots (guide-061/062/065), not A0. 2026-11-11 b191: the Destroyed column matches A0 assault-clean/03 in enemy-assault-taken. run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8936,13 +8947,14 @@
         {
           "id": "TAC-01-C004",
           "requirement": "running",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-status-text-highlights/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-ship-contents-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
           ],
-          "note": "A0 TAC-01-C004 (running, Attack Capital Ships) is captured and the browser production-death-star-laser-journey runs the battle, but no comparison of the running frame is recorded. 2026-11-07 (b126): the running frame's panel now carries A0's contents list (two 2301 regiments) and 'Attacking Victory Destroyer 1'-style line; the frame itself is still not compared (different battle).",
+          "note": "A0 TAC-01-C004 (running, Attack Capital Ships) is captured and the browser production-death-star-laser-journey runs the battle, but no comparison of the running frame is recorded. 2026-11-07 (b126): the running frame's panel now carries A0's contents list (two 2301 regiments) and 'Attacking Victory Destroyer 1'-style line; the frame itself is still not compared (different battle). 2026-11-11 b191: run.mjs battle-entry checks the controls under the panel (x 476..639, y 262..479, the running pause art 1060) right after Resume against A0 TAC-01-C004 and TAC-03-C017: 0 differing pixels outside A0's pointer, no 'Battle Paused'; a paused frame differs by 366 pixels (run 2026-11-11T16-51-20-565Z-1465902, Linux, both sides).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9054,9 +9066,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-blockade-report/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
           ],
-          "note": "The browser results journey returns to the shared campaign; A0 TAC-01-C013 (strategic screen after the battle) is captured but not compared.",
+          "note": "The browser results journey returns to the shared campaign; A0 TAC-01-C013 (strategic screen after the battle) is captured but not compared. 2026-11-11 b191: a unit test reproduces A0's result text word for word ('The Alliance fleet is defeated.' / 'Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed.'); no browser case ends a battle by the player's last ship and shows the live strategy screen.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -9352,9 +9365,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-right-panel-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
           ],
-          "note": "After destruction the panel returns to the emblem as in A0 TAC-03-C004; the explosion and TACTICAL 3368 destroyed presentation are not compared.",
+          "note": "After destruction the panel returns to the emblem as in A0 TAC-03-C004; the explosion and TACTICAL 3368 destroyed presentation are not compared. 2026-11-11 b191: all five colours of A0's fireball appear in the port's TACTICAL 3368 frame (production-detail-escort-presentation, run 2026-11-11T16-51-41-850Z-1467492); the port's frame adds a sixth colour and A0's frame number is unknown, so shape and size are not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9513,13 +9527,14 @@
         {
           "id": "TAC-03-C017",
           "requirement": "target lost",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-26-weapon-targets/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-navigation-markers-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
           ],
-          "note": "Target loss returns to the mission order in the port; A0 TAC-03-C017 (Swift jumped out) is captured but not compared. 2026-11-07 (b125): A0 TAC-03-C017 reads 'Attack Capital Ships' (the order's word, no target); the port's line does the same with no target, but its lifecycle fixture retargets a replacement at once, so the state is not compared.",
+          "note": "Target loss returns to the mission order in the port; A0 TAC-03-C017 (Swift jumped out) is captured but not compared. 2026-11-07 (b125): A0 TAC-03-C017 reads 'Attack Capital Ships' (the order's word, no target); the port's line does the same with no target, but its lifecycle fixture retargets a replacement at once, so the state is not compared. 2026-11-11 b191: tactical fixture production-attack-target-lost-presentation (every enemy capital ship jumping): the selected ship keeps Attack Capital Ships with no target and its line reads 'Attack Capital Ships'; the Empire line's text box matches A0 exactly, 'Tactics: Stand Off' 2 pixels narrower (accepted text-width deviation). Run 2026-11-11T16-52-11-759Z-1470108, Linux, both sides.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10517,13 +10532,14 @@
         {
           "id": "TAC-08-C001",
           "requirement": "assault action",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-planetary-assault/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-planetary-assault/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Planetary Assault (0x234, FUN_0058c120) is ordered from the fleet menu in the browser fleet-window gate (Arch Chromium 153/155); the invented ground minigame is removed. No A0 capture of an assault.",
+          "note": "Planetary Assault (0x234, FUN_0058c120) is ordered from the fleet menu in the browser fleet-window gate (Arch Chromium 153/155); the invented ground minigame is removed. No A0 capture of an assault. 2026-11-11 b191: A0 menus3/27-29 show the assault running at once and opening the summary; fleet-window.mjs assault-taken (Empire) matches A0's frame, rail buttons and picture (0 px), the rail metal between the buttons one palette step off (accepted deviation, counted); A0 used the Fleet window's menu, the case the sector icon's menu. run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10542,13 +10558,14 @@
         {
           "id": "TAC-08-C003",
           "requirement": "force details",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary-labels/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-imperial-assault-summary-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-imperial-assault-summary-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Forces pages with labels and unit names (FUN_0044e290, FUN_0044edb0) compared with guide-062, browser-checked. No A0 capture of an assault. 2026-11-08 (b136): the Assault Summary against the unedited A0 assault-clean (an Alliance game, day 720: the Empire took Yavin). fleet-window.mjs 'assault-taken' (Linux) on the Empire's side: picture 0x2b99 (11161) 0 pixels from A0, the green title centred as A0's, the body 'Imperial troops have taken control of the Alliance system ...' at A0's place, and both force pages' subtitle, category label and column heads within 2 px of A0; the Alliance's side keeps its pixel-exact category bar, scroll bar and row against messages-day633 (a mixed-side save). The earlier 'No A0 capture of an assault' is superseded. Still open: the Empire's force rows and category art (A0 is the Alliance's view) and a destroyed defender (A0 03) are not compared. Batch b136: 23 of 23 gates.",
+          "note": "Forces pages with labels and unit names (FUN_0044e290, FUN_0044edb0) compared with guide-062, browser-checked. No A0 capture of an assault. 2026-11-08 (b136): the Assault Summary against the unedited A0 assault-clean (an Alliance game, day 720: the Empire took Yavin). fleet-window.mjs 'assault-taken' (Linux) on the Empire's side: picture 0x2b99 (11161) 0 pixels from A0, the green title centred as A0's, the body 'Imperial troops have taken control of the Alliance system ...' at A0's place, and both force pages' subtitle, category label and column heads within 2 px of A0; the Alliance's side keeps its pixel-exact category bar, scroll bar and row against messages-day633 (a mixed-side save). The earlier 'No A0 capture of an assault' is superseded. Still open: the Empire's force rows and category art (A0 is the Alliance's view) and a destroyed defender (A0 03) are not compared. Batch b136: 23 of 23 gates. 2026-11-11 b191: fixture EnemyAssaultTaken (code 106; the real BombardEnv::assault takes Alliance Yavin): Stormtrooper rows, category bar, scroll bar (A0's 38 px thumb) and the destroyed defender 0 px from A0 assault-clean/02, 03; row names now in font 10 (FUN_0044edb0 +0x38), a port fix. run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -10570,42 +10587,46 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-17-assault-menu/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Failure shown in the browser fixture (one defender left). No A0 capture of an assault.",
+          "note": "Failure shown in the browser fixture (one defender left). No A0 capture of an assault. 2026-11-11 b191: no A0 capture of this state; the capture needed is listed in evidence 2026-11-11-assault-and-bombardment.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "TAC-08-C006",
           "requirement": "casualties",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Losses filed under Destroyed (0x302) and shown in the browser. No A0 capture of an assault.",
+          "note": "Losses filed under Destroyed (0x302) and shown in the browser. No A0 capture of an assault. 2026-11-11 b191: the destroyed Alliance Army Regiment and 'No Casualties' match A0 assault-clean/03 in enemy-assault-taken. run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "TAC-08-C007",
           "requirement": "occupation",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-planetary-assault/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-16-planetary-assault/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Up to six regiments land with no defender left (FUN_0058c810) and the system changes hands; unit and campaign tests only. No A0 capture of an assault.",
+          "note": "Up to six regiments land with no defender left (FUN_0058c810) and the system changes hands; unit and campaign tests only. No A0 capture of an assault. 2026-11-11 b191: the real assault leaves Yavin held by the Empire and the summary text matches A0 assault-clean/01 exactly. run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "TAC-08-C008",
           "requirement": "return",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-assault-summary/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-assault-and-bombardment/"
           ],
-          "note": "Escape/Close returns to the strategic view in the browser; Display page system/fleet buttons unit-tested only. No A0 capture of an assault.",
+          "note": "Escape/Close returns to the strategic view in the browser; Display page system/fleet buttons unit-tested only. No A0 capture of an assault. 2026-11-11 b191: Display 0 px from A0 assault-clean/04 outside text (the page's title and RCDATA 0x7013 note in font 6, 350 wide, FUN_0044c630 page 5, a port fix); the system button closes the summary as A0 07; Escape closes it (no A0 of Escape). run fleet-window-2026-11-11T16-59-47-032Z-1495672 (Linux, both sides, 88/88).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]

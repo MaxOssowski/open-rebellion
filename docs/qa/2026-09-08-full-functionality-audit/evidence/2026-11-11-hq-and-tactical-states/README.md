@@ -231,3 +231,14 @@ Mutants (`--in-diff`, in place):
   `interface-test-fixtures`. No unit test runs it; the lost-target
   scenario's probe checks its outcome (every hostile capital retreating,
   order 5 with no target, the line).
+
+## Batch b191
+
+- 29 of 29 interface gates on Linux, among them `run.mjs --all`
+  (`2026-11-11T17-31-46-936Z-1582620`), `fleet-window`
+  (`fleet-window-2026-11-11T17-12-22-966Z-1539256`) and `sector-quadrants`
+  (`sector-quadrants-2026-11-11T17-20-18-782Z-1557352`).
+- Workspace tests: 3582 passed, 0 failed. Fixture tests: 156. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T18-10-44-332Z-1628401`: 152 of 152 (38
+  scenarios, with the new lost-target scenario).
