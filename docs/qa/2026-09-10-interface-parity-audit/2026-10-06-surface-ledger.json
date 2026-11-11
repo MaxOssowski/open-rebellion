@@ -7359,7 +7359,7 @@
         {
           "id": "OBJ-12-C003",
           "requirement": "complete",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-lifecycle.md",
@@ -7369,7 +7369,7 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-saboteurs-strike/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-empire-conflict/"
           ],
-          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared. 2026-11-06: a sabotage's victim now reads Saboteurs Strike (FUN_0048b9a0, 0x7083..0x7085) on its Conflict rail; A0 unedited 'test' save shows 'Saboteurs Strike at Yavin' over 'Alliance Army Regiment', and message-display.mjs (Linux, Alliance) finds the port's picture 1013 and title image 0 pixels from A0. Empire side: A0 empire-clean/21 'Saboteurs Strike at Denab' over 'KDY-150', picture 1014 0 pixels, as the port's Empire reader gets.",
+          "note": "Completion posts the kind's report (FUN_004927c0), matched against A0 for success and failure (OBJ-12-C004, C005). Open: whether 'complete' also means a Mission Status state; not compared. 2026-11-06: a sabotage's victim now reads Saboteurs Strike (FUN_0048b9a0, 0x7083..0x7085) on its Conflict rail; A0 unedited 'test' save shows 'Saboteurs Strike at Yavin' over 'Alliance Army Regiment', and message-display.mjs (Linux, Alliance) finds the port's picture 1013 and title image 0 pixels from A0. Empire side: A0 empire-clean/21 'Saboteurs Strike at Denab' over 'KDY-150', picture 1014 0 pixels, as the port's Empire reader gets. 2026-11-11: pass by user decision (2026-11-11, 'complete' is settled by the completion reports): completion posts the kind's report (FUN_004927c0), compared with A0 for success (OBJ-12-C004, mission-reports/emperor-recruits-thrawn-day43) and failure (OBJ-12-C005, emperor-espionage-chandrila-day129, empire-clean/02) in message-display.mjs on Linux, and the sabotage victim's Saboteurs Strike on both sides. A separate Mission Status 'complete' state is not claimed.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
