@@ -216,6 +216,16 @@ pub fn prefix_choice(rows: &[SystemRow], text: &str) -> Option<usize> {
     crate::list_prefix::best_prefix_row(rows.iter().map(|row| row.name.as_str()), text)
 }
 
+/// The row an edit of the name box chooses (`FUN_00461000`, `0x408`):
+/// [`prefix_choice`] whenever the box holds a string buffer
+/// (`FUN_005f3040` is its length plus one, 0 only without one). Every
+/// edit leaves one (`FUN_005f3ad0`, `FUN_005f3c30` allocate even an empty
+/// string), so a name emptied by Backspace chooses the first row, as in
+/// the other Finders.
+fn edited_choice(rows: &[SystemRow], text: &str) -> Option<usize> {
+    prefix_choice(rows, text)
+}
+
 /// What the Finder asks of the galaxy view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SystemFinderAction {
@@ -718,12 +728,10 @@ pub fn draw_system_finder(
     open_window.scroll = scroll;
     open_window.scroll_hold = scroll_hold;
     if name_changed {
-        // FUN_00461000 0x408: a non-empty name chooses its best row; an
-        // empty one, or none, clears the choice.
+        // FUN_00461000 0x408: the name's best row, the first for an
+        // emptied name; none with no row.
         open_window.name.clone_from(&name);
-        let choice = (!name.is_empty())
-            .then(|| prefix_choice(&list, &name))
-            .flatten();
+        let choice = edited_choice(&list, &name);
         open_window.chosen = choice.map(|index| list[index].system);
         if let Some(index) = choice {
             open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
@@ -976,6 +984,19 @@ mod tests {
             });
         }
         assert!(!state.is_open());
+    }
+
+    #[test]
+    fn a_name_emptied_by_an_edit_chooses_the_first_row() {
+        // FUN_00461000 0x408 matches whenever FUN_005f3040 (the buffer's
+        // length plus one) is not 0; FUN_005f3c30 leaves an allocated empty
+        // string after Backspace, so FUN_00609650 runs on "" and keeps its
+        // first row.
+        let world = galaxy();
+        let list = rows(&world, SystemTab::All);
+        assert_eq!(edited_choice(&list, ""), Some(0));
+        assert_eq!(edited_choice(&list, "cor"), Some(2));
+        assert_eq!(edited_choice(&[], ""), None);
     }
 
     #[test]

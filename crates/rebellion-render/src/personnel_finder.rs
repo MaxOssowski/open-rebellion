@@ -591,7 +591,15 @@ struct OpenFinder {
     tab: PersonnelTab,
     view: PersonnelView,
     name: String,
+    /// The list's chosen row, drawn white.
     chosen: Option<usize>,
+    /// The object Display and Enter open, `+0x178`: set by a typed name
+    /// (`0x408`, `FUN_00464c20`), a click or a key step (`0x29b`, case
+    /// `0xca` of `FUN_00464890`). A side or view tab rebuilds the list
+    /// (`FUN_00464e10`), so no row is chosen, but keeps `+0x178`, and no
+    /// prefix match runs there (cases `100` and `0x6e`). port: with the
+    /// side tab it was chosen on, which picks a system row's unit.
+    target: Option<(PersonnelFinderRow, PersonnelTab)>,
     /// The list's first visible pixel (it scrolls by pixels,
     /// `FUN_0060a490`).
     scroll: usize,
@@ -739,6 +747,7 @@ impl PersonnelFinderState {
             view: PersonnelView::Characters,
             name: String::new(),
             chosen: None,
+            target: None,
             scroll: 0,
             scroll_hold: None,
             focus_name: true,
@@ -761,23 +770,28 @@ impl PersonnelFinderState {
         self.window.is_some() && rect_contains(window_rect(layout), egui::pos2(point.0, point.1))
     }
 
+    /// Show side `tab` (case `100`, `FUN_00464890`): the list is rebuilt
+    /// with no row chosen and no prefix match, but Display and Enter still
+    /// open the object chosen before (`+0x178`). The list keeps its first
+    /// visible pixel: `FUN_00464e10` swaps its items (`FUN_00608280`) and
+    /// lays it out (`FUN_0060a280`), whose `FUN_00609ae0` only clamps it to
+    /// the new range; the draw's bar clamps it so.
     pub fn set_tab(&mut self, tab: PersonnelTab) {
         if let Some(window) = &mut self.window {
             if window.tab != tab {
                 window.tab = tab;
                 window.chosen = None;
-                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
     }
 
+    /// Show `view` (case `0x6e`), as [`Self::set_tab`] does.
     pub fn set_view(&mut self, view: PersonnelView) {
         if let Some(window) = &mut self.window {
             if window.view != view {
                 window.view = view;
                 window.chosen = None;
-                window.scroll = 0;
                 window.last_clicked = None;
             }
         }
@@ -1000,10 +1014,9 @@ pub fn draw_personnel_finder(
                 false,
                 scale,
             ) {
-                if let Some(chosen) = window.chosen {
-                    if let Some(row) = list.get(chosen) {
-                        open_action = Some(action_for_row(row, world, window.tab));
-                    }
+                // Case 0xc9: +0x178, which outlives a tab change.
+                if let Some((row, tab)) = &window.target {
+                    open_action = Some(action_for_row(row, world, *tab));
                 }
             }
 
@@ -1190,8 +1203,11 @@ pub fn draw_personnel_finder(
     open_window.scroll_hold = scroll_hold;
     if name_changed {
         open_window.name.clone_from(&name);
+        // FUN_00464c20 0x408: the best row is chosen and +0x178 takes its
+        // object, or is emptied with no row.
         let choice = prefix_choice(&list, &name);
         open_window.chosen = choice;
+        open_window.target = choice.map(|index| (list[index].clone(), open_window.tab));
         if let Some(index) = choice {
             open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
@@ -1199,6 +1215,7 @@ pub fn draw_personnel_finder(
     if let Some((row, at_time)) = clicked_row {
         open_window.last_clicked = Some((row, at_time));
         open_window.chosen = Some(row);
+        open_window.target = Some((list[row].clone(), open_window.tab));
         // Copy the display name into the name box.
         open_window.name = list[row].display_name().to_owned();
     }
@@ -1207,15 +1224,15 @@ pub fn draw_personnel_finder(
     if let Some(step) = step {
         if let Some(row) = crate::list_prefix::stepped_row(open_window.chosen, list.len(), step) {
             open_window.chosen = Some(row);
+            open_window.target = Some((list[row].clone(), open_window.tab));
             open_window.name = list[row].display_name().to_owned();
             open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
         }
     }
     if enter {
-        if let Some(chosen) = open_window.chosen {
-            if let Some(row) = list.get(chosen) {
-                open_action = Some(action_for_row(row, world, open_window.tab));
-            }
+        // 0x407: +0x178, which outlives a tab change.
+        if let Some((row, tab)) = &open_window.target {
+            open_action = Some(action_for_row(row, world, *tab));
         }
     }
     // port: the original has no wheel; a notch moves a row.
@@ -2126,6 +2143,145 @@ mod tests {
 
         state.set_view(PersonnelView::SpecForces);
         assert_eq!(state.window.as_ref().unwrap().chosen, None);
+    }
+
+    #[test]
+    fn display_after_a_tab_change_opens_the_name_typed_before_it() {
+        // FUN_00464c20 0x408 stores the typed name's best row in +0x178;
+        // case 100 of FUN_00464890 rebuilds the list (FUN_00464e10) without
+        // a prefix match and leaves +0x178; Display (case 0xc9) opens it.
+        let mut world = GameWorld::default();
+        let yavin = add_system(&mut world, "Yavin");
+        let mut luke = default_character();
+        luke.name = "Luke".into();
+        luke.is_alliance = true;
+        luke.current_system = Some(yavin);
+        luke.recruited = true;
+        let luke = world.characters.insert(luke);
+        let fog = FogState::new(Faction::Alliance);
+        let origin = window_rect(layout()).min;
+        let display = origin + egui::vec2(423.0 + 16.0, 93.0 + 15.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut state = PersonnelFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        let mut frame = |state: &mut PersonnelFinderState, events: Vec<egui::Event>| {
+            let mut action = None;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, 520.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    action = draw_personnel_finder(ctx, &world, &fog, state, layout(), &mut cache);
+                },
+            );
+            action
+        };
+        frame(&mut state, vec![]);
+        frame(&mut state, vec![egui::Event::Text("lu".into())]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(0));
+        state.set_tab(PersonnelTab::Imperial);
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: display,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        frame(&mut state, vec![egui::Event::PointerMoved(display)]);
+        frame(&mut state, vec![press(true)]);
+        let opened = frame(&mut state, vec![press(false)]);
+        assert_eq!(
+            opened,
+            Some(PersonnelFinderAction::OpenCharacter {
+                character: luke,
+                system: Some(yavin),
+            })
+        );
+
+        // Enter (0x407, FUN_00464c20) opens +0x178 the same way.
+        let mut state = PersonnelFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        frame(&mut state, vec![]);
+        frame(&mut state, vec![egui::Event::Text("lu".into())]);
+        state.set_tab(PersonnelTab::Imperial);
+        frame(&mut state, vec![]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, None);
+        let enter = egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        };
+        assert_eq!(
+            frame(&mut state, vec![enter]),
+            Some(PersonnelFinderAction::OpenCharacter {
+                character: luke,
+                system: Some(yavin),
+            })
+        );
+    }
+
+    #[test]
+    fn a_tab_keeps_the_lists_place_clamped_to_its_new_rows() {
+        // FUN_00464e10 swaps the list's items (FUN_00608280) and lays it out
+        // (FUN_0060a280 -> FUN_00609ae0), which clamps the first visible
+        // pixel +0xc4 to the new range and never sets it to 0.
+        let mut world = GameWorld::default();
+        let mut systems = Vec::new();
+        for index in 0..12 {
+            let system = add_system(&mut world, &format!("S{index:02}"));
+            systems.push(system);
+            let mut character = default_character();
+            character.name = format!("C{index:02}");
+            character.is_alliance = true;
+            character.current_system = Some(system);
+            character.recruited = true;
+            world.characters.insert(character);
+        }
+        let fog = FogState::new(Faction::Alliance);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let mut frame = |world: &GameWorld, state: &mut PersonnelFinderState| {
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, 520.0),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let _ = draw_personnel_finder(ctx, world, &fog, state, layout(), &mut cache);
+                },
+            );
+            state.window.as_ref().unwrap().scroll
+        };
+        // Twelve SpecForces rows of each side too (12 x 20 + 5 - 161 = 84
+        // to scroll).
+        for &system in &systems {
+            add_sf(&mut world, system, 0x3c00_0002, true);
+            add_sf(&mut world, system, 0x3c00_0006, false);
+        }
+        let mut state = PersonnelFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        state.window.as_mut().unwrap().scroll = 30;
+        assert_eq!(frame(&world, &mut state), 30);
+        state.set_view(PersonnelView::SpecForces);
+        assert_eq!(frame(&world, &mut state), 30, "kept by the view");
+        state.set_tab(PersonnelTab::Imperial);
+        assert_eq!(frame(&world, &mut state), 30, "kept by the side");
+        // No Imperial character is listed: the range is 0.
+        state.set_view(PersonnelView::Characters);
+        assert_eq!(frame(&world, &mut state), 0, "clamped");
     }
 
     #[test]

@@ -1001,11 +1001,7 @@ pub fn draw_encyclopedia_index_catalog(
     );
     if let Some(command) = outcome.activated_command {
         if (0x6f..=0x75).contains(&command) && command != state.original_category_command {
-            // FUN_0045f100 rebuilds the list from its top.
-            state.original_category_command = command;
-            state.original_scroll = 0;
-            choose_category_row(state, catalog);
-            reconcile_original_index_state(state, catalog, true);
+            change_category(state, catalog, command);
         }
         // FUN_0045f480: the rail's topic command shows the selected object.
         if command == 0x67 && state.original_selected_object_id.is_some() {
@@ -1427,11 +1423,28 @@ pub fn draw_encyclopedia_topic(
     activated
 }
 
+/// A category icon (`0x6e`, `FUN_0045da70`): `FUN_0045f100` swaps the
+/// list's items (`FUN_00608280`) and lays it out (`FUN_0060a280`), which
+/// only clamps the first visible pixel to the new range (`FUN_00609ae0`);
+/// then `FUN_00609650` chooses the Topic box's best row and scrolls as
+/// little as shows it (`FUN_00609ed0`).
+fn change_category(
+    state: &mut EncyclopediaState,
+    catalog: &OriginalEncyclopediaCatalog,
+    command: u16,
+) {
+    state.original_category_command = command;
+    choose_category_row(state, catalog);
+    reconcile_original_index_state(state, catalog, true);
+}
+
 /// A category's list keeps the chosen object when it holds it, else
-/// chooses its first row; All Databases with nothing chosen stays so. The
-/// Topic box keeps its text (A0 encyclopedia/category-1..6 under an empty
-/// box; ex 2, 3: Adar Tallon stays chosen in Personnel Database, System
-/// Database chooses Adega).
+/// chooses the row the Topic box's text best begins (`FUN_0045da70` case
+/// `0x6e`: `FUN_00609650` on the box), the first row for an empty box;
+/// All Databases with nothing chosen stays so. The Topic box keeps its
+/// text (A0 encyclopedia/category-1..6 under an empty box; ex 2, 3: Adar
+/// Tallon stays chosen in Personnel Database, System Database chooses
+/// Adega, the best row for "Adar Tallon").
 fn choose_category_row(state: &mut EncyclopediaState, catalog: &OriginalEncyclopediaCatalog) {
     let extra = state.original_extra_entry.clone();
     let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
@@ -1453,7 +1466,10 @@ fn choose_category_row(state: &mut EncyclopediaState, catalog: &OriginalEncyclop
             .unwrap_or_default();
         state.original_topic_text = Some(topic);
     }
-    state.original_selected_object_id = entries.first().map(|entry| entry.object_id);
+    let text = state.original_topic_text.as_deref().unwrap_or_default();
+    state.original_selected_object_id =
+        crate::list_prefix::best_prefix_row(entries.iter().map(|entry| entry.name.as_str()), text)
+            .map(|row| entries[row].object_id);
 }
 
 fn reconcile_original_index_state(
@@ -2582,6 +2598,74 @@ mod tests {
             .find(|entry| entry.object_id == ship)
             .map(|entry| entry.name.clone());
         assert_eq!(state.original_topic_text, name);
+    }
+
+    #[test]
+    fn a_category_chooses_the_row_the_topic_box_best_begins() {
+        // FUN_0045da70 case 0x6e: FUN_00609650 on the Topic box's text
+        // (+0x128), which still names Corran Horn: "Co" is shared with
+        // Corellia only, so it beats the first row, Adega.
+        let catalog = OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            vec![
+                OriginalEncyclopediaEntry {
+                    object_id: 0x9000_0001,
+                    name: "Adega".into(),
+                },
+                OriginalEncyclopediaEntry {
+                    object_id: 0x9000_0002,
+                    name: "Alderaan".into(),
+                },
+                OriginalEncyclopediaEntry {
+                    object_id: 0x9000_0003,
+                    name: "Corellia".into(),
+                },
+                OriginalEncyclopediaEntry {
+                    object_id: 0x3000_0001,
+                    name: "Corran Horn".into(),
+                },
+            ],
+        );
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x3000_0001),
+            ..EncyclopediaState::default()
+        };
+        change_category(&mut state, &catalog, 0x70);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0003));
+        assert_eq!(state.original_topic_text.as_deref(), Some("Corran Horn"));
+    }
+
+    #[test]
+    fn a_category_keeps_the_lists_place_while_its_row_shows() {
+        // FUN_0045f100 never sets the first visible pixel; FUN_00609ae0
+        // clamps it and FUN_00609650 scrolls only as its row needs.
+        let entries: Vec<OriginalEncyclopediaEntry> = (0..20)
+            .map(|index| OriginalEncyclopediaEntry {
+                object_id: 0x9000_0001 + index,
+                name: format!("S{index:02}"),
+            })
+            .collect();
+        let catalog = OriginalEncyclopediaCatalog::new(
+            "Galactic Encyclopedia".into(),
+            "Topic".into(),
+            std::array::from_fn(|index| format!("Category {index}")),
+            entries,
+        );
+        // Row 6 (120..140) shows at a scroll of 60 (60..220).
+        let mut state = EncyclopediaState {
+            original_selected_object_id: Some(0x9000_0007),
+            original_scroll: 60,
+            ..EncyclopediaState::default()
+        };
+        change_category(&mut state, &catalog, 0x70);
+        assert_eq!(state.original_selected_object_id, Some(0x9000_0007));
+        assert_eq!(state.original_scroll, 60);
+        // A row above the shown part is scrolled to, as little as it needs.
+        state.original_scroll = 150;
+        change_category(&mut state, &catalog, 0x6f);
+        assert_eq!(state.original_scroll, 120);
     }
 
     #[test]

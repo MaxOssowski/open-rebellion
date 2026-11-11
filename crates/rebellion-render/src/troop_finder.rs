@@ -324,6 +324,12 @@ struct OpenFinder {
     name: String,
     /// The chosen row index into the current list.
     chosen: Option<usize>,
+    /// The object Display and Enter open, `+0x17c`: set by a typed name
+    /// (`0x408`, `FUN_0046e5f0`), a click or a key step. A tab's rebuild
+    /// (`FUN_0046ea10`) leaves it, and case `100` of `FUN_0046df90`
+    /// replaces it only when `FUN_00609650` finds a row, so an empty list
+    /// keeps the one chosen before.
+    target: Option<TroopFinderRow>,
     /// The first row the list shows.
     /// The list's first visible pixel (it scrolls by pixels,
     /// `FUN_0060a490`).
@@ -362,6 +368,7 @@ impl TroopFinderState {
             tab,
             name: String::new(),
             chosen: None,
+            target: None,
             scroll: 0,
             scroll_hold: None,
             focus_name: true,
@@ -394,7 +401,6 @@ impl TroopFinderState {
             if window.tab != tab {
                 window.tab = tab;
                 window.chosen = None;
-                window.scroll = 0;
                 window.last_clicked = None;
                 window.rematch = true;
             }
@@ -445,6 +451,15 @@ fn scrolled_to(scroll: usize, row: usize, rows: usize) -> usize {
     } else {
         scroll
     }
+}
+
+/// The scroll after a tab's rebuild and rematch: the layout clamps the
+/// list's first visible pixel to the new range (`FUN_0060a280` →
+/// `FUN_00609ae0`; the rebuild, `FUN_0046ea10`, never sets it), then
+/// `FUN_00609650` scrolls as little as shows its row (`FUN_00609ed0`).
+fn rebuilt_scroll(scroll: usize, choice: Option<usize>, rows: usize) -> usize {
+    let scroll = scroll.min(max_scroll(rows));
+    choice.map_or(scroll, |row| scrolled_to(scroll, row, rows))
 }
 
 /// The list's scroll range for `rows` rows, in pixels
@@ -504,8 +519,9 @@ pub fn draw_troop_finder(
         window.rematch = false;
         window.chosen = prefix_choice(&list, &window.name);
         if let Some(index) = window.chosen {
-            window.scroll = scrolled_to(window.scroll, index, list.len());
+            window.target = Some(list[index].clone());
         }
+        window.scroll = rebuilt_scroll(window.scroll, window.chosen, list.len());
         state.window.clone_from(&Some(window.clone()));
     }
 
@@ -654,10 +670,9 @@ pub fn draw_troop_finder(
                 false,
                 scale,
             ) {
-                if let Some(chosen) = window.chosen {
-                    if let Some(row) = list.get(chosen) {
-                        open_action = Some(action_for_row(row));
-                    }
+                // Case 0xc9: +0x17c.
+                if let Some(row) = &window.target {
+                    open_action = Some(action_for_row(row));
                 }
             }
 
@@ -825,8 +840,11 @@ pub fn draw_troop_finder(
     open_window.scroll_hold = scroll_hold;
     if name_changed {
         open_window.name.clone_from(&name);
+        // FUN_0046e5f0 0x408: +0x17c takes the best row's object, or is
+        // emptied with no row.
         let choice = prefix_choice(&list, &name);
         open_window.chosen = choice;
+        open_window.target = choice.map(|index| list[index].clone());
         if let Some(index) = choice {
             open_window.scroll = scrolled_to(open_window.scroll, index, list.len());
         }
@@ -834,6 +852,7 @@ pub fn draw_troop_finder(
     if let Some((row, at_time)) = clicked_row {
         open_window.last_clicked = Some((row, at_time));
         open_window.chosen = Some(row);
+        open_window.target = Some(list[row].clone());
         open_window.name.clone_from(&list[row].name);
     }
     // A key steps the chosen row and copies its name, as a click does (A0
@@ -841,15 +860,15 @@ pub fn draw_troop_finder(
     if let Some(step) = step {
         if let Some(row) = crate::list_prefix::stepped_row(open_window.chosen, list.len(), step) {
             open_window.chosen = Some(row);
+            open_window.target = Some(list[row].clone());
             open_window.name = list[row].name.clone();
             open_window.scroll = scrolled_to(open_window.scroll, row, list.len());
         }
     }
     if enter {
-        if let Some(chosen) = open_window.chosen {
-            if let Some(row) = list.get(chosen) {
-                open_action = Some(action_for_row(row));
-            }
+        // 0x407: +0x17c.
+        if let Some(row) = &open_window.target {
+            open_action = Some(action_for_row(row));
         }
     }
     // port: the original has no wheel; a notch moves a row.
@@ -888,6 +907,27 @@ fn action_for_row(row: &TroopFinderRow) -> TroopFinderAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tab_keeps_the_lists_place_clamped_then_scrolls_to_its_match() {
+        // FUN_0046ea10 empties and refills the list without writing its
+        // first visible pixel; FUN_0060a280 -> FUN_00609ae0 clamps it, and
+        // FUN_0046df90 case 100's FUN_00609650 scrolls only as far as its row
+        // needs (FUN_00609ed0).
+        let mut state = TroopFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        state.window.as_mut().unwrap().scroll = 30;
+        state.set_tab(TroopTab::Imperial);
+        assert_eq!(state.window.as_ref().unwrap().scroll, 30);
+        let max = max_scroll(20);
+        assert!(max > 30);
+        assert_eq!(rebuilt_scroll(30, None, 20), 30);
+        assert_eq!(rebuilt_scroll(30, Some(3), 20), 30);
+        assert_eq!(rebuilt_scroll(30, Some(0), 20), 0);
+        assert_eq!(rebuilt_scroll(10_000, None, 20), max);
+        assert_eq!(rebuilt_scroll(10_000, Some(19), 20), max);
+        assert_eq!(rebuilt_scroll(30, None, 2), 0);
+    }
 
     #[test]
     fn each_tab_has_its_tooltip_string() {
@@ -1280,6 +1320,74 @@ mod tests {
         state.set_tab(TroopTab::Imperial);
 
         assert_eq!(state.window.as_ref().unwrap().chosen, None);
+    }
+
+    #[test]
+    fn display_after_a_tab_with_no_rows_opens_the_row_chosen_before() {
+        // FUN_0046df90 case 100 stores FUN_00609650's row in +0x17c only
+        // when it finds one, and FUN_0046ea10's rebuild leaves +0x17c, so
+        // an empty tab keeps Alpha; Display (case 0xc9) opens it.
+        let mut world = GameWorld::default();
+        let alpha = add_system(
+            &mut world,
+            "Alpha",
+            ControlKind::Controlled(Faction::Alliance),
+        );
+        add_troop(&mut world, alpha, 0x1000_0002, true);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        let transport = TroopTransportState::default();
+        let fog = FogState::new(Faction::Alliance);
+        let mut state = TroopFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        let mut frame = |state: &mut TroopFinderState, events: Vec<egui::Event>| {
+            let mut action = None;
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(700.0, 520.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    action = draw_troop_finder(
+                        ctx,
+                        &world,
+                        &fog,
+                        state,
+                        layout(),
+                        &mut cache,
+                        &transport,
+                    );
+                },
+            );
+            action
+        };
+        frame(&mut state, vec![]);
+        assert_eq!(state.window.as_ref().unwrap().chosen, Some(0));
+        state.set_tab(TroopTab::Imperial);
+        frame(&mut state, vec![]);
+        assert_eq!(
+            state.window.as_ref().unwrap().chosen,
+            None,
+            "no Imperial row"
+        );
+        let display = window_rect(layout()).min + egui::vec2(427.0 + 16.0, 93.0 + 15.0);
+        let press = |pressed| egui::Event::PointerButton {
+            pos: display,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        frame(&mut state, vec![egui::Event::PointerMoved(display)]);
+        frame(&mut state, vec![press(true)]);
+        assert_eq!(
+            frame(&mut state, vec![press(false)]),
+            Some(TroopFinderAction::OpenDefenses { system: alpha })
+        );
     }
 
     #[test]

@@ -10,9 +10,11 @@
 /// equal one keeps the earlier row, and a shorter one ends the scan. So an
 /// empty text, or one no row begins, chooses the first row.
 ///
-/// hyp: the name box always holds a string buffer, so its length test
-/// (`FUN_005f3040`, the length plus one) never stops the match; the A0
-/// Troop Finder opens on its first row with an empty name box.
+/// The length test (`FUN_005f3040`, the length plus one) is 0 only for a
+/// name box that never held a string: `FUN_00604cf0` builds it without a
+/// buffer (`FUN_005f2f50`), and any edit or set gives it one
+/// (`FUN_005f3ad0`, `FUN_005f3c30`, `FUN_00604f90`). Either way the first
+/// row is the answer for an empty name, as the A0 Troop Finder opens.
 #[must_use]
 pub fn best_prefix_row<'a>(names: impl IntoIterator<Item = &'a str>, text: &str) -> Option<usize> {
     let typed: Vec<char> = text.chars().map(|c| c.to_ascii_lowercase()).collect();

@@ -409,7 +409,6 @@ impl FleetFinderState {
             if window.tab != tab {
                 window.tab = tab;
                 window.chosen = None;
-                window.scroll = 0;
                 window.last_clicked = None;
                 window.rematch = true;
             }
@@ -533,9 +532,7 @@ pub fn draw_fleet_finder(
         window.rematch = false;
         let choice = prefix_choice(&list, &window.name);
         window.chosen = choice.map(|index| list[index].object);
-        if let Some(index) = choice {
-            window.scroll = scrolled_to(window.scroll, index, list.len());
-        }
+        window.scroll = rebuilt_scroll(window.scroll, choice, list.len());
         state.window.clone_from(&Some(window.clone()));
     }
     let chosen_row = window
@@ -951,6 +948,15 @@ fn scrolled_to(scroll: usize, row: usize, rows: usize) -> usize {
     }
 }
 
+/// The scroll after a tab's rebuild and rematch: the layout clamps the
+/// list's first visible pixel to the new range (`FUN_0060a280` →
+/// `FUN_00609ae0`; the rebuild, `FUN_00462be0`, never sets it), then
+/// `FUN_00609650` scrolls as little as shows its row (`FUN_00609ed0`).
+fn rebuilt_scroll(scroll: usize, choice: Option<usize>, rows: usize) -> usize {
+    let scroll = scroll.min(max_scroll(rows));
+    choice.map_or(scroll, |row| scrolled_to(scroll, row, rows))
+}
+
 /// The list's scroll range for `rows` rows, in pixels
 /// ([`crate::list_scroll_bar::max_first`]).
 #[expect(
@@ -966,6 +972,27 @@ fn max_scroll(rows: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tab_keeps_the_lists_place_clamped_then_scrolls_to_its_match() {
+        // FUN_00462be0 empties and refills the list without writing its
+        // first visible pixel; FUN_0060a280 -> FUN_00609ae0 clamps it, and
+        // FUN_00462770 case 100's FUN_00609650 scrolls only as far as its row
+        // needs (FUN_00609ed0).
+        let mut state = FleetFinderState::default();
+        state.open(CockpitFaction::Alliance);
+        state.window.as_mut().unwrap().scroll = 30;
+        state.set_tab(FinderTab::Imperial);
+        assert_eq!(state.window.as_ref().unwrap().scroll, 30);
+        let max = max_scroll(20);
+        assert!(max > 30);
+        assert_eq!(rebuilt_scroll(30, None, 20), 30);
+        assert_eq!(rebuilt_scroll(30, Some(3), 20), 30);
+        assert_eq!(rebuilt_scroll(30, Some(0), 20), 0);
+        assert_eq!(rebuilt_scroll(10_000, None, 20), max);
+        assert_eq!(rebuilt_scroll(10_000, Some(19), 20), max);
+        assert_eq!(rebuilt_scroll(30, None, 2), 0);
+    }
 
     #[test]
     fn the_side_tabs_name_fleets_or_ships_by_mode() {
