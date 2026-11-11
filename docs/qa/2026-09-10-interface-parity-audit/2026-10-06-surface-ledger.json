@@ -708,9 +708,10 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
-            "ghidra/notes/game-options-text.md"
+            "ghidra/notes/game-options-text.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-volume-sliders/README.md"
           ],
-          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0.",
+          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0. 2026-11-11 b181: the music slider follows FUN_00406b80/FUN_00407180 (floor(2000*log10(v/100)) hundredths of a dB, reopened as floor(100*10^(vol/2000))), the thumb moves as Class_0066e010_vt14, music starts full (FUN_004173c0); game-options.mjs passes with A0 tooltip captures. Loudness not measured against A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -725,9 +726,11 @@
             "ghidra/notes/game-options.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
-            "ghidra/notes/game-options-text.md"
+            "ghidra/notes/game-options-text.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-volume-sliders/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-status-bar-volume/README.md"
           ],
-          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0.",
+          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0. 2026-11-11 b181: the effects slider follows the same transfer and thumb rules (FUN_00416360). The port's own volume strip, absent from the original, is removed.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2256,9 +2259,10 @@
           "evidence": [
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/sector-quadrants.mjs",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md"
           ],
-          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case.",
+          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2270,9 +2274,10 @@
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/fleet-move.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-01-fleet-move-gate-linux/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md"
           ],
-          "note": "The fleet icon's drag starts a move (fleet-move.mjs); other icon families' drags are open; no A0. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-10 b177: the facility icon's drop sets the managers' Destination to the system +0x68 names (FUN_00422ce0, FUN_00537180 refuses an object); the defenses and missions icons' drops stay open; no A0, no browser case.",
+          "note": "The fleet icon's drag starts a move (fleet-move.mjs); other icon families' drags are open; no A0. 2026-11-01: fleet-move.mjs passes all 12 cases on Linux (Move, Confirmed Move, cancel, drags, blockade); still no A0 comparison. 2026-11-10 b177: the facility icon's drop sets the managers' Destination to the system +0x68 names (FUN_00422ce0, FUN_00537180 refuses an object); the defenses and missions icons' drops stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's drop moves its team (Ctrl: Confirmed Move); the missions icon's drop is refused (FUN_0054c110, FUN_00522b30; decompile only). Every icon's drop is now ported; no A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5885,9 +5890,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-window-list-fonts/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-scroll-bar-a0/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-title-clip-a0/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-title-clip-a0/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-fleet-window-left-scroll-bar/README.md"
           ],
-          "note": "A ship's carried units show on the Fleet window tabs (fleet-window.mjs, Linux); no A0 comparison of a ship's contents. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: compared: the FleetWindowCoruscant fixture rebuilds A0 fleet-aboard (Imperial Star Destroyer 1 with six TIE Fighter squadrons, three Stormtrooper Regiments, Veers); fleet-window.mjs a0-coruscant (Empire, Linux) matches the selected ship's Fighters, Troops and Personnel tabs, counts 6/6 and 3/3, apart from text, the pane title's clip and the right list's scroll bar (not drawn yet). Fixed: a selected ship listed nothing (right_items, tab_counts). 2026-11-10 b175: the right list scrolls with its RCDATA 10699 bar once its rows pass 164 pixels; the bar matches A0 fleet-aboard/10 in 0 of 1640 pixels. 2026-11-10 b176: the pane title is clipped to its label (100,29,128x25) as A0 fleet-aboard/10 cuts it at x 228.",
+          "note": "A ship's carried units show on the Fleet window tabs (fleet-window.mjs, Linux); no A0 comparison of a ship's contents. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: compared: the FleetWindowCoruscant fixture rebuilds A0 fleet-aboard (Imperial Star Destroyer 1 with six TIE Fighter squadrons, three Stormtrooper Regiments, Veers); fleet-window.mjs a0-coruscant (Empire, Linux) matches the selected ship's Fighters, Troops and Personnel tabs, counts 6/6 and 3/3, apart from text, the pane title's clip and the right list's scroll bar (not drawn yet). Fixed: a selected ship listed nothing (right_items, tab_counts). 2026-11-10 b175: the right list scrolls with its RCDATA 10699 bar once its rows pass 164 pixels; the bar matches A0 fleet-aboard/10 in 0 of 1640 pixels. 2026-11-10 b176: the pane title is clipped to its label (100,29,128x25) as A0 fleet-aboard/10 cuts it at x 228. 2026-11-11 b180: the left list scrolls with its own RCDATA 10699 bar (FUN_004a4b10, 91 by 266); a selection or tab keeps both lists' place, clamped (FUN_004a5c00 writes no first pixel, FUN_00609ae0 clamps). Code and unit tests; no A0 shows a left overflow.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6799,9 +6805,10 @@
             "tools/interface-parity/fleet-window.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-scroll-bar-a0/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-scroll-bar-a0/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-fleet-window-left-scroll-bar/README.md"
           ],
-          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ).",
+          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ). 2026-11-11 b180: the left list's bar and kept scroll (see OBJ-06-C010).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
