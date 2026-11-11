@@ -58,6 +58,9 @@ const TACTICAL_AUDIO_PRESENTATION_SCENARIO: u32 = 36;
 /// A0 TAC-01-C003's battle: one Medium Transport against one Victory
 /// Destroyer, no fighters, so the extent is 103 (`FUN_005ab650`).
 const HULL_SCALE_PRESENTATION_SCENARIO: u32 = 37;
+/// A0 TAC-03-C017: the lifecycle fixture's battle after every hostile
+/// capital has jumped out, so Attack Capital Ships holds no target.
+const ATTACK_TARGET_LOST_PRESENTATION_SCENARIO: u32 = 38;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -118,6 +121,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub battle_alert_presentation: bool,
     pub tactical_audio_presentation: bool,
     pub hull_scale_presentation: bool,
+    pub attack_target_lost_presentation: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -348,7 +352,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | DETAIL_ESCORT_PRESENTATION_SCENARIO
         | BATTLE_ALERT_PRESENTATION_SCENARIO
         | TACTICAL_AUDIO_PRESENTATION_SCENARIO
-        | HULL_SCALE_PRESENTATION_SCENARIO => (
+        | HULL_SCALE_PRESENTATION_SCENARIO
+        | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO => (
             false,
             true,
             false,
@@ -391,6 +396,7 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         battle_alert_presentation: scenario == BATTLE_ALERT_PRESENTATION_SCENARIO,
         tactical_audio_presentation: scenario == TACTICAL_AUDIO_PRESENTATION_SCENARIO,
         hull_scale_presentation: scenario == HULL_SCALE_PRESENTATION_SCENARIO,
+        attack_target_lost_presentation: scenario == ATTACK_TARGET_LOST_PRESENTATION_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -401,8 +407,10 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         command_execution_presentation: scenario == COMMAND_EXECUTION_PRESENTATION_SCENARIO,
         command_progression_presentation: scenario == COMMAND_PROGRESSION_PRESENTATION_SCENARIO,
         attack_targeting_presentation: scenario == ATTACK_TARGETING_PRESENTATION_SCENARIO,
-        attack_target_lifecycle_presentation: scenario
-            == ATTACK_TARGET_LIFECYCLE_PRESENTATION_SCENARIO,
+        attack_target_lifecycle_presentation: matches!(
+            scenario,
+            ATTACK_TARGET_LIFECYCLE_PRESENTATION_SCENARIO | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO
+        ),
         death_star_presentation: matches!(
             scenario,
             DEATH_STAR_PRESENTATION_SCENARIO
@@ -819,8 +827,12 @@ pub(crate) fn apply(
         tactical.configure_attack_targeting_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
-    if request.attack_target_lifecycle_presentation {
+    if request.attack_target_lifecycle_presentation && !request.attack_target_lost_presentation {
         tactical.configure_attack_target_lifecycle_fixture();
+    }
+    #[cfg(feature = "interface-test-fixtures")]
+    if request.attack_target_lost_presentation {
+        tactical.configure_attack_target_lost_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
     // Outcome fixtures enter the same production Death Star path themselves.
@@ -907,6 +919,7 @@ struct FixtureRecord<'a> {
     battle_alert_presentation: bool,
     tactical_audio_presentation: bool,
     hull_scale_presentation: bool,
+    attack_target_lost_presentation: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1416,6 +1429,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         battle_alert_presentation: request.battle_alert_presentation,
         tactical_audio_presentation: request.tactical_audio_presentation,
         hull_scale_presentation: request.hull_scale_presentation,
+        attack_target_lost_presentation: request.attack_target_lost_presentation,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1502,6 +1516,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         battle_alert_presentation: request.battle_alert_presentation,
         tactical_audio_presentation: request.tactical_audio_presentation,
         hull_scale_presentation: request.hull_scale_presentation,
+        attack_target_lost_presentation: request.attack_target_lost_presentation,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1614,6 +1629,9 @@ mod tests {
         assert!(decode(0x10123).unwrap().battle_alert_presentation);
         assert!(decode(0x10124).unwrap().tactical_audio_presentation);
         assert!(decode(0x10125).unwrap().hull_scale_presentation);
+        assert!(decode(0x10126).unwrap().attack_target_lost_presentation);
+        assert!(decode(0x10126).unwrap().attack_target_lifecycle_presentation);
+        assert!(!decode(0x10117).unwrap().attack_target_lost_presentation);
         assert_eq!(
             decode(0x10103).unwrap().lod_fixture,
             TacticalLodFixture::Close
@@ -1635,7 +1653,7 @@ mod tests {
             TacticalLodFixture::CameraJourney
         );
         assert!(decode(0x10100).is_none());
-        assert!(decode(0x10126).is_none());
+        assert!(decode(0x10127).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
     }

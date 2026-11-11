@@ -1679,6 +1679,42 @@ async function probeTactical(page, viewport, folder, stable) {
   const resumed = await dynamicInteractionFrame(page, folder, "resumed");
   assert.notEqual(sha256(stable.bytes), sha256(resumed), "pause control did not resume battle");
   probes.push({ type: "resume", ...verifyTacticalBitmap(viewport, resumed, 1060, 561, 308) });
+  // A0 TAC-01-C004 (the Alliance's Battle at Mon Calamari, running) and
+  // TAC-03-C017 (the Empire's Battle at Yavin, running): the controls under
+  // the panel (x 476..639, y 262..479), the running pause art 1060 among
+  // them, match the running port pixel for pixel, but for A0 C004's pointer
+  // (x 626..639, y 266..287). Neither shows "Battle Paused" (red ink at
+  // x 17..139, y 30..49), nor does the running port.
+  if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1) {
+    const port = PNG.sync.read(resumed);
+    const red = (png) => {
+      let count = 0;
+      for (let y = 30; y < 50; y++) for (let x = 17; x < 140; x++) {
+        const i = (y * png.width + x) * 4;
+        if (png.data[i] > 120 && png.data[i + 1] < 40 && png.data[i + 2] < 40) count++;
+      }
+      return count;
+    };
+    const running = { type: "running-controls-a0", port_paused_ink: red(port) };
+    for (const [cell, pointer] of [["TAC-01-C004", [626, 266, 640, 288]], ["TAC-03-C017", null]]) {
+      const file = path.join(root, `.artifacts/interface-parity/a0/${cell}/original.png`);
+      if (!fs.existsSync(file)) continue;
+      const a0 = PNG.sync.read(fs.readFileSync(file));
+      let differing = 0;
+      for (let y = 262; y < 480; y++) for (let x = 476; x < 640; x++) {
+        if (pointer && x >= pointer[0] && x < pointer[2] && y >= pointer[1] && y < pointer[3]) continue;
+        const i = (y * 640 + x) * 4;
+        if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) differing++;
+      }
+      running[cell] = { differing, a0_paused_ink: red(a0) };
+    }
+    probes.push(running);
+    assert.equal(running.port_paused_ink, 0, JSON.stringify(running));
+    for (const cell of ["TAC-01-C004", "TAC-03-C017"]) {
+      if (!running[cell]) continue;
+      assert.deepEqual(running[cell], { differing: 0, a0_paused_ink: 0 }, JSON.stringify(running));
+    }
+  }
   await page.mouse.click(pause.x, pause.y);
   await page.waitForTimeout(80);
   // Then the pointer leaves the control: resting on it, the shared tooltip
@@ -2397,6 +2433,43 @@ async function probeTacticalDetailEscortPresentation(
   assert.match(effectLine?.text || "",
     new RegExp(`requested=1 rendered=1 .*${destroyed.target + 1}:3368:`),
     "destroyed source frame was not submitted at its retired hull position");
+  // A0 TAC-03-C004 (the VM's Battle at Mon Calamari, frame 17, the
+  // Alliance's Medium Transport 2 destroyed): a fireball of the 3360..3375
+  // family, 36 x 23 pixels at x 165..200, y 292..314, in five colours of
+  // the battle palette. The fixture holds frame 8 (3368), A0 a frame not
+  // known, so the shapes differ; every colour of A0's fireball must show
+  // in the port's, as both index the same palette (5530 + the selector,
+  // FUN_005d38d0).
+  const explosionA0 = path.join(root, ".artifacts/interface-parity/a0/TAC-03-C004/original.png");
+  let explosionProof = null;
+  if (viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1
+    && fs.existsSync(explosionA0)) {
+    const fire = (r, g, b) => r > 150 && b < 120;
+    const colours = (png, [x0, y0, x1, y1]) => {
+      const found = new Map();
+      let box = null;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * png.width + x) * 4;
+        const [r, g, b] = [png.data[i], png.data[i + 1], png.data[i + 2]];
+        if (!fire(r, g, b)) continue;
+        const key = `${r},${g},${b}`;
+        found.set(key, (found.get(key) ?? 0) + 1);
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+          : [x, y, x, y];
+      }
+      return { colours: Object.fromEntries([...found].sort()), box };
+    };
+    const at = (effectLine.text.match(/:3368:\d+:([\d.]+),([\d.]+)/) || []).slice(1).map(Number);
+    assert.equal(at.length, 2, `the destroyed effect's position: ${effectLine.text}`);
+    const port = colours(PNG.sync.read(stable.bytes),
+      [Math.round(at[0]) - 32, Math.round(at[1]) - 32, Math.round(at[0]) + 32, Math.round(at[1]) + 32]);
+    const a0 = colours(PNG.sync.read(fs.readFileSync(explosionA0)), [150, 280, 220, 330]);
+    const missing = Object.keys(a0.colours).filter((key) => !(key in port.colours));
+    explosionProof = { type: "destroyed-explosion-a0", a0, port, missing };
+    assert.deepEqual(a0.box, [165, 292, 200, 314], JSON.stringify(explosionProof));
+    assert.ok(Object.keys(a0.colours).length >= 5 && missing.length === 0,
+      `the explosion's colours against A0: ${JSON.stringify(explosionProof)}`);
+  }
 
   const participantLine = consoleLines.find(({ text }) =>
     text.includes("[tactical_3d] participant_scene"));
@@ -2466,6 +2539,7 @@ async function probeTacticalDetailEscortPresentation(
     type: "source-traced-destroyed-capital",
     executable_functions: ["FUN_005d3e90", "FUN_005d41a0"],
     effect: destroyed,
+    explosion_a0: explosionProof,
     screenshot_sha256: sha256(stable.bytes),
   }, {
     type: "escort-orders-line",
@@ -3426,6 +3500,60 @@ function probeTacticalAttackTargetingPresentation(viewport, folder, stable, read
         target_index: participant.attack_target_index,
       })),
   }];
+}
+
+// A0 TAC-03-C017 (the VM's Empire game, the Battle at Yavin, day 234):
+// Task Force 1 had been "Attacking Swift"; the Alliance withdrew and Swift
+// jumped out, and the line went back to the order's word, "Attack Capital
+// Ships", over "Tactics: Stand Off", with no target box. FUN_005e4b40
+// names a target only while the mover holds one (+0x98); FUN_005cdf50
+// drops a ship whose jump has started (state 6) from the target lists.
+function probeTacticalAttackTargetLostPresentation(viewport, folder, stable, ready, consoleLines) {
+  const enemyCapitals = ready.participants.filter((participant) =>
+    participant.kind === "capital-ship" && participant.faction !== ready.faction);
+  assert.ok(enemyCapitals.length >= 1 && enemyCapitals.every(({ retreating }) => retreating),
+    `every hostile capital jumps out: ${JSON.stringify(enemyCapitals)}`);
+  const capital = ready.participants.find((participant) => participant.kind === "capital-ship"
+    && participant.faction === ready.faction && participant.fleet_roster_index === 0);
+  assert.deepEqual([ready.selected_ship?.order_code, capital?.order_code,
+    capital?.attack_target_kind ?? null], [5, 5, null], JSON.stringify(capital));
+  const ordersLines = consoleLines.map(({ text }) => text.match(/\[tactical_panel\] orders_line=(.*)$/))
+    .filter(Boolean).map((match) => match[1]);
+  assert.equal(ordersLines.at(-1), "Attack Capital Ships", JSON.stringify(ordersLines));
+  const proof = { type: "attack-target-lost-orders-line", orders_line: ordersLines.at(-1) };
+  const a0File = path.join(root, ".artifacts/interface-parity/a0/TAC-03-C017/original.png");
+  if (ready.faction === "empire" && viewport.width === 640 && viewport.height === 480
+    && viewport.device_scale_factor === 1 && fs.existsSync(a0File)) {
+    const a0 = PNG.sync.read(fs.readFileSync(a0File));
+    const port = PNG.sync.read(stable.bytes);
+    // The order box's two lines: their ink's box in each, within the
+    // accepted text deviation (the port's smoothed Liberation Sans against
+    // GDI's unsmoothed Arial, 2026-10-24-tactical-panel-text-a0). Ink is
+    // lighter than the box's green (0, 128, 0) and grid (84, 95, 84).
+    const ink = (png, [x0, y0, x1, y1]) => {
+      let box = null;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = (y * 640 + x) * 4;
+        if (Math.min(png.data[i], png.data[i + 1], png.data[i + 2]) < 100) continue;
+        box = box ? [Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x), Math.max(box[3], y)]
+          : [x, y, x, y];
+      }
+      return box;
+    };
+    const lines = { order: [494, 211, 600, 221], tactics: [494, 222, 600, 231] };
+    proof.a0 = {};
+    for (const [name, region] of Object.entries(lines)) {
+      proof.a0[name] = { a0: ink(a0, region), port: ink(port, region) };
+    }
+    fs.writeFileSync(path.join(folder, "target-lost-a0.json"), JSON.stringify(proof, null, 2));
+    for (const [name, { a0: a, port: p }] of Object.entries(proof.a0)) {
+      assert.ok(a && p && Math.abs(a[0] - p[0]) <= 1 && Math.abs(a[1] - p[1]) <= 1
+        && Math.abs(a[3] - p[3]) <= 1 && Math.abs((a[2] - a[0]) - (p[2] - p[0])) <= 0.15 * (a[2] - a[0] + 1),
+        `${name}: ${JSON.stringify(proof.a0[name])}`);
+    }
+  }
+  fs.writeFileSync(path.join(folder, "attack-target-lost.png"), stable.bytes);
+  return [proof];
 }
 
 function probeTacticalAttackTargetLifecyclePresentation(viewport, folder, stable, ready) {
@@ -5631,6 +5759,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         )
         : scenario.attack_targeting_presentation
         ? probeTacticalAttackTargetingPresentation(viewport, folder, stable, ready, consoleLines)
+        : scenario.attack_target_lost_presentation
+        ? probeTacticalAttackTargetLostPresentation(viewport, folder, stable, ready, consoleLines)
         : scenario.attack_target_lifecycle_presentation
         ? probeTacticalAttackTargetLifecyclePresentation(viewport, folder, stable, ready)
         : scenario.trench_run_outcome
@@ -5725,6 +5855,8 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         Boolean(scenario.attack_targeting_presentation));
       assert.equal(ready.attack_target_lifecycle_presentation,
         Boolean(scenario.attack_target_lifecycle_presentation));
+      assert.equal(ready.attack_target_lost_presentation,
+        Boolean(scenario.attack_target_lost_presentation));
       assert.equal(ready.death_star_presentation,
         Boolean(scenario.death_star_presentation));
       assert.equal(ready.battle_results_presentation,
@@ -6610,19 +6742,20 @@ async function main() {
         "production-battle-alert-entry",
         "production-tactical-audio-routing",
         "production-hull-scale-a0",
-        "production-participants-3d-off"]);
+        "production-participants-3d-off",
+        "production-attack-target-lost-presentation"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(30).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(31).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined, undefined]);
+        undefined, undefined, undefined, undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 37 }, (_, index) => index === 5));
+      Array.from({ length: 38 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 37 }, (_, index) => index === 6));
+      Array.from({ length: 38 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });

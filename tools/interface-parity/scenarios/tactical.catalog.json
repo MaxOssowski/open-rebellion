@@ -521,6 +521,19 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Test-only framebuffer negative control. No original tactical interface cell is accepted."
+    },
+    {
+      "slug": "production-attack-target-lost-presentation",
+      "description": "The target-lifecycle battle after every hostile capital has jumped out: the selected ship ordered to Attack Capital Ships holds no target, as A0 TAC-03-C017. It supports TAC-03-C017, which the lifecycle scenario maps: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65830, "empire": 66086 },
+      "execution_kind": "snapshot",
+      "tactical_proof": false,
+      "production_participants": true,
+      "attack_target_lifecycle_presentation": true,
+      "attack_target_lost_presentation": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Compares the selected ship's order box (the line 'Attack Capital Ships' with no target) with A0 TAC-03-C017 for the Empire at 640 x 480."
     }
   ]
 }

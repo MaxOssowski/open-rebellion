@@ -1810,6 +1810,40 @@ impl TacticalState {
         refresh_original_attack_targets(session);
     }
 
+    /// A0 TAC-03-C017: every hostile capital has jumped out, so the ship
+    /// ordered to Attack Capital Ships holds no target and its line reads
+    /// the order's word alone. The first player capital is selected.
+    #[cfg(feature = "interface-test-fixtures")]
+    pub fn configure_attack_target_lost_fixture(&mut self) {
+        self.configure_attack_target_lifecycle_fixture();
+        let Some(session) = self.session.as_mut() else {
+            return;
+        };
+        for ship in &mut session.ships {
+            if ship.alive && ship.is_attacker != session.player_is_attacker {
+                ship.retreating = true;
+                ship.retreat_progress = ORIGINAL_TACTICAL_STEP_MILLISECONDS;
+            }
+        }
+        refresh_original_attack_targets(session);
+        let Some(first) = session
+            .ships
+            .iter()
+            .position(|ship| ship.alive && ship.is_attacker == session.player_is_attacker)
+        else {
+            return;
+        };
+        for ship in &mut session.ships {
+            ship.selected = false;
+        }
+        for fighter in &mut session.fighters {
+            fighter.selected = false;
+        }
+        session.ships[first].selected = true;
+        session.selected_ship = Some(first);
+        session.selected_fighter_group = None;
+    }
+
     /// Display one stable frame from every source-selected impact family.
     /// This bridge is compiled only into interface-fixture builds.
     #[cfg(feature = "interface-test-fixtures")]
@@ -12784,6 +12818,36 @@ mod tests {
             [
                 "The Alliance fleet is defeated. ",
                 "The Alliance attack on Coruscant has failed. The Alliance fleet has withdrawn to Averam."
+            ]
+        );
+    }
+
+    #[test]
+    fn an_alliance_fleet_destroyed_where_the_empire_broke_its_blockade_reads_as_a0() {
+        // A0 TAC-01-C013 (the VM's new small Alliance game, day 49, the
+        // Battle at Mon Calamari): the last Alliance ship died, the battle
+        // ended by itself, and the strategy screen showed "The Alliance
+        // fleet is defeated." over "Imperial forces have broken the
+        // blockade of Mon Calamari. The Alliance fleet has been completely
+        // destroyed." (FUN_0049b4d0: 0x7003, 0x7016 with the enemy, as the
+        // side that arrived last held the system, then 0x700b).
+        let lines = battle_report_lines(
+            &battle_texts(),
+            &BattleReport {
+                system_name: "Mon Calamari",
+                viewer_alliance: true,
+                winner_alliance: Some(false),
+                withdrawn: None,
+                destination: None,
+                last_arrival: Some(false),
+                system_side: Some(false),
+            },
+        );
+        assert_eq!(
+            lines,
+            [
+                "The Alliance fleet is defeated. ",
+                "Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed."
             ]
         );
     }
