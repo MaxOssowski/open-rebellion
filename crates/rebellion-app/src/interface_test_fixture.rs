@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 102;
+const SCENARIO_COUNT: u8 = 103;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -334,6 +334,12 @@ pub enum Scenario {
     /// headquarters/00-moddell shows them: explored, uninhabited, held by
     /// no side, with no facility, and A0's energy and raw-material slots.
     ModdellUninhabited = 101,
+    /// As `ResearchTargeting` with a troop trainer for the agent and one
+    /// training facility the target's only yard: only Troop Training
+    /// Research and Espionage list (A0 2026-11-11-mission-kinds/10, 11:
+    /// Adar Tallon on his own Averam, one Training Facility, shows Troop
+    /// Training Research first of two kinds).
+    TroopResearchTargeting = 102,
 }
 
 impl Scenario {
@@ -441,6 +447,7 @@ impl Scenario {
             99 => Self::FleetWindowCoruscant,
             100 => Self::BuildSelectionTraining,
             101 => Self::ModdellUninhabited,
+            102 => Self::TroopResearchTargeting,
             _ => return None,
         })
     }
@@ -495,6 +502,7 @@ impl Scenario {
             || self == Self::CharacterAboard
             || self == Self::ReconTargeting
             || self == Self::ResearchTargeting
+            || self == Self::TroopResearchTargeting
             || self == Self::UprisingTargeting
             || self == Self::BatteryStatus
             || self == Self::PersonnelStates
@@ -740,6 +748,7 @@ pub fn apply(
             Scenario::MissionTargeting
                 | Scenario::ForceStatus
                 | Scenario::ResearchTargeting
+                | Scenario::TroopResearchTargeting
                 | Scenario::UprisingTargeting
                 | Scenario::CharacterCommand
                 | Scenario::CharacterMove
@@ -1224,7 +1233,10 @@ pub fn apply(
             },
         );
     }
-    if request.scenario == Scenario::ResearchTargeting {
+    if matches!(
+        request.scenario,
+        Scenario::ResearchTargeting | Scenario::TroopResearchTargeting
+    ) {
         // FUN_0056c510: an own-side target with a working yard of the tree's
         // area, and a member with the tree's skill. Full support ends
         // Diplomacy (FUN_00573ee0) and the empty pool Recruitment
@@ -1233,26 +1245,27 @@ pub fn apply(
         target.control = ControlKind::Controlled(player_control);
         target.popularity_alliance = if player_is_alliance { 1.0 } else { 0.0 };
         target.popularity_empire = 1.0 - target.popularity_alliance;
+        // The troop case holds one training facility (MANFACSD family 0x29,
+        // area_family) as A0's Averam does, and no shipyard.
+        let troop = request.scenario == Scenario::TroopResearchTargeting;
         let yard = world.manufacturing_facilities.insert(
             rebellion_core::world::ManufacturingFacilityInstance {
-                class_dat_id: rebellion_core::ids::DatId::new(0x2800_0001),
+                class_dat_id: rebellion_core::ids::DatId::new(if troop {
+                    0x2900_0001
+                } else {
+                    0x2800_0001
+                }),
                 side: player_control,
-                is_shipyard: true,
+                is_shipyard: !troop,
             },
         );
         world.systems[secondary].manufacturing_facilities = vec![yard];
         world.set_recruit_pool_empty(player_control);
         if let Some(agent) = world.characters.values_mut().next() {
-            agent.ship_design = rebellion_core::world::SkillPair {
-                base: 40,
-                variance: 0,
-            };
-            let none = rebellion_core::world::SkillPair {
-                base: 0,
-                variance: 0,
-            };
-            agent.troop_training = none;
-            agent.facility_design = none;
+            let skill = |base| rebellion_core::world::SkillPair { base, variance: 0 };
+            agent.ship_design = skill(if troop { 0 } else { 40 });
+            agent.troop_training = skill(if troop { 40 } else { 0 });
+            agent.facility_design = skill(0);
         }
     }
     if matches!(
@@ -1261,6 +1274,7 @@ pub fn apply(
             | Scenario::ForceStatus
             | Scenario::ReconTargeting
             | Scenario::ResearchTargeting
+            | Scenario::TroopResearchTargeting
             | Scenario::UprisingTargeting
             | Scenario::CharacterCommand
             | Scenario::CharacterMove
@@ -2452,6 +2466,7 @@ pub fn emit_mission_flow(
             Scenario::MissionTargeting
                 | Scenario::ReconTargeting
                 | Scenario::ResearchTargeting
+                | Scenario::TroopResearchTargeting
                 | Scenario::UprisingTargeting
         )
     {
@@ -7294,12 +7309,36 @@ mod tests {
     }
 
     #[test]
-    fn the_research_scenario_lists_ship_design_research_alone_of_the_trees() {
+    fn the_research_scenarios_list_their_own_tree_alone_of_the_trees() {
         // FUN_0056c510: an own-side target with a working yard of the tree's
-        // area, and a member with the tree's skill (FUN_0056c820).
-        for (cockpit_side, side) in [
-            (CockpitFaction::Alliance, Faction::Alliance),
-            (CockpitFaction::Empire, Faction::Empire),
+        // area, and a member with the tree's skill (FUN_0056c820). A0
+        // 2026-11-11-mission-kinds/10: Tallon on Averam, one Training
+        // Facility, is offered Troop Training Research.
+        for (scenario, tree, cockpit_side, side) in [
+            (
+                Scenario::ResearchTargeting,
+                MissionKind::ShipDesignResearch,
+                CockpitFaction::Alliance,
+                Faction::Alliance,
+            ),
+            (
+                Scenario::ResearchTargeting,
+                MissionKind::ShipDesignResearch,
+                CockpitFaction::Empire,
+                Faction::Empire,
+            ),
+            (
+                Scenario::TroopResearchTargeting,
+                MissionKind::TroopTrainingResearch,
+                CockpitFaction::Alliance,
+                Faction::Alliance,
+            ),
+            (
+                Scenario::TroopResearchTargeting,
+                MissionKind::TroopTrainingResearch,
+                CockpitFaction::Empire,
+                Faction::Empire,
+            ),
         ] {
             let mut world = diplomacy_world(side);
             let here = world.systems.keys().next().unwrap();
@@ -7316,7 +7355,7 @@ mod tests {
                 .collect();
             let mut missions = MissionState::default();
             apply(
-                request(Scenario::ResearchTargeting, cockpit_side),
+                request(scenario, cockpit_side),
                 &mut world,
                 &mut GameMode::MainMenu,
                 &mut MissionFaction::Alliance,
@@ -7365,7 +7404,7 @@ mod tests {
             };
             assert_eq!((own, other), (1.0, 0.0));
             assert!(world.recruit_pool_empty(side));
-            assert_eq!(kinds, vec![MissionKind::ShipDesignResearch], "{side:?}");
+            assert_eq!(kinds, vec![tree], "{scenario:?} {side:?}");
         }
     }
 
@@ -10418,6 +10457,7 @@ mod tests {
                 Scenario::BuildSelectionFleetDestination,
                 Scenario::FleetAssaultTaken,
                 Scenario::BuildSelectionTraining,
+                Scenario::TroopResearchTargeting,
             ]
         );
     }

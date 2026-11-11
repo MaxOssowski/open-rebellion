@@ -34,6 +34,47 @@ these kinds, offered or chosen. The sets searched under
   and a member with the tree's skill). The port's case for this exact
   state, with Yavin's facilities and Dodonna's skills as in A0, was not run.
 
+## Troop Training Research against A0 (C017)
+
+The A0 run used the Windows 10 VM with a new Alliance game on day 50. The
+captures are `2026-11-11-mission-kinds/10-tallon-on-averam-dialog` and
+`11-tallon-averam-list-open`, with notes in `NOTES.txt` and hashes in
+`SHA256SUMS`.
+
+- Adar Tallon alone. His Mission was released on his own Averam. Averam has
+  one Training Facility, no shipyard and no construction yard.
+- Create Mission opens at (168, 38), the port's Alliance place. It shows
+  Troop Training Research.
+- The kind list holds two items: the thumb covers half the track, and
+  Troop Training Research is first. The second item could not be shown.
+- The kind's icon, GOKRES 3106 (TEXTSTRA 11298 & 0xfff), sits at the
+  window's (70, 86). Rows 0..63 match the resource at 0 of 8,320 pixels.
+
+The port agrees. `FUN_0056c510` lets a research kind list only with an
+own-side yard of the tree's area (`research_site`, the training facility's
+MANFACSD family 0x29) and a member with the tree's skill. The port needed
+no fix.
+
+New fixture `Scenario::TroopResearchTargeting` (102, code 103; renumbered from 100 at the merge) mirrors
+`ResearchTargeting`, with these differences:
+
+- the agent has troop training 40 and no ship or facility skill;
+- the target's only yard is a training facility (`0x2900_0001`).
+
+Full support ends Diplomacy, and the empty pool ends Recruitment, so the
+box lists Troop Training Research above Espionage. That is two kinds, as
+in A0. A0's second item is not seen.
+
+The unit test is `the_research_scenarios_list_their_own_tree_alone_of_the_trees`
+(formerly the ship-only test). It now also checks the troop scenario for
+both sides.
+
+Side by side with A0 (`alliance-troop-research/opened-screen.png` of the
+run below), the dialog's box, icon and chrome match. The only difference
+is the target: the fixture's F'tral against A0's Averam. The kind's name
+strip differs in 823 pixels of glyph ink. That is the accepted text-width
+deviation.
+
 ## Browser
 
 `tools/interface-parity/mission-dialog.mjs` now runs four more cases on
@@ -54,19 +95,22 @@ checks the following:
 | `death-star` | DeathStarTargeting (60), Alliance only | DeathStarSabotage | 3137 |
 | `recon` | ReconTargeting (63), a recon special force | Reconnaissance | 3093 / 7189 |
 | `research` | ResearchTargeting (64), a ship designer at an own yard | ShipDesignResearch, Espionage | 3104 / 7200 |
+| `troop-research` | TroopResearchTargeting (103), a troop trainer at an own training facility | TroopTrainingResearch, Espionage | 3106 (A0 exact) / 7202 |
 
 The Empire has no Death Star Sabotage record. The fixture's Alliance Death
 Star exists only for this case, so the Empire's case is not run.
 
-Facility and Troop Training Research have no browser case. The fixture's
-designer has only the ship skill, and its target has only a shipyard. Jedi
+Facility Design Research has no browser case. Neither research fixture
+has a construction yard or a facility designer. Jedi
 Training has none either. The port refuses it for a team under two members
 (`jedi_training_refused`), and the `ForceStatus` fixture (94) has one agent,
 so its dialog does not list it.
 
-Run `mission-dialog-2026-11-11T14-16-05-599Z-706248` (Linux Chromium
-155.0.8059.84, test WASM `efdc3ba7…99b2b`): the full gate passes, 20 cases,
-with every icon at (70, 86) and 0 pixels differing. `--only=a,b` now runs
+Run `mission-dialog-2026-11-11T14-29-50-272Z-777464` (Linux Chromium
+155.0.8059.84, test WASM `6cf03478…4bda5d`): the full gate passes, 21 cases,
+with every icon at (70, 86) and 0 pixels differing. The earlier run
+`mission-dialog-2026-11-11T14-16-05-599Z-706248`, without the troop case,
+also passed. `--only=a,b` now runs
 named cases alone, for quick checks.
 
 The icon check compares the port with the GOKRES resource, not with A0. It
@@ -78,7 +122,10 @@ Unit test:
 `rescue_recon_research_jedi_and_death_star_kinds_show_their_textstra_icons`
 (`mission_dialog.rs`) pins the seven kinds' icon ids and names.
 `cargo mutants --in-place` on `kind_text_id`, `kind_icon` and `kind_name`:
-10 mutants, 10 caught.
+10 mutants, 10 caught. On `interface_test_fixture.rs`
+(`Scenario::decode|reports_object_menu`, which matched 144 mutants): 141
+were caught and 1 was unviable. The 2 missed are fields of
+`FleetLoadWatch::next`, which this change does not touch.
 
 ## No port change
 
@@ -89,12 +136,10 @@ Nothing contradicted the port, so no fix was made.
 For each item, capture the dialog as it opens. Then open the kind list and
 take one capture per scroll position.
 
-1. **Research (C015..C017).** Alliance. A character with ship, facility or
-   troop design skill on an own system that has a shipyard, a construction
-   yard and a training facility. Mission released on that own planet. The
-   port lists the research kinds first, then Espionage. Expected icons:
-   3104, 3105 and 3106. One capture per tree is enough if the system lacks
-   some yards.
+1. **Ship and Facility Design Research (C016, C015).** As in Tallon's
+   capture: a ship designer on an own system with a shipyard (3104), and a
+   facility designer on one with a construction yard (3105). Mission
+   released on that planet.
 2. **Reconnaissance (C011).** An idle recon special force: the Longprobe
    Y-wing Recon Team (Alliance, 3093) or the Imperial Probe Droid (Empire,
    7189). Mission released on an enemy or neutral planet in a sector
