@@ -499,6 +499,73 @@ async function compareTabsWithA0(page, directory, name, a0File, ceilings, origin
   return checks;
 }
 
+// A blockaded system in its sector window (CMD-03 "blockaded"). A0
+// fleet4/bortras-blockade-ships (day 120, blockaded) against
+// 2026-10-28-nav/sector-b (day 103, not yet): at Bortras only Fleet 8's
+// icon is new, (211..227, 332..340); no sector-window function reads the
+// blockade bit (+0x88 bit 0x20; FUN_0045bbb0, FUN_0045baf0, FUN_0045c240,
+// FUN_0045c450 test none). The port opens Sesswenna on the left half
+// through the System finder and must draw Bortras's picture and the fleet
+// icon as A0 does, with nothing else beside the planet.
+async function blockadedSectorCase(page, directory) {
+  const a0File = a0Fleet4Dir && path.join(a0Fleet4Dir, "bortras-blockade-ships.png");
+  await page.locator("#glcanvas").focus();
+  for (const key of ["F2", "type:Bortras", "Enter"]) {
+    if (key.startsWith("type:")) await page.keyboard.type(key.slice(5), { delay: 60 });
+    else await page.keyboard.press(key);
+    await page.waitForTimeout(700);
+  }
+  await page.mouse.move(2, 470, { steps: 4 });
+  await page.waitForTimeout(600);
+  await frames(page, 2);
+  const bytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "a0-blockade-sector-screen.png"), bytes);
+  const port = PNG.sync.read(bytes);
+  if (!a0File || !fs.existsSync(a0File)) return { a0: null };
+  const a0 = PNG.sync.read(fs.readFileSync(a0File));
+  const before = path.join(root, ".artifacts/a0-vm/2026-10-28-nav/sector-b.png");
+  const count = ([l, t, w, h], other = port, skip = null) => {
+    let differing = 0;
+    for (let y = t; y < t + h; y += 1) {
+      for (let x = l; x < l + w; x += 1) {
+        if (skip && x >= skip[0] && y >= skip[1] && x < skip[0] + skip[2] && y < skip[1] + skip[3]) continue;
+        const i = (y * other.width + x) * 4;
+        const j = (y * a0.width + x) * 4;
+        if (other.data[i] !== a0.data[j] || other.data[i + 1] !== a0.data[j + 1] || other.data[i + 2] !== a0.data[j + 2]) {
+          differing += 1;
+        }
+      }
+    }
+    return differing;
+  };
+  // A0's Bortras name ink (green) is (182, 380)..(218, 391); its picture
+  // is 37 by 41 from 52 rows above the name (as sector-windows.mjs places
+  // Moddell's). A0's Imperial icons left of it reach x 183 (the system
+  // icon, rows 333..340, and the troop icon, rows 361..369); they and the
+  // tracks' values are each game's own state, so the planet is compared
+  // from x 184. The fleet icon is A0's own difference box.
+  const fleetIcon = [211, 332, 17, 9];
+  const regions = {
+    planet: [184, 328, 35, 41],
+    fleetIcon,
+    // Right of the planet, from its top to its tracks: where a mark would
+    // stand; and the two rows between the picture and the tracks.
+    right: [219, 318, 21, 52],
+    gap: [182, 370, 37, 2],
+  };
+  const result = { a0: path.basename(a0File), differing: Object.fromEntries(
+    Object.entries(regions).map(([name, region]) => [name, count(region)])) };
+  // A0 itself: the same box at day 103 (before the blockade) differs from
+  // day 120 only in the fleet icon.
+  if (fs.existsSync(before)) {
+    result.a0BeforeBlockade = count([170, 318, 70, 76], PNG.sync.read(fs.readFileSync(before)), fleetIcon);
+    assert.equal(result.a0BeforeBlockade, 0, JSON.stringify(result));
+  }
+  assert.deepEqual(result.differing, Object.fromEntries(Object.keys(regions).map((name) => [name, 0])),
+    `blockaded Bortras in its sector window against A0: ${JSON.stringify(result)}`);
+  return result;
+}
+
 async function stableWindow(page, origin, directory, label) {
   // The first draw requests each newly shown bitmap from the WASM texture
   // cache; let the upload reach a later paint before hashing two frames.
@@ -2095,9 +2162,12 @@ const cases = [
     // Bortras after winning the battle there ("Bortras is now under
     // blockade by Alliance forces", fleet4/05); the window marks the
     // blockade nowhere, the corvette carries its damage flames.
-    run: (page, faction, setup, directory) => compareTabsWithA0(page, directory, "a0-blockade",
-      a0Fleet4Dir && ((tab) => path.join(a0Fleet4Dir, `bortras-blockade-${tab}.png`)),
-      A0_BLOCKADE_CEILINGS),
+    async run(page, faction, setup, directory) {
+      const tabs = await compareTabsWithA0(page, directory, "a0-blockade",
+        a0Fleet4Dir && ((tab) => path.join(a0Fleet4Dir, `bortras-blockade-${tab}.png`)),
+        A0_BLOCKADE_CEILINGS);
+      return { tabs, sector: await blockadedSectorCase(page, directory) };
+    },
   },
   {
     name: "join-fleet",

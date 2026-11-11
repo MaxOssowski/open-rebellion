@@ -1128,6 +1128,76 @@ async function shipOrderBandCase(page, faction, directory) {
   return { class: name, count, lines: band.lines };
 }
 
+// A regiment in training, part made (OBJ-10 "training"): fixture 101,
+// Scenario::BuildSelectionTraining (100). The band's bar fills
+// (160 * points) / cost pixels, rounded down (Class_0065c058_vt14,
+// FUN_004ad210). The bar's white frame and black well, window
+// (55, 207)..(217, 213), every pixel against A0:
+// - Alliance: 2026-11-11-manufacturing-focus/06 (Averam, day 38; window
+//   at (81, 86)): an Alliance Army Regiment one point of six in, 26 pixels;
+// - Empire: build-selection2/22 (Coruscant; window at (203, 91)): three
+//   Imperial Army Regiments, the first three points of six in, 80 pixels.
+const trainingCode = 101;
+const A0_TRAINING = {
+  alliance: { file: "2026-11-11-manufacturing-focus/06-training-later2.png", x: 81, y: 86,
+    product: "Alliance Army Regiment", units: "Training: 1", filled: 26 },
+  empire: { file: "build-selection2/22-fac-menu.png", x: 203, y: 91,
+    product: "Imperial Army Regiment", units: "Training: 3", filled: 80 },
+};
+async function trainingBandCase(page, faction, directory) {
+  const fixtureCode = trainingCode | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  await page.mouse.move(2, 2);
+  await frames(page);
+  await page.waitForTimeout(400);
+  await frames(page);
+  const report = await production(page);
+  const troops = report.bands.find(({ area }) => area === "troops");
+  const wanted = A0_TRAINING[faction.name];
+  const bytes = await page.screenshot({ animations: "disabled" });
+  fs.writeFileSync(path.join(directory, "training-band.png"), bytes);
+  const port = PNG.sync.read(bytes);
+  // The troops band sits at the window's (55, 138).
+  const origin = { x: Math.round(troops.left) - 55, y: Math.round(troops.top) - 138 };
+  const result = { origin, lines: troops.lines, queued: troops.queued };
+  assert.equal(troops.lines[0], wanted.product, JSON.stringify(troops));
+  assert.equal(troops.lines[1], wanted.units, JSON.stringify(troops));
+  // The yellow run on the bar's top row.
+  const yellow = (png, ox, oy) => {
+    let run = 0;
+    for (let x = 56; x < 217; x += 1) {
+      const i = ((oy + 208) * png.width + ox + x) * 4;
+      if (png.data[i] === 255 && png.data[i + 1] === 255 && png.data[i + 2] === 0) run += 1;
+    }
+    return run;
+  };
+  result.filled = yellow(port, origin.x, origin.y);
+  assert.equal(result.filled, wanted.filled, JSON.stringify(result));
+  const a0File = path.join(root, ".artifacts/a0-vm", wanted.file);
+  if (fs.existsSync(a0File)) {
+    const a0 = PNG.sync.read(fs.readFileSync(a0File));
+    result.a0 = { file: wanted.file, filled: yellow(a0, wanted.x, wanted.y) };
+    let differing = 0;
+    for (let y = 207; y < 214; y += 1) {
+      for (let x = 55; x < 218; x += 1) {
+        const i = ((origin.y + y) * port.width + origin.x + x) * 4;
+        const j = ((wanted.y + y) * a0.width + wanted.x + x) * 4;
+        if (port.data[i] !== a0.data[j] || port.data[i + 1] !== a0.data[j + 1] || port.data[i + 2] !== a0.data[j + 2]) {
+          differing += 1;
+        }
+      }
+    }
+    result.a0.differing = differing;
+    assert.equal(result.a0.filled, wanted.filled, JSON.stringify(result));
+    assert.equal(differing, 0, `the training band's bar differs from A0 in ${differing} pixels`);
+  }
+  return result;
+}
+
 async function overMaintenanceCase(page, faction, directory) {
   const fixtureCode = overMaintenanceCode | (faction.byte << 8);
   await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
@@ -1714,6 +1784,7 @@ async function inspect(server, source, faction, executable) {
     };
     const fleetDestination = await fleetDestinationCase(page, faction, directory, logged);
     const shipOrderBand = await shipOrderBandCase(page, faction, directory);
+    const trainingBand = await trainingBandCase(page, faction, directory);
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
@@ -1732,6 +1803,7 @@ async function inspect(server, source, faction, executable) {
       defensesDestination,
       fleetDestination,
       shipOrderBand,
+      trainingBand,
       idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,

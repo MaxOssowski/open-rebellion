@@ -58,6 +58,9 @@ const window = (x) => ({
 // map-item bitmap, which an unexplored system's item does not hold
 // (FUN_0042b330). Only the planets clear of the galaxy's own markers
 // (each game's state) behind the window.
+// The status tracks' colours (sector_window::status_tracks), as rgb()
+// numbers.
+const TRACK_COLOURS = new Set([0x808080, 0xffffff, 0x0000ff, 0xffff00, 0xf95c0f, 0xff0000, 0x00ff00]);
 const CHURBA_PLANETS = { Lelmra: [70, 58], Deyer: [159, 132], Gentes: [85, 157], Allyuen: [70, 241],
   Hoth: [139, 241], Storthus: [93, 315] };
 // Churba's ten names, white (an unexplored system's), their A0 ink boxes
@@ -339,6 +342,57 @@ try {
   }
   assert.ok(whole.background.largest[0] <= 16 && whole.background.largest[1] <= 20,
     `Moddell background patch larger than a marker: ${JSON.stringify(whole.background)}`);
+
+  // Uninhabited planets (CMD-03 "uninhabited") against A0
+  // headquarters/00-moddell (the same new Alliance game later; Moddell on
+  // the left half): Agrilat, Khuiumin, Endor and Annaj are explored
+  // and show their energy and raw-material tracks but no support track,
+  // which FUN_0045baf0 shows only for a populated system (+0x88 bit 0)
+  // with a side (+0x24 & 0xc0). Fixture 102 (Scenario::ModdellUninhabited,
+  // 101) gives them A0's slots, no facility and no side. Between each
+  // picture and its name (the name's top less 14 to less 2: the energy,
+  // raw-material and support rows), every pixel either game draws in a
+  // track colour must be the other's too (the shaded galaxy behind differs
+  // between the two games, as in the Moddell case above). Adega, also
+  // uninhabited there, is left out: A0's cursor hides its tracks' ends.
+  // The track colours: the ticks 0x808080
+  // (FUN_0060e3b0), energy white and blue, raw yellow and orange, support
+  // red and green.
+  const uninhabited = await (await browser.newContext({ viewport: { width: 640, height: 480 } })).newPage();
+  uninhabited.on("pageerror", (error) => errors.push(String(error)));
+  await uninhabited.goto(`http://127.0.0.1:${server.address().port}/?fixture-code=${102 | (ALLIANCE << 8)}`);
+  await uninhabited.waitForFunction(() => Boolean(window.__openRebellionInterfaceReady), null, { timeout: 30_000 });
+  await uninhabited.locator("#glcanvas").focus();
+  await uninhabited.waitForTimeout(800);
+  for (const key of ["F2", "type:Adega", "Enter"]) {
+    if (key.startsWith("type:")) await uninhabited.keyboard.type(key.slice(5), { delay: 60 });
+    else await uninhabited.keyboard.press(key);
+    await uninhabited.waitForTimeout(700);
+  }
+  await uninhabited.mouse.move(2, 470, { steps: 4 });
+  await uninhabited.waitForTimeout(600);
+  const portUninhabited = PNG.sync.read(await uninhabited.screenshot({ path: path.join(OUT, "moddell-uninhabited.png") }));
+  const a0Uninhabited = PNG.sync.read(await fs.readFile(path.join(ROOT, ".artifacts/a0-vm/headquarters/00-moddell.png")));
+  const tracks = {};
+  for (const name of ["Agrilat", "Khuiumin", "Endor", "Annaj"]) {
+    const [l, t, r] = names[name];
+    const [x] = picture([l, t, r]);
+    const width = 37;
+    let differ = 0;
+    let drawn = 0;
+    for (let y = t - 14; y < t - 1; y += 1) {
+      for (let column = x; column < x + width; column += 1) {
+        const [p, a] = [rgb(portUninhabited, column, y), rgb(a0Uninhabited, column, y)];
+        if (!TRACK_COLOURS.has(p) && !TRACK_COLOURS.has(a)) continue;
+        if (TRACK_COLOURS.has(a)) drawn += 1;
+        if (p !== a) differ += 1;
+      }
+    }
+    assert.ok(drawn > 50, `${name}: A0 shows no tracks (${drawn})`);
+    tracks[name] = differ;
+  }
+  result.uninhabited = tracks;
+  assert.ok(Object.values(tracks).every((count) => count === 0), `Moddell uninhabited tracks: ${JSON.stringify(tracks)}`);
   assert.deepEqual(errors, []);
   result.status = "pass";
 } catch (error) {

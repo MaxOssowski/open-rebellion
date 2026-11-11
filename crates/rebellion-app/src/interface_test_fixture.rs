@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 100;
+const SCENARIO_COUNT: u8 = 102;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -324,6 +324,16 @@ pub enum Scenario {
     /// Stormtrooper Regiments and Veers, selected and expanded; the window
     /// at A0's (225, 92).
     FleetWindowCoruscant = 99,
+    /// `BuildSelection` with a regiment in training at the primary, part
+    /// made: for the Alliance one Alliance Army Regiment one point of its
+    /// six in (A0 2026-11-11-manufacturing-focus/06, Averam, day 38), for
+    /// the Empire three Imperial Army Regiments, the first three points of
+    /// six in (A0 build-selection2/22, Coruscant).
+    BuildSelectionTraining = 100,
+    /// As `PopularSupport` with four of Moddell's systems as A0
+    /// headquarters/00-moddell shows them: explored, uninhabited, held by
+    /// no side, with no facility, and A0's energy and raw-material slots.
+    ModdellUninhabited = 101,
 }
 
 impl Scenario {
@@ -429,6 +439,8 @@ impl Scenario {
             97 => Self::EndingDefeat,
             98 => Self::EndingVictory,
             99 => Self::FleetWindowCoruscant,
+            100 => Self::BuildSelectionTraining,
+            101 => Self::ModdellUninhabited,
             _ => return None,
         })
     }
@@ -465,6 +477,7 @@ impl Scenario {
         matches!(
             self,
             Self::BuildSelection
+                | Self::BuildSelectionTraining
                 | Self::BuildSelectionOverMaintenance
                 | Self::BuildSelectionDestination
                 | Self::BuildSelectionDefensesDestination
@@ -942,6 +955,7 @@ pub fn apply(
         request.scenario,
         Scenario::System
             | Scenario::BuildSelection
+            | Scenario::BuildSelectionTraining
             | Scenario::BuildSelectionOverMaintenance
             | Scenario::BuildSelectionDestination
             | Scenario::BuildSelectionDefensesDestination
@@ -1000,6 +1014,12 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowVjun {
         place_vjun(request, world, cockpit, movement, fleets);
+    }
+    if request.scenario == Scenario::BuildSelectionTraining {
+        place_training(request, world, manufacturing, primary);
+    }
+    if request.scenario == Scenario::ModdellUninhabited {
+        place_moddell_uninhabited(world);
     }
     if request.scenario == Scenario::FleetWindowCoruscant {
         place_coruscant(request, world, cockpit, movement, troop_transport, fleets);
@@ -2709,6 +2729,72 @@ fn place_delivery(
     }
 }
 
+/// The `BuildSelectionTraining` scenario: the side's army regiments in the
+/// primary's training queue, as a confirmed order makes them
+/// (`order_items`, `FUN_0052a8f0`), part made.
+fn place_training(
+    request: FixtureRequest,
+    world: &GameWorld,
+    manufacturing: &mut ManufacturingState,
+    primary: SystemKey,
+) {
+    use rebellion_core::manufacturing::{BuildableKind, ProductionArea};
+    let player_is_alliance = request.faction == CockpitFaction::Alliance;
+    // TROOPSD 2 Alliance Army Regiment, 8 Imperial Army Regiment
+    // (`system_window::troop_mini`); A0's units and points made.
+    let (raw, count, points) = if player_is_alliance {
+        (0x1000_0002, 1, 1)
+    } else {
+        (0x1000_0008, 3, 3)
+    };
+    let kind = BuildableKind::Troop(rebellion_core::ids::DatId::new(raw));
+    let Some(items) = rebellion_core::build_selection::order_items(
+        world,
+        primary,
+        ProductionArea::TrainingFacility,
+        kind,
+        count,
+        player_is_alliance,
+    ) else {
+        return;
+    };
+    for item in items {
+        manufacturing.enqueue(primary, item);
+    }
+    let queue = manufacturing.queue_mut(primary, ProductionArea::TrainingFacility);
+    for _ in 0..points {
+        let _ = queue.add_point();
+    }
+}
+
+/// A0 headquarters/00-moddell's uninhabited systems (a new Alliance game):
+/// name, energy slots, raw-material slots, read from the capture's tracks.
+/// Adega is uninhabited there too, but A0's cursor hides its tracks' ends.
+const MODDELL_UNINHABITED: [(&str, u8, u8); 4] = [
+    ("Agrilat", 5, 5),
+    ("Khuiumin", 4, 3),
+    ("Endor", 4, 4),
+    ("Annaj", 8, 4),
+];
+
+/// The `ModdellUninhabited` scenario (`MODDELL_UNINHABITED`).
+fn place_moddell_uninhabited(world: &mut GameWorld) {
+    for (name, energy, raw) in MODDELL_UNINHABITED {
+        let Some(system) = world.systems.values_mut().find(|value| value.name == name) else {
+            continue;
+        };
+        system.exploration_status = ExplorationStatus::Explored;
+        system.is_populated = false;
+        system.is_destroyed = false;
+        system.control = ControlKind::Uncontrolled;
+        system.total_energy = energy;
+        system.raw_materials = raw;
+        system.defense_facilities.clear();
+        system.manufacturing_facilities.clear();
+        system.production_facilities.clear();
+    }
+}
+
 /// The `BlockadeArrival` scenario: the loading target becomes the other
 /// side's, held by its support (`FUN_0050b610`), and the player's fleet
 /// sets out for it.
@@ -3622,6 +3708,7 @@ fn object_menu_report<'a>(
         None if matches!(
             request.scenario,
             Scenario::BuildSelection
+                | Scenario::BuildSelectionTraining
                 | Scenario::BuildSelectionOverMaintenance
                 | Scenario::Quadrants
                 | Scenario::FleetWindowYavin
@@ -7890,6 +7977,89 @@ mod tests {
         assert!(!applied.movement.is_in_transit(fleet));
         assert_eq!(applied.transport.cargo(fleet).len(), 2);
         assert!(applied.fleets.is_open(bortras));
+        // The player's fleet alone over the other side's system blockades
+        // it (A0 fleet4/05: "Bortras is now under blockade by Alliance
+        // forces"); the sector-window case shows it so.
+        assert!(BlockadeSystem::system_is_blockaded(
+            world,
+            &world.systems[bortras]
+        ));
+    }
+
+    #[test]
+    fn the_training_scenario_puts_a0s_regiments_part_made_in_the_primarys_training_queue() {
+        use rebellion_core::manufacturing::{BuildableKind, ProductionArea};
+        for (faction, raw, count, points) in [
+            (CockpitFaction::Alliance, 0x1000_0002, 1, 1),
+            (CockpitFaction::Empire, 0x1000_0008, 3, 3),
+        ] {
+            let is_alliance = faction == CockpitFaction::Alliance;
+            let mut world = fleet_world();
+            let primary = world.systems.keys().next().unwrap();
+            for (class, rate) in [(raw, 0), (0x2900_0002, 4)] {
+                world.buildable_classes.insert(
+                    rebellion_core::ids::DatId::new(class),
+                    rebellion_core::world::BuildableClass {
+                        refined_material_cost: 6,
+                        processing_rate: rate,
+                        ..Default::default()
+                    },
+                );
+            }
+            let yard = world.manufacturing_facilities.insert(
+                rebellion_core::world::ManufacturingFacilityInstance {
+                    class_dat_id: rebellion_core::ids::DatId::new(0x2900_0002),
+                    side: Faction::of_alliance(is_alliance),
+                    is_shipyard: false,
+                },
+            );
+            world.systems[primary].manufacturing_facilities.push(yard);
+            let mut manufacturing = ManufacturingState::new();
+            place_training(
+                request(Scenario::BuildSelectionTraining, faction),
+                &world,
+                &mut manufacturing,
+                primary,
+            );
+            let queue = manufacturing
+                .queue(primary, ProductionArea::TrainingFacility)
+                .expect("a training queue");
+            assert_eq!(queue.len(), count, "{faction:?}");
+            assert_eq!(queue.completed_points(), points, "{faction:?}");
+            assert_eq!(
+                queue.active().map(|item| (item.kind, item.cost)),
+                Some((
+                    BuildableKind::Troop(rebellion_core::ids::DatId::new(raw)),
+                    6
+                ))
+            );
+        }
+    }
+
+    #[test]
+    fn the_moddell_scenario_leaves_a0s_four_systems_explored_uninhabited_and_unheld() {
+        let mut world = fleet_world();
+        let keys: Vec<_> = world.systems.keys().collect();
+        world.systems[keys[0]].name = "Agrilat".into();
+        world.systems[keys[1]].name = "Annaj".into();
+        world.systems[keys[0]].is_populated = true;
+        world.systems[keys[0]].control = ControlKind::Controlled(Faction::Alliance);
+        world.systems[keys[2]].is_populated = true;
+        let other = world.systems[keys[2]].control;
+        place_moddell_uninhabited(&mut world);
+        for (key, energy, raw) in [(keys[0], 5, 5), (keys[1], 8, 4)] {
+            let system = &world.systems[key];
+            assert_eq!(system.exploration_status, ExplorationStatus::Explored);
+            assert!(!system.is_populated);
+            assert_eq!(system.control, ControlKind::Uncontrolled);
+            assert_eq!((system.total_energy, system.raw_materials), (energy, raw));
+            assert!(
+                system.defense_facilities.is_empty() && system.production_facilities.is_empty()
+            );
+        }
+        // A system A0 does not show uninhabited keeps its state.
+        assert!(world.systems[keys[2]].is_populated);
+        assert_eq!(world.systems[keys[2]].control, other);
     }
 
     #[test]
@@ -10247,6 +10417,7 @@ mod tests {
                 Scenario::BuildSelectionDefensesDestination,
                 Scenario::BuildSelectionFleetDestination,
                 Scenario::FleetAssaultTaken,
+                Scenario::BuildSelectionTraining,
             ]
         );
     }
