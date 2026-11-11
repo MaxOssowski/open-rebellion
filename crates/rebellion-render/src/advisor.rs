@@ -1581,6 +1581,30 @@ fn scaled_advisor_apertures(
     })
 }
 
+/// The rectangle a droid frame fills: the frame's own size, scaled with the
+/// canvas, from its aperture's top-left corner. The clip player sizes its
+/// picture by the frame bitmap's width and height (`Class_0065a358_vtc`,
+/// `FUN_004729c0`, through `FUN_005fc0e0` / `FUN_005fc0f0`), not by the
+/// aperture's. The Empire's agent aperture is 107 points wide
+/// (`FUN_0042adb0`) and its frames 106 (EMSPRITE and EMBRIEF BMP 2100),
+/// so stretching a frame over the aperture doubles one column.
+fn droid_frame_rect(
+    screen_min: egui::Pos2,
+    aperture: (f32, f32, f32, f32),
+    scale: f32,
+    frame_size: [usize; 2],
+) -> egui::Rect {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "Droid frames are at most a few hundred pixels across."
+    )]
+    let size = egui::vec2(frame_size[0] as f32, frame_size[1] as f32) * scale;
+    egui::Rect::from_min_size(
+        egui::pos2(screen_min.x + aperture.0, screen_min.y + aperture.1),
+        size,
+    )
+}
+
 /// Draw both faction droids directly into the original command-center
 /// apertures recovered from `FUN_0042adb0`.
 pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
@@ -1615,6 +1639,7 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
 
     let screen = ctx.screen_rect();
     let apertures = scaled_advisor_apertures(state.faction, screen.width(), screen.height());
+    let scale = apertures[0].2 / advisor_apertures(state.faction)[0].2;
     let painter = ctx.layer_painter(egui::LayerId::new(
         egui::Order::Middle,
         egui::Id::new("authentic_droid_advisors"),
@@ -1642,13 +1667,9 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
         (!state.primary_textures.is_empty())
             .then(|| &state.primary_textures[state.primary_frame % state.primary_textures.len()])
     }) {
-        let (x, y, width, height) = apertures[0];
         painter.image(
             texture.id(),
-            egui::Rect::from_min_size(
-                egui::pos2(screen.min.x + x, screen.min.y + y),
-                egui::vec2(width, height),
-            ),
+            droid_frame_rect(screen.min, apertures[0], scale, texture.size()),
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
         );
@@ -1661,13 +1682,9 @@ pub fn draw_advisor(ctx: &egui::Context, state: &mut AdvisorState) {
             &state.secondary_textures[state.secondary_frame % state.secondary_textures.len()]
         })
     }) {
-        let (x, y, width, height) = apertures[1];
         painter.image(
             texture.id(),
-            egui::Rect::from_min_size(
-                egui::pos2(screen.min.x + x, screen.min.y + y),
-                egui::vec2(width, height),
-            ),
+            droid_frame_rect(screen.min, apertures[1], scale, texture.size()),
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
         );
@@ -1831,6 +1848,28 @@ pub(crate) mod tests {
         assert_close(empire[0].2, 107.0 * scale);
         assert_close(empire[0].3, 133.0 * scale);
         assert_close(empire[1].0, canvas_x + 302.0 * scale);
+    }
+
+    #[test]
+    fn a_droid_frame_keeps_its_own_size_inside_a_wider_aperture() {
+        // The Empire's agent aperture is 107 by 133 (FUN_0042adb0); its
+        // frames are 106 by 133 (EMBRIEF BMP 2100). The player sizes the
+        // picture by the frame (Class_0065a358_vtc, FUN_004729c0), and A0's
+        // briefing frames e005, e020 and e050 show the frames unscaled.
+        let aperture = advisor_apertures(AdvisorFaction::Empire)[0];
+        let rect = droid_frame_rect(egui::Pos2::ZERO, aperture, 1.0, [106, 133]);
+        assert_eq!(
+            rect,
+            egui::Rect::from_min_size(egui::pos2(0.0, 347.0), egui::vec2(106.0, 133.0))
+        );
+
+        let scale = 800.0 / 480.0;
+        let scaled = scaled_advisor_apertures(AdvisorFaction::Empire, 1280.0, 800.0)[0];
+        let rect = droid_frame_rect(egui::pos2(5.0, 7.0), scaled, scale, [106, 133]);
+        assert_close(rect.min.x, 5.0 + scaled.0);
+        assert_close(rect.min.y, 7.0 + scaled.1);
+        assert_close(rect.width(), 106.0 * scale);
+        assert_close(rect.height(), 133.0 * scale);
     }
 
     #[expect(
