@@ -120,3 +120,21 @@ Load Game screen stage:
 - `cargo check -p rebellion-app --all-targets`: no errors. It shows no new
   warnings; those near the edits are older.
 - `cargo test -p rebellion-app`: 140 pass, 3 ignored, plus 5 ignored.
+
+## game-options-smoke.mjs runs again (2026-11-11)
+
+The smoke had not passed since the save format and the startup changed.
+It now:
+- skips the intro movies until the main menu is active, and the new
+  game's movie until the campaign runs, as `main-menu-states.mjs` does;
+- reads the save format's version from the keys it finds;
+- answers the save's own "Selected Game Saved Successfully" box;
+- checks the loaded fingerprint against the saved one without the
+  `verified=` field, which 66227a8f removed from the log line;
+- drops the version-13 metadata step: 66227a8f made one save format the
+  only one, and `slot_occupied` reads the current keys.
+
+Production build (`web/`, served on port 8769, `CHROMIUM_PATH=/usr/bin/chromium`):
+both sides pass every remaining step. Results in
+`.artifacts/interface-parity/game-options-smoke-2026-11-11T05-21-33Z` (`results.json` sha256
+`521475614be0e417d434f599ebf07cac804d4666763d349831727f6808693be9`).

@@ -50,12 +50,26 @@ try {
     const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
     try {
       await page.goto(url);
-      await page.waitForTimeout(15000);
+      // The intro plays first; skip each movie until the menu is active.
+      for (const deadline = Date.now() + 90_000; ;) {
+        if (await page.locator('#main-menu-semantics[data-active=true]').count() > 0) break;
+        if (Date.now() > deadline) throw new Error('the main menu never became active');
+        if (await page.evaluate(() => Boolean(document.querySelector('video')))) await page.keyboard.press('Escape');
+        await page.waitForTimeout(500);
+      }
+      await page.waitForTimeout(1000);
       await click(850, 500); // main-menu CD-ROM: original command 0x68
       await screenshot('main-options');
       await click(720, 185); // keep in-game music muted as well as Chromium
       await key('Escape');
       await click(faction === 'alliance' ? 945 : 360, 665);
+      // The new game's movie plays first; skip it until the campaign runs.
+      for (const deadline = Date.now() + 60_000; ;) {
+        if (consoleLog.some(line => line.includes('[campaign] fleet_naming='))) break;
+        if (Date.now() > deadline) throw new Error('the campaign never started');
+        if (await page.evaluate(() => Boolean(document.querySelector('video')))) await page.keyboard.press('Escape');
+        await page.waitForTimeout(500);
+      }
       await page.waitForTimeout(1500);
       await key('F1');
       await screenshot('campaign-options');
@@ -69,6 +83,8 @@ try {
       assert.ok(version, 'save writes the existing browser payload');
       const k = (kind, slot) => `rebellion_${kind}_v${version}_${slot}`;
       assert.match(saved[k('meta', 0)], /options smoke/);
+      await screenshot('saved-successfully');
+      await click(637, 600); // the save's own box, 'Selected Game Saved Successfully': its OK
       await click(110, 181);
       await screenshot('overwrite-confirmation');
       await click(742, 602); // native No button
@@ -82,7 +98,9 @@ try {
       const saveLine = consoleLog.find(line => line.includes('save_state_fingerprint slot=0'));
       const fingerprint = saveLine?.match(/fingerprint=(\S+)/)?.[1];
       assert.ok(fingerprint, 'save reports a state fingerprint');
-      assert.ok(consoleLog.some(line => line.includes(`load_state_fingerprint slot=0`) && line.includes(`fingerprint=${fingerprint}`) && line.includes('verified=true')), 'accepted load verifies saved fingerprint');
+      // The loaded state's fingerprint equals the saved one (the line's
+      // 'verified=' field went with 66227a8f; the equality is the check).
+      assert.ok(consoleLog.some(line => line.includes(`load_state_fingerprint slot=0`) && line.includes(`fingerprint=${fingerprint}`)), 'accepted load verifies saved fingerprint');
       assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=0 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`) && line.includes(`faction=${faction === 'alliance' ? 'Alliance' : 'Empire'}`)), 'live restored campaign matches saved fingerprint and faction');
       await page.evaluate(([save9, meta9, save0, meta0]) => {
         localStorage.setItem(save9, save0);
@@ -125,14 +143,8 @@ try {
       await click(742, 602);
       assert.deepEqual(await storage(), corrupt, 'corrupt-slot overwrite cancellation preserves bytes');
       assert.ok(consoleLog.some(line => line.includes('destination=game_options status=opened_original')));
-      await page.evaluate(() => localStorage.setItem('rebellion_meta_v13_2', '{'));
-      await key('Escape');
-      await key('F1');
-      const olderCorrupt = await storage();
-      await click(110, 349);
-      await screenshot('older-metadata-only-overwrite-confirmation');
-      await click(742, 602);
-      assert.deepEqual(await storage(), olderCorrupt, 'version 13 metadata-only slot still requires overwrite confirmation');
+      // An older format's keys no longer count: 66227a8f made one save
+      // format the only one (save.rs slot_occupied reads the current keys).
       await click(544, 805); // Exit from the original window
       await screenshot('exit-confirmation');
       await click(560, 602);
@@ -144,7 +156,7 @@ try {
       assert.equal(await page.getByRole('heading', { name: 'Game closed' }).count(), 0);
       await screenshot('browser-restarted');
       assert.equal(errors.length, 0, errors.join('\n'));
-      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'delete cancel', 'delete accept', 'return/re-entry', 'corrupt load/overwrite cancel', 'v13 metadata-only overwrite cancel', 'browser exit/restart', 'no page errors'] });
+      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'saved notice', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'return/re-entry', 'corrupt load/overwrite cancel', 'browser exit/restart', 'no page errors'] });
     } catch (error) {
       await screenshot('failure').catch(() => {});
       results.push({ faction, status: 'fail', error: String(error) });
