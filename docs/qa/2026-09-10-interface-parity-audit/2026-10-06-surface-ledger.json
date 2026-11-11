@@ -2093,25 +2093,27 @@
         {
           "id": "CMD-03-C006",
           "requirement": "uninhabited",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-track-visibility/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-sector-and-production-states/"
           ],
-          "note": "An uninhabited planet drops its support track (FUN_0045baf0); code and unit tests only, no A0 and no browser comparison.",
+          "note": "An uninhabited planet drops its support track (FUN_0045baf0); code and unit tests only, no A0 and no browser comparison. 2026-11-11 b190: A0 headquarters/00-moddell shows Agrilat, Khuiumin, Endor and Annaj with energy and raw-material tracks and no support track (FUN_0045baf0). The fixture ModdellUninhabited (code 102) in sector-windows.mjs: the four planets' track pixels differ from A0 in 0 (run sector-windows-2026-11-11T14-37-32-254Z, Linux). The comparison found the slots' leading grey tick (pen 0x808080, FUN_00459e30, FUN_0060e400) missing from every track; fixed.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-03-C007",
           "requirement": "blockaded",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-08-results-rows-and-tips-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-sector-and-production-states/"
           ],
-          "note": "No sector-window function reads the blockade bit (+0x88 bit 0x20), so the port draws nothing; settled by code only, no A0. 2026-11-08 (A0 VM, a0-vm/sluis-van-768/05..07): right after 'Sluis Van is now under blockade by Alliance forces', the Sluis sector window draws Sluis Van with its system and defenses icons and its uprising mark only, no blockade mark, as the port (no sector-window function reads +0x88 bit 0x20). No browser case puts a blockaded system in the sector window yet.",
+          "note": "No sector-window function reads the blockade bit (+0x88 bit 0x20), so the port draws nothing; settled by code only, no A0. 2026-11-08 (A0 VM, a0-vm/sluis-van-768/05..07): right after 'Sluis Van is now under blockade by Alliance forces', the Sluis sector window draws Sluis Van with its system and defenses icons and its uprising mark only, no blockade mark, as the port (no sector-window function reads +0x88 bit 0x20). No browser case puts a blockaded system in the sector window yet. 2026-11-11 b190: A0 2026-10-28-nav/sector-b (day 103) and fleet4/bortras-blockade-ships (day 120, blockaded) differ around Bortras only in Fleet 8's icon: no blockade mark. fleet-window.mjs a0-blockade: blockaded Bortras in the Sesswenna window differs from A0 in 0 pixels in the picture, the fleet icon, the area right of the planet and the two rows under it (run fleet-window-2026-11-11T14-46-12-946Z-1048051, Linux).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6141,7 +6143,7 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-idle/"
           ],
-          "note": "Area idleness (0x160) is ported in the core with unit tests; FUN_00457690's inactive shell is not compared in A0 or the browser.",
+          "note": "Area idleness (0x160) is ported in the core with unit tests; FUN_00457690's inactive shell is not compared in A0 or the browser. 2026-11-11: A0 2026-11-11-manufacturing-focus/00 and /02: FUN_00457690's 'inactive' shell is the unfocused title strip (+0x184: 10200/10302/10304), not idleness. Averam's Manufacturing strip turns from (255,0,0) to (179,4,4) when a Defenses window opens beside it; a click on a sector window does not take the focus (/01). The port keeps a focus per window kind, so it cannot show this yet; it needs one shared focus across the System, Defenses, Fleet and Missions windows (an architectural change, not made).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6763,30 +6765,32 @@
         {
           "id": "OBJ-10-C003",
           "requirement": "training",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-30-agent-build-orders/",
             "tools/interface-parity/build-selection.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-21-facility-idle/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-pending-defenses/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-class-portraits/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-class-portraits/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-sector-and-production-states/"
           ],
-          "note": "Training through a training facility: A0 opened Build Selection on Coruscant's training facility and agent-build.mjs (Arch Chromium) queues a regiment; the training band/progress itself has no A0 capture and the Build Selection chrome gate fails 6 pixels. 2026-11-04: a regiment in training stands in its destination's Defenses window, over its backdrop 11513 and the mark 11570/11572. Its Status reads 34673 \"Training\" (FUN_00445280, 0x8771). build-selection.mjs checks the cell, the menu and the Status on Linux for both sides. No A0 of a regiment in training. 2026-11-04: the training band's portrait matches A0 build-selection2/07 exactly (build-selection.mjs bandPortrait); its progress bar is not compared with A0.",
+          "note": "Training through a training facility: A0 opened Build Selection on Coruscant's training facility and agent-build.mjs (Arch Chromium) queues a regiment; the training band/progress itself has no A0 capture and the Build Selection chrome gate fails 6 pixels. 2026-11-04: a regiment in training stands in its destination's Defenses window, over its backdrop 11513 and the mark 11570/11572. Its Status reads 34673 \"Training\" (FUN_00445280, 0x8771). build-selection.mjs checks the cell, the menu and the Status on Linux for both sides. No A0 of a regiment in training. 2026-11-04: the training band's portrait matches A0 build-selection2/07 exactly (build-selection.mjs bandPortrait); its progress bar is not compared with A0. 2026-11-11 b190: the training band's bar against A0 on both sides, 0 of 1141 frame and well pixels differing: Alliance vs A0 2026-11-11-manufacturing-focus/06 (Averam, 'Training: 1', 26 yellow pixels), Empire vs build-selection2/22 ('Training: 3', 80). The port's bar now fills whole pixels, rounded down (width x points / cost, FUN_004ad210). build-selection.mjs trainingBand (fixture 101), run build-selection-2026-11-11T14-38-11-731Z-855904.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-10-C004",
           "requirement": "en route",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-status-picture-marks/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-special-force-move/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-personnel-orders-browser/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-specforces-finder-a0/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-personnel-end-states/"
           ],
-          "note": "En route marks (STRATEGY 11516 regiment, 11520 special force, FUN_0042c3b0) and personnel-orders.mjs Move (Arch Chromium 155) exist; no A0 capture of an en-route regiment or special force. 2026-11-03: A0 specforces/03 lists the en-route Longprobe team in its destination's Defenses window with its plain mini 17730 (no mark, 0 of 558 pixels differ); the port now lists travelling members at their destination (they were missing). The Status window's en-route marks still have no A0 capture.",
+          "note": "En route marks (STRATEGY 11516 regiment, 11520 special force, FUN_0042c3b0) and personnel-orders.mjs Move (Arch Chromium 155) exist; no A0 capture of an en-route regiment or special force. 2026-11-03: A0 specforces/03 lists the en-route Longprobe team in its destination's Defenses window with its plain mini 17730 (no mark, 0 of 558 pixels differ); the port now lists travelling members at their destination (they were missing). The Status window's en-route marks still have no A0 capture. 2026-11-11 b190: Status of units en route against A0 on Linux. Special force: A0 sfstatus/03 (Infiltrators to Yavin), fixture SpecialForceEnroute (code 104), picture 0 of 12,740 pixels differing. Regiment: A0 2026-11-11-regiment-en-route/04 (Status Enroute, ETA Day 135; mark GOKRES 5185) and /02 (in training, mark 11571), fixture RegimentEnroute (code 105), pictures 0 differing, labels within 1 px. Fixed on the way: a regiment travelling to a planet is listed on its Trooper Regiments page (A0 /00), and the regiments' own en route marks are keyed. Runs status-window-2026-11-11T14-40-50-657Z-906974. Open: A0 /01 offers Move for a regiment in training; the port greys it.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6992,9 +6996,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-death-star-sabotage/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-20-death-star-sabotage/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Death Star Sabotage is a dialog kind (mission_dialog.rs kind_name). Core tested; no browser journey picks it. No A0 capture of the dialog for this kind.",
+          "note": "Death Star Sabotage is a dialog kind (mission_dialog.rs kind_name). Core tested; no browser journey picks it. No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs death-star (fixture 60, Alliance) offers Death Star Sabotage with icon 3137 at A0's (70, 86) on Linux; no A0 of the dialog for this kind.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7068,9 +7073,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-reconnaissance/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-reconnaissance/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Reconnaissance is a dialog kind (mission_dialog.rs kind_name). recon targeting browser run (headless Chromium 153, mission-flow.py 62). No A0 capture of the dialog for this kind.",
+          "note": "Reconnaissance is a dialog kind (mission_dialog.rs kind_name). recon targeting browser run (headless Chromium 153, mission-flow.py 62). No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs recon (fixture 63) offers Reconnaissance alone, icons 3093/7189 at (70, 86), both sides on Linux; no A0 of the dialog for this kind (specforces/02 shows the kind only in a Missions window).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7094,9 +7100,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-rescue-targeting/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Rescue is a dialog kind (mission_dialog.rs kind_name). Rescue-only dialog dispatched in the Arch Chromium 153 run. No A0 capture of the dialog for this kind.",
+          "note": "Rescue is a dialog kind (mission_dialog.rs kind_name). Rescue-only dialog dispatched in the Arch Chromium 153 run. No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs rescue (fixture 58) offers Rescue, icons 3089/7185 at (70, 86), both sides on Linux; no A0 of the dialog for this kind.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7132,21 +7139,23 @@
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Ship Research is a dialog kind (mission_dialog.rs kind_name). Research run picked Ship Design Research (TEXTSTRA 11296 icon). No A0 capture of the dialog for this kind.",
+          "note": "Ship Research is a dialog kind (mission_dialog.rs kind_name). Research run picked Ship Design Research (TEXTSTRA 11296 icon). No A0 capture of the dialog for this kind. 2026-11-11 b190: mission-dialog.mjs research (fixture 64) offers Ship Design Research above Espionage, icons 3104/7200 at (70, 86), both sides on Linux; no A0 of the dialog for this kind. A0 2026-11-11-mission-kinds/00, 01: Dodonna on Yavin (no yard) is offered Espionage only, as the port's rule that research needs a yard of the tree (FUN_0056c510).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "OBJ-11-C017",
           "requirement": "Troop Research",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/mission-dialog.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-14-research-missions/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-mission-kinds-dialog/"
           ],
-          "note": "Troop Research is a dialog kind (mission_dialog.rs kind_name). Research-targeting browser run (Chromium 153). No A0 capture of the dialog for this kind.",
+          "note": "Troop Research is a dialog kind (mission_dialog.rs kind_name). Research-targeting browser run (Chromium 153). No A0 capture of the dialog for this kind. 2026-11-11 b190: A0 2026-11-11-mission-kinds/10, 11 (Adar Tallon on his own Averam, one Training Facility): Create Mission shows Troop Training Research first of two kinds, the dialog at (168, 38). mission-dialog.mjs troop-research (fixture TroopResearchTargeting, code 103): the same two kinds in that order; icon GOKRES 3106 at the window's (70, 86), 0 of 8,320 pixels differing from A0. Run mission-dialog-2026-11-11T14-29-50-272Z-777464.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

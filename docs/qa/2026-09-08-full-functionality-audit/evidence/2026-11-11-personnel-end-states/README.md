@@ -247,3 +247,15 @@ The scenarios were renumbered at the merge onto main, after the other
 agents' scenarios 100..102: SpecialForceEnroute is 103 (code 104) and
 RegimentEnroute is 104 (code 105). The run ids above used codes 101 and
 102 in the worktree.
+
+## Batch b190
+
+- 29 of 29 interface gates on Linux, among them `mission-dialog`
+  (`mission-dialog-2026-11-11T15-24-49-907Z-1240209`), `status-window`
+  (`status-window-2026-11-11T15-19-30-211Z-1232384`), `sector-windows`
+  (`sector-windows-2026-11-11T15-42-55-703Z`), `build-selection`
+  (`build-selection-2026-11-11T15-21-54-673Z-1237841`) and `fleet-window`
+  (`fleet-window-2026-11-11T15-08-23-158Z-1206459`).
+- Workspace tests: 3580 passed, 0 failed. Fixture tests: 155. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T16-06-34-266Z-1301758`: 148 of 148.

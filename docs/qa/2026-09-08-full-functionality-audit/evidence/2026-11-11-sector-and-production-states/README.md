@@ -159,3 +159,15 @@ All four on the same fixture WASM, SHA-256
   `progress_pixels` and `band`, 120 mutants, 120 caught; the
   `system_window.rs` diff, 3 mutants, 3 caught.
 - Not rerun here: the other interface gates (the lead's batch).
+
+## Batch b190
+
+- 29 of 29 interface gates on Linux, among them `mission-dialog`
+  (`mission-dialog-2026-11-11T15-24-49-907Z-1240209`), `status-window`
+  (`status-window-2026-11-11T15-19-30-211Z-1232384`), `sector-windows`
+  (`sector-windows-2026-11-11T15-42-55-703Z`), `build-selection`
+  (`build-selection-2026-11-11T15-21-54-673Z-1237841`) and `fleet-window`
+  (`fleet-window-2026-11-11T15-08-23-158Z-1206459`).
+- Workspace tests: 3580 passed, 0 failed. Fixture tests: 155. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T16-06-34-266Z-1301758`: 148 of 148.
