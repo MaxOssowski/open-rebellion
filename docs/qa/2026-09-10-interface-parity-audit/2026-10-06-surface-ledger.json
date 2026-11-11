@@ -206,9 +206,10 @@
           "evidence": [
             "crates/rebellion-render/src/video_player.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-missing-movie-box/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-missing-movie-box/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-a0-fixes-icon-topic-movie-box/README.md"
           ],
-          "note": "Native open_cutscene logs 'cutscene skipped' and goes on when the file is missing (test open_returns_not_decoded_when_cutscene_directory_is_missing). The original's behaviour is not traced; no A0, no browser path. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-11 b184: a missing movie now shows the video manager's box (FUN_0060a9e0: MB_OK|MB_ICONHAND|MB_SYSTEMMODAL, caption 'PathName unknown to VideoManager') and waits for OK, then ends as a played movie (0x403 = 0x402 in FUN_00421790). hyp: the box's look; no beep asset; no A0 of the box.",
+          "note": "Native open_cutscene logs 'cutscene skipped' and goes on when the file is missing (test open_returns_not_decoded_when_cutscene_directory_is_missing). The original's behaviour is not traced; no A0, no browser path. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-11 b184: a missing movie now shows the video manager's box (FUN_0060a9e0: MB_OK|MB_ICONHAND|MB_SYSTEMMODAL, caption 'PathName unknown to VideoManager') and waits for OK, then ends as a played movie (0x403 = 0x402 in FUN_00421790). hyp: the box's look; no beep asset; no A0 of the box. 2026-11-11 b187: A0 of the box (MDATA.005 renamed, 2026-11-11-icon-menu-topic/53-57): classic 300x149 box, OK or Enter returns to the menu. The port takes A0's frame, title, close box, icon, band and OK; cutscenes.mjs case missing-movie-box checks them at A0's offsets (Linux). Open: MessageBeep(0x10) has no sound; the box font is egui's (text width deviation).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -2261,9 +2262,11 @@
             "docs/qa/2026-09-10-interface-parity-audit/2026-10-06-manual-window-checklists.md",
             "tools/interface-parity/sector-quadrants.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-icon-menu-and-topic-box-a0/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-a0-fixes-icon-topic-movie-box/README.md"
           ],
-          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states.",
+          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states. 2026-11-11 b187: A0 of the defenses icon's menu (2026-11-11-icon-menu-and-topic-box-a0): Move/Confirmed Move white for a free team, grey while a character, regiment or squadron of the side is on its way in; Scrap grey too. The port now counts regiments and squadrons flying in (TroopTransportState::surface_arrival_pending). Open: Coruscant grey on days 12-17 with no seen cause (deliveries not counted).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -5195,9 +5198,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-troop-finder-first-row/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-finder-prefix-search/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-finder-prefix-search/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-icon-menu-and-topic-box-a0/README.md"
           ],
-          "note": "Prefix search follows FUN_00609650 (list_prefix, unit tests); the README notes the Personnel Finder's case 100 (FUN_00464890) does no prefix match, so the search behaviour is not settled against A0. 2026-11-11 b183: settled by trace: every Finder answers a name edit (0x408) with FUN_00609650 on its shown list (Personnel +0x150, case-insensitive longest prefix, ties keep the earlier row, an emptied name chooses the first row); the Personnel Finder's tabs (FUN_00464890 cases 100/0x6e) only rebuild and keep the stored id. Ported with unit tests; no A0 of typing.",
+          "note": "Prefix search follows FUN_00609650 (list_prefix, unit tests); the README notes the Personnel Finder's case 100 (FUN_00464890) does no prefix match, so the search behaviour is not settled against A0. 2026-11-11 b183: settled by trace: every Finder answers a name edit (0x408) with FUN_00609650 on its shown list (Personnel +0x150, case-insensitive longest prefix, ties keep the earlier row, an emptied name chooses the first row); the Personnel Finder's tabs (FUN_00464890 cases 100/0x6e) only rebuild and keep the stored id. Ported with unit tests; no A0 of typing. 2026-11-11 b187: A0 of the Encyclopedia Topic box: a freshly opened index takes typing at once (port changed), Index gives the box the keys, a category icon takes them, an edit keeping the row scrolls nothing.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -10790,9 +10794,10 @@
           "evidence": [
             "crates/rebellion-app/src/main.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-movie-failure-trace/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-missing-movie-box/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-missing-movie-box/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-a0-fixes-icon-topic-movie-box/README.md"
           ],
-          "note": "Not implemented for ending media; the original behaviour is not traced. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-11 b184: as PRE-01-C009, the ending movies share the box path."
+          "note": "Not implemented for ending media; the original behaviour is not traced. 2026-11-09: traced: the video manager's play call FUN_005f6920 probes the file (FUN_005f6be0 -> FUN_005f71f0, SmackOpen); on failure it beeps and shows a system-modal box with the path, caption 'PathName unknown to VideoManager' (FUN_0060a9e0), then posts 0x403, the movie's end message (hyp: the flow goes on as after a played movie). The browser port ends a failed <video> (state FAILED) and goes on the same way, without the box. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-11 b184: as PRE-01-C009, the ending movies share the box path. 2026-11-11 b187: the box's look is A0's (see PRE-01-C009)."
         },
         {
           "id": "END-01-C012",

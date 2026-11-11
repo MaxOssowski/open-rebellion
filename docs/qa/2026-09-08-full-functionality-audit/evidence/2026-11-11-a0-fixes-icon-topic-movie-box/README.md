@@ -115,3 +115,11 @@ pass.
 hyp: a box narrower than the caption grows to hold the caption, the close
 box and 4 pixels (`layout`). With the port's short path, the caption ends
 4 pixels before the close box.
+
+## Batch b187
+
+- 29 of 29 interface gates on Linux. `cutscenes`
+  (`cutscenes-2026-11-11T10-34-05-712Z`) ran the new `missing-movie-box`
+  case among them, and it passed.
+- Workspace tests: 3564 passed. Fixture tests: 150. Provenance is ok.
+- Tactical matrix `2026-11-11T10-43-17-863Z-109657`: 148 of 148.
