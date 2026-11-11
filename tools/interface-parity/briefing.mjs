@@ -132,6 +132,41 @@ const A0_BEFORE_AFTER = { alliance: ["b000.png"], empire: ["e000.png"] };
 // (a pose a frame away), and `DROID_EXACT_SHARE` must match exactly.
 const DROID_EXACT_SHARE = 0.9;
 const DROID_MAX_DIFFERING = 600;
+// When each voice starts in A0, in seconds from the series' first frame.
+// A clip starts its WAVE with its first frame (FUN_00404440 ->
+// FUN_00403f70), and each A0 frame shows one frame of one clip, so a
+// frame k taken k * P seconds in that shows frame f of a clip dates the
+// clip's start to k * P - f ticks (evidence/2026-11-12-briefing-droid/:
+// every A0 droid box matched exactly to a clip frame decoded from the
+// briefing DLL; the tick fitted from the samples is 66 ms, the panel's
+// 0x43 ms). The Alliance's A0 has two series (b000..b045 every 1.5 s,
+// b100..b139 every 3 s) with an unknown gap; the first series' 1220 and
+// 1225 are left out, their frames also being 1156's and 1162's.
+const A0_VOICE_STARTS = {
+  alliance: [
+    [[1155, 0.78], [1221, 14.99], [1222, 20.19], [1223, 24.74], [1224, 35.59], [1157, 44.14]],
+    [[1160, -7.30], [1161, 2.48], [1226, 23.32], [1163, 37.34], [1164, 49.80], [1168, 53.22]],
+  ],
+  empire: [
+    [[1147, 0.79], [1220, 12.22], [1221, 17.68], [1222, 21.29], [1223, 27.64], [1224, 35.44],
+      [1149, 48.01], [1150, 66.87], [1151, 87.30], [1152, 115.28], [1153, 125.87], [1225, 134.88],
+      [1226, 138.04], [1155, 154.49], [1156, 180.88], [1160, 183.21]],
+  ],
+};
+// The time from one voice to the next must agree with A0's within
+// 0.3 s plus 2 % (A0's sample period is only nominal: the tick fits as
+// 65.9..66.4 ms against the panel's 67 ms).
+const VOICE_GAP_SLACK = 0.3;
+const VOICE_GAP_SHARE = 0.02;
+// The gap after the first voice is recorded, not asserted. Its clip's voice
+// outlasts its frames on both sides (ALBRIEF 1155: 137 frames, 9.43 s;
+// EMBRIEF 1147: 167 frames, 11.57 s), and in A0 the next clip starts 6 and
+// 5 ticks before that voice would end if it began with the first frame.
+// Later clips do wait for their voice in A0 (EMBRIEF 1152: 134 frames,
+// 10.59 s, the next voice 10.59 s on). So either the first voice starts
+// before its clip's first frame shows, or the first clip does not wait;
+// not traced (evidence/2026-11-12-briefing-droid/README.md).
+const VOICE_GAP_UNASSERTED_FROM = { alliance: 1155, empire: 1147 };
 
 function boxKey(png, [x0, y0, x1, y1], ox = 0, oy = 0) {
   const parts = [];
@@ -194,8 +229,11 @@ async function run(browser, base, faction, name) {
   const errors = [];
   const network = [];
   const shots = [];
+  const voiceTimes = [];
   page.on("console", (message) => {
     log.push(message.text());
+    const voice = message.text().match(voicePattern);
+    if (voice) voiceTimes.push({ wave: Number(voice[2]), at: Date.now() / 1000 });
     if (message.type() === "error") errors.push(message.text());
   });
   page.on("pageerror", (error) => errors.push(String(error)));
@@ -218,9 +256,10 @@ async function run(browser, base, faction, name) {
   const a0Checks = [];
   let marks = {};
   let droidResult = null;
+  let narration = null;
   const droid = DROID_BOX[faction.name];
   const [dx0, dy0, dx1, dy1] = droid;
-  const droidFrames = new Map();
+  const droidShots = new Map();
   try {
     await page.goto(base);
     // The release site plays the intro first (MDATA.000, 001): Escape
@@ -252,9 +291,10 @@ async function run(browser, base, faction, name) {
       const deadline = Date.now() + 300_000;
       while (actions().at(-1) !== 0xd) {
         if (a0) {
-          const crop = PNG.sync.read(await page.screenshot({ clip: { x: dx0, y: dy0, width: dx1 - dx0, height: dy1 - dy0 } }));
-          const key = boxKey(crop, droid, dx0, dy0);
-          droidFrames.set(key.toString("base64"), key);
+          // Kept encoded and decoded after the briefing: decoding here
+          // slows the sampling, and a loaded machine then misses frames.
+          const bytes = await page.screenshot({ clip: { x: dx0, y: dy0, width: dx1 - dx0, height: dy1 - dy0 } });
+          droidShots.set(createHash("sha256").update(bytes).digest("hex"), bytes);
         }
         if (Date.now() > deadline) throw new Error(`the briefing ends: ${JSON.stringify(log.slice(-8))}`);
         const done = actions();
@@ -286,6 +326,24 @@ async function run(browser, base, faction, name) {
       }
       assert.notEqual(places.coruscant, places.yavin, JSON.stringify(places));
       marks = places;
+      // Narration timing: each gap between two voices against A0's.
+      if (a0) {
+        const at = new Map(voiceTimes.map(({ wave, at: time }) => [wave, time]));
+        const gaps = [];
+        for (const series of A0_VOICE_STARTS[faction.name]) {
+          for (let i = 1; i < series.length; i += 1) {
+            const [[from, a0From], [to, a0To]] = [series[i - 1], series[i]];
+            const a0Gap = a0To - a0From;
+            const port = at.get(to) - at.get(from);
+            gaps.push({ from, to, a0: Number(a0Gap.toFixed(2)), port: Number(port.toFixed(2)),
+              asserted: from !== VOICE_GAP_UNASSERTED_FROM[faction.name] });
+          }
+        }
+        narration = gaps;
+        const off = gaps.filter(({ a0: a, port, asserted }) => asserted
+          && !(Math.abs(port - a) <= VOICE_GAP_SLACK + VOICE_GAP_SHARE * a));
+        assert.deepEqual(off, [], "the voices' gaps against A0");
+      }
       const after = await shot("after-briefing");
       if (a0) {
         const index = { label: "after-briefing", ...bestA0(a0, PNG.sync.read(after), INDEX_WINDOW[faction.name]) };
@@ -305,6 +363,11 @@ async function run(browser, base, faction, name) {
       // frame the port drew: the type-302 clips' cumulative frames
       // (FUN_00404440, advisor_clip.rs). The port is sampled between the
       // first voice and action 0xd.
+      const droidFrames = new Map();
+      for (const bytes of droidShots.values()) {
+        const key = boxKey(PNG.sync.read(bytes), droid, dx0, dy0);
+        droidFrames.set(key.toString("base64"), key);
+      }
       const ported = [...droidFrames.values()];
       const checks = a0.filter(({ file }) => !A0_BEFORE_AFTER[faction.name].includes(file)).map(({ file, png }) => {
         const key = boxKey(png, droid);
@@ -332,24 +395,21 @@ async function run(browser, base, faction, name) {
       const exact = checks.filter(({ differing: count }) => count === 0).length;
       droidResult = { box: droid, port_frames: ported.length, exact, frames: checks.length, checks };
       const misses = checks.filter(({ differing: count }) => count > 0);
-      // The Empire's droid differs from A0 in about 1,100 of its box's
-      // pixels on every frame (2026-11-11: same place and palette, but the
-      // nearest port frame's shading differs across the droid's body; not
-      // yet traced), so it is measured and kept in result.json but not
-      // asserted.
-      if (faction.name === "empire") {
-        droidResult.open = "no A0 frame matches a port frame; not traced";
-      } else {
-        assert.ok(exact / checks.length >= DROID_EXACT_SHARE, JSON.stringify(misses));
-        assert.ok(misses.every(({ differing: count }) => count <= DROID_MAX_DIFFERING), JSON.stringify(misses));
-      }
+      // Both sides are asserted. The Empire's frames are 106 pixels wide in
+      // a 107-wide aperture (FUN_0042adb0); the player draws them at their
+      // own size (Class_0065a358_vtc, FUN_004729c0). Until 2026-11-12 the
+      // port stretched them over the aperture, which doubled one column and
+      // left no A0 frame matching.
+      assert.ok(exact / checks.length >= DROID_EXACT_SHARE, JSON.stringify(misses));
+      assert.ok(misses.every(({ differing: count }) => count <= DROID_MAX_DIFFERING), JSON.stringify(misses));
     }
     return { faction: faction.name, case: name, status: "pass", actions: actions(), voices: voices(), marks, a0: a0Checks, droid: droidResult,
+      narration,
       advisor: log.filter((line) => line.startsWith("[advisor]")), shots, network };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { faction: faction.name, case: name, status: "fail", error: String(error.stack || error),
-      droid: droidResult, advisor: log.filter((line) => line.startsWith("[advisor]")), errors };
+      droid: droidResult, narration, advisor: log.filter((line) => line.startsWith("[advisor]")), errors };
   } finally {
     await fs.writeFile(path.join(directory, "console.log"), log.join("\n"));
     await context.close();
