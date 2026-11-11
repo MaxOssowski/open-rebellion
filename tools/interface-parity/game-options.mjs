@@ -18,9 +18,10 @@
 //   within 15 per cent. The version label is the port's own (port:) and is
 //   left out.
 // It then drags the music slider to slider x 100 and checks the thumb
-// centre at floor(201 * 49 / 100) = 98 (FUN_00604950, FUN_00604a50),
-// reloads the page and checks the slider kept its place (the stored
-// settings). Last it answers the confirmations: overwrite No and Yes, Exit
+// centred on the pointer (FUN_00604950 writes it to +0xc8), the stored
+// volume floor(2000 * log10(0.49)) = -620 hundredths of a dB (FUN_00406b80),
+// then reloads the page and checks the slider reopens at the percent
+// FUN_00407180 reads back, floor(100 * 10^(-620 / 2000)) = 48, centre 96. Last it answers the confirmations: overwrite No and Yes, Exit
 // and Restart No, and Load Yes, which restores the saved campaign.
 //
 // Build first: bash scripts/build-interface-test-wasm.sh
@@ -257,8 +258,8 @@ try {
     assert.ok(ratio > 0.85 && ratio < 1.15, `${name}: width ratio ${ratio.toFixed(3)}`);
   }
 
-  // Drag the music thumb to slider x 100: floor(100 * 100 / 201) = 49
-  // per cent, thumb centre floor(201 * 49 / 100) = 98, left 93.
+  // Drag the music thumb to slider x 100: the thumb centres on the pointer
+  // (left 95) and sends floor(100 * 100 / 201) = 49 per cent.
   await page.mouse.move(392 + 150, 157);
   await page.mouse.down();
   await page.mouse.move(392 + 100, 157, { steps: 4 });
@@ -274,14 +275,16 @@ try {
     if (differs) thumb.push(x);
   }
   result.dragged_columns = [thumb[0], thumb.at(-1)];
-  // The thumb's own columns, 392 + 93 .. 392 + 103, are the first run.
-  assert.equal(thumb[0], 392 + 93, `the dragged thumb starts at ${thumb[0]}`);
-  assert.ok(thumb.filter((x) => x <= 392 + 103).length === 11, "the dragged thumb is 11 columns wide");
+  // The thumb's own columns, 392 + 95 .. 392 + 105, are the first run.
+  assert.equal(thumb[0], 392 + 95, `the dragged thumb starts at ${thumb[0]}`);
+  assert.ok(thumb.filter((x) => x <= 392 + 105).length === 11, "the dragged thumb is 11 columns wide");
 
   // The settings outlive the page (rebellion_data::settings, the original's
-  // registry values): reload, reopen, and the thumb is where it was left.
+  // registry values): the stored amplitude is DirectSound's for -620
+  // hundredths of a dB; reload, reopen, and the thumb opens at 48 per cent.
   result.stored_settings = await page.evaluate(() => localStorage.getItem("rebellion_settings_v1"));
-  assert.ok(result.stored_settings?.includes('"music_volume":0.49'), `stored ${result.stored_settings}`);
+  const storedMusic = JSON.parse(result.stored_settings ?? "{}").music_volume;
+  assert.equal(Math.round(2000 * Math.log10(storedMusic)), -620, `stored ${result.stored_settings}`);
   await page.reload();
   await page.waitForFunction(() => (window.__openRebellionInterfaceSystemFinders || []).length > 0,
     null, { timeout: 30_000 });
@@ -292,12 +295,16 @@ try {
   await page.mouse.move(330, 250);
   await page.waitForTimeout(300);
   const reloaded = await shot("reloaded");
-  let reloadedDiffering = 0;
-  for (let y = 134; y < 181; y += 1) {
-    for (let x = 392; x < 593; x += 1) if (!same(reloaded, x, y, dragged, x, y)) reloadedDiffering += 1;
+  const reopened = [];
+  for (let x = 392; x < 593; x += 1) {
+    let differs = false;
+    for (let y = 134; y < 181; y += 1) if (!same(reloaded, x, y, a0, x, y)) differs = true;
+    if (differs) reopened.push(x);
   }
-  result.reloaded_slider_differing = reloadedDiffering;
-  assert.equal(reloadedDiffering, 0, "the music slider did not keep its position across a reload");
+  result.reloaded_columns = [reopened[0], reopened.at(-1)];
+  // Centre floor(201 * 48 / 100) = 96, so columns 392 + 91 .. 392 + 101.
+  assert.equal(reopened[0], 392 + 91, `the reopened thumb starts at ${reopened[0]}`);
+  assert.ok(reopened.filter((x) => x <= 392 + 101).length === 11, "the reopened thumb is 11 columns wide");
 
   // The confirmations (FUN_00416c50: REBDLOG 10623 with Yes 10624 at
   // (252, 287) and No 10626 at (343, 287), FUN_00416e90).
@@ -505,7 +512,7 @@ try {
 await fs.writeFile(path.join(OUT, "result.json"), `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify({ out: OUT, status: result.status, compared: result.compared,
   differing: result.differing, crest_differing: result.crest_differing, sliders: result.sliders,
-  dragged_columns: result.dragged_columns, reloaded_slider_differing: result.reloaded_slider_differing,
+  dragged_columns: result.dragged_columns, reloaded_columns: result.reloaded_columns,
   confirmations: result.confirmations, restart_dialog: result.restart_dialog,
   error: result.error }, null, 2));
 if (result.status !== "pass") process.exitCode = 1;

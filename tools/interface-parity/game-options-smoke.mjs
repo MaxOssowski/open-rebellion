@@ -4,7 +4,6 @@ import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { PNG } from 'pngjs';
 
 const url = process.env.OPTIONS_TEST_URL ?? 'http://127.0.0.1:8769';
 const output = process.env.OPTIONS_TEST_OUTPUT ?? '/tmp/open-rebellion-options-smoke';
@@ -47,18 +46,6 @@ try {
     page.on('response', response => network.push({ url: response.url(), status: response.status() }));
     const screenshot = name => page.screenshot({ path: path.join(output, `${faction}-${name}.png`) });
     const click = async (x, y) => { await page.mouse.click(x, y, { delay: 300 }); await page.waitForTimeout(350); };
-    // The original's Game Options has no delete (FUN_00407180 builds none,
-    // and no game DLL holds such a string): the port's panel shows none.
-    const noDeleteLabel = async () => {
-      const png = PNG.sync.read(await page.screenshot());
-      let count = 0;
-      for (let y = 340; y < 615; y++) for (let x = 450; x < 600; x++) {
-        const index = (y * png.width + x) * 4;
-        const [r, g, b] = png.data.subarray(index, index + 3);
-        if (r > 130 && g < 130 && b < 140 && r > 1.8 * g) count++;
-      }
-      assert.ok(count <= 5, 'the save panel shows no Delete label');
-    };
     const key = async value => { await page.keyboard.press(value, { delay: 100 }); await page.waitForTimeout(350); };
     const storage = () => page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
     try {
@@ -77,8 +64,11 @@ try {
       await page.keyboard.type(`${faction} options smoke`);
       await click(110, 181);
       const saved = await storage();
-      assert.ok(saved.rebellion_save_v14_0, 'save writes the existing browser payload');
-      assert.match(saved.rebellion_meta_v14_0, /options smoke/);
+      // The keys carry the save format's version (save.rs: SAVE_VERSION).
+      const version = Object.keys(saved).map(k => /^rebellion_save_v(\d+)_0$/.exec(k)?.[1]).find(Boolean);
+      assert.ok(version, 'save writes the existing browser payload');
+      const k = (kind, slot) => `rebellion_${kind}_v${version}_${slot}`;
+      assert.match(saved[k('meta', 0)], /options smoke/);
       await click(110, 181);
       await screenshot('overwrite-confirmation');
       await click(742, 602); // native No button
@@ -94,29 +84,21 @@ try {
       assert.ok(fingerprint, 'save reports a state fingerprint');
       assert.ok(consoleLog.some(line => line.includes(`load_state_fingerprint slot=0`) && line.includes(`fingerprint=${fingerprint}`) && line.includes('verified=true')), 'accepted load verifies saved fingerprint');
       assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=0 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`) && line.includes(`faction=${faction === 'alliance' ? 'Alliance' : 'Empire'}`)), 'live restored campaign matches saved fingerprint and faction');
-      await page.evaluate(saved => {
-        localStorage.setItem('rebellion_save_v14_9', saved.rebellion_save_v14_0);
-        localStorage.setItem('rebellion_meta_v14_9', saved.rebellion_meta_v14_0);
-      }, saved);
+      await page.evaluate(([save9, meta9, save0, meta0]) => {
+        localStorage.setItem(save9, save0);
+        localStorage.setItem(meta9, meta0);
+      }, [k('save', 9), k('meta', 9), saved[k('save', 0)], saved[k('meta', 0)]]);
+      // The window has the original's six rows (FUN_00407180; manual p. 79)
+      // and no other save or load path: a save in slot 10 stays in storage,
+      // unlisted, and F8 / F9 open nothing.
       await key('F1');
       await key('F8');
-      await page.mouse.move(530, 500);
-      await page.mouse.wheel(0, 800);
-      await page.waitForTimeout(500);
-      await screenshot('slot-ten-load-panel');
-      await click(510, 601); // last visible row after scrolling to the bottom
-      await click(475, 651);
-      await click(560, 602);
-      assert.ok(consoleLog.some(line => line.includes('load_state_fingerprint slot=9') && line.includes(`fingerprint=${fingerprint}`) && line.includes('verified=true')), 'slot 10 verifies the existing save');
-      assert.ok(consoleLog.some(line => line.includes('[campaign] restored slot=9 mode=Galaxy') && line.includes(`fingerprint=${fingerprint}`)), 'slot 10 restores the live campaign');
-      await key('F1');
       await key('F9');
-      await screenshot('save-panel-no-delete');
-      await noDeleteLabel();
-      await key('Escape');
-      await key('F8');
-      await screenshot('legacy-load');
-      await key('Escape');
+      await screenshot('slot-ten-unlisted');
+      const withLegacy = await storage();
+      assert.equal(withLegacy[k('save', 9)], saved[k('save', 0)], 'slot 10 stays in storage');
+      assert.equal(withLegacy[k('meta', 9)], saved[k('meta', 0)], 'slot 10 metadata stays in storage');
+      assert.ok(!consoleLog.some(line => line.includes('load_state_fingerprint slot=9')), 'slot 10 is never loaded');
       await click(195, 805); // restart confirmation
       await screenshot('restart-confirmation');
       await key('Escape');
@@ -127,10 +109,10 @@ try {
       await key('F1');
       assert.equal(consoleLog.filter(line => line.includes('destination=game_options status=opened_original')).length, priorEntries + 1);
       await screenshot('reentered-options');
-      await page.evaluate(() => {
-        localStorage.setItem('rebellion_save_v14_1', 'corrupt fixture');
-        localStorage.setItem('rebellion_meta_v14_1', '{');
-      });
+      await page.evaluate(([save1, meta1]) => {
+        localStorage.setItem(save1, 'corrupt fixture');
+        localStorage.setItem(meta1, '{');
+      }, [k('save', 1), k('meta', 1)]);
       await key('Escape');
       await key('F1');
       const corrupt = await storage();
@@ -162,7 +144,7 @@ try {
       assert.equal(await page.getByRole('heading', { name: 'Game closed' }).count(), 0);
       await screenshot('browser-restarted');
       assert.equal(errors.length, 0, errors.join('\n'));
-      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 verified load/delete', 'delete cancel', 'delete accept', 'return/re-entry', 'corrupt load/overwrite cancel', 'v13 metadata-only overwrite cancel', 'browser exit/restart', 'no page errors'] });
+      results.push({ faction, status: 'pass', fingerprint, restoredLoads: consoleLog.filter(line => line.includes('[campaign] restored')), assertions: ['save', 'overwrite cancel', 'load cancel', 'verified load and restored Galaxy fingerprint', 'slot 10 kept and unlisted', 'delete cancel', 'delete accept', 'return/re-entry', 'corrupt load/overwrite cancel', 'v13 metadata-only overwrite cancel', 'browser exit/restart', 'no page errors'] });
     } catch (error) {
       await screenshot('failure').catch(() => {});
       results.push({ faction, status: 'fail', error: String(error) });
