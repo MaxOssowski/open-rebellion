@@ -1916,6 +1916,27 @@ async fn main() {
         }
         interface_test_fixture::post_own_capture_message(request, &world, &mut msg_log, &message_texts);
         interface_test_fixture::post_capture_message(request, &world, &mut msg_log, &message_texts);
+        let reports =
+            interface_test_fixture::enemy_assault(request, &mut world, &mut troop_transport_state);
+        if !reports.is_empty() {
+            present_assault_reports(
+                reports,
+                &world,
+                player_faction,
+                &message_texts,
+                &mut assault_summary_state,
+                &mut msg_log,
+                0,
+            );
+            // FUN_00469de0: Display on a battle report opens its Assault
+            // Summary, as the message index does.
+            let report = msg_log.messages().iter().rev().find_map(|message| {
+                message.assault_report.clone().map(|report| (message.id, report))
+            });
+            if let Some((id, report)) = report {
+                assault_summary_state.open(&world, *report, &message_texts, Some(id));
+            }
+        }
         // The AI plays the other side, as a new game sets it.
         ai_state = AIState::new(if player_faction == MissionFaction::Empire {
             AiFaction::Alliance
@@ -1966,6 +1987,8 @@ async fn main() {
     let mut fleet_move_watch = interface_test_fixture::FleetMoveWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut fleet_load_watch = interface_test_fixture::FleetLoadWatch::default();
+    #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
+    let mut enemy_assault_watch = interface_test_fixture::EnemyAssaultWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
     let mut speed_menu_watch = interface_test_fixture::SpeedMenuWatch::default();
     #[cfg(all(target_arch = "wasm32", feature = "interface-test-fixtures"))]
@@ -9314,6 +9337,14 @@ async fn main() {
                         .queued_story_movies()
                         .find(|movie| movie.movie == 101)
                         .map(|movie| movie.caption.clone()),
+                );
+                enemy_assault_watch.observe(
+                    request,
+                    &world,
+                    interface_test_fixture::FixtureAssaultSummary::of(
+                        &assault_summary_state,
+                        cockpit_state.faction,
+                    ),
                 );
                 system_finder_watch.observe(
                     request,

@@ -42,7 +42,7 @@ const FIXTURE_ABSENT: u32 = 0;
 /// How far right of the galaxy view's centre the targeting scenario puts its
 /// target system, clear of the system window it opens on the left.
 #[cfg(test)]
-const SCENARIO_COUNT: u8 = 105;
+const SCENARIO_COUNT: u8 = 106;
 
 extern "C" {
     fn open_rebellion_interface_fixture_code() -> u32;
@@ -352,6 +352,13 @@ pub enum Scenario {
     /// training there (A0 2026-11-11-regiment-en-route/00: Averam lists the
     /// regiment from Yavin, then the one in training).
     RegimentEnroute = 104,
+    /// The Alliance's view of the Empire's assault on its Yavin, as A0
+    /// assault-clean/01..03 shows it (an unedited Alliance game, day 720):
+    /// an Imperial fleet with nine Stormtrooper Regiments aboard takes
+    /// Yavin from its one Alliance Army Regiment, and the report the
+    /// Conflict rail files (`FUN_00497530` kind 3) is opened as the
+    /// message index's Display opens it (`FUN_00469de0`).
+    EnemyAssaultTaken = 105,
 }
 
 impl Scenario {
@@ -462,6 +469,7 @@ impl Scenario {
             102 => Self::TroopResearchTargeting,
             103 => Self::SpecialForceEnroute,
             104 => Self::RegimentEnroute,
+            105 => Self::EnemyAssaultTaken,
             _ => return None,
         })
     }
@@ -528,6 +536,7 @@ impl Scenario {
             || self.moves_a_fleet()
             || self.uses_the_fleet_window()
             || self == Self::FleetWindowYavin
+            || self == Self::FleetWindowA0
     }
 
     /// The scenarios whose Mission targets an object in a window.
@@ -1057,6 +1066,9 @@ pub fn apply(
     }
     if request.scenario == Scenario::FleetWindowYavin {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
+    }
+    if request.scenario == Scenario::EnemyAssaultTaken {
+        place_enemy_assault(world, movement, troop_transport);
     }
     if request.scenario == Scenario::FleetWindowBlockade {
         place_yavin(request, world, cockpit, movement, troop_transport, fleets);
@@ -2107,6 +2119,134 @@ fn place_yavin(
     fleets.open(world, yavin, (305, 86), request.faction, layout);
     fleets.select(yavin, FleetWindowEntry::Fleet(first));
     fleets.expand(yavin, first);
+}
+
+/// The Stormtrooper Regiments aboard the `EnemyAssaultTaken` fleet: A0
+/// assault-clean/02's Imperial Forces list overflows with a 38-pixel thumb
+/// on its scroll bar (`FUN_0060a490(.., 7, 0x29fc, ..)`), nine 70-pixel
+/// rows.
+const ENEMY_ASSAULT_REGIMENTS: usize = 9;
+
+/// The `EnemyAssaultTaken` scenario: Yavin the Alliance's with one
+/// Alliance Army Regiment and no defense facility, and an Imperial fleet
+/// of Imperial Star Destroyers in orbit carrying
+/// [`ENEMY_ASSAULT_REGIMENTS`] Stormtrooper Regiments (A0 assault-clean:
+/// the Empire's Fleet 13 took Yavin, its System Forces lost an Alliance
+/// Army Regiment).
+fn place_enemy_assault(
+    world: &mut GameWorld,
+    movement: &mut MovementState,
+    troop_transport: &mut TroopTransportState,
+) {
+    let troop_class = |world: &GameWorld, name: &str| {
+        world
+            .buildable_classes
+            .iter()
+            .find(|(class, value)| class.family() == 0x10 && value.name == name)
+            .map(|(class, _)| *class)
+    };
+    let destroyer = world
+        .capital_ship_classes
+        .iter()
+        .find(|(_, value)| value.is_empire && value.name == "Imperial Star Destroyer")
+        .map(|(key, _)| key);
+    let (Some(stormtroopers), Some(army), Some(destroyer)) = (
+        troop_class(world, "Stormtrooper Regiment"),
+        troop_class(world, "Alliance Army Regiment"),
+        destroyer,
+    ) else {
+        return;
+    };
+    let Some(yavin) = clear_for_a0(world, "Yavin") else {
+        return;
+    };
+    world.systems[yavin].defense_facilities.clear();
+    let capacity = world.capital_ship_classes[destroyer].troop_capacity.max(1) as usize;
+    let hull = world.capital_ship_classes[destroyer].hull as i32;
+    let ships = ENEMY_ASSAULT_REGIMENTS.div_ceil(capacity);
+    let fleet = world.insert_fleet(rebellion_core::world::Fleet {
+        location: yavin,
+        capital_ships: (0..ships)
+            .map(|_| ShipInstance::new(destroyer, hull, false))
+            .collect(),
+        fighters: Vec::new(),
+        characters: Vec::new(),
+        is_alliance: false,
+        has_death_star: false,
+        special_forces: Vec::new(),
+    });
+    world.rename_fleet(fleet, "Fleet 13");
+    world.number_ships();
+    rebellion_core::movement::reconcile_fleet_orbits(movement, world);
+    let regiments: Vec<_> = (0..ENEMY_ASSAULT_REGIMENTS)
+        .map(|_| {
+            world.troops.insert(TroopUnit {
+                class_dat_id: stormtroopers,
+                is_alliance: false,
+                regiment_strength: 100,
+            })
+        })
+        .collect();
+    world.systems[yavin].ground_units = regiments.clone();
+    let _ = troop_transport.embark(world, fleet, &regiments);
+    let defender = world.troops.insert(TroopUnit {
+        class_dat_id: army,
+        is_alliance: true,
+        regiment_strength: 100,
+    });
+    world.systems[yavin].ground_units = vec![defender];
+}
+
+/// The `EnemyAssaultTaken` scenario's assault: the Empire's fleets at
+/// Yavin assault it (`FUN_0058c120`) with the first seed whose draws give
+/// A0 assault-clean's outcome: the defending regiment destroyed, no
+/// attacker lost, and the system taken (TEXTSTRA `0x7091`). Returns the
+/// reports for the app to present.
+pub fn enemy_assault(
+    request: FixtureRequest,
+    world: &mut GameWorld,
+    troop_transport: &mut TroopTransportState,
+) -> Vec<rebellion_core::assault_report::AssaultReport> {
+    if request.scenario != Scenario::EnemyAssaultTaken {
+        return Vec::new();
+    }
+    let Some(yavin) = world
+        .systems
+        .iter()
+        .find(|(_, value)| value.name == "Yavin")
+        .map(|(key, _)| key)
+    else {
+        return Vec::new();
+    };
+    let fleets: Vec<FleetKey> = world
+        .fleets
+        .iter()
+        .filter(|(_, fleet)| fleet.location == yavin && !fleet.is_alliance)
+        .map(|(key, _)| key)
+        .collect();
+    for seed in 0..256 {
+        let mut trial_world = world.clone();
+        let mut trial_transport = troop_transport.clone();
+        let mut env = rebellion_core::bombardment::BombardEnv::new(seed, None);
+        let outcome = env
+            .assault(
+                &mut trial_world,
+                &mut trial_transport,
+                Faction::Empire,
+                &fleets,
+                yavin,
+            )
+            .clone();
+        let as_a0 = outcome.lost_attackers.is_empty()
+            && outcome.lost_defenders.len() == 1
+            && env.reports.iter().all(|report| report.taken);
+        if as_a0 && !env.reports.is_empty() {
+            *world = trial_world;
+            *troop_transport = trial_transport;
+            return env.reports;
+        }
+    }
+    Vec::new()
 }
 
 /// The `FleetWindowDestination` scenario: `place_yavin`'s fleet, renamed
@@ -3803,6 +3943,10 @@ struct FixtureSubmenu {
     height: f32,
     rows: usize,
     general_row: Option<usize>,
+    /// Target Military Facilities' (`0x220`) and Target Civilian
+    /// Facilities' (`0x221`) rows.
+    military_row: Option<usize>,
+    civilian_row: Option<usize>,
     /// Destroy System's row (`0x223`) and whether it is enabled.
     destroy_row: Option<usize>,
     destroy_enabled: bool,
@@ -3857,6 +4001,7 @@ fn object_menu_report<'a>(
                 | Scenario::BuildSelectionOverMaintenance
                 | Scenario::Quadrants
                 | Scenario::FleetWindowYavin
+                | Scenario::FleetWindowA0
                 | Scenario::BatteryStatus
                 | Scenario::PersonnelStates
                 | Scenario::BuildSelectionDefensesDestination
@@ -3921,6 +4066,12 @@ fn object_menu_report<'a>(
                 rows: menu.submenu_row_count(),
                 general_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
                     rebellion_core::bombardment::GENERAL,
+                )),
+                military_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
+                    rebellion_core::bombardment::TARGET_MILITARY,
+                )),
+                civilian_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
+                    rebellion_core::bombardment::TARGET_CIVILIAN,
                 )),
                 destroy_row: menu.submenu_row_of(ObjectMenuCommand::BombardmentTarget(
                     rebellion_core::bombardment::DESTROY_SYSTEM,
@@ -5922,6 +6073,57 @@ impl FixtureAssaultSummary {
     }
 }
 
+/// The open Assault Summary of the `EnemyAssaultTaken` and
+/// `FleetWindowA0` scenarios (the Empire's assault on Yavin, Fleet 1's
+/// bombardment of Kimanan), on the fleet-load channel the fleet-window
+/// gate reads.
+#[derive(Debug, Default)]
+pub struct EnemyAssaultWatch {
+    last: Option<Option<FixtureAssaultSummary>>,
+}
+
+#[derive(Debug, Serialize)]
+struct EnemyAssaultObservation {
+    status: &'static str,
+    code: u32,
+    window_open: bool,
+    assault_summary: Option<FixtureAssaultSummary>,
+    /// Yavin's holder after the assault (`economy::system_holder`).
+    yavin_holder: Option<String>,
+}
+
+impl EnemyAssaultWatch {
+    pub fn observe(
+        &mut self,
+        request: FixtureRequest,
+        world: &GameWorld,
+        assault_summary: Option<FixtureAssaultSummary>,
+    ) {
+        if !matches!(
+            request.scenario,
+            Scenario::EnemyAssaultTaken | Scenario::FleetWindowA0
+        ) || self.last.as_ref() == Some(&assault_summary)
+        {
+            return;
+        }
+        self.last = Some(assault_summary.clone());
+        let yavin_holder = world
+            .systems
+            .values()
+            .find(|value| value.name == "Yavin")
+            .map(|value| format!("{:?}", rebellion_core::economy::system_holder(world, value)));
+        let report = EnemyAssaultObservation {
+            status: "fleet-load",
+            code: request.code,
+            window_open: false,
+            assault_summary,
+            yavin_holder,
+        };
+        let bytes = serde_json::to_vec(&report).expect("serialize the enemy assault observation");
+        unsafe { open_rebellion_interface_fixture_emit(bytes.as_ptr(), bytes.len()) };
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn fleet_load_observation(
     request: FixtureRequest,
@@ -7833,6 +8035,97 @@ mod tests {
             applied.fleets.screen_rect(CockpitState::new(request.faction).layout_for(640.0, 480.0), kimanan).map(|rect| rect.min),
             Some(egui_macroquad::egui::pos2(305.0, 86.0))
         );
+    }
+
+    #[test]
+    fn the_enemy_assault_scenario_takes_yavin_from_its_one_regiment_as_a0_shows() {
+        // A0 assault-clean/01..03 (an unedited Alliance game, day 720): the
+        // Empire took the Alliance's Yavin; Imperial Forces list
+        // Stormtrooper Regiments, "No Casualties"; System Forces lost an
+        // Alliance Army Regiment, Operational "None". The Alliance reads it
+        // from its Conflict rail (FUN_00497530 kind 3).
+        use rebellion_core::assault_report::ReportCategory;
+        let enemy = request(Scenario::EnemyAssaultTaken, CockpitFaction::Alliance);
+        let mut applied = apply_to_loading_world_with(enemy, |world| {
+            let mut keys = world.systems.keys().collect::<Vec<_>>().into_iter();
+            let (here, elsewhere) = (keys.next().unwrap(), keys.next().unwrap());
+            world.systems[here].name = "Yavin".into();
+            world.systems[elsewhere].sector = world.systems[here].sector;
+            // GNPRTB as shipped (ghidra/notes/planetary-assault.md):
+            // 0x200..0x205, and the garrison 0x1e51 / 0x1e52 that bounds
+            // the landing (FUN_0058c810).
+            let entry = |id: u32, value: i32| rebellion_core::world::GnprtbEntry {
+                parameter_id: id,
+                development: value,
+                alliance_sp_easy: value,
+                alliance_sp_medium: value,
+                alliance_sp_hard: value,
+                empire_sp_easy: value,
+                empire_sp_medium: value,
+                empire_sp_hard: value,
+                multiplayer: value,
+            };
+            world.gnprtb = rebellion_core::world::GnprtbParams::new(vec![
+                entry(0x200, 5),
+                entry(0x201, 30),
+                entry(0x202, 10),
+                entry(0x203, 4),
+                entry(0x204, 6),
+                entry(0x205, 8),
+                entry(0x1e51, 60),
+                entry(0x1e52, -10),
+            ]);
+            world
+                .capital_ship_classes
+                .insert(rebellion_core::world::CapitalShipClass {
+                    name: "Imperial Star Destroyer".into(),
+                    is_empire: true,
+                    hull: 100,
+                    hyperdrive: 80,
+                    troop_capacity: 3,
+                    ..Default::default()
+                });
+            for (id, name, alliance) in [
+                (0x1000_0007, "Stormtrooper Regiment", false),
+                (0x1000_0001, "Alliance Army Regiment", true),
+            ] {
+                world.buildable_classes.insert(
+                    rebellion_core::ids::DatId::new(id),
+                    rebellion_core::world::BuildableClass {
+                        name: name.into(),
+                        is_alliance: alliance,
+                        is_empire: !alliance,
+                        ..Default::default()
+                    },
+                );
+            }
+        });
+        let reports = enemy_assault(enemy, &mut applied.world, &mut applied.transport);
+        let [report] = &reports[..] else {
+            panic!("one report: {reports:?}");
+        };
+        assert_eq!(report.attacker, Faction::Empire);
+        assert_eq!(report.defender, Some(Faction::Alliance));
+        assert!(report.taken);
+        assert!(!report.opens_at_once(Faction::Alliance));
+        let name = |units: &[&rebellion_core::assault_report::ReportUnit]| {
+            units
+                .iter()
+                .map(|unit| unit.name.clone())
+                .collect::<Vec<_>>()
+        };
+        let [operational, _, destroyed] = report.attackers.columns(ReportCategory::Troops);
+        assert_eq!(
+            name(&operational),
+            vec!["Stormtrooper Regiment".to_string(); ENEMY_ASSAULT_REGIMENTS]
+        );
+        assert!(destroyed.is_empty());
+        let [operational, _, destroyed] = report.system_forces.columns(ReportCategory::Troops);
+        assert!(operational.is_empty());
+        assert_eq!(name(&destroyed), vec!["Alliance Army Regiment".to_string()]);
+        // Any other scenario assaults nothing.
+        let other = request(Scenario::FleetAssaultTaken, CockpitFaction::Alliance);
+        assert!(enemy_assault(other, &mut applied.world, &mut applied.transport).is_empty());
     }
 
     #[test]
@@ -10652,6 +10945,7 @@ mod tests {
                 Scenario::UprisingIncident,
                 Scenario::BlockadeArrival,
                 Scenario::SupportFlip,
+                Scenario::FleetWindowA0,
                 Scenario::FleetWindowYavin,
                 Scenario::BuildSelectionOverMaintenance,
                 Scenario::BuildSelectionDestination,
