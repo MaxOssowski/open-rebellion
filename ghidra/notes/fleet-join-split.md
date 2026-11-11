@@ -105,9 +105,10 @@ squadron or a character is kept.
 - **Spare fleets.** Those fleets are spares that each system keeps.
   `FUN_0050be00` (bit 2) and `FUN_0050bc60` (bit 1), run from the system's
   slots `+0xc0`, `+0xc4` and `+0xc8` (`FUN_00508250`, `FUN_00508440`,
-  `FUN_00508660`), walk the system's fleets (mode 4). A spare that is
-  destroyed or holds anything loses its bit (`FUN_004fe310(0)`,
-  `FUN_004fe2a0(0)`). A side with no spare gets one from `FUN_00512d00`
+  `FUN_00508660`), walk the system's fleets (mode 4). A bit-2 spare that is
+  destroyed or holds anything loses its bit (`FUN_004fe310(0)`); a bit-1
+  spare loses it only when destroyed (`FUN_0050bc60`, corrected 2026-11-11,
+  `ship-deployment-fleet.md`), or when it leaves the system (`FUN_004ff570`). A side with no spare gets one from `FUN_00512d00`
   (`FUN_0050be00.c:76-92`):
   - `FUN_004f7d50(system, 0x8000004, side, .., 0, 0)` makes an object of
     family `0x08` in the system through the class factory (`FUN_0053f100`),

@@ -1867,6 +1867,12 @@ pub struct FleetNames {
     /// Per side and capital ship class: the last number a ship took (the
     /// same counter list keyed by the ship's record; save v113).
     ship_numbers: Vec<(bool, DatId, u32)>,
+    /// Each system's fleet that takes the side's built ships: the bit-1
+    /// spare (`FUN_005097d0`), as (system, Alliance side, fleet); save v114.
+    /// port: the original keeps an empty spare; the port makes the fleet
+    /// with its first ship.
+    #[serde(default)]
+    ship_spares: Vec<(SystemKey, bool, FleetKey)>,
 }
 
 /// port: a save written before the difficulty was stored loads at column 2,
@@ -2085,6 +2091,53 @@ impl GameWorld {
             crate::squadrons::seat_squadrons(self, fleet);
             crate::missions::seat_characters(self, fleet);
         }
+    }
+
+    /// The fleet `system` gives the side's built capital ships
+    /// (`ghidra/notes/ship-deployment-fleet.md`): a ship order creates its
+    /// products in the system's bit-1 spare (`FUN_00552300` →
+    /// `FUN_005097d0`), which stays the spare once it holds ships and is
+    /// numbered, until it leaves (`FUN_004ff570`) or is destroyed
+    /// (`FUN_0050bc60`). None when the spare holds nothing yet.
+    #[must_use]
+    pub fn ship_spare(&self, system: SystemKey, alliance: bool) -> Option<FleetKey> {
+        let (_, _, fleet) = self
+            .fleet_names
+            .ship_spares
+            .iter()
+            .find(|&&(at, side, _)| at == system && side == alliance)?;
+        let value = self.fleets.get(*fleet)?;
+        let here = self
+            .systems
+            .get(system)
+            .is_some_and(|sys| sys.fleets.contains(fleet));
+        (here && value.location == system && value.is_alliance == alliance).then_some(*fleet)
+    }
+
+    /// Make `fleet` its system's spare for the side's built ships.
+    pub fn set_ship_spare(&mut self, system: SystemKey, alliance: bool, fleet: FleetKey) {
+        let spares = &mut self.fleet_names.ship_spares;
+        spares.retain(|&(at, side, _)| !(at == system && side == alliance));
+        spares.push((system, alliance, fleet));
+    }
+
+    /// `FUN_004ff570`: a fleet that changes container stops being a spare.
+    pub fn forget_ship_spare(&mut self, fleet: FleetKey) {
+        self.fleet_names
+            .ship_spares
+            .retain(|&(_, _, spare)| spare != fleet);
+    }
+
+    /// The number the side's next capital ship of `class` takes (its
+    /// counter plus one, [`Self::number_ships`]).
+    #[must_use]
+    pub fn next_ship_number(&self, alliance: bool, class: DatId) -> u32 {
+        self.fleet_names
+            .ship_numbers
+            .iter()
+            .find(|&&(side, record, _)| side == alliance && record == class)
+            .map_or(0, |&(_, _, number)| number)
+            + 1
     }
 
     pub fn insert_fleet(&mut self, fleet: Fleet) -> FleetKey {
@@ -3353,5 +3406,142 @@ mod tests {
         ship.set_hits(Subsystem::Shield, u8::MAX);
         ship.set_hits(Subsystem::BackupHyperdrive, u8::MAX);
         assert_eq!(ship.subsystem_hits, 0x00f5_432f);
+    }
+}
+
+#[cfg(test)]
+mod ship_spare_tests {
+    use super::*;
+
+    fn system(world: &mut GameWorld) -> SystemKey {
+        world.systems.insert(System {
+            last_arrival: None,
+            dat_id: DatId::new(0x9000_0001),
+            name: "Here".into(),
+            sector: SectorKey::default(),
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 4,
+            raw_materials: 2,
+            espionage_rating: 0.0,
+            fleets: Vec::new(),
+            ground_units: Vec::new(),
+            special_forces: Vec::new(),
+            defense_facilities: Vec::new(),
+            manufacturing_facilities: Vec::new(),
+            production_facilities: Vec::new(),
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+        })
+    }
+
+    fn fleet(world: &mut GameWorld, at: SystemKey, is_alliance: bool) -> FleetKey {
+        let key = world.insert_fleet(Fleet {
+            location: at,
+            capital_ships: vec![],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[at].fleets.push(key);
+        key
+    }
+
+    // FUN_005097d0: each system keeps one bit-1 spare per side
+    // (ghidra/notes/ship-deployment-fleet.md).
+    #[test]
+    fn each_system_and_side_keeps_its_own_ship_spare() {
+        let mut world = GameWorld::default();
+        let (here, there) = (system(&mut world), system(&mut world));
+        let rebels = fleet(&mut world, here, true);
+        let empire = fleet(&mut world, here, false);
+        let rebels_there = fleet(&mut world, there, true);
+        world.set_ship_spare(here, true, rebels);
+        world.set_ship_spare(here, false, empire);
+        world.set_ship_spare(there, true, rebels_there);
+        assert_eq!(world.ship_spare(here, true), Some(rebels));
+        assert_eq!(world.ship_spare(here, false), Some(empire));
+        assert_eq!(world.ship_spare(there, true), Some(rebels_there));
+        assert_eq!(world.ship_spare(there, false), None);
+
+        // A new spare replaces only its own system and side's.
+        let second = fleet(&mut world, here, true);
+        world.set_ship_spare(here, true, second);
+        assert_eq!(world.ship_spare(here, true), Some(second));
+        assert_eq!(world.ship_spare(here, false), Some(empire));
+        assert_eq!(world.ship_spare(there, true), Some(rebels_there));
+    }
+
+    #[test]
+    fn a_spare_counts_only_while_it_is_its_sides_and_at_its_system() {
+        let mut world = GameWorld::default();
+        let (here, there) = (system(&mut world), system(&mut world));
+        let spare = fleet(&mut world, here, true);
+        world.set_ship_spare(here, true, spare);
+        // Listed at the system but standing elsewhere.
+        world.fleets[spare].location = there;
+        assert_eq!(world.ship_spare(here, true), None);
+        world.fleets[spare].location = here;
+        // At the system but no longer in its list.
+        world.systems[here].fleets.clear();
+        assert_eq!(world.ship_spare(here, true), None);
+        world.systems[here].fleets.push(spare);
+        // Of the other side.
+        world.fleets[spare].is_alliance = false;
+        assert_eq!(world.ship_spare(here, true), None);
+        world.fleets[spare].is_alliance = true;
+        assert_eq!(world.ship_spare(here, true), Some(spare));
+    }
+
+    // FUN_004ff570: a fleet that changes container drops its spare bits, so
+    // a spare that leaves and comes back is a spare no more.
+    #[test]
+    fn a_forgotten_spare_stays_forgotten_when_it_returns() {
+        let mut world = GameWorld::default();
+        let here = system(&mut world);
+        let spare = fleet(&mut world, here, true);
+        let other = fleet(&mut world, here, false);
+        world.set_ship_spare(here, true, spare);
+        world.set_ship_spare(here, false, other);
+        world.forget_ship_spare(spare);
+        assert_eq!(world.ship_spare(here, true), None);
+        assert_eq!(world.ship_spare(here, false), Some(other));
+    }
+
+    // The next number is the side's counter for the class plus one
+    // (FUN_00517760, number_ships).
+    #[test]
+    fn the_next_ship_number_follows_its_sides_counter_for_the_class() {
+        let mut world = GameWorld::default();
+        let here = system(&mut world);
+        let mut class = |id| {
+            world.capital_ship_classes.insert(CapitalShipClass {
+                dat_id: DatId::new(id),
+                name: "Ship".into(),
+                ..CapitalShipClass::default()
+            })
+        };
+        let (first, second) = (class(0x2a), class(0x2b));
+        let rebels = fleet(&mut world, here, true);
+        world.fleets[rebels].capital_ships = vec![
+            ShipInstance::new(first, 1, true),
+            ShipInstance::new(first, 1, true),
+            ShipInstance::new(second, 1, true),
+        ];
+        let empire = fleet(&mut world, here, false);
+        world.fleets[empire].capital_ships = vec![ShipInstance::new(first, 1, false)];
+        world.number_ships();
+        assert_eq!(world.next_ship_number(true, DatId::new(0x2a)), 3);
+        assert_eq!(world.next_ship_number(true, DatId::new(0x2b)), 2);
+        assert_eq!(world.next_ship_number(false, DatId::new(0x2a)), 2);
+        assert_eq!(world.next_ship_number(false, DatId::new(0x2b)), 1);
     }
 }

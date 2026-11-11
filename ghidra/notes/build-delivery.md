@@ -53,8 +53,10 @@ So an object is en route while it travels itself, or while its container
   objects from the moment they are ordered.
 - `FUN_0052aac0` chooses the current product: the first queued object that
   `FUN_00528890` accepts. `FUN_00529770` stores its key at manager `+0x74`
-  (DeploymentKey, notifier `FUN_0052bd00` `ManuMgrDeploymentKeyNotif`, event
-  `0x321`).
+  (ProductKey, notifier `FUN_0052bcb0` `ManuMgrProductKeyNotif`; corrected
+  2026-11-11, `ship-deployment-fleet.md`). The DeploymentKey is `+0x78`
+  (`FUN_00529820`, `ManuMgrDeploymentKeyNotif`): the current product's
+  container, else the TargetKey `+0x7c`.
 - Objects carry `DestinationLocationAtDeparture` (key at `+0x3c`, setter
   `FUN_004f7120`, notifier `FUN_004fbe50`) and `DestinationCount` (arrival tick
   at `+0x44`, setter `FUN_004f7390`, notifier `FUN_004fbf10`). The
@@ -304,8 +306,8 @@ Vtables were found through the shared side-key slot `+0xc` (`FUN_004f6a80`,
   destroyed system is not lost: it autoroutes, and the autoroute search
   (`FUN_005545e0`, `captive-escape.md`) picks the nearest place of its
   side.
-- `0x321` is `ManuMgrDeploymentKeyNotif`, the manager's current product
-  changing (`FUN_00529770`), not a redirect. The Destination command
+- `0x321` is a manager key notification (the current product's container,
+  `ship-deployment-fleet.md`), not a redirect. The Destination command
   (`FUN_0052a380`) rewrites only the queued products, so the original has
   no redirect of a product already en route.
 - Ported 2026-10-20 (save v100): `Delivery::side` (the building system's

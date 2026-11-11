@@ -713,6 +713,8 @@ pub fn begin_fleet_transit(
     if let Some(system) = world.systems.get_mut(origin) {
         system.fleets.retain(|&key| key != fleet);
     }
+    // FUN_004ff570: a fleet that leaves stops being its system's spare.
+    world.forget_ship_spare(fleet);
     // FUN_00556390: the move puts the fleet in its destination at once, and
     // the destination's slot +0xd0 (FUN_00508660) records its side.
     let is_alliance = world.fleets.get(fleet).map(|value| value.is_alliance);

@@ -4917,6 +4917,65 @@ mod tests {
     }
 
     #[test]
+    fn a_completed_ship_starts_the_systems_spare_beside_its_fleet_and_the_next_joins_it() {
+        // FUN_00552300 -> FUN_005097d0: a ship order's products sit in the
+        // system's bit-1 spare, which stays the spare once numbered
+        // (ghidra/notes/ship-deployment-fleet.md). A0
+        // 2026-11-11-icon-menu-topic/66: Coruscant's Carracks made Fleet 4
+        // beside Fleet 1, and the next order's band read "Fleet 4".
+        let mut world = GameWorld::default();
+        let yard = add_system(&mut world, "Coruscant");
+        let away = add_system(&mut world, "Sluis Van");
+        let ship = world.capital_ship_classes.insert(CapitalShipClass {
+            is_empire: true,
+            hull: 100,
+            ..Default::default()
+        });
+        let standing = world.insert_fleet(Fleet {
+            location: yard,
+            capital_ships: vec![ShipInstance::new(ship, 100, false)],
+            fighters: vec![],
+            characters: vec![],
+            is_alliance: false,
+            has_death_star: false,
+            special_forces: Vec::new(),
+        });
+        world.systems[yard].fleets.push(standing);
+        let complete = |world: &mut GameWorld| {
+            apply_build_completion_inner(
+                &CompletionEvent {
+                    system: yard,
+                    tick: 1,
+                    kind: BuildableKind::CapitalShip(ship),
+                },
+                world,
+            );
+        };
+        complete(&mut world);
+        complete(&mut world);
+        assert_eq!(world.fleets[standing].ship_count(), 1);
+        let spare = world.ship_spare(yard, false).expect("a spare");
+        assert_ne!(spare, standing);
+        assert_eq!(world.fleets[spare].ship_count(), 2);
+        assert_eq!(world.systems[yard].fleets.len(), 2);
+
+        // FUN_004ff570: a spare that leaves is a spare no more.
+        let mut movement = MovementState::new();
+        assert!(begin_fleet_transit(
+            &mut movement,
+            &mut world,
+            spare,
+            away,
+            10
+        ));
+        assert_eq!(world.ship_spare(yard, false), None);
+        complete(&mut world);
+        let next = world.ship_spare(yard, false).expect("a new spare");
+        assert_ne!(next, spare);
+        assert_eq!(world.fleets[next].ship_count(), 1);
+    }
+
+    #[test]
     fn a_craft_completed_where_its_side_has_no_fleet_starts_a_numbered_fleet() {
         // FUN_00517760: each new fleet takes its side's next "Fleet N"
         // (ghidra/notes/fleet-names.md).
@@ -6069,17 +6128,16 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                 .get(*class_key)
                 .is_some_and(CapitalShipClass::is_death_star);
 
-            let fleet_key = {
-                let Some(sys) = world.systems.get(sys_key) else {
-                    return;
-                };
-                sys.fleets.iter().copied().find(|&fk| {
-                    world
-                        .fleets
-                        .get(fk)
-                        .is_some_and(|f| f.is_alliance == is_alliance)
-                })
-            };
+            if !world.systems.contains_key(sys_key) {
+                return;
+            }
+            // A ship order creates its products in the system's bit-1 spare
+            // (FUN_00552300 -> FUN_005097d0, FUN_0052a140), not in another
+            // fleet there; the spare, numbered with its first ship, takes the
+            // next orders' ships too (ghidra/notes/ship-deployment-fleet.md;
+            // A0 2026-11-11-icon-menu-topic/66: Coruscant's Carracks made
+            // Fleet 4 beside Fleet 1).
+            let fleet_key = world.ship_spare(sys_key, is_alliance);
 
             if let Some(fk) = fleet_key {
                 if let Some(fleet) = world.fleets.get_mut(fk) {
@@ -6112,6 +6170,7 @@ pub fn apply_build_completion_inner(completion: &CompletionEvent, world: &mut Ga
                     // FUN_00508660: the new fleet joins the system.
                     sys.unit_joined(is_alliance);
                 }
+                world.set_ship_spare(sys_key, is_alliance, fk);
             }
         }
         // FUN_0052a140 / FUN_0052a380: the product joins the container its

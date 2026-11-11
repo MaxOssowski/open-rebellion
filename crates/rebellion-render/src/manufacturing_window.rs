@@ -169,7 +169,32 @@ pub fn band(
     let active = queue
         .active()
         .expect("a non-empty queue has an active unit");
-    let (name, portrait) = product(world, active.kind);
+    let (mut name, portrait) = product(world, active.kind);
+    let mut destination = destination;
+    if let BuildableKind::CapitalShip(class) = active.kind {
+        if let Some(class) = world.capital_ship_classes.get(class) {
+            // The band names the manager's DeploymentKey (+0x78,
+            // FUN_004591b0), the current product's container: the
+            // destination system's bit-1 spare, "Fleet" until its first ship
+            // numbers it (FUN_0052ac40; ghidra/notes/ship-deployment-fleet.md;
+            // A0 2026-11-11-icon-menu-topic/66, then "Fleet 4").
+            let fleet = world
+                .ship_spare(destination_system, class.is_alliance)
+                .and_then(|fleet| world.fleet_name(fleet))
+                .unwrap_or(rebellion_core::world::FLEET_RECORD_NAME);
+            destination = format!("Destination: {fleet}");
+            // The product is a named object from its order (FUN_0052a140),
+            // "{class} {N}" (FUN_00517760): A0 66 "Carrack Light Cruiser 2"
+            // with Carrack 1 in play. port: the port numbers a ship as it
+            // completes, so the current product takes the next number.
+            if !class.is_death_star() {
+                name = format!(
+                    "{name} {}",
+                    world.next_ship_number(class.is_alliance, class.dat_id)
+                );
+            }
+        }
+    }
     let verb = if area == ProductionArea::TrainingFacility {
         "Training"
     } else {
@@ -712,6 +737,60 @@ mod tests {
         assert_eq!(product(&world, regiment).1, Some(1_089));
     }
 
+    // FUN_004591b0 names the DeploymentKey, the product's container: the
+    // destination's spare once it holds ships, "Fleet N" (A0
+    // 2026-11-11-icon-menu-topic: "Destination: Fleet 4"); the product takes
+    // its side's next number for the class ("Carrack Light Cruiser 5" after
+    // 4). Another fleet there is not the spare.
+    #[test]
+    fn a_ship_band_names_the_spare_and_the_next_numbered_ship() {
+        let mut world = GameWorld::default();
+        let system = add_system(&mut world, "Coruscant", ALLIANCE);
+        let class = world.capital_ship_classes.insert(CapitalShipClass {
+            dat_id: DatId::new(0x1400_0041),
+            name: "Carrack Light Cruiser".into(),
+            is_alliance: true,
+            ..CapitalShipClass::default()
+        });
+        let fleet = |world: &mut GameWorld| {
+            let key = world.insert_fleet(rebellion_core::world::Fleet {
+                location: system,
+                capital_ships: vec![rebellion_core::world::ShipInstance::new(class, 100, true)],
+                fighters: vec![],
+                characters: vec![],
+                is_alliance: true,
+                has_death_star: false,
+                special_forces: Vec::new(),
+            });
+            world.systems[system].fleets.push(key);
+            world.number_ships();
+            key
+        };
+        let _standing = fleet(&mut world);
+        let mut manufacturing = ManufacturingState::new();
+        manufacturing.build(
+            system,
+            &QueueItem::new(BuildableKind::CapitalShip(class), 10),
+            1,
+        );
+        let shown = |world: &GameWorld| {
+            band(
+                world,
+                &manufacturing,
+                true,
+                system,
+                ProductionArea::Shipyard,
+            )
+        };
+        assert_eq!(shown(&world).destination, "Destination: Fleet");
+        assert_eq!(shown(&world).status, "Carrack Light Cruiser 2");
+
+        let spare = fleet(&mut world);
+        world.set_ship_spare(system, true, spare);
+        assert_eq!(shown(&world).destination, "Destination: Fleet 2");
+        assert_eq!(shown(&world).status, "Carrack Light Cruiser 3");
+    }
+
     // FUN_00457c90: a product's name, portrait and units left, "Building: " for
     // ships, and the area's destination.
     #[test]
@@ -739,7 +818,9 @@ mod tests {
             system,
             ProductionArea::Shipyard,
         );
-        assert_eq!(shown.status, "Corellian Corvette");
+        // The product is "{class} {N}" from its order (FUN_00517760; A0
+        // 2026-11-11-icon-menu-topic/66 "Carrack Light Cruiser 2").
+        assert_eq!(shown.status, "Corellian Corvette 1");
         // FUN_00457c90 loads class +0x30 & 0xfff, the portrait.
         assert_eq!(
             shown.portrait,
@@ -747,7 +828,9 @@ mod tests {
         );
         assert!(shown.portrait.is_some());
         assert_eq!(shown.units.as_deref(), Some("Building: 3"));
-        assert_eq!(shown.destination, "Destination: Denab");
+        // A ship's band names the product's container, Denab's spare, which
+        // holds no ship yet: "Fleet" (FUN_004591b0; A0 66).
+        assert_eq!(shown.destination, "Destination: Fleet");
         assert_eq!(shown.progress, Some(0.0));
 
         // Hidden from the player, the band shows nothing building.
