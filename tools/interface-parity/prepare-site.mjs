@@ -96,13 +96,15 @@ for (const [source, destination] of [
 ]) {
   fs.copyFileSync(source, destination);
 }
-// The story movies, for the StoryMovie fixture (story-movie.mjs), and the
+// The story movies, for the StoryMovie fixture (story-movie.mjs), the
 // intro (000, 001), which the site plays without a fixture before the main
-// menu (tooltip.mjs's main-menu case), and the trench run's (201, 202).
+// menu (tooltip.mjs's main-menu case), the new game's (003, 004), the
+// credits (005) and the trench run's (201, 202). A movie missing here shows
+// the video manager's error box (FUN_005f6920), which waits for its OK.
 const videos = path.join(web, "data/video");
 if (fs.existsSync(videos)) {
   fs.mkdirSync(path.join(artifacts, "data/video"), { recursive: true });
-  for (const stem of ["000", "001", "101", "102", "103", "104", "105", "106", "107", "108", "201", "202"]) {
+  for (const stem of ["000", "001", "003", "004", "005", "101", "102", "103", "104", "105", "106", "107", "108", "201", "202"]) {
     const source = path.join(videos, `${stem}.webm`);
     if (fs.existsSync(source)) fs.copyFileSync(source, path.join(artifacts, "data/video", `${stem}.webm`));
   }

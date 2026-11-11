@@ -223,8 +223,23 @@ async function main() {
     checks.chip_lamp_lit = amber(pixel(closed.png, CHIP_LAMP));
     assert.ok(checks.chip_lamp_lit, `the chip's lamp shows canonical names: ${pixel(closed.png, CHIP_LAMP)}`);
 
+    const opened = () => consoleLines.filter((line) => line.includes("[cutscene] opened")).length;
+    const openedBefore = opened();
     await click(page, EMPIRE);
-    await page.waitForTimeout(4_000);
+    // The new game's movie (004) plays first; skip it as a player would.
+    for (let waited = 0; waited < 15_000; waited += 250) {
+      if (consoleLines.some((line) => line.includes("[campaign] fleet_naming="))) break;
+      if (opened() > openedBefore) {
+        await page.waitForTimeout(500);
+        await page.keyboard.press("Escape");
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+    for (let waited = 0; waited < 15_000; waited += 250) {
+      if (consoleLines.some((line) => line.includes("[campaign] fleet_naming="))) break;
+      await page.waitForTimeout(250);
+    }
     await frames(page);
     await shot(page, "06-campaign");
     checks.campaign_naming = consoleLines.find((line) => line.includes("[campaign] fleet_naming="));
