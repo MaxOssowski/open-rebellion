@@ -146,3 +146,12 @@ box and 4 pixels (`layout`). With the port's short path, the caption ends
   case among them, and it passed.
 - Workspace tests: 3564 passed. Fixture tests: 150. Provenance is ok.
 - Tactical matrix `2026-11-11T10-43-17-863Z-109657`: 148 of 148.
+
+## Batch b189
+
+- 29 of 29 interface gates on Linux, among them `build-selection`
+  (`build-selection-2026-11-11T12-39-42-512Z-572262`) with the new
+  case.
+- Workspace tests: 3572 passed, 0 failed. Fixture tests: 151. Provenance
+  is ok.
+- Tactical matrix `2026-11-11T13-23-46-184Z-633999`: 148 of 148.
