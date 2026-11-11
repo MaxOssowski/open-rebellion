@@ -1550,6 +1550,7 @@ fn status_tracks(
     const ORANGE: egui::Color32 = egui::Color32::from_rgb(0xf9, 0x5c, 0x0f);
     const RED: egui::Color32 = egui::Color32::from_rgb(255, 0, 0);
     const GREEN: egui::Color32 = egui::Color32::from_rgb(0, 255, 0);
+    const TICK: egui::Color32 = egui::Color32::from_rgb(128, 128, 128);
     let mut rects = Vec::new();
     let mut slots = |row: f32, (total, used): (u32, u32), full, empty| {
         for slot in 0..total {
@@ -1560,6 +1561,17 @@ fn status_tracks(
             )]
             let left = x + 3.0 * slot as f32 + 1.0;
             rects.push(((left, row, 2.0, 3.0), color));
+        }
+        // The tick before each slot, pen 0x808080 over the fill (tick step
+        // 1, FUN_0060e400; FUN_0060e3b0; Class_0065c058_vt14 = FUN_004ad210
+        // draws x = slot * width / slots).
+        for slot in 0..total {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "Slot counts are far below f32's integer range."
+            )]
+            let left = x + 3.0 * slot as f32;
+            rects.push(((left, row, 1.0, 3.0), TICK));
         }
     };
     slots(y + 39.0, values.energy, WHITE, BLUE);
@@ -1973,21 +1985,33 @@ mod tests {
         let yellow = egui::Color32::from_rgb(255, 255, 0);
         let green = egui::Color32::from_rgb(0, 255, 0);
         let red = egui::Color32::from_rgb(255, 0, 0);
+        // Each energy and raw-material slot starts with a 1-pixel tick in
+        // the track's pen 0x808080 (FUN_00459e30 -> FUN_0060e3b0; tick step
+        // 1 from FUN_0045c240 / FUN_0045c450 -> FUN_0060e400), drawn over
+        // the fill at x = slot * width / slots (Class_0065c058_vt14,
+        // FUN_004ad210): A0 headquarters/00-moddell and sluis-van-768/07
+        // show (128, 128, 128) before every 2-pixel slot.
+        let grey = egui::Color32::from_rgb(128, 128, 128);
         assert_eq!(
             status_tracks(10.0, 100.0, &values, Faction::Empire),
             [
                 ((11.0, 139.0, 2.0, 3.0), white),
                 ((14.0, 139.0, 2.0, 3.0), blue),
                 ((17.0, 139.0, 2.0, 3.0), blue),
+                ((10.0, 139.0, 1.0, 3.0), grey),
+                ((13.0, 139.0, 1.0, 3.0), grey),
+                ((16.0, 139.0, 1.0, 3.0), grey),
                 ((11.0, 143.0, 2.0, 3.0), yellow),
                 ((14.0, 143.0, 2.0, 3.0), yellow),
+                ((10.0, 143.0, 1.0, 3.0), grey),
+                ((13.0, 143.0, 1.0, 3.0), grey),
                 ((10.0, 147.0, 15.0, 3.0), green),
                 ((25.0, 147.0, 22.0, 3.0), red),
             ]
         );
         let alliance = status_tracks(10.0, 100.0, &values, Faction::Alliance);
-        assert_eq!(alliance[5], ((10.0, 147.0, 15.0, 3.0), red));
-        assert_eq!(alliance[6], ((25.0, 147.0, 22.0, 3.0), green));
+        assert_eq!(alliance[10], ((10.0, 147.0, 15.0, 3.0), red));
+        assert_eq!(alliance[11], ((25.0, 147.0, 22.0, 3.0), green));
         // The name starts below the tracks, at the label item's offset.
         assert_eq!(NAME_OFFSET, 37.0 + 11.0);
     }
