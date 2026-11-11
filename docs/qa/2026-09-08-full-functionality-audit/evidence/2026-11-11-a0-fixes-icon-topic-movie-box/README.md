@@ -94,3 +94,24 @@ Mutants (in place, scoped):
 - `MovieErrorBox::layout` and `open_original_encyclopedia_at`: the first
   run missed 4 in the caption's minimum width; the caption test closes
   them (`layout` 27 caught, 2 unviable).
+
+## The browser gate
+
+`cutscenes.mjs` has a new case, `missing-movie-box`. Its server answers
+404 for `data/video/005.webm`, and Credits is chosen on the main menu.
+Because the port's path is shorter than A0's, its box is narrower. So the
+case finds the frame's left and right edges on row 250 and checks the
+frame, title, close box, body, band and OK edges at A0's offsets from
+them, and at A0's rows. The same offsets on A0 `53` give the expected
+colours. Enter then shows the main menu again.
+
+The first run showed the close box outside a narrower frame. It was
+placed from the frame's left at A0's offset. It now stands 5 pixels in
+from the frame's right (`MovieErrorBox::close_box`, tested).
+
+Run: `.artifacts/interface-parity/cutscenes-2026-11-11T09-42-54-480Z`,
+pass.
+
+hyp: a box narrower than the caption grows to hold the caption, the close
+box and 4 pixels (`layout`). With the port's short path, the caption ends
+4 pixels before the close box.

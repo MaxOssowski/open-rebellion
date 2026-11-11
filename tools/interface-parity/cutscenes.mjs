@@ -30,9 +30,18 @@ const OUT = path.resolve(args.out ?? path.join(ROOT, ".artifacts/interface-parit
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".wasm": "application/wasm",
   ".json": "application/json", ".webm": "video/webm", ".orpk": "application/octet-stream" };
 
+// Paths the server answers 404, as a missing movie file (the
+// missing-movie-box case).
+const REFUSED = new Set();
+
 function serve(root) {
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
+    if (REFUSED.has(url.pathname)) {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
     const file = path.join(root, decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     try {
       const bytes = await fs.readFile(file);
@@ -212,6 +221,73 @@ const CASES = {
     await shot("main-menu");
     return { cinematic };
   },
+  // FUN_005f6920: a movie the video manager cannot open shows
+  // MessageBoxA(path, "PathName unknown to VideoManager", 0x1010) and the
+  // flow waits for OK, then goes on as after the movie (the menu again).
+  // A0 .artifacts/a0-vm/2026-11-11-icon-menu-topic/53 (MDATA.005 renamed):
+  // a 300 by 149 box at (173, 171), flat title 166,202,240 on y 174..195,
+  // white body, cream band 255,251,240 on y 275..317, OK's dark outline
+  // (128,128,128) at x 380 and 454; 54 and 56: OK or Enter, the menu.
+  async "missing-movie-box"(page, shot) {
+    REFUSED.add("/data/video/005.webm");
+    try {
+      await waitStem(page, "000", "the logos play");
+      await page.locator("#glcanvas").focus();
+      await page.keyboard.press("Escape");
+      await waitStem(page, "001", "the cinematic plays");
+      await page.keyboard.press("Escape");
+      await waitFor(page, menuActive, "the main menu");
+      await page.evaluate(() => wasm_exports.open_rebellion_menu_activate(11));
+      await waitFor(page, () => window.__openRebellionCutscene?.state === 3,
+        "the credits movie fails to load");
+      await page.waitForTimeout(1500);
+      const bytes = await page.screenshot({ path: undefined });
+      await shot("box");
+      const png = PNG.sync.read(bytes);
+      const at = (x, y) => {
+        const i = (y * png.width + x) * 4;
+        return [png.data[i], png.data[i + 1], png.data[i + 2]];
+      };
+      // The port's path is its own file, so the box's width differs from
+      // A0's; its parts are checked from the frame's left (L) and right (R)
+      // edges, found on row 250, and at A0's rows.
+      const row = Array.from({ length: png.width }, (_, x) => at(x, 250).some((v) => v > 0));
+      const L = row.indexOf(true);
+      const R = row.lastIndexOf(true);
+      const expect = [
+        ["outside", 100, 100, [0, 0, 0]],
+        ["frame left", L, 250, [255, 251, 240]],
+        ["frame left light", L + 1, 250, [255, 255, 255]],
+        ["title", L + 13, 190, [166, 202, 240]],
+        ["title before close", R - 30, 178, [166, 202, 240]],
+        ["close box face", R - 16, 178, [255, 251, 240]],
+        ["body", L + 40, 210, [255, 255, 255]],
+        ["band", L + 40, 300, [255, 251, 240]],
+        ["band right", R - 7, 296, [255, 251, 240]],
+        ["frame right", R, 250, [128, 128, 128]],
+        ["frame right inner", R - 1, 250, [160, 160, 164]],
+        ["frame bottom", L + 40, 319, [128, 128, 128]],
+        ["OK left edge", R - 92, 296, [128, 128, 128]],
+        ["OK right edge", R - 18, 296, [128, 128, 128]],
+        ["OK top edge", R - 55, 285, [128, 128, 128]],
+        ["frame top", L + 40, 171, [255, 251, 240]],
+        ["above the frame", L + 40, 170, [0, 0, 0]],
+        ["below the frame", L + 40, 320, [0, 0, 0]],
+      ];
+      const seen = expect.map(([label, x, y, want]) => ({ label, x, y, want, got: at(x, y) }));
+      for (const { label, want, got } of seen) {
+        assert.deepEqual(got, want, `${label}: ${JSON.stringify(seen)}`);
+      }
+      assert.equal(await page.evaluate(menuActive), false);
+      await page.keyboard.press("Enter");
+      await waitFor(page, menuActive, "Enter answers the box and the menu shows again");
+      await page.waitForTimeout(500);
+      await shot("menu-after-enter");
+      return { frame: { left: L, right: R }, pixels: seen };
+    } finally {
+      REFUSED.delete("/data/video/005.webm");
+    }
+  },
   async "credits-and-new-game"(page, shot) {
     await waitStem(page, "000", "the logos play");
     await page.locator("#glcanvas").focus();
@@ -264,7 +340,11 @@ async function run(browser, base, name) {
   const shots = [];
   page.on("console", (message) => {
     log.push(message.text());
-    if (message.type() === "error") errors.push(message.text());
+    // The missing-movie case's own refused file is the one expected error.
+    if (message.type() === "error"
+        && !(name === "missing-movie-box" && message.text().includes("status of 404"))) {
+      errors.push(message.text());
+    }
   });
   page.on("pageerror", (error) => errors.push(String(error)));
   const shot = async (label) => {
