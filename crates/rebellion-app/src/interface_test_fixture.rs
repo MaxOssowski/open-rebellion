@@ -3741,6 +3741,9 @@ struct FixtureBand {
     product: String,
     /// The name of the area's Destination system (0x214).
     destination: String,
+    /// The band's drawn lines (`manufacturing_window::band`): the product
+    /// or idle text, "Building: N" or empty, and "Destination: ...".
+    lines: [String; 3],
 }
 
 /// The primary system's bands and the Build Selection window, each frame.
@@ -3798,6 +3801,20 @@ fn production_report(
                     .systems
                     .get(manufacturing.destination(primary, area).unwrap_or(primary))
                     .map_or_else(String::new, |value| value.name.clone()),
+                lines: {
+                    let band = rebellion_render::manufacturing_window::band(
+                        world,
+                        manufacturing,
+                        true,
+                        primary,
+                        area,
+                    );
+                    [
+                        band.status,
+                        band.units.unwrap_or_default(),
+                        band.destination,
+                    ]
+                },
             })
         })
         .collect();

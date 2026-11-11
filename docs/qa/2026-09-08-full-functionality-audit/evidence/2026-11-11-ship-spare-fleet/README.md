@@ -99,5 +99,33 @@ Save format v113 -> v114 (`FleetNames::ship_spares`).
   is ok.
 - Tactical matrix `2026-11-11T12-01-02-268Z-460396`: 148 of 148.
 
-Not yet covered: no browser gate drives a ship order to Confirm and reads
-the band against A0 `66`, so the cell stays partial.
+Not yet covered at b188: no browser gate drove a ship order to Confirm
+and read the band against A0 `66`. The next section closes that.
+
+## The browser gate
+
+`build-selection.mjs` has a new case, `shipOrderBandCase`, run on both
+sides after the fleet destination case. On fixture 89 it opens Build on
+the ships band and confirms an order:
+- the Empire: four Carrack Light Cruisers, as in A0 `64` and `66`;
+- the Alliance (no A0 here): one of its first class.
+
+The fixture's production report now carries each band's three drawn
+lines (`FixtureBand::lines`, from `manufacturing_window::band`). The case
+checks:
+- the band holds the order;
+- its first line is "{class} {N}";
+- its second line is "Building: {count}";
+- its third line is "Destination: Fleet".
+
+The number is not compared, since it depends on the side's earlier ships
+of the class: A0's Empire had one Carrack, and the fixture's has none.
+
+Run on Arch Chromium (the Linux manifest):
+`.artifacts/interface-parity/build-selection-2026-11-11T12-18-07-434Z-495278`,
+pass. The bands read:
+- the Empire: "Carrack Light Cruiser 1 / Building: 4 / Destination: Fleet";
+- the Alliance: "Alliance Dreadnaught 1 / Building: 1 / Destination: Fleet".
+
+`empire/ship-order-band.png` was compared by eye with A0 `66`: the same
+three lines, in the same places on the band.

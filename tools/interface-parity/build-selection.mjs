@@ -1068,6 +1068,66 @@ function a0ManufacturingDir() {
   return fs.existsSync(path.join(dir, A0_OVER_MAINTENANCE.file)) ? dir : null;
 }
 
+// A confirmed ship order's band against A0 2026-11-11-icon-menu-topic/66
+// (the Empire's Coruscant, four Carrack Light Cruisers confirmed): the
+// band reads "Carrack Light Cruiser 2 / Building: 4 / Destination: Fleet".
+// The original creates the products at Confirm in the system's bit-1
+// spare fleet (FUN_005385f0, FUN_0052a140); the band shows that spare,
+// unnumbered until its first ship completes (FUN_004591b0), and the
+// products are "{class} {N}" (FUN_00517760). The number depends on the
+// side's earlier ships of the class (A0's Empire had one Carrack), so
+// only its form is checked. The Alliance has no A0 here; it orders one of
+// its first class.
+async function shipOrderBandCase(page, faction, directory) {
+  const fixtureCode = 89 | (faction.byte << 8);
+  await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
+  await page.waitForFunction(() => window.__openRebellionInterfaceReady?.status, null, { timeout: 30_000 });
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.bands?.length === 3,
+    null, { timeout: 10_000 });
+  const read = async () => {
+    await page.mouse.move(2, 2);
+    await frames(page);
+    await page.waitForTimeout(150);
+    await frames(page);
+    return production(page);
+  };
+  const ships = (await read()).bands.find(({ area }) => area === "ships");
+  assert.equal(ships.queued, 0, JSON.stringify(ships));
+  await bandOrder(page, ships, "build_row", directory, "ship-order-build");
+  await page.waitForFunction(() => window.__openRebellionInterfaceProduction?.build_selection_open === true,
+    null, { timeout: 10_000 });
+  let opened = await read();
+  const origin = { x: Math.round(opened.build_selection_left), y: Math.round(opened.build_selection_top) };
+  const wanted = faction.name === "empire" ? { name: "Carrack Light Cruiser", count: 4 } : null;
+  if (wanted) {
+    for (let step = 0; step < 12 && opened.build_selection_class !== wanted.name; step += 1) {
+      await stepClass(page, origin);
+      opened = await read();
+    }
+    assert.equal(opened.build_selection_class, wanted.name, JSON.stringify(opened));
+    for (let more = 1; more < wanted.count; more += 1) {
+      await click(page, { x: origin.x + 189 + 6, y: origin.y + 196 + 4 });
+      opened = await read();
+    }
+    assert.equal(opened.build_selection_quantity, wanted.count, JSON.stringify(opened));
+  }
+  const name = opened.build_selection_class;
+  const count = opened.build_selection_quantity;
+  assert.ok(opened.build_selection_values.every((text) => text !== "n/a"), JSON.stringify(opened));
+  await click(page, { x: origin.x + 73 + 33, y: origin.y + 224 + 16 });
+  const confirmed = await read();
+  fs.writeFileSync(path.join(directory, "ship-order-band.png"), await page.screenshot({ animations: "disabled" }));
+  assert.equal(confirmed.build_selection_open, false, "Confirm closes Build Selection");
+  const band = confirmed.bands.find(({ area }) => area === "ships");
+  assert.equal(band.queued, count, JSON.stringify(band));
+  const [title, units, destination] = band.lines;
+  assert.match(title, new RegExp(`^${name} [1-9][0-9]*$`), JSON.stringify(band.lines));
+  assert.equal(units, `Building: ${count}`, JSON.stringify(band.lines));
+  assert.equal(destination, "Destination: Fleet", JSON.stringify(band.lines));
+  return { class: name, count, lines: band.lines };
+}
+
 async function overMaintenanceCase(page, faction, directory) {
   const fixtureCode = overMaintenanceCode | (faction.byte << 8);
   await page.goto(`${page.url().split("?")[0]}?fixture-code=${fixtureCode}`, { waitUntil: "load", timeout: 30_000 });
@@ -1653,6 +1713,7 @@ async function inspect(server, source, faction, executable) {
       throw new Error(`${description}: ${pattern} not logged`);
     };
     const fleetDestination = await fleetDestinationCase(page, faction, directory, logged);
+    const shipOrderBand = await shipOrderBandCase(page, faction, directory);
     assert.deepEqual(errors, [], `browser diagnostics: ${errors.join("; ")}`);
     result = {
       status: "pass",
@@ -1670,6 +1731,7 @@ async function inspect(server, source, faction, executable) {
       destination,
       defensesDestination,
       fleetDestination,
+      shipOrderBand,
       idle_checks: idleChecks,
       strip_differing_after_confirm: stripDiffering,
       stop_confirmation: stopConfirmation,
