@@ -62,6 +62,25 @@ MDATA\MDATA.NNN (no extension in the real name; "MDATA.000" etc.).
   MessageBox(MB_ICONHAND|MB_SYSTEMMODAL, text=path, caption "PathName
   unknown to VideoManager") then PostMessage 0x403 -> treated as finished
   (stop/post 0x405/callback) so the flow continues.
+  (2026-11-11) Checked:
+  - `FUN_0060a9e0` is `MessageBeep(0x10)` and then
+    `MessageBoxA(NULL, path, caption, 0x1010)`, which is MB_OK |
+    MB_ICONHAND | MB_SYSTEMMODAL.
+  - The box has an OK button only, so Enter, Escape and Space answer it.
+  - `MessageBoxA` returns only when the box is answered. Only then does
+    `FUN_005f6920` post 0x403. The flow therefore waits for OK.
+  - The path is the movie window's `TooBigLocation + "\" +
+    FUN_00421ba0(id)`, for example `<loc>\MDATA\MDATA.105`
+    (`FUN_004213e0`, `FUN_00421790` WM_CREATE ->
+    `FUN_00421300(piVar3[0x27] or [0x28])`).
+  - Its window exists (black) behind the box, and so does a story movie's
+    caption.
+  - `FUN_00421790` handles 0x403 in the same branch as 0x402 (the natural
+    end): it stops, posts 0x405 and calls back with Msg 0. The hyp is
+    settled: the flow goes on exactly as after a played movie.
+  - Port: `rebellion_render::movie_error_box`, `VideoPlayer::unopened`,
+    `answer_movie_error_box` (main.rs). The browser's `<video>` error
+    (FAILED) opens the same box.
 
 ## App state machine
 FUN_00414330(state) (jump tables 0x414694/0x4146c4); FUN_00401040 is the
@@ -406,7 +425,7 @@ The caption is the body (`+0x50`), not the title (`+0x44`).
   set and the flag stays. hyp: also a stall (only at the very first sub-ticks).
 - `FUN_004019a0`: app `DAT_006be3b8` null.
 - Missing MDATA file: MessageBox "PathName unknown to VideoManager", then treated
-  as finished (`0x403`).
+  as finished (`0x403`). Ported 2026-11-11 (see Missing media).
 - No options flag, Message Alerts setting, or multiplayer test on this path (none
   found in `FUN_0048a060` kind 6, `FUN_00488b90`, `FUN_00422ce0 0x482`,
   `FUN_004146e0`, `FUN_004213e0`). MusicSwitch/MusicVolume affect only audio.
