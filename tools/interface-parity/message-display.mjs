@@ -2025,6 +2025,76 @@ async function run(browser, base, faction) {
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("research-encyclopedia");
+    // A0 research-complete/02 (Alliance, day 205): Display on Nebulon-B
+    // Frigate Research Complete opens its Encyclopedia topic. The picture
+    // and its previous and next arrows are every pixel A0's, and each of the body's five lines sets its value
+    // where A0 does: x 223, after one to three tabs (FUN_0041fd00's
+    // DrawTextA; theme::GDI_TAB_STOP). Font 4's glyph shapes are not
+    // compared (GDI and egui raster them apart).
+    let researchEncyclopedia = null;
+    if (faction.byte === 1) {
+      const a0Encyclopedia = PNG.sync.read(await fs.readFile(path.join(ROOT,
+        ".artifacts/a0-vm/research-complete/02-display-opens-encyclopedia.png")));
+      const pictureOf = (png) => {
+        let differ = 0;
+        for (let y = 90; y < 280; y += 1) {
+          for (let x = 79; x < 474; x += 1) {
+            const i = (y * 640 + x) * 4;
+            if ([0, 1, 2].some((c) => png.data[i + c] !== a0Encyclopedia.data[i + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      // The EDATA picture loads after the topic opens: wait up to 10 s.
+      let encyclopediaView = PNG.sync.read(await page.screenshot());
+      for (let tries = 0; tries < 50 && pictureOf(encyclopediaView) !== 0; tries += 1) {
+        await page.waitForTimeout(200);
+        encyclopediaView = PNG.sync.read(await page.screenshot());
+      }
+      await shot("research-encyclopedia-picture");
+      const pictureDiffer = pictureOf(encyclopediaView);
+      // The previous and next arrows (0x83 at (28, 14), 0x84 at (380, 14),
+      // 21 by 17, FUN_00602150 strobe buttons keyed on their first pixel).
+      const arrowDiffer = (left) => {
+        let differ = 0;
+        for (let y = 49 + 14; y < 49 + 14 + 17; y += 1) {
+          for (let x = 62 + left; x < 62 + left + 21; x += 1) {
+            const i = (y * 640 + x) * 4;
+            if ([0, 1, 2].some((c) => encyclopediaView.data[i + c] !== a0Encyclopedia.data[i + c])) differ += 1;
+          }
+        }
+        return differ;
+      };
+      // The first lit column right of x 212 (past every label) on each line.
+      const valueLeft = (png, top) => {
+        for (let x = 213; x < 460; x += 1) {
+          for (let y = top; y < top + 14; y += 1) {
+            const i = (y * 640 + x) * 4;
+            if (png.data[i] + png.data[i + 1] + png.data[i + 2] > 600) return x;
+          }
+        }
+        return null;
+      };
+      const lineTops = [283, 299, 315, 331, 347];
+      researchEncyclopedia = {
+        picture_a0: pictureDiffer,
+        previous_arrow_a0: arrowDiffer(28),
+        next_arrow_a0: arrowDiffer(380),
+        value_left: lineTops.map((top) => valueLeft(encyclopediaView, top)),
+        value_left_a0: lineTops.map((top) => valueLeft(a0Encyclopedia, top)),
+      };
+      // The values' pen is the stop at x 223 on every line. Their ink
+      // starts a column right of A0's: GDI's hinting draws the digits at
+      // the pen, egui's raster a pixel in (the labels' "R" etc. agree at
+      // x 80); the 2026-11-11 run before the fix had 226, 220, 210, 218, 218.
+      assert.deepEqual(researchEncyclopedia, {
+        picture_a0: 0,
+        previous_arrow_a0: 0,
+        next_arrow_a0: 0,
+        value_left: researchEncyclopedia.value_left_a0.map((x) => x + 1),
+        value_left_a0: [223, 223, 223, 223, 223],
+      }, JSON.stringify(researchEncyclopedia));
+    }
 
     // Luke Goes to Dagobah (FUN_0048d190, class 0x0065b380; A0
     // alliance-game2/luke-goes-to-dagobah, a new Alliance game, the window
@@ -2155,7 +2225,7 @@ async function run(browser, base, faction) {
 
     assert.deepEqual(errors, [], errors.join("; "));
     return { faction: faction.name, status: "pass", display: displays(), closed: closed.mode,
-      encyclopedia: opening[0], dagobah: dagobahChecks,
+      encyclopedia: opening[0], research_encyclopedia: researchEncyclopedia, dagobah: dagobahChecks,
       question: viewing.viewing_question, answers, abort: aborts[0], capture: captureChecks, row: rowChecks, frame: frameChecks, shots };
   } catch (error) {
     await shot("failure").catch(() => {});

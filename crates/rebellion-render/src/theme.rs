@@ -278,6 +278,14 @@ pub fn gdi_text_origin(
     (left, top + ascent)
 }
 
+/// A tab moves the pen to the next multiple of 24 logical pixels from the
+/// line's left. port: measured, not traced: A0 research-complete/02 (the
+/// Nebulon-B Frigate's Encyclopedia body, `FUN_0041fd00`'s `DrawTextA`, format
+/// 0x2410) puts the value after one, two and three tabs at the body's
+/// x + 144 on all five lines whose labels end between x + 88 and x + 125;
+/// of the stop widths only 24 fits every line.
+pub const GDI_TAB_STOP: f32 = 24.0;
+
 /// GDI's pen positions for `text` in font `font`, in logical pixels, and
 /// the line's width: each character's advance at the font's ppem (Arial's
 /// hdmx) plus the `kern` pair before the next, rounded (A0: "To" in
@@ -296,11 +304,18 @@ pub fn gdi_pen_positions(font: u16, text: &str) -> Option<(Vec<f32>, f32)> {
     let (_, _, advances) = crate::gdi_metrics::ADVANCES
         .iter()
         .find(|(weight, at, _)| *weight == bold && *at == size)?;
-    let codes = text.chars().map(cp1252).collect::<Option<Vec<u8>>>()?;
+    let codes = text
+        .chars()
+        .map(|ch| if ch == '\t' { Some(b'\t') } else { cp1252(ch) })
+        .collect::<Option<Vec<u8>>>()?;
     let mut pens = Vec::with_capacity(codes.len());
     let mut pen = 0.0;
     for (index, &code) in codes.iter().enumerate() {
         pens.push(pen);
+        if code == b'\t' {
+            pen = ((pen / GDI_TAB_STOP).floor() + 1.0) * GDI_TAB_STOP;
+            continue;
+        }
         pen += f32::from(*advances.get(usize::from(code).checked_sub(32)?)?);
         if let Some(&next) = codes.get(index + 1) {
             let kern = crate::gdi_metrics::KERNING
@@ -379,6 +394,9 @@ pub fn paint_gdi_text(
     if let Some((pens, width)) = gdi_pen_positions(font, text) {
         let (left, baseline) = gdi_text_origin(logical, font, width, format);
         for (ch, pen) in text.chars().zip(pens) {
+            if ch == '\t' {
+                continue;
+            }
             let galley = painter.layout_no_wrap(ch.to_string(), font_id.clone(), color);
             let pos = egui::pos2(
                 rect.min.x + (left + pen) * scale,
@@ -969,6 +987,20 @@ mod tests {
         assert_eq!(pens[1], 7.0);
         // Outside cp1252 there is no table.
         assert_eq!(gdi_pen_positions(10, "Ω"), None);
+    }
+
+    #[test]
+    fn a_tab_moves_the_pen_to_the_next_twenty_four_pixel_stop() {
+        // A0 research-complete/02: "Refined Material Cost:\t34" and
+        // "Shield Strength:\t\t\t300" (font 4) both set their value at
+        // the body's x + 144.
+        let (pens, _) = gdi_pen_positions(4, "Refined Material Cost:\t34").unwrap();
+        assert_eq!(pens[23], 144.0);
+        let (pens, _) = gdi_pen_positions(4, "Shield Strength:\t\t\t300").unwrap();
+        assert_eq!(pens[19], 144.0);
+        let (pens, width) = gdi_pen_positions(4, "\tA").unwrap();
+        assert_eq!(pens[1], 24.0);
+        assert!(width > 24.0);
         assert_eq!(cp1252('é'), Some(0xe9));
         assert_eq!(cp1252('’'), Some(0x92));
     }

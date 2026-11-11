@@ -2236,6 +2236,14 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // stored pixel is black: A0 assault-clean/04-display and
                 // battle-clean/02 show the page's stars and flare there.
                 | 10_764..=10_765
+                // The Encyclopedia topic's previous and next arrows, resting
+                // and pressed (FUN_0045ddc0 makes 0x83 from 0x2891/0x2892
+                // and 0x84 from 0x288e/0x288f with FUN_00602150): A0
+                // research-complete/02 shows the title bar's grey under
+                // their blue box. Their unavailable art (10384, 10387) is
+                // not seen lit in A0 and stays unkeyed.
+                | 10_382..=10_383
+                | 10_385..=10_386
                 | 10_168
                 | 10_240
                 | 10_592..=10_597
@@ -3031,6 +3039,18 @@ pub(crate) mod tests {
             );
         }
         assert!(!uses_blue_screen_transparency(DllSource::Strategy, 10759));
+    }
+
+    #[test]
+    fn the_encyclopedia_topics_arrows_are_keyed_on_their_first_pixel() {
+        // FUN_0045ddc0: FUN_00602150(.., 0x83, 0x2891, 0x2892, ..) and
+        // (.., 0x84, 0x288e, 0x288f, ..); A0 research-complete/02.
+        for id in [10_382, 10_383, 10_385, 10_386] {
+            assert!(uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+        }
+        for id in [10_381, 10_384, 10_387] {
+            assert!(!uses_first_pixel_key(DllSource::Strategy, id), "{id}");
+        }
     }
 
     #[test]
