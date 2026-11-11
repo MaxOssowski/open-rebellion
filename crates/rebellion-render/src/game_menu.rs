@@ -535,6 +535,24 @@ pub fn draw_game_menu_with_submenu(
     let measured = measure(ctx, cache, entries, scale);
     let (x, y) = placement.origin((measured.0.width, measured.0.height));
     let highlighted = state.highlighted.map(|(row, _)| row);
+    // FUN_004aab50's WM_PAINT draws the item `+0x118` holds in the
+    // highlight colour (FUN_004aba60(.., 1)), wherever the pointer is.
+    // Only a WM_MOUSEMOVE inside the window changes it, so the row last
+    // under the pointer stays lit after the pointer leaves: A0
+    // 2026-11-11-icon-menu-topic/00, 07 and 12 keep Scrap green with the
+    // pointer off the menu.
+    let pointer_inside = ctx
+        .input(|input| input.pointer.hover_pos())
+        .is_some_and(|p| {
+            egui::Rect::from_min_size(
+                egui::pos2(
+                    layout.canvas.x + x * layout.scale,
+                    layout.canvas.y + y * layout.scale,
+                ),
+                egui::vec2(measured.0.width * scale, measured.0.height * scale),
+            )
+            .contains(p)
+        });
     let frame = menu_window(
         ctx,
         id,
@@ -544,7 +562,9 @@ pub fn draw_game_menu_with_submenu(
         (x, y),
         entries,
         &measured,
-        |row, hovered| hovered || (submenu.is_some() && highlighted == Some(row)),
+        |row, hovered| {
+            hovered || (highlighted == Some(row) && (submenu.is_some() || !pointer_inside))
+        },
         input_enabled,
     );
     // WM_MOUSEMOVE: inside the window the enabled row under the pointer
@@ -1074,6 +1094,117 @@ mod tests {
             vec![vec![]],
         );
         assert_eq!(response, GameMenuResponse::Open);
+    }
+
+    /// Run a stateful menu of Move, Status (disabled) and Scrap at
+    /// `scale` with the pointer at each of `places` for the laid-out menu,
+    /// after two idle frames, and give the last frame's rows and colours.
+    fn highlight_run(
+        scale: f32,
+        places: &[fn(egui::Rect, f32) -> egui::Pos2],
+    ) -> Vec<(String, egui::Color32)> {
+        let layout = layout(scale);
+        let ctx = egui::Context::default();
+        let mut cache = BmpCache::new();
+        let id = egui::Id::new(MENU_ID);
+        let entries = [
+            labelled("Move", true),
+            labelled("Status", false),
+            labelled("Scrap", true),
+        ];
+        let mut state = GameMenuState::default();
+        let mut texts = Vec::new();
+        let idle: [fn(egui::Rect, f32) -> egui::Pos2; 2] = [|_, _| egui::Pos2::ZERO; 2];
+        for place in idle.iter().chain(places) {
+            let pointer = ctx
+                .memory(|memory| memory.area_rect(id))
+                .map_or(egui::Pos2::ZERO, |rect| place(rect, scale));
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0 * scale, 520.0 * scale),
+                )),
+                events: vec![egui::Event::PointerMoved(pointer)],
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_game_menu_with_submenu(
+                    ctx,
+                    id,
+                    &mut cache,
+                    layout,
+                    CockpitFaction::Empire,
+                    GameMenuPlacement::in_frame((100.0, 100.0)),
+                    &entries,
+                    None,
+                    &mut state,
+                    true,
+                );
+            });
+            texts = crate::theme::test_lines(&output.shapes)
+                .into_iter()
+                .map(|line| (line.text, line.color))
+                .collect::<Vec<_>>();
+        }
+        texts
+    }
+
+    fn on_scrap(rect: egui::Rect, scale: f32) -> egui::Pos2 {
+        row_center(rect, scale, 2, 3)
+    }
+
+    #[test]
+    fn the_row_last_under_the_pointer_stays_lit_after_the_pointer_leaves_the_menu() {
+        // FUN_004aab50: WM_MOUSEMOVE inside the window sets +0x118 and
+        // WM_PAINT lights it wherever the pointer is; A0
+        // 2026-11-11-icon-menu-topic/00, 07, 12 keep the defenses icon's
+        // Scrap green with the pointer off the menu.
+        let green = egui::Color32::from_rgb(0, 255, 0);
+        for scale in [1.0, 2.0] {
+            let texts = highlight_run(
+                scale,
+                &[
+                    |rect, scale| row_center(rect, scale, 0, 3),
+                    on_scrap,
+                    |rect, _| egui::pos2(rect.center().x, rect.max.y + 30.0),
+                    |rect, _| rect.max + egui::vec2(60.0, 60.0),
+                ],
+            );
+            assert_eq!(
+                texts,
+                vec![
+                    ("Move".to_owned(), egui::Color32::WHITE),
+                    ("Status".to_owned(), DISABLED_COLOR),
+                    ("Scrap".to_owned(), green),
+                ],
+                "scale {scale}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_pointer_inside_the_menu_off_every_enabled_row_lights_nothing() {
+        // FUN_004aab50: a WM_MOUSEMOVE inside the window that is not in
+        // the highlighted item's rect clears +0x118, so the disabled
+        // Status row, at the frame's right edge, leaves no row lit.
+        for scale in [1.0, 2.0] {
+            let texts = highlight_run(
+                scale,
+                &[on_scrap, |rect, scale| {
+                    let (top, row) = row_span(rect, scale, 1, 3);
+                    egui::pos2(rect.max.x - scale, top + row * 0.9)
+                }],
+            );
+            assert_eq!(
+                texts,
+                vec![
+                    ("Move".to_owned(), egui::Color32::WHITE),
+                    ("Status".to_owned(), DISABLED_COLOR),
+                    ("Scrap".to_owned(), egui::Color32::WHITE),
+                ],
+                "scale {scale}"
+            );
+        }
     }
 
     #[test]

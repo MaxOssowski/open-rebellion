@@ -1284,6 +1284,105 @@ const cases = [
     },
   },
   {
+    name: "defenses-icon-menu-a0",
+    // The defenses icon's menu against A0
+    // 2026-11-11-icon-menu-topic/00-coruscant-defenses-menu-move-grey (the
+    // Empire, day 12, the menu at (203, 237)): Move and Confirmed Move
+    // grey, Encyclopedia white, Status grey (an icon's Status is
+    // disabled), Scrap enabled (FUN_00512700 kind 8, FUN_0051d990). Here
+    // the moves are grey because the fixture's team holds the player's
+    // agent on a mission (FUN_0054c110 refuses it; A0 00's cause is
+    // inferred to be deliveries on their way). The pointer went over
+    // Scrap and off the menu, and Scrap stays in the side's colour: FUN_004aab50 paints the item +0x118 holds, which only
+    // a WM_MOUSEMOVE inside the window changes. Against A0, relative to
+    // the menu's corner: its size, the frame's pixels (FUN_004aab50 over
+    // GID art), each row's ink within a pixel and its colour. The fill
+    // shades another scene and is not compared.
+    async run(page, faction, setup, directory) {
+      const [left, top] = quadrant(setup, "primary", "defenses");
+      await page.evaluate(() => { window.__openRebellionInterfaceObjectMenu = undefined; });
+      await rightClick(page, { x: Math.round(left) + 4, y: Math.round(top) + 9 });
+      await page.waitForFunction(() => window.__openRebellionInterfaceObjectMenu?.status === "object-menu",
+        null, { timeout: 10_000 });
+      const menu = await page.evaluate(() => window.__openRebellionInterfaceObjectMenu);
+      assert.deepEqual(menu.row_states,
+        [["Move", false], ["Confirmed Move", false], ["Encyclopedia", true], ["Status", false], ["Scrap", true]],
+        JSON.stringify(menu));
+      const [mx, my] = [Math.round(menu.left), Math.round(menu.top)];
+      assert.deepEqual([menu.width, menu.height], [104, 102], JSON.stringify(menu));
+      await page.mouse.move(mx + 50, my + 2 + 20 * 4 + 10);
+      await frames(page, 2);
+      await page.waitForTimeout(300);
+      await frames(page, 2);
+      const onScrap = PNG.sync.read((await shot(page, directory, "defenses-icon-menu-pointer-on-scrap")).bytes);
+      const screen = await stableScreen(page, directory, "defenses-icon-menu-pointer-off");
+      const highlight = faction.side === 1 ? [255, 0, 0] : [0, 255, 0];
+      const pixel = (png, x, y) => Array.from(png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3));
+      // Each row's ink (any channel above 100: the shaded fill stays at or
+      // below 92) and its commonest ink colour.
+      const rowInk = (png, x0, y0, row) => {
+        let box = null;
+        const colours = new Map();
+        for (let y = y0 + 2 + 20 * row; y < Math.min(y0 + 22 + 20 * row, y0 + 100); y += 1) {
+          for (let x = x0 + 3; x < x0 + 101; x += 1) {
+            const value = pixel(png, x, y);
+            if (Math.max(...value) <= 100) continue;
+            box = box ? [Math.min(box[0], x - x0), Math.min(box[1], y - y0), Math.max(box[2], x - x0), Math.max(box[3], y - y0)]
+              : [x - x0, y - y0, x - x0, y - y0];
+            colours.set(value.join(","), (colours.get(value.join(",")) ?? 0) + 1);
+          }
+        }
+        const colour = [...colours.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+        // The colour's class: white (+0x30), grey 0x808080 within a step
+        // (+0x34; the accepted palette-step deviation) or the side's
+        // highlight (+0x2c, FUN_004aba60).
+        const [r, g, b] = (colour ?? "").split(",").map(Number);
+        const kind = colour === highlight.join(",") || colour === "0,255,0" || colour === "255,0,0" ? "highlight"
+          : r === g && g === b && r >= 250 ? "white"
+            : r === g && g === b && Math.abs(r - 128) <= 1 ? "grey" : colour;
+        return { box, colour, kind };
+      };
+      const port = [0, 1, 2, 3, 4].map((row) => rowInk(screen, mx, my, row));
+      // While the pointer is on Scrap, Scrap is lit too.
+      assert.equal(rowInk(onScrap, mx, my, 4).colour, highlight.join(","), "Scrap under the pointer");
+      assert.equal(port[4].colour, highlight.join(","), `Scrap after the pointer left: ${JSON.stringify(port)}`);
+      assert.deepEqual(port.map(({ kind }) => kind),
+        ["grey", "grey", "white", "grey", "highlight"], JSON.stringify(port));
+      let a0 = null;
+      const a0File = path.join(root, ".artifacts/a0-vm/2026-11-11-icon-menu-topic/00-coruscant-defenses-menu-move-grey.png");
+      if (faction.side === 2 && fs.existsSync(a0File)) {
+        const shot = PNG.sync.read(fs.readFileSync(a0File));
+        const [ax, ay] = [203, 237];
+        const rows = [0, 1, 2, 3, 4].map((row) => rowInk(shot, ax, ay, row));
+        assert.deepEqual(rows.map(({ kind }) => kind), port.map(({ kind }) => kind), JSON.stringify(rows));
+        // Each row's ink within a pixel of A0's; the right edge within two,
+        // the accepted text-width deviation (Liberation Sans glyphs on
+        // GDI's Arial advances; user decision 2026-10-30): "Encyclopedia"
+        // inks 2 pixels wider than A0's.
+        const inkDiffs = rows.map(({ box }, row) => box && port[row].box
+          ? box.map((value, k) => port[row].box[k] - value) : null);
+        assert.ok(inkDiffs.every((d) => d && d.every((value, k) => Math.abs(value) <= (k === 2 ? 2 : 1))),
+          `rows' ink against A0: ${JSON.stringify({ a0: rows.map(({ box }) => box), port: port.map(({ box }) => box), inkDiffs })}`);
+        // The frame: the two-pixel ring, where a pixel is frame art when
+        // it is grey 128, 192 or 255 (the fill never reaches 100).
+        const frameArt = (value) => value[0] === value[1] && value[1] === value[2] && [128, 192, 255].includes(value[0]);
+        let ring = 0;
+        const differing = [];
+        for (let y = 0; y < 102; y += 1) {
+          for (let x = 0; x < 104; x += 1) {
+            if (x > 1 && x < 102 && y > 1 && y < 100) continue;
+            ring += 1;
+            const [a, b] = [pixel(shot, ax + x, ay + y), pixel(screen, mx + x, my + y)];
+            if (frameArt(a) !== frameArt(b) || (frameArt(a) && a.join() !== b.join())) differing.push([x, y, a, b]);
+          }
+        }
+        a0 = { rows, inkDiffs, ring, differing: differing.length };
+        assert.equal(differing.length, 0, `the frame differs from A0 at ${JSON.stringify(differing.slice(0, 8))}`);
+      }
+      return { menu, port, a0 };
+    },
+  },
+  {
     name: "two-defenses",
     // Two systems' Defenses windows stay open together, and minimizing one
     // sends only it to the rail (A0 personnel-states/25: Pzob and Mon
