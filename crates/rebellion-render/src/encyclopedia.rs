@@ -1000,9 +1000,7 @@ pub fn draw_encyclopedia_index_catalog(
         Some(content),
     );
     if let Some(command) = outcome.activated_command {
-        if (0x6f..=0x75).contains(&command) && command != state.original_category_command {
-            change_category(state, catalog, command);
-        }
+        change_category(state, catalog, command);
         // FUN_0045f480: the rail's topic command shows the selected object.
         if command == 0x67 && state.original_selected_object_id.is_some() {
             state.original_topic_mode = true;
@@ -1433,6 +1431,11 @@ fn change_category(
     catalog: &OriginalEncyclopediaCatalog,
     command: u16,
 ) {
+    // Only the category icons (0x6f..0x75) change the list. port: the
+    // shown category's own icon changes nothing (not traced).
+    if !(0x6f..=0x75).contains(&command) || command == state.original_category_command {
+        return;
+    }
     state.original_category_command = command;
     choose_category_row(state, catalog);
     reconcile_original_index_state(state, catalog, true);
@@ -2666,6 +2669,12 @@ mod tests {
         state.original_scroll = 150;
         change_category(&mut state, &catalog, 0x6f);
         assert_eq!(state.original_scroll, 120);
+        // The shown category's icon, and any other command, leave the list.
+        state.original_scroll = 150;
+        change_category(&mut state, &catalog, 0x6f);
+        assert_eq!(state.original_scroll, 150);
+        change_category(&mut state, &catalog, 0x67);
+        assert_eq!((state.original_category_command, state.original_scroll), (0x6f, 150));
     }
 
     #[test]
