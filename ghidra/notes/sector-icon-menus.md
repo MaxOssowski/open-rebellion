@@ -3,7 +3,7 @@ title: "Sector Window Icons: Selection, Pop-up Menus and Drags"
 description: "How a press on a sector window's quadrant icon selects it (FUN_004593e0, FUN_0045b1b0), which orders its right-click menu lists per kind (FUN_00507290, FUN_0050f2e0), and what each order acts on (FUN_00512700)"
 category: "ghidra"
 created: 2026-10-06
-updated: 2026-11-10
+updated: 2026-11-11
 tags: [sector-window, quadrant-icons, object-popup-menu, orders]
 ---
 
@@ -145,9 +145,72 @@ into `0x201`, or `0x202` with Ctrl, against `+0x70`. So:
   rest (`FUN_0053c810`, `FUN_0053ca50`);
 - fleets: Move or Confirmed Move of the system's fleets;
 - missions: Move or Confirmed Move of the members on visible missions
-  (kind `0x40` ignores the order kind). hyp: it is refused, since the
-  `0x241` command's `FUN_00522b30` refuses a busy member
-  (`move-order.md`, "A character's Move"); not run in A0.
+  (kind `0x40` ignores the order kind). It is refused at validation
+  (read 2026-11-11, below): every member has a mission. Not run in A0.
+
+## The defenses icon's Move (read 2026-11-11)
+
+`FUN_00512700` kind 8 for `0x201`/`0x202` (read in full) walks the
+system's children three times, each through `FUN_00553350` with the
+order's side: `FUN_00504c40` (families `0x10..0x13`, regiments),
+`FUN_005039d0` (`0x1c..0x1f`, squadrons) and `FUN_00536da0` (`0x30..0x3f`,
+characters and special forces). The walk has no mission filter, so a
+member on a mission at the system, or on its way there, is in the team.
+Defense facilities belong to Scrap's team only (`FUN_00527050`).
+
+`FUN_0053c4b0` (read in full) resolves the team and refuses an empty one
+(`1`/`0x16`). It then calls `FUN_0053c810` until it builds no more orders:
+`FUN_0053cbc0` takes the built (`Completed`) members of families
+`0x30..0x3f` that share the first one's `+0xc` value into one `0x241`.
+At an icon they all share the system, so there is one `0x241`. Last,
+`FUN_0053ca50` builds one `0x204` for the rest, only when any are left
+(`FUN_005f50e0`).
+
+- Enabled (`FUN_0053c100`): `FUN_0053c4b0`, then each sub-order's `+0x18`.
+  - The `0x241`'s `+0x18` is `FUN_0051fe20`. It builds command `0x250`
+    (`FUN_004f4a00`, vtable `0x00661e28`). `FUN_00553770` then runs the
+    command's `+0x18` (`Event250_vt18`, `FUN_0054d1a0` -> `FUN_005429e0`),
+    which asks each member's `+0x1c8` (`FUN_0054c110`). That check refuses
+    a member that is not the side's, travelling or on a mission. For
+    `0x241` it does not refuse an unrecruited member or a prisoner
+    (`object-popup-menu.md`). `FUN_0054bf00` needs one place.
+  - The `0x204`'s `+0x18` checks each member's move command
+    (`FUN_00578c00`).
+- Validated (`FUN_0053c1a0`): each sub-order's `+0x1c`. For `0x241` this
+  is `FUN_0051ff30`: its `+0x18` again, then `FUN_004f4b60` (the target's
+  side, `1`/`0x28`), then each command's `+0x1c` (`FUN_00553960`).
+  `Event250_vt1c` (`FUN_0054d280`, vtable `0x00661e28` slot `+0x1c`, read
+  from the image) calls `FUN_00542b60`. That reaches `FUN_0054c200` ->
+  `FUN_00522b30`, which refuses a member that already has a mission. For
+  `0x204` it is `FUN_0053d430`'s `1`/`0x28` rule and the per-member
+  commands. A refusal goes to `FUN_00487c90`, and nothing moves.
+- Asked (`FUN_00487cc0`, read from the image at `0x00487cc0..0x00487e13`):
+  the result word `[esp+0x10]` starts at 0.
+  - `0x202` always asks.
+  - `0x201` asks only when the first team id's container (`+0x1c`) is a
+    system (`0x90..0x97`) that is blockaded and of the same side.
+  - The icon's entry is the system. Its container is a sector, so **an
+    icon's Move never asks**.
+  - `FUN_0049a350` reads the same first member, so a Confirmed Move has
+    no evacuation warning (text `0x7057`, pictures 1018/1019).
+- Lines (`FUN_0053c2e0`): the sub-orders in list order, so the `0x241`'s
+  members (`FUN_004f4850`, at the mission's speed `FUN_00548370`) come
+  before the `0x204`'s (`FUN_0053d200`).
+
+**The missions icon's drop.** Kind `0x40` gives the side's members on
+visible missions whatever the order. Every member has a mission, so the
+`0x241` fails at validation:
+- its `+0x18` through `FUN_0054c110`, on a mission (`+0x78` bit 7);
+- its command's `+0x1c` through `FUN_00522b30`, which needs an empty
+  mission key `+0x68`.
+
+An empty team is `1`/`0x16`. So a drop on a window that names a target
+always reaches `FUN_00487c90`, with or without Ctrl, and nothing moves. A
+drop with no target is dropped silently (`FUN_004ece60`).
+
+Manual: no passage names the defenses or missions icon's Move or drag
+(searched "Defense icon", "Defenses icon", "drag the"). p. 109 (Fig. 3.50)
+covers the mission icon's menu only.
 
 ## Ported
 
@@ -200,11 +263,39 @@ into `0x201`, or `0x202` with Ctrl, against `+0x70`. So:
   squadron, an unfinished unit or a Missions window's mission answers its
   system where the original refuses; the refusal's advisor reaction
   (`FUN_00487c90`) is not played.
-- port: the defenses icon's Move and Confirmed Move stay disabled and its
-  drop does nothing until its mixed team's move (`0x241` plus a `0x204`
-  group with `FUN_0053d430`'s `1`/`0x28` rule) is ported; the missions
-  icon's drop does nothing. The drag image is not drawn, and Ctrl's
-  multiple selection is not ported. (The selected icon's second
+- The defenses icon's Move and Confirmed Move (2026-11-11):
+  - Its team is `quadrant_icons::defenses_move_team`.
+  - Enabled: `defenses_move_enabled` (`main.rs`).
+    `MissionState::move_order_enabled` stands for the `0x241`'s `+0x18`.
+    `regiment_move_enabled` and `squadrons::move_enabled` stand for the
+    `0x204`'s.
+  - The menu starts targeting (`TargetOrder::DefensesMove`). The release
+    and the drop call `issue_defenses_move`, a Confirmed Move with Ctrl.
+  - Any refusal refuses the whole order.
+  - A Move asks nothing. It sends one Move mission with every character
+    and special force (`PanelAction::MoveMembers`), and a Move for each
+    regiment and each squadron.
+  - A Confirmed Move asks once, with a line per member: the members first
+    at the mission's speed (`missions::team_move_days`), then the
+    regiments and squadrons. The checkmark sends the same orders.
+  - port: each regiment, and each squadron class with all its squadrons,
+    runs its own move check. For a group of one kind this holds
+    `FUN_0053d430`'s group rule. A mixed group meets the squadrons'
+    refusal of another side's planet. The room of a fleet target is
+    checked per kind, not for the whole group.
+- The missions icon's drop on a target (2026-11-11) is refused, and a
+  "Move refused" line stands in for `FUN_00487c90`.
+- The drag image is not drawn, and Ctrl's multiple selection is not
+  ported.
+- The fleet icon's Move never asks (2026-11-11). By `FUN_00487cc0`
+  above, an icon's `0x201` reads the system as its first team id
+  (`FleetMoveContext::icon`, `TargetOrder::FleetMove { icon }`); only its
+  Confirmed Move asks. One fleet's own Move keeps `fleet_move_confirms`.
+- The character menu's Move and Confirmed Move (2026-11-11) take the
+  `0x241`'s `+0x18` (`MissionState::move_order_enabled`, `FUN_0054c110`):
+  they are grey for a character on a mission or travelling. A special
+  force's (`OrderGates::special_force_move`) take the same rule through
+  the unit's slot `+0x1c8` (`FUN_00533ce0`, over `FUN_004f9860`). (The selected icon's second
   bitmap is drawn: `sector-quadrants.mjs` checks all 20 bitmaps of
   `FUN_0045ca80`'s matrix, each also found exactly in A0, 2026-11-10.)
 
@@ -218,4 +309,10 @@ into `0x201`, or `0x202` with Ctrl, against `+0x70`. So:
 `FUN_0051fd30`, `FUN_00553720`, `FUN_006158b0`, `FUN_005201c0`,
 `FUN_005535b0`, `FUN_0057ed20`, `FUN_0057eef0`, `FUN_0057efb0`,
 `FUN_0057f150`, `FUN_00539180`, `FUN_00528410`, `FUN_00528430`,
-`FUN_00529c30`, `FUN_00422ce0`.
+`FUN_00529c30`, `FUN_00422ce0`, `FUN_00504c40`, `FUN_005039d0`,
+`FUN_00536da0`, `FUN_0053c4b0`, `FUN_0053c810`, `FUN_0053cbc0`,
+`FUN_0053ca50`, `FUN_0053c100`, `FUN_0053d430`, `FUN_0051fe20`,
+`FUN_00553770`, `FUN_0051ff30`,
+`FUN_00553960`, `FUN_0054d1a0`, `FUN_0054d280`, `FUN_005429e0`,
+`FUN_00542b60`, `FUN_0054c110`, `FUN_00487cc0`, `FUN_0049a350`,
+`FUN_0053c2e0`, `FUN_004f4850`.

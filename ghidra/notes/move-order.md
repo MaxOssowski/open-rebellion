@@ -442,8 +442,12 @@ the same slots but the kind) for the Move mission `0x41000001`.
 - Enabled (`0x201` slot `+0x18`): `FUN_0053c4b0` resolves the team, then
   each sub-order's `+0x18`; for `0x241` that is `FUN_0051fe20` -> slot
   `+0x4c` `FUN_004f4a00`, which only builds command `0x250` (slot `+0x48`)
-  and adds it to the order's list (`FUN_0054ee30`). So Move is enabled for
-  any character that resolves; the refusals come at validation.
+  and adds it to the order's list (`FUN_0054ee30`). Corrected 2026-11-11:
+  `FUN_0051fe20` then runs `FUN_00553770`, which calls the command's
+  `+0x18` (`FUN_0054d1a0` -> `FUN_005429e0` -> `FUN_0054c110`, member slot
+  `+0x1c8`), so Move is disabled for a member that is not the side's, is
+  travelling or is on a mission (`sector-icon-menus.md`, "The defenses
+  icon's Move").
 - Validated (slot `+0x50` `FUN_004f4b60`):
   1. an empty team and decoy list: `1`/`0x16`;
   2. the first member's side (`FUN_00504e60`), else `1`/`0x12`; a side other
@@ -463,7 +467,8 @@ the same slots but the kind) for the Move mission `0x41000001`.
 
 - The character menu's Move (`0x201`) is enabled for a living character of
   the player's side (`OrderGates::character_move`; a prisoner reads its
-  captor's side). It targets like a fleet's Move; a released system takes
+  captor's side), and since 2026-11-11 only while it is not on a mission
+  or travelling (`MissionState::move_order_enabled`). It targets like a fleet's Move; a released system takes
   `missions::move_target_allowed` (`1`/`0x28`) and then
   `MissionState::dispatch_guarded` for the Move mission.
 - A release on a fleet of the player's side targets that fleet (the
@@ -476,7 +481,8 @@ the same slots but the kind) for the Move mission `0x41000001`.
   (`FUN_004fbc20`, `GameObjParentReroutedNotif`). port: the port reroutes
   on arrival, not at the moment the fleet moves.
   A special force's Move and Confirmed Move (2026-10-22) follow a
-  character's: the unit class lists the same unit orders (`FUN_00536bc0`,
+  character's (since 2026-11-11 also its gate: the unit's slot `+0x1c8`,
+  `FUN_00533ce0`, greys them on a mission or travelling): the unit class lists the same unit orders (`FUN_00536bc0`,
   `character-retire.md`), and the Move mission takes the unit as its team
   (`PanelAction::MoveSpecialForce`, `missions::member_move_days` at the
   default speed). Since 2026-10-23 a release on a fleet of the side boards
