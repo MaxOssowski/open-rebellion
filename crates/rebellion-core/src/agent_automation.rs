@@ -42,7 +42,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent_advice::{AdviceEntry, AdviceRecord, AdviceWindow, AgentAdvice};
 use crate::economy::{EconomyState, SystemEconomy};
 use crate::ids::{DatId, SystemKey};
-use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState};
+use crate::manufacturing::{BuildableKind, FacilityBuild, ManufacturingState, ProductionArea};
 use crate::world::GameWorld;
 
 // -------------------------------------------------------------------------
@@ -589,6 +589,11 @@ impl PlayerAgent {
                             })
                     })
                     && mfg.queued_at(*key) < 3
+                    // FUN_004c6d90 refines with FUN_0049da10(.., 0x204, 0,
+                    // 0x1000, ..): FUN_004c6460 drops a system record with
+                    // bit 0x1000, which FUN_004ebe40 sets when the system's
+                    // construction yard manager is Reserved (+0x70).
+                    && !mfg.is_reserved(*key, ProductionArea::ConstructionYard)
             })
             .map(|(key, _)| key)?;
 
@@ -645,7 +650,7 @@ impl PlayerAgent {
         // port: find any owned system with a manufacturing facility that is
         // NOT a shipyard (training facilities are non-shipyard manufacturing
         // facilities) and has room in its queue.
-        let training_system = find_training_system(world, our_faction, player_is_alliance)?;
+        let training_system = find_training_system(world, mfg, our_faction, player_is_alliance)?;
 
         // Phase 3 (FUN_004c79e0): calculate build count.
         // deficit = agent_context->garrison_need(+0x80) - current_troops(+0x84)
@@ -892,13 +897,24 @@ fn find_most_undergarrisoned(
 /// facility.
 ///
 /// Evidence: `FUN_004c7860.c`.
+///
+/// `FUN_004c7860` refines with `FUN_0049da70(.., 0x104, 0, 0x800, ..)`:
+/// `FUN_004c6460` drops a system record with bit `0x800`, which
+/// `FUN_004ebe40` sets when the system's training manager is Reserved
+/// (`+0x70`). The manual (Reserved, training facility menu): "Prevent your
+/// agent from using that training facility for its automated Manage
+/// Garrison function."
 fn find_training_system(
     world: &GameWorld,
+    mfg: &ManufacturingState,
     our_faction: crate::dat::Faction,
     player_is_alliance: bool,
 ) -> Option<SystemKey> {
     for (sys_key, sys) in &world.systems {
         if !sys.control.is_controlled_by(our_faction) || !sys.is_populated || sys.is_destroyed {
+            continue;
+        }
+        if mfg.is_reserved(sys_key, ProductionArea::TrainingFacility) {
             continue;
         }
 
@@ -1659,6 +1675,64 @@ mod tests {
         }
         let orders = producing().advance(&world, &mfg, &eco, true);
         assert_eq!(built(&orders), Some((open, site, false)));
+    }
+
+    /// A Reserved construction yard is skipped: FUN_004c6d90 excludes
+    /// system records with bit 0x1000 (FUN_004ebe40: the yard manager's
+    /// +0x70 Reserved). Manual, shipyard menu: Reserved "Prevents your
+    /// agent from using that shipyard for any of its automated management
+    /// functions."
+    #[test]
+    fn production_skips_a_reserved_construction_yard() {
+        let (mut world, site, eco, mut mfg) = minimal_world(true);
+        add_production_facility(&mut world, site, true, true);
+        add_production_facility(&mut world, site, true, false);
+        let reserved = add_system(&mut world, site);
+        add_training_facility(&mut world, reserved, true);
+        let open = add_system(&mut world, site);
+        add_training_facility(&mut world, open, true);
+        mfg.set_reserved(
+            reserved,
+            crate::manufacturing::ProductionArea::ConstructionYard,
+            true,
+        );
+        let orders = producing().advance(&world, &mfg, &eco, true);
+        assert_eq!(built(&orders), Some((open, site, false)));
+        mfg.set_reserved(open, ProductionArea::ConstructionYard, true);
+        assert_eq!(built(&producing().advance(&world, &mfg, &eco, true)), None);
+    }
+
+    /// A Reserved training facility is skipped by Manage Garrisons:
+    /// FUN_004c7860 excludes system records with bit 0x800 (FUN_004ebe40:
+    /// the training manager's +0x70 Reserved). Manual, training facility
+    /// menu: Reserved "Prevent your agent from using that training facility
+    /// for its automated Manage Garrison function."
+    #[test]
+    fn garrisons_skip_a_reserved_training_facility() {
+        let (mut world, reserved, mut eco, mut mfg) = minimal_world(true);
+        add_training_facility(&mut world, reserved, true);
+        let yard = add_system(&mut world, reserved);
+        add_training_facility(&mut world, yard, true);
+        let own = add_troop(&mut world, yard, true);
+        requires(&mut eco, yard, 3);
+        mfg.set_reserved(
+            reserved,
+            crate::manufacturing::ProductionArea::TrainingFacility,
+            true,
+        );
+        let orders = garrisoning().advance(&world, &mfg, &eco, true);
+        assert_eq!(
+            orders,
+            [AgentOrder::TrainTroops {
+                training_system: yard,
+                target_system: yard,
+                kind: BuildableKind::Troop(world.troops[own].class_dat_id),
+                count: 2,
+                cost_per_unit: TROOP_COST,
+            }]
+        );
+        mfg.set_reserved(yard, ProductionArea::TrainingFacility, true);
+        assert!(garrisoning().advance(&world, &mfg, &eco, true).is_empty());
     }
 
     /// port: mines built and queued for a site fill its raw deposits
