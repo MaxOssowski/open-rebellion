@@ -138,3 +138,11 @@ Production build (`web/`, served on port 8769, `CHROMIUM_PATH=/usr/bin/chromium`
 both sides pass every remaining step. Results in
 `.artifacts/interface-parity/game-options-smoke-2026-11-11T05-21-33Z` (`results.json` sha256
 `521475614be0e417d434f599ebf07cac804d4666763d349831727f6808693be9`).
+
+## Batch b186 (the night's check on main 535c2e14)
+
+The batch script now runs 29 interface gates, adding `cutscenes`,
+`main-menu-states`, `main-menu-rest`, `game-options`,
+`encyclopedia-placement` and this smoke. All 29 pass on Linux; workspace
+tests 3561 passed, fixture tests 149. Tactical matrix
+`2026-11-11T06-19-56-822Z-3890398`: 148 of 148.
