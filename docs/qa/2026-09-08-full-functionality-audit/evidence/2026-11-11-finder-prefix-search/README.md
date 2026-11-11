@@ -245,6 +245,173 @@ Clippy shows nothing new in the touched code; the existing warnings in
 `encyclopedia.rs` are not in these hunks. rustfmt is clean on the new
 hunks.
 
+## Fourth pass: no scroll to a row chosen already, and the Topic box
+
+### The original
+
+**`FUN_00609650` skips a row already chosen.** At `0x60973f`
+(`test byte [esi+0x3c],1; jne 0x609764`), it chooses the best row
+(`FUN_00609500`) and scrolls to it (`FUN_00609ed0`) only when the row is
+not chosen already. It returns the row's id either way.
+
+- An edit that keeps the same best row (typing "c0" after "c" when C00 is
+  already chosen) leaves the list where the user scrolled it.
+- A tab's or a category's rebuilt rows are never chosen, so a rebuild
+  always scrolls to the match.
+
+**Which control holds the keys in the Encyclopedia.** `WM_CHAR` reaches
+only the focused window:
+
+- the list (`FUN_006083c0`) forwards unhandled `WM_KEYDOWN` to the
+  window;
+- the window (`FUN_0045fe60`) passes letters on to its own parent;
+- the base handler (`FUN_00606650`) has no `WM_CHAR` case.
+
+So letters reach the Topic box only while it holds the focus:
+
+| Event | Focus after it | Source |
+|---|---|---|
+| Opening | unchanged (no `SetFocus`) | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0` |
+| A press on the box | the box | `FUN_00605160` `0x201` |
+| Index (`0x68`), or Topic (`0x67`) with nothing chosen | the box `+0x128` | `FUN_0045da70` case `0x66` |
+| A category icon (`0x6e`) | the list `+0x12c` | `FUN_0045da70` |
+| A press on a row | the list | `FUN_006083c0` |
+| A topic shown, Previous / Next | the topic text `+0x13c` | `FUN_0045f480(2)` |
+
+In the box, `0x408` runs `FUN_00609650` and stores the item in `+0x148`
+(`FUN_0045d8f0`). Enter (`0x407`) with an item opens its topic.
+
+### The change
+
+- **`list_prefix::row_to_show`:** the best row, unless it was chosen
+  before the edit. All four Finders' `0x408` paths scroll only to that
+  row. The Fleet and System Finders read the earlier row from their
+  chosen object's position in the list.
+- **`encyclopedia.rs`:**
+  - `EncyclopediaState::original_box_focused` follows the table. It is
+    set by:
+    - `command_focus`;
+    - a press on the box (a new interact on (143, 45, 245, 18));
+    - a row press;
+    - `0x68` in `apply_original_topic_command`.
+  - The opening clears it.
+  - While it holds, `type_into_topic_box` takes typed text and Backspace
+    into the box's text (`original_topic_text`), chooses with
+    `best_prefix_row`, and reveals the row only through `row_to_show`.
+  - Enter with an object chosen shows its topic.
+  - The box keeps its painted look.
+  - port: the caret is neither drawn nor placed at the pointer (it stays
+    at the end), and Delete is not ported.
+
+### Tests
+
+Each was shown to fail with its change reverted alone, and the files were
+restored afterwards.
+
+- **Finders:** `an_edit_that_keeps_the_chosen_row_leaves_the_list_where_it_is`
+  in `system_finder`, `fleet_finder`, `personnel_finder` and
+  `troop_finder`. Each fails with its finder's `row_to_show` call
+  replaced by the plain choice.
+  - The Fleet test first passed without the change (its row was still in
+    view). It now scrolls to 100, where the row is hidden.
+- **`list_prefix`:** `an_edit_scrolls_only_to_a_row_not_chosen_already`
+  fails with the helper ignoring the earlier row, and so do three of the
+  Finder tests.
+- **Encyclopedia:** `typing_reaches_the_topic_box_only_once_it_is_pressed`
+  covers:
+  - typing before a press does nothing;
+  - after a press, "s1" chooses S10 and scrolls to 60;
+  - "s10" keeps S10 and the list stays at 0;
+  - Enter shows the topic.
+
+  It fails without the box's press focus, without the focus gate, without
+  Enter, and with the scroll always revealed.
+- **Encyclopedia:** `a_category_icon_or_a_row_takes_the_keys_from_the_topic_box`
+  covers:
+  - a category leaves typing without effect;
+  - Topic with nothing chosen focuses the box;
+  - Index focuses the box;
+  - a row press takes the focus again.
+
+  It fails without the category rule, without the row rule, without
+  `0x68`'s focus, and without the focus gate. A category icon's press is
+  keyed on its bitmap, which the test cache lacks, so this test applies
+  the command as the draw does.
+
+`cargo test -p rebellion-render --lib`: 1449 passed, 6 ignored. Strict
+Clippy shows nothing new in these hunks. rustfmt is clean on them.
+
+### Gates
+
+The box's painted look is unchanged, so no gate's comparison needs
+updating:
+
+- `encyclopedia-index-shell.mjs`;
+- `encyclopedia-placement.mjs` (index placement);
+- `encyclopedia-art.mjs`;
+- `personnel-states.mjs` (categories, topic steps);
+- `status-window.mjs` `force-character`.
+
+The Finder gate `encyclopedia-placement.mjs --window=finders` types "I"
+into a freshly opened Troop Finder. That chooses Ithor, a row not chosen
+yet, so it scrolls as before.
+
+New cases worth adding:
+
+- in `personnel-states.mjs`: a press on the Topic box, typing (as in
+  A0), and Enter;
+- in `encyclopedia-placement.mjs --window=finders`: typing a second
+  letter that keeps the row.
+
+Neither has an A0 capture yet. Nothing was run here (worker rules).
+
+## Fifth pass: the galaxy view's shortcuts while a text box has the keys
+
+In the original, keys go to the focused edit control:
+
+- each Finder's name box: the opener focuses the Finder's window, whose
+  slot `+0x14` case 7 hands the focus to the box (`FUN_0042a640`;
+  `FUN_00461000`, `FUN_00462a50` and `FUN_0046e5f0` handle case 7);
+- a rename edit (`FUN_004ac7a0`);
+- the Encyclopedia's Topic box, once it is pressed.
+
+`main.rs` ran its plain-key shortcuts unless the Fleet, Troop or
+Personnel Finder was open, or a rename was open. Those shortcuts are:
+
+- R, which resets the map;
+- Tab, the mod manager;
+- the debug palette key;
+- F6;
+- the Alt accelerators.
+
+So typing "r" into the System Finder's name box, or into the
+Encyclopedia's focused Topic box, also reset the galaxy map.
+
+The change:
+
+- `main.rs`'s new `text_box_holds_keys` covers all four Finders, the
+  System Finder now among them, plus a rename and
+  `EncyclopediaState::topic_box_holds_keys`;
+- that method is true while the index is open and the box focused, and
+  false in a topic or a closed window.
+
+The F-key accelerators in `cockpit.rs` are unchanged.
+
+Tests (each fails with its change reverted):
+
+- `text_box_key_tests::a_finder_a_rename_or_the_focused_topic_box_holds_the_galaxy_keys`
+  (rebellion-app). It fails with the old condition, which had no System
+  Finder and no Topic box.
+- `only_the_open_indexs_focused_topic_box_holds_the_galaxy_keys`
+  (rebellion-render). It fails without the topic-mode term.
+
+`change_category` now holds its own guard (the category range and the
+current category), as on the lead's main, and the call site calls it
+unconditionally.
+
+`cargo check -p rebellion-app` passes. `cargo test -p rebellion-render
+--lib`: 1450 passed. `cargo test -p rebellion-app text_box`: 1 passed.
+
 ## Not done
 
 - No A0 capture of a Personnel Finder search, of Display or Enter after a
@@ -253,11 +420,11 @@ hunks.
   accepting the trace.
 - Backspace in a never-edited name box (see above): egui does not report
   it.
-- Typing and Enter in the Encyclopedia's Topic box (see above).
-- `FUN_00609650` does not choose or scroll when its best row is already
-  chosen (`(+0x3c & 1) == 0`). The Finders' port scrolls to the row on
-  every edit, even when the user scrolled away from a chosen row whose
-  match did not change. Not ported.
+- No A0 capture of typing in the Encyclopedia's Topic box. The focus
+  table is static evidence.
+- All Databases (`0x6f`) reuses the galaxy view's item list `+0x474`,
+  whose items may keep their chosen bit, so a category change to it may
+  skip the scroll. The port always reveals the row there.
 - The browser gates (`personnel-states.mjs` category rows,
   `encyclopedia-placement.mjs --window=finders`) were not rerun. Their
   cases start at scroll 0 with an empty box, so they should be
@@ -279,3 +446,16 @@ the batch failed
 `status_window::tests::the_objectives_rows_stack_35_apart_with_centred_icons_and_text_at_40`
 once; it passed alone three times and in four full runs after, so it is
 recorded as a flaky test, not caused by this change.
+
+## Batch b185 (fourth and fifth passes)
+
+23 of 23 interface gates on Linux (`encyclopedia-index-shell`
+`encyclopedia-index-shell-2026-11-11T04-27-28-187Z-3703108` among
+them); workspace tests 3561 passed, fixture tests 149. Outside the
+batch, `encyclopedia-placement`
+(`encyclopedia-placement-2026-11-11T05-11-46-743Z`) and
+`main-menu-states` (`main-menu-states-2026-11-11T05-14-06-377Z`) pass.
+Tactical matrix `2026-11-11T04-58-22-110Z-3748674`: 148 of 148.
+In-place mutants missed one: `command_focus`'s Index arm (0x68). The
+test `a_category_icon_or_a_row_takes_the_keys_from_the_topic_box` now
+applies 0x68 through `command_focus` and expects the box focused.

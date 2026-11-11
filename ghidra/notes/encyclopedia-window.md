@@ -192,7 +192,8 @@ row and scrolls only as far as it needs (`FUN_00609ed0`). port:
 `change_category` (`a_category_keeps_the_lists_place_while_its_row_shows`)
 and `choose_category_row`, which now takes the best prefix row of the
 box's text where it took the first row
-(`a_category_chooses_the_row_the_topic_box_best_begins`).
+(`a_category_chooses_the_row_the_topic_box_best_begins`). It matches the
+A0 bar to 2 pixels. port: the wheel also scrolls, a row a notch.
 
 ## The Topic box (`FUN_0045d8f0`, slot `+0x14`)
 
@@ -206,15 +207,48 @@ box's text where it took the first row
 - `0x407` (Enter) from the box with `+0x148` set: `FUN_0045f480(2)`, the
   topic of the chosen object.
 - A row click (`0x29b`) writes its name into the box (`FUN_00604f90`, no
-  `0x408`); a double click (`0x309`) presses Topic (`0x67`). The Index
-  command (`0x68`) gives the box the focus; a category icon gives it to
-  `+0x12c`.
-- port: typing into the Topic box and Enter are not ported. The port
-  paints the box's text as a label (`selected_name`); an editable box
-  needs the focus rules above (which control holds the keys after a
-  category or a row click) and a browser gate. Open.
-It matches the A0 bar to 2 pixels. port: the wheel also scrolls, a row
-a notch.
+  `0x408`); a double click (`0x309`) presses Topic (`0x67`).
+- `FUN_00609650` chooses and scrolls only when its best row is not chosen
+  already (`0x60973f`: `test byte [esi+0x3c],1; jne`), so an edit that
+  keeps the same best row leaves the list where it is.
+
+### Which control holds the keys (traced 2026-11-11)
+
+Typed letters reach the box only while it has the focus: `WM_CHAR` goes
+to the focused window, and neither the list (`FUN_006083c0`, which
+forwards unhandled `WM_KEYDOWN` to the window) nor the window
+(`FUN_0045fe60` passes other keys on to its parent; the base handler
+`FUN_00606650` has no `WM_CHAR` case) hands letters to the box.
+
+| Event | Focus after it | Source |
+|---|---|---|
+| Opening (`0x131`, F7, the menus) | unchanged: no `SetFocus` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0` |
+| A press on the box | the box | `FUN_00605160` `0x201`: `SetFocus(self)` |
+| Index (`0x68`), or Topic (`0x67`) with nothing chosen, which presses Index | the box `+0x128` | `FUN_0045da70` case `0x66` |
+| A category icon (`0x6e`) | the list `+0x12c` | `FUN_0045da70` |
+| A press on a row | the list | `FUN_006083c0`: `SetFocus(self)` |
+| Up, Down, PgUp, PgDn at the window | the list | `FUN_0045fe60` |
+| Topic shown, Previous / Next | the topic text `+0x13c` | `FUN_0045f480(2)`, `FUN_0045da70` `0x83`/`0x84` |
+
+Port (2026-11-11): `EncyclopediaState::original_box_focused` follows this
+table (`command_focus`, the box's press, a row's press, `0x68` in
+`apply_original_topic_command`); while it holds, typed text and
+Backspace edit the box's text and each edit runs `best_prefix_row` with
+`row_to_show`; Enter with an object chosen shows its topic
+(`type_into_topic_box`; tests
+`typing_reaches_the_topic_box_only_once_it_is_pressed`,
+`a_category_icon_or_a_row_takes_the_keys_from_the_topic_box`). The box
+keeps its painted look (`selected_name`). port: the caret is not drawn
+and stays at the text's end (a press places it at the pointer,
+`FUN_006062d0`); Delete and the box's own arrow keys are not ported.
+- The galaxy view's own shortcuts stay quiet while the box holds the keys
+  (`EncyclopediaState::topic_box_holds_keys`, used by `main.rs`'s
+  `text_box_holds_keys` with the Finders' name boxes, the System Finder's
+  included, and a rename edit). The F-key accelerators are untouched.
+- Not ported: a category change to All Databases (`0x6f`) reuses the
+  galaxy view's item list `+0x474`, whose items may keep their chosen bit,
+  so its `FUN_00609650` may skip the scroll; the port always reveals the
+  row there.
 
 ## Evidence boundary
 
