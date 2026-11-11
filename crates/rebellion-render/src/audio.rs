@@ -1,27 +1,12 @@
-//! Audio UI controls for the galaxy map status bar.
+//! Audio state shared by the render and app layers: named sound effects,
+//! music tracks and the volume and mute state.
 //!
-//! This module owns only the **egui rendering** side of audio: volume sliders
-//! and a mute toggle.  The actual audio engine (kira `AudioManager`) lives in
+//! The actual audio engine (kira `AudioManager`) lives in
 //! `rebellion-app/src/audio.rs` to avoid a `links = "alsa"` conflict between
 //! `miniquad` (pulled in by `egui-macroquad`) and `cpal` (pulled in by kira).
-//!
-//! # Integration
-//!
-//! The app creates an `AudioVolumeState` and passes a `&mut AudioVolumeState`
-//! to the audio engine whenever volumes change.  The engine reads
-//! `AudioVolumeState` to set kira track volumes.
-//!
-//! ```ignore
-//! egui_macroquad::ui(|ctx| {
-//!     draw_audio_controls(ctx, &mut audio_volume_state);
-//!     // ... other panels
-//! });
-//! egui_macroquad::draw();
-//! // Apply any volume changes:
-//! audio_engine.apply_volume(&audio_volume_state);
-//! ```
-
-use egui_macroquad::egui::{self, Color32, RichText};
+//! The original sets the volumes only in the Game Options window
+//! (`FUN_00406b80` commands 0x8d/0x8e; `game_options.rs`); the engine reads
+//! `AudioVolumeState` to set its track volumes.
 
 // ---------------------------------------------------------------------------
 // SfxKind — named sound effect identifiers
@@ -175,7 +160,11 @@ pub struct AudioVolumeState {
 impl Default for AudioVolumeState {
     fn default() -> Self {
         AudioVolumeState {
-            music_volume: 0.8,
+            // FUN_004173c0 / FUN_00413000: an absent MusicVolume or Volume
+            // reads 0 (FUN_005f41b0), DirectSound's full volume, which the
+            // slider shows at 100 (A0 200-options: the music thumb clipped
+            // at the track's right end).
+            music_volume: 1.0,
             sfx_volume: 1.0,
             muted: false,
             music_muted: false,
@@ -231,64 +220,6 @@ impl AudioVolumeState {
     #[must_use]
     pub fn music_enabled(&self) -> bool {
         !self.music_muted
-    }
-}
-
-// ---------------------------------------------------------------------------
-// draw_audio_controls
-// ---------------------------------------------------------------------------
-
-/// Render audio volume controls inside the bottom status bar.
-///
-/// Call this from within an existing `egui::Ui` horizontal layout (e.g. inside
-/// the `status_bar` `TopBottomPanel`), not as a standalone panel.  This keeps
-/// it beside the speed controls and day counter.
-///
-/// Sets `state.dirty = true` when any control changes.
-pub fn draw_audio_controls(ui: &mut egui::Ui, state: &mut AudioVolumeState) {
-    ui.separator();
-
-    // ── Mute toggle ───────────────────────────────────────────────────────────
-    let mute_label = if state.muted { "🔇" } else { "🔊" };
-    if ui
-        .selectable_label(state.muted, RichText::new(mute_label).small())
-        .clicked()
-    {
-        state.muted = !state.muted;
-        state.dirty = true;
-    }
-
-    // ── Music volume ──────────────────────────────────────────────────────────
-    ui.label(RichText::new("Mus").color(Color32::from_gray(160)).small());
-    let music_changed = ui
-        .add_sized(
-            [50.0, 16.0],
-            egui::Slider::new(&mut state.music_volume, 0.0_f32..=1.0_f32).show_value(false),
-        )
-        .changed();
-    if music_changed {
-        state.dirty = true;
-    }
-
-    // ── SFX volume ────────────────────────────────────────────────────────────
-    ui.label(RichText::new("SFX").color(Color32::from_gray(160)).small());
-    let sfx_changed = ui
-        .add_sized(
-            [50.0, 16.0],
-            egui::Slider::new(&mut state.sfx_volume, 0.0_f32..=1.0_f32).show_value(false),
-        )
-        .changed();
-    if sfx_changed {
-        state.dirty = true;
-    }
-
-    // ── No-audio indicator ────────────────────────────────────────────────────
-    if !state.backend_available {
-        ui.label(
-            RichText::new("(no audio)")
-                .small()
-                .color(Color32::from_gray(80)),
-        );
     }
 }
 
@@ -355,6 +286,17 @@ mod tests {
 
         state.toggle_music();
         assert!(state.music_enabled());
-        assert_eq!(state.effective_music_volume(), f64::from(0.8_f32));
+        assert_eq!(state.effective_music_volume(), 1.0);
+    }
+
+    #[test]
+    fn both_volumes_start_full_without_stored_settings() {
+        // FUN_004173c0 and FUN_00413000 read MusicVolume and Volume with
+        // FUN_005f41b0, which gives 0 (0 dB, full volume) when absent.
+        let state = AudioVolumeState::default();
+        assert_eq!(
+            (state.effective_music_volume(), state.effective_sfx_volume()),
+            (1.0, 1.0)
+        );
     }
 }

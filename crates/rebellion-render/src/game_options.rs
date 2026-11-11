@@ -4,7 +4,28 @@ use macroquad::prelude::*;
 
 use crate::audio::AudioVolumeState;
 use crate::bmp_cache::{resources, BmpCache, DllSource};
-use crate::panels::SaveSlotInfo;
+
+/// The window's save rows (`FUN_00407180` builds six: Save 0x6f..0x74, Load
+/// 0x79..0x7e; manual p. 79 "There are six slots for saved games"). Slots
+/// the data layer holds beyond them are neither listed nor loaded.
+pub const SAVE_ROWS: usize = 6;
+
+/// Metadata about one save slot, passed from the caller (who holds
+/// `rebellion_data::save::SaveMeta`) down to the window, so that
+/// `rebellion-render` stays free of the data layer.
+#[derive(Debug, Clone)]
+pub struct SaveSlotInfo {
+    /// Slot index (`0..SAVE_ROWS`).
+    pub slot: usize,
+    /// Human-readable save name.
+    pub name: String,
+    /// Formatted timestamp string (e.g. "2026-03-15 14:32").
+    pub timestamp: String,
+    /// Game tick at save time.
+    pub game_tick: u64,
+    /// The player's side, when known (the row's crest).
+    pub player_is_alliance: Option<bool>,
+}
 
 const LOGICAL_WIDTH: f32 = 640.0;
 const LOGICAL_HEIGHT: f32 = 480.0;
@@ -135,9 +156,8 @@ pub struct GameOptionsState {
     /// A save succeeded since the window opened (`FUN_00408240` sets the
     /// slot's flag at `+0xac + 4k`); Restart then asks nothing.
     pub saved_this_visit: bool,
-    pub occupied: [bool; 10],
-    pub names: [String; 6],
-    pub suspended: bool,
+    pub occupied: [bool; SAVE_ROWS],
+    pub names: [String; SAVE_ROWS],
     pub error: Option<String>,
     origin: GameOptionsOrigin,
     pressed: Option<GameOptionsControl>,
@@ -149,6 +169,10 @@ pub struct GameOptionsState {
     /// The player's side, which picks the Return button's art in the
     /// command center.
     pub player_is_alliance: bool,
+    /// Each slider's thumb centre (music, effects) once the pointer has
+    /// moved it in this visit (`FUN_00604950` writes the pointer to
+    /// `+0xc8`); `None` keeps where the window opened it.
+    slider_thumbs: [Option<f32>; 2],
 }
 
 impl Default for GameOptionsState {
@@ -157,9 +181,8 @@ impl Default for GameOptionsState {
             pending: None,
             saved_notice: None,
             saved_this_visit: false,
-            occupied: [false; 10],
+            occupied: [false; SAVE_ROWS],
             names: std::array::from_fn(|_| String::new()),
-            suspended: false,
             error: None,
             origin: GameOptionsOrigin::ShuttleCockpit,
             pressed: None,
@@ -169,6 +192,7 @@ impl Default for GameOptionsState {
             high_detail_models: true,
             display_holocube: true,
             player_is_alliance: true,
+            slider_thumbs: [None; 2],
         }
     }
 }
@@ -215,7 +239,7 @@ impl GameOptionsState {
     }
 
     pub fn request(&mut self, action: GameOptionsAction) -> GameOptionsAction {
-        if self.suspended || self.modal() || !self.enabled(&action) {
+        if self.modal() || !self.enabled(&action) {
             return GameOptionsAction::None;
         }
         let confirm = match &action {
@@ -268,8 +292,9 @@ impl GameOptionsState {
         self.pending = None;
         self.saved_notice = None;
         self.saved_this_visit = false;
-        self.suspended = false;
         self.error = None;
+        // FUN_00407180 builds the sliders anew at each opening.
+        self.slider_thumbs = [None; 2];
     }
 
     #[must_use]
@@ -640,10 +665,10 @@ fn textcomm(id: u16, shipped: &str) -> String {
 
 /// A volume slider (`FUN_00604570`, painted by `FUN_00604a50`): the whole
 /// track at the slider's origin, then the thumb (COMMON 10054, 11 by 47)
-/// centred on `floor(201 * value / 100)` at y + 4, clipped to the track's
-/// 201 by 54. A0 200-options shows the track's palette entry 254 (cyan in
-/// the DIB) as white on this screen.
-fn draw_volume(cache: &mut BmpCache, canvas: OptionsCanvas, y: f32, value: f32, alternate: bool) {
+/// centred on `centre` at y + 4, clipped to the track's 201 by 54. A0
+/// 200-options shows the track's palette entry 254 (cyan in the DIB) as
+/// white on this screen.
+fn draw_volume(cache: &mut BmpCache, canvas: OptionsCanvas, y: f32, centre: f32, alternate: bool) {
     let track = if alternate {
         resources::common::OPTIONS_VOLUME_RAIL_ALT
     } else {
@@ -655,7 +680,7 @@ fn draw_volume(cache: &mut BmpCache, canvas: OptionsCanvas, y: f32, value: f32, 
     else {
         return;
     };
-    let left = slider_thumb_centre(value) - (thumb.width() / 2.0).floor();
+    let left = centre - (thumb.width() / 2.0).floor();
     let visible = (SLIDER_WIDTH - left).min(thumb.width()).max(0.0);
     let (screen_x, screen_y) = canvas.point(SLIDER_X + left, y + 4.0);
     draw_texture_ex(
@@ -674,28 +699,148 @@ fn draw_volume(cache: &mut BmpCache, canvas: OptionsCanvas, y: f32, value: f32, 
 /// The slider's left edge (`FUN_00407180`: x 0x188) and client width.
 const SLIDER_X: f32 = 392.0;
 const SLIDER_WIDTH: f32 = 201.0;
+const SLIDER_HEIGHT: f32 = 54.0;
 
-/// The thumb's centre in slider pixels for a volume of `value` (0..1):
-/// `floor(201 * v / 100)` for the slider's whole-percent `v`.
-fn slider_thumb_centre(value: f32) -> f32 {
-    (SLIDER_WIDTH * (value.clamp(0.0, 1.0) * 100.0).round() / 100.0).floor()
+/// The volume a slider at 0 sends (`FUN_00406b80` commands 0x8d/0x8e:
+/// `mov eax, 0xffffda80`), and below which `FUN_00407180` shows 0.
+const SILENT_HUNDREDTHS: i32 = -9600;
+
+/// A slider percent as the DirectSound volume in hundredths of a decibel
+/// (`FUN_00406b80` commands 0x8d/0x8e at 0x406de5..0x406e0d:
+/// `floor(log10(v * 0.01) * 2000)`, -9600 for 0).
+/// hyp: computed in f64, the precision of the MSVC runtime's default x87
+/// control word (53-bit); the original's precision is not observed.
+fn slider_hundredths(percent: u32) -> i32 {
+    if percent == 0 {
+        return SILENT_HUNDREDTHS;
+    }
+    ((f64::from(percent) * 0.01).log10() * 2000.0).floor() as i32
 }
 
-/// A drag on a slider (`FUN_00604950`): only a pointer strictly between
-/// x 5 and 196 in the slider moves the thumb, to `floor(x * 100 / 201)`
-/// percent, so a drag gives 2..97 and never 0 or 100.
-fn set_slider(audio: &mut AudioVolumeState, control: GameOptionsControl, logical_x: f32) {
-    let x = (logical_x - SLIDER_X).floor();
-    if x <= 5.0 || x >= SLIDER_WIDTH - 5.0 {
-        return;
+/// The percent a slider opens at for a DirectSound volume (`FUN_00407180`
+/// at 0x40773b..0x407780: `floor(10^(vol * 0.01 * 0.05) * 100)`, 0 below
+/// -9600), so a sent percent other than 1, 10 and 100 reopens one lower.
+/// hyp: f64, as for [`slider_hundredths`].
+fn slider_percent(hundredths: i32) -> u32 {
+    if hundredths < SILENT_HUNDREDTHS {
+        return 0;
     }
-    let value = (x * 100.0 / SLIDER_WIDTH).floor() / 100.0;
+    (10f64.powf(f64::from(hundredths) * 0.01 * 0.05) * 100.0).floor() as u32
+}
+
+/// DirectSound's amplitude for a volume in hundredths of a decibel of
+/// attenuation (`IDirectSoundBuffer::SetVolume`): `10^(vol / 2000)`. The
+/// port's mixer takes the amplitude.
+fn hundredths_gain(hundredths: i32) -> f32 {
+    10f64.powf(f64::from(hundredths) / 2000.0) as f32
+}
+
+/// The DirectSound volume an amplitude stands for: the inverse of
+/// [`hundredths_gain`], exact for the amplitudes it gives.
+/// port: any other amplitude (an older linear setting, the status-bar
+/// slider) takes the nearest hundredth; 0 is DirectSound's minimum, -10000.
+fn gain_hundredths(gain: f32) -> i32 {
+    if gain.is_nan() || gain <= 0.0 {
+        return -10_000;
+    }
+    (2000.0 * f64::from(gain).log10())
+        .round()
+        .clamp(-10_000.0, 0.0) as i32
+}
+
+/// The thumb's centre in slider pixels as the window opens for a volume
+/// amplitude (`FUN_00604570`: `floor(201 * v / 100)` of the percent
+/// `FUN_00407180` derives).
+fn slider_thumb_centre(gain: f32) -> f32 {
+    (SLIDER_WIDTH * slider_percent(gain_hundredths(gain)) as f32 / 100.0).floor()
+}
+
+/// The percent a thumb centre stands for (`FUN_00604a50`:
+/// `+0xdc = cx * 100 / 201`, recomputed at each paint).
+fn thumb_percent(centre: f32) -> u32 {
+    (centre.max(0.0) * 100.0 / SLIDER_WIDTH).floor() as u32
+}
+
+/// Whether a point is strictly inside a slider (`FUN_006048f0`); only then
+/// does a press move the thumb or a move send the value.
+fn inside_slider(control: GameOptionsControl, x: f32, y: f32) -> bool {
+    let Some(index) = slider_index(control) else {
+        return false;
+    };
+    let rect = slider_rect(index);
+    let (x, y) = ((x - rect.x).floor(), (y - rect.y).floor());
+    x > 0.0 && x < SLIDER_WIDTH && y > 0.0 && y < SLIDER_HEIGHT
+}
+
+const fn slider_index(control: GameOptionsControl) -> Option<usize> {
     match control {
-        GameOptionsControl::MusicVolume => audio.music_volume = value,
-        GameOptionsControl::SoundVolume => audio.sfx_volume = value,
-        _ => {}
+        GameOptionsControl::MusicVolume => Some(0),
+        GameOptionsControl::SoundVolume => Some(1),
+        _ => None,
     }
-    audio.dirty = true;
+}
+
+const fn slider_rect(index: usize) -> NativeRect {
+    if index == 0 {
+        MUSIC_SLIDER_RECT
+    } else {
+        SOUND_SLIDER_RECT
+    }
+}
+
+impl GameOptionsState {
+    /// The slider the button went down on, if any.
+    fn pressed_slider(&self) -> Option<GameOptionsControl> {
+        self.pressed
+            .filter(|control| slider_index(*control).is_some())
+    }
+
+    /// The thumb's centre: where the pointer put it in this visit, else
+    /// where the window opened it.
+    fn thumb_centre(&self, audio: &AudioVolumeState, index: usize) -> f32 {
+        self.slider_thumbs[index].unwrap_or_else(|| {
+            slider_thumb_centre(if index == 0 {
+                audio.music_volume
+            } else {
+                audio.sfx_volume
+            })
+        })
+    }
+
+    /// Move a slider's thumb to the pointer (`FUN_00604950`): the thumb
+    /// centres on the pointer only strictly between x 5 and 196 and y 0 and
+    /// 54 in the slider, so a drag gives 2..97 per cent, never 0 or 100.
+    fn move_thumb(&mut self, control: GameOptionsControl, logical_x: f32, logical_y: f32) {
+        let Some(index) = slider_index(control) else {
+            return;
+        };
+        let rect = slider_rect(index);
+        let (x, y) = ((logical_x - rect.x).floor(), (logical_y - rect.y).floor());
+        if x > 5.0 && x < SLIDER_WIDTH - 5.0 && y > 0.0 && y < SLIDER_HEIGHT {
+            self.slider_thumbs[index] = Some(x);
+        }
+    }
+
+    /// Send a slider's value (`Class_0066e010_vt14` posts `+0xdc` on a move
+    /// with the button held and on the release; `FUN_00406b80` turns it
+    /// into the DirectSound volume, which `FUN_00417670` / `FUN_00416360`
+    /// apply and keep in the registry).
+    fn send_slider(&self, audio: &mut AudioVolumeState, control: GameOptionsControl) {
+        let Some(index) = slider_index(control) else {
+            return;
+        };
+        let percent = thumb_percent(self.thumb_centre(audio, index));
+        let gain = hundredths_gain(slider_hundredths(percent));
+        let current = if index == 0 {
+            &mut audio.music_volume
+        } else {
+            &mut audio.sfx_volume
+        };
+        if current.to_bits() != gain.to_bits() {
+            *current = gain;
+            audio.dirty = true;
+        }
+    }
 }
 
 fn toggle_tactical(state: &mut GameOptionsState, index: usize) {
@@ -894,10 +1039,16 @@ pub fn draw_game_options(
         cache,
         canvas,
         MUSIC_SLIDER_RECT.y,
-        audio.music_volume,
+        state.thumb_centre(audio, 0),
         false,
     );
-    draw_volume(cache, canvas, SOUND_SLIDER_RECT.y, audio.sfx_volume, true);
+    draw_volume(
+        cache,
+        canvas,
+        SOUND_SLIDER_RECT.y,
+        state.thumb_centre(audio, 1),
+        true,
+    );
 
     for (index, rect) in TACTICAL_TOGGLE_RECTS.into_iter().enumerate() {
         // A set switch shows its pressed art (FUN_00603150(4, 0x273c)); A0
@@ -1002,26 +1153,38 @@ pub fn draw_game_options(
         EXIT_RECT.y,
     );
 
-    if state.modal() || state.suspended {
+    if state.modal() {
         state.pressed = None;
         return GameOptionsAction::None;
     }
-    if let Some(control @ (GameOptionsControl::MusicVolume | GameOptionsControl::SoundVolume)) =
-        state.pressed
-    {
-        if is_mouse_button_down(MouseButton::Left) {
-            set_slider(audio, control, pointer.0);
+    // Class_0066e010_vt14: a move with the button held and the pointer
+    // inside moves the thumb and sends the value.
+    if let Some(control) = state.pressed_slider() {
+        if is_mouse_button_down(MouseButton::Left) && inside_slider(control, pointer.0, pointer.1) {
+            state.move_thumb(control, pointer.0, pointer.1);
+            state.send_slider(audio, control);
         }
     }
     if is_mouse_button_pressed(MouseButton::Left) {
-        state.pressed = masked_control_at(cache, state.origin, pointer.0, pointer.1);
-        if let Some(control @ (GameOptionsControl::MusicVolume | GameOptionsControl::SoundVolume)) =
-            state.pressed
-        {
-            set_slider(audio, control, pointer.0);
+        // A slider takes a press anywhere in its window (no key-colour
+        // mask), captures the mouse and moves the thumb; it sends nothing
+        // until the pointer moves or the button is released.
+        state.pressed = match control_at(state.origin, pointer.0, pointer.1) {
+            Some(control) if slider_index(control).is_some() => Some(control),
+            _ => masked_control_at(cache, state.origin, pointer.0, pointer.1),
+        };
+        if let Some(control) = state.pressed_slider() {
+            if inside_slider(control, pointer.0, pointer.1) {
+                state.move_thumb(control, pointer.0, pointer.1);
+            }
         }
     }
     if is_mouse_button_released(MouseButton::Left) {
+        // The capture's release sends the slider's value wherever the
+        // pointer is.
+        if let Some(control) = state.pressed_slider() {
+            state.send_slider(audio, control);
+        }
         let pressed = state.pressed.take();
         if pressed == masked_control_at(cache, state.origin, pointer.0, pointer.1) {
             if let Some(control) = pressed {
@@ -1054,7 +1217,7 @@ pub fn draw_game_options_overlay(
         Pos2::new(canvas.offset_x, canvas.offset_y),
         canvas.scale,
     );
-    if !state.modal() && !state.suspended {
+    if !state.modal() {
         if let Some(pointer) = ctx.input(|input| input.pointer.latest_pos()) {
             let x = (pointer.x - canvas.offset_x) / canvas.scale;
             let y = (pointer.y - canvas.offset_y) / canvas.scale;
@@ -1075,7 +1238,7 @@ pub fn draw_game_options_overlay(
                 // The name boxes (FUN_00604cf0: (119, y) 160 by 20) in the
                 // default font; under a question they stay white and take
                 // no input (A0 tooltip/211).
-                let editable = !state.modal() && !state.suspended;
+                let editable = !state.modal();
                 // The default font, as the shown name (A0 200-options: "test"
                 // at 13 ppem). The EDIT control sets its line 1 below the
                 // box's top (A0: baseline at y + 14, tmAscent 13); the box
@@ -1220,29 +1383,56 @@ mod tests {
     }
 
     #[test]
-    fn occupied_legacy_slots_wait_for_confirmation_and_cancellation_preserves_them() {
+    fn occupied_slots_wait_for_confirmation_and_cancellation_preserves_them() {
         let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
         state.refresh_saves(&[SaveSlotInfo {
-            slot: 9,
+            slot: 5,
             name: "Legacy".into(),
             timestamp: String::new(),
             game_tick: 0,
             player_is_alliance: None,
         }]);
-        let action = GameOptionsAction::Load { slot: 9 };
+        let action = GameOptionsAction::Load { slot: 5 };
         assert_eq!(state.request(action.clone()), GameOptionsAction::None);
         assert_eq!(state.pending, Some(action.clone()));
         assert_eq!(state.confirm(false), GameOptionsAction::None);
-        assert!(state.occupied[9]);
+        assert!(state.occupied[5]);
         assert_eq!(state.request(action.clone()), GameOptionsAction::None);
         assert_eq!(state.confirm(true), action);
         assert_eq!(state.confirm(true), GameOptionsAction::None);
     }
 
     #[test]
+    fn a_save_beyond_the_six_rows_is_neither_listed_nor_loadable() {
+        // FUN_00407180 builds six rows (Load 0x79..0x7e); manual p. 79:
+        // "There are six slots for saved games".
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        let save = |slot| SaveSlotInfo {
+            slot,
+            name: format!("Slot {slot}"),
+            timestamp: String::new(),
+            game_tick: 0,
+            player_is_alliance: None,
+        };
+        state.refresh_saves(&[save(2), save(7), save(9)]);
+        let listed: Vec<usize> = (0..state.occupied.len())
+            .filter(|&slot| state.occupied[slot])
+            .collect();
+        assert_eq!(listed, [2]);
+        assert_eq!(state.names[2], "Slot 2");
+        for slot in [7, 9] {
+            assert_eq!(
+                state.request(GameOptionsAction::Load { slot }),
+                GameOptionsAction::None
+            );
+            assert!(state.pending.is_none());
+        }
+    }
+
+    #[test]
     fn saves_require_valid_names_and_slots_and_overwrites_require_confirmation() {
         let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
-        for slot in [0, 9] {
+        for slot in [0, 5] {
             let save = GameOptionsAction::Save {
                 slot,
                 name: "Campaign".into(),
@@ -1262,7 +1452,7 @@ mod tests {
             name: " ".into(),
         };
         assert_eq!(state.request(blank.clone()), blank);
-        for (slot, name) in [(10, "Name"), (usize::MAX, "Name")] {
+        for (slot, name) in [(6, "Name"), (10, "Name"), (usize::MAX, "Name")] {
             assert_eq!(
                 state.request(GameOptionsAction::Save {
                     slot,
@@ -1272,13 +1462,6 @@ mod tests {
             );
             assert!(state.pending.is_none());
         }
-        state.suspended = true;
-        assert_eq!(
-            state.request(GameOptionsAction::Exit),
-            GameOptionsAction::None
-        );
-        assert!(state.pending.is_none());
-        state.suspended = false;
         state.request(GameOptionsAction::Exit);
         assert_eq!(
             state.request(GameOptionsAction::Return),
@@ -1476,35 +1659,125 @@ mod tests {
     }
 
     #[test]
-    fn a_slider_thumb_centres_on_its_whole_percent() {
-        // FUN_00604570: thumb centre floor(201 * v / 100).
+    fn a_slider_percent_becomes_floor_2000_log10_hundredths_of_a_decibel() {
+        // FUN_00406b80 commands 0x8d/0x8e (0x406de5..0x406e0d): 0 sends
+        // -9600 (0xffffda80), else floor(log10(v * 0.01) * 2000).
+        assert_eq!(
+            [0, 2, 47, 49, 50, 75, 97, 100].map(slider_hundredths),
+            [-9600, -3398, -656, -620, -603, -250, -27, 0]
+        );
+    }
+
+    #[test]
+    fn a_slider_opens_at_floor_100_times_ten_to_the_volume_over_2000() {
+        // FUN_00407180 (0x40773b..0x407780): below -9600 shows 0, else
+        // floor(10^(vol * 0.01 * 0.05) * 100).
+        assert_eq!(
+            [-10_000, -9601, -9600, -620, -603, 0].map(slider_percent),
+            [0, 0, 0, 48, 49, 100]
+        );
+    }
+
+    #[test]
+    fn a_sent_percent_reopens_one_lower_except_exact_powers_of_ten() {
+        // FUN_00406b80 floors the decibels and FUN_00407180 floors the
+        // percent, so only 1, 10 and 100 survive the round trip (in f64).
+        let kept: Vec<u32> = (1..=100)
+            .filter(|&v| slider_percent(slider_hundredths(v)) == v)
+            .collect();
+        assert_eq!(kept, [1, 10, 100]);
+        for v in (1..=100).filter(|v| !kept.contains(v)) {
+            assert_eq!(slider_percent(slider_hundredths(v)), v - 1, "{v}");
+        }
+    }
+
+    #[test]
+    fn the_mixer_gain_is_directsound_s_amplitude_for_the_volume() {
+        // IDirectSoundBuffer::SetVolume: hundredths of a decibel of
+        // attenuation, amplitude 10^(vol / 2000).
+        assert_eq!(hundredths_gain(0), 1.0);
+        assert!((hundredths_gain(-2000) - 0.1).abs() < 1e-7);
+        assert!((hundredths_gain(-603) - 0.499_4).abs() < 1e-4);
+        for hundredths in -10_000..=0 {
+            assert_eq!(gain_hundredths(hundredths_gain(hundredths)), hundredths);
+        }
+        assert_eq!(gain_hundredths(0.0), -10_000);
+        assert_eq!(gain_hundredths(2.0), 0);
+    }
+
+    #[test]
+    fn a_slider_opens_its_thumb_at_the_percent_its_volume_reads_back_as() {
+        // FUN_00604570: thumb centre floor(201 * v / 100) of FUN_00407180's
+        // percent; a sent 50 (-603) reads back as 49, centre 98.
         assert_eq!(slider_thumb_centre(0.0), 0.0);
-        assert_eq!(slider_thumb_centre(0.5), 100.0);
-        assert_eq!(slider_thumb_centre(0.75), 150.0);
+        assert_eq!(slider_thumb_centre(hundredths_gain(-603)), 98.0);
+        assert_eq!(slider_thumb_centre(hundredths_gain(-250)), 148.0);
         assert_eq!(slider_thumb_centre(1.0), 201.0);
         assert_eq!(slider_thumb_centre(2.0), 201.0);
     }
 
     #[test]
     fn a_slider_drag_takes_only_points_inside_its_five_pixel_margins() {
-        // FUN_00604950: x strictly within 5..196, value floor(x * 100 / 201).
+        // FUN_00604950: the thumb centres on a pointer strictly within x
+        // 5..196 and y 0..54; Class_0066e010_vt14 then sends
+        // floor(x * 100 / 201).
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
+        let mut audio = AudioVolumeState::default();
+        let music = GameOptionsControl::MusicVolume;
+        for (x, y) in [(5.0, 20.0), (196.0, 20.0), (100.0, 0.0), (100.0, 54.0)] {
+            state.move_thumb(music, 392.0 + x, 130.0 + y);
+            assert_eq!(state.thumb_centre(&audio, 0), 201.0, "{x},{y}");
+        }
+        state.move_thumb(music, 392.0 + 6.0, 130.0 + 1.0);
+        assert_eq!(state.thumb_centre(&audio, 0), 6.0);
+        state.send_slider(&mut audio, music);
+        assert_eq!(audio.music_volume, hundredths_gain(-3398));
+        assert!(audio.dirty);
+
+        let effects = GameOptionsControl::SoundVolume;
+        state.move_thumb(effects, 392.0 + 195.9, 190.0 + 53.0);
+        state.send_slider(&mut audio, effects);
+        assert_eq!(audio.sfx_volume, hundredths_gain(slider_hundredths(97)));
+        state.move_thumb(effects, 392.0 + 100.0, 190.0 + 27.0);
+        state.send_slider(&mut audio, effects);
+        assert_eq!(audio.sfx_volume, hundredths_gain(-620));
+        // The thumb stays at the pointer until the window opens again.
+        assert_eq!(state.thumb_centre(&audio, 1), 100.0);
+        state.set_origin(GameOptionsOrigin::CommandCenter);
+        assert_eq!(state.thumb_centre(&audio, 1), 96.0);
+    }
+
+    #[test]
+    fn a_click_that_does_not_move_the_thumb_sends_the_opened_percent() {
+        // Class_0066e010_vt14 posts +0xdc on the release, which
+        // FUN_00604a50 derived from the opened thumb: a volume that reads
+        // back as 48 opens at x 96 and sends floor(9600 / 201) = 47.
+        let mut state = GameOptionsState::new(GameOptionsOrigin::CommandCenter);
         let mut audio = AudioVolumeState {
-            music_volume: 0.4,
-            dirty: false,
+            music_volume: hundredths_gain(-620),
             ..Default::default()
         };
-        for x in [392.0 + 5.0, 392.0 + 196.0, 300.0] {
-            set_slider(&mut audio, GameOptionsControl::MusicVolume, x);
-            assert_eq!(audio.music_volume, 0.4, "{x}");
-            assert!(!audio.dirty);
-        }
-        set_slider(&mut audio, GameOptionsControl::MusicVolume, 392.0 + 6.0);
-        assert_eq!(audio.music_volume, 0.02);
-        assert!(audio.dirty);
-        set_slider(&mut audio, GameOptionsControl::SoundVolume, 392.0 + 195.9);
-        assert_eq!(audio.sfx_volume, 0.97);
-        set_slider(&mut audio, GameOptionsControl::SoundVolume, 392.0 + 100.0);
-        assert_eq!(audio.sfx_volume, 0.49);
+        let music = GameOptionsControl::MusicVolume;
+        state.move_thumb(music, 392.0 + 3.0, 130.0 + 20.0);
+        state.send_slider(&mut audio, music);
+        assert_eq!(audio.music_volume, hundredths_gain(slider_hundredths(47)));
+        // Full volume opens at 201, which sends 100: no change.
+        let mut full = AudioVolumeState::default();
+        state.set_origin(GameOptionsOrigin::CommandCenter);
+        state.send_slider(&mut full, music);
+        assert_eq!(full.music_volume, 1.0);
+        assert!(!full.dirty);
+    }
+
+    #[test]
+    fn a_slider_takes_a_press_anywhere_strictly_inside_its_window() {
+        // FUN_006048f0: 0 < x < 201 and 0 < y < 54 in slider pixels.
+        let music = GameOptionsControl::MusicVolume;
+        assert!(inside_slider(music, 393.0, 131.0));
+        assert!(inside_slider(music, 592.9, 183.9));
+        assert!(!inside_slider(music, 392.5, 150.0));
+        assert!(!inside_slider(music, 500.0, 184.0));
+        assert!(!inside_slider(GameOptionsControl::Music, 500.0, 150.0));
     }
 
     #[test]

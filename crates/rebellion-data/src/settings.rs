@@ -6,7 +6,9 @@
 //! Game Options window's flag word (`FUN_00417670`, `FUN_00416360`,
 //! `FUN_004176e0`, `FUN_004163a0`; read back by `FUN_004173c0` and
 //! `FUN_00413000`). The port keeps the same four values in
-//! `<saves>/settings.json` natively and in `localStorage` in the browser.
+//! `<saves>/settings.json` natively and in `localStorage` in the browser,
+//! each volume as DirectSound's amplitude `10^(vol / 2000)` for the
+//! registry's hundredths of a decibel (`game_options` in rebellion-render).
 
 use serde::{Deserialize, Serialize};
 
@@ -29,9 +31,10 @@ pub mod display {
 /// The persisted Game Options.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
-    /// Music volume, 0..1 (the slider's percent over 100).
+    /// Music volume: the amplitude `10^(vol / 2000)`, 0..1, of the
+    /// original's `MusicVolume` hundredths of a decibel.
     pub music_volume: f32,
-    /// Sound-effect volume, 0..1.
+    /// Sound-effect volume, the amplitude of `Volume`, 0..1.
     pub effects_volume: f32,
     /// The window's flag word, in the original's `DisplayOpts` layout.
     pub display_options: u32,
