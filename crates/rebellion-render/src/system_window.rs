@@ -1336,8 +1336,19 @@ fn draw_system_window(
                         let bar = logical_rect(local, scale, px, py, width, height);
                         painter.rect_filled(bar, 0.0, egui::Color32::BLACK);
                         if let Some(progress) = shown.progress {
+                            #[expect(
+                                clippy::cast_possible_truncation,
+                                clippy::cast_sign_loss,
+                                clippy::cast_precision_loss,
+                                reason = "The bar is 160 pixels wide."
+                            )]
+                            let filled = crate::manufacturing_window::progress_pixels(
+                                width as u32,
+                                progress,
+                            )
+                            .min(width as u32) as f32;
                             let mut done = bar;
-                            done.set_width(bar.width() * progress.clamp(0.0, 1.0));
+                            done.set_width(filled * scale);
                             painter.rect_filled(done, 0.0, PROGRESS_COLOR);
                         }
 
@@ -2552,6 +2563,45 @@ mod tests {
             "{:?}",
             run.fills
         );
+    }
+
+    #[test]
+    fn a_bands_progress_bar_fills_whole_pixels_rounded_down() {
+        // The band's bar (Class_0065c058_vt14, FUN_004ad210) fills
+        // (width * position) / range pixels in unsigned integer division:
+        // A0 2026-11-11-manufacturing-focus/06 (Averam, day 38, an Alliance
+        // Army Regiment of 6 points one point in) fills 26 of its 160, and
+        // build-selection2/22 (Coruscant, three points of six) 80.
+        for (done, pixels) in [(1, 26.0), (3, 80.0)] {
+            let (world, systems) = fixture_world(1);
+            let mut manufacturing = ManufacturingState::new();
+            manufacturing.build(
+                systems[0],
+                &QueueItem::new(BuildableKind::Troop(DatId::new(0x1000_0002)), 6),
+                1,
+            );
+            let queue = manufacturing.queue_mut(
+                systems[0],
+                rebellion_core::manufacturing::ProductionArea::TrainingFacility,
+            );
+            for _ in 0..done {
+                let _ = queue.add_point();
+            }
+            let mut state = opened(&world, systems[0]);
+            let run = run_with(&world, &manufacturing, &mut state, hover(at(150.0, 10.0)));
+            // The troops band's bar at (56, 208), 160 by 4; the test draws
+            // at scale 2.
+            let bar = egui::Rect::from_min_size(at(56.0, 208.0), egui::vec2(320.0, 8.0));
+            let yellow = |colour: egui::Color32| {
+                colour.r() > 0 && colour.r() == colour.g() && colour.b() == 0
+            };
+            let filled = run
+                .fills
+                .iter()
+                .find(|(rect, colour)| yellow(*colour) && rect.min == bar.min)
+                .unwrap_or_else(|| panic!("{:?}", run.fills));
+            assert_eq!(filled.0.width(), pixels * 2.0, "{done} of 6 points");
+        }
     }
 
     #[test]

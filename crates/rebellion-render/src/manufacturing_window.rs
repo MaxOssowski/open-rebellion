@@ -50,6 +50,19 @@ pub const PROGRESS_RECTS: [(f32, f32, f32, f32); 3] = [
     (56.0, 289.0, 160.0, 4.0),
 ];
 
+/// The pixels a band's bar fills of its `width`: `width * position /
+/// range` in unsigned integer division, none with no range
+/// (`Class_0065c058_vt14`, `FUN_004ad210`, the class `FUN_004acec0`
+/// builds). A0 2026-11-11-manufacturing-focus/06 fills 26 of 160 for one
+/// point of six.
+#[must_use]
+pub fn progress_pixels(width: u32, (position, range): (u32, u32)) -> u32 {
+    if range == 0 {
+        return 0;
+    }
+    width.saturating_mul(position) / range
+}
+
 /// Inside a band (`FUN_00458080`): the title, the status line, the units
 /// line and the destination line, font 10; the product's portrait.
 pub const BAND_TITLE: (f32, f32) = (5.0, 1.0);
@@ -125,8 +138,9 @@ pub struct Band {
     pub units: Option<String>,
     /// "Destination: " and the area's destination system.
     pub destination: String,
-    /// The product's progress (`+0x5c` of `+0x68`), with a product.
-    pub progress: Option<f32>,
+    /// The product's progress, with a product: its points made and its
+    /// cost, the bar's position `+0x5c` and range `+0x68`.
+    pub progress: Option<(u32, u32)>,
 }
 
 /// The band for `system`'s `area` (`FUN_00458080`, `FUN_00457c90`,
@@ -206,7 +220,7 @@ pub fn band(
         portrait,
         units: Some(format!("{verb}: {}", queue.len())),
         destination,
-        progress: Some(queue.progress_fraction()),
+        progress: Some((queue.completed_points(), active.cost)),
     }
 }
 
@@ -831,7 +845,7 @@ mod tests {
         // A ship's band names the product's container, Denab's spare, which
         // holds no ship yet: "Fleet" (FUN_004591b0; A0 66).
         assert_eq!(shown.destination, "Destination: Fleet");
-        assert_eq!(shown.progress, Some(0.0));
+        assert_eq!(shown.progress, Some((0, 10)));
 
         // Hidden from the player, the band shows nothing building.
         let hidden = band(
