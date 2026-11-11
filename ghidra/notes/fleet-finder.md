@@ -118,6 +118,14 @@ The command slot (`FUN_00462770`):
 - `0xfa`, the mode group: `FUN_004632d0` clears the name box, switches the
   background (`FUN_006075e0`), and rebuilds the list for the tab in use.
 
+A tab (case `100`, `FUN_00462770`): `FUN_00462be0` empties the chosen id
+`+0x16c` when the tab changes (`0x463114`) and refills the list without
+writing its first visible pixel; `FUN_0060a280` → `FUN_00609ae0` clamps
+that to the new range, and `FUN_00609650` then chooses the name box's
+best row and scrolls only as its row needs (`FUN_00609ed0`). port:
+`rebuilt_scroll`, `set_tab` keeps `scroll`
+(`a_tab_keeps_the_lists_place_clamped_then_scrolls_to_its_match`).
+
 The name box (`FUN_00462a50`): `0x408` (its text changed) picks the first
 row, in list order, with the longest prefix in common with the text,
 ignoring case (`FUN_00609650` → `FUN_005f3430` with case flag 0, which

@@ -238,17 +238,36 @@ The command slot (`FUN_00464c20`):
 - `0x407` (Enter) with `0xcb` (the name box): if `+0x178` (chosen id) is
   valid and differs from null, call `FUN_00429440(view, +0x178)` to open it,
   then close.
-- `0x408` (text changed) with `0xcb`: scan the SpecForces list `+0x174`'s
-  `+0xa0` sub-list via `FUN_005f3040` to get the text length. If non-zero,
-  `FUN_00609650` finds the best prefix match, and `FUN_0060a860` retrieves
-  the matched row's id, stored via `FUN_0042d170` and `FUN_004f26d0` into
-  `+0x178`. If no match, `+0x178` is zeroed.
-
-hyp: typing a system name in the name box matches against the character list
-(view tab 2) or the SpecForces list (view tab 3), depending on which sorted
-list is in the active view. The SpecForces grid itself is not directly
-searchable by system name through the name box; the name box searches row
-names (character names or system names with special force counts).
+- `0x408` (text changed) with `0xcb` (read from the disassembly at
+  `0x464cdd`): if the name box's string has a buffer (`FUN_005f3040` on
+  `+0x14c → +0x98`, its length plus one; 0 only before any edit),
+  `FUN_00609650` runs on the shown list `+0x150` (the list control `0xca`),
+  chooses the best prefix row and scrolls to it; `FUN_0060a860` on the
+  list's item container `+0xa0` finds that row's id, stored into `+0x178`.
+  With no row (an empty list) `+0x178` is emptied.
+- The rows' text is the object's name (`FUN_00464e10`: `FUN_004f62d0` →
+  `FUN_005f35e0` on each item): a character's name in Characters, a
+  system's or fleet's name in SpecForces. So the SpecForces view is
+  searched by system (or fleet) name, through the same `FUN_00609650`
+  (case-insensitive, longest shared beginning, first row on a tie or with
+  no letter shared; `list_prefix.rs`). There is no typing timeout and no
+  wrap: the name box holds the text, and each edit rescans from the top.
+- Unlike the Fleet, System and Troop Finders, the side tab (case `100` of
+  `FUN_00464890`) and the view tab (`0x6e`) only rebuild the list
+  (`FUN_00464e10`): no `FUN_00609650`, so no row is chosen after a tab, and
+  `+0x178` is left as it was. Display (case `0xc9`) and Enter (`0x407`)
+  open `+0x178`, so a name typed or a row clicked before a tab change still
+  opens. port: `personnel_finder.rs` keeps it as `target`
+  (`display_after_a_tab_change_opens_the_name_typed_before_it`, Display and
+  Enter).
+- The tab rebuild keeps the list's first visible pixel: `FUN_00464e10`
+  swaps the item container (`FUN_00608280`) and lays the list out
+  (`FUN_0060a280` → `FUN_00609ae0`, which only clamps `+0xc4` to the new
+  range). port: `set_tab`/`set_view` keep `scroll`, which the bar clamps
+  (`a_tab_keeps_the_lists_place_clamped_to_its_new_rows`).
+- A click on a row (`0xca`, `0x29b`) stores its id in `+0x178` and copies
+  its name into the box (`FUN_00604f90`, which posts no `0x408`); a double
+  click (`0x309`) opens it.
 
 ### Display/open targets via `FUN_00429440`
 
@@ -293,7 +312,8 @@ separate Personnel window; kind 11 is the Missions window
   `personnel_finder::character_target`: its fleet, the Missions window
   (showing its mission, slot 27 `FUN_004a1e10`), or the Defenses window.
 - port: the name box searches character names in Characters view, and system
-  names in SpecForces view (hyp).
+  or fleet names in SpecForces view (`FUN_00464e10` item text; see
+  "Choosing and opening").
 - port: dead characters are listed; this differs from the Troop Finder which
   only lists active regiments.
 - Since 2026-10-22 the port follows the corrected view mapping (panels,

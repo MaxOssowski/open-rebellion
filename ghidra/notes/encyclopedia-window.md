@@ -182,8 +182,37 @@ or white; the fonts above; no first-row selection
 resets to All Databases; `OriginalEncyclopediaCatalog::set_galaxy_systems`
 limits the systems to the world's. Since 2026-10-29 (later the same day)
 the list scrolls by pixels with its bar, `FUN_0060a490(.., list, 7,
-0x299d, ..)` (RCDATA 10653, the Battle Results' art), arrow step 10; the
-scroll returns to the top when the category changes (`FUN_0045f100`).
+0x299d, ..)` (RCDATA 10653, the Battle Results' art), arrow step 10.
+Corrected 2026-11-11: a category change does not return the scroll to
+the top. `FUN_0045f100` swaps the list's items (`FUN_00608280`) and lays
+it out (`FUN_0060a280` → `FUN_00609ae0`, which only clamps the first
+visible pixel to the new range); then case `0x6e` of `FUN_0045da70` runs
+`FUN_00609650` on the Topic box (`+0x128`), which chooses the box's best
+row and scrolls only as far as it needs (`FUN_00609ed0`). port:
+`change_category` (`a_category_keeps_the_lists_place_while_its_row_shows`)
+and `choose_category_row`, which now takes the best prefix row of the
+box's text where it took the first row
+(`a_category_chooses_the_row_the_topic_box_best_begins`).
+
+## The Topic box (`FUN_0045d8f0`, slot `+0x14`)
+
+- `0x408` from the box (id 100): `FUN_00609650(box +0x98)` on the list
+  chooses and scrolls to the best prefix row (as the Finders,
+  `list_prefix.rs`), and `+0x148` takes that item (`FUN_006098f0`), or 0.
+  Unlike the Finders' handlers there is no `FUN_005f3040` guard here, but
+  `FUN_00609650` has its own: a box that never held a string chooses
+  nothing. A0 category-1..6 choose the first row under the opened, empty
+  box, so it holds a string by then; where it gets one is untraced.
+- `0x407` (Enter) from the box with `+0x148` set: `FUN_0045f480(2)`, the
+  topic of the chosen object.
+- A row click (`0x29b`) writes its name into the box (`FUN_00604f90`, no
+  `0x408`); a double click (`0x309`) presses Topic (`0x67`). The Index
+  command (`0x68`) gives the box the focus; a category icon gives it to
+  `+0x12c`.
+- port: typing into the Topic box and Enter are not ported. The port
+  paints the box's text as a label (`selected_name`); an editable box
+  needs the focus rules above (which control holds the keys after a
+  category or a row click) and a browser gate. Open.
 It matches the A0 bar to 2 pixels. port: the wheel also scrolls, a row
 a notch.
 

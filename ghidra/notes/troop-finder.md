@@ -140,7 +140,19 @@ column header position). Active means `+0x50` bit 0 is set on the regiment.
 
 The command slot (`FUN_0046df90`):
 
-- `100`, a tab: rebuild the list for it via `FUN_0046ea10`.
+- `100`, a tab: rebuild the list for it via `FUN_0046ea10`, then
+  `FUN_00609650` on the name box's text; its row's id goes to `+0x17c`
+  only when it finds one (`if (iVar3 != 0)`). `FUN_0046ea10` does not
+  write `+0x17c` (its only writer outside the handlers is the constructor
+  at `0x46f1de`), so a tab with no rows keeps the id chosen before, and
+  Display opens it (port: `troop_finder.rs` `target`,
+  `display_after_a_tab_with_no_rows_opens_the_row_chosen_before`).
+  The rebuild never writes the list's first visible pixel either: it
+  empties and refills the items and lays the list out (`FUN_0060a280` →
+  `FUN_00609ae0`, which clamps it to the new range), and `FUN_00609650`
+  then scrolls only as far as its row needs (`FUN_00609ed0`). port:
+  `rebuilt_scroll`, `set_tab` keeps `scroll`
+  (`a_tab_keeps_the_lists_place_clamped_then_scrolls_to_its_match`).
 - `0xca`, the list: notification `0x29b` (click) copies the row's name into
   the name box; `0x309` (double click) resolves the chosen id and opens it.
 - `0xc9`, Display: resolve the chosen id `+0x17c` and open it. `200`,
@@ -160,17 +172,15 @@ The chosen id at `+0x17c` is resolved via `FUN_004f2d10(side, id)`:
 
 Then close.
 
-### Name box behavior (`FUN_00464c20`, `0x408`)
+### Name box behavior (`FUN_0046e5f0`, `0x408`)
 
-When the name box text changes (`0x408` with `0xcb`), the code reads the
-name box text and scans the sorted list `+0x174` (the character list in the
-Personnel Finder) via `FUN_00609650` for the best prefix match.
-
-hyp: in the Troop Finder, `+0x174` is not used (only `+0x178`). The
-name-box handler here (`FUN_00464c20`) is the Personnel Finder's handler
-(vtable `0x0065a130`), not the Troop Finder's. The Troop Finder's own
-name-box handler is in its vtable. The prefix-match picks the first row
-sharing the longest common prefix, scrolls to it and selects it.
+The Troop Finder's own slot `+0x14` (vtable `0x0065a270`, `FUN_0046e5f0`)
+answers `0x408` from `0xcb` as the other Finders do: when the box's
+string has a buffer (`FUN_005f3040`), `FUN_00609650` chooses and scrolls
+to the best prefix row and `FUN_0060a860` stores its id in `+0x17c`; with
+no row the id is emptied. (`FUN_00464c20`, cited here before, is the
+Personnel Finder's.) See
+`docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-finder-prefix-search/`.
 
 ### Typed-name behavior (system name search)
 
@@ -211,8 +221,6 @@ F5 keys and `WM_COMMAND` `0x12d`-`0x130` all check this.
 - Whether the bitmap strip renders the troop's icon sprite or a text count
   (the decompile shows `FUN_00583c40`, which returns a string from a
   TEXTSTRA-style resource, written at a column position, suggesting text).
-- The Troop Finder's own `0x408` name-box handler (if different from
-  `FUN_00464c20`).
 
 ## Supporting decompiles
 

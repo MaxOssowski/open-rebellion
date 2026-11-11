@@ -177,10 +177,13 @@ cleared** (Fleet's fill clears `+0x16c`).
 - `0x407` (Enter) from `0xcb`: if `+0x160` is not the empty id, open as
   Display (`FUN_004f3220` -> `FUN_00429ce0(sector)`) and close. With no
   chosen id Enter does nothing. (A0: "cor" + Enter -> Corellian sector.)
-- `0x408` (text changed) from `0xcb`: if the text is non-empty
-  (`FUN_005f3040`), `FUN_00609650` prefix choice -> row; `+0x160` = row id,
-  or the empty id if no row / empty text. hyp: as in the Fleet note, with no
-  letter shared the first row is chosen.
+- `0x408` (text changed) from `0xcb`: if the name box's string has a
+  buffer (`FUN_005f3040`: its length plus one, 0 only before any edit;
+  `FUN_005f3c30` leaves an allocated empty string after Backspace),
+  `FUN_00609650` prefix choice -> row; `+0x160` = row id, or the empty id
+  with no row. So a name emptied by an edit chooses the first row, as with
+  no letter shared (corrected 2026-11-11: the port had cleared the choice
+  for an empty name; `system_finder::edited_choice`).
 - else the base handler `Class_0066e060_vt14`.
 
 ## Keys (`FUN_00461590`, slot +0x4c, identical to Fleet `FUN_00463360`)
