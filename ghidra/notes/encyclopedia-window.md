@@ -222,7 +222,7 @@ forwards unhandled `WM_KEYDOWN` to the window) nor the window
 
 | Event | Focus after it | Source |
 |---|---|---|
-| Opening (`0x131`, F7, the menus) | unchanged: no `SetFocus` | `FUN_00429f30`, `FUN_0045d400`, `FUN_0045ddc0` |
+| Opening (`0x131`, F7, the menus) | the box: A0 `2026-11-11-icon-menu-topic/21` takes "cor" with no press. No `SetFocus` was found in `FUN_00429f30`, `FUN_0045d400` or `FUN_0045ddc0`; the call that gives it is untraced | A0 |
 | A press on the box | the box | `FUN_00605160` `0x201`: `SetFocus(self)` |
 | Index (`0x68`), or Topic (`0x67`) with nothing chosen, which presses Index | the box `+0x128` | `FUN_0045da70` case `0x66` |
 | A category icon (`0x6e`) | the list `+0x12c` | `FUN_0045da70` |
@@ -236,7 +236,7 @@ table (`command_focus`, the box's press, a row's press, `0x68` in
 Backspace edit the box's text and each edit runs `best_prefix_row` with
 `row_to_show`; Enter with an object chosen shows its topic
 (`type_into_topic_box`; tests
-`typing_reaches_the_topic_box_only_once_it_is_pressed`,
+`typing_reaches_a_freshly_opened_topic_box_and_chooses_the_best_row`,
 `a_category_icon_or_a_row_takes_the_keys_from_the_topic_box`). The box
 keeps its painted look (`selected_name`). port: the caret is not drawn
 and stays at the text's end (a press places it at the pointer,

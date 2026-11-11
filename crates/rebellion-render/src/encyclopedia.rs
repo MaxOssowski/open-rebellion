@@ -1202,7 +1202,11 @@ pub fn open_original_encyclopedia_at(
 ) {
     state.open = true;
     state.original_topic_mode = false;
-    state.original_box_focused = false;
+    // A freshly opened index takes typing in its Topic box at once (A0
+    // 2026-11-11-icon-menu-topic/21: "cor" typed with no press). The
+    // trace found no SetFocus on the opening path; which call gives the
+    // box the focus is untraced.
+    state.original_box_focused = true;
     state.original_extra_entry = None;
     state.original_topic_text = None;
     state.original_category_command = 0x6f;
@@ -3031,35 +3035,21 @@ mod tests {
     }
 
     #[test]
-    fn typing_reaches_the_topic_box_only_once_it_is_pressed() {
-        // FUN_00429f30 opens the window without SetFocus, so keys do not
-        // reach the box; a press on it (FUN_00605160 0x201) gives it the
-        // focus. Each edit's 0x408 (FUN_0045d8f0) chooses the best prefix
-        // row and scrolls to it (FUN_00609650); Enter's 0x407 shows the
-        // chosen object's topic (FUN_0045f480(2)).
+    fn typing_reaches_a_freshly_opened_topic_box_and_chooses_the_best_row() {
+        // A0 2026-11-11-icon-menu-topic/20-22: the opened index's box takes
+        // "cor" with no press. Each edit's 0x408 (FUN_0045d8f0) chooses the
+        // best prefix row and scrolls to it (FUN_00609650); Enter's 0x407
+        // shows the chosen object's topic (FUN_0045f480(2)).
         let catalog = systems_catalog();
         let mut state = EncyclopediaState::default();
         open_original_encyclopedia_at(&mut state, &catalog, None);
+        assert!(state.original_box_focused);
         run_index(
             &mut state,
             &catalog,
             (200.0, 54.0),
             vec![vec![egui::Event::Text("s1".into())]],
         );
-        assert_eq!(state.original_selected_object_id, None);
-        assert_eq!(state.original_topic_text, None);
-
-        run_index(
-            &mut state,
-            &catalog,
-            (200.0, 54.0),
-            vec![
-                vec![button((200.0, 54.0), true)],
-                vec![button((200.0, 54.0), false)],
-                vec![egui::Event::Text("s1".into())],
-            ],
-        );
-        assert!(state.original_box_focused);
         // "s1": S10 shares two letters, the first row to do so.
         assert_eq!(state.original_selected_object_id, Some(0x9000_000b));
         assert_eq!(state.original_topic_text.as_deref(), Some("s1"));
