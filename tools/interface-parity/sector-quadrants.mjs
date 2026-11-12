@@ -229,7 +229,7 @@ function compareIcon(screenshot, rect, icon, label, directory, keyed = true) {
       const from = (y * icon.width + x) * 4;
       const at = ((Math.round(top) + y) * screenshot.width + Math.round(left) + x) * 4;
       actual.data.set(screenshot.data.subarray(at, at + 4), from);
-      if (keyed && blueKey(icon.data, from)) {
+      if (typeof keyed === "function" ? keyed(x, y) : keyed && blueKey(icon.data, from)) {
         diff.data.set([0, 0, 96, 255], from);
         continue;
       }
@@ -345,6 +345,32 @@ async function systemWindowText(page, origin, directory) {
   return checks;
 }
 
+// A 235 by 304 window (FUN_004ac120) on `port` at `portOrigin` against A0's
+// `a0File` at `a0Origin`, every pixel but `masks` ([x, y, w, h] in window
+// pixels): the text objects, whose glyphs are Liberation's, and what each
+// game's own state draws. Returns the count and the first differing pixels.
+function wholeWindow(port, portOrigin, a0File, a0Origin, masks) {
+  const a0 = PNG.sync.read(fs.readFileSync(a0File));
+  const masked = (x, y) => masks.some(([mx, my, mw, mh]) => x >= mx && y >= my && x < mx + mw && y < my + mh);
+  const rgbAt = (png, x, y) => {
+    const i = (y * png.width + x) * 4;
+    return (png.data[i] << 16) | (png.data[i + 1] << 8) | png.data[i + 2];
+  };
+  let compared = 0;
+  const differing = [];
+  for (let y = 0; y < 304; y += 1) {
+    for (let x = 0; x < 235; x += 1) {
+      if (masked(x, y)) continue;
+      compared += 1;
+      if (rgbAt(port, portOrigin[0] + x, portOrigin[1] + y) !== rgbAt(a0, a0Origin[0] + x, a0Origin[1] + y)) {
+        differing.push([x, y]);
+      }
+    }
+  }
+  return { a0: path.basename(a0File), compared, differing: differing.length, first: differing.slice(0, 12),
+    masks: masks.length };
+}
+
 function observations(page) {
   return page.evaluate(() => window.__openRebellionInterfaceQuadrants || []);
 }
@@ -437,7 +463,16 @@ function compareTabs(screenshot, source, window, directory, prefix) {
   for (const [name, rect] of window.tabs) {
     const index = PAGES.indexOf(name);
     const id = tabArt(name, window.side, window.page === name, window.counts[index] === 0);
-    checks.push({ id, ...compareIcon(screenshot, rect, resource(source, id), `${prefix}-tab-${name}`, directory) });
+    // The tabs key their first DIB pixel's colour (bmp_cache.rs; A0
+    // garrison-clean shows their pure blue drawn), so only that colour
+    // stays out of the check.
+    const icon = resource(source, id);
+    const corner = (icon.height - 1) * icon.width * 4;
+    const keyed = (x, y) => {
+      const i = (y * icon.width + x) * 4;
+      return [0, 1, 2].every((k) => icon.data[i + k] === icon.data[corner + k]);
+    };
+    checks.push({ id, ...compareIcon(screenshot, rect, icon, `${prefix}-tab-${name}`, directory, keyed) });
   }
   return checks;
 }
@@ -979,6 +1014,22 @@ const cases = [
         const ratio = a && p ? (p[2] - p[0] + 1) / (a[2] - a[0] + 1) : 0;
         assert.ok(a && p && Math.abs(a[0] - p[0]) <= 2 && Math.abs(a[1] - p[1]) <= 2 && ratio > 0.85 && ratio < 1.15,
           `the garrison line ${JSON.stringify(pageLabels.garrison)}`);
+      }
+      // The whole window against the same A0 Yavin (305, 86): every pixel
+      // but the title, the page name and garrison lines (text), the first
+      // two cells (A0's two Army regiments, the fixture's one Fleet
+      // regiment) and the tabs whose empty art differs by state (A0's Yavin
+      // lists personnel and squadrons but no batteries; compareTabs checks
+      // each tab against its bitmap). Their bottom row, with the tab's key
+      // pixel, stays in: A0 shows 10577's white there (FUN_00602d30 ->
+      // FUN_005fd0f0), and black under the title buttons' key pixels.
+      if (faction.side === 1 && fs.existsSync(garrisonA0)) {
+        pageLabels.whole = wholeWindow(regimentsLabel, origin, garrisonA0, [305, 86], [
+          [19, 2, 175, 14], [2, 53, 231, 27], [7, 81, 140, 70],
+          [28, 20, 36, 32], [100, 20, 36, 32], [172, 20, 36, 32],
+        ]);
+        assert.ok(pageLabels.whole.compared > 45_000 && pageLabels.whole.differing === 0,
+          `the whole Defenses window: ${JSON.stringify(pageLabels.whole)}`);
       }
       const mini = REGIMENT_MINI[faction.side];
       const regimentChecks = [
@@ -1590,6 +1641,28 @@ const cases = [
       const later = await stableScreen(page, directory, "en-route-later");
       const still = compareIcon(later, place, composite, "en-route-mini-later", directory);
       assert.equal(still.different_pixels, 0, `the mark moved: ${JSON.stringify(still)}`);
+      // The whole window against A0 mission-reports/missions-window-enroute-
+      // day276 (the Empire's "Mission at Chandrila" at (153, 91)): every
+      // pixel but the text (title, "Target:", the target's and the agent's
+      // names) and what each game's state draws (A0 lists two missions, the
+      // second selected; the target's picture). A0 shows 11165's grey under
+      // the title buttons' key pixels (FUN_00602d30 -> FUN_005fd0f0).
+      // Open: under the tabs' key pixels A0 shows (166, 202, 240) at
+      // (105, 142) and (90, 88, 94) at (166, 142), the port the
+      // background's black; the strip's own backdrop (FUN_0060d590) is not
+      // traced. Those two pixels are the only ones allowed to differ.
+      const missionsA0 = path.join(root, ".artifacts/a0-vm/mission-reports/missions-window-enroute-day276.png");
+      let whole = null;
+      if (faction.side === 2 && fs.existsSync(missionsA0)) {
+        whole = wholeWindow(later, window.origin, missionsA0, [153, 91], [
+          [19, 2, 180, 14], [5, 24, 90, 100], [109, 25, 113, 14], [108, 37, 122, 50],
+          [109, 91, 113, 16], [107, 180, 117, 14],
+        ]);
+        const open = new Set(["105,142", "166,142"]);
+        assert.ok(whole.compared > 45_000 && whole.differing <= 2
+          && whole.first.every((pixel) => open.has(pixel.join(","))),
+        `the whole Missions window: ${JSON.stringify(whole)}`);
+      }
       // A0 mission-reports/missions-window-enroute-day276 (the Empire's
       // "Mission at Chandrila", Jerjerrod in hyperspace): the Empire's
       // traveller is Jerjerrod, and his composed mini is found in A0's
@@ -1618,7 +1691,7 @@ const cases = [
         a0 = best;
         assert.equal(best.differ, 0, `Jerjerrod's en route mini differs from A0: ${JSON.stringify(best)}`);
       }
-      return { at, window, checks, still, a0 };
+      return { at, window, checks, still, a0, whole };
     },
   },
   {

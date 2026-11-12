@@ -21,7 +21,9 @@ use rebellion_core::world::GameWorld;
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
 use crate::defenses_window::title_resource;
-use crate::fleet_window::{faction_side, mini_marks, paint_native, MiniObject};
+use crate::fleet_window::{
+    faction_side, mini_marks, paint_key_pixel, paint_native, KeyPixel, MiniObject,
+};
 use crate::mission_dialog::{kind_icon, kind_name};
 use crate::minis::capital_ship_mini_id;
 use crate::quadrant_icons::{mission_keys, missions_side, visible_members};
@@ -1203,6 +1205,21 @@ fn draw_missions_window(
                     scale,
                     x,
                     3.0,
+                );
+                // The buttons are children blitted keyed over the window
+                // (FUN_0049f540 makes them with FUN_00602150; FUN_00602d30
+                // -> FUN_005fd0f0): A0 mission-reports/missions-window-
+                // enroute-day276 shows 11165's grey (90, 88, 94) at (3, 16),
+                // (204, 16) and (218, 16), not the key's green or the strip.
+                paint_key_pixel(
+                    &painter,
+                    ctx,
+                    cache,
+                    local,
+                    scale,
+                    x,
+                    16.0,
+                    KeyPixel::Background(BACKGROUND),
                 );
                 clicked[index] = exact_clicked(&response, rect);
             }
@@ -2534,5 +2551,25 @@ mod tests {
         assert!(held.painted.contains(&(CLOSE_PRESSED, at(218.0, 3.0))));
         assert!(held.painted.contains(&(MINIMIZE_NORMAL, at(204.0, 3.0))));
         assert_eq!(state.window_count(), 1);
+    }
+
+    // A0 mission-reports/missions-window-enroute-day276: each title
+    // button's key pixel shows the window's background 11165 (grey (90, 88,
+    // 94) at (3, 16), (204, 16), (218, 16)), not the key's green or the
+    // strip: the buttons are children blitted keyed (FUN_00602d30 ->
+    // FUN_005fd0f0).
+    #[test]
+    fn the_title_buttons_key_pixels_show_the_windows_background() {
+        let (world, system, missions, _) = busy();
+        let mut state = opened(&world, &missions, system);
+        crate::fleet_window::tests::KEY_PIXELS.with(|pixels| pixels.borrow_mut().clear());
+        let _ = run(&world, &missions, &mut state, hover(at(150.0, 10.0)));
+        let pixels = crate::fleet_window::tests::KEY_PIXELS.with(|pixels| pixels.take());
+        for x in [3.0, 204.0, 218.0] {
+            assert!(
+                pixels.contains(&(KeyPixel::Background(BACKGROUND), at(x, 16.0))),
+                "{x} in {pixels:?}"
+            );
+        }
     }
 }

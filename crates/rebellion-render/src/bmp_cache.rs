@@ -1962,7 +1962,6 @@ fn uses_blue_screen_transparency(source: DllSource, resource_id: u32) -> bool {
                 | 10511..=10512
                 | 10514..=10521
                 | 10528..=10535
-                | 10550..=10576
                 | 10578..=10579
                 | 10771..=10790
                 // The Battle Alert / Summary frames, whose blue surrounds
@@ -2287,6 +2286,13 @@ fn uses_first_pixel_key(source: DllSource, resource_id: u32) -> bool {
                 // personnel-states/30 shows the rail through 10951's border.
                 | 10_873
                 | 10_951
+                // The Defenses window's tabs (FUN_004a8790's strip of
+                // CoolStrobeButtons, FUN_00602d30): each keys its magenta
+                // first pixel (10562 its white) and keeps its pure blue. A0
+                // garrison-clean/test-day483-yavin-regiments shows the
+                // selected 10564's blue right columns (98..99, 21..52) and
+                // 10577's white under every tab's (x, 52).
+                | 10_550..=10_576
         )
 }
 
@@ -3453,6 +3459,23 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_defenses_windows_tabs_key_their_first_pixel_and_keep_their_blue() {
+        // FUN_00602d30 -> FUN_005fd0f0 keys the first DIB pixel only. A0
+        // garrison-clean/test-day483-yavin-regiments: the selected
+        // Regiments tab 10564 shows its pure blue right columns, and
+        // 10577's white shows under each tab's magenta corner.
+        let bytes = indexed_bmp(&[[255, 0, 255], [0, 0, 255]]);
+        for resource_id in [10550, 10563, 10564, 10571, 10576] {
+            let decoded = decode_color_image(&bytes, DllSource::Strategy, resource_id).unwrap();
+            assert_eq!(
+                [decoded.pixels[0].a(), decoded.pixels[1].a()],
+                [0, 255],
+                "{resource_id}"
+            );
+        }
+    }
+
+    #[test]
     fn build_selections_buttons_key_out_their_first_pixels_colour() {
         // FUN_005fd170 keeps the first byte of the bits as the key and
         // FUN_005fd0f0 skips it: 10594's corners (index 174, pink) show the
@@ -3740,9 +3763,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_defenses_windows_tabs_frames_and_rail_icons_key_out_their_blue_matte() {
-        // STRATEGY 10550..10576 (the tab buttons, blitted keyed by
-        // FUN_00602d30 through FUN_005fd0f0), 10578/10579 (the row frames,
+    fn the_defenses_windows_row_frames_and_rail_icons_key_out_their_blue_matte() {
+        // STRATEGY 10578/10579 (the row frames,
         // keyed over the mini by FUN_004a9ab0) and 11530..11535 (the rail
         // icons, which FUN_00428d70 blits keyed; the A0 rail capture of a
         // System window shows no blue) carry the palette-blue matte; the
@@ -3756,9 +3778,7 @@ pub(crate) mod tests {
                 image::ImageFormat::Png,
             )
             .unwrap();
-        for resource_id in [
-            10550, 10563, 10576, 10578, 10579, 11530, 11532, 11533, 11535,
-        ] {
+        for resource_id in [10578, 10579, 11530, 11532, 11533, 11535] {
             let decoded = decode_color_image(&encoded, DllSource::Strategy, resource_id).unwrap();
             assert_eq!(decoded.pixels[0].a(), 0, "{resource_id}");
         }

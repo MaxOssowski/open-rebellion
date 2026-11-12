@@ -279,7 +279,9 @@ function composeExpected(source, faction, state) {
   blit(expected, resource(source, faction.title), 2, 2);
   blit(expected, resource(source, 10209), 3, 3);
   blit(expected, resource(source, 10253), 204, 3);
-  blit(expected, resource(source, 10108), 218, 3, { firstPixel: true });
+  // The Fleet window blits its buttons plain: A0 fleet2/umgul-empty shows
+  // the close box's green key pixel at (218, 16) too.
+  blit(expected, resource(source, 10108), 218, 3);
   if (state.selected) {
     blit(expected, resource(source, 10407 + faction.art), 97, 29);
     blit(expected, resource(source, 10401 + faction.art), 4, 29, { keyed: true });
@@ -463,8 +465,9 @@ const a0Origin = { x: 305, y: 86 };
 
 // Capture the Fleet window at A0's (305, 86) as `label` and, when `a0Png`
 // names A0's capture of the same state, count the window's pixels that
-// differ from it; the count must stay within `ceiling`.
-async function compareWindowWithA0(page, directory, label, a0Png, ceiling, origin = a0Origin) {
+// differ from it; the count must stay within `ceiling`. `masks` ([x, y, w,
+// h] in window pixels) leaves text boxes out of the count.
+async function compareWindowWithA0(page, directory, label, a0Png, ceiling, origin = a0Origin, masks = []) {
   const port = await stableWindow(page, origin, directory, label);
   fs.writeFileSync(path.join(directory, `${label}.png`), PNG.sync.write(port));
   if (!a0Png) return null;
@@ -475,7 +478,8 @@ async function compareWindowWithA0(page, directory, label, a0Png, ceiling, origi
     for (let x = 0; x < windowSize.width; x += 1) {
       const p = (y * windowSize.width + x) * 4;
       const q = ((origin.y + y) * a0.width + origin.x + x) * 4;
-      const same = [0, 1, 2].every((k) => port.data[p + k] === a0.data[q + k]);
+      const masked = masks.some(([mx, my, mw, mh]) => x >= mx && y >= my && x < mx + mw && y < my + mh);
+      const same = masked || [0, 1, 2].every((k) => port.data[p + k] === a0.data[q + k]);
       if (!same) differing += 1;
       diff.data.set(same ? [0, 0, 0, 255] : [255, 0, 255, 255], p);
     }
@@ -2313,10 +2317,13 @@ const cases = [
     factions: ["alliance"],
     standalone: true,
     // A0's Alliance Fleet window over Umgul once its fleets withdrew
-    // (fleet2/umgul-empty, day 766): no entry, no pane, no tabs.
+    // (fleet2/umgul-empty, day 766): no entry, no pane, no tabs. The whole
+    // window must match but the title label's box (FUN_004a4b10: from
+    // (19, 2), 16 high), whose glyphs are Liberation's. The title buttons
+    // show their green key pixel there, the close box's too (A0 (218, 16)).
     run: async (page, faction, setup, directory) => ({
       empty: await compareWindowWithA0(page, directory, "a0-empty",
-        a0Fleet2Dir && path.join(a0Fleet2Dir, "umgul-empty.png"), 300),
+        a0Fleet2Dir && path.join(a0Fleet2Dir, "umgul-empty.png"), 0, a0Origin, [[19, 2, 175, 16]]),
     }),
   },
   {

@@ -37,6 +37,8 @@ pub const FLEET_WINDOW_HEIGHT: f32 = 304.0;
 const BACKGROUND: u32 = 10770;
 const CLOSE_NORMAL: u32 = 10108;
 const CLOSE_PRESSED: u32 = 10109;
+/// 10108's and 10109's key colour, their first DIB pixel.
+const CLOSE_KEY: egui::Color32 = egui::Color32::from_rgb(0, 255, 0);
 const MINIMIZE_NORMAL: u32 = 10253;
 const MINIMIZE_PRESSED: u32 = 10254;
 const SECTOR_NORMAL: u32 = 10209;
@@ -2225,6 +2227,24 @@ fn draw_fleet_window(
                 );
                 let down = primary_down && pointer.is_some_and(|point| rect_contains(rect, point));
                 paint(cache, if down { pressed } else { normal }, x, 3.0);
+                // The Fleet window blits its buttons plain: A0
+                // fleet2/umgul-empty and system-windows/09-fleet show each
+                // one's green key pixel (0, 255, 0) at its (x, 16), the
+                // close box's too, which other windows key (FUN_004a4b10
+                // makes them over the surface `+0xa4`). 10108/10109's first
+                // DIB pixel is that green.
+                if normal == CLOSE_NORMAL {
+                    paint_key_pixel(
+                        &painter,
+                        ctx,
+                        cache,
+                        local,
+                        scale,
+                        x,
+                        16.0,
+                        KeyPixel::Colour(CLOSE_KEY),
+                    );
+                }
                 clicked[index] = exact_clicked(&response, rect);
             }
             result.open_sector = clicked[0];
@@ -3108,6 +3128,62 @@ pub(crate) fn paint_native(
     );
 }
 
+/// What a title button's key pixel shows (its first DIB pixel, the bottom-left
+/// corner, the one pixel `FUN_005fd170` keys).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KeyPixel {
+    /// The window's own background bitmap at that point: the button is a
+    /// child blitted keyed over its parent (`FUN_00602d30` ->
+    /// `FUN_005fd0f0`), the title strip a sibling that does not show through.
+    Background(u32),
+    /// The key colour itself: the button is blitted plain.
+    Colour(egui::Color32),
+}
+
+/// Repaint the one key pixel at window point (`x`, `y`) as `key` says.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The pixel needs paint_native's whole context."
+)]
+pub(crate) fn paint_key_pixel(
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    cache: &mut BmpCache,
+    parent: egui::Rect,
+    scale: f32,
+    x: f32,
+    y: f32,
+    key: KeyPixel,
+) {
+    #[cfg(test)]
+    tests::KEY_PIXELS.with(|pixels| {
+        pixels
+            .borrow_mut()
+            .push((key, logical_rect(parent, scale, x, y, 0.0, 0.0).min));
+    });
+    let pixel = logical_rect(parent, scale, x, y, 1.0, 1.0);
+    match key {
+        KeyPixel::Background(id) => paint_native(
+            &painter.with_clip_rect(pixel),
+            ctx,
+            cache,
+            DllSource::Strategy,
+            id,
+            parent,
+            scale,
+            0.0,
+            0.0,
+        ),
+        // A mesh, which egui does not feather: a filled 1 by 1 rect
+        // shows nothing at scale 1 (fleet-window.mjs a0-empty).
+        KeyPixel::Colour(colour) => {
+            let mut mesh = egui::Mesh::default();
+            mesh.add_colored_rect(pixel, colour);
+            painter.add(mesh);
+        }
+    }
+}
+
 /// A white tree line (`CreatePen(PS_DOT, 1, 0x2ffffff)`, `MoveTo`/`LineTo`)
 /// from `from` up to but not including `to`, as GDI's `LineTo` leaves its
 /// end point. A0 shows it solid: `fleet2/vjun-fleet5-admiral-ships` runs
@@ -3860,6 +3936,9 @@ pub(crate) mod tests {
         /// (`mission_dialog::paint`) was asked for and where, since the
         /// test cache holds no textures.
         pub(crate) static PAINTED: std::cell::RefCell<Vec<(u32, egui::Pos2)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+        /// Each key pixel [`paint_key_pixel`] repainted and where.
+        pub(crate) static KEY_PIXELS: std::cell::RefCell<Vec<(KeyPixel, egui::Pos2)>> =
             const { std::cell::RefCell::new(Vec::new()) };
     }
 
@@ -6615,5 +6694,30 @@ pub(crate) mod tests {
                 "{player:?}"
             );
         }
+    }
+
+    // A0 fleet2/umgul-empty and system-windows/09-fleet: the Fleet window
+    // shows each title button's green key pixel (0, 255, 0) at its (x, 16),
+    // the close box's too (FUN_004a4b10's buttons over the surface +0xa4),
+    // not the title strip under it.
+    #[test]
+    fn the_close_boxs_key_pixel_shows_its_green() {
+        let (world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let transport = TroopTransportState::default();
+        let mut state = opened(&world, system);
+        KEY_PIXELS.with(|pixels| pixels.borrow_mut().clear());
+        let _ = run(
+            &world,
+            &transport,
+            &mut state,
+            CockpitFaction::Alliance,
+            hover(at(-50.0, 0.0)),
+        );
+        let pixels = KEY_PIXELS.with(|pixels| pixels.take());
+        assert!(
+            pixels.contains(&(KeyPixel::Colour(CLOSE_KEY), at(218.0, 16.0))),
+            "{pixels:?}"
+        );
+        assert_eq!(CLOSE_KEY, egui::Color32::from_rgb(0, 255, 0));
     }
 }
