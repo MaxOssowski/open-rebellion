@@ -137,3 +137,9 @@ that gate tonight, so this stage did not touch it.
   again with the pointer resting on its button at (176, 134) until the
   tip shows. The failed notice needs a save that fails, for example a
   read-only save file (`attrib +r` from a Win+R command prompt).
+
+## Batch b195
+
+Full gate batch b195 (2026-11-12 05:18) is green: 30 gates, check, workspace
+(3605) and fixture (157) tests with 0 failures, 168 battle PASS (42
+scenarios). Passed: CMD-02-C002, CMD-02-C003, TAC-07-C014, OBJ-14-C008.

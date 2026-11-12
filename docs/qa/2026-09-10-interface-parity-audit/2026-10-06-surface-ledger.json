@@ -286,9 +286,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-09-main-menu-semantics.md",
             "agent_docs/main-menu-parity.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/main-menu-semantics-r1/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-main-menu-hit/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-main-menu-hit/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "The 14 logical regions from REBEXE (main-menu-parity.md) and outside-edge probes pass in Astra R2/R3 and F-016D (84/84 focus transitions). No A0 hit test. Browser run on macOS only; rerun on Linux. 2026-11-05: A0 hit test (main-menu-hit/): the controls take a press only on their bitmaps' opaque pixels (Intermediate, Easy, lever, Empire, Alliance, Quit keyed corners do nothing); the port now hit-tests so (hit_test_exact), checked in main-menu-states.mjs on Linux. Open: the galaxy-size screens, Game Type, Load/Options, Credits and Multiplayer have no A0 probe.",
+          "note": "The 14 logical regions from REBEXE (main-menu-parity.md) and outside-edge probes pass in Astra R2/R3 and F-016D (84/84 focus transitions). No A0 hit test. Browser run on macOS only; rerun on Linux. 2026-11-05: A0 hit test (main-menu-hit/): the controls take a press only on their bitmaps' opaque pixels (Intermediate, Easy, lever, Empire, Alliance, Quit keyed corners do nothing); the port now hit-tests so (hit_test_exact), checked in main-menu-states.mjs on Linux. Open: the galaxy-size screens, Game Type, Load/Options, Credits and Multiplayer have no A0 probe. 2026-11-12: Linux reruns pass (0 pixels off); Multiplayer (11151..11180, 10005) has 250 deep keyed positions — needs one A0 press at e.g. (75,385).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -693,9 +694,10 @@
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-24-game-options.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.md",
             "docs/qa/2026-09-10-interface-parity-audit/evidence/2026-09-26-game-options-review.json",
-            "ghidra/notes/game-options.md"
+            "ghidra/notes/game-options.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "Corrupt and metadata-only saves count as occupied and cancel safely in game-options-smoke; the original's corrupt-save behaviour is not compared in A0. Browser run on macOS only; rerun on Linux.",
+          "note": "Corrupt and metadata-only saves count as occupied and cancel safely in game-options-smoke; the original's corrupt-save behaviour is not compared in A0. Browser run on macOS only; rerun on Linux. 2026-11-12: the original shows an unreadable or empty save as an empty row, Load disabled (+0x18 == 1, FUN_00407180, FUN_00415cd0, FUN_00411900); the port shows 'Unreadable save' with Load enabled. Smoke passes on Linux.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -711,9 +713,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-game-options-a0/",
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-volume-sliders/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-volume-sliders/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0. 2026-11-11 b181: the music slider follows FUN_00406b80/FUN_00407180 (floor(2000*log10(v/100)) hundredths of a dB, reopened as floor(100*10^(vol/2000))), the thumb moves as Class_0066e010_vt14, music starts full (FUN_004173c0); game-options.mjs passes with A0 tooltip captures. Loudness not measured against A0.",
+          "note": "Music slider at (391,130) with COMMON 10052/10054 implemented; its transfer function and persistence are open and no browser run asserted it; no A0. 2026-10-31: track 10052 and thumb at (392,130) match A0 apart from the thumb (palette entry 254 white, keyed corner); thumb at floor(201v/100) clipped to 201 and drags inside the 5-pixel margins (FUN_00604570/00604950/00604a50; game-options.mjs). The original's transfer (floor(2000*log10(v/100)) hundredths of a dB) gives the amplitude v/100 within 0.12%, the port's linear gain; the value persists across a reload like the registry's MusicVolume (rebellion_data::settings, game-options.mjs). The audible level is not measured against A0. 2026-11-11 b181: the music slider follows FUN_00406b80/FUN_00407180 (floor(2000*log10(v/100)) hundredths of a dB, reopened as floor(100*10^(vol/2000))), the thumb moves as Class_0066e010_vt14, music starts full (FUN_004173c0); game-options.mjs passes with A0 tooltip captures. Loudness not measured against A0. 2026-11-12: game-options.mjs on Linux, 0 of 201491 pixels off A0 200-options; audible level not recorded against A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -730,9 +733,10 @@
             "tools/interface-parity/game-options.mjs",
             "ghidra/notes/game-options-text.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-volume-sliders/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-status-bar-volume/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-status-bar-volume/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0. 2026-11-11 b181: the effects slider follows the same transfer and thumb rules (FUN_00416360). The port's own volume strip, absent from the original, is removed.",
+          "note": "Effects slider at (391,192) with COMMON 10053/10054 implemented; same gaps as the music slider. 2026-10-31: track 10053 at (392,190) matches A0 apart from the thumbs (game-options.mjs); same transfer as the music slider; persisted like the registry's Volume (rebellion_data::settings). The audible level is not measured against A0. 2026-11-11 b181: the effects slider follows the same transfer and thumb rules (FUN_00416360). The port's own volume strip, absent from the original, is removed. 2026-11-12: game-options.mjs on Linux, 0 of 201491 pixels off A0 200-options; audible level not recorded against A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -1577,7 +1581,7 @@
         {
           "id": "CMD-02-C002",
           "requirement": "sector",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-names-and-marks/",
@@ -1586,22 +1590,24 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-sector-track-visibility/",
             "tools/interface-parity/run.mjs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-sector-windows-a0/",
-            "tools/interface-parity/sector-windows.mjs"
+            "tools/interface-parity/sector-windows.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "Opening a sector over the GID: the sector window's title, names, shading and markers were compared with A0 sector-a.png/sector-b.png piece by piece, and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no whole-window A0 comparison of the sector state. 2026-10-31: the sector window's frame now uses FUN_00607740's tiles (the port's border was from the wrong tiles); frames, buttons and places match A0 in sector-windows.mjs.",
+          "note": "Opening a sector over the GID: the sector window's title, names, shading and markers were compared with A0 sector-a.png/sector-b.png piece by piece, and the GID gate (run.mjs --all, 152/152, Arch Chromium 155, run 2026-10-28T18-31-34-150Z) renders this state for both sides; no whole-window A0 comparison of the sector state. 2026-10-31: the sector window's frame now uses FUN_00607740's tiles (the port's border was from the wrong tiles); frames, buttons and places match A0 in sector-windows.mjs. b195: whole sector windows compared with A0 — every step matches in frame, buttons, place, title, caption and planets; Churba/Moddell differ only in text glyphs (accepted) and each game's galaxy markers. Fix: the galaxy caption shows shaded under sector windows, (91,67,51) as A0 (FUN_004593e0, FUN_00425d00, FUN_005fddd0). sector-windows.mjs run sector-windows-2026-11-12T03-33-13-945Z.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
           "id": "CMD-02-C003",
           "requirement": "system",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-navigation-states-a0/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-system-band-text/",
-            "tools/interface-parity/run.mjs"
+            "tools/interface-parity/run.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-menus-and-windows/README.md"
           ],
-          "note": "The System window's facility page matches A0 system-vjun-yards.png (picture 9022, 0 of 223 pixels) and its bands match A0 in build-selection.mjs on Linux; the GID gate's system scenario is a regression run, with no whole-window A0 comparison.",
+          "note": "The System window's facility page matches A0 system-vjun-yards.png (picture 9022, 0 of 223 pixels) and its bands match A0 in build-selection.mjs on Linux; the GID gate's system scenario is a regression run, with no whole-window A0 comparison. b195: whole System window vs A0 system-windows/07-icon-dbl: 0 of 46130 pixels outside the text differ (Alliance, sector-quadrants run sector-quadrants-2026-11-12T03-06-05-439Z-3715352); Empire one-off vs build-selection2/11-stopped 0 of 44942 with the Shipyards tab masked. Fixes: title strip ends inside the right border; control key pixels show the window background (FUN_00602d30 -> FUN_005fd0f0).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -4438,9 +4444,10 @@
             "crates/rebellion-render/src/game_options.rs",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-31-tooltips-battle/",
             "crates/rebellion-render/src/game_speed.rs",
-            "tools/interface-parity/personnel-orders.mjs"
+            "tools/interface-parity/personnel-orders.mjs",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-fleet-and-classes/README.md"
           ],
-          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked. 2026-11-10: To Cockpit and Acknowledged appear only in multiplayer boxes (REBDLOG 0x1204/0x1205/0x1208 callers); the single-player save notices 0x1217/0x1219 are not yet compared.",
+          "note": "The Game Options question's Yes/No show REBDLOG 0x1300/0x1301 (A0 tooltip/211, 212), and the pause box's Resume shows 0x190d at A0's spot (tooltip/321; personnel-orders.mjs, Linux). The other one-button boxes (To Cockpit 0x190e, Acknowledged 0x190f) are not checked. 2026-11-10: To Cockpit and Acknowledged appear only in multiplayer boxes (REBDLOG 0x1204/0x1205/0x1208 callers); the single-player save notices 0x1217/0x1219 are not yet compared. 2026-11-12: To Cockpit 0x190e and Acknowledged 0x190f appear only in multiplayer boxes (FUN_00413560/FUN_0040ec60, FUN_00410dd0/FUN_00410c70) — out of scope; the save notice still needs A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -6832,9 +6839,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-troop-transport-occupation.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-aboard-a0-captures/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-fleet-window-scroll-bar-a0/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-fleet-window-left-scroll-bar/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-fleet-window-left-scroll-bar/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-fleet-and-classes/README.md"
           ],
-          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ). 2026-11-11 b180: the left list's bar and kept scroll (see OBJ-06-C010).",
+          "note": "Regiments as fleet cargo (fleet-window.mjs load/move-and-carry, Arch Chromium) and special forces aboard fleets (save v105, GID catalog on Arch Chromium) are ported; no A0 capture of either aboard a fleet. 2026-11-10: A0 fleet-aboard/ (a new Empire game, Coruscant's Fleet 1): the fleet's and its Imperial Star Destroyer's tabs with six TIE Fighter squadrons, three Stormtrooper Regiments and Veers aboard; captured, not yet compared (no fixture fleet carries these). 2026-11-10: the Empire's regiments, squadrons and Veers aboard Fleet 1 now compared with A0 fleet-aboard in a0-coruscant (fleet and ship tabs); special forces aboard a fleet still have no A0 capture. 2026-11-10 b175: a ship's six squadrons scroll as in A0 (right list bar, 0 of 1640 pixels differ). 2026-11-11 b180: the left list's bar and kept scroll (see OBJ-06-C010). 2026-11-12: troops, squadrons and Veers aboard Coruscant's Fleet 1 pass against A0 fleet-aboard/00..12 (fleet-window.mjs a0-coruscant); special forces aboard a fleet have no A0.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -7887,7 +7895,7 @@
         {
           "id": "OBJ-14-C008",
           "requirement": "manufacturing",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "ghidra/notes/manufacturing-build-selection.md",
@@ -7897,9 +7905,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-02-checked-menu-width/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-04-producer-status/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-07-game-over-orders-a0/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-tooltips-and-menus/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-tooltips-and-menus/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-fleet-and-classes/README.md"
           ],
-          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-04 open: A0 pending-facility/33 (Pzob, its ships band building) greys Build, Stop, Destination, Rename and Reserved, where the port leaves them white; the cause is not traced. 2026-11-07: the grey band menu of A0 pending-facility/33 and 36 is the end of the game: FUN_0051d990 asks FUN_0051de80 for every order, bit 0x10000000 of the victory conditions word (FUN_005180e0), and the Alliance had lost that game (its clock stopped). OrderGates::orders_stopped now greys every order and keeps Encyclopedia and Status (unit tests). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-11 b192: the agent's Manage Production (FUN_004c6d90, excludes 0x1000) and Manage Garrisons (FUN_004c7860, excludes 0x800) now skip Reserved yards (FUN_004ebe40 sets the bits from +0x70; FUN_004c6460 drops them); unit tests only, the agent's choice has no A0 or browser check.",
+          "note": "Production manager band menu (Build, Stop, Destination) drives build-selection.mjs and fleet-window.mjs 'destination' on Arch Chromium; build-selection.mjs fails 6 pixels; no A0 capture of the band menu. 2026-11-01: A0 captures of the band menus exist (menus3/30-33): rows and order match the port; Build is now grey without a yard of the area (FUN_00527d00) and Reserved is ported (enabled, check mark, save v110); build-selection.mjs passes on Linux for both sides. Open: the checked menu is 3 pixels wider than A0's; no agent reads Reserved. 2026-11-02: the checked menu is 107 wide as A0's (FUN_004abf60 measures +0x20, 17 wide; build-selection.mjs asserts it). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-04 open: A0 pending-facility/33 (Pzob, its ships band building) greys Build, Stop, Destination, Rename and Reserved, where the port leaves them white; the cause is not traced. 2026-11-07: the grey band menu of A0 pending-facility/33 and 36 is the end of the game: FUN_0051d990 asks FUN_0051de80 for every order, bit 0x10000000 of the victory conditions word (FUN_005180e0), and the Alliance had lost that game (its clock stopped). OrderGates::orders_stopped now greys every order and keeps Encyclopedia and Status (unit tests). Still open: no agent reads Reserved, the facility icon's Reserved is not ported. 2026-11-11 b192: the agent's Manage Production (FUN_004c6d90, excludes 0x1000) and Manage Garrisons (FUN_004c7860, excludes 0x800) now skip Reserved yards (FUN_004ebe40 sets the bits from +0x70; FUN_004c6460 drops them); unit tests only, the agent's choice has no A0 or browser check. b195: band menus (A0 menus3/30-33) and the off-band menu (A0 menus3/34: Encyclopedia and Status grey, 90x42; FUN_004534f0 -> FUN_004ac5c0) match in status-window.mjs (run status-window-2026-11-12T03-09-37-934Z-3724218); facility Reserved ported 2026-11-10; the AI skipping reserved yards has unit tests and nothing on screen.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9014,9 +9023,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-camera-backdrop/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-24-tactical-camera-backdrop/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md"
           ],
-          "note": "Planet decal e wide at (2e,0,0) (FUN_005d4d10); A0 TAC-01-C008 corner (105,298) vs port (105,297), planet top right; exact planet framing (random offsets taken at centre, port:) remains open.",
+          "note": "Planet decal e wide at (2e,0,0) (FUN_005d4d10); A0 TAC-01-C008 corner (105,298) vs port (105,297), planet top right; exact planet framing (random offsets taken at centre, port:) remains open. 2026-11-12: production-umgul-backdrop turns left 16 times as A0; holocube corner (108,297) vs A0 (106,298); planet edges up to 16 px off (random offsets, port: centre).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9079,9 +9089,10 @@
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-blockade-report/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-hq-and-tactical-states/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md"
           ],
-          "note": "The browser results journey returns to the shared campaign; A0 TAC-01-C013 (strategic screen after the battle) is captured but not compared. 2026-11-11 b191: a unit test reproduces A0's result text word for word ('The Alliance fleet is defeated.' / 'Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed.'); no browser case ends a battle by the player's last ship and shows the live strategy screen.",
+          "note": "The browser results journey returns to the shared campaign; A0 TAC-01-C013 (strategic screen after the battle) is captured but not compared. 2026-11-11 b191: a unit test reproduces A0's result text word for word ('The Alliance fleet is defeated.' / 'Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed.'); no browser case ends a battle by the player's last ship and shows the live strategy screen. 2026-11-12: production-battle-last-ship-lost ends the battle when the last Alliance ship dies; report words match A0, summary scene 0 of 66,314 pixels off. Open: the port draws the summary in the tactical view over a bare shell, A0 over the live Command Center (architecture question for the user).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -10497,13 +10508,14 @@
         {
           "id": "TAC-07-C014",
           "requirement": "strategic state persistence",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-squadron-rules/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-squadron-parent-after-battle-vm/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-squadron-parent-after-battle-vm/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-return/README.md"
           ],
-          "note": "Browser proves 3-to-2 loss persistence (P58-B11); VM checked squadrons stay with fleets, but A0 TAC-07-C014's sector window is not recorded as compared and launched squadrons of a lost carrier stay port:.",
+          "note": "Browser proves 3-to-2 loss persistence (P58-B11); VM checked squadrons stay with fleets, but A0 TAC-07-C014's sector window is not recorded as compared and launched squadrons of a lost carrier stay port:. b195: the Battle Summary's system button opens the sector window (FUN_00470ea0 -> FUN_004f3220 -> FUN_00429ce0; the port had opened the system window); production-battle-last-ship-lost compares it with A0 TAC-07-C014: position, outline, title buttons, the surviving Imperial fleet and facility icons match, the lost fleet is gone; other differences are the two games' state. Launched squadrons of a lost carrier remain port:.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]

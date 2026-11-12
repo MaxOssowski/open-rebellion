@@ -192,3 +192,9 @@ its own, the same checks pass.
   has no unit test; it is test-only code that the browser case exercises.
   The fixture file `tactical_test_fixture.rs` is compiled only for the
   WASM test build, so mutants do not reach it.
+
+## Batch b195
+
+Full gate batch b195 (2026-11-12 05:18) is green: 30 gates, check, workspace
+(3605) and fixture (157) tests with 0 failures, 168 battle PASS (42
+scenarios). Passed: CMD-02-C002, CMD-02-C003, TAC-07-C014, OBJ-14-C008.
