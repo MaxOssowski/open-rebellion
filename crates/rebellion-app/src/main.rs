@@ -9982,10 +9982,10 @@ fn fleet_drop_order(
     use rebellion_render::quadrant_icons::DefensesTeam;
     match action {
         FleetWindowAction::DragFleet {
-            fleet,
+            fleets,
             point,
             confirmed,
-        } => Some((FleetDropOrder::Fleets(vec![fleet]), point, confirmed)),
+        } => Some((FleetDropOrder::Fleets(fleets), point, confirmed)),
         FleetWindowAction::DragShip {
             fleet,
             ships,
@@ -10119,6 +10119,24 @@ fn team_menu_order(
             .collect();
         Some((fleet, ships?, roster))
     };
+    // The left list's fleets move as one team of fleets (FUN_00422ce0's
+    // 0x201 with the selection, FUN_0053c1a0 running each fleet's check).
+    let fleets: Option<Vec<FleetKey>> = team
+        .iter()
+        .map(|object| match *object {
+            MenuObject::Fleet(fleet) => Some(fleet),
+            _ => None,
+        })
+        .collect();
+    if let (Some(fleets), ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove) =
+        (fleets, command)
+    {
+        return Some(TeamMenuOrder::Target(TargetOrder::FleetMove {
+            fleets,
+            confirmed,
+            icon: false,
+        }));
+    }
     match command {
         ObjectMenuCommand::Mission => {
             let members: Option<Vec<MissionMember>> =
@@ -16534,6 +16552,31 @@ mod fleet_move_tests {
     }
 
     #[test]
+    fn a_menu_move_on_several_selected_fleets_moves_them_as_one_team() {
+        // FUN_004ac5c0 takes the Fleet window's left list selection (slot
+        // +0x58); its 0x201 has every fleet in its team.
+        let (world, fleets, _) = world_with_two_fleets();
+        let team: Vec<MenuObject> = fleets.iter().map(|&fleet| MenuObject::Fleet(fleet)).collect();
+        for (command, confirmed) in [
+            (ObjectMenuCommand::Move, false),
+            (ObjectMenuCommand::ConfirmedMove, true),
+        ] {
+            let Some(TeamMenuOrder::Target(order)) = team_menu_order(&world, command, &team, None)
+            else {
+                panic!("a target order");
+            };
+            assert_eq!(
+                order,
+                TargetOrder::FleetMove {
+                    fleets: fleets.clone(),
+                    confirmed,
+                    icon: false,
+                }
+            );
+        }
+    }
+
+    #[test]
     fn a_fleet_windows_ctrl_drop_of_a_fleet_or_ships_is_a_confirmed_move() {
         // FUN_00422ce0: GetAsyncKeyState(VK_CONTROL) makes the drop 0x202
         // for window type 4 as for type 10.
@@ -16544,7 +16587,7 @@ mod fleet_move_tests {
                 fleet_drop_order(
                     &world,
                     FleetWindowAction::DragFleet {
-                        fleet: fleets[0],
+                        fleets: vec![fleets[0]],
                         point,
                         confirmed,
                     }

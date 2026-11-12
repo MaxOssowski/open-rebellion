@@ -565,69 +565,104 @@ fn right_hit(at: (f32, f32), rows: usize) -> Option<usize> {
         .filter(|row| *row < rows)
 }
 
-/// The drop of a left list entry (`0x29a`). The galaxy view issues `0x201`,
-/// or `0x202` when Ctrl is down at the release (`confirmed`,
-/// `GetAsyncKeyState(VK_CONTROL)` in `FUN_00422ce0`, window types 4 and 10
-/// alike).
-fn left_drop(object: ItemObject, point: egui::Pos2, confirmed: bool) -> Option<FleetWindowAction> {
-    match object {
-        ItemObject::Fleet(fleet) => Some(FleetWindowAction::DragFleet {
-            fleet,
+/// The drop of the left list's dragged `objects` (`0x29a`): the galaxy view
+/// issues one `0x201`, or `0x202` when Ctrl is down at the release
+/// (`confirmed`, `GetAsyncKeyState(VK_CONTROL)` in `FUN_00422ce0`, window
+/// types 4 and 10 alike), for the whole selection. Its fleets move as one
+/// fleet move. port: the ships among them move as one ship order per
+/// fleet, each its own order.
+fn left_drop(objects: &[ItemObject], point: egui::Pos2, confirmed: bool) -> Vec<FleetWindowAction> {
+    let fleets: Vec<FleetKey> = objects
+        .iter()
+        .filter_map(|object| match *object {
+            ItemObject::Fleet(fleet) => Some(fleet),
+            _ => None,
+        })
+        .collect();
+    let mut actions = Vec::new();
+    if !fleets.is_empty() {
+        actions.push(FleetWindowAction::DragFleet {
+            fleets,
             point,
             confirmed,
-        }),
-        ItemObject::Ship {
+        });
+    }
+    actions.extend(ship_drops(objects, point, confirmed));
+    actions
+}
+
+/// One ship order per fleet among `objects`' ships, in their order.
+fn ship_drops(objects: &[ItemObject], point: egui::Pos2, confirmed: bool) -> Vec<FleetWindowAction> {
+    let mut actions: Vec<FleetWindowAction> = Vec::new();
+    for object in objects {
+        let ItemObject::Ship {
             fleet,
             index,
             roster,
-        } => Some(FleetWindowAction::DragShip {
-            fleet,
-            ships: vec![index],
-            roster,
-            point,
-            confirmed,
-        }),
-        _ => None,
+        } = *object
+        else {
+            continue;
+        };
+        let known = actions.iter_mut().find_map(|action| match action {
+            FleetWindowAction::DragShip {
+                fleet: of, ships, ..
+            } if *of == fleet => Some(ships),
+            _ => None,
+        });
+        match known {
+            Some(ships) => ships.push(index),
+            None => actions.push(FleetWindowAction::DragShip {
+                fleet,
+                ships: vec![index],
+                roster,
+                point,
+                confirmed,
+            }),
+        }
     }
+    actions
 }
 
 /// The drop of the right list's selected `objects`, all of one tab
 /// (`0x29a`): the galaxy view moves them as one order (`FUN_00422ce0`),
-/// `0x202` with Ctrl down (`confirmed`).
+/// `0x202` with Ctrl down (`confirmed`). port: ships and squadrons of
+/// several fleets (several left entries selected) move as one order per
+/// fleet.
 fn right_drop(
     objects: &[ItemObject],
     point: egui::Pos2,
     confirmed: bool,
-) -> Option<FleetWindowAction> {
-    match *objects.first()? {
-        ItemObject::Ship { fleet, roster, .. } => Some(FleetWindowAction::DragShip {
-            fleet,
-            ships: objects
-                .iter()
-                .filter_map(|object| match *object {
-                    ItemObject::Ship {
-                        fleet: of, index, ..
-                    } if of == fleet => Some(index),
+) -> Vec<FleetWindowAction> {
+    let Some(first) = objects.first() else {
+        return Vec::new();
+    };
+    match *first {
+        ItemObject::Ship { .. } => ship_drops(objects, point, confirmed),
+        ItemObject::Fighter { .. } => {
+            let mut actions: Vec<FleetWindowAction> = Vec::new();
+            for object in objects {
+                let ItemObject::Fighter { fleet, index } = *object else {
+                    continue;
+                };
+                let known = actions.iter_mut().find_map(|action| match action {
+                    FleetWindowAction::DragSquadron {
+                        fleet: of, indices, ..
+                    } if *of == fleet => Some(indices),
                     _ => None,
-                })
-                .collect(),
-            roster,
-            point,
-            confirmed,
-        }),
-        ItemObject::Fighter { fleet, .. } => Some(FleetWindowAction::DragSquadron {
-            fleet,
-            indices: objects
-                .iter()
-                .filter_map(|object| match *object {
-                    ItemObject::Fighter { fleet: of, index } if of == fleet => Some(index),
-                    _ => None,
-                })
-                .collect(),
-            point,
-            confirmed,
-        }),
-        ItemObject::Regiment(_) => Some(FleetWindowAction::DragRegiment {
+                });
+                match known {
+                    Some(indices) => indices.push(index),
+                    None => actions.push(FleetWindowAction::DragSquadron {
+                        fleet,
+                        indices: vec![index],
+                        point,
+                        confirmed,
+                    }),
+                }
+            }
+            actions
+        }
+        ItemObject::Regiment(_) => vec![FleetWindowAction::DragRegiment {
             troops: objects
                 .iter()
                 .filter_map(|object| match *object {
@@ -637,9 +672,9 @@ fn right_drop(
                 .collect(),
             point,
             confirmed,
-        }),
+        }],
         ItemObject::Character(_) | ItemObject::SpecialForce(_) => {
-            Some(FleetWindowAction::DragMembers {
+            vec![FleetWindowAction::DragMembers {
                 members: objects
                     .iter()
                     .filter_map(|object| match *object {
@@ -650,9 +685,21 @@ fn right_drop(
                     .collect(),
                 point,
                 confirmed,
-            })
+            }]
         }
-        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } => None,
+        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } => Vec::new(),
+    }
+}
+
+/// A left list entry's object.
+fn entry_object(world: &GameWorld, entry: FleetWindowEntry) -> ItemObject {
+    match entry {
+        FleetWindowEntry::Fleet(fleet) => ItemObject::Fleet(fleet),
+        FleetWindowEntry::Ship { fleet, index } => ItemObject::Ship {
+            fleet,
+            index,
+            roster: fleet_join::roster(world, fleet).unwrap_or_default(),
+        },
     }
 }
 
@@ -744,9 +791,10 @@ impl FleetWindowEntry {
 struct OpenFleetWindow {
     system: SystemKey,
     logical_position: (i16, i16),
-    /// port: one selected entry; the list's own selection rules
-    /// (`FUN_00609410`) are untraced.
-    selected: Option<FleetWindowEntry>,
+    /// The left list's selected entries, by the `CoolDragList` rules
+    /// ([`crate::drag_list`]; `FUN_004a4b10` gives the list no flags, so
+    /// several entries may be selected).
+    selected: ListSelection<FleetWindowEntry>,
     /// The right list's selected items, by the `CoolDragList` rules
     /// ([`crate::drag_list`]). Each is kept by its unit, not its row: the
     /// original's items are the objects themselves (`+0x6c`), so a unit
@@ -765,9 +813,9 @@ struct OpenFleetWindow {
     /// Where the window was when a press on its surface took it
     /// (`crate::window_move`).
     moving: MoveAnchor,
-    /// The selected fleet and its ship count when last drawn: a change of
-    /// that count drops the selection (see [`roster_changed`]).
-    roster: Option<(FleetKey, usize)>,
+    /// The selected entries' fleets and their ship counts when last drawn:
+    /// a change of a count drops the selection (see [`roster_changed`]).
+    roster: Vec<(FleetKey, usize)>,
     /// The right list's first visible pixel and a press held on its bar.
     right_scroll: f32,
     right_hold: Option<crate::list_scroll_bar::Hold>,
@@ -1047,14 +1095,14 @@ impl FleetWindowState {
                 FLEET_WINDOW_WIDTH,
                 FLEET_WINDOW_HEIGHT,
             ),
-            selected: None,
+            selected: ListSelection::default(),
             selected_items: ListSelection::default(),
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
             rename: None,
             last_click: None,
             moving: None,
-            roster: None,
+            roster: Vec::new(),
             right_scroll: 0.0,
             right_hold: None,
             left_scroll: 0.0,
@@ -1075,9 +1123,9 @@ impl FleetWindowState {
                 window.expanded.push(fleet);
             }
         }
-        window.selected = Some(entry);
+        window.selected = ListSelection::only(entry);
         window.selected_items.clear();
-        window.tab = tab_for(Some(entry), window.tab);
+        window.tab = tab_for(&[entry], window.tab);
         // The right list keeps its place, clamped (`FUN_004a73c0` →
         // `FUN_0060d7e0` → `FUN_004a5c00`; see `OpenFleetWindow::show_tab`).
         true
@@ -1135,7 +1183,7 @@ impl FleetWindowState {
         // right list, under its picture, the fleet staying selected.
         let item = self.window_mut(system).and_then(|window| match entry {
             FleetWindowEntry::Ship { fleet, index }
-                if window.selected == Some(FleetWindowEntry::Fleet(fleet))
+                if window.selected.single() == Some(FleetWindowEntry::Fleet(fleet))
                     && window.tab == FleetWindowTab::CapitalShips =>
             {
                 ship_item_row(world, fleet, index)
@@ -1253,7 +1301,7 @@ impl FleetWindowState {
         self.windows
             .iter()
             .find(|window| window.system == system)
-            .map(|window| (window.selected, window.tab))
+            .map(|window| (window.selected.single(), window.tab))
     }
 
     /// What `system`'s window shows, for the interface fixture.
@@ -1268,7 +1316,11 @@ impl FleetWindowState {
     ) -> Option<FleetWindowReport> {
         let window = self.windows.iter().find(|window| window.system == system)?;
         let entries = left_entries(world, movement, fog, cockpit_faction(self.faction), window);
-        let selected = window.selected.filter(|entry| entries.contains(entry));
+        let picked = picked_entries(window, &entries);
+        let selected = match picked.as_slice() {
+            [one] => Some(*one),
+            _ => None,
+        };
         Some(FleetWindowReport {
             origin: window.logical_position,
             entries: entries.len(),
@@ -1281,25 +1333,31 @@ impl FleetWindowState {
                 })
                 .collect(),
             selected,
+            selected_rows: entries
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| picked.contains(entry))
+                .map(|(row, _)| row)
+                .collect(),
             tab: window.tab,
             enabled: FleetWindowTab::ALL
-                .map(|tab| window_tab_enabled(world, movement, transport, &self.arrivals, selected, tab)),
-            items: window_items(world, movement, transport, &self.arrivals, selected, window.tab)
+                .map(|tab| selection_tab_enabled(world, movement, transport, &self.arrivals, &picked, tab)),
+            items: selection_items(world, movement, transport, &self.arrivals, &picked, window.tab)
                 .into_iter()
                 .map(|item| item.label)
                 .collect(),
             selected_items: selected_rows(
                 &window.selected_items,
-                &right_keys(&window_items(
+                &right_keys(&selection_items(
                     world,
                     movement,
                     transport,
                     &self.arrivals,
-                    selected,
+                    &picked,
                     window.tab,
                 )),
             ),
-            counts: window_tab_counts(world, movement, transport, selected, window.tab),
+            counts: selection_counts(world, movement, transport, &picked, window.tab),
         })
     }
 
@@ -1383,12 +1441,14 @@ impl FleetWindowState {
             }
         } else if in_rect(RIGHT_LIST, local) {
             let row = right_row_at(local.1, window.right_scroll);
-            right_target(world, movement, transport, &self.arrivals, window, row).or_else(|| {
-                let items =
-                    window_items(world, movement, transport, &self.arrivals, window.selected, window.tab);
+            let player = cockpit_faction(self.faction);
+            let picked =
+                picked_entries(window, &left_entries(world, movement, fog, player, window));
+            let items = selection_items(world, movement, transport, &self.arrivals, &picked, window.tab);
+            right_target(world, &items, row).or_else(|| {
                 selected_rows(&window.selected_items, &right_keys(&items))
                     .first()
-                    .and_then(|&index| right_target(world, movement, transport, &self.arrivals, window, index))
+                    .and_then(|&index| right_target(world, &items, index))
             })
         } else {
             None
@@ -1524,7 +1584,10 @@ pub struct FleetWindowReport {
     pub entries: usize,
     /// Each listed fleet and its row in the left list.
     pub fleet_rows: Vec<(FleetKey, usize)>,
+    /// The one selected entry, `None` for none or several.
     pub selected: Option<FleetWindowEntry>,
+    /// The left list's selected rows, in list order.
+    pub selected_rows: Vec<usize>,
     pub tab: FleetWindowTab,
     pub enabled: [bool; 4],
     pub items: Vec<String>,
@@ -1546,10 +1609,11 @@ pub enum FleetWindowAction {
         system: SystemKey,
         logical_position: (i16, i16),
     },
-    /// A left-list fleet dragged out of its list (`0x29a`): the galaxy view
-    /// hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
+    /// The left list's selected fleets dragged out of its list (`0x29a`):
+    /// the galaxy view hit-tests the screen point and issues `0x201`
+    /// (`FUN_00422ce0`) for them all.
     DragFleet {
-        fleet: FleetKey,
+        fleets: Vec<FleetKey>,
         point: egui::Pos2,
         /// Ctrl was down at the release: `0x202`, Confirmed Move.
         confirmed: bool,
@@ -1925,14 +1989,22 @@ fn drop_target(
         );
     }
     if window.tab == FleetWindowTab::CapitalShips && in_rect(RIGHT_LIST, local) {
-        if let Some(FleetWindowEntry::Fleet(fleet)) = window.selected {
-            let row = right_row_at(local.1, window.right_scroll);
-            let ships = world.fleets.get(fleet).map_or(0, |value| {
-                value.capital_ships.iter().filter(|ship| ship.alive).count()
-            });
+        // The ship under the point gives its fleet: each selected entry
+        // lists its fleet's living ships, or a ship itself, in list order
+        // (FUN_004a6be0).
+        let mut row = right_row_at(local.1, window.right_scroll);
+        for entry in picked_entries(window, entries) {
+            let ships = match entry {
+                FleetWindowEntry::Fleet(fleet) => world.fleets.get(fleet).map_or(0, |value| {
+                    value.capital_ships.iter().filter(|ship| ship.alive).count()
+                }),
+                FleetWindowEntry::Ship { .. } if picked_entries(window, entries).len() > 1 => 1,
+                FleetWindowEntry::Ship { .. } => 0,
+            };
             if row < ships {
-                return Some(fleet_target(fleet));
+                return Some(fleet_target(entry.fleet()));
             }
+            row -= ships;
         }
     }
     let own_listed = entries
@@ -1941,7 +2013,7 @@ fn drop_target(
     if !own_listed {
         return Some(ReleaseTarget::System(system));
     }
-    match window.selected {
+    match window.selected.single() {
         Some(FleetWindowEntry::Fleet(fleet)) if own(fleet) => Some(fleet_target(fleet)),
         _ => None,
     }
@@ -2042,20 +2114,25 @@ fn bound_members<'a>(
 /// shows Fighters instead, and keeps it when a fleet is selected again
 /// (A0 fleet3/02, 06: Medium Transport 1 selected over Capital Ships shows
 /// Fighters with its counters 0 and 0, and Fleet 6 then too).
-fn tab_for(selected: Option<FleetWindowEntry>, tab: FleetWindowTab) -> FleetWindowTab {
+fn tab_for(selected: &[FleetWindowEntry], tab: FleetWindowTab) -> FleetWindowTab {
     match selected {
-        Some(FleetWindowEntry::Ship { .. }) if tab == FleetWindowTab::CapitalShips => {
+        [FleetWindowEntry::Ship { .. }] if tab == FleetWindowTab::CapitalShips => {
             FleetWindowTab::Fighters
         }
         _ => tab,
     }
 }
 
-/// The selected fleet's key and live ship count.
-fn selected_roster(world: &GameWorld, selected: Option<FleetWindowEntry>) -> Option<(FleetKey, usize)> {
-    let fleet = selected?.fleet();
-    let value = world.fleets.get(fleet)?;
-    Some((fleet, value.capital_ships.iter().filter(|ship| ship.alive).count()))
+/// Each selected entry's fleet and its live ship count.
+fn selected_roster(world: &GameWorld, selected: &[FleetWindowEntry]) -> Vec<(FleetKey, usize)> {
+    selected
+        .iter()
+        .filter_map(|entry| {
+            let fleet = entry.fleet();
+            let value = world.fleets.get(fleet)?;
+            Some((fleet, value.capital_ships.iter().filter(|ship| ship.alive).count()))
+        })
+        .collect()
 }
 
 /// Whether the selected fleet's ships changed since the window last drew:
@@ -2063,20 +2140,107 @@ fn selected_roster(world: &GameWorld, selected: Option<FleetWindowEntry>) -> Opt
 /// Move onto a fleet and a fleet's Move onto another. hyp: the list
 /// rebuilds when its fleet's contents change and loses its selection.
 fn roster_changed(world: &GameWorld, open: &OpenFleetWindow) -> bool {
-    match (open.roster, selected_roster(world, open.selected)) {
-        (Some((before, count)), Some((now, live))) => before == now && count != live,
-        _ => false,
-    }
+    let now = selected_roster(world, open.selected.items());
+    open.roster.iter().any(|&(fleet, count)| {
+        now.iter()
+            .any(|&(listed, live)| listed == fleet && live != count)
+    })
 }
 
 /// The tabs the strip shows: all four for a fleet; a ship's lacks Capital
 /// Ships (A0 fleet2/umgul-corvette1-selected shows three, from x 33). The
 /// strip has no disabled art for it: `b + 3` is Personnel's normal art.
-fn shown_tabs(selected: Option<FleetWindowEntry>) -> impl Iterator<Item = FleetWindowTab> {
-    let ship = matches!(selected, Some(FleetWindowEntry::Ship { .. }));
+fn shown_tabs(selected: &[FleetWindowEntry]) -> impl Iterator<Item = FleetWindowTab> {
+    let ship = matches!(selected, [FleetWindowEntry::Ship { .. }]);
     FleetWindowTab::ALL
         .into_iter()
         .filter(move |&tab| !(ship && tab == FleetWindowTab::CapitalShips))
+}
+
+/// The window's selected entries among the listed `entries`, in list order,
+/// as `FUN_004a5c00` walks the list (`+0x188`).
+fn picked_entries(window: &OpenFleetWindow, entries: &[FleetWindowEntry]) -> Vec<FleetWindowEntry> {
+    entries
+        .iter()
+        .copied()
+        .filter(|entry| window.selected.contains(*entry))
+        .collect()
+}
+
+/// The right list for the left list's `selected` entries (`FUN_004a5c00`):
+/// the list is emptied, then each selected entry adds its contents for
+/// the tab (`FUN_004a6be0`), a fleet its ships' and a ship its own, in list
+/// order. On Capital Ships a ship among several adds itself (tab `0x66`).
+fn selection_items(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
+    selected: &[FleetWindowEntry],
+    tab: FleetWindowTab,
+) -> Vec<RightItem> {
+    if let [one] = selected {
+        return window_items(world, movement, transport, arrivals, Some(*one), tab);
+    }
+    selected
+        .iter()
+        .flat_map(|&entry| match (entry, tab) {
+            (FleetWindowEntry::Ship { fleet, index }, FleetWindowTab::CapitalShips) => window_items(
+                world,
+                movement,
+                transport,
+                arrivals,
+                Some(FleetWindowEntry::Fleet(fleet)),
+                tab,
+            )
+            .into_iter()
+            .filter(|item| {
+                matches!(item.object, Some(ItemObject::Ship { fleet: of, index: at, .. })
+                    if of == fleet && at == index)
+            })
+            .collect(),
+            _ => window_items(world, movement, transport, arrivals, Some(entry), tab),
+        })
+        .collect()
+}
+
+/// A tab's state for several entries (`FUN_004a6980`): Capital Ships is
+/// disabled only for one ship alone (`+0x14c` bit 8); each other tab
+/// lights when any selected entry carries its contents (the items' `+0x54`
+/// flags, or'ed).
+fn selection_tab_enabled(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    arrivals: &[(MissionMember, FleetKey)],
+    selected: &[FleetWindowEntry],
+    tab: FleetWindowTab,
+) -> bool {
+    match selected {
+        [one] => window_tab_enabled(world, movement, transport, arrivals, Some(*one), tab),
+        [] => false,
+        _ if tab == FleetWindowTab::CapitalShips => true,
+        _ => selected
+            .iter()
+            .any(|&entry| window_tab_enabled(world, movement, transport, arrivals, Some(entry), tab)),
+    }
+}
+
+/// The counts of several entries: `FUN_004a6be0` adds each selected
+/// ship's slots into `+0x198` and `+0x19c`.
+fn selection_counts(
+    world: &GameWorld,
+    movement: &MovementState,
+    transport: &TroopTransportState,
+    selected: &[FleetWindowEntry],
+    tab: FleetWindowTab,
+) -> Option<(u32, u32)> {
+    selected
+        .iter()
+        .filter_map(|&entry| window_tab_counts(world, movement, transport, Some(entry), tab))
+        .reduce(|(aboard, capacity), (more, room)| {
+            (aboard.saturating_add(more), capacity.saturating_add(room))
+        })
 }
 
 /// One right-list item: its GOKRES mini, name and whether it lacks a
@@ -2127,17 +2291,8 @@ fn ship_target(world: &GameWorld, fleet: FleetKey, index: usize) -> Option<Missi
 
 /// The right list's `index`th item as a mission target: `None` when there
 /// is no such item, `Some(None)` for an item no mission takes.
-fn right_target(
-    world: &GameWorld,
-    movement: &MovementState,
-    transport: &TroopTransportState,
-    arrivals: &[(MissionMember, FleetKey)],
-    window: &OpenFleetWindow,
-    index: usize,
-) -> Option<Option<ItemTarget>> {
-    let item = window_items(world, movement, transport, arrivals, window.selected, window.tab)
-        .into_iter()
-        .nth(index)?;
+fn right_target(world: &GameWorld, items: &[RightItem], index: usize) -> Option<Option<ItemTarget>> {
+    let item = items.get(index)?;
     Some(match item.object {
         Some(ItemObject::Regiment(key)) => Some(ItemTarget::Object(MissionTarget::Troop(key))),
         Some(ItemObject::Ship { fleet, index, .. }) => {
@@ -2627,7 +2782,9 @@ struct WindowDrawResult {
     close: bool,
     minimize: bool,
     open_sector: bool,
-    select: Option<Option<FleetWindowEntry>>,
+    /// A left or right press on a left list entry, applied at once with
+    /// its release for a click (`FUN_006083c0`).
+    left_press: Option<LeftPress>,
     toggle: Option<FleetKey>,
     tab: Option<FleetWindowTab>,
     /// A left or right press on the right list: the row under it, the list
@@ -2646,6 +2803,17 @@ struct WindowDrawResult {
     right_scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
     /// The left list's scroll and bar hold after this frame.
     left_scroll: Option<(f32, Option<crate::list_scroll_bar::Hold>)>,
+}
+
+/// A press on a left list entry: the entry, the list point, the keys held,
+/// whether the release came with it, and the list's cells.
+#[derive(Debug, Clone, PartialEq)]
+struct LeftPress {
+    entry: FleetWindowEntry,
+    point: (f32, f32),
+    modifiers: Modifiers,
+    release: bool,
+    cells: Vec<(FleetWindowEntry, (f32, f32), (f32, f32))>,
 }
 
 /// Draw every open Fleet window.
@@ -2673,21 +2841,39 @@ pub fn draw_fleet_windows(
         .map(|window| window.system);
     let ended = state.end_drag(ctx, layout.scale);
     let mut actions = Vec::new();
+    let player = cockpit_faction(faction);
     for window in &windows {
+        let entries = left_entries(world, movement, fog, player, window);
+        let picked = picked_entries(window, &entries);
         match ended {
             Some(DragEnd::Drop {
                 system,
                 left: Some(object),
                 point,
             }) if system == window.system => {
-                actions.extend(left_drop(object, point, crate::drag_list::modifiers(ctx).ctrl));
+                // A press on a selected entry holds its click, so the drag
+                // carries the whole selection (flag 0x10).
+                let objects: Vec<ItemObject> =
+                    if picked.iter().any(|&entry| entry_object(world, entry) == object) {
+                        picked.iter().map(|&entry| entry_object(world, entry)).collect()
+                    } else {
+                        vec![object]
+                    };
+                actions.extend(left_drop(
+                    &objects,
+                    point,
+                    crate::drag_list::modifiers(ctx).ctrl,
+                ));
+                if let Some(open) = state.window_mut(system) {
+                    open.selected.dropped();
+                }
             }
             Some(DragEnd::Drop {
                 system,
                 left: None,
                 point,
             }) if system == window.system => {
-                let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
+                let items = selection_items(world, movement, transport, &arrivals, &picked, window.tab);
                 // An object in hyperspace takes no order (FUN_004f9860).
                 let objects: Vec<ItemObject> = selected_rows(&window.selected_items, &right_keys(&items))
                     .into_iter()
@@ -2705,12 +2891,12 @@ pub fn draw_fleet_windows(
                 }
             }
             Some(DragEnd::Release { system, point }) if system == window.system => {
-                let keys = right_keys(&window_items(
+                let keys = right_keys(&selection_items(
                     world,
                     movement,
                     transport,
                     &arrivals,
-                    window.selected,
+                    &picked,
                     window.tab,
                 ));
                 let local = window_screen_rect(window, layout);
@@ -2750,9 +2936,16 @@ pub fn draw_fleet_windows(
             // FUN_004a2c80), the clicked item first.
             // Squadrons of one class share their object, so each selected
             // item stays in the team.
-            let items = window_items(world, movement, transport, &arrivals, window.selected, window.tab);
+            let items = selection_items(world, movement, transport, &arrivals, &picked, window.tab);
             let rows = selected_rows(&window.selected_items, &right_keys(&items));
-            let team = if row.is_some_and(|row| rows.contains(&row)) {
+            let left: Vec<MenuObject> = picked
+                .iter()
+                .map(|&entry| entry_object(world, entry).menu_object())
+                .collect();
+            let team = if row.is_none() && left.len() > 1 && left.contains(&selection) {
+                // A left entry's menu takes the left list's selection.
+                crate::drag_list::clicked_first(selection, left)
+            } else if row.is_some_and(|row| rows.contains(&row)) {
                 crate::drag_list::clicked_first(
                     selection,
                     rows.iter()
@@ -2809,18 +3002,39 @@ pub fn draw_fleet_windows(
                 open.left_scroll = first;
                 open.left_hold = hold;
             }
-            if let Some(selected) = result.select {
-                open.selected = selected;
-                open.selected_items.clear();
+            if let Some(press) = result.left_press {
+                let before = open.selected.clone();
+                let hit = Some(press.entry);
+                open.selected.press(hit, press.point, press.modifiers, &press.cells);
+                if press.release {
+                    open.selected.release(hit, press.point, press.modifiers, &press.cells);
+                }
+                // FUN_004a5c00: while one of the viewer's entries is
+                // selected, the other side's are not (item `+0x68` bit 8,
+                // set for the viewer's side: without one, the picture takes
+                // the other side's art).
+                let own = |entry: &FleetWindowEntry| {
+                    world
+                        .fleets
+                        .get(entry.fleet())
+                        .is_some_and(|value| fleet_side(value.is_alliance) == faction_side(player))
+                };
+                if open.selected.items().iter().any(own) {
+                    open.selected.retain(own);
+                }
+                if open.selected != before {
+                    open.selected_items.clear();
+                }
                 // The right list keeps its place, clamped (`0x29b`,
                 // `FUN_004a6390` → `FUN_004a5c00`).
-                open.tab = tab_for(selected, open.tab);
+                let now = picked_entries(open, &entries);
+                open.tab = tab_for(&now, open.tab);
             }
             if roster_changed(world, open) {
-                open.selected = None;
+                open.selected.clear();
                 open.selected_items.clear();
             }
-            open.roster = selected_roster(world, open.selected);
+            open.roster = selected_roster(world, open.selected.items());
             if let Some(click) = result.last_click {
                 open.last_click = click;
             }
@@ -2839,7 +3053,8 @@ pub fn draw_fleet_windows(
                     .press(hit.and_then(|row| keys[row]), point, modifiers, &right_key_cells(&keys));
             }
             // A unit no longer listed is no longer selected.
-            let keys = right_keys(&window_items(world, movement, transport, &arrivals, open.selected, open.tab));
+            let now = picked_entries(open, &entries);
+            let keys = right_keys(&selection_items(world, movement, transport, &arrivals, &now, open.tab));
             open.selected_items.retain(|key| keys.contains(&Some(*key)));
             match result.rename {
                 Some(RenameOutcome::Typed(text)) => {
@@ -2903,8 +3118,21 @@ fn draw_fleet_window(
             FleetWindowEntry::Ship { .. } => None,
         })
         .collect();
-    let selected = window.selected.filter(|entry| entries.contains(entry));
-    let selected_side = selected.and_then(|entry| {
+    let picked = picked_entries(window, &entries);
+    // One entry alone selected; several show a fleet picture with no name
+    // (`FUN_004a5c00`: `FUN_00601aa0(0)`, `+0x14c` bit 8 clear).
+    let selected = match picked.as_slice() {
+        [one] => Some(*one),
+        _ => None,
+    };
+    // The picture's subject: the last selected entry in list order.
+    let subject = picked.last().copied();
+    let picture_fleet = match picked.as_slice() {
+        [FleetWindowEntry::Fleet(fleet)] => Some(*fleet),
+        [_, _, ..] => subject.map(FleetWindowEntry::fleet),
+        _ => None,
+    };
+    let selected_side = subject.and_then(|entry| {
         world
             .fleets
             .get(entry.fleet())
@@ -3089,7 +3317,7 @@ fn draw_fleet_window(
                     LEFT_ITEM_HEIGHT,
                 );
                 // The image and whether it takes the selected frame.
-                let mut targets = vec![(list_painter.clone(), item, selected == Some(*entry))];
+                let mut targets = vec![(list_painter.clone(), item, picked.contains(entry))];
                 if let Some(image) = drag_image.filter(|image| image.holds(*entry)) {
                     targets.push((
                         ctx.layer_painter(drag_layer())
@@ -3302,8 +3530,32 @@ fn draw_fleet_window(
                     ui.id().with((window.system, "entry", row)),
                     egui::Sense::click(),
                 );
+                // A press on an entry, in list pixels (FUN_00609d80), with
+                // the list's cells for a Shift range (FUN_00609590).
+                let left_press = |point: egui::Pos2, release| LeftPress {
+                    entry: *entry,
+                    point: (
+                        (point.x - local.min.x) / scale - LEFT_LIST.0,
+                        (point.y - local.min.y) / scale - LEFT_LIST.1 + left_scroll,
+                    ),
+                    modifiers: crate::drag_list::modifiers(ui.ctx()),
+                    release,
+                    cells: entries
+                        .iter()
+                        .enumerate()
+                        .map(|(row, entry)| {
+                            (
+                                *entry,
+                                (0.0, LEFT_ITEM_HEIGHT * row as f32),
+                                (LEFT_LIST.2, LEFT_ITEM_HEIGHT),
+                            )
+                        })
+                        .collect(),
+                };
                 if exact_clicked(&response, entry_area) {
-                    result.select = Some(Some(*entry));
+                    if let Some(point) = response.interact_pointer_pos() {
+                        result.left_press = Some(left_press(point, true));
+                    }
                     result.focus = true;
                 }
                 if response.clicked() && double {
@@ -3324,8 +3576,9 @@ fn draw_fleet_window(
                     response.interact_pointer_pos(),
                 ) {
                     // A0 fleet3/02, 08: the right click selects the entry
-                    // it opens the menu for (Medium Transport 1, Fleet 7).
-                    result.select = Some(Some(*entry));
+                    // it opens the menu for (Medium Transport 1, Fleet 7);
+                    // on a selected entry it keeps the selection (0x204).
+                    result.left_press = Some(left_press(point, false));
                     result.object_menu = Some((object.menu_object(), point, None));
                 }
                 // A drag out of either list posts 0x29a (FUN_006083c0).
@@ -3383,7 +3636,7 @@ fn draw_fleet_window(
                 // The picture: one fleet's 10425 centered, keyed over the
                 // en route mark 10426 drawn first at the same left edge; or
                 // one ship's portrait at the panel's origin (`FUN_004a5c00`).
-                if let Some(FleetWindowEntry::Fleet(fleet)) = selected {
+                if let Some(fleet) = picture_fleet {
                     let picture = side_art(FLEET_PICTURE, side);
                     let width = cache
                         .original_resource_size(DllSource::Strategy, picture)
@@ -3398,7 +3651,7 @@ fn draw_fleet_window(
                     // The label +0x190 (FUN_004a4b10): (100, 29), 128 by 25,
                     // format 0 (left, top), font 5. The A0 capture shows
                     // "Fleet 2" red, bold, from x 101.
-                    if let Some(label) = fleet_label(world, fleet) {
+                    if let Some(label) = fleet_label(world, fleet).filter(|_| selected.is_some()) {
                         // DrawTextA without DT_NOCLIP clips to the label: A0
                         // fleet-aboard/10 cuts "Imperial Star Destroyer 1"
                         // at x 228.
@@ -3481,7 +3734,7 @@ fn draw_fleet_window(
                         }
                     }
                 }
-                if let Some((aboard, capacity)) = window_tab_counts(world, movement, transport, selected, window.tab)
+                if let Some((aboard, capacity)) = selection_counts(world, movement, transport, &picked, window.tab)
                 {
                     // The count fonts +0x1a4 and +0x1a8 are font 10
                     // (FUN_006002b0(10), FUN_004a4b10).
@@ -3525,8 +3778,8 @@ fn draw_fleet_window(
                 // base otherwise.
                 let strip_side = if side == viewer { viewer } else { other };
                 let base = side_art(TAB_BASE, strip_side);
-                for tab in shown_tabs(selected) {
-                    let enabled = window_tab_enabled(world, movement, transport, arrivals, selected, tab);
+                for tab in shown_tabs(&picked) {
+                    let enabled = selection_tab_enabled(world, movement, transport, arrivals, &picked, tab);
                     let rect = tab_rect(local, scale, tab);
                     let id = tab_resource(base, tab, tab == window.tab, enabled);
                     // The control clips the 29-row art to 28 (`FUN_00602d30`).
@@ -3583,11 +3836,11 @@ fn draw_fleet_window(
                 let right_painter = painter.with_clip_rect(right);
                 // Everything aboard a travelling fleet is en route
                 // (`FUN_004f8240`).
-                let travelling = matches!(
-                    selected,
-                    Some(FleetWindowEntry::Fleet(fleet)) if movement.is_in_transit(fleet)
-                );
-                let shown_items = window_items(world, movement, transport, arrivals, selected, window.tab);
+                let travelling = !picked.is_empty()
+                    && picked.iter().all(|entry| {
+                        matches!(entry, FleetWindowEntry::Fleet(fleet) if movement.is_in_transit(*fleet))
+                    });
+                let shown_items = selection_items(world, movement, transport, arrivals, &picked, window.tab);
                 let shown_keys = right_keys(&shown_items);
                 let content = right_content(shown_items.len());
                 let bar = crate::list_scroll_bar::ScrollBar::new(
@@ -3782,7 +4035,7 @@ fn draw_fleet_window(
                 .collect();
             controls.push(list);
             if selected_side.is_some() {
-                controls.extend(shown_tabs(selected).map(|tab| tab_rect(local, scale, tab)));
+                controls.extend(shown_tabs(&picked).map(|tab| tab_rect(local, scale, tab)));
                 controls.push(logical_rect(
                     local,
                     scale,
@@ -4073,7 +4326,7 @@ pub(crate) mod tests {
             world,
             &TroopTransportState::default(),
             &[],
-            window.selected,
+            window.selected.single(),
             window.tab,
         ));
         rows.iter().map(|&row| keys[row].unwrap()).collect()
@@ -4179,14 +4432,14 @@ pub(crate) mod tests {
         OpenFleetWindow {
             system,
             logical_position: (0, 0),
-            selected,
+            selected: selected.map_or_else(ListSelection::default, ListSelection::only),
             selected_items: ListSelection::default(),
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
             rename: None,
             last_click: None,
             moving: None,
-            roster: None,
+            roster: Vec::new(),
             right_scroll: 0.0,
             right_hold: None,
             left_scroll: 0.0,
@@ -4804,13 +5057,13 @@ pub(crate) mod tests {
             drop_target(&world, Faction::Alliance, &open, &entries, empty_row),
             fleet
         );
-        open.selected = None;
+        open.selected = ListSelection::default();
         assert_eq!(
             drop_target(&world, Faction::Alliance, &open, &entries, ship_row),
             None
         );
         open.tab = FleetWindowTab::Troops;
-        open.selected = Some(FleetWindowEntry::Fleet(own));
+        open.selected = ListSelection::only(FleetWindowEntry::Fleet(own));
         assert_eq!(
             drop_target(&world, Faction::Alliance, &open, &entries, ship_row),
             fleet
@@ -4894,7 +5147,7 @@ pub(crate) mod tests {
         assert!(state.select(system, ship));
 
         let window = &state.windows[0];
-        assert_eq!(window.selected, Some(ship));
+        assert_eq!(window.selected.single(), Some(ship));
         assert!(window.selected_items.is_empty());
         assert!(left_entries(
             &world,
@@ -4927,7 +5180,7 @@ pub(crate) mod tests {
         assert!(state.open(&world, system, (0, 0), CockpitFaction::Alliance, layout()));
         let window = &state.windows[0];
         assert_eq!(
-            (window.selected, window.tab, window.logical_position),
+            (window.selected.single(), window.tab, window.logical_position),
             (Some(ship), FleetWindowTab::Fighters, at)
         );
         assert!(state.hidden.is_empty());
@@ -5246,7 +5499,7 @@ pub(crate) mod tests {
         assert_eq!(object(&state, left(2.0)), transport);
         assert_eq!(pick(&state, left(3.0)), here);
         // Right, with the fleet selected: its ships, then the selection.
-        state.windows[0].selected = Some(FleetWindowEntry::Fleet(fleet));
+        state.windows[0].selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
         assert_eq!(object(&state, right(0.0)), star);
         assert_eq!(object(&state, right(1.0)), transport);
         assert_eq!(pick(&state, right(2.0)), here);
@@ -5299,7 +5552,7 @@ pub(crate) mod tests {
     ) -> (Vec<FleetWindowAction>, egui::Pos2, bool) {
         let mut state = opened(world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.tab = tab;
         }
         let (start, end) = (at(from.0, from.1), at(to.0, to.1));
@@ -5435,7 +5688,7 @@ pub(crate) mod tests {
         }
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.tab = FleetWindowTab::CapitalShips;
         }
         (world, system, fleet, state)
@@ -5512,7 +5765,9 @@ pub(crate) mod tests {
     #[test]
     fn a_drop_carries_its_own_fleets_ships_and_squadrons_and_every_member() {
         // FUN_00422ce0 moves the selection as one order; the right list
-        // holds one tab's objects.
+        // holds one tab's objects. port: ships and squadrons of several
+        // fleets (several fleets selected on the left) go one order per
+        // fleet.
         let (mut world, system) = world(ControlKind::Uncontrolled);
         let (one, two) = (
             add_fleet(&mut world, system, true, 0),
@@ -5526,23 +5781,40 @@ pub(crate) mod tests {
         };
         assert_eq!(
             right_drop(&[ship(one, 0), ship(two, 1), ship(one, 2)], point, false),
-            Some(FleetWindowAction::DragShip {
-                fleet: one,
-                ships: vec![0, 2],
-                roster: 7,
-                point,
-                confirmed: false,
-            })
+            [
+                FleetWindowAction::DragShip {
+                    fleet: one,
+                    ships: vec![0, 2],
+                    roster: 7,
+                    point,
+                    confirmed: false,
+                },
+                FleetWindowAction::DragShip {
+                    fleet: two,
+                    ships: vec![1],
+                    roster: 7,
+                    point,
+                    confirmed: false,
+                }
+            ]
         );
         let fighter = |fleet, index| ItemObject::Fighter { fleet, index };
         assert_eq!(
             right_drop(&[fighter(one, 0), fighter(two, 1), fighter(one, 3)], point, false),
-            Some(FleetWindowAction::DragSquadron {
-                fleet: one,
-                indices: vec![0, 3],
-                point,
-                confirmed: false,
-            })
+            [
+                FleetWindowAction::DragSquadron {
+                    fleet: one,
+                    indices: vec![0, 3],
+                    point,
+                    confirmed: false,
+                },
+                FleetWindowAction::DragSquadron {
+                    fleet: two,
+                    indices: vec![1],
+                    point,
+                    confirmed: false,
+                }
+            ]
         );
         let person = world.characters.insert(Default::default());
         let unit = world.special_forces.insert(rebellion_core::world::SpecialForceUnit {
@@ -5557,24 +5829,47 @@ pub(crate) mod tests {
                 point,
                 false
             ),
-            Some(FleetWindowAction::DragMembers {
+            [FleetWindowAction::DragMembers {
                 members: vec![
                     MissionMember::Character(person),
                     MissionMember::SpecialForce(unit)
                 ],
                 point,
                 confirmed: false,
-            })
+            }]
         );
         assert_eq!(
-            left_drop(ship(two, 4), point, false),
-            Some(FleetWindowAction::DragShip {
+            left_drop(&[ship(two, 4)], point, false),
+            [FleetWindowAction::DragShip {
                 fleet: two,
                 ships: vec![4],
                 roster: 7,
                 point,
                 confirmed: false,
-            })
+            }]
+        );
+        // Several left entries: the fleets as one fleet move, the ships
+        // as their fleet's ship order.
+        assert_eq!(
+            left_drop(
+                &[ItemObject::Fleet(one), ship(two, 4), ItemObject::Fleet(two)],
+                point,
+                true
+            ),
+            [
+                FleetWindowAction::DragFleet {
+                    fleets: vec![one, two],
+                    point,
+                    confirmed: true,
+                },
+                FleetWindowAction::DragShip {
+                    fleet: two,
+                    ships: vec![4],
+                    roster: 7,
+                    point,
+                    confirmed: true,
+                }
+            ]
         );
     }
 
@@ -5613,6 +5908,136 @@ pub(crate) mod tests {
         let frame = side_art(FLEET_SELECTED, 1);
         // The entry's image, 20 by 30 on from its place at the list's (4, 29).
         assert!(held.painted.contains(&(frame, at(24.0, 59.0))), "{:?}", held.painted);
+    }
+
+    /// Two Alliance fleets of one transport each at an Alliance system, a
+    /// regiment aboard the second, its window open.
+    fn two_fleet_window() -> (
+        GameWorld,
+        TroopTransportState,
+        SystemKey,
+        [FleetKey; 2],
+        FleetWindowState,
+    ) {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let one = add_fleet(&mut world, system, true, 2);
+        let two = add_fleet(&mut world, system, true, 2);
+        let troop = add_troop(&mut world, system);
+        let mut transport = TroopTransportState::default();
+        transport.embark(&mut world, two, &[troop]).unwrap();
+        let state = opened(&world, system);
+        (world, transport, system, [one, two], state)
+    }
+
+    fn click_entry(
+        world: &GameWorld,
+        transport: &TroopTransportState,
+        state: &mut FleetWindowState,
+        system: SystemKey,
+        row: usize,
+        modifiers: egui::Modifiers,
+    ) -> Run {
+        let point = state.entry_screen_rect(scaled(), system, row).unwrap().center();
+        run(world, transport, state, CockpitFaction::Alliance, click_with(point, modifiers))
+    }
+
+    #[test]
+    fn ctrl_clicks_select_several_fleets_and_the_right_pane_shows_them_all() {
+        // FUN_004a4b10 gives the left list no flags either, so MK_CONTROL
+        // adds an entry (FUN_006083c0). FUN_004a5c00 then empties the right
+        // list and has each selected entry add its contents (FUN_004a6be0),
+        // sums the counts into +0x198/+0x19c, or's the tabs' flags
+        // (FUN_004a6980) and names nothing (FUN_00601aa0(0)).
+        let (world, transport, system, [one, two], mut state) = two_fleet_window();
+        let report = |state: &FleetWindowState| {
+            state
+                .report(&world, &MovementState::default(), &fog(system), &transport, system)
+                .unwrap()
+        };
+        let _ = click_entry(&world, &transport, &mut state, system, 0, egui::Modifiers::NONE);
+        assert_eq!(report(&state).items.len(), 1);
+        assert!(!report(&state).enabled[2], "the first fleet carries no regiment");
+        let _ = click_entry(&world, &transport, &mut state, system, 1, egui::Modifiers::CTRL);
+        let both = report(&state);
+        assert_eq!(both.selected_rows, [0, 1]);
+        assert_eq!(both.selected, None);
+        assert_eq!(both.items.len(), 2, "both fleets' ships");
+        assert!(both.enabled[2], "the second fleet's regiment lights Troops");
+        assert!(state.show_tab(system, FleetWindowTab::Troops));
+        assert_eq!(report(&state).counts, Some((1, 4)));
+        assert_eq!(report(&state).items.len(), 1);
+        // Ctrl on a selected entry takes it out on the release.
+        let _ = click_entry(&world, &transport, &mut state, system, 0, egui::Modifiers::CTRL);
+        assert_eq!(report(&state).selected_rows, [1]);
+        assert_eq!(report(&state).selected, Some(FleetWindowEntry::Fleet(two)));
+        let _ = one;
+    }
+
+    #[test]
+    fn selecting_an_own_fleet_drops_the_other_sides_from_the_selection() {
+        // FUN_004a5c00: when a selected item has +0x68 bit 8 (the viewer's
+        // side), every selected item without it is deselected.
+        let (mut world, transport, system, [one, _], _) = two_fleet_window();
+        let enemy = add_fleet(&mut world, system, false, 0);
+        let mut state = opened(&world, system);
+        let rows = |state: &FleetWindowState| {
+            state
+                .report(&world, &MovementState::default(), &fog(system), &transport, system)
+                .unwrap()
+        };
+        let enemy_row = rows(&state)
+            .fleet_rows
+            .iter()
+            .find(|(fleet, _)| *fleet == enemy)
+            .unwrap()
+            .1;
+        let own_row = rows(&state)
+            .fleet_rows
+            .iter()
+            .find(|(fleet, _)| *fleet == one)
+            .unwrap()
+            .1;
+        let _ = click_entry(&world, &transport, &mut state, system, enemy_row, egui::Modifiers::NONE);
+        assert_eq!(rows(&state).selected, Some(FleetWindowEntry::Fleet(enemy)));
+        let _ = click_entry(&world, &transport, &mut state, system, own_row, egui::Modifiers::CTRL);
+        assert_eq!(rows(&state).selected, Some(FleetWindowEntry::Fleet(one)));
+    }
+
+    #[test]
+    fn a_drag_and_a_menu_from_a_selected_fleet_take_every_selected_fleet() {
+        // The press on a selected entry holds its click (flag 0x10), so the
+        // drop (0x29a) carries the selection (FUN_00422ce0 reads slot
+        // +0x58), as the menu does (FUN_004ac5c0).
+        let (world, transport, system, [one, two], mut state) = two_fleet_window();
+        let _ = click_entry(&world, &transport, &mut state, system, 0, egui::Modifiers::NONE);
+        let _ = click_entry(&world, &transport, &mut state, system, 1, egui::Modifiers::CTRL);
+        let start = state.entry_screen_rect(scaled(), system, 1).unwrap().center();
+        let end = at(300.0, 200.0);
+        let mut frames = hover(start);
+        frames.extend([
+            vec![press(start, true)],
+            vec![egui::Event::PointerMoved(end)],
+            vec![egui::Event::PointerMoved(end), press(end, false)],
+        ]);
+        let dropped = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        assert!(
+            dropped.actions.contains(&FleetWindowAction::DragFleet {
+                fleets: vec![one, two],
+                point: end,
+                confirmed: false,
+            }),
+            "{:?}",
+            dropped.actions
+        );
+        let point = state.entry_screen_rect(scaled(), system, 1).unwrap().center();
+        let teams: Vec<Vec<MenuObject>> = right_click(&world, &transport, &mut state, point)
+            .into_iter()
+            .filter_map(|action| match action {
+                FleetWindowAction::OpenObjectMenu { team, .. } => Some(team),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(teams, [vec![MenuObject::Fleet(two), MenuObject::Fleet(one)]]);
     }
 
     #[test]
@@ -5962,7 +6387,7 @@ pub(crate) mod tests {
             click(at(40.0, 29.0 + 75.0)),
         );
         assert_eq!(
-            state.windows[0].selected,
+            state.windows[0].selected.single(),
             Some(FleetWindowEntry::Fleet(four))
         );
         assert_eq!(frame(&mut state), 41.0);
@@ -6069,7 +6494,7 @@ pub(crate) mod tests {
             CockpitFaction::Alliance,
             click(at(90.0, 200.0)),
         );
-        assert_eq!(state.windows[0].selected, None);
+        assert_eq!(state.windows[0].selected.single(), None);
         state.window_mut(system).unwrap().left_scroll = 89.0;
         run(
             &world,
@@ -6079,7 +6504,7 @@ pub(crate) mod tests {
             click(at(40.0, 260.0)),
         );
         assert_eq!(
-            (state.windows[0].selected, state.windows[0].left_scroll),
+            (state.windows[0].selected.single(), state.windows[0].left_scroll),
             (Some(FleetWindowEntry::Fleet(fleets[6])), 89.0)
         );
     }
@@ -6199,7 +6624,7 @@ pub(crate) mod tests {
                 .filter(|action| matches!(action, FleetWindowAction::DragFleet { .. }))
                 .collect::<Vec<_>>(),
             [&FleetWindowAction::DragFleet {
-                fleet,
+                fleets: vec![fleet],
                 point: release,
                 confirmed: false,
             }]
@@ -6217,7 +6642,7 @@ pub(crate) mod tests {
             (40.0, 200.0),
         );
         assert!(inside.contains(&FleetWindowAction::DragFleet {
-            fleet,
+            fleets: vec![fleet],
             point: release,
             confirmed: false,
         }));
@@ -6231,7 +6656,7 @@ pub(crate) mod tests {
         let drop = |tab, from: (f32, f32), modifiers| {
             let mut state = opened(&world, system);
             if let Some(window) = state.window_mut(system) {
-                window.selected = Some(FleetWindowEntry::Fleet(fleet));
+                window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
                 window.tab = tab;
             }
             let (start, end) = (at(from.0, from.1), at(300.0, 200.0));
@@ -6257,7 +6682,7 @@ pub(crate) mod tests {
             assert!(
                 left.iter().any(|action| *action
                     == FleetWindowAction::DragFleet {
-                        fleet,
+                        fleets: vec![fleet],
                         point: at(300.0, 200.0),
                         confirmed,
                     }),
@@ -6340,7 +6765,7 @@ pub(crate) mod tests {
         let (world, transport, system, fleet, troop) = fleet_with_regiment();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.tab = FleetWindowTab::CapitalShips;
         }
 
@@ -6396,7 +6821,7 @@ pub(crate) mod tests {
         );
 
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.tab = FleetWindowTab::Fighters;
         }
         let second = state
@@ -6425,7 +6850,7 @@ pub(crate) mod tests {
         transport.embark(&mut world, fleet, &troops).unwrap();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.tab = FleetWindowTab::Troops;
         }
         let listed = |world: &GameWorld, transport: &TroopTransportState| -> Vec<TroopKey> {
@@ -6474,7 +6899,7 @@ pub(crate) mod tests {
             });
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.tab = FleetWindowTab::Fighters;
         }
         for (row, modifiers) in [
@@ -6800,7 +7225,7 @@ pub(crate) mod tests {
                 FleetWindowEntry::Fleet(passer),
             ]
         );
-        let selected = open.selected;
+        let selected = open.selected.single();
         let ships = window_items(&world, &movement, &transport, &[], selected, FleetWindowTab::CapitalShips);
         assert_eq!(
             ships.iter().map(|item| item.en_route).collect::<Vec<_>>(),
@@ -7192,7 +7617,7 @@ pub(crate) mod tests {
             let mut state = FleetWindowState::default();
             assert!(state.open(&world, system, ORIGIN, faction, scaled()));
             if let Some(window) = state.window_mut(system) {
-                window.selected = Some(FleetWindowEntry::Fleet(fleet));
+                window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
                 window.tab = FleetWindowTab::Troops;
             }
 
@@ -7286,14 +7711,15 @@ pub(crate) mod tests {
         let troops: Vec<_> = (0..2).map(|_| add_troop(&mut world, system)).collect();
         transport.embark(&mut world, fleet, &troops).unwrap();
         let ship = |index| Some(FleetWindowEntry::Ship { fleet, index });
+        let ships = |index| [FleetWindowEntry::Ship { fleet, index }];
         assert!(!tab_enabled(&world, &transport, &[], ship(0), FleetWindowTab::Troops));
         assert!(tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Troops));
         assert!(!tab_enabled(&world, &transport, &[], ship(1), FleetWindowTab::Personnel));
         assert_eq!(
-            shown_tabs(ship(1)).collect::<Vec<_>>(),
+            shown_tabs(&ships(1)).collect::<Vec<_>>(),
             [FleetWindowTab::Fighters, FleetWindowTab::Troops, FleetWindowTab::Personnel]
         );
-        assert_eq!(shown_tabs(Some(FleetWindowEntry::Fleet(fleet))).count(), 4);
+        assert_eq!(shown_tabs(&[FleetWindowEntry::Fleet(fleet)]).count(), 4);
         // Squadrons fill the fighter capacity of the ship that has it.
         let squadron = world.fighter_classes.insert(Default::default());
         world.fleets[fleet].fighters.push(rebellion_core::world::FighterEntry {
@@ -7348,7 +7774,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
         }
         let painted = run(
             &world,
@@ -7390,7 +7816,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(enemy));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(enemy));
             window.selected_items = ListSelection::only(keys_of(&world, window, &[0])[0]);
             window.expanded.push(enemy);
         }
@@ -7439,7 +7865,7 @@ pub(crate) mod tests {
         transport.embark(&mut world, fleet, &[troop]).unwrap();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.expanded.push(fleet);
         }
         let painted = run_moving(
@@ -7475,7 +7901,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.expanded.push(fleet);
         }
         let mut movement = MovementState::default();
@@ -7525,7 +7951,7 @@ pub(crate) mod tests {
         // (0x42ccd9), so the mark shows behind it (manual pp. 96-97: the
         // starfield behind the portrait). The same holds for the minis.
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Ship { fleet, index: 0 });
+            window.selected = ListSelection::only(FleetWindowEntry::Ship { fleet, index: 0 });
         }
         let portrait = mini - 0x4000;
         let ship = paint(&mut state, &movement);
@@ -7554,7 +7980,7 @@ pub(crate) mod tests {
         let transport = TroopTransportState::default();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleet));
             window.expanded.push(fleet);
         }
         let movement = MovementState::default();
@@ -7583,7 +8009,7 @@ pub(crate) mod tests {
             assert!(mark < order(&hit, mini, spot), "{hit:?}");
         }
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Ship { fleet, index: 0 });
+            window.selected = ListSelection::only(FleetWindowEntry::Ship { fleet, index: 0 });
         }
         let portrait = mini - 0x4000;
         let panel = at(100.0, 42.0);
@@ -8068,7 +8494,7 @@ pub(crate) mod tests {
         transport.embark(&mut world, fleets[0], &troops).unwrap();
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
-            window.selected = Some(FleetWindowEntry::Fleet(fleets[0]));
+            window.selected = ListSelection::only(FleetWindowEntry::Fleet(fleets[0]));
             window.tab = FleetWindowTab::Troops;
         }
 
@@ -8105,7 +8531,7 @@ pub(crate) mod tests {
         let actions = right_click(&world, &transport, &mut state, at(40.0, 104.0));
         assert_eq!(menus(&actions).len(), 1);
         assert_eq!(
-            state.window_mut(system).unwrap().selected,
+            state.window_mut(system).unwrap().selected.single(),
             Some(FleetWindowEntry::Ship { fleet, index: 0 })
         );
     }
@@ -8139,16 +8565,16 @@ pub(crate) mod tests {
         };
         frame(&world, &mut state);
         frame(&world, &mut state);
-        assert_eq!(state.window_mut(system).unwrap().selected, Some(FleetWindowEntry::Fleet(fleet)));
+        assert_eq!(state.window_mut(system).unwrap().selected.single(), Some(FleetWindowEntry::Fleet(fleet)));
         let ship = world.fleets[fleet].capital_ships[0].clone();
         world.fleets[fleet].capital_ships.push(ship);
         frame(&world, &mut state);
-        assert_eq!(state.window_mut(system).unwrap().selected, None);
+        assert_eq!(state.window_mut(system).unwrap().selected.single(), None);
         // A new selection is kept.
         state.select(system, FleetWindowEntry::Fleet(fleet));
         frame(&world, &mut state);
         frame(&world, &mut state);
-        assert_eq!(state.window_mut(system).unwrap().selected, Some(FleetWindowEntry::Fleet(fleet)));
+        assert_eq!(state.window_mut(system).unwrap().selected.single(), Some(FleetWindowEntry::Fleet(fleet)));
     }
 
     #[test]

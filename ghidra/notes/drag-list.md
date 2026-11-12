@@ -96,8 +96,25 @@ window's selection (slot `+0x58`) and moves it against the drop window
   (`ObjectMenuState::with_team`); Encyclopedia and Status grey for more than
   one (`FUN_0051d990`). port: only Move, Confirmed Move, a ships team's
   Create Fleet and a characters team's Mission are ported for a team.
-- port: the Fleet window's left list keeps one selection (its right pane's
-  union of several fleets, `FUN_004a5c00`, is not ported).
+- The Fleet window's left list takes several entries (2026-11-13).
+  `FUN_004a5c00` (read in full) then: counts the selected items (`+0x3c`
+  bit 0); when one has item flag `+0x68` bit 8 (the viewer's side: without
+  one the picture takes the other side's art, `0x32 - ...`) it deselects
+  every item without it; with two or more it clears `+0x14c` bit 8 (so
+  Capital Ships stays a tab), names nothing (`FUN_00601aa0(0)`) and draws
+  the fleet picture with the last selected item's en route and damage
+  flags; it empties the right list (`FUN_004a6980`) and has each selected
+  item add its contents for the tab (`FUN_004a6be0`: a fleet recurses into
+  its ships, a ship adds itself on `0x66`, its regiments `FUN_005039d0`
+  and their slots `+0x23c`/`+0x26c` on `0x67`, its squadrons
+  `FUN_00504c40` and `+0x240`/`+0x270` on `0x68`, its personnel
+  `FUN_00536da0` otherwise), summing the counts into `+0x198`/`+0x19c`.
+  `FUN_004a6980` lights `0x67..0x69` from the selected items' `+0x54`
+  flags, or'ed. Ported as `selection_items`, `selection_tab_enabled`,
+  `selection_counts` and the press rule in `draw_fleet_windows`; a drop or
+  menu from a selected entry takes every selected entry. port: a left
+  click applies the press and its release together (the original selects
+  on the press); ships of several fleets drop as one order per fleet.
 - port: a Defenses window release inside its own list is no drop (there
   `+0x70` gives only its own system).
 
