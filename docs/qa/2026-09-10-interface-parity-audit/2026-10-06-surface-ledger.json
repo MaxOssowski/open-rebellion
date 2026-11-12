@@ -965,15 +965,16 @@
         {
           "id": "PRE-05-C003",
           "requirement": "droid animation",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
             "ghidra/notes/advisor-briefing.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-09-10-authentic-droid-advisors.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-save-briefings/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-options-save-briefings/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Type-302 clips play cumulatively (advisor_clip.rs, FUN_00404440); the real-data test every_briefing_clip_plays_each_of_its_frames_to_the_end passes; no A0 frame comparison. 2026-11-11 b192: briefing.mjs compares A0 briefing frames' droid box with every port crop: Alliance 83 of 85 A0 frames match a port frame exactly (b104 435 px, b121 after 0xd); Empire 0 of 98 match (1024..1190 px each, shading differs over the body; untraced, measured not asserted). Run briefing-2026-11-11T18-52-29-091Z.",
+          "note": "Type-302 clips play cumulatively (advisor_clip.rs, FUN_00404440); the real-data test every_briefing_clip_plays_each_of_its_frames_to_the_end passes; no A0 frame comparison. 2026-11-11 b192: briefing.mjs compares A0 briefing frames' droid box with every port crop: Alliance 83 of 85 A0 frames match a port frame exactly (b104 435 px, b121 after 0xd); Empire 0 of 98 match (1024..1190 px each, shading differs over the body; untraced, measured not asserted). Run briefing-2026-11-11T18-52-29-091Z. b194: the Empire frames were drawn over the 107-px aperture instead of their own 106 px (FUN_004729c0 sizes the frame from the bitmap; fix droid_frame_rect in advisor.rs). briefing.mjs asserts both sides against A0: Alliance 83/85, Empire 95/98 frames exact; run briefing-2026-11-12T01-32-46-611Z on the main checkout after b194 (all cases pass).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -983,9 +984,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Voices from albrief/embrief DLLs with their lengths are asserted in briefing.mjs (Linux); audibility and timing not compared with A0.",
+          "note": "Voices from albrief/embrief DLLs with their lengths are asserted in briefing.mjs (Linux); audibility and timing not compared with A0. 2026-11-12: voice gaps dated from A0 droid frames are asserted within 0.3 s + 2% (9 Alliance, 14 Empire); the first voice's gap and the sound itself are not compared (needs an A0 audio recording with a clock).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -995,9 +997,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-28-advisor-briefing-playback/",
-            "ghidra/notes/advisor-briefing.md"
+            "ghidra/notes/advisor-briefing.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-briefing-droid/README.md"
           ],
-          "note": "Skip via click or Escape (hooks FUN_0041d9d0, flush FUN_0041da30) gives actions 0xc,0xb,0xd and the short-form voice in briefing.mjs (Linux); no A0.",
+          "note": "Skip via click or Escape (hooks FUN_0041d9d0, flush FUN_0041da30) gives actions 0xc,0xb,0xd and the short-form voice in briefing.mjs (Linux); no A0. 2026-11-12: no A0 of a skip; needs A0 frames every 0.5 s with a click during the first voice.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -2272,9 +2275,10 @@
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-10-quadrant-icon-reserved-and-drop/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-quadrant-icon-defenses-move/README.md",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-icon-menu-and-topic-box-a0/README.md",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-a0-fixes-icon-topic-movie-box/README.md"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-11-a0-fixes-icon-topic-movie-box/README.md",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-droid-encyclopedia-quadrants/README.md"
           ],
-          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states. 2026-11-11 b187: A0 of the defenses icon's menu (2026-11-11-icon-menu-and-topic-box-a0): Move/Confirmed Move white for a free team, grey while a character, regiment or squadron of the side is on its way in; Scrap grey too. The port now counts regiments and squadrons flying in (TroopTransportState::surface_arrival_pending). Open: Coruscant grey on days 12-17 with no seen cause (deliveries not counted). 2026-11-11 b189: deliveries now count. The original's product travels inside its destination's container (FUN_005150c0 -> FUN_00556430, build-delivery.md), so a built regiment, squadron or special force on its way greys the defenses icon's Move and Scrap (DeliveryState::surface_arrival_pending; unit test). Coruscant's grey on days 12-17 is consistent with this but stays inferred: the deliveries were not seen in A0.",
+          "note": "The right release opens the icon's menu, but several commands stay disabled or unimplemented; no A0. 2026-11-10 b177: the facility icon's Reserved (0x216) is ported: enabled with managers of the side, checked while any is Reserved (FUN_0051fd30), chosen it sets every manager to the opposite (Class_006612a8_vt50). The defenses icon's Move/Confirmed Move stay open; no A0, no browser case. 2026-11-11 b182: the defenses icon's Move and Confirmed Move are ported (FUN_00512700 kind 8, FUN_0053c4b0 split, FUN_0053c1a0 refusal); an icon's Move never asks (FUN_00487cc0). Every icon's menu row is now ported; no A0 of the icon menus' states. 2026-11-11 b187: A0 of the defenses icon's menu (2026-11-11-icon-menu-and-topic-box-a0): Move/Confirmed Move white for a free team, grey while a character, regiment or squadron of the side is on its way in; Scrap grey too. The port now counts regiments and squadrons flying in (TroopTransportState::surface_arrival_pending). Open: Coruscant grey on days 12-17 with no seen cause (deliveries not counted). 2026-11-11 b189: deliveries now count. The original's product travels inside its destination's container (FUN_005150c0 -> FUN_00556430, build-delivery.md), so a built regiment, squadron or special force on its way greys the defenses icon's Move and Scrap (DeliveryState::surface_arrival_pending; unit test). Coruscant's grey on days 12-17 is consistent with this but stays inferred: the deliveries were not seen in A0. b194: the last highlighted row stays lit after the pointer leaves (FUN_004aab50 +0x118; A0 2026-11-11-icon-menu-topic/00,07,12); sector-quadrants defenses-icon-menu-a0 matches A0 00 (frame 0/808 off, rows, ink within 1-2 px). Still missing: other icons' menus after leaving, and the Move-greying cause.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -3124,9 +3128,10 @@
           "status": "partial",
           "counts_toward_parity": true,
           "evidence": [
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-advisor-missing-frame/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-09-advisor-missing-frame/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-droid-encyclopedia-quadrants/README.md"
           ],
-          "note": "The behaviour for a missing clip frame is not yet traced. 2026-11-09 (b147): traced: FUN_0041c680 leaves a missing type-302 frame empty (FUN_0041c8f0) and FUN_0041c7a0 applies nothing for it, so the picture holds for that tick and the clip plays to its end; the port ended the clip at once and now holds (advisor_clip.rs, unit test a_missing_frame_holds_the_picture_and_the_clip_plays_to_its_end). No shipped clip that plays misses a frame, so no A0 capture can show it; a missing first bitmap is not traced. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass)."
+          "note": "The behaviour for a missing clip frame is not yet traced. 2026-11-09 (b147): traced: FUN_0041c680 leaves a missing type-302 frame empty (FUN_0041c8f0) and FUN_0041c7a0 applies nothing for it, so the picture holds for that tick and the clip plays to its end; the port ended the clip at once and now holds (advisor_clip.rs, unit test a_missing_frame_holds_the_picture_and_the_clip_plays_to_its_end). No shipped clip that plays misses a frame, so no A0 capture can show it; a missing first bitmap is not traced. Batch b147: 23 of 23 gates; tactical matrix 2026-11-09T01-24-22-762Z-468210 147 of 148, the Empire's camera-journey failing on this check's green-only marker test, fixed and rerun 2026-11-09T01-38-07-552Z-498711 (both sides pass). 2026-11-12: every ALSPRITE/EMSPRITE clip has its first bitmap and all delta frames, except ALSPRITE 4155/10155 (a leftover briefing clip copy, frames in ALBRIEF) whose playback is untraced; candidate for exclusion once that is traced."
         }
       ]
     },
@@ -4605,13 +4610,14 @@
         {
           "id": "OBJ-01-C008",
           "requirement": "topic text",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-29-encyclopedia-topic/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-topic-text-bar/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-topic-text-bar/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-droid-encyclopedia-quadrants/README.md"
           ],
-          "note": "The Abduction topic body (FUN_0041ecf0 at (17, 231)) was compared with A0 topic-abduction-empire-day166 in the Linux browser; lines 1-2 break as in A0, line 3 breaks one word earlier and the text sits 1 pixel higher (Liberation Sans vs GDI Arial metrics; body em is a hyp). 2026-11-05: a long body (A-wing) shows the text control's bar (FUN_0041efe0, 0x299a), its arrows 0 differing from A0 encyclopedia/topic-step-6 in personnel-states.mjs (Linux).",
+          "note": "The Abduction topic body (FUN_0041ecf0 at (17, 231)) was compared with A0 topic-abduction-empire-day166 in the Linux browser; lines 1-2 break as in A0, line 3 breaks one word earlier and the text sits 1 pixel higher (Liberation Sans vs GDI Arial metrics; body em is a hyp). 2026-11-05: a long body (A-wing) shows the text control's bar (FUN_0041efe0, 0x299a), its arrows 0 differing from A0 encyclopedia/topic-step-6 in personnel-states.mjs (Linux). b194: the topic body matches A0 word for word on both sides (encyclopedia/topic-step-2, topic-abduction-empire-day166), every line breaks at the same word (ink within 1 px), A-wing label/tab/value rows match topic-step-6; personnel-states.mjs (run personnel-states-2026-11-12T00-35-48-110Z).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -8545,13 +8551,14 @@
         {
           "id": "EVT-02-C005",
           "requirement": "retreat",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-22-battle-alert-retreat/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-alert-simulate/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-05-alert-simulate/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-compare/README.md"
           ],
-          "note": "Retreat enabled per FUN_00516730/FUN_004865b0 and its rest art checked in the browser; the retreat route and its outcome are not compared with A0. 2026-11-05: the route matches A0 (message-rail/retreat-*: the results window over the strategy view); run.mjs --battle (Empire, letterboxed) presses Retreat and finds the routed results. The outcome is not compared: the fixture's fleet dies before it can leave (FUN_005d19a0), A0's withdrew.",
+          "note": "Retreat enabled per FUN_00516730/FUN_004865b0 and its rest art checked in the browser; the retreat route and its outcome are not compared with A0. 2026-11-05: the route matches A0 (message-rail/retreat-*: the results window over the strategy view); run.mjs --battle (Empire, letterboxed) presses Retreat and finds the routed results. The outcome is not compared: the fixture's fleet dies before it can leave (FUN_005d19a0), A0's withdrew. b194: Retreat on the Battle Alert ends in the viewer's withdrawal on both sides; report 0x7003/0x7008/0x700d word for word as A0, scene 10757/10758 0 of ~67k pixels off A0 message-rail/retreat-result-commenor and battle-alert-empire/04-result (run.mjs --battle production-battle-alert-retreat, 160/160 in b194). Fix: a simulated battle's escaped loser reads as withdrawn (FUN_0049b060, FUN_0050c6c0).",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {
@@ -9794,9 +9801,10 @@
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-camera-tracking/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-battle-keys/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-battle-keys/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-compare/README.md"
           ],
-          "note": "F1-F12 follow (FUN_0059b730) implemented; A0 TAC-04-C014 (F1 chase from behind) is captured but not compared.",
+          "note": "F1-F12 follow (FUN_0059b730) implemented; A0 TAC-04-C014 (F1 chase from behind) is captured but not compared. 2026-11-12: A0 is the Battle at Coruscant (Escort Carrier + X/Y-wings) which no fixture rebuilds; needs that fixture or an F1 A0 capture of fixture 37's battle.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         }
       ]
@@ -10361,15 +10369,16 @@
         {
           "id": "TAC-07-C004",
           "requirement": "retreat",
-          "status": "partial",
+          "status": "pass",
           "counts_toward_parity": true,
           "evidence": [
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-10-27-withdrawal-destination/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-assets/",
             "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-troop-finder-and-joins/",
-            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/"
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-06-battle-alert-controls/",
+            "docs/qa/2026-09-08-full-functionality-audit/evidence/2026-11-12-tactical-compare/README.md"
           ],
-          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal. 2026-11-06 (later): an unedited Alliance game (A0 battle-clean/, day 650, the Empire's Battle at Yavin) reads 'The Alliance fleet is defeated.' over 'Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.', and its Display page 'The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul.' (0x7011 with +0x48) with both buttons; the_alliances_withdrawal_from_its_own_system_reads_as_a0 gets the same lines. Day 672 (Averam defended): 'Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn.' and Display 0x7012; the_alliances_defence_of_its_own_system_reads_as_a0. Day 718 (Umgul, fleet destroyed): 0x700b and the Display page's 0x7010 / 0x7014 with one button; the_alliances_destroyed_fleet_reads_as_a0. 2026-11-07: Empire side in a new Easy Empire game (empire-clean/10..12): controls 10973/10716/10719 0 pixels, the destroyed fleet's summary and Display lines word for word (unit test).",
+          "note": "0x700d 'has withdrawn to {2:1}' is ported, but its README says the viewer's own withdrawal was not compared; A0 TAC-07-C004 shows exactly that text. 2026-11-06: A0 battle-alert-empire/04-result reads the viewer's own withdrawal 'The Imperial fleet has withdrawn to Coruscant.' after 'Tralus is now under blockade by Alliance forces.'; the_empires_withdrawal_from_a_blockade_reads_as_a0 gets the same lines. Open: no browser comparison of the viewer's withdrawal. 2026-11-06 (later): an unedited Alliance game (A0 battle-clean/, day 650, the Empire's Battle at Yavin) reads 'The Alliance fleet is defeated.' over 'Yavin is now under blockade by Imperial forces. The Alliance fleet has withdrawn to Umgul.', and its Display page 'The Alliance fleet was defeated at Yavin. Your fleet has withdrawn to Umgul.' (0x7011 with +0x48) with both buttons; the_alliances_withdrawal_from_its_own_system_reads_as_a0 gets the same lines. Day 672 (Averam defended): 'Averam has been successfully defended from Imperial forces. The Imperial fleet has withdrawn.' and Display 0x7012; the_alliances_defence_of_its_own_system_reads_as_a0. Day 718 (Umgul, fleet destroyed): 0x700b and the Display page's 0x7010 / 0x7014 with one button; the_alliances_destroyed_fleet_reads_as_a0. 2026-11-07: Empire side in a new Easy Empire game (empire-clean/10..12): controls 10973/10716/10719 0 pixels, the destroyed fleet's summary and Display lines word for word (unit test). b194: Withdraw From Battle (FUN_005f1170) played in the browser until the battle ends; report 0x7003/0x7009/0x700d as A0 TAC-07-C004, scene 0 of 67,113 pixels off (production-battle-withdrawal-report, 160/160 in b194). Jump duration and the strategy screen under the window are not compared.",
           "scope": "Verified in part; see the note. Acceptance is A0 and the Linux browser build (user decision 2026-10-30)."
         },
         {

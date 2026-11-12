@@ -212,3 +212,11 @@ same function:
 The fixture change (`emit_encyclopedia`) is wasm32-only, so mutants
 cannot run it natively. The gate checks it: without the change the probe
 has no `body`, and the new assertions fail.
+
+## Batch b194
+
+Full gate batch b194 (2026-11-12 02:32) is green: 30 gates, check, workspace
+(3598) and fixture (156) tests with 0 failures, 160 battle PASS (40
+scenarios). The briefing gate, run afterwards on the main checkout
+(`briefing-2026-11-12T01-32-46-611Z`), passes all four cases. Passed:
+PRE-05-C003, OBJ-01-C008, EVT-02-C005, TAC-07-C004.

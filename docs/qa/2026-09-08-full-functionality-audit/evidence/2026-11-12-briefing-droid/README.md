@@ -151,3 +151,11 @@ No A0 capture shows a skip. The A0 folders hold only full briefings
 - PRE-05-C004: **partial**. The voices' order and timing match A0 within
   0.3 s plus 2 %. Their sound is not compared, as A0 has no audio.
 - PRE-05-C005: **partial**. No A0 evidence of a skip.
+
+## Batch b194
+
+Full gate batch b194 (2026-11-12 02:32) is green: 30 gates, check, workspace
+(3598) and fixture (156) tests with 0 failures, 160 battle PASS (40
+scenarios). The briefing gate, run afterwards on the main checkout
+(`briefing-2026-11-12T01-32-46-611Z`), passes all four cases. Passed:
+PRE-05-C003, OBJ-01-C008, EVT-02-C005, TAC-07-C004.
