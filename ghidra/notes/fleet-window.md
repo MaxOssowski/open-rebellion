@@ -156,8 +156,9 @@ are stored but draw nothing here.
 Selection: a click selects (`0x29b`, `FUN_004a6390` id `0xc9`) and refreshes
 the right side (`FUN_004a5c00`). A double click (notification `0x309`)
 toggles the selected fleets' expanded bit and rebuilds them (`FUN_004a3d40`).
-hyp: `0x309` is the list's double click; the list's own selection rules
-(`FUN_00609410`) are untraced, as in `mission-dialog.md`.
+hyp: `0x309` is the list's double click. The list's own selection rules
+(Ctrl toggles, Shift adds a range, a press on a selected item waits for the
+release) are in `drag-list.md`.
 
 ## Picture and right list (`FUN_004a5c00`)
 

@@ -22,6 +22,7 @@ use rebellion_core::world::{CapitalShipClass, ControlKind, GameWorld, ShipInstan
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
+use crate::drag_list::{ListSelection, Modifiers};
 use crate::object_menu::MenuObject;
 use crate::minis::{capital_ship_mini_id, fighter_mini_id};
 use crate::quadrant_icons::{quadrant_art, Quadrant};
@@ -414,6 +415,101 @@ fn right_row_top(row: usize, scroll: f32) -> Option<f32> {
     (top < RIGHT_LIST.1 + RIGHT_LIST.3 && top + RIGHT_ITEM_HEIGHT > RIGHT_LIST.1).then_some(top)
 }
 
+/// The layer a list's drag image paints on, over every window: the drag
+/// draws on the frame window with its child clipping off (`FUN_0060dce0`).
+pub(crate) fn drag_layer() -> egui::LayerId {
+    egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("cool-drag-list-image"))
+}
+
+/// The right list's items as `CoolDragList` cells in list pixels: 125 by
+/// 50, one under another (`FUN_004a4b10`).
+fn right_cells(rows: usize) -> Vec<(usize, (f32, f32), (f32, f32))> {
+    (0..rows)
+        .map(|row| (row, (0.0, RIGHT_ITEM_HEIGHT * row as f32), (125.0, RIGHT_ITEM_HEIGHT)))
+        .collect()
+}
+
+/// The right list's row under list point `at`, among `rows` rows.
+fn right_hit(at: (f32, f32), rows: usize) -> Option<usize> {
+    (at.0 >= 0.0 && at.0 < RIGHT_LIST.2 && at.1 >= 0.0)
+        .then(|| (at.1 / RIGHT_ITEM_HEIGHT) as usize)
+        .filter(|row| *row < rows)
+}
+
+/// The drop of a left list entry (`0x29a`).
+fn left_drop(object: ItemObject, point: egui::Pos2) -> Option<FleetWindowAction> {
+    match object {
+        ItemObject::Fleet(fleet) => Some(FleetWindowAction::DragFleet { fleet, point }),
+        ItemObject::Ship {
+            fleet,
+            index,
+            roster,
+        } => Some(FleetWindowAction::DragShip {
+            fleet,
+            ships: vec![index],
+            roster,
+            point,
+        }),
+        _ => None,
+    }
+}
+
+/// The drop of the right list's selected `objects`, all of one tab
+/// (`0x29a`): the galaxy view moves them as one order (`FUN_00422ce0`).
+fn right_drop(objects: &[ItemObject], point: egui::Pos2) -> Option<FleetWindowAction> {
+    match *objects.first()? {
+        ItemObject::Ship { fleet, roster, .. } => Some(FleetWindowAction::DragShip {
+            fleet,
+            ships: objects
+                .iter()
+                .filter_map(|object| match *object {
+                    ItemObject::Ship {
+                        fleet: of, index, ..
+                    } if of == fleet => Some(index),
+                    _ => None,
+                })
+                .collect(),
+            roster,
+            point,
+        }),
+        ItemObject::Fighter { fleet, .. } => Some(FleetWindowAction::DragSquadron {
+            fleet,
+            indices: objects
+                .iter()
+                .filter_map(|object| match *object {
+                    ItemObject::Fighter { fleet: of, index } if of == fleet => Some(index),
+                    _ => None,
+                })
+                .collect(),
+            point,
+        }),
+        ItemObject::Regiment(_) => Some(FleetWindowAction::DragRegiment {
+            troops: objects
+                .iter()
+                .filter_map(|object| match *object {
+                    ItemObject::Regiment(troop) => Some(troop),
+                    _ => None,
+                })
+                .collect(),
+            point,
+        }),
+        ItemObject::Character(_) | ItemObject::SpecialForce(_) => {
+            Some(FleetWindowAction::DragMembers {
+                members: objects
+                    .iter()
+                    .filter_map(|object| match *object {
+                        ItemObject::Character(key) => Some(MissionMember::Character(key)),
+                        ItemObject::SpecialForce(key) => Some(MissionMember::SpecialForce(key)),
+                        _ => None,
+                    })
+                    .collect(),
+                point,
+            })
+        }
+        ItemObject::Fleet(_) | ItemObject::TravellingFighter { .. } => None,
+    }
+}
+
 /// The left list's row under window-local `y` when the list shows from
 /// pixel `scroll` (the same bar, 266 high: `FUN_004a4b10`).
 fn left_row_at(y: f32, scroll: f32) -> usize {
@@ -505,7 +601,9 @@ struct OpenFleetWindow {
     /// port: one selected entry; the list's own selection rules
     /// (`FUN_00609410`) are untraced.
     selected: Option<FleetWindowEntry>,
-    selected_item: Option<usize>,
+    /// The right list's selected rows, by the `CoolDragList` rules
+    /// ([`crate::drag_list`]).
+    selected_items: ListSelection<usize>,
     expanded: Vec<FleetKey>,
     tab: FleetWindowTab,
     /// The in-place name edit Rename (0x203) opens (`FUN_004ac7a0`).
@@ -542,7 +640,7 @@ impl OpenFleetWindow {
     /// clamps `+0xc4` to the range (`FUN_00609ae0`); the draw clamps it.
     fn show_tab(&mut self, tab: FleetWindowTab) {
         self.tab = tab;
-        self.selected_item = None;
+        self.selected_items.clear();
     }
 }
 
@@ -596,13 +694,28 @@ enum RenameOutcome {
 /// squared distance, in list pixels, from the press (`FUN_006083c0`).
 const DRAG_DISTANCE_SQUARED: f32 = 24.0;
 
-/// A left press held on a list item until its release (`CoolDragList`,
-/// `FUN_006083c0`).
+/// A left press held on a list until its release: the list has captured
+/// the mouse (`CoolDragList`, `FUN_006083c0`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ItemDrag {
-    object: ItemObject,
+    system: SystemKey,
+    /// The left list's pressed entry; `None` for a press on the right list,
+    /// whose selection a drop carries.
+    left: Option<ItemObject>,
     press: egui::Pos2,
-    list: egui::Rect,
+}
+
+/// How a held left press ended ([`FleetWindowState::end_drag`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DragEnd {
+    /// The release posted `0x29a`.
+    Drop {
+        system: SystemKey,
+        left: Option<ItemObject>,
+        point: egui::Pos2,
+    },
+    /// A right list release that is no drop: its held click applies there.
+    Release { system: SystemKey, point: egui::Pos2 },
 }
 
 /// The object a list item stands for, which a drag carries and a right
@@ -763,7 +876,7 @@ impl FleetWindowState {
                 FLEET_WINDOW_HEIGHT,
             ),
             selected: None,
-            selected_item: None,
+            selected_items: ListSelection::default(),
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
             rename: None,
@@ -791,7 +904,7 @@ impl FleetWindowState {
             }
         }
         window.selected = Some(entry);
-        window.selected_item = None;
+        window.selected_items.clear();
         window.tab = tab_for(Some(entry), window.tab);
         // The right list keeps its place, clamped (`FUN_004a73c0` →
         // `FUN_0060d7e0` → `FUN_004a5c00`; see `OpenFleetWindow::show_tab`).
@@ -824,7 +937,7 @@ impl FleetWindowState {
             return false;
         };
         window.tab = tab;
-        window.selected_item = None;
+        window.selected_items.clear();
         true
     }
 
@@ -1003,6 +1116,11 @@ impl FleetWindowState {
                 .into_iter()
                 .map(|item| item.label)
                 .collect(),
+            selected_items: {
+                let mut rows = window.selected_items.items().to_vec();
+                rows.sort_unstable();
+                rows
+            },
             counts: tab_counts(world, transport, selected, window.tab),
         })
     }
@@ -1089,8 +1207,11 @@ impl FleetWindowState {
             let row = right_row_at(local.1, window.right_scroll);
             right_target(world, transport, &self.arrivals, window, row).or_else(|| {
                 window
-                    .selected_item
-                    .and_then(|index| right_target(world, transport, &self.arrivals, window, index))
+                    .selected_items
+                    .items()
+                    .iter()
+                    .min()
+                    .and_then(|&index| right_target(world, transport, &self.arrivals, window, index))
             })
         } else {
             None
@@ -1129,13 +1250,26 @@ impl FleetWindowState {
         self.drag.is_some()
     }
 
-    /// End a held drag on the left release: far enough from the press and
-    /// outside the list, it becomes the `0x29a` drop (`FUN_006083c0`), and
-    /// the galaxy view moves the whole selection against the window under
-    /// the point (`FUN_00422ce0`, window type 4: `0x201`).
+    /// How far the pointer has moved since a right list press held on
+    /// `system`'s window: the list drags on the first move with the button
+    /// down (`FUN_006083c0`, case `0x200`). port: a left list drag draws no
+    /// image.
+    fn drag_offset(&self, ctx: &egui::Context, system: SystemKey) -> Option<egui::Vec2> {
+        let drag = self.drag.filter(|drag| drag.system == system && drag.left.is_none())?;
+        let offset = ctx.input(|input| input.pointer.latest_pos())? - drag.press;
+        (offset != egui::Vec2::ZERO).then_some(offset)
+    }
+
+    /// End a held press on the left release (`FUN_006083c0`, case
+    /// `0x202`): more than `sqrt(24)` list pixels from the press it is the
+    /// `0x29a` drop, and the galaxy view moves the whole selection against
+    /// the window under the point (`FUN_00422ce0`, window type 4: `0x201`).
+    /// The lists' flags are 0 (`FUN_004a4b10`), `0x100000` clear, so a
+    /// release inside the window's own lists drops too: a ship released on
+    /// another fleet's entry joins it.
     ///
-    /// port: Ctrl's Confirmed Move (`0x202`) is not ported for a regiment.
-    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<FleetWindowAction> {
+    /// port: Ctrl's Confirmed Move (`0x202`) is not ported for a drag.
+    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DragEnd> {
         let (released, down, point) = ctx.input(|input| {
             (
                 input.pointer.primary_released(),
@@ -1152,34 +1286,16 @@ impl FleetWindowState {
         let drag = self.drag.take()?;
         let point = point?;
         let moved = (point - drag.press) / scale;
-        if moved.length_sq() <= DRAG_DISTANCE_SQUARED || rect_contains(drag.list, point) {
-            return None;
+        if moved.length_sq() > DRAG_DISTANCE_SQUARED {
+            return Some(DragEnd::Drop {
+                system: drag.system,
+                left: drag.left,
+                point,
+            });
         }
-        Some(match drag.object {
-            ItemObject::Fighter { fleet, index } => FleetWindowAction::DragSquadron {
-                fleet,
-                index,
-                point,
-            },
-            ItemObject::Fleet(fleet) => FleetWindowAction::DragFleet { fleet, point },
-            ItemObject::Regiment(troop) => FleetWindowAction::DragRegiment { troop, point },
-            ItemObject::Character(character) => {
-                FleetWindowAction::DragCharacter { character, point }
-            }
-            // port: a special force's drag is not ported (nor from the
-            // Defenses window); its menu's Move targets instead. A squadron
-            // in hyperspace takes no order (FUN_004f9860).
-            ItemObject::SpecialForce(_) | ItemObject::TravellingFighter { .. } => return None,
-            ItemObject::Ship {
-                fleet,
-                index,
-                roster,
-            } => FleetWindowAction::DragShip {
-                fleet,
-                index,
-                roster,
-                point,
-            },
+        drag.left.is_none().then_some(DragEnd::Release {
+            system: drag.system,
+            point,
         })
     }
 
@@ -1230,6 +1346,8 @@ pub struct FleetWindowReport {
     pub tab: FleetWindowTab,
     pub enabled: [bool; 4],
     pub items: Vec<String>,
+    /// The right list's selected rows, in list order.
+    pub selected_items: Vec<usize>,
     pub counts: Option<(u32, u32)>,
 }
 
@@ -1252,37 +1370,42 @@ pub enum FleetWindowAction {
         fleet: FleetKey,
         point: egui::Pos2,
     },
-    /// A Troops tab regiment dragged out of its list (`0x29a`): the galaxy
+    /// The Troops tab's selected regiments dragged (`0x29a`): the galaxy
     /// view hit-tests the screen point and issues `0x201` (`FUN_00422ce0`).
     DragRegiment {
-        troop: TroopKey,
+        troops: Vec<TroopKey>,
         point: egui::Pos2,
     },
-    /// A Personnel tab character dragged out of its list: the same `0x201`,
-    /// which expands to the Move mission order `0x241` (`FUN_0053c810`).
-    DragCharacter {
-        character: rebellion_core::ids::CharacterKey,
+    /// The Personnel tab's selected characters and special forces dragged:
+    /// the same `0x201`, which expands to one Move mission order `0x241`
+    /// for them all (`FUN_0053c810`).
+    DragMembers {
+        members: Vec<MissionMember>,
         point: egui::Pos2,
     },
-    /// A Fighters tab squadron dragged out of its list: the same `0x201`
-    /// for one squadron of the entry `index` of the fleet's `fighters`.
+    /// The Fighters tab's selected squadrons dragged: the same `0x201`, one
+    /// squadron of each entry `indices` names in the fleet's `fighters`.
     DragSquadron {
         fleet: FleetKey,
-        index: usize,
+        indices: Vec<usize>,
         point: egui::Pos2,
     },
-    /// A Capital Ships tab item dragged out of its list: the same `0x201`
-    /// for the ship (`ghidra/notes/fleet-join-split.md`).
+    /// The Capital Ships tab's selected ships, or a left list ship entry,
+    /// dragged: the same `0x201` for the ships
+    /// (`ghidra/notes/fleet-join-split.md`).
     DragShip {
         fleet: FleetKey,
-        index: usize,
+        ships: Vec<usize>,
         roster: u64,
         point: egui::Pos2,
     },
     /// A right click on a list entry or item opens its object's pop-up menu
     /// (manual p. 120), at a 640 by 480 canvas point.
     OpenObjectMenu {
+        system: SystemKey,
         selection: MenuObject,
+        /// Every selected item's object, the clicked one first.
+        team: Vec<MenuObject>,
         point: (i16, i16),
     },
     /// Enter in a Rename's edit with a name in it: `FUN_004ac950` puts the
@@ -2126,9 +2249,12 @@ struct WindowDrawResult {
     select: Option<Option<FleetWindowEntry>>,
     toggle: Option<FleetKey>,
     tab: Option<FleetWindowTab>,
-    item: Option<usize>,
+    /// A left or right press on the right list: the row under it, the list
+    /// point, the keys held and the rows listed (`FUN_006083c0`).
+    item_press: Option<(Option<usize>, (f32, f32), Modifiers, usize)>,
     drag: Option<ItemDrag>,
-    object_menu: Option<(MenuObject, egui::Pos2)>,
+    /// The object, release point and right list row of a right release.
+    object_menu: Option<(MenuObject, egui::Pos2, Option<usize>)>,
     rename: Option<RenameOutcome>,
     /// A primary click this frame: where and when it landed in the left
     /// list, or `None` outside it or for a double click.
@@ -2164,8 +2290,49 @@ pub fn draw_fleet_windows(
         .last()
         .filter(|_| state.focus.holds())
         .map(|window| window.system);
-    let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
+    let ended = state.end_drag(ctx, layout.scale);
+    let mut actions = Vec::new();
     for window in &windows {
+        match ended {
+            Some(DragEnd::Drop {
+                system,
+                left: Some(object),
+                point,
+            }) if system == window.system => actions.extend(left_drop(object, point)),
+            Some(DragEnd::Drop {
+                system,
+                left: None,
+                point,
+            }) if system == window.system => {
+                let items = right_items(world, transport, &arrivals, window.selected, window.tab);
+                // An object in hyperspace takes no order (FUN_004f9860).
+                let objects: Vec<ItemObject> = (0..items.len())
+                    .filter(|row| window.selected_items.contains(*row))
+                    .filter(|row| !items[*row].en_route)
+                    .filter_map(|row| items[row].object)
+                    .filter(|object| !matches!(object, ItemObject::TravellingFighter { .. }))
+                    .collect();
+                actions.extend(right_drop(&objects, point));
+                if let Some(open) = state.window_mut(system) {
+                    open.selected_items.dropped();
+                }
+            }
+            Some(DragEnd::Release { system, point }) if system == window.system => {
+                let items = right_items(world, transport, &arrivals, window.selected, window.tab).len();
+                let local = window_screen_rect(window, layout);
+                let at = (
+                    (point.x - local.min.x) / layout.scale - RIGHT_LIST.0,
+                    (point.y - local.min.y) / layout.scale - RIGHT_LIST.1 + window.right_scroll,
+                );
+                let hit = right_hit(at, items);
+                let modifiers = crate::drag_list::modifiers(ctx);
+                if let Some(open) = state.window_mut(system) {
+                    open.selected_items
+                        .release(hit, at, modifiers, &right_cells(items));
+                }
+            }
+            _ => {}
+        }
         let mut result = draw_fleet_window(
             ctx,
             world,
@@ -2178,14 +2345,31 @@ pub fn draw_fleet_windows(
             faction,
             layout,
             cache,
+            state.drag_offset(ctx, window.system),
         );
         let system = window.system;
         if let Some(drag) = result.drag {
             state.drag = Some(drag);
         }
-        if let Some((selection, point)) = result.object_menu {
+        if let Some((selection, point, row)) = result.object_menu {
+            // The menu takes the hit list's selection (slot +0x58,
+            // FUN_004a2c80), the clicked item first.
+            let mut team = vec![selection];
+            if row.is_some_and(|row| window.selected_items.contains(row)) {
+                let items = right_items(world, transport, &arrivals, window.selected, window.tab);
+                team.extend(
+                    items
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, _)| window.selected_items.contains(*index))
+                        .filter_map(|(_, item)| item.object.map(ItemObject::menu_object))
+                        .filter(|object| *object != selection),
+                );
+            }
             actions.push(FleetWindowAction::OpenObjectMenu {
+                system: window.system,
                 selection,
+                team,
                 point: canvas_point(layout, point),
             });
         }
@@ -2232,14 +2416,14 @@ pub fn draw_fleet_windows(
             }
             if let Some(selected) = result.select {
                 open.selected = selected;
-                open.selected_item = None;
+                open.selected_items.clear();
                 // The right list keeps its place, clamped (`0x29b`,
                 // `FUN_004a6390` → `FUN_004a5c00`).
                 open.tab = tab_for(selected, open.tab);
             }
             if roster_changed(world, open) {
                 open.selected = None;
-                open.selected_item = None;
+                open.selected_items.clear();
             }
             open.roster = selected_roster(world, open.selected);
             if let Some(click) = result.last_click {
@@ -2255,8 +2439,10 @@ pub fn draw_fleet_windows(
             if let Some(tab) = result.tab {
                 open.show_tab(tab);
             }
-            if let Some(item) = result.item {
-                open.selected_item = Some(item);
+            if let Some((hit, point, modifiers, rows)) = result.item_press {
+                open.selected_items.retain(|row| *row < rows);
+                open.selected_items
+                    .press(hit, point, modifiers, &right_cells(rows));
             }
             match result.rename {
                 Some(RenameOutcome::Typed(text)) => {
@@ -2302,6 +2488,7 @@ fn draw_fleet_window(
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
+    drag_image: Option<egui::Vec2>,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(system) = world.systems.get(window.system) else {
@@ -2720,7 +2907,7 @@ fn draw_fleet_window(
                     // A0 fleet3/02, 08: the right click selects the entry
                     // it opens the menu for (Medium Transport 1, Fleet 7).
                     result.select = Some(Some(*entry));
-                    result.object_menu = Some((object.menu_object(), point));
+                    result.object_menu = Some((object.menu_object(), point, None));
                 }
                 // A drag out of either list posts 0x29a (FUN_006083c0).
                 if let Some(press) = ui.ctx().input(|input| {
@@ -2732,9 +2919,9 @@ fn draw_fleet_window(
                 }) {
                     if response.is_pointer_button_down_on() {
                         result.drag = Some(ItemDrag {
-                            object,
+                            system: window.system,
+                            left: Some(object),
                             press,
-                            list,
                         });
                     }
                 }
@@ -3001,54 +3188,64 @@ fn draw_fleet_window(
                     };
                     let cell =
                         logical_rect(local, scale, RIGHT_LIST.0, top, 125.0, RIGHT_ITEM_HEIGHT);
-                    if window.selected_item == Some(row) {
-                        paint_native(
-                            &right_painter,
-                            ctx,
-                            cache,
-                            DllSource::Strategy,
-                            side_art(RIGHT_ITEM_SELECTED, side),
-                            cell,
-                            scale,
-                            1.0,
-                            1.0,
-                        );
+                    // The item's image (FUN_004a6e70): the frame on the
+                    // selected image only, the mini and the indicators. While
+                    // a drag is held, the selected items' images follow the
+                    // pointer (FUN_00609960 copies them into the list-sized
+                    // drag bitmap, FUN_0060dbb0 / FUN_0060df00).
+                    let chosen = window.selected_items.contains(row);
+                    let mut targets = vec![(right_painter.clone(), cell)];
+                    if let (true, Some(offset)) = (chosen, drag_image) {
+                        targets.push((
+                            ctx.layer_painter(drag_layer())
+                                .with_clip_rect(right.translate(offset)),
+                            cell.translate(offset),
+                        ));
                     }
-                    if let Some(mini) = item.mini {
-                        let marks =
-                            mini_marks(item.kind, mini, travelling || item.en_route, item.damaged);
-                        let captive = item.captive.then(|| captive_mark(mini));
-                        for (source, id) in marks
-                            .into_iter()
-                            .chain(std::iter::once((DllSource::Gokres, mini)))
-                            .chain(captive)
-                        {
+                    for (target, cell) in targets {
+                        if chosen {
                             paint_native(
-                                &right_painter,
+                                &target,
                                 ctx,
                                 cache,
-                                source,
-                                id,
+                                DllSource::Strategy,
+                                side_art(RIGHT_ITEM_SELECTED, side),
                                 cell,
                                 scale,
-                                28.0,
-                                4.0,
+                                1.0,
+                                1.0,
                             );
                         }
-                    }
-                    paint_contents(&right_painter, ctx, cache, cell, scale, side, item.contents, 23.0);
-                    if item.no_hyperdrive {
-                        paint_native(
-                            &right_painter,
-                            ctx,
-                            cache,
-                            DllSource::Strategy,
-                            side_art(NO_HYPERDRIVE, side),
-                            cell,
-                            scale,
-                            9.0,
-                            23.0,
-                        );
+                        if let Some(mini) = item.mini {
+                            let marks = mini_marks(
+                                item.kind,
+                                mini,
+                                travelling || item.en_route,
+                                item.damaged,
+                            );
+                            let captive = item.captive.then(|| captive_mark(mini));
+                            for (source, id) in marks
+                                .into_iter()
+                                .chain(std::iter::once((DllSource::Gokres, mini)))
+                                .chain(captive)
+                            {
+                                paint_native(&target, ctx, cache, source, id, cell, scale, 28.0, 4.0);
+                            }
+                        }
+                        paint_contents(&target, ctx, cache, cell, scale, side, item.contents, 23.0);
+                        if item.no_hyperdrive {
+                            paint_native(
+                                &target,
+                                ctx,
+                                cache,
+                                DllSource::Strategy,
+                                side_art(NO_HYPERDRIVE, side),
+                                cell,
+                                scale,
+                                9.0,
+                                23.0,
+                            );
+                        }
                     }
                     // The edit stands in for the name being renamed.
                     let editing = window
@@ -3080,36 +3277,55 @@ fn draw_fleet_window(
                         ui.id().with((window.system, "item", row)),
                         egui::Sense::click(),
                     );
-                    if exact_clicked(&response, cell_area) {
-                        result.item = Some(row);
-                        result.focus = true;
-                    }
                     if response.secondary_clicked() {
                         if let (Some(object), Some(point)) =
                             (item.object, response.interact_pointer_pos())
                         {
-                            result.object_menu = Some((object.menu_object(), point));
+                            result.object_menu = Some((object.menu_object(), point, Some(row)));
                         }
                     }
-                    // A left press on a regiment or ship captures the mouse
-                    // for a drag (FUN_006083c0).
-                    if let (Some(object), Some(press)) = (
-                        item.object,
-                        ui.ctx().input(|input| {
-                            input
-                                .pointer
-                                .button_pressed(egui::PointerButton::Primary)
-                                .then(|| input.pointer.press_origin())
-                                .flatten()
-                        }),
-                    ) {
-                        if response.is_pointer_button_down_on() && rect_contains(cell, press) {
-                            result.drag = Some(ItemDrag {
-                                object,
-                                press,
-                                list: right,
-                            });
-                        }
+                }
+                // A left or right press on the list selects by the
+                // CoolDragList rules (FUN_006083c0), and a left press
+                // captures the mouse for a drag.
+                let (left_pressed, any_pressed, press_origin) = ui.ctx().input(|input| {
+                    (
+                        input.pointer.button_pressed(egui::PointerButton::Primary),
+                        input.pointer.button_pressed(egui::PointerButton::Primary)
+                            || input.pointer.button_pressed(egui::PointerButton::Secondary),
+                        input.pointer.press_origin(),
+                    )
+                });
+                let items_area = if bar.visible() {
+                    egui::Rect::from_min_max(
+                        right.min,
+                        egui::pos2(right.max.x.min(bar_rect.min.x), right.max.y),
+                    )
+                } else {
+                    right
+                };
+                if let Some(press) = press_origin.filter(|point| {
+                    any_pressed
+                        && rect_contains(items_area, *point)
+                        && ui.ctx().layer_id_at(*point) == Some(ui.layer_id())
+                }) {
+                    let at = (
+                        (press.x - local.min.x) / scale - RIGHT_LIST.0,
+                        (press.y - local.min.y) / scale - RIGHT_LIST.1 + scroll,
+                    );
+                    result.item_press = Some((
+                        right_hit(at, shown_items.len()),
+                        at,
+                        crate::drag_list::modifiers(ui.ctx()),
+                        shown_items.len(),
+                    ));
+                    result.focus = true;
+                    if left_pressed {
+                        result.drag = Some(ItemDrag {
+                            system: window.system,
+                            left: None,
+                            press,
+                        });
                     }
                 }
                 // The bar (FUN_0060a490) shows once the items pass the
@@ -3531,7 +3747,7 @@ pub(crate) mod tests {
             system,
             logical_position: (0, 0),
             selected,
-            selected_item: None,
+            selected_items: ListSelection::default(),
             expanded: Vec::new(),
             tab: FleetWindowTab::CapitalShips,
             rename: None,
@@ -4192,13 +4408,13 @@ pub(crate) mod tests {
         let ship = FleetWindowEntry::Ship { fleet, index: 0 };
         assert!(!state.select(system, ship));
         assert!(state.open(&world, system, (0, 0), CockpitFaction::Alliance, layout()));
-        state.windows[0].selected_item = Some(0);
+        state.windows[0].selected_items = ListSelection::only(0);
 
         assert!(state.select(system, ship));
 
         let window = &state.windows[0];
         assert_eq!(window.selected, Some(ship));
-        assert_eq!(window.selected_item, None);
+        assert!(window.selected_items.is_empty());
         assert!(left_entries(
             &world,
             &rebellion_core::movement::MovementState::default(),
@@ -4359,6 +4575,14 @@ pub(crate) mod tests {
                 });
         let mut result = Run::default();
         for (index, events) in frames.into_iter().enumerate() {
+            // The keys held come with the frame's button event.
+            let modifiers = events
+                .iter()
+                .find_map(|event| match event {
+                    egui::Event::PointerButton { modifiers, .. } => Some(*modifiers),
+                    _ => None,
+                })
+                .unwrap_or_default();
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -4366,6 +4590,7 @@ pub(crate) mod tests {
                 )),
                 time: Some(index as f64 * 0.05),
                 events,
+                modifiers,
                 ..Default::default()
             };
             PAINTED.with(|painted| painted.borrow_mut().clear());
@@ -4544,10 +4769,10 @@ pub(crate) mod tests {
         assert_eq!(object(&state, right(0.0)), star);
         assert_eq!(object(&state, right(1.0)), transport);
         assert_eq!(pick(&state, right(2.0)), here);
-        state.windows[0].selected_item = Some(0);
+        state.windows[0].selected_items = ListSelection::only(0);
         assert_eq!(object(&state, right(2.0)), star);
         state.windows[0].tab = FleetWindowTab::Fighters;
-        state.windows[0].selected_item = None;
+        state.windows[0].selected_items = ListSelection::default();
         assert_eq!(
             object(&state, right(1.0)),
             Some(MissionTarget::Fighter { fleet, class: tie })
@@ -4624,9 +4849,11 @@ pub(crate) mod tests {
     fn regiment_drops(actions: &[FleetWindowAction]) -> Vec<(TroopKey, egui::Pos2)> {
         actions
             .iter()
-            .filter_map(|action| match *action {
-                FleetWindowAction::DragRegiment { troop, point } => Some((troop, point)),
-                _ => None,
+            .flat_map(|action| match action {
+                FleetWindowAction::DragRegiment { troops, point } => {
+                    troops.iter().map(|troop| (*troop, *point)).collect()
+                }
+                _ => Vec::new(),
             })
             .collect()
     }
@@ -4700,6 +4927,144 @@ pub(crate) mod tests {
     /// Inside the first right-list item.
     const FIRST_RIGHT_ITEM: (f32, f32) = (160.0, 150.0);
 
+    /// A left click with `modifiers` held.
+    fn click_with(point: egui::Pos2, modifiers: egui::Modifiers) -> Vec<Vec<egui::Event>> {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        };
+        let mut frames = hover(point);
+        frames.extend([vec![button(true)], vec![button(false)], vec![]]);
+        frames
+    }
+
+    /// A fleet of four ships at an Alliance system, open on its Capital
+    /// Ships tab.
+    fn four_ship_window() -> (GameWorld, SystemKey, FleetKey, FleetWindowState) {
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let fleet = add_fleet(&mut world, system, true, 0);
+        let class = world.fleets[fleet].capital_ships[0].class;
+        for _ in 0..3 {
+            world.fleets[fleet]
+                .capital_ships
+                .push(ShipInstance::new(class, 100, true));
+        }
+        let mut state = opened(&world, system);
+        if let Some(window) = state.window_mut(system) {
+            window.selected = Some(FleetWindowEntry::Fleet(fleet));
+            window.tab = FleetWindowTab::CapitalShips;
+        }
+        (world, system, fleet, state)
+    }
+
+    #[test]
+    fn ctrl_and_shift_clicks_frame_several_right_list_items() {
+        // FUN_006083c0: FUN_004a4b10 gives the right list no flags, so not
+        // 0x10000 (one selection): MK_CONTROL toggles an item, MK_SHIFT adds
+        // the cells from the last press to this one (FUN_00609590), and a
+        // plain press selects one (FUN_006094b0). Each selected item draws
+        // its frame 10420 (FUN_004a6e70). Manual p. 120: "select multiple
+        // ships by holding down the CTRL key while clicking".
+        let (world, _, _, mut state) = four_ship_window();
+        let transport = TroopTransportState::default();
+        let row = |row: f32| at(160.0, 150.0 + 50.0 * row);
+        let frames = |run: &Run| {
+            run.painted
+                .iter()
+                .filter(|(id, _)| *id == side_art(RIGHT_ITEM_SELECTED, 1))
+                .map(|(_, point)| *point)
+                .collect::<Vec<_>>()
+        };
+        let click = |state: &mut FleetWindowState, point, modifiers| {
+            run(
+                &world,
+                &transport,
+                state,
+                CockpitFaction::Alliance,
+                click_with(point, modifiers),
+            )
+        };
+        let _ = click(&mut state, row(0.0), egui::Modifiers::NONE);
+        let two = click(&mut state, row(2.0), egui::Modifiers::CTRL);
+        assert_eq!(frames(&two), [at(102.0, 128.0), at(102.0, 228.0)]);
+        // Shift from row 2 back to row 1 adds row 1.
+        let three = click(&mut state, row(1.0), egui::Modifiers::SHIFT);
+        assert_eq!(
+            frames(&three),
+            [at(102.0, 128.0), at(102.0, 178.0), at(102.0, 228.0)]
+        );
+        // Ctrl on a selected item takes it out on the release.
+        let _ = click(&mut state, row(0.0), egui::Modifiers::CTRL);
+        assert_eq!(state.windows[0].selected_items.items(), &[2, 1]);
+        // A plain click on a selected item leaves it alone.
+        let one = click(&mut state, row(1.0), egui::Modifiers::NONE);
+        assert_eq!(frames(&one), [at(102.0, 178.0)]);
+    }
+
+    #[test]
+    fn a_held_right_list_drag_paints_the_selected_items_where_the_pointer_moved() {
+        // FUN_006083c0 case 0x200: the selected items' images (FUN_00609960),
+        // the frame 10420 included, follow the pointer (FUN_0060df00).
+        let (world, _, _, mut state) = four_ship_window();
+        let transport = TroopTransportState::default();
+        let start = at(160.0, 150.0);
+        let mut frames = hover(start);
+        frames.extend([
+            vec![press(start, true)],
+            vec![egui::Event::PointerMoved(at(140.0, 170.0))],
+        ]);
+        let held = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        let frame = side_art(RIGHT_ITEM_SELECTED, 1);
+        assert!(held.painted.contains(&(frame, at(102.0, 128.0))));
+        assert!(held.painted.contains(&(frame, at(82.0, 148.0))));
+    }
+
+    #[test]
+    fn a_drag_from_a_selected_ship_carries_every_selected_ship() {
+        // A press on a selected item holds its click (flag 0x10), so the
+        // drop (0x29a) carries the selection, which FUN_00422ce0 reads
+        // through slot +0x58 and moves with one 0x201 (manual p. 120: "To
+        // move ships [...] simply drag the item").
+        let (world, _, fleet, mut state) = four_ship_window();
+        let transport = TroopTransportState::default();
+        let row = |row: f32| at(160.0, 150.0 + 50.0 * row);
+        for (point, modifiers) in [
+            (row(1.0), egui::Modifiers::NONE),
+            (row(2.0), egui::Modifiers::CTRL),
+        ] {
+            let _ = run(
+                &world,
+                &transport,
+                &mut state,
+                CockpitFaction::Alliance,
+                click_with(point, modifiers),
+            );
+        }
+        let (start, end) = (row(2.0), at(40.0, 200.0));
+        let mut frames = hover(start);
+        frames.extend([
+            vec![press(start, true)],
+            vec![egui::Event::PointerMoved(end)],
+            vec![egui::Event::PointerMoved(end), press(end, false)],
+        ]);
+        let dropped = run(&world, &transport, &mut state, CockpitFaction::Alliance, frames);
+        let ships: Vec<_> = dropped
+            .actions
+            .iter()
+            .filter_map(|action| match action {
+                FleetWindowAction::DragShip { fleet: of, ships, .. } if *of == fleet => {
+                    Some(ships.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ships, [vec![1, 2]]);
+        // The drop keeps the selection.
+        assert_eq!(state.windows[0].selected_items.items(), &[1, 2]);
+    }
+
     #[test]
     fn a_regiment_dragged_out_of_the_troops_tab_drops_where_the_button_comes_up() {
         // FUN_006083c0 captures the mouse on the press and posts 0x29a with
@@ -4766,12 +5131,15 @@ pub(crate) mod tests {
         assert!(held);
         let drops: Vec<_> = actions
             .iter()
-            .filter_map(|action| match *action {
-                FleetWindowAction::DragCharacter { character, point } => Some((character, point)),
+            .filter_map(|action| match action {
+                FleetWindowAction::DragMembers { members, point } => Some((members.clone(), *point)),
                 _ => None,
             })
             .collect();
-        assert_eq!(drops, [(character, release)]);
+        assert_eq!(
+            drops,
+            [(vec![MissionMember::Character(character)], release)]
+        );
     }
 
     #[test]
@@ -4806,34 +5174,42 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>(),
             [&FleetWindowAction::DragSquadron {
                 fleet,
-                index: 0,
+                indices: vec![0],
                 point: release,
             }]
         );
     }
 
     #[test]
-    fn a_regiment_released_inside_its_list_or_near_the_press_drops_nothing() {
-        // FUN_006083c0: the squared distance must exceed 0x18 and the
-        // release must leave the list's client rect.
-        let (world, transport, system, fleet, _) = fleet_with_regiment();
-        // Down the list; and 4 pixels up out of it from its top edge.
-        for (from, to) in [
-            (FIRST_RIGHT_ITEM, (160.0, 200.0)),
-            ((160.0, 128.0), (160.0, 124.0)),
-        ] {
-            let (actions, _, held) = drag_from_tab(
-                &world,
-                &transport,
-                system,
-                fleet,
-                FleetWindowTab::Troops,
-                from,
-                to,
-            );
-            assert!(held);
-            assert!(regiment_drops(&actions).is_empty());
-        }
+    fn a_regiment_released_near_the_press_drops_nothing_and_inside_its_list_drops() {
+        // FUN_006083c0: the squared distance must exceed 0x18; the release
+        // need leave the list only when its flags hold 0x100000, and
+        // FUN_004a4b10 sets none on the Fleet window's lists.
+        let (world, transport, system, fleet, troop) = fleet_with_regiment();
+        // 4 pixels up out of the list from its top edge: too near.
+        let (actions, _, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::Troops,
+            (160.0, 128.0),
+            (160.0, 124.0),
+        );
+        assert!(held);
+        assert!(regiment_drops(&actions).is_empty());
+        // Down the list, inside it: a drop.
+        let (actions, release, held) = drag_from_tab(
+            &world,
+            &transport,
+            system,
+            fleet,
+            FleetWindowTab::Troops,
+            FIRST_RIGHT_ITEM,
+            (160.0, 200.0),
+        );
+        assert!(held);
+        assert_eq!(regiment_drops(&actions), [(troop, release)]);
     }
 
     #[test]
@@ -5170,7 +5546,7 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>(),
             [&FleetWindowAction::DragShip {
                 fleet,
-                index: 0,
+                ships: vec![0],
                 roster: fleet_join::roster(&world, fleet).unwrap(),
                 point: release,
             }]
@@ -5203,8 +5579,9 @@ pub(crate) mod tests {
             }]
         );
 
-        // A release inside the list it left drops nothing.
-        let (inside, _, _) = drag_from_tab(
+        // A release inside the list it left drops too (flags 0,
+        // FUN_004a4b10): the window's +0x70 then names what lies there.
+        let (inside, release, _) = drag_from_tab(
             &world,
             &transport,
             system,
@@ -5213,9 +5590,10 @@ pub(crate) mod tests {
             (40.0, 40.0),
             (40.0, 200.0),
         );
-        assert!(!inside
-            .iter()
-            .any(|action| matches!(action, FleetWindowAction::DragFleet { .. })));
+        assert!(inside.contains(&FleetWindowAction::DragFleet {
+            fleet,
+            point: release,
+        }));
     }
 
     #[test]
@@ -5267,7 +5645,9 @@ pub(crate) mod tests {
         actions
             .iter()
             .filter_map(|action| match *action {
-                FleetWindowAction::OpenObjectMenu { selection, point } => Some((selection, point)),
+                FleetWindowAction::OpenObjectMenu {
+                    selection, point, ..
+                } => Some((selection, point)),
                 _ => None,
             })
             .collect()
@@ -6050,7 +6430,7 @@ pub(crate) mod tests {
         let mut state = opened(&world, system);
         if let Some(window) = state.window_mut(system) {
             window.selected = Some(FleetWindowEntry::Fleet(enemy));
-            window.selected_item = Some(0);
+            window.selected_items = ListSelection::only(0);
             window.expanded.push(enemy);
         }
 

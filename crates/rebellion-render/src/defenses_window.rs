@@ -29,6 +29,7 @@ use rebellion_core::world::GameWorld;
 
 use crate::bmp_cache::{BmpCache, DllSource};
 use crate::cockpit::{CockpitFaction, CockpitLayout};
+use crate::drag_list::{ListSelection, Modifiers};
 use crate::fleet_window::{
     control_side, faction_side, fleet_side, paint_key_pixel, paint_native, KeyPixel,
 };
@@ -372,9 +373,9 @@ struct OpenDefensesWindow {
     system: SystemKey,
     logical_position: (i16, i16),
     page: DefensesPage,
-    /// port: one selected row; the list's own selection rules
-    /// (`FUN_00609410`) are untraced.
-    selected: Option<DefensesItem>,
+    /// The list's selected rows (`FUN_00609410`), by the `CoolDragList`
+    /// rules ([`crate::drag_list`]).
+    selected: ListSelection<DefensesItem>,
     /// The list's first visible pixel (`+0xc4`) and a press held on its
     /// bar. A new page keeps it: `FUN_004a90d0` empties the list
     /// (`FUN_005f5b20`) and lays it out (`FUN_0060a280`), and the layout
@@ -390,13 +391,25 @@ struct OpenDefensesWindow {
 /// squared distance (24 list pixels) from the press (`FUN_006083c0`).
 const DRAG_DISTANCE_SQUARED: f32 = 24.0;
 
-/// A left press held on a character's cell until its release
-/// (`FUN_006083c0`).
+/// A left press on the list, held until its release: the list has
+/// captured the mouse (`FUN_006083c0`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct DefensesDrag {
-    character: CharacterKey,
+    system: SystemKey,
     press: egui::Pos2,
     list: egui::Rect,
+    /// Pages 1 to 3 clear the list's `0x20000`, so their items drag; pages 4
+    /// and 5 set it (`FUN_004a90d0`).
+    draggable: bool,
+}
+
+/// How a held left press ended ([`DefensesWindowState::end_drag`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DragEnd {
+    /// The release posted `0x29a`.
+    Drop { system: SystemKey, point: egui::Pos2 },
+    /// A release that is no drop: the list's held click applies there.
+    Release { system: SystemKey, point: egui::Pos2 },
 }
 
 /// The open Defenses windows. The last is focused and paints on top.
@@ -471,7 +484,7 @@ impl DefensesWindowState {
                 DEFENSES_WINDOW_HEIGHT,
             ),
             page: DefensesPage::Personnel,
-            selected: None,
+            selected: ListSelection::default(),
             scroll: 0.0,
             scroll_hold: None,
             moving: None,
@@ -513,7 +526,7 @@ impl DefensesWindowState {
         };
         if window.page != page {
             window.page = page;
-            window.selected = None;
+            window.selected.clear();
         }
         true
     }
@@ -573,9 +586,13 @@ impl DefensesWindowState {
             system,
             window.page,
         );
-        let selected = window
-            .selected
-            .and_then(|item| rows.iter().position(|row| row.item == item));
+        let selection: Vec<usize> = rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| window.selected.contains(row.item))
+            .map(|(index, _)| index)
+            .collect();
+        let selected = selection.first().copied();
         Some(DefensesWindowReport {
             origin: window.logical_position,
             side: shown_side(world, system),
@@ -585,6 +602,7 @@ impl DefensesWindowState {
             }),
             rows: rows.into_iter().map(|row| row.label).collect(),
             selected,
+            selection,
             garrison: garrison_line(world, economy, player, system, window.page),
         })
     }
@@ -672,21 +690,32 @@ impl DefensesWindowState {
         self.drag = None;
     }
 
-    /// Whether a left press on a character is held: the list has captured
-    /// the mouse (`FUN_006083c0`).
+    /// Whether a left press on a list is held: the list has captured the
+    /// mouse (`FUN_006083c0`).
     #[must_use]
     pub fn is_dragging(&self) -> bool {
         self.drag.is_some()
     }
 
-    /// End a held drag on the left release: far enough from the press and
-    /// outside the list, it becomes the `0x29a` drop (`FUN_006083c0`), and
-    /// the galaxy view moves the selection against the window under the
-    /// point (`FUN_00422ce0`, window type 10: `0x201`, `fleet-window.md`).
+    /// How far the pointer has moved since a press held on `system`'s list
+    /// of a page that drags: the list drags on the first move with the
+    /// button down (`FUN_006083c0`, case `0x200`).
+    fn drag_offset(&self, ctx: &egui::Context, system: SystemKey) -> Option<egui::Vec2> {
+        let drag = self.drag.filter(|drag| drag.system == system && drag.draggable)?;
+        let offset = ctx.input(|input| input.pointer.latest_pos())? - drag.press;
+        (offset != egui::Vec2::ZERO).then_some(offset)
+    }
+
+    /// End a held press on the left release (`FUN_006083c0`, case
+    /// `0x202`): more than `sqrt(24)` list pixels from the press it is the
+    /// `0x29a` drop, and the galaxy view moves the list's selection against
+    /// the window under the point (`FUN_00422ce0`, window type 10: `0x201`,
+    /// `0x202` with Ctrl). The list's flags `0xa0000` (`FUN_004a8790`) leave
+    /// `0x100000` clear, so the release need not leave the list.
     ///
-    /// port: only a character drags; a regiment, special force or squadron
-    /// moves from its menu.
-    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DefensesWindowAction> {
+    /// port: a release inside the list is no drop; there `+0x70` gives only
+    /// the window's own system (`FUN_004aa470`), a move in place.
+    fn end_drag(&mut self, ctx: &egui::Context, scale: f32) -> Option<DragEnd> {
         let (released, down, point) = ctx.input(|input| {
             (
                 input.pointer.primary_released(),
@@ -703,13 +732,20 @@ impl DefensesWindowState {
         let drag = self.drag.take()?;
         let point = point?;
         let moved = (point - drag.press) / scale;
-        if moved.length_sq() <= DRAG_DISTANCE_SQUARED || rect_contains(drag.list, point) {
-            return None;
+        if drag.draggable
+            && moved.length_sq() > DRAG_DISTANCE_SQUARED
+            && !rect_contains(drag.list, point)
+        {
+            Some(DragEnd::Drop {
+                system: drag.system,
+                point,
+            })
+        } else {
+            Some(DragEnd::Release {
+                system: drag.system,
+                point,
+            })
         }
-        Some(DefensesWindowAction::DragCharacter {
-            character: drag.character,
-            point,
-        })
     }
 
     fn prepare_faction(&mut self, faction: CockpitFaction) {
@@ -757,12 +793,15 @@ pub struct DefensesWindowReport {
     /// Each page's row count, in [`DefensesPage::ALL`] order.
     pub counts: [usize; 5],
     pub rows: Vec<String>,
+    /// The first selected row.
     pub selected: Option<usize>,
+    /// Every selected row, in list order.
+    pub selection: Vec<usize>,
     pub garrison: Option<String>,
 }
 
 /// Actions that leave the Defenses window manager.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DefensesWindowAction {
     /// The sector button (`0xca`) opens the subject's sector window
     /// (`FUN_00429ce0`).
@@ -780,14 +819,20 @@ pub enum DefensesWindowAction {
     OpenObjectMenu {
         system: SystemKey,
         selection: Option<MenuObject>,
+        /// Every selected row's object, the clicked one first.
+        team: Vec<MenuObject>,
         point: (i16, i16),
     },
-    /// A character dragged out of the list (`0x29a`): the galaxy view
-    /// issues `0x201`, the Move mission order `0x241` for a character
-    /// (`FUN_00422ce0`, manual p. 111).
-    DragCharacter {
-        character: CharacterKey,
+    /// The list's selection dragged out of it (`0x29a`): the galaxy view
+    /// issues `0x201` for it, `0x202` with Ctrl, against the window under
+    /// the point (`FUN_00422ce0`, window type 10; manual p. 111). Its
+    /// characters and special forces become the Move mission order `0x241`
+    /// and the rest one `0x204` group (`FUN_0053c4b0`).
+    DragSelection {
+        system: SystemKey,
+        items: Vec<DefensesItem>,
         point: egui::Pos2,
+        confirmed: bool,
     },
 }
 
@@ -1165,6 +1210,12 @@ fn tab_rect(window: egui::Rect, scale: f32, page: DefensesPage) -> egui::Rect {
     )
 }
 
+/// The `index`th grid cell's corner in list pixels (`FUN_00609ae0`).
+#[expect(clippy::cast_precision_loss, reason = "Cell indexes are small.")]
+fn list_cell(index: usize) -> (f32, f32) {
+    ((index % COLUMNS) as f32 * CELL, (index / COLUMNS) as f32 * CELL)
+}
+
 /// The `index`th grid cell (`FUN_00609ae0`): row-major from the list's
 /// corner, three to a row, the list showing from pixel `scroll`.
 #[expect(clippy::cast_precision_loss, reason = "Cell indexes are small.")]
@@ -1228,13 +1279,16 @@ struct WindowDrawResult {
     minimize: bool,
     open_sector: bool,
     page: Option<DefensesPage>,
-    select: Option<DefensesItem>,
-    /// A press on the list's empty space clears the selection
-    /// (`FUN_006094b0`).
-    deselect: bool,
+    /// A left or right press on the list: the item under it, the list
+    /// point and the keys held (`FUN_006083c0`).
+    press: Option<(Option<DefensesItem>, (f32, f32), Modifiers)>,
+    /// The item and list point under a held left press's release.
+    release: Option<(Option<DefensesItem>, (f32, f32))>,
+    /// The listed items and their cells, for a Shift press's range.
+    cells: Vec<(DefensesItem, (f32, f32), (f32, f32))>,
     /// The selection and canvas point of a right release on the list.
     object_menu: Option<(Option<MenuObject>, (i16, i16))>,
-    /// A left press on a character's cell, held for a drag.
+    /// A left press on the list, held for a drag.
     drag: Option<DefensesDrag>,
     /// The pointer's travel since a press on the window's surface.
     travel: Option<egui::Vec2>,
@@ -1269,8 +1323,13 @@ pub fn draw_defenses_windows(
         .last()
         .filter(|_| state.focus.holds())
         .map(|window| window.system);
-    let mut actions: Vec<_> = state.end_drag(ctx, layout.scale).into_iter().collect();
+    let ended = state.end_drag(ctx, layout.scale);
+    let mut actions = Vec::new();
     for window in &windows {
+        let released = match ended {
+            Some(DragEnd::Release { system, point }) if system == window.system => Some(point),
+            _ => None,
+        };
         let mut result = draw_defenses_window(
             ctx,
             world,
@@ -1283,7 +1342,30 @@ pub fn draw_defenses_windows(
             faction,
             layout,
             cache,
+            released,
+            state.drag_offset(ctx, window.system),
         );
+        if let Some(DragEnd::Drop { system, point }) = ended {
+            if system == window.system {
+                let items: Vec<DefensesItem> = result
+                    .cells
+                    .iter()
+                    .map(|(item, _, _)| *item)
+                    .filter(|item| window.selected.contains(*item))
+                    .collect();
+                if !items.is_empty() {
+                    actions.push(DefensesWindowAction::DragSelection {
+                        system,
+                        items,
+                        point,
+                        confirmed: crate::drag_list::modifiers(ctx).ctrl,
+                    });
+                }
+                if let Some(open) = state.window_mut(system) {
+                    open.selected.dropped();
+                }
+            }
+        }
         let system = window.system;
         if result.close || !world.systems.contains_key(system) {
             state.close(system);
@@ -1322,13 +1404,19 @@ pub fn draw_defenses_windows(
             // FUN_004a90d0 refills only for a different page.
             if let Some(page) = result.page.filter(|&page| page != open.page) {
                 open.page = page;
-                open.selected = None;
+                open.selected.clear();
             }
-            if result.deselect {
-                open.selected = None;
+            // An item the page no longer lists is no longer selected.
+            if result.page.is_none() {
+                open.selected
+                    .retain(|item| result.cells.iter().any(|(listed, _, _)| listed == item));
             }
-            if let Some(item) = result.select {
-                open.selected = Some(item);
+            if let Some((hit, point, modifiers)) = result.press {
+                open.selected.press(hit, point, modifiers, &result.cells);
+            }
+            if let Some((hit, point)) = result.release {
+                open.selected
+                    .release(hit, point, crate::drag_list::modifiers(ctx), &result.cells);
             }
             if let Some((first, hold)) = result.scroll {
                 open.scroll = first;
@@ -1340,9 +1428,29 @@ pub fn draw_defenses_windows(
             actions.push(DefensesWindowAction::SelectSystem(system));
         }
         if let Some((selection, point)) = result.object_menu {
+            // The menu takes the list's whole selection (slot 22,
+            // FUN_004a7a20), the clicked row first.
+            let team = selection.map_or_else(Vec::new, |clicked| {
+                let mut team = vec![clicked];
+                team.extend(
+                    result
+                        .cells
+                        .iter()
+                        .filter(|(item, _, _)| window.selected.contains(*item))
+                        .filter_map(|(item, _, _)| item.menu_object())
+                        .filter(|object| *object != clicked),
+                );
+                if team.len() > 1 && !result.cells.iter().any(|(item, _, _)| {
+                    window.selected.contains(*item) && item.menu_object() == Some(clicked)
+                }) {
+                    team.truncate(1);
+                }
+                team
+            });
             actions.push(DefensesWindowAction::OpenObjectMenu {
                 system,
                 selection,
+                team,
                 point,
             });
         }
@@ -1370,6 +1478,8 @@ fn draw_defenses_window(
     faction: CockpitFaction,
     layout: CockpitLayout,
     cache: &mut BmpCache,
+    released: Option<egui::Pos2>,
+    drag_image: Option<egui::Vec2>,
 ) -> WindowDrawResult {
     let mut result = WindowDrawResult::default();
     let Some(system) = world.systems.get(window.system) else {
@@ -1389,6 +1499,41 @@ fn draw_defenses_window(
     );
     let scale = layout.scale;
     let screen_rect = window_screen_rect(window, layout);
+    // Each row's cell in list pixels (`FUN_00609ae0`'s grid).
+    result.cells = rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| (row.item, list_cell(index), (CELL, CELL)))
+        .collect();
+    // List points are content pixels: the client point plus the first
+    // visible pixel (FUN_00609d80); the rows take the list less a shown bar.
+    let (first, rows_wide) = {
+        let bar = list_bar(rows.len(), window.scroll);
+        (bar_first(&bar, window.scroll), rows_width(&bar))
+    };
+    let list_point = |point: egui::Pos2| {
+        (
+            (point.x - screen_rect.min.x) / scale - LIST.0,
+            (point.y - screen_rect.min.y) / scale - LIST.1 + first,
+        )
+    };
+    let item_at = |(x, y): (f32, f32)| {
+        (x >= 0.0 && y >= first && x < rows_wide && y < first + LIST.3)
+            .then(|| {
+                result
+                    .cells
+                    .iter()
+                    .find(|(_, origin, _)| {
+                        x >= origin.0 && x < origin.0 + CELL && y >= origin.1 && y < origin.1 + CELL
+                    })
+                    .map(|(item, _, _)| *item)
+            })
+            .flatten()
+    };
+    if let Some(point) = released {
+        let at = list_point(point);
+        result.release = Some((item_at(at), at));
+    }
     let id = area_id(window.system);
     if focused {
         ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, id));
@@ -1553,26 +1698,27 @@ fn draw_defenses_window(
             // (FUN_0060fa80): it takes its own presses.
             let rows_area = logical_rect(local, scale, LIST.0, LIST.1, width, LIST.3);
             // The list control under the rows (FUN_006083c0): a left or
-            // right press on its empty space clears the selection
-            // (FUN_006094b0), and a right release there opens the menu for
-            // the empty selection.
+            // right press selects by the CoolDragList rules (on empty
+            // space, FUN_006094b0 clears), and a right release on empty
+            // space opens the menu for the empty selection.
             let list_response = ui.interact(
                 rows_area,
                 ui.id().with((window.system, "list")),
                 egui::Sense::click(),
             );
-            let (any_pressed, right_pressed, release_point) = ctx.input(|input| {
+            let (left_pressed, any_pressed, release_point, press_origin) = ctx.input(|input| {
                 (
+                    input.pointer.button_pressed(egui::PointerButton::Primary),
                     input.pointer.button_pressed(egui::PointerButton::Primary)
                         || input.pointer.button_pressed(egui::PointerButton::Secondary),
-                    input.pointer.button_pressed(egui::PointerButton::Secondary),
                     input.pointer.interact_pos(),
+                    input.pointer.press_origin(),
                 )
             });
-            if any_pressed && list_response.is_pointer_button_down_on() {
-                result.deselect = true;
-                result.focus = true;
-            }
+            let pressed_here = |response: &egui::Response| {
+                any_pressed && response.is_pointer_button_down_on()
+            };
+            let mut row_pressed = false;
             if list_response.secondary_clicked() {
                 if let Some(point) = release_point.filter(|point| rect_contains(rows_area, *point))
                 {
@@ -1592,32 +1738,45 @@ fn draw_defenses_window(
                 if cell.min.y >= list.max.y || cell.max.y <= list.min.y {
                     continue;
                 }
-                let selected = window.selected == Some(row.item);
+                let selected = window.selected.contains(row.item);
                 // FUN_0042c3b0: an injured character's damage mark under
                 // its mini (`+0x50` bit `0x200`, FUN_004f7800).
                 // A captive's mark goes over the mini (FUN_0042c3b0).
                 let captive = matches!(row.item, DefensesItem::Character(key)
                     if world.characters.get(key).is_some_and(|value| value.is_captive))
                 .then(|| crate::fleet_window::captive_mark(row.mini));
-                for (source, id) in row_marks(world, missions.en_route(), production.regiments, row)
-                    .into_iter()
-                    .chain(std::iter::once((DllSource::Gokres, row.mini)))
-                    .chain(captive)
-                {
-                    paint_native(&list_painter, ctx, cache, source, id, cell, scale, 0.0, 0.0);
+                // The row's image; while a drag is held, the selected rows'
+                // images follow the pointer (FUN_00609960 copies them into
+                // the list-sized drag bitmap, FUN_0060dbb0 / FUN_0060df00).
+                let mut targets = vec![(list_painter.clone(), cell)];
+                if let (true, Some(offset)) = (selected, drag_image) {
+                    targets.push((
+                        ctx.layer_painter(crate::fleet_window::drag_layer())
+                            .with_clip_rect(list.translate(offset)),
+                        cell.translate(offset),
+                    ));
                 }
-                if selected {
-                    paint_native(
-                        &list_painter,
-                        ctx,
-                        cache,
-                        DllSource::Strategy,
-                        frame,
-                        cell,
-                        scale,
-                        0.0,
-                        0.0,
-                    );
+                for (target, cell) in targets {
+                    for (source, id) in row_marks(world, missions.en_route(), production.regiments, row)
+                        .into_iter()
+                        .chain(std::iter::once((DllSource::Gokres, row.mini)))
+                        .chain(captive)
+                    {
+                        paint_native(&target, ctx, cache, source, id, cell, scale, 0.0, 0.0);
+                    }
+                    if selected {
+                        paint_native(
+                            &target,
+                            ctx,
+                            cache,
+                            DllSource::Strategy,
+                            frame,
+                            cell,
+                            scale,
+                            0.0,
+                            0.0,
+                        );
+                    }
                 }
                 let color = if selected {
                     selected_color(side)
@@ -1647,36 +1806,10 @@ fn draw_defenses_window(
                     ui.id().with((window.system, "row", index)),
                     egui::Sense::click(),
                 );
-                if exact_clicked(&response, cell_area) {
-                    result.select = Some(row.item);
-                    result.focus = true;
-                }
-                // A right press selects the row as a left press does
-                // (FUN_006083c0 shares the WM_LBUTTONDOWN path); the release
-                // opens its menu.
-                if right_pressed && response.is_pointer_button_down_on() {
-                    result.select = Some(row.item);
-                    result.focus = true;
-                }
-                // A left press on a character captures the mouse for a drag
-                // (FUN_006083c0).
-                if let (DefensesItem::Character(character), Some(press)) = (
-                    row.item,
-                    ctx.input(|input| {
-                        input
-                            .pointer
-                            .button_pressed(egui::PointerButton::Primary)
-                            .then(|| input.pointer.press_origin())
-                            .flatten()
-                    }),
-                ) {
-                    if response.is_pointer_button_down_on() && rect_contains(cell_area, press) {
-                        result.drag = Some(DefensesDrag {
-                            character,
-                            press,
-                            list,
-                        });
-                    }
+                // A left or right press selects (FUN_006083c0 shares the
+                // WM_LBUTTONDOWN path); a right release opens the menu.
+                if pressed_here(&response) {
+                    row_pressed = true;
                 }
                 if response.secondary_clicked() {
                     if let (Some(object), Some(point)) = (
@@ -1708,6 +1841,28 @@ fn draw_defenses_window(
                 result.scroll = Some((first, hold));
             } else if window.scroll != 0.0 || window.scroll_hold.is_some() {
                 result.scroll = Some((0.0, None));
+            }
+
+            // The press, wherever it landed in the list, selects by the
+            // item under it; a left press captures the mouse for a drag.
+            if let (true, Some(press)) = (
+                row_pressed || pressed_here(&list_response),
+                press_origin.filter(|point| rect_contains(rows_area, *point)),
+            ) {
+                let at = list_point(press);
+                result.press = Some((item_at(at), at, crate::drag_list::modifiers(ctx)));
+                result.focus = true;
+                if left_pressed {
+                    result.drag = Some(DefensesDrag {
+                        system: window.system,
+                        press,
+                        list,
+                        draggable: matches!(
+                            window.page,
+                            DefensesPage::Personnel | DefensesPage::Regiments | DefensesPage::Squadrons
+                        ),
+                    });
+                }
             }
 
             if window_response.clicked() || clicked.iter().any(|&value| value) {
@@ -2880,6 +3035,14 @@ mod tests {
         }
         let mut result = Run::default();
         for (index, events) in frames.into_iter().enumerate() {
+            // The keys held come with the frame's button event.
+            let modifiers = events
+                .iter()
+                .find_map(|event| match event {
+                    egui::Event::PointerButton { modifiers, .. } => Some(*modifiers),
+                    _ => None,
+                })
+                .unwrap_or_default();
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
                     egui::Pos2::ZERO,
@@ -2887,6 +3050,7 @@ mod tests {
                 )),
                 time: Some(index as f64 * 0.05),
                 events,
+                modifiers,
                 ..Default::default()
             };
             PAINTED.with(|painted| painted.borrow_mut().clear());
@@ -2935,9 +3099,158 @@ mod tests {
     }
 
     fn click(point: egui::Pos2) -> Vec<Vec<egui::Event>> {
+        click_with(point, egui::Modifiers::default())
+    }
+
+    /// A left click with `modifiers` held.
+    fn click_with(point: egui::Pos2, modifiers: egui::Modifiers) -> Vec<Vec<egui::Event>> {
+        let button = |pressed| egui::Event::PointerButton {
+            pos: point,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers,
+        };
         let mut frames = hover(point);
-        frames.extend([vec![press(point, true)], vec![press(point, false)], vec![]]);
+        frames.extend([vec![button(true)], vec![button(false)], vec![]]);
         frames
+    }
+
+    #[test]
+    fn ctrl_and_shift_clicks_frame_several_rows_and_a_plain_click_one() {
+        // FUN_006083c0: the list (flags 0xa0000, FUN_004a8790) is no
+        // single-selection list (0x10000), so MK_CONTROL toggles a row and
+        // MK_SHIFT adds the cells from the last press to this one
+        // (FUN_00609590); each selected row paints its selected image, the
+        // frame over the mini (FUN_0060bd00).
+        let (world, system, missions) = stocked();
+        let mut state = opened(&world, system);
+        let frames = |run: &Run| {
+            run.painted
+                .iter()
+                .filter(|(id, _)| *id == ROW_FRAME[0])
+                .map(|(_, point)| *point)
+                .collect::<Vec<_>>()
+        };
+        let _ = run(&world, &missions, &mut state, click(at(30.0, 100.0)));
+        let two = run(
+            &world,
+            &missions,
+            &mut state,
+            click_with(at(170.0, 100.0), egui::Modifiers::CTRL),
+        );
+        assert_eq!(frames(&two), [at(7.0, 81.0), at(147.0, 81.0)]);
+        let report = |state: &DefensesWindowState| {
+            state
+                .report(
+                    &world,
+                    &seen(system),
+                    &missions,
+                    idle(),
+                    &EconomyState::default(),
+                    system,
+                )
+                .unwrap()
+                .selection
+        };
+        assert_eq!(report(&state), [0, 2]);
+        // Ctrl again on a selected row takes it out on the release.
+        let _ = run(
+            &world,
+            &missions,
+            &mut state,
+            click_with(at(30.0, 100.0), egui::Modifiers::CTRL),
+        );
+        assert_eq!(report(&state), [2]);
+        // Shift from the last press (row 0) to row 1 adds both.
+        let _ = run(
+            &world,
+            &missions,
+            &mut state,
+            click_with(at(100.0, 100.0), egui::Modifiers::SHIFT),
+        );
+        assert_eq!(report(&state), [0, 1, 2]);
+        // A plain click on a selected row leaves it alone on the release.
+        let one = run(&world, &missions, &mut state, click(at(100.0, 100.0)));
+        assert_eq!(frames(&one), [at(77.0, 81.0)]);
+        assert_eq!(report(&state), [1]);
+    }
+
+    #[test]
+    fn a_held_drag_paints_the_selected_rows_images_where_the_pointer_moved() {
+        // FUN_006083c0 case 0x200: the first move with the button down
+        // starts the drag image, the selected items' images as the list
+        // lays them out (FUN_00609960), moved with the pointer
+        // (FUN_0060df00).
+        let (world, system, missions) = stocked();
+        let mut state = opened(&world, system);
+        let start = at(100.0, 100.0);
+        let mut frames = hover(start);
+        frames.extend([
+            vec![press(start, true)],
+            vec![egui::Event::PointerMoved(at(110.0, 120.0))],
+        ]);
+        let held = run(&world, &missions, &mut state, frames);
+        assert!(held.painted.contains(&(ROW_FRAME[0], at(77.0, 81.0))));
+        assert!(held.painted.contains(&(ROW_FRAME[0], at(87.0, 101.0))));
+        // The shield page drags nothing, so it draws no image.
+        let _ = run(
+            &world,
+            &missions,
+            &mut state,
+            vec![vec![press(at(110.0, 120.0), false)], vec![]],
+        );
+        let _ = run(&world, &missions, &mut state, click(at(150.0, 30.0)));
+        let mut frames = hover(at(30.0, 100.0));
+        frames.extend([
+            vec![press(at(30.0, 100.0), true)],
+            vec![egui::Event::PointerMoved(at(40.0, 120.0))],
+        ]);
+        let shields = run(&world, &missions, &mut state, frames);
+        assert!(!shields
+            .painted
+            .iter()
+            .any(|(id, point)| ROW_FRAME.contains(id) && *point == at(17.0, 101.0)));
+    }
+
+    #[test]
+    fn a_drag_carries_every_selected_row_and_the_shield_page_drags_nothing() {
+        // FUN_006083c0 posts 0x29a for the whole selection (FUN_00422ce0
+        // asks the window's slot 22, FUN_004a7a20); a press on a selected
+        // row holds its click back (flag 0x10), so the selection stays.
+        // Pages 4 and 5 set 0x20000 (FUN_004a90d0): no drag.
+        let (world, system, missions) = stocked();
+        let mut state = opened(&world, system);
+        let _ = run(&world, &missions, &mut state, click(at(30.0, 100.0)));
+        let _ = run(
+            &world,
+            &missions,
+            &mut state,
+            click_with(at(100.0, 100.0), egui::Modifiers::CTRL),
+        );
+        let outside = at(-60.0, 40.0);
+        let drag = |state: &mut DefensesWindowState, from: egui::Pos2| {
+            let mut frames = hover(from);
+            frames.extend([
+                vec![press(from, true)],
+                vec![egui::Event::PointerMoved(outside)],
+                vec![egui::Event::PointerMoved(outside), press(outside, false)],
+            ]);
+            run(&world, &missions, state, frames)
+                .actions
+                .into_iter()
+                .filter_map(|action| match action {
+                    DefensesWindowAction::DragSelection { items, .. } => Some(items),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let dropped = drag(&mut state, at(100.0, 100.0));
+        assert_eq!(dropped.len(), 1);
+        assert_eq!(dropped[0].len(), 2);
+        assert_eq!(state.windows[0].selected.items().len(), 2);
+        let _ = run(&world, &missions, &mut state, click(at(150.0, 30.0)));
+        assert_eq!(state.windows[0].page, DefensesPage::Shields);
+        assert!(drag(&mut state, at(30.0, 100.0)).is_empty());
     }
 
     fn text<'a>(run: &'a Run, text: &str) -> &'a Text {
@@ -3086,9 +3399,9 @@ mod tests {
                 .actions
                 .iter()
                 .chain(&released.actions)
-                .filter_map(|action| match *action {
-                    DefensesWindowAction::DragCharacter { character, point } => {
-                        Some((character, point))
+                .filter_map(|action| match action {
+                    DefensesWindowAction::DragSelection { items, point, .. } => {
+                        Some((items.clone(), *point))
                     }
                     _ => None,
                 })
@@ -3098,14 +3411,14 @@ mod tests {
 
         let drag = |to| drag_from(at(100.0, 100.0), to);
         let outside = at(-60.0, 40.0);
-        assert_eq!(drag(outside), (true, vec![(hidden, outside)], false));
+        assert_eq!(drag(outside), (true, vec![(vec![DefensesItem::Character(hidden)], outside)], false));
         assert_eq!(drag(at(150.0, 100.0)), (true, vec![], false));
         // The distance is in list pixels: 5 above the press (25 > 24) drops,
         // 3.5 (12.25) does not, though both lie above the list (y 81).
         let near = at(100.0, 78.0);
         assert_eq!(
             drag_from(at(100.0, 83.0), near),
-            (true, vec![(hidden, near)], false)
+            (true, vec![(vec![DefensesItem::Character(hidden)], near)], false)
         );
         assert_eq!(
             drag_from(at(100.0, 83.0), at(100.0, 79.5)),
@@ -3147,7 +3460,7 @@ mod tests {
         // The same tab keeps the selection; another clears it.
         let _ = run(&world, &missions, &mut state, click(at(40.0, 30.0)));
         assert_eq!(
-            state.windows[0].selected,
+            state.windows[0].selected.single(),
             Some(DefensesItem::Character(
                 world
                     .characters
@@ -3159,7 +3472,7 @@ mod tests {
         );
         let regiments = run(&world, &missions, &mut state, click(at(80.0, 30.0)));
         assert_eq!(state.windows[0].page, DefensesPage::Regiments);
-        assert_eq!(state.windows[0].selected, None);
+        assert!(state.windows[0].selected.is_empty());
         // The regiment page of the player's own system shows the garrison.
         // `+0x5c` at (2, 63), 228 by 17: centred both ways.
         let garrison = text(&regiments, "Garrison Requirement: 2");
@@ -3313,7 +3626,7 @@ mod tests {
 
         let opened = run(&world, &missions, &mut state, right_click(at(100.0, 100.0)));
         assert_eq!(
-            state.windows[0].selected,
+            state.windows[0].selected.single(),
             Some(DefensesItem::Character(hidden))
         );
         assert_eq!(
@@ -3344,7 +3657,7 @@ mod tests {
         let _ = run(&world, &missions, &mut state, click(at(150.0, 30.0)));
         assert_eq!(state.windows[0].page, DefensesPage::Shields);
         let opened = run(&world, &missions, &mut state, right_click(at(30.0, 100.0)));
-        let Some(DefensesItem::Defense(shield)) = state.windows[0].selected else {
+        let Some(DefensesItem::Defense(shield)) = state.windows[0].selected.single() else {
             panic!("the right press selects the shield");
         };
         assert_eq!(
@@ -3361,10 +3674,10 @@ mod tests {
         let (world, system, missions) = stocked();
         let mut state = opened(&world, system);
         let _ = run(&world, &missions, &mut state, click(at(100.0, 100.0)));
-        assert!(state.windows[0].selected.is_some());
+        assert!(!state.windows[0].selected.is_empty());
 
         let empty = run(&world, &missions, &mut state, right_click(at(100.0, 250.0)));
-        assert_eq!(state.windows[0].selected, None);
+        assert!(state.windows[0].selected.is_empty());
         assert_eq!(menus(&empty), [(None, (120, 280))]);
 
         // Above the list, a right click opens nothing.
@@ -3379,10 +3692,10 @@ mod tests {
         let mut state = opened(&world, system);
         let _ = run(&world, &missions, &mut state, click(at(100.0, 100.0)));
         assert!(state.show_page(system, DefensesPage::Personnel));
-        assert!(state.windows[0].selected.is_some());
+        assert!(!state.windows[0].selected.is_empty());
         assert!(state.show_page(system, DefensesPage::Regiments));
         assert_eq!(state.windows[0].page, DefensesPage::Regiments);
-        assert_eq!(state.windows[0].selected, None);
+        assert!(state.windows[0].selected.is_empty());
 
         let mut other = world.clone();
         let missing = other.systems.insert(world.systems[system].clone());
@@ -3507,14 +3820,14 @@ mod tests {
         assert_eq!(pick(at(224.0, 230.0)), MissionTargetPick::from(system));
         // A click on it selects it, and the list keeps its place.
         run(&world, &missions, &mut state, click(eleventh.center()));
-        assert_eq!(state.windows[0].selected, Some(items[10]));
+        assert_eq!(state.windows[0].selected.single(), Some(items[10]));
         assert_eq!(state.windows[0].scroll, 75.0);
         // The bar is a child window over the list (FUN_0060fa80): a press
         // on its up arrow scrolls and leaves the list's selection alone
         // (FUN_006094b0 clears it only for the list's own empty space).
         run(&world, &missions, &mut state, click(at(224.0, 85.0)));
         assert_eq!(state.windows[0].scroll, 65.0);
-        assert_eq!(state.windows[0].selected, Some(items[10]));
+        assert_eq!(state.windows[0].selected.single(), Some(items[10]));
         // A right release on the bar opens no menu for the list.
         let menus = run(&world, &missions, &mut state, right_click(at(224.0, 230.0)));
         assert!(

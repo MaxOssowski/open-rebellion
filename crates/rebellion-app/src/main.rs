@@ -1426,6 +1426,9 @@ async fn main() {
     let mut missions_window_state = MissionsWindowState::default();
     // The object pop-up menu a right-click in a system window opens.
     let mut object_menu: Option<ObjectMenuState> = None;
+    // Where a window selection's menu team stands: its system and its
+    // squadrons' place (the targeting's TeamMove).
+    let mut object_menu_place: Option<(SystemKey, SquadronPlace)> = None;
     // A Mission order waiting for its target (the galaxy view's mode 2).
     let mut targeting: Option<Targeting> = None;
     // Whether the system cursor is hidden behind the targeting cursor.
@@ -6474,21 +6477,31 @@ async fn main() {
                                     name,
                                 });
                             }
-                            FleetWindowAction::OpenObjectMenu { selection, point } => {
-                                let gates = order_gates(
-                                    Some(selection),
-                                    &world,
-                                    &mission_state,
-                                    &movement_state,
-                                    &troop_transport_state,
-                                    &delivery_state,
-                                    &mfg_state,
-                                    &research_state,
-                                    player_faction,
-                                    victory_state.conditions_word,
+                            FleetWindowAction::OpenObjectMenu {
+                                system,
+                                selection,
+                                team,
+                                point,
+                            } => {
+                                let gates = team_gates(&team, |object| {
+                                    order_gates(
+                                        Some(object),
+                                        &world,
+                                        &mission_state,
+                                        &movement_state,
+                                        &troop_transport_state,
+                                        &delivery_state,
+                                        &mfg_state,
+                                        &research_state,
+                                        player_faction,
+                                        victory_state.conditions_word,
+                                    )
+                                });
+                                object_menu_place = Some((system, team_squadron_place(&team, system)));
+                                object_menu = Some(
+                                    ObjectMenuState::new(Some(selection), gates, point)
+                                        .with_team(team),
                                 );
-                                object_menu =
-                                    Some(ObjectMenuState::new(Some(selection), gates, point));
                             }
                             // FUN_00422ce0, window type 4: the fleet moves
                             // with 0x201 against what +0x70 gives under the
@@ -6533,7 +6546,7 @@ async fn main() {
                             // (ghidra/notes/fleet-join-split.md).
                             FleetWindowAction::DragShip {
                                 fleet,
-                                index,
+                                ships,
                                 roster,
                                 point,
                             } => {
@@ -6557,7 +6570,7 @@ async fn main() {
                                         panel_actions.push(PanelAction::JoinFleet {
                                             mover: FleetMover::Ships {
                                                 fleet,
-                                                ships: vec![index],
+                                                ships,
                                                 roster,
                                             },
                                             target,
@@ -6566,7 +6579,7 @@ async fn main() {
                                     Some(ReleaseTarget::System(system)) => {
                                         panel_actions.push(PanelAction::MoveShips {
                                             fleet,
-                                            ships: vec![index],
+                                            ships,
                                             roster,
                                             system,
                                         });
@@ -6574,7 +6587,7 @@ async fn main() {
                                     None => {}
                                 }
                             }
-                            FleetWindowAction::DragRegiment { troop, point } => {
+                            FleetWindowAction::DragRegiment { troops, point } => {
                                 let windows = ReleaseWindows {
                                     sector: &sector_window_state,
                                     system: &system_window_state,
@@ -6599,11 +6612,17 @@ async fn main() {
                                     }
                                     None => continue,
                                 };
-                                panel_actions.push(PanelAction::MoveRegiment { troop, target });
+                                // port: each regiment's move command runs
+                                // alone; FUN_0053c1a0 would refuse them all
+                                // for one refusal.
+                                panel_actions.extend(troops.into_iter().map(|troop| {
+                                    PanelAction::MoveRegiment { troop, target }
+                                }));
                             }
-                            // FUN_00422ce0: the character's 0x201 -> 0x241
-                            // against the window under the point.
-                            FleetWindowAction::DragCharacter { character, point } => {
+                            // FUN_00422ce0: the members' 0x201 -> one 0x241
+                            // (FUN_0053c810) against the window under the
+                            // point.
+                            FleetWindowAction::DragMembers { members, point } => {
                                 let windows = ReleaseWindows {
                                     sector: &sector_window_state,
                                     system: &system_window_state,
@@ -6611,7 +6630,7 @@ async fn main() {
                                     defenses: &defenses_window_state,
                                     missions: &missions_window_state,
                                 };
-                                let action = match release_destination(
+                                let (system, fleet) = match release_destination(
                                     ctx,
                                     &world,
                                     &movement_state,
@@ -6620,29 +6639,39 @@ async fn main() {
                                     windows,
                                     point,
                                 ) {
-                                    Some(ReleaseTarget::System(system)) => {
-                                        PanelAction::MoveCharacter {
-                                            character,
-                                            system,
-                                            fleet: None,
-                                        }
-                                    }
+                                    Some(ReleaseTarget::System(system)) => (system, None),
                                     Some(ReleaseTarget::Fleet { fleet, system }) => {
-                                        PanelAction::MoveCharacter {
-                                            character,
-                                            system,
-                                            fleet: Some(fleet),
-                                        }
+                                        (system, Some(fleet))
                                     }
                                     None => continue,
                                 };
-                                panel_actions.push(action);
+                                panel_actions.push(match members.as_slice() {
+                                    [MissionMember::Character(character)] => {
+                                        PanelAction::MoveCharacter {
+                                            character: *character,
+                                            system,
+                                            fleet,
+                                        }
+                                    }
+                                    [MissionMember::SpecialForce(unit)] => {
+                                        PanelAction::MoveSpecialForce {
+                                            unit: *unit,
+                                            system,
+                                            fleet,
+                                        }
+                                    }
+                                    _ => PanelAction::MoveMembers {
+                                        members,
+                                        system,
+                                        fleet,
+                                    },
+                                });
                             }
                             // FUN_00422ce0: the squadron's 0x201 against the
                             // window under the point.
                             FleetWindowAction::DragSquadron {
                                 fleet,
-                                index,
+                                indices,
                                 point,
                             } => {
                                 let windows = ReleaseWindows {
@@ -6652,14 +6681,16 @@ async fn main() {
                                     defenses: &defenses_window_state,
                                     missions: &missions_window_state,
                                 };
-                                let Some(class) = world
-                                    .fleets
-                                    .get(fleet)
-                                    .and_then(|value| value.fighters.get(index))
-                                    .map(|entry| entry.class)
-                                else {
-                                    continue;
-                                };
+                                let classes: Vec<_> = indices
+                                    .iter()
+                                    .filter_map(|&index| {
+                                        world
+                                            .fleets
+                                            .get(fleet)
+                                            .and_then(|value| value.fighters.get(index))
+                                            .map(|entry| entry.class)
+                                    })
+                                    .collect();
                                 let Some(target) = release_destination(
                                     ctx,
                                     &world,
@@ -6671,11 +6702,14 @@ async fn main() {
                                 ) else {
                                     continue;
                                 };
-                                panel_actions.push(PanelAction::MoveSquadron {
-                                    class,
-                                    from: SquadronPlace::Fleet(fleet),
-                                    to: target.squadron_place(),
-                                });
+                                // port: each squadron's move runs alone.
+                                panel_actions.extend(classes.into_iter().map(|class| {
+                                    PanelAction::MoveSquadron {
+                                        class,
+                                        from: SquadronPlace::Fleet(fleet),
+                                        to: target.squadron_place(),
+                                    }
+                                }));
                             }
                         }
                     }
@@ -6756,26 +6790,45 @@ async fn main() {
                             } => system_window_state
                                 .minimize_defenses_window(system, logical_position, page),
                             DefensesWindowAction::OpenObjectMenu {
-                                selection, point, ..
+                                system,
+                                selection,
+                                team,
+                                point,
                             } => {
-                                let gates = order_gates(
-                                    selection,
-                                    &world,
-                                    &mission_state,
-                                    &movement_state,
-                                    &troop_transport_state,
-                                    &delivery_state,
-                                    &mfg_state,
-                                    &research_state,
-                                    player_faction,
-                                    victory_state.conditions_word,
+                                let gates_of = |object| {
+                                    order_gates(
+                                        object,
+                                        &world,
+                                        &mission_state,
+                                        &movement_state,
+                                        &troop_transport_state,
+                                        &delivery_state,
+                                        &mfg_state,
+                                        &research_state,
+                                        player_faction,
+                                        victory_state.conditions_word,
+                                    )
+                                };
+                                let gates = if team.is_empty() {
+                                    gates_of(selection)
+                                } else {
+                                    team_gates(&team, |object| gates_of(Some(object)))
+                                };
+                                object_menu_place = Some((system, team_squadron_place(&team, system)));
+                                object_menu = Some(
+                                    ObjectMenuState::new(selection, gates, point).with_team(team),
                                 );
-                                object_menu = Some(ObjectMenuState::new(selection, gates, point));
                             }
-                            // FUN_00422ce0, window type 10: the character's
-                            // 0x201 -> 0x241 against the window under the
-                            // point.
-                            DefensesWindowAction::DragCharacter { character, point } => {
+                            // FUN_00422ce0, window type 10: the selection's
+                            // 0x201 (0x202 with Ctrl) against the window
+                            // under the point, split as a defenses icon's
+                            // (FUN_0053c4b0).
+                            DefensesWindowAction::DragSelection {
+                                system,
+                                items,
+                                point,
+                                confirmed,
+                            } => {
                                 let windows = ReleaseWindows {
                                     sector: &sector_window_state,
                                     system: &system_window_state,
@@ -6783,7 +6836,7 @@ async fn main() {
                                     defenses: &defenses_window_state,
                                     missions: &missions_window_state,
                                 };
-                                let (system, fleet) = match release_destination(
+                                let Some(target) = release_destination(
                                     ctx,
                                     &world,
                                     &movement_state,
@@ -6791,18 +6844,40 @@ async fn main() {
                                     cockpit_layout,
                                     windows,
                                     point,
-                                ) {
-                                    Some(ReleaseTarget::System(system)) => (system, None),
-                                    Some(ReleaseTarget::Fleet { fleet, system }) => {
-                                        (system, Some(fleet))
-                                    }
-                                    None => continue,
+                                ) else {
+                                    continue;
                                 };
-                                panel_actions.push(PanelAction::MoveCharacter {
-                                    character,
-                                    system,
-                                    fleet,
-                                });
+                                let Some(team) = defenses_selection_team(&items) else {
+                                    // hyp: an unfinished unit's move command
+                                    // refuses (+0x50 bit 2 clear), and one
+                                    // refusal refuses the order.
+                                    msg_log.push(GameMessage::new(
+                                        clock.tick,
+                                        "Move refused".to_string(),
+                                        MessageCategory::Event,
+                                    ));
+                                    continue;
+                                };
+                                issue_team_move(
+                                    &DefensesMoveContext {
+                                        world: &world,
+                                        movement: &movement_state,
+                                        missions: &mission_state,
+                                        transport: &troop_transport_state,
+                                        deliveries: &delivery_state,
+                                        blockaded: blockade_state.blockaded_systems(),
+                                        faction: player_faction,
+                                        tick: clock.tick,
+                                    },
+                                    &team,
+                                    (system, SquadronPlace::Planet(system)),
+                                    false,
+                                    confirmed,
+                                    target,
+                                    &mut msg_log,
+                                    &mut move_confirmation_state,
+                                    &mut panel_actions,
+                                );
                             }
                         }
                     }
@@ -6882,6 +6957,10 @@ async fn main() {
                         || personnel_finder_state.is_open()
                         || system_finder_state.is_open();
                     let menu_was_open = object_menu.is_some();
+                    let menu_team: Vec<MenuObject> = object_menu
+                        .as_ref()
+                        .map(|menu| menu.team().to_vec())
+                        .unwrap_or_default();
                     let band_menu_result = draw_object_menu(
                         ctx,
                         &mut object_menu,
@@ -6904,6 +6983,27 @@ async fn main() {
                             system_window_state.deselect_band(system);
                         }
                     }
+                    // A menu for several objects gives its order the whole
+                    // team (FUN_00487c50 builds it with the selection).
+                    let band_menu_result = match band_menu_result {
+                        Some((command, _)) if menu_team.len() > 1 => {
+                            if let Some(order) = team_menu_order(
+                                &world,
+                                command,
+                                &menu_team,
+                                object_menu_place,
+                            ) {
+                                match order {
+                                    TeamMenuOrder::Target(order) => {
+                                        targeting = Some(Targeting::new(order));
+                                    }
+                                    TeamMenuOrder::Panel(action) => panel_actions.push(action),
+                                }
+                            }
+                            None
+                        }
+                        result => result,
+                    };
                     match band_menu_result {
                         // FUN_00486fb0 0x234: Planetary Assault of the
                         // selection's system by its fleets.
@@ -8269,6 +8369,37 @@ async fn main() {
                                 }
                                 // A defenses icon's 0x201 or 0x202 against
                                 // the release window's +0x70.
+                                // A window selection's 0x201 against the
+                                // release window's +0x70.
+                                Some(TargetingEnd::Target {
+                                    order:
+                                        TargetOrder::TeamMove {
+                                            system,
+                                            from,
+                                            team,
+                                            confirmed,
+                                        },
+                                    target,
+                                }) => issue_team_move(
+                                    &DefensesMoveContext {
+                                        world: &world,
+                                        movement: &movement_state,
+                                        missions: &mission_state,
+                                        transport: &troop_transport_state,
+                                        deliveries: &delivery_state,
+                                        blockaded: blockade_state.blockaded_systems(),
+                                        faction: player_faction,
+                                        tick: clock.tick,
+                                    },
+                                    &team,
+                                    (system, from),
+                                    false,
+                                    confirmed,
+                                    target,
+                                    &mut msg_log,
+                                    &mut move_confirmation_state,
+                                    &mut panel_actions,
+                                ),
                                 Some(TargetingEnd::Target {
                                     order: TargetOrder::DefensesMove { system, confirmed },
                                     target,
@@ -9762,14 +9893,213 @@ fn issue_defenses_move(
     move_confirmation_state: &mut MoveConfirmationState,
     panel_actions: &mut Vec<PanelAction>,
 ) {
-    let world = context.world;
-    let is_alliance = context.faction == MissionFaction::Alliance;
     let team = rebellion_render::quadrant_icons::defenses_move_team(
-        world,
+        context.world,
         context.missions,
         Faction::from(context.faction),
         system,
     );
+    issue_team_move(
+        context,
+        &team,
+        (system, SquadronPlace::Planet(system)),
+        true,
+        confirmed,
+        target,
+        msg_log,
+        move_confirmation_state,
+        panel_actions,
+    );
+}
+
+/// What a menu for several objects issues.
+enum TeamMenuOrder {
+    Target(TargetOrder),
+    Panel(PanelAction),
+}
+
+/// The order `command` builds for a window selection's `team`
+/// (`FUN_00487c50`: the selection is the order's team). Ships move or make
+/// a fleet together (manual p. 120: "select multiple ships by holding down
+/// the CTRL key while clicking and then right-click on one of the selected
+/// ships and select Create Fleet"); characters and special forces go on
+/// one mission; anything else moves as one `0x201`, split as a defenses
+/// icon's (`FUN_0053c4b0`).
+fn team_menu_order(
+    world: &GameWorld,
+    command: ObjectMenuCommand,
+    team: &[MenuObject],
+    place: Option<(SystemKey, SquadronPlace)>,
+) -> Option<TeamMenuOrder> {
+    let confirmed = command == ObjectMenuCommand::ConfirmedMove;
+    let ships = || {
+        let MenuObject::Ship { fleet, roster, .. } = *team.first()? else {
+            return None;
+        };
+        let ships: Option<Vec<usize>> = team
+            .iter()
+            .map(|object| match *object {
+                MenuObject::Ship {
+                    fleet: of, index, ..
+                } if of == fleet => Some(index),
+                _ => None,
+            })
+            .collect();
+        Some((fleet, ships?, roster))
+    };
+    match command {
+        ObjectMenuCommand::Mission => {
+            let members: Option<Vec<MissionMember>> =
+                team.iter().map(|object| object.mission_member()).collect();
+            Some(TeamMenuOrder::Target(TargetOrder::Mission(members?)))
+        }
+        // FUN_00580b00: Create Fleet runs at once, against the ships' own
+        // system.
+        ObjectMenuCommand::CreateFleet => {
+            let (fleet, ships, roster) = ships()?;
+            Some(TeamMenuOrder::Panel(PanelAction::CreateFleet {
+                fleet,
+                ships,
+                roster,
+            }))
+        }
+        ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove => {
+            if let Some((fleet, ships, roster)) = ships() {
+                return Some(TeamMenuOrder::Target(TargetOrder::ShipMove {
+                    fleet,
+                    ships,
+                    roster,
+                    confirmed,
+                }));
+            }
+            let (system, from) = place?;
+            let mut moving = rebellion_render::quadrant_icons::DefensesTeam::default();
+            for object in team {
+                match *object {
+                    MenuObject::Character(key) => {
+                        moving.members.push(MissionMember::Character(key));
+                    }
+                    MenuObject::SpecialForce(key) => {
+                        moving.members.push(MissionMember::SpecialForce(key));
+                    }
+                    MenuObject::Troop(key) => moving.troops.push(key),
+                    MenuObject::PlanetFighter { class, .. } => moving.squadrons.push(class),
+                    MenuObject::Fighter { fleet, index } => moving
+                        .squadrons
+                        .push(world.fleets.get(fleet)?.fighters.get(index)?.class),
+                    _ => return None,
+                }
+            }
+            Some(TeamMenuOrder::Target(TargetOrder::TeamMove {
+                system,
+                from,
+                team: moving,
+                confirmed,
+            }))
+        }
+        _ => None,
+    }
+}
+
+/// Where a window selection's squadrons stand: a Fleet window squadron's
+/// fleet, a Defenses window squadron's planet, else `system`'s planet.
+fn team_squadron_place(team: &[MenuObject], system: SystemKey) -> SquadronPlace {
+    team.iter()
+        .find_map(|object| match *object {
+            MenuObject::Fighter { fleet, .. } => Some(SquadronPlace::Fleet(fleet)),
+            MenuObject::PlanetFighter { system, .. } => Some(SquadronPlace::Planet(system)),
+            _ => None,
+        })
+        .unwrap_or(SquadronPlace::Planet(system))
+}
+
+/// The gates of a menu for `team` (`FUN_0051d990`): an order is enabled
+/// when the order with the whole team as its team is (`+0x18`, which runs
+/// each member's own check). port: each member's own Move gate and
+/// Mission gate stand in for the team order's.
+fn team_gates(team: &[MenuObject], gates_of: impl Fn(MenuObject) -> OrderGates) -> OrderGates {
+    let Some(&first) = team.first() else {
+        return OrderGates::default();
+    };
+    let mut gates = gates_of(first);
+    if team.len() > 1 {
+        let each: Vec<(MenuObject, OrderGates)> =
+            team.iter().map(|&object| (object, gates_of(object))).collect();
+        let moves = each.iter().all(|(object, gates)| match object {
+            MenuObject::Ship { .. } => gates.ship_move,
+            MenuObject::Troop(_) => gates.troop_move,
+            MenuObject::Fighter { .. } | MenuObject::PlanetFighter { .. } => gates.squadron_move,
+            MenuObject::Character(_) => gates.character_move,
+            MenuObject::SpecialForce(_) => gates.special_force_move,
+            MenuObject::Fleet(_) => gates.fleet_move,
+            _ => false,
+        });
+        gates.ship_move = moves;
+        gates.troop_move = moves;
+        gates.squadron_move = moves;
+        gates.character_move = moves;
+        gates.special_force_move = moves;
+        gates.fleet_move = moves;
+        gates.mission = each.iter().all(|(_, gates)| gates.mission);
+    }
+    gates
+}
+
+/// The team a Defenses window selection moves (`FUN_004a7a20`): its
+/// characters and special forces, regiments and squadrons; `None` when it
+/// holds a unit not yet completed, one in hyperspace or a defense facility,
+/// whose own move refuses.
+fn defenses_selection_team(
+    items: &[rebellion_render::defenses_window::DefensesItem],
+) -> Option<rebellion_render::quadrant_icons::DefensesTeam> {
+    use rebellion_render::defenses_window::DefensesItem;
+    let mut team = rebellion_render::quadrant_icons::DefensesTeam::default();
+    for item in items {
+        match *item {
+            DefensesItem::Character(key) => team.members.push(MissionMember::Character(key)),
+            DefensesItem::SpecialForce(key) => {
+                team.members.push(MissionMember::SpecialForce(key));
+            }
+            DefensesItem::Troop(key) => team.troops.push(key),
+            DefensesItem::Squadron { class, .. } => team.squadrons.push(class),
+            // A squadron in hyperspace takes no order (FUN_004f9860).
+            DefensesItem::Defense(_)
+            | DefensesItem::Pending { .. }
+            | DefensesItem::TravellingSquadron { .. } => return None,
+        }
+    }
+    Some(team)
+}
+
+/// A Move (`0x201`) or Confirmed Move (`0x202`) of `team`, the objects of
+/// `system`'s surface and personnel, with its target set: the defenses
+/// icon's team (`icon`), or a Defenses window list's selection dropped on a
+/// window (`FUN_00422ce0`, window type 10). Either splits the same way
+/// (`FUN_0053c4b0`): one `0x241` for the characters and special forces, one
+/// `0x204` group for the regiments and squadrons, and one refusal refuses
+/// the whole order.
+///
+/// port: a window drop's Move never asks, as the icon's does not;
+/// `FUN_00487cc0` would ask when the first selected object's container is a
+/// blockaded system of its side (open).
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The order's inputs at the UI boundary, as issue_defenses_move takes them."
+)]
+fn issue_team_move(
+    context: &DefensesMoveContext<'_>,
+    team: &rebellion_render::quadrant_icons::DefensesTeam,
+    (system, from): (SystemKey, SquadronPlace),
+    icon: bool,
+    confirmed: bool,
+    target: ReleaseTarget,
+    msg_log: &mut MessageLog,
+    move_confirmation_state: &mut MoveConfirmationState,
+    panel_actions: &mut Vec<PanelAction>,
+) {
+    let world = context.world;
+    let is_alliance = context.faction == MissionFaction::Alliance;
+    let source = if icon { "defenses_icon" } else { "defenses_window" };
     let (destination, join, regiment_target) = match target {
         ReleaseTarget::System(to) => (to, None, RegimentTarget::System(to)),
         ReleaseTarget::Fleet { fleet, system: to } => {
@@ -9777,7 +10107,6 @@ fn issue_defenses_move(
         }
     };
     let squadron_to = target.squadron_place();
-    let from = SquadronPlace::Planet(system);
     let member_days = if team.members.is_empty() {
         Some(Vec::new())
     } else if context
@@ -9824,19 +10153,21 @@ fn issue_defenses_move(
                 .map(|days| (class, days))
         })
         .collect();
-    // A regiment or squadron flying in is in the team, and its own move
-    // command refuses (`surface_arrival_pending`).
-    let arriving = context
-        .transport
-        .surface_arrival_pending(world, system, is_alliance)
-        || context
-            .deliveries
-            .surface_arrival_pending(system, Faction::from(context.faction));
+    // A regiment or squadron flying in is in the icon's team, and its own
+    // move command refuses (`surface_arrival_pending`). A list selects only
+    // what it lists.
+    let arriving = icon
+        && (context
+            .transport
+            .surface_arrival_pending(world, system, is_alliance)
+            || context
+                .deliveries
+                .surface_arrival_pending(system, Faction::from(context.faction)));
     let (false, false, Some(member_days), Some(troop_days), Some(class_days)) =
         (team.is_empty(), arriving, member_days, troop_days, class_days)
     else {
         macroquad::logging::info!(
-            "[interface] command={:#x} defenses_icon status=refused",
+            "[interface] command={:#x} {source} status=refused",
             if confirmed { 0x202 } else { 0x201 }
         );
         // port: FUN_00487c90 plays the side's advisor reaction; this line
@@ -9916,7 +10247,7 @@ fn issue_defenses_move(
         Some((class_name(class)?, days))
     }));
     macroquad::logging::info!(
-        "[interface] command=0x202 defenses_icon status=asks lines={}",
+        "[interface] command=0x202 {source} status=asks lines={}",
         lines.len()
     );
     move_confirmation_state.open(MoveConfirmation {

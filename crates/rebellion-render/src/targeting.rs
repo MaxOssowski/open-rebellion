@@ -91,6 +91,16 @@ pub enum TargetOrder {
     /// resolves it on validation (`FUN_0053c4b0` -> `FUN_00512700` kind 8,
     /// `quadrant_icons::defenses_move_team`).
     DefensesMove { system: SystemKey, confirmed: bool },
+    /// A window selection's Move (`0x201`), or Confirmed Move (`0x202`)
+    /// when `confirmed`, for its characters, special forces, regiments and
+    /// squadrons at `system`, the squadrons from `from`; split as a
+    /// defenses icon's (`FUN_0053c4b0`).
+    TeamMove {
+        system: SystemKey,
+        from: rebellion_core::squadrons::SquadronPlace,
+        team: crate::quadrant_icons::DefensesTeam,
+        confirmed: bool,
+    },
     /// The headquarters' Move (`0x201`), or Confirmed Move (`0x202`) when
     /// `confirmed` (`FUN_00526c00`; [`rebellion_core::headquarters_move`]).
     HeadquartersMove { confirmed: bool },

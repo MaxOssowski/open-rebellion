@@ -910,6 +910,9 @@ pub struct OrderGates {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ObjectMenuState {
     selection: Option<MenuObject>,
+    /// Every object the window had selected, the clicked one first, when
+    /// the menu opens for several ([`Self::with_team`]).
+    team: Vec<MenuObject>,
     rows: Vec<ObjectMenuRow>,
     /// The Planetary Bombardment or Command submenu's rows, if the menu has
     /// one.
@@ -926,11 +929,46 @@ impl ObjectMenuState {
     pub fn new(selection: Option<MenuObject>, gates: OrderGates, point: (i16, i16)) -> Self {
         Self {
             selection,
+            team: selection.into_iter().collect(),
             rows: object_menu_rows(selection, gates),
             submenu: object_submenu_rows(selection, gates),
             window: GameMenuState::default(),
             point: (f32::from(point.0), f32::from(point.1)),
         }
+    }
+
+    /// The menu for a window's whole selection, `team`, its clicked object
+    /// first (`FUN_004ac5c0` with the window's slot `+0x58`). For several
+    /// objects `FUN_0051d990` enables Encyclopedia and Status only for a
+    /// single selection; the orders take the whole team.
+    ///
+    /// port: a team keeps only the orders ported for several objects: Move
+    /// and Confirmed Move, a team of ships' Create Fleet and a team of
+    /// characters' and special forces' Mission. The rest are drawn
+    /// disabled, and the menu opens no submenu.
+    #[must_use]
+    pub fn with_team(mut self, team: Vec<MenuObject>) -> Self {
+        if team.len() > 1 {
+            let ships = team.iter().all(|object| matches!(object, MenuObject::Ship { .. }));
+            let members = team.iter().all(|object| object.mission_member().is_some());
+            for row in &mut self.rows {
+                row.enabled &= match row.item.command {
+                    ObjectMenuCommand::Move | ObjectMenuCommand::ConfirmedMove => true,
+                    ObjectMenuCommand::CreateFleet => ships,
+                    ObjectMenuCommand::Mission => members,
+                    _ => false,
+                };
+            }
+            self.submenu.clear();
+        }
+        self.team = team;
+        self
+    }
+
+    /// Every object the menu was opened for.
+    #[must_use]
+    pub fn team(&self) -> &[MenuObject] {
+        &self.team
     }
 
     /// A right-button release on an open Finder (`on_finder`) opens the
@@ -1870,6 +1908,32 @@ mod tests {
         assert_eq!(
             (create.kind, create.sort_key, create.label_string_id),
             (0x270, 50, 12319)
+        );
+    }
+
+    #[test]
+    fn a_menu_for_several_ships_keeps_the_team_orders_and_greys_encyclopedia_and_status() {
+        // FUN_0051d990: Encyclopedia and Status only for a single
+        // selection; the orders take the whole team (manual p. 120: Ctrl
+        // selects ships, then Create Fleet).
+        let ship = |index| MenuObject::Ship {
+            fleet: FleetKey::default(),
+            index,
+            roster: 0,
+        };
+        let gates = OrderGates {
+            ship_move: true,
+            ..OrderGates::default()
+        };
+        let menu = ObjectMenuState::new(Some(ship(0)), gates, (0, 0))
+            .with_team(vec![ship(0), ship(2)]);
+        assert_eq!(enabled(&menu.rows), ["Move", "Confirmed Move", "Create Fleet"]);
+        assert_eq!(menu.team(), [ship(0), ship(2)]);
+        // One object keeps its single menu.
+        let one = ObjectMenuState::new(Some(ship(0)), gates, (0, 0)).with_team(vec![ship(0)]);
+        assert_eq!(
+            enabled(&one.rows),
+            ["Move", "Confirmed Move", "Create Fleet", "Encyclopedia", "Status"]
         );
     }
 

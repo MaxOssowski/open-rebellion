@@ -703,6 +703,17 @@ async function dragItem(page, from, to) {
   await frames(page);
 }
 
+// A click with `key` held (MK_CONTROL or MK_SHIFT for FUN_006083c0); the
+// key goes down a frame before the press and up after the release.
+async function clickWith(page, at, key) {
+  await page.keyboard.down(key);
+  await frames(page);
+  await click(page, at);
+  await page.waitForTimeout(300);
+  await page.keyboard.up(key);
+  await frames(page);
+}
+
 async function openTroopsTab(page, loaded) {
   await click(page, point(loaded.troops_tab));
   const troops = await until(page, "the Troops tab opens", (o) => o.tab === "Troops" && o.first_item);
@@ -934,6 +945,37 @@ const cases = [
         (o) => !o.confirmation_open && o.fleet_squadrons === 1 && o.planet_squadrons === 1);
       await shot(page, directory, "boarded");
       return { opened, menu, asked, kept, boarded };
+    },
+  },
+  {
+    name: "squadrons-drag-two",
+    code: SQUADRON_LOAD,
+    // The Defenses window's list (flags 0xa0000, FUN_004a8790; page 3 clears
+    // 0x20000, FUN_004a90d0) keeps several squadrons selected with Ctrl and
+    // drags them all (FUN_006083c0). Dropped on the Fleet window's fleet,
+    // FUN_00422ce0 issues one 0x201 for them (window type 10), and the
+    // 0x204 group boards both within the ships' room (FUN_00500b40), or one
+    // refusal refuses both (FUN_0053c1a0).
+    async run(page, faction, setup, directory) {
+      const opened = await openFleetWindow(page, setup);
+      assert.equal(opened.planet_squadrons, 2, "two squadrons stand on the planet");
+      await selectFleet(page, opened);
+      const first = point(setup.troop_item);
+      await click(page, first);
+      await page.waitForTimeout(300);
+      await clickWith(page, { x: first.x + 70, y: first.y }, "Control");
+      await shot(page, directory, "two-squadrons-selected");
+      await dragItem(page, first, point(opened.fleet_entry));
+      if (setup.fighter_room >= 2) {
+        const boarded = await until(page, "both squadrons board the fleet",
+          (o) => o.fleet_squadrons === 2 && o.planet_squadrons === 0);
+        await shot(page, directory, "two-squadrons-boarded");
+        return { opened, boarded };
+      }
+      const refused = await until(page, "the fleet's room refuses both",
+        (o) => o.last_message === "Move refused");
+      assert.deepEqual([refused.planet_squadrons, refused.fleet_squadrons], [2, 0]);
+      return { opened, refused };
     },
   },
   {
@@ -2055,6 +2097,85 @@ const cases = [
         (o, text) => o.last_message === text, refusal);
       assert.deepEqual(ships(refused), [2, 1]);
       return { selected, refused };
+    },
+  },
+  {
+    name: "join-two-ships",
+    code: FLEET_JOIN,
+    // Manual p. 120: "select multiple ships by holding down the CTRL key
+    // while clicking". The right list has no single-selection flag
+    // (FUN_004a4b10), so Ctrl adds a ship (FUN_006083c0); a press on a
+    // selected ship keeps the selection (flag 0x10), and the drop (0x29a)
+    // moves both with one 0x201 onto the fleet under the release
+    // (FUN_00422ce0, FUN_004feca0). The emptied fleet disbands.
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const first = point(selected.first_item);
+      const second = { x: first.x, y: first.y + 50 };
+      await click(page, first);
+      await until(page, "a click selects the first ship", (o) => JSON.stringify(o.selected_items) === "[0]");
+      await clickWith(page, second, "Control");
+      const both = await until(page, "Ctrl+click adds the second ship",
+        (o) => JSON.stringify(o.selected_items) === "[0,1]");
+      await shot(page, directory, "two-selected");
+      await dragItem(page, first, point(selected.fleets[1].entry));
+      const joined = await until(page, "both ships join the second fleet",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[3]");
+      assert.equal(joined.entries, 1, "the emptied fleet disbands (manual p. 120)");
+      await shot(page, directory, "two-joined");
+      return { selected, both, joined };
+    },
+  },
+  {
+    name: "menu-move-two-ships",
+    code: FLEET_JOIN,
+    // A right click on one of several selected ships opens the menu for
+    // them all (FUN_004ac5c0 with slot +0x58, FUN_004a2c80); FUN_0051d990
+    // greys Encyclopedia and Status for more than one, and Move targets
+    // with the whole team (FUN_00487c50).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const first = point(selected.first_item);
+      const second = { x: first.x, y: first.y + 50 };
+      await click(page, first);
+      await page.waitForTimeout(300);
+      await clickWith(page, second, "Control");
+      await until(page, "Ctrl+click adds the second ship", (o) => JSON.stringify(o.selected_items) === "[0,1]");
+      const menu = await openMenu(page, second, directory, "two-ships");
+      assert.equal(menu.move_row, 0, JSON.stringify(menu));
+      const kept = await latest(page);
+      assert.deepEqual(kept.selected_items, [0, 1], "a right press on a selected ship keeps both");
+      await choose(page, menu, menu.move_row, "Move");
+      await click(page, point(selected.fleets[1].entry));
+      const joined = await until(page, "both ships join the second fleet",
+        (o) => JSON.stringify(o.fleets.map((f) => f.ships)) === "[3]");
+      return { selected, menu, joined };
+    },
+  },
+  {
+    name: "shift-select",
+    code: FLEET_JOIN,
+    // MK_SHIFT adds the items from the last press to this one
+    // (FUN_00609590); a plain click on a selected item leaves it alone on
+    // the release (FUN_006083c0, case 0x202).
+    async run(page, faction, setup, directory) {
+      const selected = await openJoining(page, setup);
+      const first = point(selected.first_item);
+      const second = { x: first.x, y: first.y + 50 };
+      await click(page, first);
+      await until(page, "a click selects the first ship", (o) => JSON.stringify(o.selected_items) === "[0]");
+      await clickWith(page, second, "Shift");
+      const range = await until(page, "Shift+click adds the range",
+        (o) => JSON.stringify(o.selected_items) === "[0,1]");
+      await shot(page, directory, "shift-range");
+      await page.waitForTimeout(300);
+      await click(page, second);
+      const one = await until(page, "a plain click keeps only the second ship",
+        (o) => JSON.stringify(o.selected_items) === "[1]");
+      await clickWith(page, second, "Control");
+      const none = await until(page, "Ctrl+click on it takes it out",
+        (o) => JSON.stringify(o.selected_items) === "[]");
+      return { selected, range, one, none };
     },
   },
   {

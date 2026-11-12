@@ -185,8 +185,10 @@ Fleet 2, etc."); untraced.
   reused.
 - Where "Fleet N" comes from, and its counter.
 - `FUN_00558380`'s base order list (`DAT_006bb368`).
-- Ctrl multi-selection in the Fleet window's lists (the port moves one
-  ship per drag or menu order).
+- Settled 2026-11-12 (`drag-list.md`): Ctrl and Shift select several
+  items in the Fleet window's right list; a drag or a menu Move moves them
+  all, and Create Fleet makes one fleet of them. The left list keeps one
+  selection (port:).
 - A system window drag (`0x214`) released on a fleet: the port still
   refuses it.
 

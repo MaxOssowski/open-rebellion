@@ -6076,6 +6076,8 @@ struct FixtureDefensesWindow {
     counts: [usize; 5],
     rows: Vec<String>,
     selected: Option<usize>,
+    /// Every selected row.
+    selection: Vec<usize>,
     garrison: Option<String>,
     tabs: Vec<(&'static str, [f32; 4])>,
     cells: Vec<[f32; 4]>,
@@ -6186,6 +6188,7 @@ impl QuadrantWatch {
                         .collect(),
                     rows: report.rows,
                     selected: report.selected,
+                    selection: report.selection,
                     garrison: report.garrison,
                     tabs: DefensesPage::ALL
                         .into_iter()
@@ -6391,6 +6394,8 @@ struct FleetLoadObservation {
     tab: Option<String>,
     enabled: [bool; 4],
     items: Vec<String>,
+    /// The right list's selected rows.
+    selected_items: Vec<usize>,
     counts: Option<(u32, u32)>,
     fleet_entry: Option<(f32, f32)>,
     fleets: Vec<FleetEntryObservation>,
@@ -6575,6 +6580,10 @@ fn fleet_load_observation(
         items: report
             .as_ref()
             .map(|report| report.items.clone())
+            .unwrap_or_default(),
+        selected_items: report
+            .as_ref()
+            .map(|report| report.selected_items.clone())
             .unwrap_or_default(),
         counts: report.as_ref().and_then(|report| report.counts),
         fleet_entry: fleets

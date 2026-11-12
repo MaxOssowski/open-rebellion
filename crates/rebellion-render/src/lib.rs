@@ -10,6 +10,7 @@ pub mod bmp_cache;
 pub mod build_selection;
 pub mod cockpit;
 pub mod defenses_window;
+pub mod drag_list;
 pub mod encyclopedia;
 pub mod fleet_finder;
 pub mod system_finder;
