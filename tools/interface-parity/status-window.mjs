@@ -557,6 +557,12 @@ const cases = [
       await click(page, point(fleet.fighters_tab));
       const fighters = await fleetLoad(page, (o) => o.tab === "Fighters" && o.items.length > 0 && o.first_item);
       assert.equal(fighters.items.length, 1, JSON.stringify(fighters));
+      // FUN_004a6be0 sums the ships' slots +0x23c / +0x240, which count
+      // their children by walk mode 3 (CapShip_vt23c, CapShip_vt240:
+      // FUN_005039d0 / FUN_00504c40, FUN_00513180), the list's own walk:
+      // the travellers count as aboard.
+      assert.equal(troops.counts?.[0], troops.items.length, JSON.stringify(troops));
+      assert.equal(fighters.counts?.[0], fighters.items.length, JSON.stringify(fighters));
       return point(fighters.first_item);
     },
   },

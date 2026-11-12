@@ -2141,9 +2141,15 @@ fn tab_counts(
         return None;
     };
     let value = world.fleets.get(fleet)?;
+    // The ships' slots +0x23c / +0x240 count their children by the list's
+    // own walk, mode 3 (CapShip_vt23c FUN_00500fe0, CapShip_vt240
+    // FUN_00501040: FUN_005039d0 / FUN_00504c40 and FUN_00513180), so units
+    // on their way in, already the ships' children (FUN_00556390), count.
     match tab {
         FleetWindowTab::Fighters => {
-            let aboard = value.fighters.iter().map(|entry| entry.count).sum();
+            let own: u32 = value.fighters.iter().map(|entry| entry.count).sum();
+            let incoming = incoming_squadrons(transport, fleet).count();
+            let aboard = own.saturating_add(u32::try_from(incoming).unwrap_or(u32::MAX));
             let capacity = value
                 .capital_ships
                 .iter()
@@ -2154,11 +2160,38 @@ fn tab_counts(
             Some((aboard, capacity))
         }
         FleetWindowTab::Troops => Some((
-            u32::try_from(transport.carried_count(fleet)).unwrap_or(u32::MAX),
+            u32::try_from(transport.carried_count(fleet) + incoming_regiments(transport, fleet).count())
+                .unwrap_or(u32::MAX),
             TroopTransportState::fleet_capacity(world, fleet)?,
         )),
         FleetWindowTab::CapitalShips | FleetWindowTab::Personnel => None,
     }
+}
+
+/// The squadrons on their way into `fleet` by Move, one class per
+/// squadron, in departure order.
+fn incoming_squadrons(
+    transport: &TroopTransportState,
+    fleet: FleetKey,
+) -> impl Iterator<Item = &rebellion_core::squadrons::SquadronTransit> + '_ {
+    transport
+        .squadrons
+        .transits()
+        .iter()
+        .filter(move |transit| transit.to == SquadronPlace::Fleet(fleet))
+        .flat_map(|transit| (0..transit.count).map(move |_| transit))
+}
+
+/// The regiments on their way into `fleet` by Move, in departure order.
+fn incoming_regiments(
+    transport: &TroopTransportState,
+    fleet: FleetKey,
+) -> impl Iterator<Item = TroopKey> + '_ {
+    transport
+        .transits()
+        .iter()
+        .filter(move |transit| transit.leg == RegimentLeg::Fleet(fleet))
+        .map(|transit| transit.troop)
 }
 
 /// The left edge of a picture `width` wide, centred on whole pixels in the
@@ -4150,6 +4183,12 @@ pub(crate) mod tests {
             }
         );
         assert!(squadron.en_route);
+        // FUN_004a6be0 prints the ships' +0x23c / +0x240, counts by the
+        // list's walk (mode 3, CapShip_vt23c / CapShip_vt240), so the
+        // travellers count as aboard: the fleet's one Transport (troop
+        // capacity 2, no hangar) reads 1 of 2 regiments, 1 of 0 squadrons.
+        assert_eq!(tab_counts(&world, &transport, selected, FleetWindowTab::Troops), Some((1, 2)));
+        assert_eq!(tab_counts(&world, &transport, selected, FleetWindowTab::Fighters), Some((1, 0)));
         let [member] = &listed(FleetWindowTab::Personnel)[..] else {
             panic!("{:?}", listed(FleetWindowTab::Personnel));
         };
