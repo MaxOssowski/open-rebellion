@@ -334,6 +334,17 @@ fn music_context_after_cutscene(kind: &CutsceneKind) -> Option<MusicContext> {
     }
 }
 
+/// Whether the browser may start its loaded score this frame. No score
+/// plays under a movie: the main menu's starts with the menu's window
+/// (`FUN_00405050` WM_CREATE: `FUN_004173c0`, `FUN_00417520`), which state 3
+/// creates only after the intro's movies (`FUN_004138a0`'s 0x405: MDATA.000
+/// (0x65) -> state 2, MDATA.001 (0x66) -> state 3), and the other movies
+/// stop the music first (`FUN_00610c00(0)`; ghidra/notes/movie-flow.md).
+#[cfg(any(test, target_arch = "wasm32"))]
+fn score_may_start(mode: &GameMode) -> bool {
+    !matches!(mode, GameMode::Cutscene { .. })
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn common_edata_sibling(gdata_path: &Path) -> Option<PathBuf> {
     gdata_path
@@ -461,6 +472,30 @@ mod audio_source_tests {
             music_context_after_cutscene(&CutsceneKind::Story(101)),
             Some(MusicContext::GalaxyMap)
         );
+    }
+
+    #[test]
+    fn the_menu_score_waits_for_the_main_menu_after_the_intro_movies() {
+        // FUN_004138a0's 0x405: the logos' end or skip (0x65) starts state 2,
+        // the cinematic; only its end (0x66) starts state 3, whose menu
+        // window starts the score at WM_CREATE (FUN_00405050: FUN_004173c0,
+        // FUN_00417520). No movie plays under a score (FUN_00610c00(0)).
+        for kind in [
+            CutsceneKind::Intro,
+            CutsceneKind::IntroCinematic,
+            CutsceneKind::NewGame,
+            CutsceneKind::Credits,
+            CutsceneKind::Ending(105),
+            CutsceneKind::Story(101),
+            CutsceneKind::TrenchRun(TacticalTrenchRunOutcome::Success),
+        ] {
+            assert!(
+                !score_may_start(&GameMode::Cutscene { kind: kind.clone() }),
+                "{kind:?}"
+            );
+        }
+        assert!(score_may_start(&GameMode::MainMenu));
+        assert!(score_may_start(&GameMode::Galaxy));
     }
 }
 
@@ -4643,12 +4678,8 @@ async fn main() {
                         );
                     }
                 }
-                #[cfg(target_arch = "wasm32")]
-                if browser_menu_audio_requested {
-                    if let Some(engine) = browser_menu_audio.as_mut() {
-                        engine.try_play_loaded_music(&audio_vol);
-                    }
-                }
+                // The score starts after the frame's screen, at one place
+                // (`score_may_start`), for the menu as for the galaxy view.
 
                 if let Some(action) = menu_action {
                     match action {
@@ -9302,10 +9333,20 @@ async fn main() {
             }
         }
 
+        // The first gesture (often the click or key that skips the logos)
+        // unlocks WebAudio, but the score waits for the screen that plays
+        // it: the main menu after the intro, never a movie.
         #[cfg(target_arch = "wasm32")]
-        if browser_menu_audio_requested {
+        if browser_menu_audio_requested && score_may_start(&game_mode) {
             if let Some(engine) = browser_menu_audio.as_mut() {
-                engine.try_play_loaded_music(&audio_vol);
+                let was_playing = engine.music_is_playing();
+                if engine.try_play_loaded_music(&audio_vol) && !was_playing {
+                    macroquad::logging::info!(
+                        "[audio] score started mode={:?} track={:?}",
+                        game_mode,
+                        engine.current_track()
+                    );
+                }
             }
         }
 

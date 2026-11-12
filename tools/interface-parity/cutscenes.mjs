@@ -221,6 +221,35 @@ const CASES = {
     await shot("main-menu");
     return { cinematic };
   },
+  // The main menu's score starts with the menu's window: its WM_CREATE
+  // (FUN_00405050, param 1) calls FUN_004173c0 and FUN_00417520, and state 3
+  // creates that window only after the intro's movies (FUN_004138a0's 0x405:
+  // 0x65 -> state 2, 0x66 -> state 3). A skip of the logos must not start it
+  // under the cinematic. The page records each looped WebAudio source (the
+  // score; effects and voices are one-shot) in window.__openRebellionLoops.
+  async "skip-holds-menu-music"(page, shot) {
+    await waitStem(page, "000", "the logos play");
+    await page.locator("#glcanvas").focus();
+    // A click (also Space or Enter; FUN_005f7240) is the gesture that
+    // unlocks the page's WebAudio; it skipped the logos and started the
+    // score at once. Escape did not reach that path.
+    await page.mouse.click(320, 240);
+    const cinematic = await waitStem(page, "001", "a click on the logos starts the cinematic");
+    // The score's buffer is decoded at startup; give the frames time to
+    // start it, as the bug did on the skip's next frame.
+    await page.waitForTimeout(2000);
+    await stemPlaying("001")(page).then((playing) => assert.ok(playing, "the cinematic still plays"));
+    const underCinematic = await page.evaluate(() => window.__openRebellionLoops.slice());
+    assert.deepEqual(underCinematic, [], "no score under the opening cinematic");
+    await shot("cinematic-silent");
+    await page.keyboard.press("Escape");
+    await waitFor(page, menuActive, "the main menu follows the cinematic's skip");
+    const started = await waitFor(page, () => window.__openRebellionLoops.length > 0
+      && window.__openRebellionLoops.slice(), "the main menu starts its score", 10_000);
+    assert.equal(started.length, 1, JSON.stringify(started));
+    await shot("main-menu-with-score");
+    return { cinematic, under_cinematic: underCinematic, menu_score: started };
+  },
   // FUN_005f6920: a movie the video manager cannot open shows
   // MessageBoxA(path, "PathName unknown to VideoManager", 0x1010) and the
   // flow waits for OK, then goes on as after the movie (the menu again).
@@ -347,6 +376,20 @@ async function run(browser, base, name) {
     }
   });
   page.on("pageerror", (error) => errors.push(String(error)));
+  await page.addInitScript(() => {
+    window.__openRebellionLoops = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (...rest) {
+      if (this.loop) {
+        window.__openRebellionLoops.push({
+          seconds: this.buffer?.duration ?? null,
+          menu: document.getElementById("main-menu-semantics")?.dataset.active === "true",
+          stem: window.__openRebellionCutscene?.state === 1 ? window.__openRebellionCutscene.stem : null,
+        });
+      }
+      return start.apply(this, rest);
+    };
+  });
   const shot = async (label) => {
     const bytes = await page.screenshot({ path: path.join(directory, `${label}.png`) });
     shots.push({ label, sha256: createHash("sha256").update(bytes).digest("hex") });
@@ -356,7 +399,8 @@ async function run(browser, base, name) {
     const checks = await CASES[name](page, shot);
     assert.deepEqual(errors, [], errors.join("; "));
     return { name, status: "pass", checks, shots,
-      cutscene_log: log.filter((line) => line.includes("[cutscene]") || line.includes("[main_menu]")) };
+      cutscene_log: log.filter((line) => line.includes("[cutscene]") || line.includes("[main_menu]")
+        || line.includes("[audio] score")) };
   } catch (error) {
     await shot("failure").catch(() => {});
     return { name, status: "fail", error: String(error.stack || error), errors,

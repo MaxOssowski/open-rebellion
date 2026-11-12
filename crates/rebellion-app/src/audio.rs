@@ -578,6 +578,12 @@ impl AudioEngine {
         self.music_playing = false;
     }
 
+    /// Whether the loaded browser music has started.
+    #[cfg(target_arch = "wasm32")]
+    pub fn music_is_playing(&self) -> bool {
+        self.music_playing
+    }
+
     /// Start decoded browser music once, returning whether playback is active.
     #[cfg(target_arch = "wasm32")]
     pub fn try_play_loaded_music(&mut self, vol_state: &AudioVolumeState) -> bool {
