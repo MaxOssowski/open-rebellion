@@ -42,6 +42,45 @@ pub enum AgentCommand {
     TranslateCounterpart,
 }
 
+impl AgentCommand {
+    /// The command TEXTCOMM.DLL accelerator table 11 sends for this item's
+    /// Alt key: Alt+B/T/F/O/G/U 0xbc1..0xbc6, Alt+V 0xbc8, Alt+A 0xbc9,
+    /// Alt+H 0xbd7. The frame (`Class_006588f8_vt14`, `FUN_004138a0`)
+    /// hands ids 3001..0xbd7 to the Command Center as message 0x483.
+    #[must_use]
+    pub const fn accelerator_command(self) -> u16 {
+        use rebellion_core::agent_build::BuildKind;
+        match self {
+            Self::Build(BuildKind::Ships) => 0xbc1,
+            Self::Build(BuildKind::Troops) => 0xbc2,
+            Self::Build(BuildKind::Facilities) => 0xbc3,
+            Self::GalaxyOverview => 0xbc4,
+            Self::ManageGarrisons => 0xbc5,
+            Self::ManageProduction => 0xbc6,
+            Self::TranslateCounterpart => 0xbc8,
+            Self::AgentAdvice => 0xbc9,
+            Self::Objectives => 0xbd7,
+        }
+    }
+}
+
+/// Whether the Command Center carries out accelerator `command` (table 11)
+/// while a modal window is open. `FUN_00422ce0`'s 0x483 case reads
+/// `DAT_006be4e4 == 0` first: the list a window with `+0xb8 & 1` joins on
+/// `WM_CREATE` (`Class_0066e060_vt14` → `Class_0066e060_vt34` →
+/// `FUN_006010e0`, which pushes it with `FUN_005f6700` on `0x006be4e0`).
+/// Commands 0xbb9 (Alt+W), 0xbbd (Alt+Y), 0xbbf (Alt+S), 0xbc0 (Alt+M),
+/// 0xbc1..0xbc6 and 0xbc8/0xbc9 (the Agent items), 0xbd3/0xbd4 (Ctrl+Tab)
+/// and 0xbd7 (Alt+H) need that list empty. The GID displays (Alt+1..9,
+/// 0xbca..0xbd2), the speed keys (0xbba..0xbbc), 0xbbe and 0xbd5 do not.
+#[must_use]
+pub const fn accelerator_answers_under_modal_window(command: u16) -> bool {
+    !matches!(
+        command,
+        0xbb9 | 0xbbd | 0xbbf | 0xbc0 | 0xbc1..=0xbc6 | 0xbc8 | 0xbc9 | 0xbd3 | 0xbd4 | 0xbd7
+    )
+}
+
 /// One record of list `0xdead`: its command, sort key (word 2) and TEXTSTRA
 /// label (word 5).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -503,6 +542,47 @@ pub fn alerts_command(response: GameMenuResponse) -> Option<AlertsCommand> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // FUN_00422ce0, message 0x483: every Agent item's case starts with
+    // `bVar20` (`DAT_006be4e4 == 0`, no modal window); 0xbca..0xbd2 call
+    // FUN_00425d00 without it. Keys: TEXTCOMM.DLL accelerator table 11.
+    #[test]
+    fn the_agent_alt_keys_are_refused_while_a_modal_window_is_open() {
+        use rebellion_core::agent_build::BuildKind;
+        let commands = [
+            AgentCommand::Build(BuildKind::Ships),
+            AgentCommand::Build(BuildKind::Troops),
+            AgentCommand::Build(BuildKind::Facilities),
+            AgentCommand::GalaxyOverview,
+            AgentCommand::ManageGarrisons,
+            AgentCommand::ManageProduction,
+            AgentCommand::TranslateCounterpart,
+            AgentCommand::AgentAdvice,
+            AgentCommand::Objectives,
+        ];
+        let ids: Vec<u16> = commands.iter().map(|c| c.accelerator_command()).collect();
+        assert_eq!(
+            ids,
+            [
+                0xbc1, 0xbc2, 0xbc3, 0xbc4, 0xbc5, 0xbc6, 0xbc8, 0xbc9, 0xbd7
+            ]
+        );
+        for id in ids {
+            assert!(!accelerator_answers_under_modal_window(id), "{id:#x}");
+        }
+        for id in [0xbb9, 0xbbd, 0xbbf, 0xbc0, 0xbd3, 0xbd4] {
+            assert!(!accelerator_answers_under_modal_window(id), "{id:#x}");
+        }
+    }
+
+    // Same case: 0xbba..0xbbc, 0xbbe, 0xbca..0xbd2 and 0xbd5 do not read
+    // `DAT_006be4e4`.
+    #[test]
+    fn the_gid_display_and_speed_alt_keys_still_answer_under_a_modal_window() {
+        for id in (0xbca..=0xbd2).chain([0xbba, 0xbbb, 0xbbc, 0xbbe, 0xbd5]) {
+            assert!(accelerator_answers_under_modal_window(id), "{id:#x}");
+        }
+    }
 
     #[test]
     fn the_alerts_submenu_lists_its_categories_in_sort_order_checked_while_they_alert() {

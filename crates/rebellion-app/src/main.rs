@@ -2379,6 +2379,16 @@ async fn main() {
                 if let Some(requested) = requested {
                     choose_game_speed(&mut clock, requested);
                 }
+                // The windows the frame's modal gate holds (see
+                // `window_modal_open` below).
+                let agent_keys_under_modal = fleet_finder_state.is_open()
+                    || troop_finder_state.is_open()
+                    || personnel_finder_state.is_open()
+                    || system_finder_state.is_open()
+                    || status_window_state.is_open()
+                    || enc_state.open
+                    || message_index.is_some()
+                    || tactical_state.battle_summary_open();
                 // Alt+G and Alt+U (commands 0xbc5/0xbc6 → menu items
                 // 0x115/0x116, FUN_00422ce0) toggle Manage Garrisons and
                 // Manage Production (FUN_00439d60).
@@ -2432,7 +2442,14 @@ async fn main() {
                         rebellion_render::agent_menu::AgentCommand::TranslateCounterpart,
                     ),
                 ] {
-                    if is_key_pressed(key) {
+                    // A modal window (a Finder, the Battle Summary, ...)
+                    // refuses these; Alt+1..9 below still answer
+                    // (FUN_00422ce0 0x483, DAT_006be4e4).
+                    let refused = agent_keys_under_modal
+                        && !rebellion_render::agent_menu::accelerator_answers_under_modal_window(
+                            command.accelerator_command(),
+                        );
+                    if is_key_pressed(key) && !refused {
                         apply_agent_command(
                             &mut player_agent,
                             &mut status_window_state,
