@@ -5071,6 +5071,67 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_drop_on_the_right_list_of_several_entries_targets_the_listed_ships_fleet() {
+        // FUN_004a3130: the ship under the point gives its fleet; with
+        // several entries selected the list holds each fleet's ships, and
+        // a selected ship itself (FUN_004a6be0, tab 0x66).
+        let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
+        let one = add_fleet(&mut world, system, true, 1);
+        let two = add_fleet(&mut world, system, true, 1);
+        let mut open = window(system, None);
+        open.expanded = vec![one, two];
+        let ship = |fleet| FleetWindowEntry::Ship { fleet, index: 0 };
+        let mut selection = ListSelection::only(ship(one));
+        selection.press(Some(ship(two)), (0.0, 0.0), Modifiers { ctrl: true, shift: false }, &[]);
+        open.selected = selection;
+        let entries = left_entries(
+            &world,
+            &rebellion_core::movement::MovementState::default(),
+            &fog(system),
+            Faction::Alliance,
+            &open,
+        );
+        let target = |open: &OpenFleetWindow, row: f32| {
+            drop_target(&world, Faction::Alliance, open, &entries, (150.0, 140.0 + 50.0 * row))
+        };
+        assert_eq!(target(&open, 0.0), Some(ReleaseTarget::Fleet { fleet: one, system }));
+        assert_eq!(target(&open, 1.0), Some(ReleaseTarget::Fleet { fleet: two, system }));
+        // Below them, no one own fleet is selected: no target.
+        assert_eq!(target(&open, 2.0), None);
+        // One ship alone lists no ships.
+        open.selected = ListSelection::only(ship(two));
+        assert_eq!(target(&open, 0.0), None);
+    }
+
+    #[test]
+    fn several_selected_ships_list_themselves_and_light_the_tabs_any_of_them_lights() {
+        // FUN_004a6be0 on tab 0x66 adds a selected ship itself; FUN_004a6980
+        // keeps 0x66 a tab unless one ship alone is selected (+0x14c bit 8)
+        // and lights 0x67..0x69 from the items' flags, or'ed.
+        let (world, transport, _, [one, two], _) = two_fleet_window();
+        let ship = |fleet| FleetWindowEntry::Ship { fleet, index: 0 };
+        let both = [ship(one), ship(two)];
+        let items = selection_items(&world, &MovementState::default(), &transport, &[], &both, FleetWindowTab::CapitalShips);
+        assert_eq!(
+            items.iter().map(|item| item.object).collect::<Vec<_>>(),
+            [one, two].map(|fleet| Some(ItemObject::Ship {
+                fleet,
+                index: 0,
+                roster: fleet_join::roster(&world, fleet).unwrap(),
+            }))
+        );
+        let enabled = |selected: &[FleetWindowEntry], tab| {
+            selection_tab_enabled(&world, &MovementState::default(), &transport, &[], selected, tab)
+        };
+        assert!(!enabled(&[], FleetWindowTab::CapitalShips));
+        assert!(!enabled(&[ship(one)], FleetWindowTab::CapitalShips));
+        assert!(enabled(&both, FleetWindowTab::CapitalShips));
+        assert!(!enabled(&[ship(one)], FleetWindowTab::Troops));
+        assert!(enabled(&both, FleetWindowTab::Troops));
+        assert!(!enabled(&both, FleetWindowTab::Personnel));
+    }
+
+    #[test]
     fn expanding_a_fleet_lists_its_ships_under_it() {
         // FUN_004a3d40: one entry per living capital ship while expanded.
         let (mut world, system) = world(ControlKind::Controlled(Faction::Alliance));
