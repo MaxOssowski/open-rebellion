@@ -47,6 +47,11 @@ const ORIGINAL_CAMERA_PITCH: i32 = 30;
 const ORIGINAL_CAMERA_ALLIANCE_YAW: i32 = -30;
 const ORIGINAL_CAMERA_EMPIRE_YAW: i32 = 150;
 const ORIGINAL_CAMERA_INITIAL_STEP: i32 = 5;
+/// The chase camera's clip planes: `Class_0066d478_vtc` (`0x005d9b10`)
+/// sets the viewport's front to 0.1 (`+0x38`) and its field to the
+/// camera's `+0x38`, which `FUN_005d9a70` set to 0.02 (`0x3ca3d70a`).
+const ORIGINAL_CHASE_FRONT: f32 = 0.1;
+const ORIGINAL_CHASE_FIELD: f32 = 0.02;
 
 // `FUN_005d4d10` creates a D3DRMLIGHT_DIRECTIONAL at RGB 0.8 on a frame at
 // (5, 5, -1), aims that frame at the scene origin with D3DRMCONSTRAIN_Z, and
@@ -149,6 +154,49 @@ pub struct OriginalTacticalCamera {
     distance: f32,
     target_object_id: Option<u32>,
     target: Vec3,
+    /// The chase camera (`FUN_005c2990` mode 0xb, class `0x66d478`) while
+    /// F1-F12 run it. It is not part of a memorized view: command 8 stores
+    /// the free camera, and command 7 destroys the chase (`+0x644`).
+    chase: Option<OriginalChaseView>,
+}
+
+/// One frame of the chase camera, in render space.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct OriginalChaseView {
+    pub object_id: u32,
+    pub eye: Vec3,
+    pub direction: Vec3,
+    pub up: Vec3,
+}
+
+/// `Class_0066d478_vtc` (`0x005d9b10`) for a followed object with no second
+/// object: `e` is the larger of the X and Y spans of the object's box
+/// (vt `+0x2c`), the camera frame sits at `(-e, e, 2e)` in the object's frame
+/// (`SetPosition`, `+0xf4`) and faces the object's `(0, 0, -1)` with up
+/// `(0, 1, 0)` (`SetOrientation`, `+0xf0`). `position` and `forward` are the
+/// hull's in source space; its frame is the one `0x005d3500` builds
+/// ([`original_hull_axes`]).
+pub(crate) fn original_chase_view(
+    object_id: u32,
+    position: Vec3,
+    forward: Vec3,
+    bounds: [f32; 6],
+) -> OriginalChaseView {
+    let e = (bounds[3] - bounds[0]).max(bounds[4] - bounds[1]);
+    let mut side = vec3(-forward.z, 0.0, forward.x);
+    let length = side.length();
+    if length > 0.0 {
+        side /= length;
+    }
+    let local_z = -forward;
+    let eye = position - side * e + Vec3::Y * e + local_z * (2.0 * e);
+    let reflect = |v: Vec3| vec3(v.x, v.y, -v.z);
+    OriginalChaseView {
+        object_id,
+        eye: reflect(eye),
+        direction: reflect(-local_z),
+        up: Vec3::Y,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -184,7 +232,26 @@ impl OriginalTacticalCamera {
             distance: battle_extent * ORIGINAL_CAMERA_DISTANCE_SCALE,
             target_object_id: None,
             target: Vec3::ZERO,
+            chase: None,
         }
+    }
+
+    /// Run the chase camera with this frame's view.
+    pub(crate) fn set_chase(&mut self, view: OriginalChaseView) {
+        self.chase = Some(view);
+    }
+
+    /// Return to the free camera (`FUN_005c2990` commands 7 and 10 release
+    /// `+0x644`).
+    pub(crate) fn clear_chase(&mut self) {
+        self.chase = None;
+    }
+
+    /// The free camera alone, as command 8 memorizes it.
+    #[must_use]
+    pub(crate) fn without_chase(mut self) -> Self {
+        self.chase = None;
+        self
     }
 
     pub(crate) fn zoom_in(&mut self) {
@@ -274,6 +341,24 @@ impl OriginalTacticalCamera {
             self.distance * cos_pitch * cos_yaw,
         );
         let up = vec3(sin_pitch * sin_yaw, cos_pitch, -sin_pitch * cos_yaw);
+        if let Some(chase) = self.chase {
+            return OriginalCameraPose {
+                position: chase.eye,
+                up: chase.up,
+                field: ORIGINAL_CHASE_FIELD,
+                // The field is the front plane's half height: the same
+                // angle as the free camera's when field / front match.
+                fovy_radians: 2.0 * (ORIGINAL_CHASE_FIELD / ORIGINAL_CHASE_FRONT).atan(),
+                near: ORIGINAL_CHASE_FRONT,
+                far: self.distance * ORIGINAL_CAMERA_FAR_SCALE,
+                pitch_degrees: self.pitch_degrees,
+                yaw_degrees: self.yaw_degrees,
+                zoom_step: self.zoom_step,
+                orbit_step: self.orbit_step,
+                target_object_id: Some(chase.object_id),
+                target: chase.eye + chase.direction,
+            };
+        }
         OriginalCameraPose {
             position,
             up,
@@ -947,6 +1032,7 @@ struct TacticalLodAsset {
     resource_id: u32,
     meshes: Vec<TacticalMeshChunk>,
     collision_envelope: TacticalCollisionEnvelope,
+    source_bounds: [f32; 6],
 }
 
 impl TacticalLodAsset {
@@ -1499,6 +1585,7 @@ impl TacticalAssetRenderer {
     /// value also restores the exact field, orbit step, and followed target.
     pub(crate) fn camera_state(&self) -> Option<OriginalTacticalCamera> {
         self.source_camera
+            .map(OriginalTacticalCamera::without_chase)
     }
 
     /// Restore a source camera state captured by [`Self::camera_state`].
@@ -1750,6 +1837,36 @@ impl TacticalAssetRenderer {
             .get(1)
             .or_else(|| family.first())
             .map(|asset| asset.collision_envelope)
+    }
+
+    /// The box the chase camera sizes itself by (`0x005d9b10`, the
+    /// object's vt `+0x2c`): the same base + 1 member box as
+    /// [`Self::participant_collision_envelope`]. Loads the family if needed.
+    pub(crate) fn participant_box(&mut self, resource_base: u32) -> Option<[f32; 6]> {
+        self.participant_collision_envelope(resource_base)?;
+        let family = self.participant_families.get(&resource_base)?;
+        family
+            .get(1)
+            .or_else(|| family.first())
+            .map(|asset| asset.source_bounds)
+    }
+
+    pub(crate) fn set_chase(&mut self, view: OriginalChaseView) {
+        if let Some(camera) = &mut self.source_camera {
+            camera.set_chase(view);
+        }
+    }
+
+    pub(crate) fn clear_chase(&mut self) {
+        if let Some(camera) = &mut self.source_camera {
+            camera.clear_chase();
+        }
+    }
+
+    /// The chase view the camera runs, if any.
+    #[cfg(test)]
+    pub(crate) fn chase_view(&self) -> Option<OriginalChaseView> {
+        self.source_camera.and_then(|camera| camera.chase)
     }
 
     pub(crate) fn draw_participants(
@@ -2640,6 +2757,7 @@ impl TacticalAssetRenderer {
             assets.push(TacticalLodAsset {
                 resource_id,
                 collision_envelope: tactical_collision_envelope(decoded.source_bounds),
+                source_bounds: decoded.source_bounds,
                 meshes: decoded
                     .chunks
                     .into_iter()
@@ -2767,6 +2885,7 @@ impl TacticalAssetRenderer {
             assets.push(TacticalLodAsset {
                 resource_id,
                 collision_envelope: tactical_collision_envelope(decoded.source_bounds),
+                source_bounds: decoded.source_bounds,
                 meshes: decoded
                     .chunks
                     .into_iter()
@@ -4695,6 +4814,93 @@ mod tests {
         assert_near(uneven.battle_extent, 121.0);
         assert_near(uneven.outer_positive_z, 60.5);
         assert_near(uneven.inner_positive_z, 40.5);
+    }
+
+    // Class_0066d478_vtc (0x005d9b10), no second object: e = max(X span,
+    // Y span) of the object's box (vt +0x2c); SetPosition (+0xf4) puts the
+    // camera at (-e, e, 2e) in the hull's frame and SetOrientation (+0xf0)
+    // faces it along the hull's (0, 0, -1) with up (0, 1, 0). The hull's
+    // frame is 0x005d3500's: x = (-Oz, 0, Ox), y = +Y, z = -O.
+    #[test]
+    fn the_chase_camera_sits_behind_and_above_its_hull_and_looks_along_its_nose() {
+        // A hull at (10, 2, 30) heading source +X; box spans 4 (x), 6 (y)
+        // and 40 (z): e is 6, the Z span does not count.
+        let view = original_chase_view(
+            10_001,
+            vec3(10.0, 2.0, 30.0),
+            vec3(1.0, 0.0, 0.0),
+            [-2.0, -3.0, -20.0, 2.0, 3.0, 20.0],
+        );
+        // Source: side = (0, 0, 1), z = (-1, 0, 0). Eye = P - 6 side + 6 Y
+        // + 12 z = (-2, 8, 24); render space reflects Z.
+        assert_eq!(view.eye, vec3(-2.0, 8.0, -24.0));
+        assert_eq!(view.direction, vec3(1.0, 0.0, 0.0));
+        assert_eq!(view.up, Vec3::Y);
+        assert_eq!(view.object_id, 10_001);
+        // Heading source +Z (the Alliance's lane faces the Empire's).
+        let view = original_chase_view(
+            1,
+            Vec3::ZERO,
+            vec3(0.0, 0.0, 1.0),
+            [0.0, 0.0, 0.0, 4.0, 2.0, 1.0],
+        );
+        assert_eq!(view.eye, vec3(4.0, 4.0, 8.0));
+        assert_eq!(view.direction, vec3(0.0, 0.0, -1.0));
+        // A centred box whose X span (6) is the larger: e is 6.
+        let view = original_chase_view(
+            1,
+            Vec3::ZERO,
+            vec3(0.0, 0.0, 1.0),
+            [-3.0, -1.0, -9.0, 3.0, 1.0, 9.0],
+        );
+        assert_eq!(view.eye, vec3(6.0, 6.0, 12.0));
+        // A climbing hull: 0x005d3500's x axis (-Oz, 0, Ox) is normalised.
+        let view = original_chase_view(
+            1,
+            Vec3::ZERO,
+            vec3(0.0, 0.6, 0.8),
+            [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0],
+        );
+        for (axis, expected) in [(view.eye.x, 2.0), (view.eye.y, -0.4), (view.eye.z, 3.2)] {
+            assert_near(axis, expected);
+        }
+        // A vertical heading leaves that axis zero, as 0x005d3500 does.
+        let view = original_chase_view(1, Vec3::ZERO, Vec3::Y, [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(view.eye, vec3(0.0, -2.0, 0.0));
+    }
+
+    // 0x005d9b10 sets the viewport's front to 0.1 and its field to 0.02
+    // (FUN_005d9a70's +0x38); the free camera (0x005d9640) sets front 1.0
+    // and field 0.2. FUN_005c2990 command 8 memorizes the free camera.
+    #[test]
+    fn a_chase_replaces_the_orbit_view_until_it_is_cleared() {
+        let mut camera = OriginalTacticalCamera::new(false, 100.0);
+        let free = camera.pose();
+        let view = original_chase_view(
+            10_001,
+            vec3(0.0, 0.0, -53.0),
+            vec3(0.0, 0.0, 1.0),
+            [-1.0, -1.0, -1.0, 1.0, 1.0, 1.0],
+        );
+        camera.set_chase(view);
+        let chase = camera.pose();
+        assert_eq!(chase.position, view.eye);
+        assert_eq!(chase.target, view.eye + view.direction);
+        assert_eq!(chase.up, Vec3::Y);
+        assert_near(chase.near, 0.1);
+        assert_near(chase.field, 0.02);
+        assert_near(chase.fovy_radians, 2.0 * 0.2_f32.atan());
+        assert_eq!(chase.target_object_id, Some(10_001));
+        assert_eq!(camera.without_chase().pose(), free);
+        let mut renderer = TacticalAssetRenderer::default();
+        renderer.restore_camera_state(OriginalTacticalCamera::new(false, 100.0));
+        renderer.set_chase(view);
+        assert_eq!(
+            renderer.camera_state().map(|camera| camera.pose()),
+            Some(free)
+        );
+        camera.clear_chase();
+        assert_eq!(camera.pose(), free);
     }
 
     // 0x005d97c0 command 9 with no selection: FUN_00595be0 gives 0, so the
