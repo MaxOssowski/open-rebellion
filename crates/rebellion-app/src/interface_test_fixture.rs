@@ -1184,8 +1184,21 @@ pub fn apply(
             .iter()
             .filter(|(_, character)| character.is_alliance == player_is_alliance && character.recruited)
             .map(|(key, _)| key)
-            .take(5)
+            .take(6)
             .collect();
+        // A sixth character, where the side has one, is dead: its row reads
+        // "Name - Killed" (FUN_00465bb0, destroyed bit +0x50 bit 3, word
+        // 0x8798; Steam guide guide-023: "Ackbar - Killed"). It stands
+        // nowhere, so no window lists it.
+        if let Some(&dead) = own.get(5) {
+            let character = &mut world.characters[dead];
+            character.mark_killed();
+            character.current_abode = None;
+            character.ship = None;
+            for fleet in world.fleets.values_mut() {
+                fleet.characters.retain(|&key| key != dead);
+            }
+        }
         // A fifth character, where the side has one, is injured and free
         // where it stands (A0 health-2026-11-09/07-personnel-finder-wedge-
         // injured-day954: "Wedge Antilles - Averam ( Injured )").
@@ -10912,6 +10925,52 @@ mod tests {
         let recon =
             apply_to_fleet_world(request(Scenario::ReconTargeting, CockpitFaction::Alliance));
         assert!(recon.transport.transits().is_empty());
+    }
+
+    // FUN_00465bb0's destroyed branch reads "Name - Killed" (0x8798); Steam
+    // guide guide-023 lists "Ackbar - Killed" in the Personnel Finder.
+    #[test]
+    fn the_personnel_states_scenario_lists_its_sixth_character_as_killed() {
+        let names = ["One", "Two", "Three", "Four", "Five", "Six"];
+        let applied = apply_to_loading_world_with(
+            request(Scenario::PersonnelStates, CockpitFaction::Alliance),
+            |world| {
+                world.characters.clear();
+                let here = world.systems.keys().next().unwrap();
+                let mut last = None;
+                for name in names {
+                    last = Some(world.characters.insert(rebellion_core::world::Character {
+                        name: name.into(),
+                        is_alliance: true,
+                        recruited: true,
+                        current_system: Some(here),
+                        ..Default::default()
+                    }));
+                }
+                // The sixth rides a fleet, which must drop it when it dies.
+                let fleet = world.fleets.keys().next().expect("a fleet");
+                world.fleets[fleet].characters.push(last.unwrap());
+            },
+        );
+        let world = &applied.world;
+        let killed: Vec<_> = world
+            .characters
+            .values()
+            .filter(|character| character.is_killed)
+            .map(|character| character.name.as_str())
+            .collect();
+        assert_eq!(killed, ["Six"]);
+        let six = world.characters.values().find(|c| c.name == "Six").unwrap();
+        assert_eq!((six.current_system, six.current_fleet), (None, None));
+        assert!(world.fleets.values().all(|fleet| fleet
+            .characters
+            .iter()
+            .all(|&key| world.characters[key].name != "Six")));
+        let fog = rebellion_core::fog::FogState::new(Faction::Alliance);
+        let mut finder = rebellion_render::personnel_finder::PersonnelFinderState::default();
+        finder.open(CockpitFaction::Alliance);
+        let texts = finder.shown_character_rows(world, &fog).unwrap();
+        assert!(texts.iter().any(|text| text == "Six - Killed"), "{texts:?}");
     }
 
     #[test]

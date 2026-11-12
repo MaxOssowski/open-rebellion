@@ -172,6 +172,17 @@ async function run(browser, base, faction) {
     // fixture has no fifth character.
     const injured = shown.rows.filter((row) => / - [^()]+ \( Injured \) $/.test(row));
     if (faction.name === "alliance") assert.equal(injured.length, 1, JSON.stringify(shown.rows));
+    // A dead character reads "Name - Killed", with no place and no state
+    // (FUN_00465bb0's destroyed branch, 0x8798; Steam guide guide-023:
+    // "Ackbar - Killed"; no A0 capture yet). The Empire's fixture has no
+    // sixth character.
+    const killed = shown.rows.filter((row) => / - Killed$/.test(row));
+    if (faction.name === "alliance") {
+      assert.equal(killed.length, 1, JSON.stringify(shown.rows));
+      assert.match(killed[0], /^[A-Za-z][A-Za-z' -]* - Killed$/, killed[0]);
+    } else {
+      assert.equal(killed.length, 0, JSON.stringify(shown.rows));
+    }
     await page.mouse.move(2, 2);
     await frames(page);
     await shot("characters");
