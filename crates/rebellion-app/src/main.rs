@@ -715,6 +715,7 @@ const OPTIONAL_WASM_DATA: &[&str] = &[
     "MISSNSD.DAT",
     "SPECFCSD.DAT",
     "ABODESD.DAT",
+    "FLEETSD.DAT",
 ];
 
 #[cfg(test)]
@@ -735,6 +736,7 @@ mod wasm_data_manifest_tests {
             "PROFACSD.DAT",
             "MISSNSD.DAT",
             "SPECFCSD.DAT",
+            "FLEETSD.DAT",
         ] {
             assert!(
                 REQUIRED_WASM_DATA.contains(&required) || OPTIONAL_WASM_DATA.contains(&required),
@@ -6813,29 +6815,10 @@ async fn main() {
                         // FUN_0045d400 opens at the object's topic when the
                         // original window's source loaded.
                         Some((ObjectMenuCommand::Encyclopedia, selection)) => {
-                            // A fleet has no index record: the topic named
-                            // by its record's name, "Fleet" (A0
+                            // A fleet opens its FLEETSD class "Fleet", listed
+                            // in every index (FUN_00422620; A0
                             // menus2/20-fleet-encyclopedia.png).
-                            let fleet_topic = matches!(selection, Some(MenuObject::Fleet(_)))
-                                .then(|| {
-                                    original_encyclopedia_topics[usize::from(
-                                        cockpit_state.faction == CockpitFaction::Empire,
-                                    )]
-                                    .as_ref()?
-                                    .get(
-                                        &rebellion_data::encyclopedia_topics::FLEET_TOPIC_OBJECT_ID,
-                                    )
-                                })
-                                .flatten();
                             match original_encyclopedia_catalog.as_ref() {
-                                Some(catalog) if fleet_topic.is_some() => {
-                                    rebellion_render::open_original_encyclopedia_unlisted(
-                                        &mut enc_state,
-                                        catalog,
-                                        rebellion_data::encyclopedia_topics::FLEET_TOPIC_OBJECT_ID,
-                                        &fleet_topic.expect("the guard saw the topic").title,
-                                    );
-                                }
                                 Some(catalog) => rebellion_render::open_original_encyclopedia_at(
                                     &mut enc_state,
                                     catalog,

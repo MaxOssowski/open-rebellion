@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use dat_dumper::types::capital_ships::CapitalShipsFile;
 use dat_dumper::types::defense_facilities::DefenseFacilitiesFile;
 use dat_dumper::types::fighters::FightersFile;
+use dat_dumper::types::fleets_seed::FleetsSeedFile;
 use dat_dumper::types::major_characters::MajorCharactersFile;
 use dat_dumper::types::manufacturing_facilities::ManufacturingFacilitiesFile;
 use dat_dumper::types::minor_characters::MinorCharactersFile;
@@ -256,6 +257,9 @@ pub fn load_encyclopedia_catalog(gdata_path: &Path) -> Result<EncyclopediaCatalo
         )?;
     }
 
+    let fleets: FleetsSeedFile = read_dat_file(&gdata_path.join("FLEETSD.DAT"))?;
+    push_fleet_entries(&mut entries, &fleets, &strings)?;
+
     entries.sort_by(|left, right| {
         left.name
             .to_lowercase()
@@ -306,6 +310,32 @@ fn push_entry(
         text_resource_id,
         name,
     });
+    Ok(())
+}
+
+/// `FUN_00422620` keeps a class record of family `0x08..0x0f`, the
+/// FLEETSD range (`ghidra/notes/move-order.md`). The shipped file's record
+/// 4 (`0x0800_0004`, TEXTSTRA 11523 "Fleet") is the class every fleet is
+/// made from; its record 5 has family 0 and stays out. No category but All
+/// Databases covers `0x08` (`FUN_0045f100`).
+fn push_fleet_entries(
+    entries: &mut Vec<EncyclopediaCatalogEntry>,
+    fleets: &FleetsSeedFile,
+    strings: &HashMap<u16, String>,
+) -> Result<()> {
+    for record in fleets
+        .fleets
+        .iter()
+        .filter(|record| (0x08..0x10).contains(&record.family_id))
+    {
+        push_entry(
+            entries,
+            record.id,
+            record.family_id,
+            record.text_stra_dll_id,
+            strings,
+        )?;
+    }
     Ok(())
 }
 
@@ -394,6 +424,96 @@ mod tests {
         assert_eq!(catalog.entries_for(0x74)[0].name, "Alliance Army Regiment");
         assert!(catalog.entries_for(0x75).is_empty());
         assert!(catalog.entries_for(0xff).is_empty());
+    }
+
+    /// The shipped FLEETSD.DAT records: 4 is family `0x08`, TEXTSTRA
+    /// 11523; 5 is all zero but its id.
+    fn shipped_fleet_records() -> FleetsSeedFile {
+        use dat_dumper::types::fleets_seed::FleetSeedEntry;
+        let record = |id, family_id, text_stra_dll_id| FleetSeedEntry {
+            id,
+            field2: 1,
+            production_family: 0,
+            next_production_family: 0,
+            family_id,
+            text_stra_dll_id,
+            field7: 2,
+        };
+        FleetsSeedFile {
+            field1: 1,
+            count: 2,
+            family_id: 0x08,
+            field4: 0x10,
+            fleets: vec![record(4, 0x08, 0x2d03), record(5, 0, 0)],
+        }
+    }
+
+    #[test]
+    fn a_fresh_index_lists_fleet_under_all_databases_and_not_under_ships() {
+        // FUN_00422620 adds the FLEETSD class 0x08000004 (TEXTSTRA 11523,
+        // key 0x1d03) to the galaxy view's list +0x474 at its first build;
+        // FUN_0045f100 shows it only under All Databases (0x6f), between
+        // Flax and Fwillsving (A0 menus2/25).
+        let mut catalog = fixture_catalog();
+        for (object_id, name) in [(0x9000_0002, "Flax"), (0x9000_0003, "Fwillsving")] {
+            catalog.entries.push(EncyclopediaCatalogEntry {
+                object_id,
+                text_resource_id: 5,
+                name: name.into(),
+            });
+        }
+        let strings = HashMap::from([(0x2d03, "Fleet".to_owned())]);
+        push_fleet_entries(&mut catalog.entries, &shipped_fleet_records(), &strings).unwrap();
+        catalog
+            .entries
+            .sort_by_key(|entry| entry.name.to_lowercase());
+
+        let all: Vec<_> = catalog
+            .entries_for(0x6f)
+            .into_iter()
+            .map(|entry| (entry.object_id, entry.name.as_str()))
+            .collect();
+        let at = all.iter().position(|entry| entry.1 == "Fleet").unwrap();
+        assert_eq!(all[at].0, 0x0800_0004);
+        assert_eq!((all[at - 1].1, all[at + 1].1), ("Flax", "Fwillsving"));
+        assert_eq!(all.len(), 6, "record 5 (family 0) stays out");
+        for command in 0x70..=0x75 {
+            assert!(
+                catalog
+                    .entries_for(command)
+                    .iter()
+                    .all(|entry| entry.name != "Fleet"),
+                "category {command:#x} lists Fleet"
+            );
+        }
+    }
+
+    #[test]
+    fn the_installed_index_lists_fleet_under_all_databases_when_present() {
+        // FUN_00422620: the shipped FLEETSD gives one topic, "Fleet". The
+        // owned data is not in the repository; without it there is
+        // nothing to load.
+        let gdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
+        if !gdata.join("FLEETSD.DAT").exists() || !gdata.join("TEXTSTRA.DLL").exists() {
+            return;
+        }
+        let catalog = load_encyclopedia_catalog(&gdata).unwrap();
+        assert_eq!(catalog.entries.len(), 357);
+        let fleet = catalog
+            .entries_for(0x6f)
+            .into_iter()
+            .find(|entry| entry.object_id == 0x0800_0004)
+            .expect("All Databases lists the FLEETSD class");
+        assert_eq!(
+            (fleet.name.as_str(), fleet.text_resource_id),
+            ("Fleet", 0x2d03)
+        );
+        assert!(
+            catalog
+                .entries_for(0x71)
+                .iter()
+                .all(|entry| entry.object_id != 0x0800_0004)
+        );
     }
 
     #[test]

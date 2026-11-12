@@ -257,13 +257,7 @@ pub fn installed_encyclopedia_topics(
     let (catalog, manifest) = encyclopedia_source_bytes(gdata_path)?;
     let (source, _) = parse_encyclopedia_source_with_manifest(&catalog, &manifest)?;
     let index = crate::encyclopedia_catalog::load_encyclopedia_catalog(gdata_path)?;
-    let mut topics = load_encyclopedia_topics(gdata_path, &index, &source, audience)?;
-    if let Some(title) = crate::ui_strings(gdata_path).remove(&FLEET_NAME_RESOURCE_ID) {
-        topics
-            .entries
-            .push(fleet_topic_binding(&source, audience, title));
-    }
-    Ok(topics)
+    load_encyclopedia_topics(gdata_path, &index, &source, audience)
 }
 
 /// Load system picture identities and join every index object to source topic
@@ -364,33 +358,13 @@ fn bind_topic(
     }
 }
 
-/// TEXTSTRA 11523, "Fleet": the record name every fleet starts with
-/// (`FUN_004f9190`, `ghidra/notes/fleet-names.md`).
-pub const FLEET_NAME_RESOURCE_ID: u16 = 0x2d03;
-
-/// The fleet topic's key: family `0x08`, which takes the side's art.
-/// port: no record carries it; it keys the binding alone.
-pub const FLEET_TOPIC_OBJECT_ID: u32 = 0x0800_0000;
-
-/// The topic a fleet's Encyclopedia opens. No index record names a fleet,
-/// so `FUN_0045d400` takes the live object's name `+0x30`: its text is
-/// `(0x2d03 & 0xfff) + 0x1000` and its art follows the fleet family's
-/// (`0x08..0x0f`) side variant. A0 shows "Fleet" with `EDATA.132` for the
-/// Alliance (`a0-vm/menus2/20-fleet-encyclopedia.png`). `title` is
-/// TEXTSTRA 11523.
-#[must_use]
-pub fn fleet_topic_binding(
-    source: &EncyclopediaSourceCatalog,
-    audience: EncyclopediaAudience,
-    title: String,
-) -> EncyclopediaTopicBinding {
-    let entry = EncyclopediaCatalogEntry {
-        object_id: FLEET_TOPIC_OBJECT_ID,
-        text_resource_id: FLEET_NAME_RESOURCE_ID,
-        name: title,
-    };
-    bind_topic(&entry, source, &HashMap::new(), audience)
-}
+/// The fleet topic: FLEETSD record 4, the class every fleet is made from
+/// (`FUN_0051af00` and its siblings pass `0x8000004` to `FUN_004f7d50`).
+/// `FUN_00422620` lists it like any class, named TEXTSTRA 11523 "Fleet";
+/// a fleet's Encyclopedia (`FUN_0045d400`) opens at it. Its art follows
+/// the fleet family's (`0x08..0x0f`) side variant: A0 shows `EDATA.132`
+/// for the Alliance (`a0-vm/menus2/20-fleet-encyclopedia.png`).
+pub const FLEET_TOPIC_OBJECT_ID: u32 = 0x0800_0004;
 
 #[must_use]
 pub const fn system_picture_lookup_key(picture_id: u32) -> Option<u16> {
@@ -446,8 +420,9 @@ mod tests {
 
     #[test]
     fn the_installed_source_binds_the_topics_when_present() {
-        // P66A: 356 index objects, 346 complete topics per side, and the
-        // fleet topic outside the index (A0 menus2/20-fleet-encyclopedia).
+        // P66A: 356 index objects and 346 complete topics per side, plus
+        // the FLEETSD class "Fleet" that FUN_00422620 lists (A0
+        // menus2/20-fleet-encyclopedia).
         // The owned data is not in the repository; without it there is
         // nothing to bind.
         let gdata = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/base");
@@ -619,8 +594,19 @@ mod tests {
         );
         source.artwork.insert(0x1d03, "EDATA.132".into());
         source.artwork.insert(0x2d03, "EDATA.133".into());
-        let alliance =
-            fleet_topic_binding(&source, EncyclopediaAudience::Alliance, "Fleet".into());
+        let mut index = fixture_index();
+        index.entries = vec![EncyclopediaCatalogEntry {
+            object_id: FLEET_TOPIC_OBJECT_ID,
+            text_resource_id: 0x2d03,
+            name: "Fleet".into(),
+        }];
+        let bind = |audience| {
+            bind_encyclopedia_topics(&index, &source, &HashMap::new(), audience)
+                .topic(FLEET_TOPIC_OBJECT_ID)
+                .cloned()
+                .unwrap()
+        };
+        let alliance = bind(EncyclopediaAudience::Alliance);
         assert_eq!(
             (
                 alliance.object_id,
@@ -630,7 +616,7 @@ mod tests {
                 alliance.artwork_filename.as_deref(),
             ),
             (
-                0x0800_0000,
+                0x0800_0004,
                 "Fleet",
                 0x1d03,
                 Some("Fleets are groups"),
@@ -638,7 +624,7 @@ mod tests {
             )
         );
         assert!(alliance.is_complete());
-        let empire = fleet_topic_binding(&source, EncyclopediaAudience::Empire, "Fleet".into());
+        let empire = bind(EncyclopediaAudience::Empire);
         assert_eq!(empire.artwork_filename.as_deref(), Some("EDATA.133"));
     }
 

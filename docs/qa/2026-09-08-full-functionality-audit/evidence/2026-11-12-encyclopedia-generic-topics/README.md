@@ -150,3 +150,32 @@ One capture would confirm it. Open the Encyclopedia from the cockpit
 and scroll to F. The trace predicts "Fleet" between "Flax" and
 "Fwillsving". A second capture of Ships Database (`0x71`) at F should
 show no Fleet row.
+
+## Port fix
+
+2026-11-12. `load_encyclopedia_catalog` now reads `FLEETSD.DAT` and
+pushes each record of family `0x08..0x0f` (`push_fleet_entries`, citing
+`FUN_00422620`): only record 4, `0x0800_0004`, "Fleet". The catalog has
+357 entries (all:357); the category counts are unchanged.
+`FLEET_TOPIC_OBJECT_ID` is now `0x0800_0004` and binds through
+`bind_encyclopedia_topics`; `fleet_topic_binding` is gone. A fleet's
+Encyclopedia opens through `original_encyclopedia_object` (now
+`Some(0x0800_0004)` for a fleet) and `open_original_encyclopedia_at`;
+`open_original_encyclopedia_unlisted`, `original_extra_entry` and the
+`extra` part of `window_entries` are removed. `FLEETSD.DAT` joins the
+legacy browser data list (the runtime pack already ships every `*.DAT`).
+
+Counts changed with this trace as the cause: the P65 audit
+(`encyclopedia-source-audit`) 356 → 357 index entries, 346 → 347
+complete topics and 172 → 173 distinct bound artwork per side, unbound
+texts `[7176, 7427]` → `[7176]`, unbound artwork
+`[7188, 7427, 11284, 11523]` → `[7188, 11284]` (Fleet binds `0x1d03` /
+`0x2d03`, `EDATA.132` / `EDATA.133`, measured on the owned source). The
+gate `encyclopedia-index-shell.mjs` expects `entries=357 ... all:357`.
+
+Tests: `a_fresh_index_lists_fleet_under_all_databases_and_not_under_ships`
+and `the_installed_index_lists_fleet_under_all_databases_when_present`
+fail with the FLEETSD filter disabled and pass with it;
+`the_fleet_topic_steps_through_all_databases_by_its_name` replaces the
+unlisted-entry test. No WASM rebuild, gate or A0 capture yet; the A0
+capture above is still open.

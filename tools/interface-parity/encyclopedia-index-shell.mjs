@@ -379,7 +379,7 @@ async function inspectFaction(server, source, faction, executable) {
     await page.evaluate(() => document.fonts.ready);
     if (catalogMode) {
       assert.ok(
-        consoleLines.some(({ text }) => text.includes("[encyclopedia] source_catalog loaded entries=356 categories=all:356,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69")),
+        consoleLines.some(({ text }) => text.includes("[encyclopedia] source_catalog loaded entries=357 categories=all:357,systems:200,ships:38,facilities:14,missions:25,troops:10,personnel:69")),
         "browser did not load the complete source-derived Encyclopedia catalog",
       );
     }

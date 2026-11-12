@@ -159,18 +159,18 @@ fn validate_owned_english_profile(summary: &AuditSummary) -> Result<()> {
         "0x72000046",
         "0x73000082",
     ];
-    ensure!(summary.index_entries == 356, "expected 356 index entries");
+    ensure!(summary.index_entries == 357, "expected 357 index entries");
     ensure!(summary.source_texts == 348, "expected 348 source texts");
     ensure!(
         summary.source_artwork_mappings == 191,
         "expected 191 source artwork mappings"
     );
     ensure!(
-        summary.unbound_text_resource_ids == [7176, 7427],
+        summary.unbound_text_resource_ids == [7176],
         "unexpected unbound text identities"
     );
     ensure!(
-        summary.unbound_artwork_resource_ids == [7188, 7427, 11284, 11523],
+        summary.unbound_artwork_resource_ids == [7188, 11284],
         "unexpected unbound artwork identities"
     );
     ensure!(
@@ -195,8 +195,8 @@ fn validate_owned_english_profile(summary: &AuditSummary) -> Result<()> {
             .get(audience)
             .with_context(|| format!("missing {audience} audit summary"))?;
         ensure!(
-            result.complete == 346,
-            "{audience}: expected 346 complete topics"
+            result.complete == 347,
+            "{audience}: expected 347 complete topics"
         );
         ensure!(
             result.missing_text == 10 && result.missing_artwork_mapping == 10,
@@ -207,8 +207,8 @@ fn validate_owned_english_profile(summary: &AuditSummary) -> Result<()> {
             "{audience}: unexpected missing system picture"
         );
         ensure!(
-            result.distinct_bound_artwork == 172,
-            "{audience}: expected 172 distinct bound artwork files"
+            result.distinct_bound_artwork == 173,
+            "{audience}: expected 173 distinct bound artwork files"
         );
         let mut missing_ids = result
             .missing_entries
@@ -322,11 +322,11 @@ mod tests {
         })
         .collect();
         let audience = AudienceSummary {
-            complete: 346,
+            complete: 347,
             missing_text: 10,
             missing_artwork_mapping: 10,
             missing_system_picture: 0,
-            distinct_bound_artwork: 172,
+            distinct_bound_artwork: 173,
             missing_entries,
         };
         AuditSummary {
@@ -337,11 +337,11 @@ mod tests {
                 .into(),
             encybmap_sha256: "fb545d19ae24b0277753494dbfaabf2dbdde660beab821287a32016c290e4560"
                 .into(),
-            index_entries: 356,
+            index_entries: 357,
             source_texts: 348,
             source_artwork_mappings: 191,
-            unbound_text_resource_ids: vec![7176, 7427],
-            unbound_artwork_resource_ids: vec![7188, 7427, 11284, 11523],
+            unbound_text_resource_ids: vec![7176],
+            unbound_artwork_resource_ids: vec![7188, 11284],
             mapped_artwork_files: 186,
             owned_artwork_files: 187,
             mapped_artwork_missing: Vec::new(),

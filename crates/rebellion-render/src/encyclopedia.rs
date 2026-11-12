@@ -124,10 +124,6 @@ pub struct EncyclopediaState {
     /// The original window shows the selected object's topic (command
     /// `0x67`) instead of the index (`0x68`, `FUN_0045f480`).
     pub original_topic_mode: bool,
-    /// An object no record names that the window was opened at (a
-    /// fleet's topic): All Databases lists it by its name for the window's
-    /// life (A0 menus2/24 and 25).
-    pub original_extra_entry: Option<OriginalEncyclopediaEntry>,
     /// The Topic box's text when a category's first row was chosen for it:
     /// the box keeps what it held (A0 encyclopedia/category-1, ex 3: System
     /// Database chooses Adega under an empty box or "Adar Tallon").
@@ -219,7 +215,6 @@ impl Default for EncyclopediaState {
             original_topic_scroll: (0.0, None),
             original_topic_scroll_hold: None,
             original_topic_mode: false,
-            original_extra_entry: None,
             original_topic_text: None,
             original_last_click: None,
             original_box_focused: false,
@@ -985,8 +980,7 @@ pub fn draw_encyclopedia_index_catalog(
         return None;
     }
     reconcile_original_index_state(state, catalog, false);
-    let extra = state.original_extra_entry.clone();
-    let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
+    let entries = catalog.entries_for(state.original_category_command);
     let selected_name = state.original_topic_text.as_deref().unwrap_or_else(|| {
         entries
             .iter()
@@ -1094,8 +1088,7 @@ fn type_into_topic_box(
         )
     });
     if !typed.is_empty() || backspace {
-        let extra = state.original_extra_entry.clone();
-        let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
+        let entries = catalog.entries_for(state.original_category_command);
         let mut text = state.original_topic_text.clone().unwrap_or_else(|| {
             entries
                 .iter()
@@ -1126,7 +1119,7 @@ fn type_into_topic_box(
 
 /// The Encyclopedia object a menu object opens at (`FUN_0045d400` resolves
 /// its initial object, else the index): its class's or its own DAT id,
-/// the catalog's compound id. A fleet or a production manager has none.
+/// the catalog's compound id. A production manager has none.
 /// port: a system icon opens its system.
 #[must_use]
 /// The catalog keys capital ship classes under CAPSHPSD's family `0x14`
@@ -1185,10 +1178,19 @@ pub fn original_encyclopedia_object(
         MenuObject::SystemIcon { system, .. } => world.systems.get(system)?.dat_id,
         // port: a mission opens its kind's MISSNSD record; the caller,
         // which holds the missions, resolves it.
-        MenuObject::Fleet(_) | MenuObject::Producer { .. } | MenuObject::Mission(_) => return None,
+        // Every fleet is made from the FLEETSD class 0x08000004
+        // (FUN_0051af00 → FUN_004f7d50), which FUN_00422620 lists as
+        // "Fleet" (A0 menus2/20-fleet-encyclopedia).
+        MenuObject::Fleet(_) => return Some(FLEET_CLASS_OBJECT_ID),
+        MenuObject::Producer { .. } | MenuObject::Mission(_) => return None,
     };
     Some(dat_id.raw())
 }
+
+/// FLEETSD record 4, family `0x08`: the class of every fleet and the
+/// Encyclopedia's "Fleet" topic (`rebellion_data::encyclopedia_topics::
+/// FLEET_TOPIC_OBJECT_ID`).
+pub const FLEET_CLASS_OBJECT_ID: u32 = 0x0800_0004;
 
 /// Open the original window at `object`'s topic when the catalog lists it
 /// (All Databases, so the topic steps through every object), else at the
@@ -1207,7 +1209,6 @@ pub fn open_original_encyclopedia_at(
     // trace found no SetFocus on the opening path; which call gives the
     // box the focus is untraced.
     state.original_box_focused = true;
-    state.original_extra_entry = None;
     state.original_topic_text = None;
     state.original_category_command = 0x6f;
     state.original_selected_object_id = None;
@@ -1218,43 +1219,6 @@ pub fn open_original_encyclopedia_at(
         state.original_topic_mode = true;
         reconcile_original_index_state(state, catalog, true);
     }
-}
-
-/// Open the original window at an object no record names, such as a fleet
-/// (`FUN_0045d400` takes the live object's name when the catalog has
-/// none): `object` keys its topic and All Databases lists it by `name`
-/// while the window stays open, selected (A0 menus2/20, 24 and 25).
-pub fn open_original_encyclopedia_unlisted(
-    state: &mut EncyclopediaState,
-    catalog: &OriginalEncyclopediaCatalog,
-    object: u32,
-    name: &str,
-) {
-    open_original_encyclopedia_at(state, catalog, None);
-    state.original_extra_entry = Some(OriginalEncyclopediaEntry {
-        object_id: object,
-        name: name.to_owned(),
-    });
-    state.original_selected_object_id = Some(object);
-    state.original_topic_mode = true;
-    reconcile_original_index_state(state, catalog, true);
-}
-
-/// The window's list for `command`: the catalog's, with `extra` in its
-/// name's place on All Databases. A0 menus2/25 lists Fleet between Flax
-/// and Fwillsving. hyp: the other databases leave it out.
-fn window_entries<'a>(
-    catalog: &'a OriginalEncyclopediaCatalog,
-    extra: Option<&'a OriginalEncyclopediaEntry>,
-    command: u16,
-) -> Vec<&'a OriginalEncyclopediaEntry> {
-    let mut entries = catalog.entries_for(command);
-    if let Some(extra) = extra.filter(|_| command == 0x6f) {
-        let name = extra.name.to_lowercase();
-        let at = entries.partition_point(|entry| entry.name.to_lowercase() < name);
-        entries.insert(at, extra);
-    }
-    entries
 }
 
 /// One object's topic, from the source bindings
@@ -1288,11 +1252,7 @@ pub fn original_topic_neighbours(
     state: &EncyclopediaState,
     catalog: &OriginalEncyclopediaCatalog,
 ) -> (Option<u32>, Option<u32>) {
-    let entries = window_entries(
-        catalog,
-        state.original_extra_entry.as_ref(),
-        state.original_category_command,
-    );
+    let entries = catalog.entries_for(state.original_category_command);
     let Some(index) = entries
         .iter()
         .position(|entry| Some(entry.object_id) == state.original_selected_object_id)
@@ -1557,8 +1517,7 @@ fn change_category(
 /// Tallon stays chosen in Personnel Database, System Database chooses
 /// Adega, the best row for "Adar Tallon").
 fn choose_category_row(state: &mut EncyclopediaState, catalog: &OriginalEncyclopediaCatalog) {
-    let extra = state.original_extra_entry.clone();
-    let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
+    let entries = catalog.entries_for(state.original_category_command);
     let held = state
         .original_selected_object_id
         .is_some_and(|selected| entries.iter().any(|entry| entry.object_id == selected));
@@ -1569,7 +1528,7 @@ fn choose_category_row(state: &mut EncyclopediaState, catalog: &OriginalEncyclop
         let topic = state
             .original_selected_object_id
             .and_then(|selected| {
-                window_entries(catalog, extra.as_ref(), 0x6f)
+                catalog.entries_for(0x6f)
                     .into_iter()
                     .find(|entry| entry.object_id == selected)
                     .map(|entry| entry.name.clone())
@@ -1591,8 +1550,7 @@ fn reconcile_original_index_state(
     if !(0x6f..=0x75).contains(&state.original_category_command) {
         state.original_category_command = 0x6f;
     }
-    let extra = state.original_extra_entry.clone();
-    let entries = window_entries(catalog, extra.as_ref(), state.original_category_command);
+    let entries = catalog.entries_for(state.original_category_command);
     if state.original_selected_object_id.is_some_and(|selected| {
         !entries.iter().any(|entry| entry.object_id == selected)
     }) {
@@ -2852,16 +2810,28 @@ mod tests {
     }
 
     #[test]
-    fn an_unnamed_objects_topic_joins_the_window_list_by_its_name() {
+    fn the_fleet_topic_steps_through_all_databases_by_its_name() {
         // A0 menus2/20-25: a fleet's Encyclopedia shows "Fleet"; next opens
         // Fwillsving, previous Flax, Flax's next Fleet again, and the index
-        // lists Fleet between them, selected. Here "Alliance Cruiser" sorts
-        // between Alliance Army Regiment and Alliance Dreadnaught.
-        let catalog = original_catalog_fixture();
+        // lists Fleet between them, selected. FUN_00422620 lists the
+        // FLEETSD class 0x08000004 in every index. Here "Alliance Cruiser"
+        // sorts between Alliance Army Regiment and Alliance Dreadnaught.
+        let base = original_catalog_fixture();
+        let mut entries = base.entries.clone();
+        entries.push(OriginalEncyclopediaEntry {
+            object_id: 0x0800_0004,
+            name: "Alliance Cruiser".into(),
+        });
+        let catalog = OriginalEncyclopediaCatalog::new(
+            base.title.clone(),
+            base.topic_label.clone(),
+            base.category_labels.clone(),
+            entries,
+        );
         let mut state = EncyclopediaState::default();
-        open_original_encyclopedia_unlisted(&mut state, &catalog, 0x0800_0000, "Alliance Cruiser");
+        open_original_encyclopedia_at(&mut state, &catalog, Some(0x0800_0004));
         assert!(state.open && state.original_topic_mode);
-        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0004));
         assert_eq!(
             original_topic_neighbours(&state, &catalog),
             (Some(0x1000_0001), Some(0x1400_0001))
@@ -2869,31 +2839,36 @@ mod tests {
         apply_original_topic_command(&mut state, &catalog, 0x84);
         assert_eq!(state.original_selected_object_id, Some(0x1400_0001));
         apply_original_topic_command(&mut state, &catalog, 0x83);
-        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0004));
         apply_original_topic_command(&mut state, &catalog, 0x83);
         assert_eq!(state.original_selected_object_id, Some(0x1000_0001));
         apply_original_topic_command(&mut state, &catalog, 0x84);
-        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0004));
 
         // The index keeps it listed and selected.
         apply_original_topic_command(&mut state, &catalog, 0x68);
         assert!(!state.original_topic_mode);
-        assert_eq!(state.original_selected_object_id, Some(0x0800_0000));
-        let ids: Vec<u32> = window_entries(&catalog, state.original_extra_entry.as_ref(), 0x6f)
+        assert_eq!(state.original_selected_object_id, Some(0x0800_0004));
+        let ids: Vec<u32> = catalog
+            .entries_for(0x6f)
             .iter()
             .map(|entry| entry.object_id)
             .collect();
         assert_eq!(
             ids,
-            [0x3000_0001, 0x1000_0001, 0x0800_0000, 0x1400_0001, 0x9000_0001]
+            [0x3000_0001, 0x1000_0001, 0x0800_0004, 0x1400_0001, 0x9000_0001]
         );
-        assert!(!window_entries(&catalog, state.original_extra_entry.as_ref(), 0x71)
+        assert!(!catalog
+            .entries_for(0x71)
             .iter()
-            .any(|entry| entry.object_id == 0x0800_0000));
+            .any(|entry| entry.object_id == 0x0800_0004));
 
-        // A new window lists only the catalog.
+        // A new window opened any other way lists it too.
         open_original_encyclopedia_at(&mut state, &catalog, None);
-        assert_eq!(state.original_extra_entry, None);
+        assert!(catalog
+            .entries_for(0x6f)
+            .iter()
+            .any(|entry| entry.object_id == 0x0800_0004));
     }
 
     #[test]
@@ -3565,9 +3540,11 @@ mod tests {
             original_encyclopedia_object(&world, MenuObject::Character(ackbar)),
             Some(0x3000_0001)
         );
+        // A fleet opens its FLEETSD class, which FUN_00422620 lists
+        // (evidence/2026-11-12-encyclopedia-generic-topics).
         assert_eq!(
             original_encyclopedia_object(&world, MenuObject::Fleet(Default::default())),
-            None
+            Some(0x0800_0004)
         );
         // A squadron's class keeps its bare FIGHTSD id (TIE Bomber 0x07);
         // the catalog's entry is 0x1c000007, not Imperial Commandos'
