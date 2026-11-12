@@ -276,6 +276,83 @@ Gate runs (Linux, 640 x 480), rebuilt from this tree:
 - `2026-11-12T13-13-56-000Z-1700314`: `production-battle-results-presentation`, 2 of 2.
 - `2026-11-12T13-14-11-290Z-1705182`: `production-battle-withdrawal-report`, 2 of 2.
 
+## Alt accelerators under a modal window (2026-11-12, third pass)
+
+Open question from the second pass: the Alt keys arrive as `WM_COMMAND`
+through `TranslateAcceleratorA`, not as `WM_KEYDOWN`, so the F-key gate
+does not cover them.
+
+### Trace
+
+Read from the typed corpus; vtable slots read from `REBEXE.EXE` (GOG).
+
+1. **The pump.** `FUN_00413560` (the frame's message loop) passes each
+   message to slot `+0x24` (`FUN_005fba70`: it only rewrites Enter in an
+   edit control and returns 1), then calls `TranslateAcceleratorA` with
+   the frame's `HWND` (`+0x18`) and the table at `+0x98`. The Command
+   Center's constructor `FUN_00421c70` stores TEXTCOMM.DLL accelerator
+   table 11 there. No modal check on this path. Read-in-full.
+2. **Table 11** (decoded from TEXTCOMM.DLL `RT_ACCELERATOR` 11): Alt+W
+   0xbb9, Alt+VK_ADD/= 0xbba, Alt+VK_SUBTRACT/- 0xbbb, Alt+P 0xbbc, Alt+Y
+   0xbbd, Alt+I 0xbbe, Alt+S 0xbbf, Alt+M 0xbc0, Alt+B/T/F/O/G/U 0xbc1..
+   0xbc6, Alt+D 0xbc7, Alt+V 0xbc8, Alt+A 0xbc9, Alt+1..9 0xbca..0xbd2,
+   Ctrl+Tab 0xbd3, Ctrl+Shift+Tab 0xbd4, Ctrl+X 0xbd5, Ctrl+S 0xbd6, Alt+H
+   0xbd7.
+3. **The frame.** `Class_006588f8_vt14` (`FUN_004138a0`), `WM_COMMAND`:
+   ids 3001..0xbd7 go to the current screen (`+0xc0`, the Command
+   Center) as message `0x483`. Read-in-full (that branch).
+4. **The Command Center.** `FUN_00422ce0`, case `0x483`, starts with
+   `bVar20 = DAT_006be4e4 == 0`. Cases 0xbb9, 0xbbd, 0xbbf, 0xbc0,
+   0xbc1..0xbc6, 0xbc8, 0xbc9, 0xbd3/0xbd4 and 0xbd7 act only when
+   `bVar20` holds (the Agent items also need mode 1 and the item enabled
+   in list `0xdead`). Cases 0xbba..0xbbc (speed), 0xbbe, 0xbca..0xbd2
+   (`FUN_00425d00`, the GID displays) and 0xbd5 do not read it. 0xbc7 and
+   0xbd6 have no case. Read-in-full (the case).
+5. **What `DAT_006be4e4` is.** A window built by `FUN_00606380` (base
+   class vtable `0x0066e060`) answers `WM_CREATE` in `Class_0066e060_vt14`
+   (`FUN_00606650`) with slot `+0x34`, `FUN_006068f0`: when
+   `FUN_00607390(1)` finds `+0xb8 & 1`, it calls `FUN_006010e0`, which
+   installs a `WH_MOUSE` hook (`FUN_00600ef0`) and pushes the window with
+   `FUN_005f6700` on the list at `0x006be4e0` (bytes `b9 e0 e4 6b 00` before
+   the call), whose head is `DAT_006be4e4`. `FUN_006011f0` pops it. The
+   summary (vtable `0x0065a300`) and the System Finder (`0x0065a000`) both
+   keep slot `+0x34` = `0x006068f0`. So `DAT_006be4e4 != 0` exactly while
+   a modal window is open. Read-in-full (`FUN_006068f0`, `FUN_00607390`,
+   `FUN_006010e0`, `FUN_005f6700`, `FUN_00601320`); that the Finder's
+   `FUN_00461000` passes `WM_CREATE` to the base is read from its default
+   branch.
+
+**Verdict.** A modal window (the Battle Summary, a Finder, and the other
+`+0xb8` windows) refuses the Agent accelerators Alt+B/T/F/O/G/U/V/A/H
+(and Alt+W/Y/S/M, Ctrl+Tab, which the port does not carry). Alt+1..9
+still switch the GID display under it, and the speed keys (Alt+P,
+Alt+keypad +/-) still answer.
+
+### The change
+
+- `crates/rebellion-render/src/agent_menu.rs`:
+  `AgentCommand::accelerator_command` (table 11's id per item) and
+  `accelerator_answers_under_modal_window` (the `0x483` case's
+  `DAT_006be4e4` gate).
+- `crates/rebellion-app/src/main.rs`: the Alt-letter loop skips a command
+  the gate refuses while the windows of `window_modal_open` (the Finders,
+  Status, Encyclopedia, Message Index, Battle Summary) are open. Alt+1..9
+  and the speed keys are unchanged.
+
+### Tests
+
+- `the_agent_alt_keys_are_refused_while_a_modal_window_is_open` and
+  `the_gid_display_and_speed_alt_keys_still_answer_under_a_modal_window`
+  (render, cite `FUN_00422ce0` 0x483 and table 11). With the gate
+  answering every command (the old behaviour), the first fails (shown).
+- `cargo test -p rebellion-render -p rebellion-app`: render 1,510, app
+  163, 0 failures. `provenance-scan check`: 0 uncited.
+- `cargo mutants --in-place` on the two functions: 5 of 5 caught.
+
+The browser gate (an Alt+G or Alt+H under the open summary, and Alt+1
+switching the display under it) will be run in the lead's batch; no
+browser run was made here.
+
 ## Proposed status
 
 **TAC-01-C013: pass, with a note.** The summary opens over the live
@@ -285,3 +362,6 @@ chrome around it 0 of 118,168 off; the rest follows game state.
 **CMD-04-C018: pass, with a note.** The summary is modal per the manual
 (p. 64) and the shared `+0xb8` flag; the browser case shows the cockpit
 taking no click while it is open. The flag's reader is not traced.
+(Third pass: one reader is `FUN_006068f0`, which puts the window on the
+`DAT_006be4e4` list and installs the `WH_MOUSE` hook `FUN_00600ef0`; how
+that hook picks which clicks to eat, `FUN_0060f070`, is not read.)
