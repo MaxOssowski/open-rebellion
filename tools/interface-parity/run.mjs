@@ -4659,6 +4659,153 @@ async function probeTacticalBattleAlertRetreat(page, viewport, folder, consoleLi
   return probes;
 }
 
+// A0 TAC-01-C003's battle at Imperial Mon Calamari (one Medium Transport
+// against one Victory Destroyer) played until the Alliance's last hull
+// dies: the battle ends by itself (A0 TAC-01-C013), and the Battle
+// Summary's system button (0xcb, FUN_00470ea0 -> FUN_004f3220 ->
+// FUN_00429ce0) opens the system's sector window (A0 TAC-07-C014, the
+// Sluis sector window after the battle).
+async function probeTacticalBattleLastShipLost(page, viewport, folder, consoleLines, ready, faction) {
+  assert.equal(ready.battle_alert_open, false, `${faction}: the Battle Alert is still open`);
+  const scale = Math.min(viewport.width / 640, viewport.height / 480);
+  const offsetX = (viewport.width - 640 * scale) / 2;
+  const offsetY = (viewport.height - 480 * scale) / 2;
+  const point = (x, y) => ({ x: offsetX + x * scale, y: offsetY + y * scale });
+  const click = async (x, y) => {
+    const at = point(x, y);
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down({ button: "left" });
+    await page.waitForTimeout(100);
+    await page.mouse.up({ button: "left" });
+    await page.waitForTimeout(300);
+  };
+  const alliance = faction === "alliance";
+  const native = viewport.width === 640 && viewport.height === 480 && viewport.device_scale_factor === 1;
+  // The pause control resumes the battle; the cursor then leaves the view.
+  await click(575, 319);
+  await page.mouse.move(2, 2);
+  const summaryLog = () => consoleLines.map(({ text }) =>
+    text.match(/\[tactical-results\] summary lines=(\[.*\])/)).filter(Boolean);
+  const deadline = Date.now() + 150_000;
+  while (summaryLog().length === 0 && Date.now() < deadline) {
+    await page.waitForTimeout(500);
+  }
+  const summary = summaryLog();
+  assert.equal(summary.length, 1, `${faction}: the battle did not end in one Battle Summary`);
+  await page.waitForTimeout(500);
+  const results = await stableInteractionFrame(page, folder, "battle-last-ship-results");
+  const lines = JSON.parse(summary[0][1]);
+  const probes = [{ type: "battle-last-ship-report", system: ready.system, lines }];
+  // A0 TAC-01-C013: "The Alliance fleet is defeated." / "Imperial forces
+  // have broken the blockade of Mon Calamari. The Alliance fleet has been
+  // completely destroyed." (FUN_0049b4d0: 0x7003, 0x7016, 0x700b).
+  if (alliance) {
+    assert.deepEqual(lines, [
+      "The Alliance fleet is defeated. ",
+      "Imperial forces have broken the blockade of Mon Calamari. The Alliance fleet has been completely destroyed.",
+    ]);
+  }
+  const [dx, dy] = alliance ? [-23, -25] : [40, -22];
+  const frame = alliance ? 10335 : 10336;
+  const frameSource = decodeIndexedBmp(fs.readFileSync(path.join(
+    root, `data/base/ui/strategy-dll/BMP/${frame}.bmp`,
+  )));
+  const frameCovers = (x, y) => {
+    const [r, g, b] = frameSource.pixel(x + 12, y + 13);
+    return !(r < 32 && g < 32 && b > 192);
+  };
+  const textBoxes = [
+    { x: 0, y: 4, width: 400, height: 43 },
+    // The body's third line ("destroyed.") reaches two rows lower in the
+    // port's font (the accepted glyph deviation).
+    { x: 0, y: 202, width: 400, height: 96 },
+  ];
+  const c013 = path.join(root, ".artifacts/interface-parity/a0/TAC-01-C013/original.png");
+  if (alliance && native && fs.existsSync(c013)) {
+    // The summary's scene, outside the text boxes and the frame, against A0.
+    const a0 = PNG.sync.read(fs.readFileSync(c013));
+    const port = PNG.sync.read(results);
+    const [left, top] = [97 + dx, 87 + dy];
+    let checked = 0;
+    let differ = 0;
+    for (let y = 0; y < 310; y++) {
+      for (let x = 0; x < 400; x++) {
+        if (textBoxes.some((rect) => x >= rect.x && y >= rect.y
+          && x < rect.x + rect.width && y < rect.y + rect.height)) continue;
+        if (frameCovers(x, y)) continue;
+        const i = ((top + y) * 640 + left + x) * 4;
+        checked++;
+        if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) differ++;
+      }
+    }
+    probes.push({ type: "battle-last-ship-scene-a0", a0: "TAC-01-C013/original.png", checked, differ });
+    assert.equal(differ, 0, `${faction}: the summary scene differs from A0 TAC-01-C013 in ${differ} of ${checked} pixels`);
+  }
+  // The Display page ("Go directly to", the fourth tab), then the system
+  // button at window (29, 182), 169 by 96.
+  const tabX = (alliance ? 523.5 : 533) + dx;
+  const tabY = (alliance ? 344.5 : 360.5) + dy;
+  await click(tabX, tabY);
+  await page.mouse.move(2, 2);
+  await page.waitForTimeout(300);
+  const display = await stableInteractionFrame(page, folder, "battle-last-ship-display");
+  await click(85 + dx + 29 + 84.5, 74 + dy + 182 + 48);
+  await page.mouse.move(offsetX + 639 * scale, offsetY + 240 * scale);
+  await page.waitForTimeout(500);
+  const routed = await stableInteractionFrame(page, folder, "battle-last-ship-sector");
+  assert.notEqual(sha256(display), sha256(routed), `${faction}: the system button did not route`);
+  const opened = consoleLines.map(({ text }) =>
+    text.match(/\[tactical-results\] sector_window system=(.*) windows=(\d+)/)).filter(Boolean);
+  assert.equal(opened.length, 1, `${faction}: the sector window did not open`);
+  assert.equal(opened[0][1], ready.system);
+  probes.push({ type: "battle-last-ship-sector-window", system: opened[0][1], windows: Number(opened[0][2]) });
+  const c014 = path.join(root, ".artifacts/interface-parity/a0/TAC-07-C014/original.png");
+  if (alliance && native && fs.existsSync(c014)) {
+    const a0 = PNG.sync.read(fs.readFileSync(c014));
+    const port = PNG.sync.read(routed);
+    const count = (x0, y0, x1, y1) => {
+      let differ = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * 640 + x) * 4;
+          if ([0, 1, 2].some((c) => a0.data[i + c] !== port.data[i + c])) differ++;
+        }
+      }
+      return differ;
+    };
+    // Every pixel, to report; the sectors' planets, bars and names follow
+    // each game's state (A0 is day 49 of a played game).
+    const whole = count(0, 0, 640, 480);
+    // The window's place and chrome: its outline (white at rows 36 and
+    // 393), the bands outside it, its right edge and its title buttons.
+    // The left edge at x 299 is crossed by the galaxy's "Popular Support"
+    // label, and the title's glyphs are the accepted font deviation.
+    const chrome = {
+      top: count(297, 34, 539, 37),
+      bottom: count(297, 393, 539, 395),
+      left: count(297, 299, 299, 396) + count(297, 34, 299, 299),
+      right: count(536, 34, 539, 396),
+      buttons: count(500, 37, 536, 57),
+    };
+    // The battle's state that persists at Mon Calamari: the surviving
+    // Imperial fleet's icon at the planet's top right and the Imperial
+    // facility icon at its top left (A0 TAC-07-C014's manifest: "an
+    // Imperial fleet icon ... the Alliance fleet icon is gone").
+    const monCalamari = {
+      imperial_fleet: count(410, 236, 434, 248),
+      facility: count(375, 236, 392, 246),
+    };
+    probes.push({
+      type: "battle-last-ship-sector-a0", a0: "TAC-07-C014/original.png", whole, chrome, monCalamari,
+    });
+    assert.deepEqual(chrome, { top: 0, bottom: 0, left: 0, right: 0, buttons: 0 },
+      `${faction}: the sector window's place or chrome differs from A0 TAC-07-C014`);
+    assert.deepEqual(monCalamari, { imperial_fleet: 0, facility: 0 },
+      `${faction}: Mon Calamari's icons differ from A0 TAC-07-C014`);
+  }
+  return probes;
+}
+
 // Withdraw From Battle (FUN_005f1170, command 0x7a) played out: the
 // viewer's one hull leaves the enemy's system, the battle ends when its
 // side has no unit left, and the report reads its failed attack and its
@@ -6139,6 +6286,10 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         ? await probeTacticalNavigationCameraPresentation(
           page, viewport, folder, stable, consoleLines, ready,
         )
+        : scenario.battle_last_ship_lost
+        ? await probeTacticalBattleLastShipLost(
+          page, viewport, folder, consoleLines, ready, faction,
+        )
         : scenario.battle_withdrawal_report
         ? await probeTacticalBattleWithdrawalReport(
           page, viewport, folder, consoleLines, ready, faction,
@@ -6259,6 +6410,7 @@ async function runScenarioOnce(server, executable, scenario, faction, viewport) 
         Boolean(scenario.battle_alert_presentation));
       assert.equal(ready.battle_alert_retreat, Boolean(scenario.battle_alert_retreat));
       assert.equal(ready.battle_withdrawal_report, Boolean(scenario.battle_withdrawal_report));
+      assert.equal(ready.battle_last_ship_lost, Boolean(scenario.battle_last_ship_lost));
       assert.equal(ready.tactical_audio_presentation,
         Boolean(scenario.tactical_audio_presentation));
       assert.equal(ready.hull_scale_presentation,
@@ -7194,19 +7346,20 @@ async function main() {
         "production-participants-3d-off",
         "production-attack-target-lost-presentation",
         "production-battle-alert-retreat",
-        "production-battle-withdrawal-report"]);
+        "production-battle-withdrawal-report",
+        "production-battle-last-ship-lost"]);
     assert.deepEqual(catalog.scenarios.map(({ tactical_proof }) => tactical_proof),
-      [true, false, true, true, true, true, true, ...Array(33).fill(false)]);
+      [true, false, true, true, true, true, true, ...Array(34).fill(false)]);
     assert.deepEqual(catalog.scenarios.map(({ expected_lod_resource }) => expected_lod_resource),
       [2560, undefined, 2560, 2561, 2562, 2560, 2560, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-        undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
     assert.deepEqual(catalog.scenarios.map(({ lod_journey }) => Boolean(lod_journey)),
-      Array.from({ length: 40 }, (_, index) => index === 5));
+      Array.from({ length: 41 }, (_, index) => index === 5));
     assert.deepEqual(catalog.scenarios.map(({ camera_journey }) => Boolean(camera_journey)),
-      Array.from({ length: 40 }, (_, index) => index === 6));
+      Array.from({ length: 41 }, (_, index) => index === 6));
     assert.deepEqual(catalog.factions, ["alliance", "empire"]);
   } else {
     execFileSync(process.execPath, [path.join(here, "validate-catalog.mjs")], { stdio: "inherit" });

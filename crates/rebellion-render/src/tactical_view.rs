@@ -1378,6 +1378,21 @@ impl TacticalState {
         session.advance_original_trench_run(ORIGINAL_TRENCH_RUN_DURATION_MILLISECONDS);
     }
 
+    /// A0 TAC-01-C013's end without its minutes of fire: the Alliance's
+    /// hulls keep one hull point and no shield, so the first hit kills the
+    /// last one and the battle ends by itself (`check_battle_end`).
+    #[cfg(feature = "interface-test-fixtures")]
+    pub fn configure_last_alliance_ship_lost_fixture(&mut self) {
+        let Some(session) = self.session.as_mut() else {
+            return;
+        };
+        for ship in session.ships.iter_mut().filter(|ship| ship.identity.is_alliance) {
+            ship.hull_current = 1;
+            ship.shield = 0;
+            ship.refresh_subsystem_condition();
+        }
+    }
+
     /// Populate each post-battle condition column and enter the production
     /// Battle Results phase without running an entire deterministic battle.
     #[cfg(feature = "interface-test-fixtures")]

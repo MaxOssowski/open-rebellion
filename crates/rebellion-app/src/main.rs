@@ -1970,7 +1970,14 @@ async fn main() {
             &mut cockpit_state,
             &mut game_mode,
         ) {
-            Ok(()) => false,
+            Ok(()) => {
+                // port: the fixture's fleets reveal their system as a new
+                // game's do (FogSystem::seed), so the strategy windows
+                // after the battle show the fleets that remain there.
+                FogSystem::seed(&mut fog_alliance_state, &world);
+                FogSystem::seed(&mut fog_empire_state, &world);
+                false
+            }
             Err(error) => {
                 tactical_test_fixture::emit_failed(request, &error);
                 true
@@ -8753,22 +8760,32 @@ async fn main() {
                         if game_mode == GameMode::Galaxy {
                             if let Some(system) = requested_result_system {
                                 map_state.selected_system = Some(system);
-                                let layout = cockpit_state.layout();
-                                let _ = system_window_state.open(
+                                if open_battle_result_sector(
                                     &world,
                                     system,
-                                    (85, 55),
+                                    &mut sector_window_state,
                                     cockpit_state.faction,
-                                    layout,
-                                );
+                                ) {
+                                    macroquad::logging::info!(
+                                        "[tactical-results] sector_window system={} windows={}",
+                                        world.systems.get(system).map_or("", |s| s.name.as_str()),
+                                        sector_window_state.window_count(),
+                                    );
+                                }
                             }
-                            // port: the fleet's Fleet window with the fleet
-                            // selected, as the Fleet Finder opens it
-                            // (FUN_00429440).
+                            // 0xca: the system's sector window, then the
+                            // fleet's Fleet window with the fleet selected,
+                            // as the Fleet Finder opens it (FUN_00429440).
                             if let Some(fleet) = requested_result_fleet {
                                 if let Some(value) = world.fleets.get(fleet) {
                                     let system = value.location;
                                     map_state.selected_system = Some(system);
+                                    let _ = open_battle_result_sector(
+                                        &world,
+                                        system,
+                                        &mut sector_window_state,
+                                        cockpit_state.faction,
+                                    );
                                     let layout = cockpit_state.layout();
                                     if fleet_window_state.open(
                                         &world,
@@ -13917,6 +13934,21 @@ fn answer_movie_error_box(player: &mut VideoPlayer) {
     }
 }
 
+/// The Battle Summary's destinations (`FUN_00470ea0`, vtable `0x65a300`):
+/// the system button `0xcb` finds the battle's system (`FUN_004f3220`) and
+/// opens its sector window (`FUN_00429ce0`, 235 by 360); the fleet button
+/// `0xca` opens the sector window too, then the Fleet window
+/// (`FUN_0045c8e0`, kind 4). A0 TAC-07-C014: the Sluis sector window
+/// after the Battle at Mon Calamari.
+fn open_battle_result_sector(
+    world: &GameWorld,
+    system: SystemKey,
+    sector_windows: &mut SectorWindowState,
+    faction: CockpitFaction,
+) -> bool {
+    sector_windows.open_for_system(world, system, faction)
+}
+
 #[cfg(test)]
 mod tactical_ground_tests {
     use super::*;
@@ -13965,6 +13997,64 @@ mod tactical_ground_tests {
                 target_system: system,
             }
         ));
+    }
+
+    #[test]
+    fn the_battle_summarys_system_button_opens_the_systems_sector_window() {
+        // FUN_00470ea0 (Battle Summary, vtable 0x65a300), command 0xcb:
+        // FUN_004f3220 then FUN_00429ce0, the sector window; A0 TAC-07-C014
+        // shows the Sluis sector window after the Battle at Mon Calamari.
+        let mut world = GameWorld::default();
+        let sector = world.sectors.insert(Sector {
+            dat_id: DatId::new(1),
+            name: "Sluis".into(),
+            group: SectorGroup::Core,
+            x: 0,
+            y: 0,
+            systems: vec![],
+        });
+        let system = world.systems.insert(System {
+            last_arrival: None,
+            dat_id: DatId::new(2),
+            name: "Mon Calamari".into(),
+            sector,
+            x: 0,
+            y: 0,
+            exploration_status: ExplorationStatus::Explored,
+            popularity_alliance: 0.5,
+            popularity_empire: 0.5,
+            is_populated: true,
+            total_energy: 0,
+            raw_materials: 0,
+            espionage_rating: 0.0,
+            fleets: vec![],
+            ground_units: vec![],
+            special_forces: vec![],
+            defense_facilities: vec![],
+            manufacturing_facilities: vec![],
+            production_facilities: vec![],
+            fighters: Vec::new(),
+            is_headquarters: false,
+            is_destroyed: false,
+            control: ControlKind::Uncontrolled,
+        });
+        world.sectors[sector].systems.push(system);
+        let mut sectors = SectorWindowState::default();
+        assert!(open_battle_result_sector(
+            &world,
+            system,
+            &mut sectors,
+            CockpitFaction::Alliance,
+        ));
+        assert_eq!(sectors.window_count(), 1);
+        // A second press raises the open window; it opens no other.
+        assert!(open_battle_result_sector(
+            &world,
+            system,
+            &mut sectors,
+            CockpitFaction::Alliance,
+        ));
+        assert_eq!(sectors.window_count(), 1);
     }
 
     #[test]

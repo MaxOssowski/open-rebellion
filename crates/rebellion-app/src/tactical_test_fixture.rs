@@ -69,6 +69,10 @@ const BATTLE_ALERT_RETREAT_SCENARIO: u32 = 39;
 /// the enemy's system (Withdraw From Battle, FUN_005f1170) until the
 /// battle ends and the report reads its failed attack and withdrawal.
 const BATTLE_WITHDRAWAL_REPORT_SCENARIO: u32 = 40;
+/// A0 TAC-01-C013 and TAC-07-C014: A0 TAC-01-C003's battle at Imperial
+/// Mon Calamari played until the Alliance's last hull dies, then the
+/// Battle Summary's system button (`0xcb`, `FUN_00470ea0`).
+const BATTLE_LAST_SHIP_LOST_SCENARIO: u32 = 41;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TacticalLodFixture {
@@ -132,6 +136,7 @@ pub(crate) struct TacticalFixtureRequest {
     pub attack_target_lost_presentation: bool,
     pub battle_alert_retreat: bool,
     pub battle_withdrawal_report: bool,
+    pub battle_last_ship_lost: bool,
     pub subsystem_field_command_presentation: bool,
     pub live_subsystem_damage_presentation: bool,
     pub subsystem_repair_mobility_presentation: bool,
@@ -365,7 +370,8 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         | HULL_SCALE_PRESENTATION_SCENARIO
         | ATTACK_TARGET_LOST_PRESENTATION_SCENARIO
         | BATTLE_ALERT_RETREAT_SCENARIO
-        | BATTLE_WITHDRAWAL_REPORT_SCENARIO => (
+        | BATTLE_WITHDRAWAL_REPORT_SCENARIO
+        | BATTLE_LAST_SHIP_LOST_SCENARIO => (
             false,
             true,
             false,
@@ -407,10 +413,14 @@ fn decode(code: u32) -> Option<TacticalFixtureRequest> {
         detail_escort_presentation: scenario == DETAIL_ESCORT_PRESENTATION_SCENARIO,
         battle_alert_presentation: scenario == BATTLE_ALERT_PRESENTATION_SCENARIO,
         tactical_audio_presentation: scenario == TACTICAL_AUDIO_PRESENTATION_SCENARIO,
-        hull_scale_presentation: scenario == HULL_SCALE_PRESENTATION_SCENARIO,
+        hull_scale_presentation: matches!(
+            scenario,
+            HULL_SCALE_PRESENTATION_SCENARIO | BATTLE_LAST_SHIP_LOST_SCENARIO
+        ),
         attack_target_lost_presentation: scenario == ATTACK_TARGET_LOST_PRESENTATION_SCENARIO,
         battle_alert_retreat: scenario == BATTLE_ALERT_RETREAT_SCENARIO,
         battle_withdrawal_report: scenario == BATTLE_WITHDRAWAL_REPORT_SCENARIO,
+        battle_last_ship_lost: scenario == BATTLE_LAST_SHIP_LOST_SCENARIO,
         subsystem_field_command_presentation: scenario
             == SUBSYSTEM_FIELD_COMMAND_PRESENTATION_SCENARIO,
         live_subsystem_damage_presentation: scenario == LIVE_SUBSYSTEM_DAMAGE_PRESENTATION_SCENARIO,
@@ -800,6 +810,15 @@ pub(crate) fn apply(
         world.systems[system].control = rebellion_core::world::ControlKind::Controlled(enemy);
         world.systems[system].last_arrival = Some(viewer);
     }
+    if request.battle_last_ship_lost {
+        // A0 TAC-01-C013: the Empire held Mon Calamari and its fleet
+        // arrived last, against the Alliance's blockade; FUN_0049b4d0
+        // then reads 0x7016 "Imperial forces have broken the blockade".
+        use rebellion_core::dat::Faction;
+        world.systems[system].control =
+            rebellion_core::world::ControlKind::Controlled(Faction::Empire);
+        world.systems[system].last_arrival = Some(Faction::Empire);
+    }
 
     let player_is_attacker = request.faction == CockpitFaction::Alliance;
     tactical_flow::begin_player_battle(
@@ -915,6 +934,10 @@ pub(crate) fn apply(
         tactical.configure_withdrawal_warning_fixture();
     }
     #[cfg(feature = "interface-test-fixtures")]
+    if request.battle_last_ship_lost {
+        tactical.configure_last_alliance_ship_lost_fixture();
+    }
+    #[cfg(feature = "interface-test-fixtures")]
     if request.empty_space_presentation {
         tactical.configure_empty_space_fixture();
     }
@@ -979,6 +1002,7 @@ struct FixtureRecord<'a> {
     attack_target_lost_presentation: bool,
     battle_alert_retreat: bool,
     battle_withdrawal_report: bool,
+    battle_last_ship_lost: bool,
     battle_alert_open: bool,
     tactical_music_mdata_id: Option<u32>,
     tactical_weapon_audio_wave_first: u32,
@@ -1491,6 +1515,7 @@ pub(crate) fn emit_ready(request: TacticalFixtureRequest, tactical: &TacticalSta
         attack_target_lost_presentation: request.attack_target_lost_presentation,
         battle_alert_retreat: request.battle_alert_retreat,
         battle_withdrawal_report: request.battle_withdrawal_report,
+        battle_last_ship_lost: request.battle_last_ship_lost,
         battle_alert_open: tactical.battle_alert_open(),
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1580,6 +1605,7 @@ pub(crate) fn emit_failed(request: TacticalFixtureRequest, error: &str) {
         attack_target_lost_presentation: request.attack_target_lost_presentation,
         battle_alert_retreat: request.battle_alert_retreat,
         battle_withdrawal_report: request.battle_withdrawal_report,
+        battle_last_ship_lost: request.battle_last_ship_lost,
         battle_alert_open: false,
         tactical_music_mdata_id: None,
         tactical_weapon_audio_wave_first: 13_000,
@@ -1721,7 +1747,10 @@ mod tests {
             TacticalLodFixture::CameraJourney
         );
         assert!(decode(0x10100).is_none());
-        assert!(decode(0x10129).is_none());
+        assert!(decode(0x10129).unwrap().battle_last_ship_lost);
+        assert!(decode(0x10129).unwrap().hull_scale_presentation);
+        assert!(!decode(0x10128).unwrap().battle_last_ship_lost);
+        assert!(decode(0x1012a).is_none());
         assert!(decode(0x10301).is_none());
         assert!(decode(0x00101).is_none());
     }

@@ -558,6 +558,19 @@
       "expected_status": "battle-ready",
       "audit_cells": [],
       "acceptance": "Compares the report's words with A0 TAC-07-C004 on both sides and the withdrawal scene's pixels outside the text boxes with A0 TAC-07-C004 for the Alliance at 640 x 480. The fixture's system and destination names differ from A0's."
+    },
+    {
+      "slug": "production-battle-last-ship-lost",
+      "description": "A0 TAC-01-C003's battle at Imperial Mon Calamari played until the Alliance's last hull dies: the battle ends by itself and the Battle Summary's system button opens the system's sector window. It supports TAC-01-C013 and TAC-07-C014, which other scenarios map: a cell has one mapping scenario",
+      "fixture_codes": { "alliance": 65833, "empire": 66089 },
+      "execution_kind": "journey",
+      "tactical_proof": false,
+      "production_participants": true,
+      "hull_scale_presentation": true,
+      "battle_last_ship_lost": true,
+      "expected_status": "battle-ready",
+      "audit_cells": [],
+      "acceptance": "Compares the report's words and the summary scene's pixels outside the text boxes with A0 TAC-01-C013, then the sector window the system button opens with A0 TAC-07-C014, for the Alliance at 640 x 480."
     }
   ]
 }
