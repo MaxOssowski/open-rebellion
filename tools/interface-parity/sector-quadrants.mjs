@@ -285,10 +285,12 @@ async function doubleClick(page, point) {
 // the window. The port's window stands one pixel right of and below its
 // reported origin, as the tab strip's art shows. DrawTextA sets these
 // lines (theme::paint_gdi_text); the glyphs are Liberation's.
-async function systemWindowText(page, origin) {
+async function systemWindowText(page, origin, directory) {
   await page.mouse.move(2, 470);
   await page.waitForTimeout(800);
-  const port = PNG.sync.read(await page.screenshot());
+  const portBytes = await page.screenshot();
+  fs.writeFileSync(path.join(directory, "system-window-whole.png"), portBytes);
+  const port = PNG.sync.read(portBytes);
   const a0 = PNG.sync.read(fs.readFileSync(path.join(a0Dir, "07-icon-dbl.png")));
   const white = (png, x, y) => {
     const i = (y * png.width + x) * 4;
@@ -313,6 +315,33 @@ async function systemWindowText(page, origin) {
     checks[name] = { a0: a, port: p };
     assert.ok(a && p && a.every((value, k) => Math.abs(value - p[k]) <= 1), `${name}: ${JSON.stringify(checks[name])}`);
   }
+  // The whole window, 226 by 304 (FUN_0045aac0), against A0's at (314, 86):
+  // the port's window art stands at its reported origin. Every pixel must
+  // match but the text objects' boxes, whose glyphs are Liberation's and
+  // whose title and destinations name another system (Yavin in A0): the
+  // title (FUN_00458080, from (19, 2)) and, per band 81 rows apart, its
+  // title, status and destination lines and its count (FUN_00457690).
+  const masks = [[19, 2, 175, 14]];
+  for (let band = 0; band < 3; band += 1) {
+    const y = band * 81;
+    masks.push([58, 59 + y, 160, 13], [58, 74 + y, 160, 14], [58, 115 + y, 160, 13], [18, 120 + y, 22, 14]);
+  }
+  const masked = (x, y) => masks.some(([mx, my, mw, mh]) => x >= mx && y >= my && x < mx + mw && y < my + mh);
+  const rgbAt = (png, x, y) => {
+    const i = (y * png.width + x) * 4;
+    return (png.data[i] << 16) | (png.data[i + 1] << 8) | png.data[i + 2];
+  };
+  let compared = 0;
+  let differing = 0;
+  for (let y = 0; y < 304; y += 1) {
+    for (let x = 0; x < 226; x += 1) {
+      if (masked(x, y)) continue;
+      compared += 1;
+      if (rgbAt(port, origin[0] + x, origin[1] + y) !== rgbAt(a0, 314 + x, 86 + y)) differing += 1;
+    }
+  }
+  checks.whole = { compared, differing, masks: masks.length };
+  assert.ok(compared > 45_000 && differing === 0, `the whole System window: ${JSON.stringify(checks.whole)}`);
   return checks;
 }
 
@@ -661,7 +690,7 @@ const cases = [
       // slot's corner, the system's name after it.
       const dat = setup.primary_dat_id;
       const [, origin] = opened.system_windows.find(([system]) => system === dat);
-      const textChecks = faction.side === 1 && a0Dir ? await systemWindowText(page, origin) : null;
+      const textChecks = faction.side === 1 && a0Dir ? await systemWindowText(page, origin, directory) : null;
       await click(page, { x: origin[0] + 195 + 7, y: origin[1] + 3 + 7 });
       const railed = await until(page, "minimize sends the System window to the rail",
         (o, value) => !o.system_windows.some(([system]) => system === value)

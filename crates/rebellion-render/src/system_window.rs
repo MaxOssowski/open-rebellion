@@ -37,6 +37,9 @@ pub const SYSTEM_WINDOW_CLIENT_WIDTH: f32 = 226.0;
 /// `FUN_0045aac0` creates type 9 at 226 by 304 (`0xe2` by `0x130`).
 pub const SYSTEM_WINDOW_WIDTH: f32 = 226.0;
 pub const SYSTEM_WINDOW_HEIGHT: f32 = 304.0;
+/// The title strip's right end: the window's width less its 2-pixel right
+/// border (A0 system-windows/07-icon-dbl).
+const TITLE_STRIP_RIGHT: f32 = SYSTEM_WINDOW_WIDTH - 2.0;
 pub const REFERENCE_RAIL_SLOTS: usize = 12;
 
 const WINDOW_BACKGROUND: u32 = 10297;
@@ -1204,10 +1207,26 @@ fn draw_system_window(
 
             painter.rect_filled(local, 0.0, egui::Color32::BLACK);
             paint(cache, DllSource::Strategy, WINDOW_BACKGROUND, 0.0, 0.0);
-            paint(
+            // The title strip ends inside the window's 2-pixel right
+            // border: A0 system-windows/07-icon-dbl shows Yavin's red strip
+            // to x 223 and the border's navy (0, 0, 128) in columns 224 and
+            // 225 of its rows, as the 235-wide windows' strip (231 at x 2)
+            // ends at their border.
+            paint_native(
+                &painter.with_clip_rect(logical_rect(
+                    local,
+                    scale,
+                    0.0,
+                    0.0,
+                    TITLE_STRIP_RIGHT,
+                    SYSTEM_WINDOW_HEIGHT,
+                )),
+                ctx,
                 cache,
                 DllSource::Strategy,
                 crate::defenses_window::title_resource(side, focused),
+                local,
+                scale,
                 2.0,
                 2.0,
             );
@@ -1224,6 +1243,27 @@ fn draw_system_window(
                 ),
             );
 
+            // A title button's or tab's key pixel (its first DIB pixel, the
+            // bottom-left corner; each bitmap holds just that one) shows the
+            // window's own background there, not the title strip: A0
+            // system-windows/07-icon-dbl shows 10297's (9, 11, 32) at the
+            // three buttons' corners (3, 16), (195, 16), (209, 16) and its
+            // white at each tab's (x, 52). The buttons and tabs are child
+            // controls blitted keyed (FUN_00602d30 -> FUN_005fd0f0) over
+            // their parent, the strip being a sibling.
+            let key_corner = |cache: &mut BmpCache, x: f32, bottom: f32| {
+                paint_native(
+                    &painter.with_clip_rect(logical_rect(local, scale, x, bottom, 1.0, 1.0)),
+                    ctx,
+                    cache,
+                    DllSource::Strategy,
+                    WINDOW_BACKGROUND,
+                    local,
+                    scale,
+                    0.0,
+                    0.0,
+                );
+            };
             let buttons = [
                 (SECTOR_NORMAL, SECTOR_PRESSED, SECTOR_X, "sector"),
                 (MINIMIZE_NORMAL, MINIMIZE_PRESSED, MINIMIZE_X, "minimize"),
@@ -1245,6 +1285,7 @@ fn draw_system_window(
                     x,
                     3.0,
                 );
+                key_corner(cache, x, 3.0 + 13.0);
                 clicked[index] = exact_clicked(&response, rect);
             }
             result.focus_sector = clicked[0];
@@ -1273,6 +1314,7 @@ fn draw_system_window(
                     tab.x(),
                     TAB_STRIP_Y,
                 );
+                key_corner(cache, tab.x(), TAB_STRIP_Y + TAB_SIZE.1 - 1.0);
                 if exact_clicked(&response, rect) {
                     result.tab = Some(tab);
                     result.focus = true;
@@ -2811,6 +2853,144 @@ mod tests {
             ),
             Some(egui::Rect::from_min_max(at(55.0, 57.0), at(221.0, 136.0)))
         );
+    }
+
+    /// A `width` by `height`, 8-bit BMP, every pixel palette entry 0.
+    fn solid_bmp(width: u32, height: u32) -> Vec<u8> {
+        let stride = width.div_ceil(4) * 4;
+        let offset = 14 + 40 + 4 * 2;
+        let mut bytes = Vec::new();
+        bytes.extend(b"BM");
+        bytes.extend((offset + stride * height).to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend(offset.to_le_bytes());
+        bytes.extend(40u32.to_le_bytes());
+        bytes.extend(width.to_le_bytes());
+        bytes.extend(height.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(8u16.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend((stride * height).to_le_bytes());
+        bytes.extend([0; 8]);
+        bytes.extend(2u32.to_le_bytes());
+        bytes.extend([0; 4]);
+        bytes.extend([0, 0, 255, 0, 0, 0, 0, 0]);
+        bytes.extend(std::iter::repeat_n(0u8, (stride * height) as usize));
+        bytes
+    }
+
+    /// Draw the opened window of a one-system world twice with `bitmaps`
+    /// (STRATEGY id, width, height) staged in a temporary base, and return
+    /// the clip rectangle of each mesh painted with one of `traced`'s
+    /// textures in the last frame.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn traced_clips(name: &str, bitmaps: &[(u32, u32, u32)], traced: &[u32]) -> Vec<egui::Rect> {
+        let base = std::env::temp_dir().join(format!(
+            "open-rebellion-system-{name}-{}",
+            std::process::id()
+        ));
+        let folder = base.join("strategy-dll").join("BMP");
+        std::fs::create_dir_all(&folder).unwrap();
+        for &(id, width, height) in bitmaps {
+            std::fs::write(folder.join(format!("{id}.bmp")), solid_bmp(width, height)).unwrap();
+        }
+        let (world, systems) = fixture_world(1);
+        let mut state = opened(&world, systems[0]);
+        let layout = layout(CockpitFaction::Alliance, 2.0);
+        let ctx = egui::Context::default();
+        crate::theme::load_fonts(&ctx);
+        let mut cache = BmpCache::new();
+        cache.set_base_path(&base);
+        let textures: Vec<egui::TextureId> = traced
+            .iter()
+            .filter_map(|&id| cache.get(&ctx, DllSource::Strategy, id).map(egui::TextureHandle::id))
+            .collect();
+        assert_eq!(textures.len(), traced.len());
+        let fog = FogState::new(Faction::Alliance);
+        let mut clips = Vec::new();
+        for _ in 0..2 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 1000.0),
+                )),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                let _ = draw_system_windows(
+                    ctx,
+                    &world,
+                    &rebellion_core::movement::MovementState::default(),
+                    &fog,
+                    &MissionState::new(),
+                    &ManufacturingState::new(),
+                    &DeliveryState::new(),
+                    &mut state,
+                    CockpitFaction::Alliance,
+                    layout,
+                    &mut cache,
+                );
+            });
+            clips = output
+                .shapes
+                .iter()
+                .filter_map(|clipped| match &clipped.shape {
+                    egui::Shape::Mesh(mesh) if textures.contains(&mesh.texture_id) => {
+                        Some(clipped.clip_rect)
+                    }
+                    _ => None,
+                })
+                .collect();
+        }
+        std::fs::remove_dir_all(base).unwrap();
+        clips
+    }
+
+    // A0 system-windows/07-icon-dbl: Yavin's red title strip (STRATEGY
+    // 10299, 231 wide at x 2) ends at x 223; columns 224 and 225 of its rows
+    // are the window's navy right border.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_title_strip_ends_inside_the_windows_right_border() {
+        let titles = [10299, 10200, 10201, 10302, 10303, 10304];
+        let bitmaps: Vec<_> = titles.iter().map(|&id| (id, 231, 18)).collect();
+        let clips = traced_clips("title-strip", &bitmaps, &titles);
+        assert_eq!(clips.len(), 1, "{clips:?}");
+        assert!((clips[0].right() - at(224.0, 0.0).x).abs() < 0.01, "{clips:?}");
+        assert!((clips[0].left() - at(0.0, 0.0).x).abs() < 0.01, "{clips:?}");
+    }
+
+    // A0 system-windows/07-icon-dbl: each title button's and tab's key
+    // pixel, its bottom-left corner, shows the window's background 10297
+    // ((9, 11, 32) at the buttons' (3, 16), (195, 16), (209, 16); white at
+    // the tabs' (x, 52)), not the title strip or the key colour.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn the_buttons_and_tabs_key_corners_show_the_windows_background() {
+        let mut bitmaps = vec![(WINDOW_BACKGROUND, 226, 304)];
+        for id in [SECTOR_NORMAL, MINIMIZE_NORMAL, CLOSE_NORMAL] {
+            bitmaps.push((id, 14, 14));
+        }
+        for id in 10_311..=10_334 {
+            bitmaps.push((id, 36, 33));
+        }
+        let clips = traced_clips("key-corners", &bitmaps, &[WINDOW_BACKGROUND]);
+        let corner = |x: f32, y: f32| egui::Rect::from_min_max(at(x, y), at(x + 1.0, y + 1.0));
+        let mut expected = vec![
+            corner(SECTOR_X, 16.0),
+            corner(MINIMIZE_X, 16.0),
+            corner(CLOSE_X, 16.0),
+        ];
+        expected.extend(SystemWindowTab::ALL.map(|tab| corner(tab.x(), 52.0)));
+        // The whole background first, then one clipped copy per corner.
+        assert_eq!(clips.len(), 1 + expected.len(), "{clips:?}");
+        for rect in expected {
+            assert!(
+                clips.iter().any(|clip| (clip.min - rect.min).length() < 0.01
+                    && (clip.max - rect.max).length() < 0.01),
+                "{rect:?} not in {clips:?}"
+            );
+        }
     }
 
     #[test]
